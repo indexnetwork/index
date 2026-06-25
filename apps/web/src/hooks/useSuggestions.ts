@@ -23,7 +23,7 @@ interface UseSuggestionsOptions {
   hasMessages?: boolean;
   /** Intent ID for dynamic refinement suggestions (e.g. intent detail view) */
   intentId?: string;
-  /** Selected index ID to filter/contextualize suggestions */
+  /** Selected network ID to filter/contextualize suggestions */
   networkId?: string | null;
   /** Whether to fetch suggestions (e.g., on focus) */
   enabled?: boolean;

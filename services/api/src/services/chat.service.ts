@@ -73,11 +73,11 @@ export class ChatSessionService {
   }
 
   /**
-   * Update the index scope for a session. Validates ownership.
+   * Update the network scope for a session. Validates ownership.
    *
    * @param sessionId - The session ID
    * @param userId - The user ID to validate ownership
-   * @param networkId - The index ID to set, or undefined to clear
+   * @param networkId - The network ID to set, or undefined to clear
    * @returns True if updated, false if not found or unauthorized
    */
   async updateSessionIndex(sessionId: string, userId: string, networkId: string | undefined): Promise<boolean> {
@@ -108,7 +108,7 @@ export class ChatSessionService {
 
     const isMember = await this.graphDb.isNetworkMember(normalizedIndexId, userId);
     if (!isMember) {
-      return { ok: false, status: 403, error: 'You are not a member of this index' };
+      return { ok: false, status: 403, error: 'You are not a member of this network' };
     }
 
     return { ok: true };
@@ -116,40 +116,40 @@ export class ChatSessionService {
 
   /**
    * Get a session by ID, validating ownership.
-   * 
+   *
    * @param sessionId - The session ID
    * @param userId - The user ID to validate ownership
    * @returns The session if found and owned by user, null otherwise
    */
   async getSession(sessionId: string, userId: string) {
     logger.verbose('Getting session', { sessionId, userId });
-    
+
     const session = await this.db.getChatSession(sessionId);
-    
+
     if (!session || session.userId !== userId) {
       logger.warn('Session not found or unauthorized', { sessionId, userId });
       return null;
     }
-    
+
     return session;
   }
 
   /**
    * Get all sessions for a user, ordered by most recent.
-   * 
+   *
    * @param userId - The user's UUID
    * @param limit - Maximum number of sessions to return (default: 10)
    * @returns List of sessions
    */
   async getUserSessions(userId: string, limit = 10) {
     logger.verbose('Getting user sessions', { userId, limit });
-    
+
     return this.db.getUserChatSessions(userId, limit);
   }
 
   /**
    * Add a message to a session.
-   * 
+   *
    * @param params - Message parameters
    * @returns The created message ID (snowflake format)
    */
@@ -189,42 +189,42 @@ export class ChatSessionService {
 
   /**
    * Get messages for a session in chronological order.
-   * 
+   *
    * @param sessionId - The session ID
    * @param limit - Maximum number of messages to return (all if omitted)
    * @returns List of messages
    */
   async getSessionMessages(sessionId: string, limit?: number) {
     logger.verbose('Getting session messages', { sessionId, limit });
-    
+
     return this.db.getChatSessionMessages(sessionId, limit);
   }
 
   /**
    * Delete a session and all its messages (cascade).
-   * 
+   *
    * @param sessionId - The session ID to delete
    * @param userId - The user ID to validate ownership
    * @returns True if deleted, false if not found or unauthorized
    */
   async deleteSession(sessionId: string, userId: string): Promise<boolean> {
     logger.verbose('Deleting session', { sessionId, userId });
-    
+
     const session = await this.getSession(sessionId, userId);
     if (!session) {
       logger.warn('Cannot delete: session not found or unauthorized', { sessionId, userId });
       return false;
     }
-    
+
     await this.db.deleteChatSession(sessionId);
-    
+
     logger.verbose('Session deleted', { sessionId });
     return true;
   }
 
   /**
    * Update session title.
-   * 
+   *
    * @param sessionId - The session ID
    * @param userId - The user ID to validate ownership
    * @param title - The new title
@@ -232,14 +232,14 @@ export class ChatSessionService {
    */
   async updateSessionTitle(sessionId: string, userId: string, title: string): Promise<boolean> {
     logger.verbose('Updating session title', { sessionId, userId, titleLength: title.length });
-    
+
     const session = await this.getSession(sessionId, userId);
     if (!session) {
       return false;
     }
-    
+
     await this.db.updateChatSessionTitle(sessionId, title);
-    
+
     return true;
   }
 
@@ -274,7 +274,7 @@ export class ChatSessionService {
 
   /**
    * Process a message through the chat graph (non-streaming).
-   * 
+   *
    * @param userId - The user ID
    * @param messageContent - The message content
    * @returns Graph execution result with response text
@@ -299,7 +299,7 @@ export class ChatSessionService {
 
   /**
    * Get checkpointer for streaming (if needed).
-   * 
+   *
    * @returns PostgresSaver checkpointer or undefined
    */
   async getCheckpointer(): Promise<PostgresSaver | undefined> {
@@ -316,7 +316,7 @@ export class ChatSessionService {
   /**
    * Get the chat graph factory for streaming operations.
    * This is used by controllers that need to stream chat events.
-   * 
+   *
    * @returns The ChatGraphFactory instance
    */
   getGraphFactory(): ChatGraphFactory {
@@ -399,7 +399,7 @@ export class ChatSessionService {
 
   /**
    * Auto-generate a session title based on conversation history.
-   * 
+   *
    * @param sessionId - The session ID
    * @param userId - The user ID
    * @returns The generated title or undefined if generation fails

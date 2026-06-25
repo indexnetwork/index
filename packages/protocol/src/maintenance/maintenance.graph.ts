@@ -22,9 +22,9 @@ const FRESHNESS_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
 export interface MaintenanceGraphDatabase {
   getOpportunitiesForUser(userId: string, options?: { limit?: number }): Promise<Array<{ id: string; actors: Array<{ userId: string; role: string }>; status: string; [key: string]: unknown }>>;
   getActiveIntents(userId: string): Promise<Array<{ id: string; payload: string }>>;
-  /** Get the user's personal index ID (for introducer discovery). */
+  /** Get the user's personal network ID (for introducer discovery). */
   getPersonalIndexId(userId: string): Promise<string | null>;
-  /** Get contacts with intent freshness data from a personal index (for introducer discovery). */
+  /** Get contacts with intent freshness data from a personal network (for introducer discovery). */
   getContactsWithIntentFreshness(
     personalIndexId: string,
     ownerId: string,

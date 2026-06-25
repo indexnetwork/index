@@ -2,7 +2,7 @@
  * Introducer Discovery: proactive discovery of connector-flow opportunities
  * between a user's contacts.
  *
- * Selects top-N contacts from the user's personal index and runs scoped
+ * Selects top-N contacts from the user's personal network and runs scoped
  * HyDE discovery for each, creating latent introducer opportunities that
  * the user (as introducer) must approve before parties see them.
  */
@@ -31,9 +31,9 @@ export interface ContactWithIntents {
 
 /** Database methods needed for introducer discovery contact selection. */
 export interface IntroducerDiscoveryDatabase {
-  /** Get the user's personal index ID. */
+  /** Get the user's personal network ID. */
   getPersonalIndexId(userId: string): Promise<string | null>;
-  /** Get contacts from a personal index with their intent freshness data. */
+  /** Get contacts from a personal network with their intent freshness data. */
   getContactsWithIntentFreshness(
     personalIndexId: string,
     ownerId: string,
@@ -72,7 +72,7 @@ export async function selectContactsForDiscovery(
 ): Promise<ContactWithIntents[]> {
   const personalIndexId = await database.getPersonalIndexId(userId);
   if (!personalIndexId) {
-    logger.verbose(`[IntroducerDiscovery] No personal index found — userId=${userId}`);
+    logger.verbose(`[IntroducerDiscovery] No personal network found — userId=${userId}`);
     return [];
   }
 

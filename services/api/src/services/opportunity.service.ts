@@ -60,12 +60,12 @@ export class OpportunityServiceEvents extends EventEmitter {
 
 /**
  * OpportunityService
- * 
+ *
  * Manages opportunity operations including discovery, listing, and creation.
  * Uses OpportunityControllerDatabase adapter for database operations.
  * Uses OpportunityGraph for AI-powered opportunity discovery.
  * Emits opportunity events (created, expired) after transactional writes so subscribers see consistent state.
- * 
+ *
  * RESPONSIBILITIES:
  * - List opportunities for users and indexes
  * - Get and present individual opportunities
@@ -381,7 +381,7 @@ export class OpportunityService {
 
   /**
    * Get a single opportunity with full presentation details.
-   * 
+   *
    * @param opportunityId - The opportunity ID
    * @param viewerId - The user viewing the opportunity
    * @returns Opportunity with presentation data or null
@@ -463,7 +463,7 @@ export class OpportunityService {
 
   /**
    * Update opportunity status.
-   * 
+   *
    * @param opportunityId - The opportunity ID
    * @param status - New status
    * @param userId - User making the update (for authorization)
@@ -776,7 +776,7 @@ export class OpportunityService {
 
   /**
    * Discover opportunities via HyDE graph.
-   * 
+   *
    * @param userId - The user ID
    * @param query - Search query
    * @param limit - Number of results
@@ -812,8 +812,8 @@ export class OpportunityService {
 
   /**
    * Get opportunities for a specific index.
-   * 
-   * @param networkId - The index ID
+   *
+   * @param networkId - The network ID
    * @param userId - User requesting (for authorization)
    * @param options - Filter options
    * @returns List of opportunities or error
@@ -850,8 +850,8 @@ export class OpportunityService {
 
   /**
    * Create a manual opportunity (curator feature).
-   * 
-   * @param networkId - The index ID
+   *
+   * @param networkId - The network ID
    * @param creatorId - User creating the opportunity
    * @param data - Opportunity creation data
    * @returns Created opportunity or error
@@ -1120,7 +1120,7 @@ export class OpportunityService {
    *
    * @param creatorId - User creating the opportunity
    * @param parties - Parties involved
-   * @param networkId - The index ID
+   * @param networkId - The network ID
    * @returns Permission result
    */
   private async checkCreatePermission(
@@ -1130,13 +1130,13 @@ export class OpportunityService {
   ): Promise<{ allowed: boolean }> {
     const isOwner = await this.db.isIndexOwner(networkId, creatorId);
     const isSelfIncluded = parties.some((p) => p.userId === creatorId);
-    
+
     if (isOwner) return { allowed: true };
-    
+
     const isMember = await this.db.isNetworkMember(networkId, creatorId);
     if (!isMember) return { allowed: false };
     if (isSelfIncluded) return { allowed: true };
-    
+
     return { allowed: true };
   }
 

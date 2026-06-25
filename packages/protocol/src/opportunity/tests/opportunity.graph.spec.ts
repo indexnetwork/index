@@ -236,7 +236,7 @@ function createMockGraphWithFnOverrides(deps?: {
 
 describe('Opportunity Graph', () => {
   describe('Prep node', () => {
-    test('when user has no index memberships, returns error and no opportunities', async () => {
+    test('when user has no network memberships, returns error and no opportunities', async () => {
       const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
         getUserIndexIds: () => Promise.resolve([]),
       });
@@ -317,7 +317,7 @@ describe('Opportunity Graph', () => {
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        // A network-scoped agent reaches only its bound network + personal index;
+        // A network-scoped agent reaches only its bound network + personal network;
         // idx-3 is another network the user belongs to and must not be searched.
         indexScope: ['idx-1', 'idx-2'] as Id<'networks'>[],
         options: { limit: 5 },
@@ -333,7 +333,7 @@ describe('Opportunity Graph', () => {
   });
 
   describe('Discovery node', () => {
-    test('performs vector search with index scope and excludeUserId', async () => {
+    test('performs vector search with network scope and excludeUserId', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph();
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
@@ -1290,7 +1290,7 @@ describe('Opportunity Graph', () => {
   });
 
   describe('Conditional routing: early exit', () => {
-    test('when no index memberships, full invoke does not call HyDE or search or createOpportunity', async () => {
+    test('when no network memberships, full invoke does not call HyDE or search or createOpportunity', async () => {
       const { compiledGraph, mockDb, mockHydeGenerator, mockEmbedder } = createMockGraph({
         getUserIndexIds: () => Promise.resolve([]),
       });
@@ -1476,7 +1476,7 @@ describe('Opportunity Graph', () => {
       expect(result.opportunities?.length ?? 0).toBe(0);
     });
 
-    test('when introducer is not index member returns error', async () => {
+    test('when introducer is not network member returns error', async () => {
       const { compiledGraph, mockDb } = createMockGraph();
       spyOn(mockDb, 'isNetworkMember').mockImplementation(async (networkId: string, userId: string) => {
         if (userId === 'a0000000-0000-4000-8000-000000000001') return false;
@@ -1992,7 +1992,7 @@ describe('Opportunity Graph', () => {
       expect(targetCandidate!.candidateIntentId).toBeUndefined();
     });
 
-    test('no shared indexes returns empty candidates with per-userId memberships', async () => {
+    test('no shared networks returns empty candidates with per-userId memberships', async () => {
       const mockDb: OpportunityGraphDatabase = {
         getProfile: () => Promise.resolve(null),
         createOpportunity: (data) => Promise.resolve({
@@ -2051,7 +2051,7 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      // No shared indexes → 0 candidates
+      // No shared networks → 0 candidates
       expect(result.candidates.length).toBe(0);
     });
 

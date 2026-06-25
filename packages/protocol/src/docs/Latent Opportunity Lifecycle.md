@@ -1,6 +1,6 @@
 # Latent Opportunity Lifecycle
 
-> **Status**: Design  
+> **Status**: Design
 > **Related**: Opportunity Graph (`../graphs/opportunity.graph.ts`), Chat Graph, Intent Graph
 
 ## Motivation
@@ -138,13 +138,13 @@ When an opportunity transitions to `pending`, **only the role that becomes newly
 
 No schema changes are required; targeting is derived from `actors[].role`.
 
-## Key Constraint: Index-Scoped Discovery
+## Key Constraint: Network-Scoped Discovery
 
 **Opportunities only exist between intents that share the same index.** Non-indexed intents cannot participate in opportunity discovery. This ensures:
 
 - Privacy: Users control which indexes they join and what they share
-- Relevance: Index prompts guide matching
-- Scalability: Search space is bounded by index membership
+- Relevance: Network prompts guide matching
+- Scalability: Search space is bounded by network membership
 
 ## Lifecycle State Diagram
 
@@ -185,7 +185,7 @@ graph LR
 
 1. **Prep Node**: Fetches user's active indexed intents with hyde documents; validates at least one indexed intent.
 2. **Scope Node**: Determines target indexes (single or all user indexes).
-3. **Discovery Node**: Vector similarity search on hyde embeddings within index scope; returns candidate pairs.
+3. **Discovery Node**: Vector similarity search on hyde embeddings within network scope; returns candidate pairs.
 4. **Evaluation Node**: OpportunityEvaluator (LLM) scores each candidate and assigns **valency role** (Agent / Patient / Peer). This role drives visibility and notifications.
 5. **Ranking Node**: Sorts by score, applies limit, deduplicates.
 6. **Persist Node**: Creates opportunities with `status: 'latent'` and assigns actor roles from valency.
@@ -218,7 +218,7 @@ Discovery flow is unchanged: user or agent calls `discover_opportunities` → gr
 
 ## Hyde Documents and Semantic Search
 
-Discovery uses hyde embeddings for vector similarity within index scope. Both source and candidate must have hyde documents. The evaluator assigns valency (and thus actor roles) from profile and intent context; that assignment is persisted and used for visibility and notifications only — no extra schema fields.
+Discovery uses hyde embeddings for vector similarity within network scope. Both source and candidate must have hyde documents. The evaluator assigns valency (and thus actor roles) from profile and intent context; that assignment is persisted and used for visibility and notifications only — no extra schema fields.
 
 ## Future Extensions
 

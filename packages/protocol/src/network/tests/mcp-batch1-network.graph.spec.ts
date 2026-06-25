@@ -3,11 +3,11 @@ import { describe, expect, test } from "bun:test";
 import { NetworkGraphFactory } from "../network.graph.js";
 
 describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
-  test("scoped read includes the personal index alongside the bound network", async () => {
+  test("scoped read includes the personal network alongside the bound network", async () => {
     // Scenario: a network-scoped agent (or a user-driven community-scoped chat)
     // calls read_networks with state.networkId set to the bound community.
     // The response must include BOTH that community AND the user's personal
-    // index — the personal index is reachable in every allowed-network scope
+    // index — the personal network is reachable in every allowed-network scope
     // so add_contact / list_contacts work, and dropping
     // it from the read_networks payload made those tools undiscoverable.
     const personalNetworkId = "11111111-1111-4111-8111-111111111111";
@@ -18,7 +18,7 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
         {
           networkId: personalNetworkId,
           networkTitle: "My Network",
-          indexPrompt: "Personal index",
+          indexPrompt: "Personal network",
           permissions: ["owner"],
           memberPrompt: null,
           autoAssign: true,
@@ -50,7 +50,7 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
         {
           id: personalNetworkId,
           title: "My Network",
-          prompt: "Personal index",
+          prompt: "Personal network",
           memberCount: 0,
           intentCount: 2,
           permissions: { joinPolicy: "invite_only" },
@@ -76,7 +76,7 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
     expect(result.readResult.stats.scopeNote).toContain("personal");
   });
 
-  test("scoped read does not duplicate the personal index when the bound network IS personal", async () => {
+  test("scoped read does not duplicate the personal network when the bound network IS personal", async () => {
     const personalNetworkId = "11111111-1111-4111-8111-111111111111";
 
     const graph = new NetworkGraphFactory({
@@ -111,7 +111,7 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
     const graph = new NetworkGraphFactory({
       getNetworkMemberships: async () => [{
         networkId: "11111111-1111-4111-8111-111111111111",
-        networkTitle: "Personal Index",
+        networkTitle: "Personal Network",
         indexPrompt: "Private network",
         permissions: ["owner"],
         memberPrompt: null,

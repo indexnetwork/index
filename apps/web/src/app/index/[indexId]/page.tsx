@@ -41,16 +41,16 @@ export default function PublicJoinPage() {
   useEffect(() => {
     const loadIndexAndCheckAuth = async () => {
       try {
-        // Load public index by ID
+        // Load public network by ID
         const index = await publicIndexesService.getPublicIndexById(indexId!);
         setState(prev => ({ ...prev, index }));
 
-        // Double-check that this is a public index
+        // Double-check that this is a public network
         if (index.permissions?.joinPolicy !== 'anyone') {
-          setState(prev => ({ 
-            ...prev, 
-            step: 'error', 
-            error: 'This index is private. You need an invitation to join.' 
+          setState(prev => ({
+            ...prev,
+            step: 'error',
+            error: 'This network is private. You need an invitation to join.'
           }));
           return;
         }
@@ -71,23 +71,23 @@ export default function PublicJoinPage() {
           if (response.user) {
             setState(prev => ({ ...prev, user: response.user || null }));
 
-            // Join the public index immediately
+            // Join the public network immediately
             try {
               const joinResult = await indexesService.joinIndex(index.id);
-              
+
               // Check if user is already a member
               if (joinResult?.alreadyMember) {
                 setState(prev => ({ ...prev, step: 'already-member' }));
                 return;
               }
-              
+
               await refreshIndexes();
             } catch (err) {
-              console.error('Failed to join index:', err);
-              setState(prev => ({ 
-                ...prev, 
-                step: 'error', 
-                error: 'Failed to join index' 
+              console.error('Failed to join network:', err);
+              setState(prev => ({
+                ...prev,
+                step: 'error',
+                error: 'Failed to join network'
               }));
               return;
             }
@@ -97,18 +97,18 @@ export default function PublicJoinPage() {
           }
         } catch (err) {
           console.error('Failed to fetch user:', err);
-          setState(prev => ({ 
-            ...prev, 
-            step: 'error', 
-            error: 'Failed to load user data' 
+          setState(prev => ({
+            ...prev,
+            step: 'error',
+            error: 'Failed to load user data'
           }));
         }
       } catch (err) {
-        console.error('Failed to load index:', err);
-        setState(prev => ({ 
-          ...prev, 
-          step: 'error', 
-          error: (err as Error)?.message || 'Index not found or is private' 
+        console.error('Failed to load network:', err);
+        setState(prev => ({
+          ...prev,
+          step: 'error',
+          error: (err as Error)?.message || 'Network not found or is private'
         }));
       }
     };
@@ -119,7 +119,7 @@ export default function PublicJoinPage() {
   // Trigger reload when user authenticates
   useEffect(() => {
     if (isAuthenticated && isReady && state.step === 'auth-required') {
-      // Trigger reload to join the index
+      // Trigger reload to join the network
       setState(prev => ({ ...prev, step: 'loading' }));
     }
   }, [isAuthenticated, isReady, state.step]);
@@ -129,11 +129,11 @@ export default function PublicJoinPage() {
 
     try {
       setState(prev => ({ ...prev, step: 'joining' }));
-      
+
       const result = await indexesService.joinIndex(state.index.id);
-      
+
       if (result?.alreadyMember) {
-        success('You are already a member of this index');
+        success('You are already a member of this network');
         setState(prev => ({ ...prev, step: 'already-member' }));
       } else {
         success(`Successfully joined ${result?.network?.title || state.index.title}!`);
@@ -143,18 +143,18 @@ export default function PublicJoinPage() {
         navigate(`/`);
       }
     } catch (err) {
-      console.error('Failed to join index:', err);
-      notifyError((err as Error)?.message || 'Failed to join index');
-      setState(prev => ({ 
-        ...prev, 
-        step: 'error', 
-        error: (err as Error)?.message || 'Failed to join index' 
+      console.error('Failed to join network:', err);
+      notifyError((err as Error)?.message || 'Failed to join network');
+      setState(prev => ({
+        ...prev,
+        step: 'error',
+        error: (err as Error)?.message || 'Failed to join network'
       }));
     }
   };
 
   const handleLogin = () => {
-    // Store index ID to auto-join after authentication
+    // Store network ID to auto-join after authentication
     if (typeof window !== 'undefined' && state.index?.id) {
       localStorage.setItem('pending_network_join', state.index.id);
     }
@@ -177,7 +177,7 @@ export default function PublicJoinPage() {
           <div className="flex items-center gap-3 mb-4">
             <Globe className="h-5 w-5 text-black" />
             <h2 className="text-sm font-medium text-gray-600 font-ibm-plex-mono">
-              Public Index
+              Public Network
             </h2>
           </div>
 
@@ -207,7 +207,7 @@ export default function PublicJoinPage() {
           <ContentContainer>
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-gray-400 mb-4" />
-              <p className="text-gray-600 font-ibm-plex-mono">Loading index...</p>
+              <p className="text-gray-600 font-ibm-plex-mono">Loading network...</p>
             </div>
           </ContentContainer>
         );
@@ -223,7 +223,7 @@ export default function PublicJoinPage() {
               </div>
               <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Not Found</h1>
               <p className="text-gray-600 font-ibm-plex-mono">
-                {state.error || 'This index was not found or is private.'}
+                {state.error || 'This network was not found or is private.'}
               </p>
             </div>
             <Button
@@ -260,7 +260,7 @@ export default function PublicJoinPage() {
           <ContentContainer>
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-              <p className="text-gray-600 font-ibm-plex-mono">Joining index...</p>
+              <p className="text-gray-600 font-ibm-plex-mono">Joining network...</p>
             </div>
           </ContentContainer>
         );

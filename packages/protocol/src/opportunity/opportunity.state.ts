@@ -9,9 +9,9 @@ import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.j
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
- * 
+ *
  * Flow: Prep → Scope → Discovery → Evaluation → Ranking → Persist → END
- * 
+ *
  * Following the intent graph pattern with Annotation-based state management.
  */
 
@@ -186,12 +186,12 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => '' as Id<'users'>,
   }),
-  
+
   searchQuery: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
-  
+
   networkId: Annotation<Id<'networks'> | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
@@ -199,7 +199,7 @@ export const OpportunityGraphState = Annotation.Root({
 
   /**
    * Optional set of indexes discovery may search within (e.g. a network-scoped
-   * agent's reachable indexes: the bound network plus the user's personal index).
+   * agent's reachable networks: the bound network plus the user's personal network).
    * The scope node intersects this with the user's actual memberships. Ignored
    * when `networkId` is set (single-network override). When unset, discovery
    * spans all of the user's networks.
@@ -321,21 +321,21 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
-  
+
   // ─── Intermediate Fields (Accumulated) ───
-  
+
   /** User's indexed intents with hyde documents (from prep) */
   indexedIntents: Annotation<IndexedIntent[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
-  
+
   /** User's network memberships (from prep) */
   userNetworks: Annotation<Id<'networks'>[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
-  
+
   /** Target indexes to search within (from scope) */
   targetNetworks: Annotation<TargetNetwork[]>({
     reducer: (curr, next) => next ?? curr,
@@ -401,7 +401,7 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),
   }),
-  
+
   /** Candidate matches from semantic search (from discovery) */
   candidates: Annotation<CandidateMatch[]>({
     reducer: (curr, next) => next ?? curr,
@@ -431,9 +431,9 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
-  
+
   // ─── Output Fields (Overwrite per turn) ───
-  
+
   /** Final ranked and persisted opportunities */
   opportunities: Annotation<Opportunity[]>({
     reducer: (curr, next) => next,
@@ -450,7 +450,7 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
-  
+
   /** Error message if any step fails */
   error: Annotation<string | undefined>({
     reducer: (curr, next) => next,

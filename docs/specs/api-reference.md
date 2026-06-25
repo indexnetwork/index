@@ -1343,7 +1343,7 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
 
 ### GET /api/debug/home
 
-Returns a home-level diagnostic snapshot for the authenticated user, including intent stats, index memberships, opportunity aggregates, simulated home-view filtering, and a pipeline-health diagnosis.
+Returns a home-level diagnostic snapshot for the authenticated user, including intent stats, network memberships, opportunity aggregates, simulated home-view filtering, and a pipeline-health diagnosis.
 
 **Auth**: DebugGuard + AuthGuard
 
@@ -1459,7 +1459,7 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 
 ### GET /api/networks
 
-List indexes the authenticated user is a member of, including their personal index.
+List networks the authenticated user is a member of, including their personal network.
 
 **Auth**: AuthGuard
 
@@ -1513,7 +1513,7 @@ Search users by name/email, optionally excluding existing members of an index.
 
 ### GET /api/networks/my-members
 
-Get all members of every index the signed-in user is a member of (deduplicated). Used for @mentions in chat.
+Get all members of every network the signed-in user is a member of (deduplicated). Used for @mentions in chat.
 
 **Auth**: AuthGuard
 
@@ -1526,7 +1526,7 @@ Get all members of every index the signed-in user is a member of (deduplicated).
 
 ### GET /api/networks/discovery/public
 
-Get public indexes the user has not joined.
+Get public networks the user has not joined.
 
 **Auth**: AuthGuard
 
@@ -1555,7 +1555,7 @@ Get an index by its invitation share code. Used for invitation page preview.
 
 ### GET /api/networks/public/:id
 
-Get a public index by ID. Only works for indexes with `joinPolicy: 'anyone'`.
+Get a public network by ID. Only works for indexes with `joinPolicy: 'anyone'`.
 
 **Auth**: None (public)
 
@@ -1571,7 +1571,7 @@ Get a public index by ID. Only works for indexes with `joinPolicy: 'anyone'`.
 
 ### GET /api/networks/shared/:userId
 
-Get non-personal indexes shared between the authenticated user and a target user.
+Get non-personal networks shared between the authenticated user and a target user.
 
 **Auth**: AuthGuard
 
@@ -1618,7 +1618,7 @@ Key must match `/^[a-z0-9][a-z0-9-]*[a-z0-9]$/`, be 3–64 characters, and not c
 
 ### GET /api/networks/:id
 
-Get a single index by ID with owner info and member count. Members only.
+Get a single network by ID with owner info and member count. Members only.
 
 **Auth**: AuthGuard
 
@@ -1661,7 +1661,7 @@ Update an index (title, prompt, image, join policy). Owner only.
 
 ### DELETE /api/networks/:id
 
-Soft-delete an index. Owner only.
+Soft-delete a network. Owner only.
 
 **Auth**: AuthGuard
 
@@ -1834,7 +1834,7 @@ Get current user's intents in an index. Members only.
 
 ### POST /api/networks/:id/join
 
-Join a public index.
+Join a public network.
 
 **Auth**: AuthGuard
 
@@ -2201,7 +2201,7 @@ Import contacts from a connected toolkit into an index.
 **Request body**:
 ```json
 {
-  "indexId": "string (optional — defaults to personal index)"
+  "indexId": "string (optional — defaults to personal network)"
 }
 ```
 
@@ -3146,7 +3146,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `update_intent` | Intent | Update an intent (runs full graph pipeline) |
 | `delete_intent` | Intent | Archive/delete an intent |
 | `create_intent_index` | Intent | Link an intent to an index |
-| `read_intent_indexes` | Intent | List indexes linked to an intent |
+| `read_intent_indexes` | Intent | List networks linked to an intent |
 | `delete_intent_index` | Intent | Unlink an intent from an index |
 | `read_networks` | Network | List user's networks |
 | `read_network_memberships` | Network | List members of a network |

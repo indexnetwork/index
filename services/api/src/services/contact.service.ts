@@ -94,7 +94,7 @@ export interface ResolveResult {
  * ContactService
  *
  * Manages user contacts ("My Network") using index_members with 'contact' permission
- * on the owner's personal index.
+ * on the owner's personal network.
  *
  * RESPONSIBILITIES:
  * - Add/remove contacts via index_members rows
@@ -234,7 +234,7 @@ export class ContactService {
 
   /**
    * Import contacts in bulk using batched DB operations.
-   * Resolves users, upserts contact memberships on the owner's personal index,
+   * Resolves users, upserts contact memberships on the owner's personal network,
    * and clears reverse opt-outs.
    *
    * @param ownerId - The user importing contacts

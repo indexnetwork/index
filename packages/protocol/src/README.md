@@ -15,7 +15,7 @@ packages/protocol/src/
   maintenance/      Maintenance graph (feed health, opportunity expiration)
   mcp/              MCP server + elicitation builder/dispatcher
   negotiation/      Negotiation graph, agent (IndexNegotiator), insight + summarizer, tools
-  network/          Network (index) graph, membership graph, intent-index (indexer) graph, recommender, tools
+  network/          Network (index) graph, membership graph, intent-network (indexer) graph, recommender, tools
   opportunity/      Opportunity graph, evaluator, presenter, enricher, discover, evidence, introducer, delivery card, utils
     feed/           Home feed graph, feed categorizer, feed health
   premise/          Premise graph, decomposer, analyzer, indexer, tools
@@ -44,8 +44,8 @@ packages/protocol/src/
 | Premise | `premise/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `opportunity/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
 | HyDE | `shared/hyde/hyde.graph.ts` | Generate hypothetical documents (Mirror, Reciprocal, Neighborhood) and embed them (cache-aware) |
-| Network | `network/network.graph.ts` | Manage index CRUD |
-| Network Membership | `network/membership/membership.graph.ts` | Manage index member join/leave |
+| Network | `network/network.graph.ts` | Manage network CRUD |
+| Network Membership | `network/membership/membership.graph.ts` | Manage network member join/leave |
 | Intent Indexer | `network/indexer/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
 | Feed | `opportunity/feed/feed.graph.ts` | Categorize and curate home feed content |
 | Maintenance | `maintenance/maintenance.graph.ts` | Periodic maintenance tasks (feed health, opportunity expiration) |
@@ -66,7 +66,7 @@ packages/protocol/src/
 | Intent Inferrer | `intent/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
 | Intent Reconciler | `intent/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
 | Intent Verifier | `intent/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
-| Intent Indexer | `intent/intent.indexer.ts` | Intent Index graph — scores intent-index fit as relevancy score |
+| Intent Indexer | `intent/intent.indexer.ts` | Intent Network graph — scores intent-network fit as relevancy score |
 | Enrichment Generator | `enrichment/enrichment.generator.ts` | Enrichment graph — generates structured identity from raw data |
 | Enrichment Enricher | `enrichment/enrichment.enricher.ts` | Identity enrichment — display name and metadata enrichment |
 | Premise Decomposer | `premise/premise.decomposer.ts` | Premise graph — decomposes free text into atomic, first-person self-descriptive premises |
@@ -120,7 +120,7 @@ The system models human collaboration through a linguistic and information-theor
 | **Premise** | A **declarative or assertive speech act** about the self — an atomic, first-person proposition a user asserts about who they are ("I am a climate-tech founder", "I hold a PhD in computational biology"). Premises are *conditions of possibility*: facts that ground discovery, as opposed to intents, which are desires/requests. They are decomposed from profile/free-text input, classified and felicity-scored by the Premise Analyzer, embedded, and assigned to networks. The premise graph (`premise/premise.graph.ts`) owns their create/update/query lifecycle, and premise changes cascade into profile and user-context regeneration. |
 | **User Context** | A network-scoped synthetic paragraph synthesized from a user's premises by the `UserContextGenerator`, stored with its embedding. The opportunity graph uses contexts for **context-to-intent discovery** — it loads a user's contexts and searches for matching intents, running alongside premise-to-premise discovery as a complementary strategy. Regenerated whenever the user's premises change. |
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
-| **Index** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is index-scoped — opportunities only arise between intents that share an index. |
+| **Index** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share an index. |
 | **Opportunity** | A **semantic intersection**: the point where a candidate's constitutive facts (profile/intent) satisfy the propositional content of a source intent. Scored by the Opportunity Evaluator using **valency** (argument-role fit) and **constraint satisfaction**. Presented with dual descriptions per **Grice's Maxim of Relation** — one framed for the source, one for the candidate. |
 | **HyDE** | Hypothetical Document Embeddings. Three strategy types: **Mirror** (hallucinates the ideal candidate's biography — direct satisfaction of the intent's conditions), **Reciprocal** (hallucinates a complementary intent via meaning postulates — "if A wants to buy, infer B wants to sell"), and **Neighborhood** (hallucinates the discourse frame/community context). The encoder acts as a dense bottleneck filtering hallucinated specifics and retaining the semantic signal. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
@@ -273,7 +273,7 @@ sequenceDiagram
     Note over HG: Reciprocal: "intent to join as co-founder on React project"
     HG-->>OG: HyDE embeddings (dense bottleneck applied)
 
-    Note over OG: Vector search within index scope
+    Note over OG: Vector search within network scope
     Note over OG: OpportunityEvaluator: scores via valency + constraint satisfaction
     Note over OG: Assigns Patient (user) / Agent (candidate) roles
     Note over OG: OpportunityPresenter: dual descriptions (Grice's Maxim of Relation)
@@ -351,7 +351,7 @@ Handled by the **HyDE Graph** and **Enrichment Graph**:
 Handled by the **Opportunity Graph**:
 1. **Prep**: Load user's indexed intents and HyDE documents.
 2. **Scope**: Determine target indexes (single or all).
-3. **Discovery**: Vector similarity search within index scope. Two complementary strategies run and merge: **premise-to-premise** matching (the user's premise embeddings are searched against candidate premises) and **context-to-intent** matching (a user's network-scoped context embeddings are searched against candidate intents). (Profile-HyDE discovery was retired in WS10.)
+3. **Discovery**: Vector similarity search within network scope. Two complementary strategies run and merge: **premise-to-premise** matching (the user's premise embeddings are searched against candidate premises) and **context-to-intent** matching (a user's network-scoped context embeddings are searched against candidate intents). (Profile-HyDE discovery was retired in WS10.)
 4. **Evaluation**: `OpportunityEvaluator` scores each candidate pair via **valency** (does the candidate fill the argument slot of the source's goal verb?) and **constraint satisfaction** (does the candidate's constitutive context match all extracted constraints?). Assigns role: Agent, Patient, or Peer.
 5. **Presentation**: `OpportunityPresenter` generates two descriptions per Grice's Maxim of Relation — one from the source's frame, one from the candidate's frame.
 6. **Persist**: Opportunities created as `latent` with actor roles. Role determines tier-0 visibility (see Opportunity Lifecycle above).
@@ -362,7 +362,7 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 
 ## Key Invariants
 
-- **Index-scoped discovery**: Opportunities only arise between intents sharing an index
+- **Network-scoped discovery**: Opportunities only arise between intents sharing an index
 - **Specific Indefinites only**: Underspecified (high-entropy) intents do not enter the graph — they trigger elaboration
 - **Felicity-gated persistence**: Only intents classified as `felicitous` are persisted as active
 - **Dual synthesis**: Each opportunity has descriptions framed for both actors (Grice's Maxim of Relation)

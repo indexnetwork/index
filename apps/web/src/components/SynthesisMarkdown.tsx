@@ -40,7 +40,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
       if (target.tagName === 'A' && target.closest('.synthesis-markdown-content')) {
         return;
       }
-      
+
       if (popoverRef.current && !popoverRef.current.contains(target)) {
         closePopover();
       }
@@ -79,13 +79,13 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
 
     const rect = (event.target as HTMLElement).getBoundingClientRect();
     const popoverWidth = 90;
-    
+
     // Use click position for horizontal alignment, keep within viewport
     let x = event.clientX;
     if (x + popoverWidth > window.innerWidth) {
       x = window.innerWidth - popoverWidth - 10;
     }
-    
+
     // Calculate which line was clicked and align below that line
     const clickY = event.clientY;
     const element = event.target as HTMLElement;
@@ -185,4 +185,3 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
   );
 }
 
-    

@@ -205,8 +205,8 @@ Graphs are LangGraph state machines. Each graph is created by a factory class th
 | Enrichment | Enrich users and decompose identity into premises, with optional scraping |
 | Opportunity | HyDE-based discovery: search, evaluate, rank, persist |
 | HyDE | Generate hypothetical document embeddings (cache-aware) |
-| Network | Manage index (network) CRUD |
-| NetworkMembership | Manage index member join/leave |
+| Network | Manage network (network) CRUD |
+| NetworkMembership | Manage network member join/leave |
 | IntentNetwork | Evaluate and assign/unassign intents to indexes |
 | Home | Categorize and curate home feed content |
 | Maintenance | Periodic maintenance tasks |
@@ -224,7 +224,7 @@ Agents are pure LLM reasoning units. They accept structured input (Zod schemas),
 | Intent Inferrer | Extracts intents from uploaded content |
 | Intent Reconciler | Decides create/update/expire actions for intents |
 | Intent Verifier | Validates felicity conditions on intents |
-| Intent Indexer | Scores intent-to-index fit (relevancy 0.0-1.0) |
+| Intent Indexer | Scores intent-to-network fit (relevancy 0.0-1.0) |
 | Opportunity Evaluator | Scores and synthesizes opportunity matches |
 | Enrichment Generator | Generates identity drafts from identity signals (onboarding draft tools) |
 | HyDE Generator | Creates hypothetical document embeddings |
@@ -236,8 +236,8 @@ Tools are the capabilities exposed to the chat agent. They bridge the agent loop
 | Tool File | Capabilities |
 |-----------|-------------|
 | `enrichment.tools.ts` | read/create/update user profiles |
-| `intent.tools.ts` | CRUD intents, manage intent-index assignments |
-| `network.tools.ts` | CRUD indexes (networks), manage memberships |
+| `intent.tools.ts` | CRUD intents, manage intent-network assignments |
+| `network.tools.ts` | CRUD networks (networks), manage memberships |
 | `contact.tools.ts` | import, add, remove, and list contacts |
 | `opportunity.tools.ts` | Discover and send opportunities |
 | `agent.tools.ts` | register, list, update, delete agents and manage agent permissions |
@@ -356,7 +356,7 @@ The chat system is the primary entry point for user interaction. When a user sen
 
 1. **HTTP layer**: The request hits `ChatController`, which validates input and delegates to the chat service.
 
-2. **Graph initialization**: The chat graph loads session context (conversation history, user profile, index memberships) and truncates to fit the context window.
+2. **Graph initialization**: The chat graph loads session context (conversation history, user profile, network memberships) and truncates to fit the context window.
 
 3. **ReAct loop**: The `ChatAgent` enters a loop (up to 12 iterations). Each iteration, the LLM sees the full conversation and decides to either call tools or produce a final response.
 
@@ -514,7 +514,7 @@ The canonical schema lives in `services/api/src/schemas/database.schema.ts`. All
 
 **Soft deletes**: Records use `deletedAt` timestamps rather than hard deletes, preserving audit trails and enabling recovery.
 
-**Vector similarity search**: Intents and premises have vector embeddings. Queries use pgvector's cosine similarity with HNSW indexes for sub-millisecond approximate nearest-neighbor lookups. This powers opportunity discovery, finding similar intents and premises across index members.
+**Vector similarity search**: Intents and premises have vector embeddings. Queries use pgvector's cosine similarity with HNSW indexes for sub-millisecond approximate nearest-neighbor lookups. This powers opportunity discovery, finding similar intents and premises across network members.
 
 ### Migration Workflow
 

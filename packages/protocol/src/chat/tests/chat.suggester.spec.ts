@@ -51,7 +51,7 @@ describe("SuggestionGenerator", () => {
     const result = await generator.generate({
       messages: [
         { role: "user", content: "Who here is looking for a co-founder?" },
-        { role: "assistant", content: "In this index, 3 members have intents about co-founders. I can list them or narrow by skills." },
+        { role: "assistant", content: "In this network, 3 members have intents about co-founders. I can list them or narrow by skills." },
       ],
       indexContext: "AI founders and technical co-founders",
     });

@@ -43,7 +43,7 @@ const logger = protocolLogger("ChatTools");
 
 /**
  * Creates all chat tools bound to a specific user context.
- * Resolves user/index identity from DB at init time.
+ * Resolves user/network identity from DB at init time.
  * Tools are created fresh for each user session to ensure proper isolation.
  *
  * All external dependencies (cache, integration, queue, etc.) are provided

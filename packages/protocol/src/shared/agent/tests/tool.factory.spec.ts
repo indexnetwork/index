@@ -30,7 +30,7 @@ mock.module("../../../intent/intent.graph.js", () => ({
         }) => {
           // For read operations, replicate the real queryNode logic using the database
           if (input.operationMode === "read") {
-            // Scope-aware default: caller's intents across all reachable indexes.
+            // Scope-aware default: caller's intents across all reachable networks.
             // Triggered when the tool layer passed indexScope and did not pick a
             // specific networkId or queryUserId.
             if (
@@ -85,7 +85,7 @@ mock.module("../../../intent/intent.graph.js", () => ({
                       userId: i.userId,
                       userName: i.userName,
                     })),
-                    ...(intents.length === 0 && { message: "No intents in this index yet." }),
+                    ...(intents.length === 0 && { message: "No intents in this network yet." }),
                   },
                 };
               }
@@ -109,7 +109,7 @@ mock.module("../../../intent/intent.graph.js", () => ({
               };
             }
 
-            // No index scope: return user's own active intents
+            // No network scope: return user's own active intents
             const intents = await db.getActiveIntents(input.userId);
             return {
               readResult: {
@@ -124,7 +124,7 @@ mock.module("../../../intent/intent.graph.js", () => ({
             };
           }
 
-          // For update/delete with index scope: enforce index scoping (intent must be in index)
+          // For update/delete with network scope: enforce index scoping (intent must be in index)
           if (
             (input.operationMode === "update" || input.operationMode === "delete") &&
             input.networkId &&
@@ -153,7 +153,7 @@ mock.module("../../../intent/intent.graph.js", () => ({
             };
           }
 
-          // For non-read operations without index scope, return default empty results
+          // For non-read operations without network scope, return default empty results
           return {
             executionResults: [],
             actions: [],
@@ -524,7 +524,7 @@ describe("read_intents tool", () => {
   });
 });
 
-describe("read_intents tool (index-scoped: owner vs member)", () => {
+describe("read_intents tool (network-scoped: owner vs member)", () => {
   const networkId = testIndexId;
   const allIndexIntents: IndexedIntentDetails[] = [
     { id: "ix-1", payload: "Intent from Alice", summary: "Alice", userId: "user-alice", userName: "Alice", createdAt: new Date("2025-01-01") },
@@ -888,7 +888,7 @@ describe("read_network_memberships tool (list members)", () => {
       isNetworkMember: async () => true,
       getNetworkMembersForMember: async (networkId, uid) => {
         if (networkId === memberIndexId && uid === testUserId) return mockMembers;
-        throw new Error("Access denied: Not a member of this index");
+        throw new Error("Access denied: Not a member of this network");
       },
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
@@ -926,11 +926,11 @@ describe("read_network_memberships tool (list members)", () => {
     const result = await tool.invoke({ networkId: "not-a-uuid" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/Invalid index ID/i);
+    expect(parsed.error).toMatch(/Invalid network ID/i);
   });
 });
 
-describe("create_intent tool (Phase 2 index scope)", () => {
+describe("create_intent tool (Phase 2 network scope)", () => {
   test("create_intent tool schema includes optional networkId", async () => {
     const mockDb = createMockDatabase(async () => []);
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
@@ -1029,7 +1029,7 @@ describe("scrape_url tool", () => {
 describe("read_networks (Phase 3 network-scoped)", () => {
   const scopedIndexId = "a1b2c3d4-0000-4000-8000-000000000010";
 
-  test("when scope envelope is set and showAll not true, returns only current index membership with scopeNote", async () => {
+  test("when scope envelope is set and showAll not true, returns only current network membership with scopeNote", async () => {
     const oneMembership = [{ networkId: scopedIndexId, networkTitle: "Current Index", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }];
     const mockDb = createMockDatabase(async () => [], {
       getNetworkMemberships: async (uid) => (uid === testUserId ? oneMembership : []),
@@ -1044,7 +1044,7 @@ describe("read_networks (Phase 3 network-scoped)", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.memberOf).toHaveLength(1);
     expect(parsed.data.memberOf[0].networkId).toBe(scopedIndexId);
-    expect(parsed.data.stats.scopeNote).toContain("Showing current index");
+    expect(parsed.data.stats.scopeNote).toContain("Showing current network");
   });
 
   test("when scope envelope is set, showAll parameter is ignored (strict scope enforcement)", async () => {
@@ -1064,10 +1064,10 @@ describe("read_networks (Phase 3 network-scoped)", () => {
     const result = await tool.invoke({});
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
-    // Only returns scoped index, not all 2 memberships - strict scope enforcement
+    // Only returns scoped network, not all 2 memberships - strict scope enforcement
     expect(parsed.data.memberOf).toHaveLength(1);
     expect(parsed.data.memberOf[0].networkId).toBe(scopedIndexId);
-    expect(parsed.data.stats.scopeNote).toContain("Showing current index");
+    expect(parsed.data.stats.scopeNote).toContain("Showing current network");
   });
 
 });
@@ -1166,7 +1166,7 @@ describe("discover_opportunities tool", () => {
     expect(shape?.intentId).toBeDefined();
   });
 
-  test("when user has no index memberships (getNetworkMemberships returns []), returns found false with message about joining an index", async () => {
+  test("when user has no network memberships (getNetworkMemberships returns []), returns found false with message about joining a network", async () => {
     const mockDb = createMockDatabase(async () => [], {
       getNetworkMemberships: async () => [],
     });
@@ -1203,7 +1203,7 @@ describe("discover_opportunities tool", () => {
     const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { partyUserIds?: string[]; entities?: Array<{ userId: string; networkId?: string }> }) => Promise<string>;
     };
-    const errorMessageRe = /networkId|shared index|required/i;
+    const errorMessageRe = /networkId|shared network|required/i;
     try {
       const result = await tool.invoke({
         partyUserIds: [testUserId, "other-user-id"],
@@ -1885,7 +1885,7 @@ describe("read_user_contexts tool (query parameter — name search)", () => {
     } as unknown as SystemDatabase;
   }
 
-  test("query finds a member by name across all indexes", async () => {
+  test("query finds a member by name across all networks", async () => {
     const mockDb = createMockDatabase(async () => []);
     const mockSystemDb = createMockSystemDb();
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };

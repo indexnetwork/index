@@ -21,7 +21,7 @@ function sanitizeJsonForCodeFence(json: string): string {
   return json.replace(/`/g, "\\u0060");
 }
 
-/** When context is index-scoped, verifies the caller is still a member of that index. Returns error message or null. */
+/** When context is network-scoped, verifies the caller is still a member of that index. Returns error message or null. */
 async function ensureScopedMembership(
   context: ToolScopeEnvelope & { indexName?: string; userId: string },
   systemDb: ToolDeps['systemDb']
@@ -80,17 +80,17 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       "Retrieves intents (signals of interest/need, e.g. 'Looking for a React developer in Berlin'). " +
       "Intents are the core unit of discovery — they represent what users are seeking and drive semantic matching for opportunities.\n\n" +
       "**Usage modes:**\n" +
-      "- No parameters: returns the **caller's own** active intents. In an index-scoped chat the result is clamped to the reachable indexes (the bound index plus the user's personal index). In an unscoped chat the result spans all of the user's active intents. There is no implicit default to the scoped index — to browse the bound community's intents, pass `networkId` explicitly.\n" +
+      "- No parameters: returns the **caller's own** active intents. In an network-scoped chat the result is clamped to the reachable networks (the bound network plus the user's personal network). In an unscoped chat the result spans all of the user's active intents. There is no implicit default to the scoped network — to browse the bound community's intents, pass `networkId` explicitly.\n" +
       "- With networkId: returns **all members'** intents in that index (community browse path). Add userId to filter to one member.\n" +
-      "- With userId in an index-scoped chat: reads that member's intents in the bound index. The target user must be a member of that index.\n" +
-      "- With userId in an unscoped chat: only works for the current user (cannot read another user's global intents without an index scope).\n\n" +
-      "**Workflow:** To explore what members of an index are looking for, first call read_network_memberships(networkId) to list members, " +
+      "- With userId in an network-scoped chat: reads that member's intents in the bound network. The target user must be a member of that index.\n" +
+      "- With userId in an unscoped chat: only works for the current user (cannot read another user's global intents without an network scope).\n\n" +
+      "**Workflow:** To explore what members of a network are looking for, first call read_network_memberships(networkId) to list members, " +
       "then read_intents(networkId) to see all intents in that community. " +
       "Each intent includes: id, description (payload), summary, confidence (0-1), inferenceType (explicit/implicit), status, and linked indexes.\n\n" +
       "**Returns:** Paginated list of intents with count. Use the intent IDs in subsequent calls to update_intent, delete_intent, or create_intent_index.",
     querySchema: z.object({
-      networkId: z.string().optional().describe("Index UUID — filters intents to this index (community browse path: returns all members' intents). There is no implicit default in index-scoped chats; omit to get caller-owned intents across the reachable indexes, or pass the scoped index UUID to browse community members. Get index IDs from read_networks."),
-      userId: z.string().optional().describe("User ID — filters to this user's intents. In an index-scoped chat, this reads that member's intents in the bound index (no networkId required). In an unscoped chat, only the current user is allowed without networkId; cross-user reads require an index scope. Omit for caller-owned intents."),
+      networkId: z.string().optional().describe("Network UUID — filters intents to this network (community browse path: returns all members' intents). There is no implicit default in network-scoped chats; omit to get caller-owned intents across the reachable networks, or pass the scoped network UUID to browse community members. Get network IDs from read_networks."),
+      userId: z.string().optional().describe("User ID — filters to this user's intents. In an network-scoped chat, this reads that member's intents in the bound network (no networkId required). In an unscoped chat, only the current user is allowed without networkId; cross-user reads require an network scope. Omit for caller-owned intents."),
       limit: z.number().int().min(1).max(100).optional().describe("Page size (1-100). Defaults to returning all results if omitted."),
       page: z.number().int().min(1).optional().describe("Page number (1-based). Only used when limit is also provided."),
     }),
@@ -118,7 +118,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
-      // Cross-user read in scoped chat: target user must be a member of the scoped index
+      // Cross-user read in scoped chat: target user must be a member of the scoped network
       if (scopedNetworkId && explicitUserId && explicitUserId !== context.userId) {
         const isInScopedIndex = await deps.systemDb.isNetworkMember(scopedNetworkId, explicitUserId);
         if (!isInScopedIndex) {
@@ -128,7 +128,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
-      // Cross-user global read is disallowed without an index scope
+      // Cross-user global read is disallowed without an network scope
       if (!explicitNetworkId && !scopedNetworkId && explicitUserId && explicitUserId !== context.userId) {
         return error("Cannot read another user's global intents. Use networkId to scope to a shared network.");
       }
@@ -166,7 +166,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         graphInput.queryUserId = explicitUserId;
         graphInput.allUserIntents = true;
       } else if (scopedNetworkId) {
-        // Scoped chat, implicit read: caller-only across reachable indexes.
+        // Scoped chat, implicit read: caller-only across reachable networks.
         graphInput.indexScope = deriveAllowedNetworkIds({
           memberships: context.userNetworks,
           scopeType: 'network',
@@ -236,7 +236,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       "to create_user_context are handled by that tool directly — do not scrape first.",
     querySchema: z.object({
       description: z.string().describe("A clear, specific description of what the user is looking for. Should be concept-based, not a raw URL. If the user shared a URL, scrape it first with scrape_url and pass the synthesized content here. Vague descriptions will be rejected — include what kind, what for, and/or timeframe."),
-      networkId: z.string().optional().describe("Index UUID to link the intent to upon creation. Defaults to the scoped index in index-scoped chats. Get index IDs from read_networks. If omitted, the system auto-assigns to relevant indexes based on their prompts."),
+      networkId: z.string().optional().describe("Network UUID to link the intent to upon creation. Defaults to the scoped network in network-scoped chats. Get network IDs from read_networks. If omitted, the system auto-assigns to relevant networks based on their prompts."),
       autoApprove: z.boolean().optional().describe("When true, automatically persists all verified intents without returning proposal cards for manual approval. MCP agents SHOULD set this to true since there is no UI for card-based approval. Web chat agents should omit or set to false to get interactive proposal cards."),
     }),
     handler: async ({ context, query }) => {
@@ -454,7 +454,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
 
-      // Strict scope enforcement: when chat is index-scoped, verify intent is linked to that index
+      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
       if (scopedNetworkId) {
         const db = deps.userDb;
         const intentNetworks = await db.getNetworkIdsForIntent(intentId);
@@ -531,7 +531,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const scopedNetworkId = focusedNetworkId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
 
-      // Strict scope enforcement: when chat is index-scoped, verify intent is linked to that index
+      // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
       if (scopedNetworkId) {
         const db = deps.userDb;
         const intentNetworks = await db.getNetworkIdsForIntent(intentId);
@@ -569,14 +569,14 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const createIntentIndex = defineTool({
     name: "create_intent_index",
     description:
-      "Manually links an intent to an index (community), making it visible to other members and eligible for opportunity discovery within that index. " +
+      "Manually links an intent to a network (community), making it visible to other members and eligible for opportunity discovery within that index. " +
       "Normally intents are auto-assigned to relevant indexes on creation, but use this to explicitly add an intent to an additional index.\n\n" +
       "**When to use:** When the user wants to share an existing intent with a specific community they belong to, " +
-      "or when auto-assignment missed an index the user considers relevant.\n\n" +
+      "or when auto-assignment missed a network the user considers relevant.\n\n" +
       "**Returns:** Confirmation that the link was created. The intent will now appear in that index's intent list and participate in discovery within that community.",
     querySchema: z.object({
       intentId: z.string().describe("The UUID of the intent to link. Get this from read_intents results."),
-      networkId: z.string().optional().describe("The UUID of the index to link the intent to. Get this from read_networks. Defaults to the scoped index in index-scoped chats."),
+      networkId: z.string().optional().describe("The UUID of the network to link the intent to. Get this from read_networks. Defaults to the scoped network in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
@@ -589,7 +589,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid ID format. Both must be UUIDs.");
       }
 
-      // Strict scope enforcement: when chat is index-scoped, only allow linking to that index
+      // Strict scope enforcement: when chat is network-scoped, only allow linking to that index
       if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
           `This chat is scoped to ${scopedIndexLabel}. You can only link intents to this community.`
@@ -629,13 +629,13 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Usage modes:**\n" +
       "- With networkId: lists all intents linked to that index. Add userId to filter to one member's intents in that index.\n" +
       "- With intentId + networkId: checks whether a specific intent is linked to a specific index.\n" +
-      "- intentId alone requires a networkId (the system won't reveal all indexes an intent is in).\n\n" +
+      "- intentId alone requires a networkId (the system won't reveal all networks an intent is in).\n\n" +
       "**When to use:** To audit which intents are active in a community, verify an intent's index assignment before unlinking, " +
       "or check if a newly created intent was auto-assigned to the expected index.\n\n" +
-      "**Returns:** List of intent-index links with relevancy scores (0-1, how well the intent fits the index's purpose).",
+      "**Returns:** List of intent-network links with relevancy scores (0-1, how well the intent fits the network's purpose).",
     querySchema: z.object({
       intentId: z.string().optional().describe("Intent UUID — check if this specific intent is linked to the specified index. Must be combined with networkId."),
-      networkId: z.string().optional().describe("Index UUID — list all intents linked to this index. Get this from read_networks. Defaults to scoped index in index-scoped chats."),
+      networkId: z.string().optional().describe("Network UUID — list all intents linked to this network. Get this from read_networks. Defaults to scoped network in network-scoped chats."),
       userId: z.string().optional().describe("Filter results to this user's intents within the specified index. Omit to see all members' intents."),
     }),
     handler: async ({ context, query }) => {
@@ -657,7 +657,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Provide networkId or intentId.");
       }
 
-      // Strict scope enforcement: when chat is index-scoped, only allow querying that index
+      // Strict scope enforcement: when chat is network-scoped, only allow querying that index
       if (scopedNetworkId && networkId && networkId !== scopedNetworkId) {
         return error(
           `This chat is scoped to ${scopedIndexLabel}. You can only read intent links from this community.`
@@ -667,10 +667,10 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       // When only intentId is provided, enforce scope - don't reveal all linked indexes
       if (intentId && !networkId) {
         if (scopedNetworkId) {
-          // When scoped, only check if intent is linked to the scoped index
+          // When scoped, only check if intent is linked to the scoped network
           networkId = scopedNetworkId;
         } else {
-          // When unscoped, still don't reveal all indexes - require explicit networkId
+          // When unscoped, still don't reveal all networks - require explicit networkId
           return error(
             "Please provide a networkId to check if the intent is linked to a specific network. Listing all linked networks is not supported."
           );
@@ -700,14 +700,14 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const deleteIntentIndex = defineTool({
     name: "delete_intent_index",
     description:
-      "Removes the link between an intent and an index. The intent itself is NOT deleted — it just stops being visible in that community " +
+      "Removes the link between an intent and a network. The intent itself is NOT deleted — it just stops being visible in that community " +
       "and no longer participates in opportunity discovery within that index. The intent may still be linked to other indexes.\n\n" +
       "**When to use:** When the user wants to withdraw an intent from a specific community without archiving it entirely. " +
       "Use read_intent_indexes first to verify the link exists.\n\n" +
       "**Returns:** Confirmation that the link was removed. To fully remove an intent, use delete_intent instead.",
     querySchema: z.object({
       intentId: z.string().describe("The UUID of the intent to unlink. Get this from read_intents or read_intent_indexes."),
-      networkId: z.string().optional().describe("The UUID of the index to unlink from. Get this from read_networks. Defaults to the scoped index in index-scoped chats."),
+      networkId: z.string().optional().describe("The UUID of the network to unlink from. Get this from read_networks. Defaults to the scoped network in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
@@ -720,7 +720,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid ID format. Both must be UUIDs.");
       }
 
-      // Strict scope enforcement: when chat is index-scoped, only allow unlinking from that index
+      // Strict scope enforcement: when chat is network-scoped, only allow unlinking from that index
       if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
           `This chat is scoped to ${scopedIndexLabel}. You can only unlink intents from this community.`

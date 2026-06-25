@@ -39,7 +39,7 @@ export default function Sidebar() {
   const opportunitiesService = useOpportunities();
   const { indexes, addIndex } = useNetworksState();
   const { success, error } = useNotifications();
-  
+
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [navigatingToChat, setNavigatingToChat] = useState(false);
@@ -85,7 +85,7 @@ export default function Sidebar() {
       }
     } catch (err) {
       console.error('Error creating index:', err);
-      error('Failed to create index');
+      error('Failed to create network');
     }
   }, [indexesService, addIndex, success, error]);
 
@@ -292,7 +292,7 @@ export default function Sidebar() {
       {/* Spacer */}
       <div className="flex-1" />
 
-      
+
 
       {/* Networks & Agent - above user dropdown */}
       <nav className="flex-shrink-0 px-2 space-y-1 pb-2">

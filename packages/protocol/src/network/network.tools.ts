@@ -5,7 +5,6 @@ import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
-import { focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import { NetworkRecommender } from "./network.recommender.js";
 
 // Lazy singleton — only instantiated on first onboarding ranking call so that
@@ -35,7 +34,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Returns:** Up to three lists — `memberOf` (networks the user joined), `owns` (networks the user created), and `publicNetworks` " +
       "(publicly joinable communities the user is not yet a member of). Entries in `memberOf` include `isPersonal` set to `true` for the user's " +
       "personal network.\n\n" +
-      "**Note:** In index-scoped chats, only the scoped network is returned. During onboarding, `orderedNetworkIds` " +
+      "**Note:** In network-scoped chats, only the scoped network is returned. During onboarding, `orderedNetworkIds` " +
       "may be returned alongside `publicNetworks` \u2014 a ranked array of network IDs ordered by relevance to the user's profile (omitted when ranking is unavailable or fails).",
     querySchema: z.object({
       userId: z.string().optional().describe("Must be the current user's ID or omitted. Cannot list another user's indexes."),
@@ -45,15 +44,12 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("You can only list your own indexes. Omit userId to see the current user's indexes.");
       }
 
-      const scopedNetworkId = focusedNetworkId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
-
       const _readIndexGraphStart = Date.now();
       const _readIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
       _readIndexTraceEmitter?.({ type: "graph_start", name: "index" });
       const result = await graphs.index.invoke({
         userId: context.userId,
-        networkId: scopedNetworkId,
+        networkId: context.networkId || undefined,
         operationMode: 'read' as const,
         showAll: false, // Never allow bypass - strict scope enforcement
       });
@@ -73,13 +69,13 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         };
 
         // When scoped, add clear metadata so model knows results are limited
-        if (scopedNetworkId) {
+        if (context.networkId) {
           return success({
             ...enriched,
             scopeRestriction: {
               isScoped: true,
-              scopedToIndex: scopedIndexLabel,
-              message: `Results are limited to "${scopedIndexLabel}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
+              scopedToIndex: context.indexName ?? context.networkId,
+              message: `Results are limited to "${context.indexName ?? 'this network'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
             },
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
@@ -159,44 +155,42 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const readIndexMemberships = defineTool({
     name: "read_network_memberships",
     description:
-      "Reads index membership information — who is in which community. Essential for understanding the social graph before " +
+      "Reads network membership information — who is in which community. Essential for understanding the social graph before " +
       "creating introductions or exploring intents.\n\n" +
       "**Usage modes:**\n" +
       "- With `networkId` only: lists ALL members of that index — returns userId, name, avatar, permissions (owner/member), intentCount, and joinedAt. " +
       "Use this to see who's in a community before browsing their intents or creating introductions.\n" +
-      "- With `userId` only (or omit for self): lists all indexes that user belongs to — returns networkId, networkTitle, permissions, joinedAt.\n" +
+      "- With `userId` only (or omit for self): lists all networks that user belongs to — returns networkId, networkTitle, permissions, joinedAt.\n" +
       "- With both `networkId` and `userId`: checks whether that specific user is a member of that specific index (returns isMember boolean).\n\n" +
-      "**When to use:** Before creating introductions (need to verify shared index membership), to explore community members, " +
+      "**When to use:** Before creating introductions (need to verify shared network membership), to explore community members, " +
       "or to check if a user belongs to a specific index.\n\n" +
       "**Returns:** Member list with user details, or membership list with index details, or a membership check result.\n\n" +
-      "**Personal index semantics.** The personal index (`isPersonal: true` on the membership) is the user's " +
+      "**Personal network semantics.** The personal network (`isPersonal: true` on the membership) is the user's " +
       "contact list — members of that index are the user's contacts. For another user, this tool only reveals the " +
       "indexes you already share with them.\n\n" +
       "**Shared-context pattern.** To find overlap with another user: (1) omit `userId` to read your own " +
-      "memberships, (2) call this tool with the other person's actual `userId` to get the shared indexes, " +
+      "memberships, (2) call this tool with the other person's actual `userId` to get the shared networks, " +
       "(3) call read_intents for each shared network to see what each is looking for there, (4) call " +
       "read_user_contexts for the other party. That sequence gives you enough to decide whether to propose a " +
       "direct connection or an introduction.",
     querySchema: z.object({
-      networkId: z.string().optional().describe("Index UUID — lists all members of this index. Get from read_networks. In index-scoped chats, only the scoped index can be queried."),
-      userId: z.string().optional().describe("User ID — lists that user's index memberships. Omit to get the current user's memberships. When combined with networkId, checks if this user is in that specific index."),
+      networkId: z.string().optional().describe("Network UUID — lists all members of this network. Get from read_networks. In network-scoped chats, only the scoped index can be queried."),
+      userId: z.string().optional().describe("User ID — lists that user's network memberships. Omit to get the current user's memberships. When combined with networkId, checks if this user is in that specific index."),
     }),
     handler: async ({ context, query }) => {
-      const scopedNetworkId = focusedNetworkId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
       const networkId = query.networkId?.trim() || undefined;
       const userId = query.userId?.trim() || undefined;
 
       if (networkId && !UUID_REGEX.test(networkId)) {
-        return error("Invalid index ID format. Use the exact UUID from read_networks.");
+        return error("Invalid network ID format. Use the exact UUID from read_networks.");
       }
 
       // Mode 1: list members of an index
       if (networkId && !userId) {
-        // Enforce strict scope: when chat is index-scoped, only allow querying that index
-        if (scopedNetworkId && networkId !== scopedNetworkId) {
+        // Enforce strict scope: when chat is network-scoped, only allow querying that index
+        if (context.networkId && networkId !== context.networkId) {
           return error(
-            `This chat is scoped to ${scopedIndexLabel}. You can only query members of this index.`
+            `This chat is scoped to ${context.indexName ?? 'this network'}. You can only query members of this network.`
           );
         }
 
@@ -217,22 +211,22 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         if (result.readResult) {
           return success({ ...result.readResult, _graphTimings: [{ name: 'network_membership', durationMs: _readMembersGraphMs, agents: result.agentTimings ?? [] }] });
         }
-        return error("Failed to fetch index members.");
+        return error("Failed to fetch network members.");
       }
 
       // Mode 2: list a user's memberships (indexes they belong to)
       const targetUserId = userId || context.userId;
 
-      // Use userDb for own memberships, but systemDb access is implicit through shared index scope
+      // Use userDb for own memberships, but systemDb access is implicit through shared network scope
       let memberships: Awaited<ReturnType<typeof userDb.getNetworkMemberships>>;
       if (targetUserId !== context.userId) {
-        // Cross-user access: systemDb will validate shared index membership
+        // Cross-user access: systemDb will validate shared network membership
         const callerMemberships = await userDb.getNetworkMemberships();
         if (networkId) {
-          // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-          if (scopedNetworkId && networkId !== scopedNetworkId) {
+          // Strict scope enforcement: when chat is network-scoped, only allow querying that index
+          if (context.networkId && networkId !== context.networkId) {
             return error(
-              `This chat is scoped to ${scopedIndexLabel}. You can only query membership in this community.`
+              `This chat is scoped to ${context.indexName ?? 'this network'}. You can only query membership in this community.`
             );
           }
 
@@ -247,37 +241,37 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
           if (isMember) {
             return success({ isMember: true, userId: targetUserId, networkId });
           }
-          return success({ isMember: false, userId: targetUserId, networkId, message: "User is not a member of this index." });
+          return success({ isMember: false, userId: targetUserId, networkId, message: "User is not a member of this network." });
         } else {
-          // Strict scope enforcement: when chat is index-scoped, only check the scoped index
-          if (scopedNetworkId) {
-            const isMember = await systemDb.isNetworkMember(scopedNetworkId, targetUserId);
+          // Strict scope enforcement: when chat is network-scoped, only check the scoped index
+          if (context.networkId) {
+            const isMember = await systemDb.isNetworkMember(context.networkId, targetUserId);
             if (isMember) {
               return success({
                 isMember: true,
                 userId: targetUserId,
-                networkId: scopedNetworkId,
+                networkId: context.networkId,
                 scopeRestriction: {
                   isScoped: true,
-                  scopedToIndex: scopedIndexLabel,
-                  message: `This chat is scoped to "${scopedIndexLabel}". Only membership in this community is shown.`,
+                  scopedToIndex: context.indexName ?? context.networkId,
+                  message: `This chat is scoped to "${context.indexName ?? 'this network'}". Only membership in this community is shown.`,
                 },
               });
             }
             return success({
               isMember: false,
               userId: targetUserId,
-              networkId: scopedNetworkId,
+              networkId: context.networkId,
               message: "User is not a member of this community.",
               scopeRestriction: {
                 isScoped: true,
-                scopedToIndex: scopedIndexLabel,
-                message: `This chat is scoped to "${scopedIndexLabel}". Only membership in this community was checked.`,
+                scopedToIndex: context.indexName ?? context.networkId,
+                message: `This chat is scoped to "${context.indexName ?? 'this network'}". Only membership in this community was checked.`,
               },
             });
           }
 
-          // Unscoped chat: show overlap with shared indexes (intersection of caller and target memberships)
+          // Unscoped chat: show overlap with shared networks (intersection of caller and target memberships)
           const sharedIndexes: typeof callerMemberships = [];
           for (const m of callerMemberships) {
             if (await systemDb.isNetworkMember(m.networkId, targetUserId)) {
@@ -297,27 +291,28 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
               networkId: m.networkId,
               networkTitle: m.networkTitle,
             })),
-            note: "Only showing shared indexes.",
+            note: "Only showing shared networks.",
           });
         }
       } else {
         // Own memberships - use userDb
         memberships = await userDb.getNetworkMemberships();
 
-        // The scope envelope's network id is the focus of the scoped chat — it filters
-        // what we show, not what we can reach. Concrete reach is derived separately.
-        // Strict scope enforcement: when chat is index-scoped, only return the scoped index membership
-        if (scopedNetworkId && !networkId) {
-          memberships = memberships.filter((m) => m.networkId === scopedNetworkId);
+        // NOTE: context.networkId here is the *focus* of the scoped chat — it filters
+        // what we show, not what we can reach. indexScope is the reach; the bound
+        // network is one element of it. See IND-306 for the equivalent in read_intents.
+        // Strict scope enforcement: when chat is network-scoped, only return the scoped network membership
+        if (context.networkId && !networkId) {
+          memberships = memberships.filter((m) => m.networkId === context.networkId);
         }
       }
 
       // If both networkId and userId: filter to that specific membership
       if (networkId) {
-        // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-        if (scopedNetworkId && networkId !== scopedNetworkId) {
+        // Strict scope enforcement: when chat is network-scoped, only allow querying that index
+        if (context.networkId && networkId !== context.networkId) {
           return error(
-            `This chat is scoped to ${scopedIndexLabel}. You can only query membership in this community.`
+            `This chat is scoped to ${context.indexName ?? 'this network'}. You can only query membership in this community.`
           );
         }
 
@@ -332,7 +327,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         }
         const match = memberships.find((m) => m.networkId === networkId);
         if (!match) {
-          return success({ isMember: false, userId: targetUserId, networkId, message: "User is not a member of this index." });
+          return success({ isMember: false, userId: targetUserId, networkId, message: "User is not a member of this network." });
         }
         return success({
           isMember: true,
@@ -345,7 +340,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // When scoped, add clear metadata so model knows results are limited
-      if (scopedNetworkId && targetUserId === context.userId) {
+      if (context.networkId && targetUserId === context.userId) {
         return success({
           userId: targetUserId,
           count: memberships.length,
@@ -357,8 +352,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
           })),
           scopeRestriction: {
             isScoped: true,
-            scopedToIndex: scopedIndexLabel,
-            message: `Results are limited to "${scopedIndexLabel}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
+            scopedToIndex: context.indexName ?? context.networkId,
+            message: `Results are limited to "${context.indexName ?? 'this network'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
           },
         });
       }
@@ -387,30 +382,28 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const updateNetwork = defineTool({
     name: "update_network",
     description:
-      "Updates settings of an existing index (community). Only the index owner can perform updates.\n\n" +
+      "Updates settings of an existing network (community). Only the network owner can perform updates.\n\n" +
       "**Updatable fields:** title (display name), prompt (purpose description used for intent auto-assignment), " +
       "imageUrl (community avatar), joinPolicy ('anyone' for open or 'invite_only'), allowGuestVibeCheck (allow non-members to preview).\n\n" +
-      "**When to use:** When an index owner wants to change their community's settings — e.g. update the purpose description, " +
+      "**When to use:** When a network owner wants to change their community's settings — e.g. update the purpose description, " +
       "change from invite-only to open, or update the community image.\n\n" +
-      "**Important:** Changing the prompt affects how future intents are evaluated for auto-assignment to this index. " +
-      "Existing intent-index links are not re-evaluated automatically.\n\n" +
+      "**Important:** Changing the prompt affects how future intents are evaluated for auto-assignment to this network. " +
+      "Existing intent-network links are not re-evaluated automatically.\n\n" +
       "**Returns:** Confirmation with the list of settings that were updated.",
     querySchema: z.object({
-      networkId: z.string().optional().describe("Index UUID to update. Get from read_networks. Defaults to the scoped index in index-scoped chats."),
+      networkId: z.string().optional().describe("Network UUID to update. Get from read_networks. Defaults to the scoped index in network-scoped chats."),
       settings: updateNetworkSettingsSchema.describe("Object with fields to update. All fields are optional — only include the ones to change. title: display name. prompt: purpose description (used for intent auto-assignment). imageUrl: community image URL (null to remove). joinPolicy: 'anyone' or 'invite_only'. allowGuestVibeCheck: boolean."),
     }),
     handler: async ({ context, query }) => {
-      const scopedNetworkId = focusedNetworkId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
-      const effectiveIndexId = (query.networkId?.trim() || scopedNetworkId) ?? null;
+      const effectiveIndexId = (query.networkId?.trim() || context.networkId) ?? null;
       if (!effectiveIndexId || !UUID_REGEX.test(effectiveIndexId)) {
         return error("Valid networkId required.");
       }
 
-      // Strict scope enforcement: when chat is index-scoped, only allow updating that index
-      if (scopedNetworkId && effectiveIndexId !== scopedNetworkId) {
+      // Strict scope enforcement: when chat is network-scoped, only allow updating that index
+      if (context.networkId && effectiveIndexId !== context.networkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only update this community's settings.`
+          `This chat is scoped to ${context.indexName ?? 'this network'}. You can only update this community's settings.`
         );
       }
 
@@ -436,15 +429,15 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const createNetwork = defineTool({
     name: "create_network",
     description:
-      "Creates a new index (community/group). The authenticated user becomes the owner with full control over settings and membership.\n\n" +
-      "**What is an index?** A shared space where members post intents (what they're looking for) and the system discovers opportunities " +
-      "(complementary matches) between members. The index's prompt guides what kinds of intents belong.\n\n" +
+      "Creates a new network (community/group). The authenticated user becomes the owner with full control over settings and membership.\n\n" +
+      "**What is a network?** A shared space where members post intents (what they're looking for) and the system discovers opportunities " +
+      "(complementary matches) between members. The network's prompt guides what kinds of intents belong.\n\n" +
       "**When to use:** When the user wants to create a new community — e.g. a professional network, interest group, or project team.\n\n" +
-      "**Returns:** The new index's networkId (UUID) and title. Use the networkId to add members (create_network_membership), " +
+      "**Returns:** The new network's networkId (UUID) and title. Use the networkId to add members (create_network_membership), " +
       "link intents (create_intent_index), or run discovery (discover_opportunities with networkId).",
     querySchema: z.object({
-      title: z.string().describe("Display name of the index (e.g. 'AI Founders Berlin', 'Design Co-op'). Required."),
-      prompt: z.string().optional().describe("Description of what this community is about (e.g. 'Early-stage AI/ML founders in Berlin looking for co-founders, advisors, and investors'). Used by the system to evaluate which intents belong in this index. Highly recommended for better auto-assignment."),
+      title: z.string().describe("Display name of the network (e.g. 'AI Founders Berlin', 'Design Co-op'). Required."),
+      prompt: z.string().optional().describe("Description of what this community is about (e.g. 'Early-stage AI/ML founders in Berlin looking for co-founders, advisors, and investors'). Used by the system to evaluate which intents belong in this network. Highly recommended for better auto-assignment."),
       imageUrl: z.string().url().optional().describe("URL for the community's avatar/image. Optional."),
       joinPolicy: z.enum(['anyone', 'invite_only']).optional().describe("'anyone' = open (any user can self-join), 'invite_only' = only the owner can add members. Defaults to 'invite_only'."),
     }),
@@ -479,35 +472,33 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
             _graphTimings: [{ name: 'index', durationMs: _createNetworkGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        return error(result.mutationResult.error || "Failed to create index.");
+        return error(result.mutationResult.error || "Failed to create network.");
       }
-      return error("Failed to create index.");
+      return error("Failed to create network.");
     },
   });
 
   const deleteNetwork = defineTool({
     name: "delete_network",
     description:
-      "Permanently deletes an index (community). Only the owner can delete, and the index must have no other members " +
-      "(remove all members first with delete_network_membership). Personal indexes cannot be deleted.\n\n" +
-      "**When to use:** When the owner wants to disband a community. This is irreversible — all intent-index links to this index are removed.\n\n" +
+      "Permanently deletes a network (community). Only the owner can delete, and the network must have no other members " +
+      "(remove all members first with delete_network_membership). Personal networks cannot be deleted.\n\n" +
+      "**When to use:** When the owner wants to disband a community. This is irreversible — all intent-network links to this network are removed.\n\n" +
       "**Prerequisites:** Must be the owner. Must be the sole remaining member (remove others first).\n\n" +
-      "**Returns:** Confirmation that the index was deleted.",
+      "**Returns:** Confirmation that the network was deleted.",
     querySchema: z.object({
-      networkId: z.string().optional().describe("Index UUID to delete. Get from read_networks. Defaults to the scoped index in index-scoped chats. Cannot be a personal index."),
+      networkId: z.string().optional().describe("Network UUID to delete. Get from read_networks. Defaults to the scoped index in network-scoped chats. Cannot be a personal network."),
     }),
     handler: async ({ context, query }) => {
-      const scopedNetworkId = focusedNetworkId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
-      const networkId = query.networkId?.trim() || scopedNetworkId;
+      const networkId = query.networkId?.trim() || context.networkId;
       if (!networkId || !UUID_REGEX.test(networkId)) {
         return error("Valid networkId required.");
       }
 
-      // Strict scope enforcement: when chat is index-scoped, only allow deleting that index
-      if (scopedNetworkId && networkId !== scopedNetworkId) {
+      // Strict scope enforcement: when chat is network-scoped, only allow deleting that index
+      if (context.networkId && networkId !== context.networkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only delete this community.`
+          `This chat is scoped to ${context.indexName ?? 'this network'}. You can only delete this community.`
         );
       }
 
@@ -523,7 +514,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       _deleteNetworkTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _deleteNetworkGraphMs });
 
       if (result.mutationResult && !result.mutationResult.success) {
-        return error(result.mutationResult.error || "Failed to delete index.");
+        return error(result.mutationResult.error || "Failed to delete network.");
       }
       return success({ message: "Network deleted.", _graphTimings: [{ name: 'index', durationMs: _deleteNetworkGraphMs, agents: result.agentTimings ?? [] }] });
     },
@@ -532,31 +523,29 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const createNetworkMembership = defineTool({
     name: "create_network_membership",
     description:
-      "Adds a user as a member of an index (community). Membership enables the user to post intents in the index and be discovered " +
+      "Adds a user as a member of a network (community). Membership enables the user to post intents in the network and be discovered " +
       "by other members through opportunity matching.\n\n" +
       "**Usage modes:**\n" +
-      "- Omit userId: self-join (only works for indexes with joinPolicy 'anyone').\n" +
-      "- With userId: add another user (only the index owner can do this for 'invite_only' indexes).\n\n" +
-      "**When to use:** When the user wants to join an open community, or when an index owner wants to invite someone.\n\n" +
+      "- Omit userId: self-join (only works for networks with joinPolicy 'anyone').\n" +
+      "- With userId: add another user (only the network owner can do this for 'invite_only' indexes).\n\n" +
+      "**When to use:** When the user wants to join an open community, or when a network owner wants to invite someone.\n\n" +
       "**Returns:** Confirmation that the member was added (or a note that they were already a member). " +
-      "After joining, the user's existing intents with autoAssign=true may be evaluated against the new index.",
+      "After joining, the user's existing intents with autoAssign=true may be evaluated against the new network.",
     querySchema: z.object({
-      userId: z.string().optional().describe("User ID to add as a member. Omit to join the index yourself. Get user IDs from read_user_contexts(query=name) or read_network_memberships."),
-      networkId: z.string().optional().describe("Index UUID to add the member to. Get from read_networks. Defaults to the scoped index in index-scoped chats."),
+      userId: z.string().optional().describe("User ID to add as a member. Omit to join the network yourself. Get user IDs from read_user_contexts(query=name) or read_network_memberships."),
+      networkId: z.string().optional().describe("Network UUID to add the member to. Get from read_networks. Defaults to the scoped index in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
-      const scopedNetworkId = focusedNetworkId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
-      const networkId = query.networkId?.trim() || scopedNetworkId;
+      const networkId = query.networkId?.trim() || context.networkId;
       const targetUserId = query.userId?.trim() || context.userId;
       if (!networkId || !UUID_REGEX.test(networkId)) {
-        return error("Invalid index ID format. Use the exact UUID from read_networks.");
+        return error("Invalid network ID format. Use the exact UUID from read_networks.");
       }
 
-      // Strict scope enforcement: when chat is index-scoped, only allow adding to that index
-      if (scopedNetworkId && networkId !== scopedNetworkId) {
+      // Strict scope enforcement: when chat is network-scoped, only allow adding to that index
+      if (context.networkId && networkId !== context.networkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only add members to this community.`
+          `This chat is scoped to ${context.indexName ?? 'this network'}. You can only add members to this community.`
         );
       }
 
@@ -590,20 +579,18 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const deleteNetworkMembership = defineTool({
     name: "delete_network_membership",
     description:
-      "Removes a user from an index (community). After removal, the user's intents are unlinked from this index " +
+      "Removes a user from a network (community). After removal, the user's intents are unlinked from this network " +
       "and they can no longer participate in opportunity discovery within it.\n\n" +
-      "**Permissions:** Only the index owner can remove members. The owner themselves cannot be removed (delete the index instead).\n\n" +
-      "**When to use:** When an index owner wants to remove a member from the community. " +
+      "**Permissions:** Only the network owner can remove members. The owner themselves cannot be removed (delete the network instead).\n\n" +
+      "**When to use:** When a network owner wants to remove a member from the community. " +
       "Use read_network_memberships(networkId) first to get the userId of the member to remove.\n\n" +
       "**Returns:** Confirmation that the member was removed.",
     querySchema: z.object({
-      userId: z.string().describe("User ID of the member to remove. Get from read_network_memberships(networkId). Cannot be the index owner."),
-      networkId: z.string().optional().describe("Index UUID to remove the member from. Get from read_networks. Defaults to the scoped index in index-scoped chats."),
+      userId: z.string().describe("User ID of the member to remove. Get from read_network_memberships(networkId). Cannot be the network owner."),
+      networkId: z.string().optional().describe("Network UUID to remove the member from. Get from read_networks. Defaults to the scoped index in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
-      const scopedNetworkId = focusedNetworkId(context);
-      const scopedIndexLabel = focusedNetworkLabel(context);
-      const networkId = query.networkId?.trim() || scopedNetworkId;
+      const networkId = query.networkId?.trim() || context.networkId;
       const targetUserId = query.userId?.trim();
 
       if (!networkId || !UUID_REGEX.test(networkId)) {
@@ -613,10 +600,10 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("userId is required.");
       }
 
-      // Strict scope enforcement: when chat is index-scoped, only allow that index
-      if (scopedNetworkId && networkId !== scopedNetworkId) {
+      // Strict scope enforcement: when chat is network-scoped, only allow that index
+      if (context.networkId && networkId !== context.networkId) {
         return error(
-          `This chat is scoped to ${scopedIndexLabel}. You can only manage members of this community.`
+          `This chat is scoped to ${context.indexName ?? 'this network'}. You can only manage members of this community.`
         );
       }
 

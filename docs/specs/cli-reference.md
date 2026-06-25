@@ -268,7 +268,7 @@ The `index network` command manages networks (the user-facing term for indexes) 
 
 ### `index network list`
 
-Lists networks the authenticated user is a member of. Calls `GET /api/networks`. Renders a table with columns: title, member count, role (owner/admin/member), join policy, created date. Personal indexes (`isPersonal: true`) are filtered from the display.
+Lists networks the authenticated user is a member of. Calls `GET /api/networks`. Renders a table with columns: title, member count, role (owner/admin/member), join policy, created date. Personal networks (`isPersonal: true`) are filtered from the display.
 
 ### `index network create <name>`
 

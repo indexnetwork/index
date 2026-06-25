@@ -706,7 +706,7 @@ export async function runDiscoverFromQuery(
         searchQuery: queryOrEmpty || undefined,
         // A single index resolves to the strict networkId override (membership-
         // validated in the scope node). Multiple indexes (e.g. a network-scoped
-        // agent's bound network + personal index) pass through as indexScope so
+        // agent's bound network + personal network) pass through as indexScope so
         // the graph stays bounded instead of falling back to all networks.
         networkId: indexScope.length === 1 ? indexScope[0] : undefined,
         ...(indexScope.length > 1 ? { indexScope } : {}),
@@ -1215,7 +1215,7 @@ export async function continueDiscovery(input: {
   cache: Cache;
   userId: string;
   discoveryId: string;
-  /** If provided, validates the cached session's indexScope contains this index. */
+  /** If provided, validates the cached session's indexScope contains this network. */
   expectedIndexId?: string;
   limit?: number;
   chatSessionId?: string;

@@ -20,7 +20,7 @@ describe('AuthDatabaseAdapter', () => {
   const cleanupIndexIds: string[] = [];
 
   afterAll(async () => {
-    // Clean up index members and indexes first (FK constraints)
+    // Clean up network members and indexes first (FK constraints)
     for (const networkId of cleanupIndexIds) {
       await db.delete(schema.networkMembers).where(eq(schema.networkMembers.networkId, networkId)).catch(() => {});
       await db.delete(schema.networks).where(eq(schema.networks.id, networkId)).catch(() => {});
@@ -224,7 +224,7 @@ describe('AuthDatabaseAdapter', () => {
         updatedAt: new Date(),
       });
 
-      // Create some related data for the ghost (index membership)
+      // Create some related data for the ghost (network membership)
       const networkId = crypto.randomUUID();
       cleanupIndexIds.push(networkId);
       await db.insert(schema.networks).values({
@@ -258,7 +258,7 @@ describe('AuthDatabaseAdapter', () => {
 
       expect(result.id).toBe(ghostId);
 
-      // Verify index membership still references ghost's original ID
+      // Verify network membership still references ghost's original ID
       const [member] = await db.select()
         .from(schema.networkMembers)
         .where(eq(schema.networkMembers.userId, ghostId));

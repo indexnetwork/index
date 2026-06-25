@@ -10,11 +10,11 @@ const logger = log.service.from("IntentService");
 
 /**
  * IntentService
- * 
+ *
  * Manages intent processing through the Intent Graph and CRUD operations.
  * Uses IntentDatabaseAdapter for database operations.
  * Uses IntentGraphFactory for graph-based intent processing.
- * 
+ *
  * RESPONSIBILITIES:
  * - Process intents through Intent Graph
  * - Extract, verify, reconcile, and execute intent actions
@@ -55,7 +55,7 @@ export class IntentService {
   /**
    * Process user input through the Intent Graph.
    * Extracts, verifies, reconciles, and executes intent actions.
-   * 
+   *
    * @param userId - The user ID
    * @param userProfile - The user profile as JSON string
    * @param content - Optional input content to process
@@ -83,7 +83,7 @@ export class IntentService {
 
   /**
    * List intents for a user with pagination and filters.
-   * 
+   *
    * @param userId - The user ID
    * @param options - Pagination and filter options
    * @returns Intents and pagination metadata
@@ -302,7 +302,7 @@ export class IntentService {
     try {
       await this.adapter.deleteIntentIndexAssociations(intentId);
     } catch (err) {
-      logger.error('[IntentService] Failed to delete intent-index associations', { intentId, error: err });
+      logger.error('[IntentService] Failed to delete intent-network associations', { intentId, error: err });
     }
 
     try {

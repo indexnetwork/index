@@ -14,9 +14,9 @@ export interface LensEmbedding {
   embedding: number[];
 }
 
-/** Options for searchWithHydeEmbeddings (index scope, limits, min score). */
+/** Options for searchWithHydeEmbeddings (network scope, limits, min score). */
 export interface HydeSearchOptions {
-  /** Index IDs to scope the search (members / assigned intents only). */
+  /** Network IDs to scope the search (members / assigned intents only). */
   indexScope: string[];
   /** Exclude this user ID from results (e.g. source intent owner). */
   excludeUserId?: string;

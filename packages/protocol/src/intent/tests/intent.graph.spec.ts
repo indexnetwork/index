@@ -191,7 +191,7 @@ describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
     expect(result.verifiedIntents).toBeDefined();
     expect(result.actions).toBeDefined();
     expect(result.executionResults).toBeDefined();
-    
+
     // CREATE should go through full pipeline
     expect(result.inferredIntents!.length).toBeGreaterThan(0);
   }, 60000);
@@ -208,7 +208,7 @@ describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
     expect(result.inferredIntents).toBeDefined();
     expect(result.actions).toBeDefined();
     expect(result.executionResults).toBeDefined();
-    
+
     // UPDATE may skip verification if no new intents are inferred
   }, 60000);
 
@@ -224,7 +224,7 @@ describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
     // DELETE should skip inference and verification
     expect(!result.inferredIntents || result.inferredIntents.length === 0).toBe(true);
     expect(!result.verifiedIntents || result.verifiedIntents.length === 0).toBe(true);
-    
+
     // But should have actions
     expect(result.actions).toBeDefined();
     expect(result.actions!.length).toBeGreaterThan(0);
@@ -277,7 +277,7 @@ describe('IntentGraph - Prep always fetches from DB', () => {
       networkId: 'idx-yc-founders'
     });
 
-    // Prep should always fetch from DB, regardless of index scope
+    // Prep should always fetch from DB, regardless of network scope
     expect(getActiveIntentsCalls).toContain('test-user-1');
     expect(result.activeIntents).toBeDefined();
     expect(result.inferredIntents).toBeDefined();

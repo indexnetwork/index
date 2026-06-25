@@ -15,7 +15,7 @@ Determine if a User Premise (a self-descriptive proposition about who someone is
 
 INPUTS:
 1. Premise: A self-description the user asserts about themselves.
-2. Index Prompt: The purpose/scope of the target community (Index).
+2. Network Prompt: The purpose/scope of the target community (Index).
 3. Member Prompt: The specific sharing preferences of the user in that community (optional).
 
 SCORING RUBRIC:
@@ -26,7 +26,7 @@ SCORING RUBRIC:
 - 0.0-0.2: Not relevant. The premise has no connection to this community.
 
 OUTPUT RULES:
-- Provide indexScore based on how well the Premise fits the Index Prompt.
+- Provide indexScore based on how well the Premise fits the Network Prompt.
 - Provide memberScore based on how well the Premise fits the Member Prompt (if provided). If Member Prompt is missing/empty, return 0.0.
 - Provide concise reasoning.
 `;
@@ -55,7 +55,7 @@ export class PremiseIndexer {
   /**
    * Scores the relevancy of a premise to a network index and member preferences.
    *
-   * @param input - The premise text, index prompt, member prompt, and optional network context.
+   * @param input - The premise text, network prompt, member prompt, and optional network context.
    * @returns Structured output with indexScore, memberScore, and reasoning.
    */
   @Timed()
@@ -71,8 +71,8 @@ export class PremiseIndexer {
       "# Premise",
       input.premiseText,
       "",
-      "# Index Prompt",
-      input.indexPrompt || "(No index prompt provided)",
+      "# Network Prompt",
+      input.indexPrompt || "(No network prompt provided)",
       "",
       "# Member Prompt",
       input.memberPrompt || "(No member prompt provided)",

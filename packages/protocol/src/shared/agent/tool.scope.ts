@@ -47,7 +47,7 @@ export function focusedNetworkId(scope: ToolScopeEnvelope): string | undefined {
 
 /** Human-readable label for a focused scope, used in scope-restriction notes. */
 export function focusedNetworkLabel(scope: ToolScopeEnvelope & { indexName?: string }): string {
-  return scope.indexName ?? focusedNetworkId(scope) ?? 'this index';
+  return scope.indexName ?? focusedNetworkId(scope) ?? 'this network';
 }
 
 export function deriveAllowedNetworkIds(input: DeriveNetworkScopeInput): string[] {

@@ -85,7 +85,7 @@ export function createAuth(deps: AuthDeps) {
             try {
               await authDb.ensurePersonalNetwork(session.userId);
             } catch (err) {
-              logger.error('Failed to ensure personal index on sign-in', { userId: session.userId, error: err });
+              logger.error('Failed to ensure personal network on sign-in', { userId: session.userId, error: err });
             }
           },
         },
@@ -96,7 +96,7 @@ export function createAuth(deps: AuthDeps) {
             try {
               await authDb.ensurePersonalNetwork(user.id);
             } catch (err) {
-              logger.error('Failed to create personal index on registration', { userId: user.id, error: err });
+              logger.error('Failed to create personal network on registration', { userId: user.id, error: err });
             }
           },
         },

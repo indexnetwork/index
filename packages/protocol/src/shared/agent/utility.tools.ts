@@ -75,22 +75,22 @@ export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
 
 - **Users**: People on the platform. Authenticated via API key (X-API-Key header) for MCP/external agents, or session-based (Better Auth) for the web app.
 - **Profiles**: A user's identity — name, bio, skills, interests, location, social links. Generated from account data or social URLs via enrichment. One profile per user.
-- **Indexes** (also called "networks"): Communities or groups where members share intents and discover opportunities. Each has a title, optional prompt (purpose description), join policy (anyone or invite_only), and an owner. The user's **personal index** (isPersonal=true) stores their contacts.
-- **Index Members**: Junction between Users and Indexes. Tracks permissions (owner, member, contact), join date, auto-assign setting, and optional member prompt.
+- **Indexes** (also called "networks"): Communities or groups where members share intents and discover opportunities. Each has a title, optional prompt (purpose description), join policy (anyone or invite_only), and an owner. The user's **personal network** (isPersonal=true) stores their contacts.
+- **Network Members**: Junction between Users and Indexes. Tracks permissions (owner, member, contact), join date, auto-assign setting, and optional member prompt.
 - **Intents**: Signals of interest/need — what a user is looking for (e.g. "Looking for a React developer in Berlin"). Each has a description (payload), summary, confidence score (0-1), inferenceType (explicit/implicit), source tracking, and vector embedding.
 - **IntentNetworks**: Many-to-many junction between Intents and Indexes. An intent can be in multiple indexes. Has a relevancyScore (0-1) indicating how well the intent fits the index's purpose.
-- **Opportunities**: Discovered connections between users based on complementary intents within shared indexes. Have actors with roles (introducer, party), status lifecycle, match reasoning, confidence score, and presentation data.
-- **Contacts**: People in a user's personal network, stored as index members with 'contact' permission on the personal index. Can be real users or ghost users (placeholder accounts enriched from public data).
+- **Opportunities**: Discovered connections between users based on complementary intents within shared networks. Have actors with roles (introducer, party), status lifecycle, match reasoning, confidence score, and presentation data.
+- **Contacts**: People in a user's personal network, stored as network members with 'contact' permission on the personal network. Can be real users or ghost users (placeholder accounts enriched from public data).
 - **Ghost Users**: Placeholder accounts created for contacts who aren't on the platform yet. Enriched with public profile data (LinkedIn, GitHub) and participate in opportunity matching.
 
 ### Key Relationships
 - Users → Profiles (1:1)
-- Users → Indexes (many:many via Index Members)
+- Users → Indexes (many:many via Network Members)
 - Users → Intents (1:many, user owns intents)
 - Intents → Indexes (many:many via IntentNetworks with relevancyScore)
 - Opportunities → Users (many:many via actors with roles)
-- Opportunities → Indexes (scoped to shared index context)
-- Contacts → Personal Index (stored as members with 'contact' permission)`,
+- Opportunities → Indexes (scoped to shared network context)
+- Contacts → Personal Network (stored as members with 'contact' permission)`,
 
         intents: `## Intent Lifecycle
 
@@ -98,8 +98,8 @@ Intents are the core unit of discovery — they represent what users are seeking
 
 1. **Creation** (create_intent): User describes what they're looking for. The system runs inference (extracting structured intents from free text) and verification (checking specificity, speech-act type). Returns a proposal for user approval.
 2. **Confidence & Classification**: Each intent gets a confidence score (0-1), inferenceType (explicit = user stated directly, implicit = system inferred), and speech act classification (commissive, directive, assertive).
-3. **Index Assignment**: After creation, the intent is automatically evaluated against all indexes the user belongs to. The index's prompt is used as criteria. Matching indexes get linked via IntentNetworks with a relevancyScore (0-1).
-4. **Discovery Trigger**: Creating an intent triggers background opportunity detection — the system searches for other users in shared indexes whose intents complement this one.
+3. **Index Assignment**: After creation, the intent is automatically evaluated against all networks the user belongs to. The index's prompt is used as criteria. Matching indexes get linked via IntentNetworks with a relevancyScore (0-1).
+4. **Discovery Trigger**: Creating an intent triggers background opportunity detection — the system searches for other users in shared networks whose intents complement this one.
 5. **Source Tracking**: Intents track their origin via sourceType (file, integration, link, discovery_form, enrichment) and sourceId.
 6. **Update** (update_intent): Re-processes through inference/verification, recalculates embeddings and index assignments.
 7. **Archive** (delete_intent): Soft-deletes the intent. It stops participating in discovery but is not permanently removed.
@@ -113,7 +113,7 @@ Intents are the core unit of discovery — they represent what users are seeking
 
 Opportunities represent discovered connections between users — potential matches worth pursuing.
 
-1. **Detection** (discover_opportunities): The opportunity graph finds users whose intents semantically complement each other within shared indexes. Uses HyDE embeddings for retrieval and an LLM evaluator for scoring.
+1. **Detection** (discover_opportunities): The opportunity graph finds users whose intents semantically complement each other within shared networks. Uses HyDE embeddings for retrieval and an LLM evaluator for scoring.
 2. **Roles**: Each opportunity assigns roles to actors:
    - **introducer**: The person who triggered the introduction (may be the system or another user)
    - **party**: The people being connected (typically 2)
@@ -138,11 +138,11 @@ Opportunities represent discovered connections between users — potential match
 
 Indexes (also called "networks") are communities where members share what they're looking for and the system discovers connections between them.
 
-- **Purpose prompt**: Each index has an optional prompt describing its purpose (e.g. "AI/ML co-founders in Berlin"). This prompt is used by the intent indexer to evaluate whether an intent belongs in this community. Indexes without prompts accept all intents (relevancyScore defaults to 1.0).
+- **Purpose prompt**: Each index has an optional prompt describing its purpose (e.g. "AI/ML co-founders in Berlin"). This prompt is used by the intent indexer to evaluate whether an intent belongs in this community. Networks without prompts accept all intents (relevancyScore defaults to 1.0).
 - **Join policy**: "anyone" (open — any user can self-join) or "invite_only" (only the owner can add members).
-- **Personal index**: Each user has exactly one personal index (isPersonal=true) created on registration. It stores their contacts. Cannot be deleted, renamed, or listed publicly.
+- **Personal network**: Each user has exactly one personal network (isPersonal=true) created on registration. It stores their contacts. Cannot be deleted, renamed, or listed publicly.
 - **Membership**: Members can see all intents in the index. The **auto-assign** setting on a membership means new intents by that user are automatically evaluated against the index.
-- **Owner permissions**: Index owners can update settings (title, prompt, joinPolicy), add/remove members, and delete the index (if sole member).
+- **Owner permissions**: Network owners can update settings (title, prompt, joinPolicy), add/remove members, and delete the network (if sole member).
 - **Discovery scope**: Opportunities are discovered within index boundaries — the system matches intents of members who share at least one index.
 
 ### Index Workflow
@@ -172,11 +172,11 @@ Profiles are the user's identity on the platform, used for semantic matching in 
 
         contacts: `## Contact Management
 
-Contacts are people in a user's personal network, stored as members of their personal index with 'contact' permission.
+Contacts are people in a user's personal network, stored as members of their personal network with 'contact' permission.
 
 - **Adding contacts**: Via import_contacts (bulk), add_contact (single email), or import_gmail_contacts (Google integration).
 - **Ghost users**: When a contact email doesn't match an existing account, a ghost user is created. Ghost users are enriched with public profile data and participate in opportunity matching — they can be discovered even before joining the platform.
-- **Personal index scope**: Pass the personal index networkId to discover_opportunities to scope discovery to just the user's contacts.
+- **Personal network scope**: Pass the personal network networkId to discover_opportunities to scope discovery to just the user's contacts.
 - **Contact data**: Each contact has userId, name, email, avatar, and isGhost flag.
 
 ### Contact Workflow
@@ -232,7 +232,7 @@ Discovery is the process of finding meaningful connections between users based o
 3. discover_opportunities(networkId=personalIndexId) → find matches among contacts
 
 ### Creating a Community
-1. create_network(title, prompt) → create index
+1. create_network(title, prompt) → create network
 2. create_network_membership(networkId, userId) → invite members
 3. Members create intents → auto-indexed
 4. discover_opportunities(networkId) → discover connections within community`,
@@ -247,10 +247,10 @@ Discovery is the process of finding meaningful connections between users based o
 
 ### Key Constraints
 - Users can only read their own intents globally, or intents in indexes they belong to
-- Users can only read profiles of people in shared indexes
-- Index-scoped operations are restricted to that index
-- Personal indexes cannot be deleted or renamed
-- Only index owners can update settings, add/remove members (for invite_only indexes)
+- Users can only read profiles of people in shared networks
+- Network-scoped operations are restricted to that index
+- Personal networks cannot be deleted or renamed
+- Only network owners can update settings, add/remove members (for invite_only networks)
 
 ### Rate Limits & Best Practices
 - Avoid unnecessary read_intents/read_networks calls — cache results within a conversation

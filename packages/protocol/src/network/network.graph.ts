@@ -12,7 +12,7 @@ const logger = protocolLogger("NetworkGraphFactory");
  * Factory class to build and compile the Index (CRUD) Graph.
  *
  * Handles create, read, update, and delete operations for indexes.
- * Membership and intent-index assignment operations are handled by
+ * Membership and intent-network assignment operations are handled by
  * separate graphs (NetworkMembershipGraph and IntentNetworkGraph).
  *
  * Flow:
@@ -25,11 +25,11 @@ export class NetworkGraphFactory {
     // --- NODE DEFINITIONS ---
 
     /**
-     * Read Node: List indexes the user belongs to and owns.
+     * Read Node: List networks the user belongs to and owns.
      */
     const readNode = async (state: typeof NetworkGraphState.State) => {
       return timed("NetworkGraph.read", async () => {
-        logger.verbose("Read indexes", { userId: state.userId, networkId: state.networkId, showAll: state.showAll });
+        logger.verbose("Read networks", { userId: state.userId, networkId: state.networkId, showAll: state.showAll });
 
         // Shared projections for both the scoped and unscoped read paths.
         const projectMembership = (m: Awaited<ReturnType<typeof this.database.getNetworkMemberships>>[number]) => ({
@@ -56,12 +56,12 @@ export class NetworkGraphFactory {
             this.database.getPublicIndexesNotJoined(state.userId),
           ]);
 
-          // If index-scoped and not showAll, return just that index plus the
-          // user's personal index (their contacts). The personal index is part
+          // If network-scoped and not showAll, return just that index plus the
+          // user's personal network (their contacts). The personal network is part
           // of every allowed-network reach calculation for network-bound agents,
           // and a user clicked into a community-scoped
           // chat still owns their contact list — so surfacing it here keeps
-          // tools that operate on the personal index (add_contact, list_contacts,
+          // tools that operate on the personal network (add_contact, list_contacts,
           // import_*_contacts) discoverable. Other community memberships are
           // still hidden, and `publicNetworks` is omitted.
           const scopeToCurrentIndex = state.networkId && !state.showAll;
@@ -100,7 +100,7 @@ export class NetworkGraphFactory {
                 stats: {
                   memberOfCount: memberOf.length,
                   ownsCount: owns.length,
-                  scopeNote: "Showing current index and your personal index. Use showAll: true for all indexes.",
+                  scopeNote: "Showing current network and your personal network. Use showAll: true for all networks.",
                 },
               },
             };
@@ -124,7 +124,7 @@ export class NetworkGraphFactory {
             },
           };
         } catch (err) {
-          logger.error("Read indexes failed", { error: err });
+          logger.error("Read networks failed", { error: err });
           return { error: "Failed to fetch network information." };
         }
       });
@@ -135,7 +135,7 @@ export class NetworkGraphFactory {
      */
     const createNode = async (state: typeof NetworkGraphState.State) => {
       return timed("NetworkGraph.create", async () => {
-        logger.verbose("Create index", { userId: state.userId, createInput: state.createInput });
+        logger.verbose("Create network", { userId: state.userId, createInput: state.createInput });
 
         if (!state.createInput?.title?.trim()) {
           return { mutationResult: { success: false, error: "Title is required." } };
@@ -167,7 +167,7 @@ export class NetworkGraphFactory {
             },
           };
         } catch (err) {
-          logger.error("Create index failed", { error: err });
+          logger.error("Create network failed", { error: err });
           if (createdIndexId) {
             try { await this.database.softDeleteNetwork(createdIndexId); } catch {}
           }
@@ -216,12 +216,12 @@ export class NetworkGraphFactory {
     };
 
     /**
-     * Delete Node: Soft-delete an index (owner only, sole member).
+     * Delete Node: Soft-delete a network (owner only, sole member).
      */
     const deleteNode = async (state: typeof NetworkGraphState.State) => {
       return timed("NetworkGraph.delete", async () => {
         const networkId = state.networkId;
-        logger.verbose("Delete index", { userId: state.userId, networkId });
+        logger.verbose("Delete network", { userId: state.userId, networkId });
 
         if (!networkId) {
           return { mutationResult: { success: false, error: "networkId is required for delete." } };
@@ -248,7 +248,7 @@ export class NetworkGraphFactory {
             },
           };
         } catch (err) {
-          logger.error("Delete index failed", { error: err });
+          logger.error("Delete network failed", { error: err });
           return { mutationResult: { success: false, error: "Failed to delete network." } };
         }
       });

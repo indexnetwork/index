@@ -29,7 +29,7 @@ describe("ChatController Integration", () => {
   const intentAdapter = new IntentDatabaseAdapter();
   const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
-  /** Index IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
+  /** Network IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
   let testIndexId: string | null = null;
   let testIndexIdOther: string | null = null;
   let unauthorizedStreamIndexId: string | null = null;
@@ -137,7 +137,7 @@ describe("ChatController Integration", () => {
       };
 
       const created = await adapter.createIntent(intentData);
-      
+
       expect(created).not.toBeNull();
       expect(created.id).toBeDefined();
       expect(created.payload).toBe(intentData.payload);
@@ -156,7 +156,7 @@ describe("ChatController Integration", () => {
       // Get the intent we created
       const intents = await adapter.getActiveIntents(testUserId);
       expect(intents.length).toBeGreaterThan(0);
-      
+
       const intentId = intents[0].id;
       const updated = await adapter.updateIntent(intentId, {
         payload: "Looking for collaborators on a machine learning project",
@@ -172,7 +172,7 @@ describe("ChatController Integration", () => {
       // Get the intent we created
       const intents = await adapter.getActiveIntents(testUserId);
       expect(intents.length).toBeGreaterThan(0);
-      
+
       const intentId = intents[0].id;
       const result = await adapter.archiveIntent(intentId);
 
@@ -223,7 +223,7 @@ describe("ChatController Integration", () => {
       expect(intents[0].payload).toBe("Looking for collaborators on a machine learning project");
     });
 
-    test("getIntentsInIndexForMember should return intents when queried by index ID", async () => {
+    test("getIntentsInIndexForMember should return intents when queried by network ID", async () => {
       expect(testIndexId).not.toBeNull();
       const intents = await adapter.getIntentsInIndexForMember(testUserId!, testIndexId!);
       expect(intents).toBeArray();
@@ -252,7 +252,7 @@ describe("ChatController Integration", () => {
       const mockRequest = {
         json: async () => ({})
       } as unknown as Request;
-      
+
       const mockUser: AuthenticatedUser = {
         id: testUserId,
         email: "test-chat-controller@example.com",
@@ -270,7 +270,7 @@ describe("ChatController Integration", () => {
       const mockRequest = {
         json: async () => { throw new Error('Invalid JSON'); }
       } as unknown as Request;
-      
+
       const mockUser: AuthenticatedUser = {
         id: testUserId,
         email: "test-chat-controller@example.com",
@@ -279,7 +279,7 @@ describe("ChatController Integration", () => {
 
       const response = await controller.message(mockRequest, mockUser);
       const data = await response.json() as ChatResponse;
-      
+
       expect(response.status).toBe(400);
       expect(data.error).toBe('Invalid request body. Expected { message: string }');
     });
@@ -288,7 +288,7 @@ describe("ChatController Integration", () => {
       const mockRequest = {
         json: async () => ({ message: "Hello, how are you?" })
       } as unknown as Request;
-      
+
       const mockUser: AuthenticatedUser = {
         id: testUserId,
         email: "test-chat-controller@example.com",
@@ -311,7 +311,7 @@ describe("ChatController Integration", () => {
       const mockRequest = {
         json: async () => ({ message: "I'm looking for people who are interested in building AI agents" })
       } as unknown as Request;
-      
+
       const mockUser: AuthenticatedUser = {
         id: testUserId,
         email: "test-chat-controller@example.com",
@@ -333,7 +333,7 @@ describe("ChatController Integration", () => {
       const mockRequest = {
         json: async () => ({ message: "Update my profile to include that I'm now focused on LLM applications" })
       } as unknown as Request;
-      
+
       const mockUser: AuthenticatedUser = {
         id: testUserId,
         email: "test-chat-controller@example.com",

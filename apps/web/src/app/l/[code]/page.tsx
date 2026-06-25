@@ -47,16 +47,16 @@ export default function InvitationPage() {
   useEffect(() => {
     const loadIndexAndCheckAuth = async () => {
       try {
-        // Load index by share code (works for both invitation codes and index IDs)
+        // Load index by share code (works for both invitation codes and network IDs)
         const index = await publicIndexesService.getIndexByShareCode(code!);
         setState(prev => ({ ...prev, index }));
 
         // Reject public networks - they should use /index/[networkId] instead
         if (index.permissions?.joinPolicy === 'anyone') {
-          setState(prev => ({ 
-            ...prev, 
-            step: 'error', 
-            error: 'No invitation found' 
+          setState(prev => ({
+            ...prev,
+            step: 'error',
+            error: 'No invitation found'
           }));
           return;
         }
@@ -89,18 +89,18 @@ export default function InvitationPage() {
           }
         } catch (err) {
           console.error('Failed to fetch user:', err);
-          setState(prev => ({ 
-            ...prev, 
-            step: 'error', 
-            error: 'Failed to load user data' 
+          setState(prev => ({
+            ...prev,
+            step: 'error',
+            error: 'Failed to load user data'
           }));
         }
       } catch (err) {
-        console.error('Failed to load index:', err);
-        setState(prev => ({ 
-          ...prev, 
-          step: 'error', 
-          error: (err as Error)?.message || 'Invalid or expired invitation link' 
+        console.error('Failed to load network:', err);
+        setState(prev => ({
+          ...prev,
+          step: 'error',
+          error: (err as Error)?.message || 'Invalid or expired invitation link'
         }));
       }
     };
@@ -121,12 +121,12 @@ export default function InvitationPage() {
 
     try {
       setState(prev => ({ ...prev, step: 'joining' }));
-      
+
       // Accept private invitation
       const result = await indexesService.acceptInvitation(code!);
-      
+
       if (result?.alreadyMember) {
-        success('You are already a member of this index');
+        success('You are already a member of this network');
         setState(prev => ({ ...prev, step: 'already-member' }));
       } else {
         success(`Successfully joined ${result?.network?.title || state.index.title}!`);
@@ -138,10 +138,10 @@ export default function InvitationPage() {
     } catch (err) {
       console.error('Failed to accept invitation:', err);
       notifyError((err as Error)?.message || 'Failed to accept invitation');
-      setState(prev => ({ 
-        ...prev, 
-        step: 'error', 
-        error: (err as Error)?.message || 'Failed to accept invitation' 
+      setState(prev => ({
+        ...prev,
+        step: 'error',
+        error: (err as Error)?.message || 'Failed to accept invitation'
       }));
     }
   };
@@ -252,7 +252,7 @@ export default function InvitationPage() {
           <ContentContainer>
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-              <p className="text-gray-600 font-ibm-plex-mono">Joining index...</p>
+              <p className="text-gray-600 font-ibm-plex-mono">Joining network...</p>
             </div>
           </ContentContainer>
         );

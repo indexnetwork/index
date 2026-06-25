@@ -744,9 +744,9 @@ export class OpportunityDatabaseAdapter {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Index Graph Database Adapter
+// Network Graph Database Adapter
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Database adapter for Index Graph (intent/index context and assignment).
+ * Database adapter for Network Graph (intent/network context and assignment).
  */

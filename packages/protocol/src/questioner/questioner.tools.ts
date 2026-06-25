@@ -95,7 +95,7 @@ export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
               isScoped: true,
               scopedToIndex: focusedNetworkLabel(context),
               message:
-                `Results are restricted to "${context.indexName ?? "this index"}" and ` +
+                `Results are restricted to "${context.indexName ?? "this network"}" and ` +
                 `exclude negotiation questions because this agent is scoped to that index.`,
             },
           });

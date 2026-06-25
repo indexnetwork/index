@@ -1,5 +1,5 @@
 /**
- * Integration tests for Personal Index lifecycle.
+ * Integration tests for Personal Network lifecycle.
  * Verifies ensurePersonalNetwork, getPersonalIndexId, contact sync,
  * contact removal cleanup, getNetworkMemberships filtering, and isPersonalNetwork.
  *
@@ -71,7 +71,7 @@ beforeAll(async () => {
     status: 'ACTIVE',
   });
 
-  // Use ensurePersonalNetwork to create the owner's personal index
+  // Use ensurePersonalNetwork to create the owner's personal network
   const personalIndexId = await ensurePersonalNetwork(ownerUserId);
 
   fixture = {
@@ -116,7 +116,7 @@ afterAll(async () => {
 // ─── ensurePersonalNetwork ────────────────────────────────────────────────────────
 
 describe('ensurePersonalNetwork', () => {
-  it('creates a personal index with correct title and personal_indexes entry', async () => {
+  it('creates a personal network with correct title and personal_indexes entry', async () => {
     const [row] = await db
       .select()
       .from(networks)
@@ -166,11 +166,11 @@ describe('ensurePersonalNetwork', () => {
     expect(membership.autoAssign).toBe(true);
   });
 
-  it('is idempotent — calling twice returns the same index ID', async () => {
+  it('is idempotent — calling twice returns the same network ID', async () => {
     const secondCall = await ensurePersonalNetwork(fixture.ownerUserId);
     expect(secondCall).toBe(fixture.personalIndexId);
 
-    // Verify only one personal index exists for this user
+    // Verify only one personal network exists for this user
     const rows = await db
       .select({ networkId: personalNetworks.networkId })
       .from(personalNetworks)
@@ -182,12 +182,12 @@ describe('ensurePersonalNetwork', () => {
 // ─── getPersonalIndexId ─────────────────────────────────────────────────────────
 
 describe('getPersonalIndexId', () => {
-  it('returns the correct index ID for a user with a personal index', async () => {
+  it('returns the correct network ID for a user with a personal network', async () => {
     const result = await getPersonalIndexId(fixture.ownerUserId);
     expect(result).toBe(fixture.personalIndexId);
   });
 
-  it('returns null for a user without a personal index', async () => {
+  it('returns null for a user without a personal network', async () => {
     const result = await getPersonalIndexId(fixture.otherUserId);
     expect(result).toBeNull();
   });
@@ -198,12 +198,12 @@ describe('getPersonalIndexId', () => {
 describe('getPersonalIndexesForContact', () => {
   const chatDb = new ChatDatabaseAdapter();
 
-  it('returns empty array when user is not a contact in any personal index', async () => {
+  it('returns empty array when user is not a contact in any personal network', async () => {
     const result = await chatDb.getPersonalIndexesForContact(fixture.otherUserId);
     expect(result).toEqual([]);
   });
 
-  it('returns personal indexes where user is a contact member', async () => {
+  it('returns personal networks where user is a contact member', async () => {
     // Manually add the contact user as a contact member
     await db.insert(networkMembers).values({
       networkId: fixture.personalIndexId,
@@ -218,9 +218,9 @@ describe('getPersonalIndexesForContact', () => {
   });
 });
 
-// ─── upsertContactMembership → personal index sync ─────────────────────────────
+// ─── upsertContactMembership → personal network sync ─────────────────────────────
 
-describe('upsertContactMembership → personal index sync', () => {
+describe('upsertContactMembership → personal network sync', () => {
   const chatDb = new ChatDatabaseAdapter();
 
   it('creates index_members entry with contact permissions for new contacts', async () => {
@@ -251,10 +251,10 @@ describe('upsertContactMembership → personal index sync', () => {
 
 // ─── Contact removal → cleanup ──────────────────────────────────────────────────
 
-describe('hardDeleteContactMembership → personal index cleanup', () => {
+describe('hardDeleteContactMembership → personal network cleanup', () => {
   const chatDb = new ChatDatabaseAdapter();
 
-  it('removes contact membership from personal index', async () => {
+  it('removes contact membership from personal network', async () => {
     await chatDb.hardDeleteContactMembership(fixture.ownerUserId, fixture.contactUserId);
 
     // Contact's membership should be removed
@@ -276,7 +276,7 @@ describe('hardDeleteContactMembership → personal index cleanup', () => {
 describe('getNetworkMemberships', () => {
   const chatDb = new ChatDatabaseAdapter();
 
-  it('returns the user\'s own personal index', async () => {
+  it('returns the user\'s own personal network', async () => {
     const memberships = await chatDb.getNetworkMemberships(fixture.ownerUserId);
 
     const personalMembership = memberships.find(m => m.networkId === fixture.personalIndexId);
@@ -291,8 +291,8 @@ describe('getNetworkMemberships', () => {
     expect(regularMembership).toBeDefined();
   });
 
-  it('does NOT return other users\' personal indexes the user is a contact in', async () => {
-    // Re-add contact as member of owner's personal index
+  it('does NOT return other users\' personal networks the user is a contact in', async () => {
+    // Re-add contact as member of owner's personal network
     await db.insert(networkMembers).values({
       networkId: fixture.personalIndexId,
       userId: fixture.contactUserId,
@@ -300,7 +300,7 @@ describe('getNetworkMemberships', () => {
       autoAssign: false,
     }).onConflictDoNothing();
 
-    // Contact's memberships should NOT include the owner's personal index
+    // Contact's memberships should NOT include the owner's personal network
     const memberships = await chatDb.getNetworkMemberships(fixture.contactUserId);
     const ownerPersonalIndex = memberships.find(m => m.networkId === fixture.personalIndexId);
     expect(ownerPersonalIndex).toBeUndefined();
@@ -312,7 +312,7 @@ describe('getNetworkMemberships', () => {
 describe('isPersonalNetwork', () => {
   const chatDb = new ChatDatabaseAdapter();
 
-  it('returns true for a personal index', async () => {
+  it('returns true for a personal network', async () => {
     const result = await chatDb.isPersonalNetwork(fixture.personalIndexId);
     expect(result).toBe(true);
   });
@@ -330,19 +330,19 @@ describe('isPersonalNetwork', () => {
 
 // ─── NetworkService assertNotPersonal guard ───────────────────────────────────────
 
-describe('NetworkService personal index guards', () => {
+describe('NetworkService personal network guards', () => {
   const service = new NetworkService();
 
-  it('rejects updateNetwork on a personal index', async () => {
+  it('rejects updateNetwork on a personal network', async () => {
     await expect(
       service.updateNetwork(fixture.personalIndexId, fixture.ownerUserId, { title: 'New Title' }),
-    ).rejects.toThrow('personal indexes cannot be modified directly');
+    ).rejects.toThrow('personal networks cannot be modified directly');
   });
 
-  it('rejects deleteNetwork on a personal index', async () => {
+  it('rejects deleteNetwork on a personal network', async () => {
     await expect(
       service.deleteNetwork(fixture.personalIndexId, fixture.ownerUserId),
-    ).rejects.toThrow('personal indexes cannot be modified directly');
+    ).rejects.toThrow('personal networks cannot be modified directly');
   });
 
   it('allows updateNetwork on a regular index', async () => {
@@ -350,8 +350,8 @@ describe('NetworkService personal index guards', () => {
     try {
       await service.updateNetwork(fixture.regularIndexId, fixture.ownerUserId, { title: TEST_PREFIX + 'Updated' });
     } catch (error: unknown) {
-      // Only fail if the error is about personal indexes
-      if (error instanceof Error && error.message.includes('personal indexes')) {
+      // Only fail if the error is about personal networks
+      if (error instanceof Error && error.message.includes('personal networks')) {
         throw error;
       }
       // Other errors (e.g. missing permissions check) are acceptable here

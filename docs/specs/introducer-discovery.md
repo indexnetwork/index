@@ -12,7 +12,7 @@ Build a background pipeline that proactively discovers introducer opportunities 
 
 ### Contact-scoped discovery
 
-For each of a user's top-N contacts (sorted by intent freshness), run a scoped HyDE discovery against other contacts within the user's personal index. Reuse the existing `OpportunityGraphFactory` with `onBehalfOfUserId` set to the contact being evaluated, scoped to the user's personal index.
+For each of a user's top-N contacts (sorted by intent freshness), run a scoped HyDE discovery against other contacts within the user's personal network. Reuse the existing `OpportunityGraphFactory` with `onBehalfOfUserId` set to the contact being evaluated, scoped to the user's personal network.
 
 - Cap at 5 contacts per maintenance cycle
 - Cap at 3 candidate opportunities per contact
@@ -37,7 +37,7 @@ Introducer opportunities naturally fill connector-flow slots via the existing `c
 
 - Maintenance graph invocation remains fire-and-forget; introducer discovery must not block the home view response
 - Must reuse existing `OpportunityGraphFactory` -- no parallel discovery implementation
-- Discovery scoped to user's personal index contacts only (Phase 1)
+- Discovery scoped to user's personal network contacts only (Phase 1)
 - Opportunities created with introducer as the `userId` (state.userId) and contact as `onBehalfOfUserId`
 - Services do not import other services; cross-service communication via events/queues
 - Graph factories receive dependencies via constructor injection
@@ -47,7 +47,7 @@ Introducer opportunities naturally fill connector-flow slots via the existing `c
 
 1. `MaintenanceGraphFactory` has an `introducerDiscovery` node that discovers introducer opportunities
 2. The introducer discovery node activates when connector-flow count is below soft target
-3. Contacts are selected from the user's personal index (up to 5 per cycle)
+3. Contacts are selected from the user's personal network (up to 5 per cycle)
 4. Each contact's intents are used to discover opportunities against other contacts (up to 3 per contact)
 5. Created opportunities have `detection.source = 'introducer_discovery'` and status `latent`
 6. Created opportunities have the user as introducer actor and both contacts as parties

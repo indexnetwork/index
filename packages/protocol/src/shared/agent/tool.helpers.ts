@@ -54,7 +54,7 @@ export type CompiledGraph = { invoke: (input: any) => Promise<any> };
 
 /**
  * Resolved context available to every tool handler.
- * Contains the current user and optional index identity, resolved from DB at init.
+ * Contains the current user and optional network identity, resolved from DB at init.
  * The LLM can see this context (via system prompt) but cannot change it.
  */
 export interface ResolvedToolContext {
@@ -69,7 +69,7 @@ export interface ResolvedToolContext {
   /** Focused request scope id. When `scopeType === 'network'`, this is the focused network id. */
   scopeId?: string;
   indexName?: string;
-  /** True when chat is index-scoped and the user owns the index. */
+  /** True when chat is network-scoped and the user owns the index. */
   isOwner?: boolean;
   // Rich identity context for prompt/tool orchestration.
   user: UserRecord;
@@ -131,11 +131,11 @@ export interface ToolContext {
   database: ChatGraphCompositeDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. Created internally if not provided. */
   userDb?: UserDatabase;
-  /** Context-bound database for LLM/system operations on cross-user resources within shared indexes. Created internally if not provided. */
+  /** Context-bound database for LLM/system operations on cross-user resources within shared networks. Created internally if not provided. */
   systemDb?: SystemDatabase;
   embedder: Embedder;
   scraper: Scraper;
-  /** When set, chat is scoped to this index; tools use it as the default focused network. */
+  /** When set, chat is scoped to this network; tools use it as the default focused network. */
   networkId?: string;
   /** Focused request scope type. Currently only `network` is supported. */
   scopeType?: ToolScopeType;
@@ -278,7 +278,7 @@ export class ChatContextAccessError extends Error {
 
 /**
  * Resolve the canonical context used by chat tools and system prompt.
- * This preloads user identity, profile, index memberships, and scoped index role.
+ * This preloads user identity, profile, network memberships, and scoped index role.
  */
 export async function resolveChatContext(params: {
   database: Pick<
@@ -332,7 +332,7 @@ export async function resolveChatContext(params: {
 
     if (!isMember) {
       throw new ChatContextAccessError(
-        "You are not a member of this index",
+        "You are not a member of this network",
         403,
         "INDEX_MEMBERSHIP_REQUIRED"
       );
@@ -434,7 +434,7 @@ export interface ToolDeps {
   database: ChatGraphCompositeDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. */
   userDb: UserDatabase;
-  /** Context-bound database for LLM/system operations on cross-user resources within shared indexes. */
+  /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */
   systemDb: SystemDatabase;
   scraper: Scraper;
   embedder: import('../interfaces/embedder.interface.js').Embedder;

@@ -163,7 +163,7 @@ async function opportunityStatusUpdate(
 }
 
 /**
- * Gather profiles and intents for two users, find a shared index,
+ * Gather profiles and intents for two users, find a shared network,
  * then call discover_opportunities in introduction mode.
  */
 async function discoverIntroduction(
@@ -175,7 +175,7 @@ async function discoverIntroduction(
 ): Promise<void> {
   if (!json) output.info("Gathering data for introduction...");
 
-  // Step 1: Find shared indexes between the two users
+  // Step 1: Find shared networks between the two users
   const [membershipsA, membershipsB] = await Promise.all([
     client.callTool("read_network_memberships", { userId: userA }),
     client.callTool("read_network_memberships", { userId: userB }),
@@ -194,7 +194,7 @@ async function discoverIntroduction(
   const shared = indexesB.filter((m) => idsA.has(m.networkId));
 
   if (shared.length === 0) {
-    const err = "No shared indexes found between these users. They must be members of at least one common network.";
+    const err = "No shared networks found between these users. They must be members of at least one common network.";
     if (json) { console.log(JSON.stringify({ success: false, error: err })); return; }
     output.error(err, 1);
     return;
