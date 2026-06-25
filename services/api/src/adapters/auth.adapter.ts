@@ -90,10 +90,10 @@ export class AuthDatabaseAdapter {
   }
 
   /**
-   * Creates a personal index for the user if one doesn't exist.
+   * Creates a personal network for the user if one doesn't exist.
    * Idempotent — safe to call on every sign-in.
    * @param userId - The authenticated user
-   * @returns The personal index ID
+   * @returns The personal network ID
    */
   async ensurePersonalNetwork(userId: string): Promise<string> {
     return ensurePersonalNetwork(userId);

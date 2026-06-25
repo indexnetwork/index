@@ -34,10 +34,10 @@ export function detectSocialLabel(value: string): string {
 export const SYSTEM_AGENT_ID = 'system-agent';
 
 /**
- * Creates a personal index for the user if one doesn't exist.
+ * Creates a personal network for the user if one doesn't exist.
  * Adds the user as the owner member.
- * @param userId - The user to create a personal index for
- * @returns The personal index ID
+ * @param userId - The user to create a personal network for
+ * @returns The personal network ID
  */
 export async function ensurePersonalNetwork(userId: string): Promise<string> {
   // Fast path: check mapping table
@@ -51,9 +51,9 @@ export async function ensurePersonalNetwork(userId: string): Promise<string> {
 
   const networkId = crypto.randomUUID();
 
-  // Personal indexes are prompt-less by default so the assignment policy treats
+  // Personal networks are prompt-less by default so the assignment policy treats
   // them as "no filtration" (score 1.0) — every one of the owner's intents lands
-  // in their own personal index. The owner may later set a prompt to curate it.
+  // in their own personal network. The owner may later set a prompt to curate it.
   await db.insert(schema.networks).values({
     id: networkId,
     title: 'My Network',
@@ -83,9 +83,9 @@ export async function ensurePersonalNetwork(userId: string): Promise<string> {
 }
 
 /**
- * Returns the personal index ID for a user.
+ * Returns the personal network ID for a user.
  * @param userId - The user to look up
- * @returns The personal index ID, or null if not found
+ * @returns The personal network ID, or null if not found
  */
 export async function getPersonalIndexId(userId: string): Promise<string | null> {
   const result = await db
@@ -512,7 +512,7 @@ export interface BasicUserInfo {
 
 /**
  * UserDatabaseAdapter
- * 
+ *
  * Wraps all database operations for users table and related tables.
  */
 export interface FileRow {
@@ -546,7 +546,7 @@ export interface FileListResult {
 
 /**
  * FileDatabaseAdapter
- * 
+ *
  * Wraps all database operations for files table.
  */
 export interface LinkRow {

@@ -51,7 +51,7 @@ beforeAll(async () => {
   await db.insert(networks).values({
     id: networkId,
     title: TEST_PREFIX + 'Test Index',
-    prompt: 'Test index prompt',
+    prompt: 'Test network prompt',
   });
   await db.insert(networkMembers).values([
     { networkId, userId: userAId, permissions: ['owner'], autoAssign: false },
@@ -181,7 +181,7 @@ describe('ChatDatabaseAdapter', () => {
     await adapter.archiveIntent(created.id);
   });
 
-  it('should get intents in index for member by index id', async () => {
+  it('should get intents in index for member by network id', async () => {
     const list = await adapter.getIntentsInIndexForMember(fixture.userAId, fixture.networkId);
     expect(list.length).toBeGreaterThanOrEqual(1);
     expect(list.some((i) => i.id === fixture.intent1Id)).toBe(true);
@@ -225,7 +225,7 @@ describe('ChatDatabaseAdapter', () => {
     expect(doc!.hydeText).toBe(desc);
   });
 
-  it('should get index memberships for user', async () => {
+  it('should get network memberships for user', async () => {
     const memberships = await adapter.getNetworkMemberships(fixture.userAId);
     expect(memberships.length).toBeGreaterThanOrEqual(1);
     const m = memberships.find((x) => x.networkId === fixture.networkId);
@@ -258,7 +258,7 @@ describe('ChatDatabaseAdapter', () => {
     }
   });
 
-  it('should get user index ids for auto-assign member', async () => {
+  it('should get user network ids for auto-assign member', async () => {
     const indexIds = await adapter.getUserIndexIds(fixture.userBId);
     expect(indexIds).toContain(fixture.networkId);
   });
@@ -270,7 +270,7 @@ describe('ChatDatabaseAdapter', () => {
     expect(row!.userId).toBe(fixture.userAId);
   });
 
-  it('should get index member context for member with autoAssign', async () => {
+  it('should get network member context for member with autoAssign', async () => {
     const ctx = await adapter.getNetworkMemberContext(fixture.networkId, fixture.userBId);
     expect(ctx).not.toBeNull();
     expect(ctx!.networkId).toBe(fixture.networkId);
@@ -282,7 +282,7 @@ describe('ChatDatabaseAdapter', () => {
     expect(assigned).toBe(true);
   });
 
-  it('should get index ids for intent', async () => {
+  it('should get network ids for intent', async () => {
     const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
     expect(indexIds).toEqual([fixture.networkId]);
     const empty = await adapter.getNetworkIdsForIntent(uuidv4());
@@ -319,7 +319,7 @@ describe('ChatDatabaseAdapter', () => {
       finalScore: 0.76,
       assigned: true,
       reason: 'Matched network and member prompts.',
-      evaluator: 'intent-indexer',
+      evaluator: 'intent-networker',
       source: 'test',
       createdAt: '2026-06-09T00:00:00.000Z',
     };
@@ -422,13 +422,13 @@ describe('ChatDatabaseAdapter', () => {
     expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
   });
 
-  it('should get index members for member', async () => {
+  it('should get network members for member', async () => {
     const members = await adapter.getNetworkMembersForMember(fixture.networkId, fixture.userBId);
     expect(members.length).toBeGreaterThanOrEqual(1);
     expect(members.some((m) => m.userId === fixture.userAId || m.userId === fixture.userBId)).toBe(true);
   });
 
-  it('should get index members for owner', async () => {
+  it('should get network members for owner', async () => {
     const members = await adapter.getNetworkMembersForOwner(fixture.networkId, fixture.userAId);
     expect(members.length).toBeGreaterThanOrEqual(1);
   });
@@ -448,7 +448,7 @@ describe('ChatDatabaseAdapter', () => {
     expect(list.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('should report index membership', async () => {
+  it('should report network membership', async () => {
     expect(await adapter.isNetworkMember(fixture.networkId, fixture.userAId)).toBe(true);
     expect(await adapter.isNetworkMember(fixture.networkId, fixture.userBId)).toBe(true);
     expect(await adapter.isNetworkMember(fixture.networkId, uuidv4())).toBe(false);
@@ -1400,7 +1400,7 @@ describe('NetworkGraphDatabaseAdapter', () => {
     expect(row).toBeNull();
   });
 
-  it('should get index member context', async () => {
+  it('should get network member context', async () => {
     const ctx = await adapter.getNetworkMemberContext(fixture.networkId, fixture.userBId);
     expect(ctx).not.toBeNull();
     expect(ctx!.networkId).toBe(fixture.networkId);
@@ -1416,7 +1416,7 @@ describe('NetworkGraphDatabaseAdapter', () => {
     expect(await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.networkId)).toBe(true);
   });
 
-  it('should get index ids for intent', async () => {
+  it('should get network ids for intent', async () => {
     const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
     expect(indexIds).toEqual([fixture.networkId]);
     const empty = await adapter.getNetworkIdsForIntent(uuidv4());
@@ -1428,7 +1428,7 @@ describe('NetworkGraphDatabaseAdapter', () => {
     await db.insert(intents).values({
       id: newIntentId,
       userId: fixture.userBId,
-      payload: TEST_PREFIX + 'Index graph assign test',
+      payload: TEST_PREFIX + 'Network graph assign test',
       sourceType: 'discovery_form',
       sourceId: fixture.userBId,
     });

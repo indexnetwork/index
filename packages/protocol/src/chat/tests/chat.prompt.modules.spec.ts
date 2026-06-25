@@ -384,7 +384,7 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
 }
 
 describe("buildSystemContent snapshot identity", () => {
-  test("general chat (no index scope, no onboarding) — patterns are NOT in base prompt", () => {
+  test("general chat (no network scope, no onboarding) — patterns are NOT in base prompt", () => {
     const ctx = makeCtx();
     const output = buildSystemContent(ctx);
 
@@ -395,7 +395,7 @@ describe("buildSystemContent snapshot identity", () => {
     const preloadedIdx = output.indexOf("### Current User (preloaded context)");
     const architectureIdx = output.indexOf("## Architecture Philosophy");
     const toolsIdx = output.indexOf("## Tools Reference");
-    const scopingIdx = output.indexOf("### Index Scope");
+    const scopingIdx = output.indexOf("### Network Scope");
     const urlsIdx = output.indexOf("### URLs");
     const narrationIdx = output.indexOf("### Narration Style");
     const outputFmtIdx = output.indexOf("### Output Format");
@@ -425,7 +425,7 @@ describe("buildSystemContent snapshot identity", () => {
     expect(output).toMatchSnapshot();
   });
 
-  test("scoped chat (index scope, owner) produces stable output", () => {
+  test("scoped chat (network scope, owner) produces stable output", () => {
     const ctx = makeCtx({
       networkId: "idx-community",
       indexName: "AI Builders",
@@ -436,7 +436,7 @@ describe("buildSystemContent snapshot identity", () => {
     const output = buildSystemContent(ctx);
 
     expect(output).toContain('This chat is scoped to index "AI Builders"');
-    expect(output).toContain("You are the **owner** of this index");
+    expect(output).toContain("You are the **owner** of this network");
     expect(output).toContain("scoped to current index");
 
     expect(output).toMatchSnapshot();
@@ -548,7 +548,7 @@ describe("buildSystemContent snapshot identity", () => {
 
     // The base prompt sections should still be present
     expect(output).toContain("You are Index.");
-    expect(output).toContain("### Index Scope");
+    expect(output).toContain("### Network Scope");
     expect(output).toContain("### Output Format");
   });
 });

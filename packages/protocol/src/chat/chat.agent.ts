@@ -247,7 +247,7 @@ export class ChatAgent {
 
   /**
    * Async factory: creates a ChatAgent with resolved user/index context.
-   * Resolves user/index identity from DB during tool initialization.
+   * Resolves user/network identity from DB during tool initialization.
    */
   static async create(context: ToolContext): Promise<ChatAgent> {
     const { networkId: legacyNetworkId } = context;

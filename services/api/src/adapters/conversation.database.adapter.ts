@@ -1402,7 +1402,7 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Update chat session index scope.
+   * Update chat session network scope.
    */
   async updateChatSessionIndex(sessionId: string, networkId: string | null): Promise<void> {
     await this._upsertConvMeta(sessionId, { networkId });

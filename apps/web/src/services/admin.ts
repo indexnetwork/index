@@ -22,7 +22,7 @@ export interface OpportunityDiscoveryResponse {
 
 // Service functions for admin operations
 export const createAdminService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
-  // Discover opportunities for index members
+  // Discover opportunities for network members
   discoverOpportunities: async (networkId: string, request: OpportunityDiscoveryRequest) => {
     return await api.post<OpportunityDiscoveryResponse>(`/admin/${networkId}/opportunities`, request);
   }

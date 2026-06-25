@@ -33,7 +33,7 @@ describe("read_user_contexts — query mode resilience", () => {
         ],
         // Throws for bad-user (e.g. fragmented identity), succeeds for good-user
         getProfile: async (userId: string) => {
-          if (userId === "bad-user") throw new Error("Access denied: no shared index with user");
+          if (userId === "bad-user") throw new Error("Access denied: no shared network with user");
           return {
             identity: { name: "Alice Smith", bio: "Engineer", location: "NYC" },
             attributes: { skills: ["TypeScript"], interests: ["AI"] },

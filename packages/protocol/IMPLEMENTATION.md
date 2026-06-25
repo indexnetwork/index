@@ -167,8 +167,8 @@ Each factory takes its typed dependencies in the constructor and exposes a
 | `PremiseGraphFactory` | Decompose and index a user's premises |
 | `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
-| `NetworkGraphFactory` | Manage index/network CRUD |
-| `NetworkMembershipGraphFactory` | Manage index/network member join/leave |
+| `NetworkGraphFactory` | Manage network/network CRUD |
+| `NetworkMembershipGraphFactory` | Manage network/network member join/leave |
 | `IntentNetworkGraphFactory` | Evaluate and assign/unassign intents to indexes |
 | `HomeGraphFactory` | Categorize and curate home-feed content |
 | `MaintenanceGraphFactory` | Periodic maintenance (feed health, opportunity expiration) |

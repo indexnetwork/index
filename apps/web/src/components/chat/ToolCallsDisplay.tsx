@@ -152,8 +152,8 @@ const GRAPH_DISPLAY_NAMES: Record<string, string> = {
   "home": "Home graph",
   "network": "Network graph",
   "network_membership": "Network membership",
-  "index": "Index graph",
-  "index_membership": "Index membership",
+  "index": "Network graph",
+  "index_membership": "Network membership",
 };
 
 const AGENT_DISPLAY_NAMES: Record<string, string> = {
@@ -169,7 +169,7 @@ const AGENT_DISPLAY_NAMES: Record<string, string> = {
   "intent-inferrer": "Inferring intents",
   "intent-verifier": "Verifying intents",
   "intent-reconciler": "Reconciling intents",
-  "intent-indexer": "Indexing intents",
+  "intent-networker": "Indexing intents",
   "profile-generator": "Generating profile",
   "hyde-generator": "Generating HyDE",
   "lens-inferrer": "Inferring lenses",

@@ -129,7 +129,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     expect(introducerJobs.length).toBe(0);
   }, 30_000);
 
-  it('skips introducer discovery when user has no personal index', async () => {
+  it('skips introducer discovery when user has no personal network', async () => {
     const deps = createMockDeps({
       opportunities: Array.from({ length: 3 }, (_, i) => ({
         id: `opp-${i}`,
@@ -151,7 +151,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId });
 
-    // No introducer discovery jobs (no personal index)
+    // No introducer discovery jobs (no personal network)
     const addJobCalls = (deps.queue.addJob as ReturnType<typeof mock>).mock.calls;
     const introducerJobs = addJobCalls.filter(
       (call: unknown[]) => typeof call[0] === 'object' && call[0]?.contactUserId != null,

@@ -145,7 +145,7 @@ export default function SettingsTab({
       } else if (removeImageRequested) {
         finalImageUrl = null;
       }
-      // Personal indexes accept only a prompt edit (rename/avatar are blocked
+      // Personal networks accept only a prompt edit (rename/avatar are blocked
       // server-side); send prompt alone to avoid a rejected update.
       const updatedIndex = await updateNetwork(
         networkId,
@@ -298,7 +298,7 @@ export default function SettingsTab({
           </label>
           <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" disabled={network.isPersonal} />
           {network.isPersonal && (
-            <p className="text-xs text-gray-400 mt-1.5">Your personal index can&apos;t be renamed.</p>
+            <p className="text-xs text-gray-400 mt-1.5">Your personal network can&apos;t be renamed.</p>
           )}
         </div>
         <div>

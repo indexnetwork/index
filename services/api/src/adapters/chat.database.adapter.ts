@@ -384,7 +384,7 @@ export class ChatDatabaseAdapter {
 
   /**
    * IDs of all non-personal (community) networks the user is an active member of.
-   * Excludes soft-deleted memberships, soft-deleted networks, and personal indexes.
+   * Excludes soft-deleted memberships, soft-deleted networks, and personal networks.
    * @param userId - The user whose community memberships to resolve
    * @returns Array of network IDs (possibly empty)
    */
@@ -403,7 +403,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Check whether an index is a personal index.
+   * Check whether an index is a personal network.
    * @param networkId - The index to check
    * @returns true if the index has isPersonal = true
    */
@@ -487,8 +487,8 @@ export class ChatDatabaseAdapter {
         and(
           isNull(schema.networks.deletedAt),
           inArray(schema.networks.id, ids),
-          // Only include personal indexes owned by the requesting user;
-          // contacts in someone else's personal index must not see it.
+          // Only include personal networks owned by the requesting user;
+          // contacts in someone else's personal network must not see it.
           or(
             eq(schema.networks.isPersonal, false),
             eq(ownerMembers.userId, userId)
@@ -585,16 +585,16 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Get public indexes that the user has not joined (for discovery).
+   * Get public networks that the user has not joined (for discovery).
    */
   async getPublicIndexesNotJoined(userId: string) {
     const userIndexIds = await db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
       .where(eq(schema.networkMembers.userId, userId));
-    
+
     const excludeIds = userIndexIds.map(r => r.networkId);
-    
+
     const whereConditions = [
       isNull(schema.networks.deletedAt),
       eq(schema.networks.isPersonal, false),
@@ -694,7 +694,7 @@ export class ChatDatabaseAdapter {
   /**
    * Returns the user's own personal network ID(s). Sourced from `personal_networks`
    * (PK on userId) rather than joining `network_members` × `isPersonal=true`, so
-   * contact memberships on other users' personal indexes are excluded by
+   * contact memberships on other users' personal networks are excluded by
    * construction. Fail-soft (returns []) to match {@link getUserIndexIds} since
    * this runs in the HyDE worker path.
    */
@@ -1013,7 +1013,7 @@ export class ChatDatabaseAdapter {
   async getNetworkMembersForMember(networkId: string, requestingUserId: string) {
     const isMember = await this.isNetworkMember(networkId, requestingUserId);
     if (!isMember) {
-      throw new Error('Access denied: Not a member of this index');
+      throw new Error('Access denied: Not a member of this network');
     }
 
     const members = await db
@@ -1078,7 +1078,7 @@ export class ChatDatabaseAdapter {
   async getNetworkMembersForOwner(networkId: string, requestingUserId: string) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
-      throw new Error('Access denied: Not an owner of this index');
+      throw new Error('Access denied: Not an owner of this network');
     }
 
     const members = await db
@@ -1169,7 +1169,7 @@ export class ChatDatabaseAdapter {
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
-      throw new Error('Access denied: Not an owner of this index');
+      throw new Error('Access denied: Not an owner of this network');
     }
 
     const limit = options?.limit ?? 50;
@@ -1249,7 +1249,7 @@ export class ChatDatabaseAdapter {
   ) {
     const isMember = await this.isNetworkMember(networkId, requestingUserId);
     if (!isMember) {
-      throw new Error('Access denied: Not a member of this index');
+      throw new Error('Access denied: Not a member of this network');
     }
 
     const limit = options?.limit ?? 50;
@@ -1402,7 +1402,7 @@ export class ChatDatabaseAdapter {
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
-      throw new Error('Access denied: Not an owner of this index');
+      throw new Error('Access denied: Not an owner of this network');
     }
 
     const [existing] = await db.select().from(networks).where(eq(networks.id, networkId)).limit(1);
@@ -1530,7 +1530,7 @@ export class ChatDatabaseAdapter {
   async regenerateInvitationLink(networkId: string, requestingUserId: string) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
-      throw new Error('Access denied: Not an owner of this index');
+      throw new Error('Access denied: Not an owner of this network');
     }
 
     const [existing] = await db.select().from(networks).where(eq(networks.id, networkId)).limit(1);
@@ -1750,7 +1750,7 @@ export class ChatDatabaseAdapter {
         type: networks.type,
         metadata: networks.metadata,
       });
-    if (!row) throw new Error('Failed to create index');
+    if (!row) throw new Error('Failed to create network');
     const perms = (row.permissions as schema.NetworkPermissionsState | null) ?? {
       joinPolicy: 'invite_only',
       invitationLink: null,
@@ -1842,9 +1842,9 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Resolve an index identifier (UUID or key) to a UUID.
+   * Resolve an network identifier (UUID or key) to a UUID.
    * @param idOrKey - UUID or human-readable key
-   * @returns The index UUID, or null if not found
+   * @returns The network UUID, or null if not found
    */
   async resolveIndexId(idOrKey: string): Promise<string | null> {
     const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrKey);
@@ -1871,7 +1871,7 @@ export class ChatDatabaseAdapter {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
-   * Get a single index with owner info and member count.
+   * Get a single network with owner info and member count.
    * Checks that the requesting user is a member; throws "Access denied" if not.
    */
   async getPublicIndexDetail(networkId: string) {
@@ -2059,7 +2059,7 @@ export class ChatDatabaseAdapter {
 
     const isMember = await this.isNetworkMember(networkId, requestingUserId);
     if (!isMember) {
-      throw new Error('Access denied: Not a member of this index');
+      throw new Error('Access denied: Not a member of this network');
     }
 
     const memberCount = await this.getNetworkMemberCount(networkId);
@@ -2083,13 +2083,13 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Search users within the caller's personal index members by name or email,
+   * Search users within the caller's personal network members by name or email,
    * optionally excluding existing members of a target index.
    */
   async searchPersonalNetworkMembers(userId: string, query: string, excludeIndexId?: string) {
     if (!query || query.trim().length === 0) return [];
 
-    // Find user's contacts from personal index (index_members with permissions=['contact'])
+    // Find user's contacts from personal network (index_members with permissions=['contact'])
     const personalIndexId = await getPersonalIndexId(userId);
     if (!personalIndexId) return [];
 
@@ -2255,7 +2255,7 @@ export class ChatDatabaseAdapter {
   async removeMemberForOwner(networkId: string, memberUserId: string, requestingUserId: string) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
-      throw new Error('Access denied: Not an owner of this index');
+      throw new Error('Access denied: Not an owner of this network');
     }
 
     if (memberUserId === requestingUserId) {
@@ -2273,7 +2273,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Join a public index (anyone can join if joinPolicy is 'anyone').
+   * Join a public network (anyone can join if joinPolicy is 'anyone').
    */
   async joinPublicNetwork(networkId: string, userId: string) {
     const [index] = await db
@@ -2288,7 +2288,7 @@ export class ChatDatabaseAdapter {
 
     const perms = (index.permissions as { joinPolicy?: string } | null);
     if (perms?.joinPolicy !== 'anyone') {
-      throw new Error('This index is not public');
+      throw new Error('This network is not public');
     }
 
     return await this.addMemberToNetwork(networkId, userId, 'member');
@@ -2301,7 +2301,7 @@ export class ChatDatabaseAdapter {
   async leaveNetwork(networkId: string, userId: string) {
     const isOwner = await this.isIndexOwner(networkId, userId);
     if (isOwner) {
-      throw new Error('Cannot leave an index you own. Delete the index instead.');
+      throw new Error('Cannot leave a network you own. Delete the network instead.');
     }
 
     const deleted = await db
@@ -2310,18 +2310,18 @@ export class ChatDatabaseAdapter {
       .returning({ userId: networkMembers.userId });
 
     if (deleted.length === 0) {
-      throw new Error('You are not a member of this index');
+      throw new Error('You are not a member of this network');
     }
   }
 
   /**
-   * Soft-delete an index. Owner-only.
+   * Soft-delete a network. Owner-only.
    * Checks isIndexOwner internally; throws "Access denied" if not owner.
    */
   async deleteIndexForOwner(networkId: string, requestingUserId: string) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
-      throw new Error('Access denied: Not an owner of this index');
+      throw new Error('Access denied: Not an owner of this network');
     }
 
     await this.softDeleteNetwork(networkId);
@@ -2567,9 +2567,9 @@ export class ChatDatabaseAdapter {
 
 
   /**
-   * Returns personal index IDs where the given user is a contact member.
+   * Returns personal network IDs where the given user is a contact member.
    * @param userId - The user whose contact memberships to look up
-   * @returns Array of personal index IDs
+   * @returns Array of personal network IDs
    */
   async getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]> {
     return db
@@ -2674,9 +2674,9 @@ export class ChatDatabaseAdapter {
 
 
   /**
-   * Upsert a contact membership in the owner's personal index.
+   * Upsert a contact membership in the owner's personal network.
    * Inserts an index_members row with permissions=['contact'].
-   * @param ownerId - The owner of the personal index
+   * @param ownerId - The owner of the personal network
    * @param contactUserId - The user to add as a contact member
    * @param options - If restore=true, reactivates soft-deleted rows via onConflictDoUpdate(deletedAt=null).
    *                  If restore=false (default), skips soft-deleted rows and uses onConflictDoNothing for active ones.
@@ -2730,9 +2730,9 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Bulk upsert contact memberships in the owner's personal index.
+   * Bulk upsert contact memberships in the owner's personal network.
    * Respects opt-outs: skips contacts that have a soft-deleted membership row.
-   * @param ownerId - The owner of the personal index
+   * @param ownerId - The owner of the personal network
    * @param contactUserIds - User IDs to add as contacts
    * @returns Resolves when all non-opted-out memberships are upserted
    */
@@ -2964,8 +2964,8 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Hard-delete a contact membership from the owner's personal index.
-   * @param ownerId - The owner of the personal index
+   * Hard-delete a contact membership from the owner's personal network.
+   * @param ownerId - The owner of the personal network
    * @param contactUserId - The contact user to remove
    */
   async hardDeleteContactMembership(ownerId: string, contactUserId: string): Promise<void> {
@@ -2984,9 +2984,9 @@ export class ChatDatabaseAdapter {
 
   /**
    * Clear a soft-deleted contact membership that the other user has for this owner.
-   * This removes the "reverse opt-out" so the other user's personal index no longer blocks the owner.
+   * This removes the "reverse opt-out" so the other user's personal network no longer blocks the owner.
    * @param ownerId - The user being added as a contact
-   * @param otherUserId - The other user whose personal index may have a soft-deleted row for ownerId
+   * @param otherUserId - The other user whose personal network may have a soft-deleted row for ownerId
    */
   async clearReverseOptOut(ownerId: string, otherUserId: string): Promise<void> {
     const otherPersonalIndexId = await getPersonalIndexId(otherUserId);
@@ -3005,14 +3005,14 @@ export class ChatDatabaseAdapter {
 
   /**
    * Bulk clear soft-deleted contact memberships (reverse opt-outs) for multiple users.
-   * Removes rows where `ownerId` appears as a soft-deleted contact in each user's personal index.
+   * Removes rows where `ownerId` appears as a soft-deleted contact in each user's personal network.
    * @param ownerId - The user being added as a contact
-   * @param otherUserIds - The users whose personal indexes may have soft-deleted rows for ownerId
+   * @param otherUserIds - The users whose personal networks may have soft-deleted rows for ownerId
    */
   async clearReverseOptOutBulk(ownerId: string, otherUserIds: string[]): Promise<void> {
     if (otherUserIds.length === 0) return;
 
-    // Batch lookup personal indexes for all other users
+    // Batch lookup personal networks for all other users
     const personalIndexRows = await db
       .select({ userId: schema.personalNetworks.userId, networkId: schema.personalNetworks.networkId })
       .from(schema.personalNetworks)
@@ -3021,7 +3021,7 @@ export class ChatDatabaseAdapter {
     const personalIndexIds = personalIndexRows.map(r => r.networkId);
     if (personalIndexIds.length === 0) return;
 
-    // Single DELETE across all matching personal indexes
+    // Single DELETE across all matching personal networks
     await db.delete(schema.networkMembers)
       .where(
         and(
@@ -3034,8 +3034,8 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Get all contact members from the owner's personal index.
-   * @param ownerId - The owner of the personal index
+   * Get all contact members from the owner's personal network.
+   * @param ownerId - The owner of the personal network
    * @returns Array of contact members with user details
    */
   async getContactMembers(ownerId: string): Promise<Array<{
@@ -3077,19 +3077,19 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Get the user's personal index ID.
-   * @param userId - The user whose personal index to find
-   * @returns The personal index ID, or null if none exists
+   * Get the user's personal network ID.
+   * @param userId - The user whose personal network to find
+   * @returns The personal network ID, or null if none exists
    */
   async getPersonalIndexId(userId: string): Promise<string | null> {
     return getPersonalIndexId(userId);
   }
 
   /**
-   * Get contacts from a personal index with their latest intent timestamp and intent count.
+   * Get contacts from a personal network with their latest intent timestamp and intent count.
    * Contacts are sorted by most recent intent (freshest first) for introducer discovery.
    *
-   * @param personalIndexId - The personal index to query
+   * @param personalIndexId - The personal network to query
    * @param ownerId - The index owner (excluded from results)
    * @param limit - Maximum contacts to return
    * @returns Contacts with intent freshness data

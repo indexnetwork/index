@@ -380,7 +380,7 @@ describe('createUserDatabase', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Index Membership Operations — authUserId binding
+  // Network Membership Operations — authUserId binding
   // ─────────────────────────────────────────────────────────────────────────────
 
   describe('network membership operations bind authUserId', () => {
@@ -443,12 +443,12 @@ describe('createUserDatabase', () => {
     it('softDeleteNetwork throws when index is personal even if user is owner', async () => {
       (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
       (mockDb.isPersonalNetwork as ReturnType<typeof mock>).mockResolvedValueOnce(true);
-      await expect(userDb.softDeleteNetwork('idx-personal')).rejects.toThrow('Cannot delete personal index');
+      await expect(userDb.softDeleteNetwork('idx-personal')).rejects.toThrow('Cannot delete personal network');
     });
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Public Index Discovery
+  // Public Network Discovery
   // ─────────────────────────────────────────────────────────────────────────────
 
   describe('public network discovery binds authUserId', () => {

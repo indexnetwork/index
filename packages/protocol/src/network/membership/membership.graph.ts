@@ -7,7 +7,7 @@ import { NetworkMembershipGraphState } from "./membership.state.js";
 const logger = protocolLogger("NetworkMembershipGraphFactory");
 
 /**
- * Factory class to build and compile the Index Membership Graph.
+ * Factory class to build and compile the Network Membership Graph.
  *
  * Handles CRUD operations for the index_members table:
  * - create: Add a member to an index (validates join policy and ownership)
@@ -23,7 +23,7 @@ export class NetworkMembershipGraphFactory {
     /**
      * Add Member Node: Add a user as a member of an index.
      * Handles two cases:
-     * 1. Self-join (targetUserId === userId): Only allowed for public indexes (joinPolicy 'anyone')
+     * 1. Self-join (targetUserId === userId): Only allowed for public networks (joinPolicy 'anyone')
      * 2. Invite others (targetUserId !== userId): Requires caller to be member; owner-only for invite_only
      */
     const addMemberNode = async (state: typeof NetworkMembershipGraphState.State) => {
@@ -48,19 +48,19 @@ export class NetworkMembershipGraphFactory {
           const isSelfJoin = state.targetUserId === state.userId;
 
           if (isSelfJoin) {
-            // Self-join: only allowed for public indexes
+            // Self-join: only allowed for public networks
             if (joinPolicy !== 'anyone') {
               return {
                 mutationResult: {
                   success: false,
-                  error: "This index is invite-only. You cannot join without an invitation from an existing member.",
+                  error: "This network is invite-only. You cannot join without an invitation from an existing member.",
                 },
               };
             }
 
             const result = await this.database.addMemberToNetwork(state.networkId, state.targetUserId, 'member');
             if (result.alreadyMember) {
-              return { mutationResult: { success: true, message: "You are already a member of this index." } };
+              return { mutationResult: { success: true, message: "You are already a member of this network." } };
             }
 
             return { mutationResult: { success: true, message: `You have joined "${indexRecord.title}".` } };
@@ -81,7 +81,7 @@ export class NetworkMembershipGraphFactory {
 
           const result = await this.database.addMemberToNetwork(state.networkId, state.targetUserId, 'member');
           if (result.alreadyMember) {
-            return { mutationResult: { success: true, message: "That user is already a member of this index." } };
+            return { mutationResult: { success: true, message: "That user is already a member of this network." } };
           }
 
           return { mutationResult: { success: true, message: "Member added to the index." } };
@@ -103,7 +103,7 @@ export class NetworkMembershipGraphFactory {
      */
     const listMembersNode = async (state: typeof NetworkMembershipGraphState.State) => {
       return timed("NetworkMembershipGraph.listMembers", async () => {
-        logger.verbose("List index members", {
+        logger.verbose("List network members", {
           userId: state.userId,
           networkId: state.networkId,
         });
@@ -138,10 +138,10 @@ export class NetworkMembershipGraphFactory {
           };
         } catch (err) {
           logger.error("List members failed", { error: err });
-          if (err instanceof Error && err.message === "Access denied: Not a member of this index") {
+          if (err instanceof Error && err.message === "Access denied: Not a member of this network") {
             return { error: "You must be a member of that index." };
           }
-          return { error: "Failed to fetch index members." };
+          return { error: "Failed to fetch network members." };
         }
       });
     };
@@ -178,7 +178,7 @@ export class NetworkMembershipGraphFactory {
             return { mutationResult: { success: false, error: "Cannot remove the index owner." } };
           }
           if (result.notMember) {
-            return { mutationResult: { success: false, error: "User is not a member of this index." } };
+            return { mutationResult: { success: false, error: "User is not a member of this network." } };
           }
           if (!result.success) {
             return { mutationResult: { success: false, error: "Failed to remove member." } };

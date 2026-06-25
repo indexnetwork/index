@@ -337,7 +337,7 @@ export class IntentQueue implements IntentGraphQueue {
       this.deps?.addOpportunityJob ??
       ((d: { intentId: string; userId: string; networkIds?: string[] }) => fromIntentQueue.addJob(d));
     // Carry only the focused network scope into discovery. Assignment writes may
-    // include the user's personal index, but scoped opportunity discovery must not.
+    // include the user's personal network, but scoped opportunity discovery must not.
     const discoveryScope: { networkIds?: string[] } = await (async () => {
       try {
         const assignmentMemberships = await this.getAssignmentMemberships(userId);
@@ -437,7 +437,7 @@ export class IntentQueue implements IntentGraphQueue {
             indexPrompt,
             memberPrompt,
             rawScores: result ? { indexScore: result.indexScore, memberScore: result.memberScore } : undefined,
-            evaluator: 'intent-indexer',
+            evaluator: 'intent-networker',
             source,
             reason: result?.reasoning,
             createdAt: new Date().toISOString(),

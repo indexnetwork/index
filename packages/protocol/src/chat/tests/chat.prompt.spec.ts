@@ -475,11 +475,11 @@ function completedUser(userId: string, nameOverride?: string) {
   };
 }
 
-/** Shared index that multiple test users belong to. */
+/** Shared network that multiple test users belong to. */
 const SHARED_INDEX_ID = "idx-shared-ai-builders";
 const SHARED_INDEX = { id: SHARED_INDEX_ID, title: "AI Builders" };
 
-/** Build a NetworkMembership for a user in the shared index. */
+/** Build a NetworkMembership for a user in the shared network. */
 function sharedMembership(extra?: Partial<NetworkMembership>): NetworkMembership {
   return {
     networkId: SHARED_INDEX_ID,

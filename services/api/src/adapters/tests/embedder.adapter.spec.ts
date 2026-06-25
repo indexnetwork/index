@@ -130,7 +130,7 @@ describe('EmbedderAdapter', () => {
   });
 
   describe('search (single-vector)', () => {
-    it('should return intent match when searching with same embedding and index scope', async () => {
+    it('should return intent match when searching with same embedding and network scope', async () => {
       const queryVector = makeTestVector(42);
       await db.insert(intents).values({
         id: fixture.intentId,
@@ -153,7 +153,7 @@ describe('EmbedderAdapter', () => {
       expect(match!.score).toBeGreaterThanOrEqual(0.99);
     });
 
-    it('should apply index scope filtering (only members of index)', async () => {
+    it('should apply network scope filtering (only members of index)', async () => {
       const queryVector = makeTestVector(100);
       const results = await adapter.search<{ id: string; userId: string }>(
         queryVector,
@@ -164,7 +164,7 @@ describe('EmbedderAdapter', () => {
       for (const r of results) {
         expect(r.item).toBeDefined();
       }
-      // All results should be from intents in this index (enforced by join in adapter)
+      // All results should be from intents in this network (enforced by join in adapter)
       expect(results.length).toBeLessThanOrEqual(5);
     });
   });

@@ -80,18 +80,18 @@ export class IntegrationService {
   private async assertNetworkOwner(networkId: string, userId: string): Promise<void> {
     const isOwner = await this.db.isIndexOwner(networkId, userId);
     if (!isOwner) {
-      throw new Error('Access denied: you must be an owner of this index');
+      throw new Error('Access denied: you must be an owner of this network');
     }
   }
 
   /**
    * Fetch contacts from the given toolkit and import them into an index.
-   * Personal indexes get contacts with 'contact' permission; non-personal
+   * Personal networks get contacts with 'contact' permission; non-personal
    * indexes get members with 'member' permission.
    *
    * @param userId - Authenticated user ID
    * @param toolkit - Which provider to import from
-   * @param networkId - Target index (uses personal index when omitted)
+   * @param networkId - Target index (uses personal network when omitted)
    * @returns Bulk import statistics
    */
   async importContacts(userId: string, toolkit: Toolkit, networkId?: string): Promise<ImportResult> {

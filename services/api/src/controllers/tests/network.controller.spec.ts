@@ -85,7 +85,7 @@ describe("NetworkController Integration", () => {
       expect(data.error).toBe("title is required");
     });
 
-    test("should return 200 and create index when title provided", async () => {
+    test("should return 200 and create network when title provided", async () => {
       const req = new Request("http://localhost/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -169,7 +169,7 @@ describe("NetworkController Integration", () => {
       expect(data.network!.title).toBe("Test Index");
     });
 
-    test("should return 404 when index id does not exist", async () => {
+    test("should return 404 when network id does not exist", async () => {
       const fakeId = "00000000-0000-0000-0000-000000000000";
       const req = new Request("http://localhost/networks/" + fakeId);
       const res = await controller.get(req, mockUser(), { id: fakeId });

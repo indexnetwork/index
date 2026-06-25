@@ -25,7 +25,7 @@ function makeService() {
   return { service: new NetworkService(adapter), updateIndexSettings };
 }
 
-describe('networkService.updateNetwork on a personal index', () => {
+describe('networkService.updateNetwork on a personal network', () => {
   test('allows a prompt-only edit', async () => {
     const { service, updateIndexSettings } = makeService();
     await service.updateNetwork(PERSONAL_ID, USER_ID, { prompt: 'AI founders only' });
@@ -38,7 +38,7 @@ describe('networkService.updateNetwork on a personal index', () => {
     expect(updateIndexSettings).toHaveBeenCalledWith(PERSONAL_ID, USER_ID, { prompt: null });
   });
 
-  test('rejects a rename (title) on a personal index', async () => {
+  test('rejects a rename (title) on a personal network', async () => {
     const { service, updateIndexSettings } = makeService();
     await expect(
       service.updateNetwork(PERSONAL_ID, USER_ID, { title: 'Renamed' }),

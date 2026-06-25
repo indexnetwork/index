@@ -240,8 +240,8 @@ export class OpportunityGraphFactory {
 
     /**
      * Node 0: Prep
-     * Fetches user's index memberships and validates requirements.
-     * Returns empty if user has no index memberships (requirement).
+     * Fetches user's network memberships and validates requirements.
+     * Returns empty if user has no network memberships (requirement).
      */
     const prepNode = withNodeTrace(
       "opportunity-prep",
@@ -371,7 +371,7 @@ export class OpportunityGraphFactory {
             }
             targetIndexIds = [state.networkId];
           } else if (state.indexScope && state.indexScope.length > 0) {
-            // Bounded scope (e.g. a network-scoped agent's reachable indexes):
+            // Bounded scope (e.g. a network-scoped agent's reachable networks):
             // intersect with the user's actual memberships so discovery never
             // reaches networks outside the agent's bound scope.
             const allowed = new Set(state.indexScope);
@@ -432,7 +432,7 @@ export class OpportunityGraphFactory {
                 }
                 const _indexerStart = Date.now();
                 const traceEmitter = requestContext.getStore()?.traceEmitter;
-                traceEmitter?.({ type: "agent_start", name: "intent-indexer" });
+                traceEmitter?.({ type: "agent_start", name: "intent-networker" });
                 let result: Awaited<ReturnType<typeof indexer.invoke>> | null = null;
                 try {
                   result = await indexer.invoke(
@@ -444,7 +444,7 @@ export class OpportunityGraphFactory {
                   return { networkId: ti.networkId, score: 1.0 };
                 } finally {
                   const _indexerDuration = Date.now() - _indexerStart;
-                  traceEmitter?.({ type: "agent_end", name: "intent-indexer", durationMs: _indexerDuration, summary: `Scored index ${ti.networkId}` });
+                  traceEmitter?.({ type: "agent_end", name: "intent-networker", durationMs: _indexerDuration, summary: `Scored index ${ti.networkId}` });
                   scopeAgentTimings.push({ name: 'intent.indexer', durationMs: _indexerDuration });
                 }
                 if (!result) return { networkId: ti.networkId, score: 1.0 };
@@ -517,7 +517,7 @@ export class OpportunityGraphFactory {
       "opportunity-resolve",
       async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.resolve", async () => {
-        logger.verbose('[Graph:Resolve] Resolving intent and index membership', {
+        logger.verbose('[Graph:Resolve] Resolving intent and network membership', {
           triggerIntentId: state.triggerIntentId,
           hasSearchQuery: !!state.searchQuery,
           indexedIntentsCount: state.indexedIntents.length,
@@ -636,7 +636,7 @@ export class OpportunityGraphFactory {
 
           // ── Direct-connection fast path ──
           // When targetUserId is set (user @-mentioned someone), bypass vector search
-          // and construct candidates directly from shared indexes.
+          // and construct candidates directly from shared networks.
           if (state.targetUserId) {
             if (state.targetUserId === discoveryUserId) {
               logger.warn('[Graph:Discovery] Direct-connection target matches discoverer; skipping self-match', {
@@ -680,7 +680,7 @@ export class OpportunityGraphFactory {
             const directCandidates: CandidateMatch[] = [];
 
             if (targetIntents.length > 0) {
-              // Build one candidate per intent per shared index it belongs to
+              // Build one candidate per intent per shared network it belongs to
               for (const intent of targetIntents) {
                 const intentNetworkIds = await this.database.getNetworkIdsForIntent(intent.id);
                 const overlapping = sharedIndexIds.filter(id => intentNetworkIds.includes(id));
@@ -722,7 +722,7 @@ export class OpportunityGraphFactory {
               candidates: directCandidates,
               trace: [{
                 node: "discovery",
-                detail: `Direct connection → ${directCandidates.length} candidate(s) from ${sharedIndexIds.length} shared index(es)`,
+                detail: `Direct connection → ${directCandidates.length} candidate(s) from ${sharedIndexIds.length} shared network(es)`,
                 data: {
                   targetUserId: state.targetUserId,
                   candidateCount: directCandidates.length,
@@ -1780,10 +1780,10 @@ export class OpportunityGraphFactory {
             const score = evaluated?.score;
             const reasoning = evaluated?.reasoning;
             const didPass = score !== undefined && score >= minScore;
-            const status = score !== undefined 
-              ? (didPass ? '✓ passed' : `✗ score ${score}`) 
+            const status = score !== undefined
+              ? (didPass ? '✓ passed' : `✗ score ${score}`)
               : '✗ not scored';
-            
+
             traceEntries.push({
               node: "candidate",
               detail: `${candidateName}: ${status}`,
@@ -2310,7 +2310,7 @@ export class OpportunityGraphFactory {
 
     /**
      * Node: intro_validation (create_introduction path)
-     * Validates index scope, membership for introducer and all party users, and no existing opportunity.
+     * Validates network scope, membership for introducer and all party users, and no existing opportunity.
      */
     const introValidationNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.introValidation", async () => {

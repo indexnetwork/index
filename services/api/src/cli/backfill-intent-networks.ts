@@ -123,7 +123,7 @@ async function main(): Promise<void> {
         indexPrompt,
         memberPrompt,
         rawScores: raw,
-        evaluator: 'intent-indexer',
+        evaluator: 'intent-networker',
         source: 'backfill-intent-networks',
         createdAt: new Date().toISOString(),
       });

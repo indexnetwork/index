@@ -18,10 +18,10 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  *
  * Handles CRUD for the intent_indexes junction table:
  * - create: Assign an intent to an index (direct or evaluated via IntentIndexer agent)
- * - read: List intent-index links (by intentId or by networkId)
+ * - read: List intent-network links (by intentId or by networkId)
  * - delete: Unassign an intent from an index
  *
- * The evaluate-based assignment flow is migrated from the old Index Graph.
+ * The evaluate-based assignment flow is migrated from the old Network Graph.
  */
 export class IntentNetworkGraphFactory {
   constructor(
@@ -93,7 +93,7 @@ export class IntentNetworkGraphFactory {
             };
           }
 
-          // Evaluated assignment (migrated from old Index Graph)
+          // Evaluated assignment (migrated from old Network Graph)
           const intentForIndexing = await this.database.getIntentForIndexing(intentId);
           if (!intentForIndexing) {
             return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Intent not found for networking." } };
@@ -117,7 +117,7 @@ export class IntentNetworkGraphFactory {
               scope: "network",
               indexPrompt,
               memberPrompt,
-              evaluator: "intent-indexer",
+              evaluator: "intent-networker",
               source: "intent-network-graph",
               createdAt: new Date().toISOString(),
             });
@@ -147,7 +147,7 @@ export class IntentNetworkGraphFactory {
 
           const _traceEmitterIndexer = requestContext.getStore()?.traceEmitter;
           const _indexerStart = Date.now();
-          _traceEmitterIndexer?.({ type: "agent_start", name: "intent-indexer" });
+          _traceEmitterIndexer?.({ type: "agent_start", name: "intent-networker" });
           let result: Awaited<ReturnType<typeof indexer.evaluate>> | null = null;
           try {
             result = await indexer.evaluate(
@@ -160,7 +160,7 @@ export class IntentNetworkGraphFactory {
           } finally {
             const _indexerMs = Date.now() - _indexerStart;
             agentTimingsAccum.push({ name: 'intent.indexer', durationMs: _indexerMs });
-            _traceEmitterIndexer?.({ type: "agent_end", name: "intent-indexer", durationMs: _indexerMs, summary: result ? `Scored: index=${result.indexScore.toFixed(2)}, member=${result.memberScore.toFixed(2)}` : "intent-indexer failed" });
+            _traceEmitterIndexer?.({ type: "agent_end", name: "intent-networker", durationMs: _indexerMs, summary: result ? `Scored: index=${result.indexScore.toFixed(2)}, member=${result.memberScore.toFixed(2)}` : "intent-networker failed" });
           }
 
           if (!result) {
@@ -180,7 +180,7 @@ export class IntentNetworkGraphFactory {
             indexPrompt,
             memberPrompt,
             rawScores: { indexScore: result.indexScore, memberScore: result.memberScore },
-            evaluator: "intent-indexer",
+            evaluator: "intent-networker",
             source: "intent-network-graph",
             reason: result.reasoning,
             createdAt: new Date().toISOString(),
@@ -214,8 +214,8 @@ export class IntentNetworkGraphFactory {
     };
 
     /**
-     * Read Node: Query intent-index relationships.
-     * - By intentId only: list all indexes the intent is in (owner only)
+     * Read Node: Query intent-network relationships.
+     * - By intentId only: list all networks the intent is in (owner only)
      * - By networkId only: list intents in the index (member only)
      * - By both intentId and networkId: check if specific link exists (owner only)
      */
@@ -223,10 +223,10 @@ export class IntentNetworkGraphFactory {
       return timed("IntentNetworkGraph.read", async () => {
         const intentId = state.intentId;
         const networkId = state.networkId;
-        logger.verbose("Read intent-index links", { userId: state.userId, intentId, networkId, queryUserId: state.queryUserId });
+        logger.verbose("Read intent-network links", { userId: state.userId, intentId, networkId, queryUserId: state.queryUserId });
 
         try {
-          // By both: check if specific intent-index link exists
+          // By both: check if specific intent-network link exists
           if (intentId && networkId) {
             const intent = await this.database.getIntent(intentId);
             if (!intent) {
@@ -246,7 +246,7 @@ export class IntentNetworkGraphFactory {
             };
           }
 
-          // By intent only: list all indexes for this intent
+          // By intent only: list all networks for this intent
           if (intentId) {
             const intent = await this.database.getIntent(intentId);
             if (!intent) {
@@ -323,7 +323,7 @@ export class IntentNetworkGraphFactory {
             },
           };
         } catch (err) {
-          logger.error("Read intent-index failed", { error: err });
+          logger.error("Read intent-network failed", { error: err });
           return { error: "Failed to fetch intent-network links." };
         }
       });

@@ -346,7 +346,7 @@ describe('IntentQueue', () => {
         const getAssignmentNetworkIdsForUser = mock(async () => ['net-a', 'net-b']);
         const getNetworkAssignmentContext = mock(async (networkId: string) => ({
           networkId,
-          indexPrompt: `Index prompt for ${networkId}`,
+          indexPrompt: `Network prompt for ${networkId}`,
           memberPrompt: `Member prompt for ${networkId}`,
         }));
         const db = {

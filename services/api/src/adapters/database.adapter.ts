@@ -138,7 +138,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Index Membership Operations
+    // Network Membership Operations
     // ─────────────────────────────────────────────────────────────────────────────
     getNetworkMemberships: () => db.getNetworkMemberships(authUserId),
     getUserIndexIds: () => db.getUserIndexIds(authUserId),
@@ -156,12 +156,12 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       const isOwner = await db.isIndexOwner(networkId, authUserId);
       if (!isOwner) throw new Error('Access denied: not index owner');
       const isPersonal = await db.isPersonalNetwork(networkId);
-      if (isPersonal) throw new Error('Cannot delete personal index');
+      if (isPersonal) throw new Error('Cannot delete personal network');
       return db.softDeleteNetwork(networkId);
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Public Index Discovery
+    // Public Network Discovery
     // ─────────────────────────────────────────────────────────────────────────────
     getPublicIndexesNotJoined: () => db.getPublicIndexesNotJoined(authUserId),
     joinPublicNetwork: (networkId: string) => db.joinPublicNetwork(networkId, authUserId),
@@ -198,12 +198,12 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
 }
 
 /**
- * Creates a SystemDatabase bound to the authenticated user and index scope.
- * Cross-user operations are restricted to users within the shared indexes.
+ * Creates a SystemDatabase bound to the authenticated user and network scope.
+ * Cross-user operations are restricted to users within the shared networks.
  *
  * @param db - The raw ChatDatabaseAdapter
  * @param authUserId - The authenticated user's ID
- * @param indexScope - Array of index IDs the user has access to
+ * @param indexScope - Array of network IDs the user has access to
  * @param embedder - Optional vector store for findSimilarIntentsInScope (pgvector search). When omitted, findSimilarIntentsInScope returns [].
  * @returns A SystemDatabase bound to authUserId and indexScope
  */
@@ -232,7 +232,7 @@ export function createSystemDatabase(
     const theirMemberships = await db.getNetworkMemberships(userId);
     if (theirMemberships.some((m) => indexScope.includes(m.networkId))) return true;
 
-    // Check if either user's personal index contains the other as a contact
+    // Check if either user's personal network contains the other as a contact
     const myPersonalId = await getPersonalIndexId(authUserId);
     const theirPersonalId = await getPersonalIndexId(userId);
 
@@ -256,13 +256,13 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     getProfile: async (userId: string) => {
       if (!(await verifySharedIndex(userId))) {
-        throw new Error('Access denied: no shared index with user');
+        throw new Error('Access denied: no shared network with user');
       }
       return db.getProfile(userId);
     },
     getUser: async (userId: string) => {
       if (!(await verifySharedIndex(userId))) {
-        throw new Error('Access denied: no shared index with user');
+        throw new Error('Access denied: no shared network with user');
       }
       return db.getUser(userId);
     },
@@ -324,7 +324,7 @@ export function createSystemDatabase(
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Index Membership Operations (cross-user within scope)
+    // Network Membership Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
     /**
      * Checks network membership without scope check.
@@ -346,7 +346,7 @@ export function createSystemDatabase(
     /**
      * Adds a member to an index without scope check.
      * @remarks Intentionally unscoped -- used by join flows, invitation acceptance, and
-     * contact addition that operate outside the caller's current index scope.
+     * contact addition that operate outside the caller's current network scope.
      */
     addMemberToNetwork: (networkId: string, userId: string, role: 'owner' | 'member') => db.addMemberToNetwork(networkId, userId, role),
     /**
@@ -427,7 +427,7 @@ export function createSystemDatabase(
     expireOpportunitiesByIntent: (intentId: string) => db.expireOpportunitiesByIntent(intentId),
     /**
      * Expires opportunities for a removed member without scope check.
-     * @remarks Intentionally unscoped -- called by index membership removal event handlers
+     * @remarks Intentionally unscoped -- called by network membership removal event handlers
      * that clean up opportunities when a member leaves or is kicked from an index.
      */
     expireOpportunitiesForRemovedMember: (networkId: string, userId: string) => db.expireOpportunitiesForRemovedMember(networkId, userId),

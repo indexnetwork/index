@@ -169,7 +169,7 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 **Nodes:** `prep`, `scope`, `resolve`, `discovery`, `evaluation`, `ranking`, `intro_validation`, `intro_evaluation`, `persist`, `negotiate`, `read`, `update`, `delete_opp`, `send`
 **State:** `OpportunityGraphState` (userId, searchQuery, indexId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, trigger, dedupAlreadyAccepted, etc.)
 **Conditional edges:**
-- After `prep`: routes to `scope` or `END` (no index memberships)
+- After `prep`: routes to `scope` or `END` (no network memberships)
 - After `discovery`: routes to `evaluation` or `END` (no candidates)
 - After `evaluation`: routes to `ranking` or `END` (no evaluated opportunities)
 
@@ -179,7 +179,7 @@ The graph supports multiple discovery paths, searching across intents and premis
 - **Intent-based (Path A):** Trigger intent is assigned to an index — use its HyDE documents for search
 - **Query-based (Path B):** Query-generated HyDE documents for search
 - **Context-to-intent (Path C):** User contexts (network-scoped paragraph representations from the premise graph) are embedded and used to search for matching intents via `searchIntentsByContextEmbedding()`. Candidates carry `discoverySource: 'context-to-intent'`.
-- **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared indexes
+- **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared networks
 
 All discovery strategies are merged via `mergeStrategyCandidates()`, which deduplicates by `userId:networkId:entityId` and applies a multi-strategy boost (+0.05 per additional strategy, capped at 0.15).
 
@@ -235,7 +235,7 @@ All operations are database-only -- no LLM calls. Create sets the caller as owne
 
 **Flow:** `START -> {add_member | list_members | remove_member} -> END`
 
-Self-join is only allowed for public indexes (`joinPolicy: 'anyone'`). Inviting others requires membership; for invite-only indexes, only the owner can add members.
+Self-join is only allowed for public networks (`joinPolicy: 'anyone'`). Inviting others requires membership; for invite-only indexes, only the owner can add members.
 
 **Dependencies:** `NetworkMembershipGraphDatabase`
 
@@ -355,9 +355,9 @@ Intents must pass verification to be persisted. Invalid types (ASSERTIVE, EXPRES
 ### 4.5 Intent Indexer
 
 **File:** `intent.indexer.ts`
-**Role:** Scores how well an intent fits within an index based on the index prompt and member prompt.
+**Role:** Scores how well an intent fits within an index based on the network prompt and member prompt.
 **Model:** `google/gemini-2.5-flash`
-**Input:** Intent payload, index prompt, member prompt, source name
+**Input:** Intent payload, network prompt, member prompt, source name
 **Output:** Index score, member score (0-1 each)
 **Used by:** Intent Index Graph (assign node), Opportunity Graph (scope node for query-based scoring)
 
@@ -473,7 +473,7 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 ### 4.19 Premise Indexer
 
 **File:** `premise/premise.indexer.ts`
-**Role:** Scores a premise's relevancy to a network based on the index prompt and member preferences.
+**Role:** Scores a premise's relevancy to a network based on the network prompt and member preferences.
 **Model:** `google/gemini-2.5-flash`
 **Input:** premiseText, indexPrompt, optional memberPrompt and networkContext
 **Output:** indexScore (0.0-1.0), memberScore (0.0-1.0), reasoning
@@ -502,7 +502,7 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 |-----------|-------|---------------------|
 | `enrichment.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Enrichment Graph |
 | `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
-| `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Index Graph, Index Membership Graph |
+| `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Network Graph, Network Membership Graph |
 | `opportunity.tools.ts` | discover_opportunities, list_opportunities, update_opportunity | Opportunity Graph |
 | `contact.tools.ts` | add_contact, list_contacts, search_contacts | (direct service calls) |
 | `chat.tools.ts` | list_conversations, get_conversation | (direct `ChatSessionReader` calls) |
@@ -566,7 +566,7 @@ createMcpServer(
 
 - `deps` — the same shared tool dependencies used by the chat agent (database, embedder, scraper, graphs, …).
 - `authResolver` — reads the HTTP request and returns `{ userId, agentId }`. Callers pass an `x-api-key` header; the resolver looks up the key via Better Auth and reads `metadata.agentId` off the stored token. Requests without an `agentId` are rejected at the gate below.
-- `scopedDepsFactory` — creates per-request `userDb` and `systemDb` scoped to the caller's index memberships, so every tool call runs against the caller's actual data perimeter.
+- `scopedDepsFactory` — creates per-request `userDb` and `systemDb` scoped to the caller's network memberships, so every tool call runs against the caller's actual data perimeter.
 
 ### Tool loop
 
@@ -694,7 +694,7 @@ The opportunity discovery pipeline is the most complex workflow in the system. I
 User intent/query
     |
     v
-[Prep] Load user's index memberships, active intents, profile
+[Prep] Load user's network memberships, active intents, profile
     |
     v
 [Scope] Determine which indexes to search; score query relevancy per index
@@ -728,7 +728,7 @@ User intent/query
 3. Searches both the profiles and intents vector indexes per lens
 4. Merges candidates from all lenses with deduplication
 
-**Direct connection:** When a `targetUserId` is specified (user @-mentioned someone), vector search is bypassed entirely. The system constructs candidates directly from shared index memberships and the target user's active intents.
+**Direct connection:** When a `targetUserId` is specified (user @-mentioned someone), vector search is bypassed entirely. The system constructs candidates directly from shared network memberships and the target user's active intents.
 
 ### Evaluation
 
@@ -741,7 +741,7 @@ Each match gets a score (0-100), reasoning (written from a third-party analytica
 
 ### Deduplication and ranking
 
-Candidates are deduplicated by `(sourceUserId, candidateUserId, indexId)` with the highest-scoring entry winning. When a candidate appears across multiple shared indexes, the index with the highest relevancy score (from `intent_networks.relevancyScore`) is preferred as the tiebreaker.
+Candidates are deduplicated by `(sourceUserId, candidateUserId, indexId)` with the highest-scoring entry winning. When a candidate appears across multiple shared networks, the index with the highest relevancy score (from `intent_networks.relevancyScore`) is preferred as the tiebreaker.
 
 ### Negotiation (optional)
 
@@ -805,9 +805,9 @@ Intents with high semantic entropy (>0.75) or low clarity (<40) are considered v
 
 **Delete:** Skips inference and verification entirely. The reconciler generates `expire` actions for the target intent IDs, and the executor archives them (soft delete). Associated HyDE documents are cleaned up via a queued job.
 
-### Intent-index assignment
+### Intent-network assignment
 
-Intent-to-index assignment is handled separately by the Intent Index Graph. When an intent is created and the user is in an index-scoped chat, the `create_intent_index` tool assigns the intent with either:
+Intent-to-network assignment is handled separately by the Intent Index Graph. When an intent is created and the user is in a network-scoped chat, the `create_intent_index` tool assigns the intent with either:
 - Direct assignment (score 1.0) when `skipEvaluation` is true
 - Evaluated assignment via `IntentIndexer` agent when the index has prompts defining its purpose
 
@@ -860,7 +860,7 @@ The protocol layer emits real-time trace events during graph and agent execution
 
 ### Naming convention
 
-Agent names in trace events use kebab-case: `intent-inferrer`, `profile-generator`, `hyde-generator`, `opportunity-evaluator`, `lens-inferrer`, `home-categorizer`, `intent-verifier`, `intent-reconciler`, `intent-indexer`.
+Agent names in trace events use kebab-case: `intent-inferrer`, `profile-generator`, `hyde-generator`, `opportunity-evaluator`, `lens-inferrer`, `home-categorizer`, `intent-verifier`, `intent-reconciler`, `intent-networker`.
 
 ### Agent timing tracking
 

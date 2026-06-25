@@ -1,8 +1,8 @@
 import { Annotation } from "@langchain/langgraph";
 
 /**
- * Index Membership Graph State.
- * Handles CRUD operations for index memberships (index_members table).
+ * Network Membership Graph State.
+ * Handles CRUD operations for network memberships (index_members table).
  *
  * Flow:
  * START → routerNode → {addMemberNode | listMembersNode | removeMemberNode} → END

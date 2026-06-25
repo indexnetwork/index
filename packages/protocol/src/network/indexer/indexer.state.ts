@@ -38,7 +38,7 @@ export interface AssignmentResult {
 /**
  * Intent Index Graph State.
  * Handles CRUD for the intent_indexes junction table (linking intents to indexes).
- * Absorbs the old Index Graph's evaluate-based assignment flow.
+ * Absorbs the old Network Graph's evaluate-based assignment flow.
  *
  * Flow:
  * START → router → {
@@ -75,14 +75,14 @@ export const IntentNetworkGraphState = Annotation.Root({
 
   /**
    * When true, skip LLM evaluation and assign directly.
-   * (Migrated from old Index Graph.)
+   * (Migrated from old Network Graph.)
    */
   skipEvaluation: Annotation<boolean>({
     reducer: (_, next) => next,
     default: () => true,
   }),
 
-  // --- Intermediate State (populated by nodes, migrated from old Index Graph) ---
+  // --- Intermediate State (populated by nodes, migrated from old Network Graph) ---
 
   /** Intent payload and metadata. Null if intent not found. */
   intent: Annotation<IntentForIndexing | null>({
@@ -102,7 +102,7 @@ export const IntentNetworkGraphState = Annotation.Root({
     default: () => null,
   }),
 
-  /** Final decision: should intent be in this index? */
+  /** Final decision: should intent be in this network? */
   shouldAssign: Annotation<boolean | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,

@@ -21,8 +21,8 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
   const import_contacts = contactsEnabled ? defineTool({
     name: 'import_contacts',
     description:
-      "Bulk-imports contacts into the authenticated user's personal network (personal index). Contacts become members of the user's " +
-      "personal index with 'contact' permission, making them available for opportunity discovery.\n\n" +
+      "Bulk-imports contacts into the authenticated user's personal network (personal network). Contacts become members of the user's " +
+      "personal network with 'contact' permission, making them available for opportunity discovery.\n\n" +
       "**What happens:** Each contact is matched by email. If the email belongs to an existing user, they're linked directly. " +
       "If not, a 'ghost user' is created — a placeholder account enriched with public profile data (from LinkedIn, GitHub, etc.) " +
       "that participates in opportunity matching even before the person joins the platform.\n\n" +
@@ -60,7 +60,7 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
     name: 'list_contacts',
     description:
       "Lists all contacts in the authenticated user's personal network. Contacts are people the user has added " +
-      "(via import_contacts, add_contact, or import_gmail_contacts) stored as members of their personal index.\n\n" +
+      "(via import_contacts, add_contact, or import_gmail_contacts) stored as members of their personal network.\n\n" +
       "**When to use:** To see who's in the user's network, find a contact's userId for other operations, " +
       "or check if a specific person is already a contact.\n\n" +
       "**Returns:** Array of contacts, each with: userId (use with read_user_contexts or discover_opportunities), " +
@@ -101,7 +101,7 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
       "For bulk imports, use import_contacts instead.\n\n" +
       "**What happens:** Looks up the email. If an account exists, links that user as a contact. " +
       "If not, creates a ghost user (placeholder enriched with public profile data) and adds them. " +
-      "The contact can then appear in opportunity discovery within the user's personal index.\n\n" +
+      "The contact can then appear in opportunity discovery within the user's personal network.\n\n" +
       "**When to use:** When the user wants to add a specific person (e.g. 'add john@example.com to my network').\n\n" +
       "**Returns:** Confirmation with the contact's userId and whether a new ghost user was created (isNewGhost). " +
       "Use the userId with discover_opportunities(targetUserId) to find connection opportunities.",
@@ -132,10 +132,10 @@ export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
     name: 'remove_contact',
     description:
       "Removes a contact from the authenticated user's personal network. The contact relationship is deleted — " +
-      "the person is no longer a member of the user's personal index and won't appear in personal-index-scoped discovery.\n\n" +
+      "the person is no longer a member of the user's personal network and won't appear in personal-network-scoped discovery.\n\n" +
       "**When to use:** When the user wants to remove someone from their network (e.g. 'remove John from my contacts').\n\n" +
       "**Note:** This only removes the contact relationship. If the contact is a real user (not a ghost), " +
-      "they still exist on the platform and may appear in shared index discovery.\n\n" +
+      "they still exist on the platform and may appear in shared network discovery.\n\n" +
       "**Returns:** Confirmation that the contact was removed.",
     querySchema: z.object({
       contactUserId: z.string().describe('The userId of the contact to remove. Get this from list_contacts results.'),
