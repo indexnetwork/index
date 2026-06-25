@@ -627,6 +627,7 @@ function createMcpServerInstance(): McpServer {
       filters?: {
         sourceType?: string;
         sourceId?: string;
+        networkId?: string;
         modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation'>;
         limit?: number;
       },
@@ -643,6 +644,10 @@ function createMcpServerInstance(): McpServer {
         sourceId: row.detection.sourceId,
         createdAt: row.createdAt,
         ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+        actors: row.actors.map((actor) => ({
+          userId: actor.userId,
+          ...(actor.networkId ? { networkId: actor.networkId } : {}),
+        })),
       }));
     },
     premiseEvents: {
@@ -654,10 +659,10 @@ function createMcpServerInstance(): McpServer {
   };
 
   const scopedDepsFactory: ScopedDepsFactory = {
-    create(userId: string, indexScope: string[]) {
+    create(userId: string, allowedNetworkIds: string[]) {
       return {
         userDb: protocolDeps.createUserDatabase(protocolDeps.database, userId),
-        systemDb: protocolDeps.createSystemDatabase(protocolDeps.database, userId, indexScope, protocolDeps.embedder),
+        systemDb: protocolDeps.createSystemDatabase(protocolDeps.database, userId, allowedNetworkIds, protocolDeps.embedder),
       };
     },
   };

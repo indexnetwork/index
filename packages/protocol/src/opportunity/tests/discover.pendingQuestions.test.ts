@@ -53,8 +53,8 @@ describe("mergePendingQuestions", () => {
     expect(result.surfacedIds).toEqual([]);
   });
 
-  it("filters by sourceType and sourceId when provided", async () => {
-    const fn = mock(async (_uid: string, filters?: { sourceType?: string; sourceId?: string }) => {
+  it("filters by sourceType, sourceId, and networkId when provided", async () => {
+    const fn = mock(async (_uid: string, filters?: { sourceType?: string; sourceId?: string; networkId?: string }) => {
       if (filters?.sourceType === "opportunity") return [{ ...baseSummary, id: "pq-2", sourceType: "opportunity" }];
       return [baseSummary];
     });
@@ -63,8 +63,10 @@ describe("mergePendingQuestions", () => {
       userId: "u1",
       sourceType: "opportunity",
       sourceId: "opp-1",
+      networkId: "net-1",
       surfacedQuestionIds: new Set(),
     });
+    expect(fn).toHaveBeenCalledWith("u1", { sourceType: "opportunity", sourceId: "opp-1", networkId: "net-1" });
     expect(result.questions).toHaveLength(1);
     expect(result.questions[0].id).toBe("pq-2");
   });

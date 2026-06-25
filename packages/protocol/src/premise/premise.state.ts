@@ -1,6 +1,7 @@
 import { Annotation } from "@langchain/langgraph";
 import type { PremiseAnalysis, PremiseProvenance, PremiseRecord } from "../shared/interfaces/database.interface.js";
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
+import type { ToolScopeType } from '../shared/agent/tool.scope.js';
 
 export const PremiseGraphState = Annotation.Root({
   userId: Annotation<string>,
@@ -50,6 +51,19 @@ export const PremiseGraphState = Annotation.Root({
     default: () => 'create',
   }),
 
+  /** Focused request scope type for assignment writes. */
+  scopeType: Annotation<ToolScopeType | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope id. When scopeType is `network`, this is the focused network id. */
+  scopeId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** @deprecated Use scopeType/scopeId. Retained temporarily for older enqueue handlers. */
   networkScopeId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,

@@ -1,5 +1,6 @@
-import type { NetworkAssignmentMetadata } from '../schemas/network-assignment.schema.js';
+import type { ScopeMembership } from '../agent/tool.scope.js';
 import type { UserIdentity } from '../schemas/identity.schema.js';
+import type { NetworkAssignmentMetadata } from '../schemas/network-assignment.schema.js';
 
 // ─── Inlined types (previously imported from outside the protocol lib) ───────
 
@@ -33,6 +34,11 @@ export interface NetworkAssignmentContext {
   networkId: string;
   indexPrompt: string | null;
   memberPrompt: string | null;
+}
+
+export interface AssignmentNetworkMembership extends ScopeMembership {
+  networkId: string;
+  isPersonal: boolean;
 }
 
 /** Onboarding flow state stored as JSON on the user record. */
@@ -866,8 +872,16 @@ export interface Database {
   ): Promise<NetworkAssignmentContext | null>;
 
   /**
+   * Network memberships that should be considered for assignment policy. Unlike
+   * getUserIndexIds, this is not gated by network_members.autoAssign and carries
+   * personal-index metadata so scoped writes can include the user's personal index.
+   */
+  getAssignmentNetworkMembershipsForUser(userId: string): Promise<AssignmentNetworkMembership[]>;
+
+  /**
    * Network IDs that should be considered for assignment policy. Unlike
    * getUserIndexIds, this is not gated by network_members.autoAssign.
+   * @deprecated Prefer getAssignmentNetworkMembershipsForUser for scope-aware assignment.
    */
   getAssignmentNetworkIdsForUser(userId: string): Promise<string[]>;
 
@@ -2023,7 +2037,7 @@ export type EnrichmentGraphDatabase = Pick<
  */
 export type PremiseGraphDatabase = Pick<
   Database,
-  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext' | 'findSimilarActivePremise'
+  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext' | 'findSimilarActivePremise'
 >;
 
 /**
@@ -2072,6 +2086,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // NetworkGraph subgraph requirements (index created intents in user's indexes)
   | 'getPublicIndexesNotJoined'
   | 'getUserIndexIds'
+  | 'getAssignmentNetworkMembershipsForUser'
   | 'getAssignmentNetworkIdsForUser'
   | 'getNetworkMemberships'
   | 'getNetworkMembership'

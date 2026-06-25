@@ -513,6 +513,9 @@ export class IntentGraphFactory {
 
         logger.verbose(`Executing ${actions.length} actions...`);
         const results: ExecutionResult[] = [];
+        const scopeEnvelope = state.scopeType && state.scopeId
+          ? { scopeType: state.scopeType, scopeId: state.scopeId }
+          : {};
         const verifiedIntentByPayload = new Map<string, VerifiedIntent>();
         for (const verifiedIntent of state.verifiedIntents) {
           verifiedIntentByPayload.set(verifiedIntent.description, verifiedIntent);
@@ -566,7 +569,7 @@ export class IntentGraphFactory {
               this.intentQueue?.addGenerateHydeJob({
                 intentId: created.id,
                 userId: state.userId,
-                ...(state.networkId ? { networkScopeId: state.networkId } : {}),
+                ...scopeEnvelope,
               }).catch((err) =>
                 logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
               );
@@ -578,6 +581,7 @@ export class IntentGraphFactory {
                   userId: state.userId,
                   sourceType: 'intent',
                   sourceId: created.id,
+                  ...scopeEnvelope,
                   context: {
                     intentId: created.id,
                     payload: sanitizedPayload,
@@ -629,7 +633,7 @@ export class IntentGraphFactory {
                 this.intentQueue?.addGenerateHydeJob({
                   intentId: updateAction.id,
                   userId: state.userId,
-                  ...(state.networkId ? { networkScopeId: state.networkId } : {}),
+                  ...scopeEnvelope,
                 }).catch((err) =>
                   logger.error('Failed to enqueue intent HyDE job', { intentId: updateAction.id, error: err })
                 );

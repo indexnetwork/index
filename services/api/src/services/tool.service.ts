@@ -10,7 +10,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
-import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
@@ -76,6 +76,7 @@ export class ToolService {
         filters?: {
           sourceType?: string;
           sourceId?: string;
+          networkId?: string;
           modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation'>;
           limit?: number;
         },
@@ -92,6 +93,10 @@ export class ToolService {
           sourceId: row.detection.sourceId,
           createdAt: row.createdAt,
           ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+          actors: row.actors.map((actor) => ({
+            userId: actor.userId,
+            ...(actor.networkId ? { networkId: actor.networkId } : {}),
+          })),
         }));
       },
       graphs,
@@ -128,10 +133,17 @@ export class ToolService {
     // Get or compile graphs (cached across requests — graphs are stateless)
     const graphs = this.getOrCompileGraphs(database);
 
-    // Create per-request context-bound databases
-    const networkScope = context.userNetworks.map((m) => m.networkId);
+    // Create per-request context-bound databases.
+    const allowedNetworkIds = deriveAllowedNetworkIds({
+      memberships: context.userNetworks,
+      ...(context.scopeType && context.scopeId
+        ? { scopeType: context.scopeType, scopeId: context.scopeId }
+        : {}),
+    });
+    // Deprecated compatibility reach until remaining tool call sites migrate.
+    context.indexScope = allowedNetworkIds;
     const userDb = createUserDatabase(database, userId);
-    const systemDb = createSystemDatabase(database, userId, networkScope, this.embedder);
+    const systemDb = createSystemDatabase(database, userId, allowedNetworkIds, this.embedder);
 
     const toolDeps = this.buildToolDeps(database, userDb, systemDb, graphs);
 

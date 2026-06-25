@@ -7,8 +7,8 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
     // Scenario: a network-scoped agent (or a user-driven community-scoped chat)
     // calls read_networks with state.networkId set to the bound community.
     // The response must include BOTH that community AND the user's personal
-    // index — the personal index is reachable in every scope (computeAgentIndexScope
-    // keeps it in indexScope so add_contact / list_contacts work) and dropping
+    // index — the personal index is reachable in every allowed-network scope
+    // so add_contact / list_contacts work, and dropping
     // it from the read_networks payload made those tools undiscoverable.
     const personalNetworkId = "11111111-1111-4111-8111-111111111111";
     const boundNetworkId = "22222222-2222-4222-8222-222222222222";

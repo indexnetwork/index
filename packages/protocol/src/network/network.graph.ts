@@ -58,8 +58,8 @@ export class NetworkGraphFactory {
 
           // If index-scoped and not showAll, return just that index plus the
           // user's personal index (their contacts). The personal index is part
-          // of every scope — `computeAgentIndexScope` keeps it reachable for
-          // network-bound agents, and a user clicked into a community-scoped
+          // of every allowed-network reach calculation for network-bound agents,
+          // and a user clicked into a community-scoped
           // chat still owns their contact list — so surfacing it here keeps
           // tools that operate on the personal index (add_contact, list_contacts,
           // import_*_contacts) discoverable. Other community memberships are

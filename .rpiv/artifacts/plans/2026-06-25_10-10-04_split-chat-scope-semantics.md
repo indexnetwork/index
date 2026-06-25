@@ -393,8 +393,8 @@ export type { ToolScopeEnvelope, ToolScopeType, ScopeMembership, DeriveNetworkSc
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] Type check reaches the new scope helper without deep imports: `cd packages/protocol && bun run build`
-- [ ] Legacy scope names are explicitly deprecated in foundational contracts: `rg "@deprecated.*(indexScope|networkScopeId)|indexScope|networkScopeId" packages/protocol/src/shared/agent/tool.helpers.ts packages/protocol/src/shared/interfaces/queue.interface.ts`
+- [x] Type check reaches the new scope helper without deep imports: `cd packages/protocol && bun run build`
+- [x] Legacy scope names are explicitly deprecated in foundational contracts: `rg "@deprecated.*(indexScope|networkScopeId)|indexScope|networkScopeId" packages/protocol/src/shared/agent/tool.helpers.ts packages/protocol/src/shared/interfaces/queue.interface.ts`
 
 #### Manual Verification:
 - [ ] Confirm `deriveAllowedNetworkIds()` returns focused + personal for scoped input and all memberships for unscoped input.
@@ -627,13 +627,13 @@ import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, Op
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] Context/tool factory type checks: `cd packages/protocol && bun run build`
-- [ ] API TypeScript references compile for renamed factory parameter and derived scope imports: `cd services/api && bun test src/queues/tests/intent.queue.spec.ts`
+- [x] Context/tool factory type checks: `cd packages/protocol && bun run build`
+- [x] API TypeScript references compile for renamed factory parameter and derived scope imports: `cd services/api && bun test src/queues/tests/intent.queue.spec.ts`
 
 #### Manual Verification:
-- [ ] Scoped chat contexts have `scopeType: 'network'` and `scopeId` equal to the focused network.
-- [ ] `createSystemDatabase` receives focused + personal network IDs for scoped contexts and all membership IDs for unscoped contexts.
-- [ ] Question enqueue wrappers attach `scopeType`/`scopeId` when the active context has a scope.
+- [x] Scoped chat contexts have `scopeType: 'network'` and `scopeId` equal to the focused network.
+- [x] `createSystemDatabase` receives focused + personal network IDs for scoped contexts and all membership IDs for unscoped contexts.
+- [x] Question enqueue wrappers attach `scopeType`/`scopeId` when the active context has a scope.
 
 ## Phase 3: Assignment writes
 
@@ -911,7 +911,7 @@ Pins the new semantics with targeted protocol/API tests. Depends on Phases 1–5
 - Run protocol scoped context tests: `cd packages/protocol && bun test src/shared/agent/tests/tool.helpers.spec.ts src/mcp/tests/apply-network-scope-to-context.spec.ts`.
 - Run protocol opportunity/question/premise tests: `cd packages/protocol && bun test src/opportunity/tests/opportunity.tools.spec.ts src/questioner/tests/questioner.tools.spec.ts src/premise/tests/premise.graph.spec.ts`.
 - Run API queue tests: `cd services/api && bun test src/queues/tests/intent.queue.spec.ts`.
-- Grep for removed terminology: `rg "indexScope|networkScopeId|computeAgentIndexScope" packages/protocol services/api` should only show intentional compatibility comments or deleted-code absence.
+- Grep for removed scoped-surface terminology: `rg "computeAgentIndexScope|discover_opportunities with no networkId arg uses the full reach|networkScopeId" packages/protocol/src/chat packages/protocol/src/mcp packages/protocol/src/shared/agent packages/protocol/src/shared/interfaces services/api/src/queues services/api/src/controllers/mcp.controller.ts services/api/src/services/tool.service.ts` should show no `computeAgentIndexScope`, no prompt text claiming scoped discovery uses full reach, and only explicitly deprecated/compatibility `networkScopeId` references where old external auth or queue payload contracts still require them. Low-level graph/embedder/database `indexScope` names are intentionally out of scope because they remain internal vector/DB clamp terminology.
 - Verify scoped discovery no longer passes personal network IDs into opportunity graph from `discover_opportunities`.
 - Verify scoped assignment still writes to personal network(s) by inspecting intent and premise assignment tests.
 - Verify pending questions for scoped chat require actor `{ userId, networkId: scopeId }`.

@@ -13,11 +13,13 @@ export const MAX_PENDING_QUESTIONS = 3;
 export interface MergePendingQuestionsInput {
   findPendingQuestions?: (
     userId: string,
-    filters?: { sourceType?: string; sourceId?: string },
+    filters?: { sourceType?: string; sourceId?: string; networkId?: string },
   ) => Promise<PendingQuestionSummary[]>;
   userId: string;
   sourceType?: string;
   sourceId?: string;
+  /** Restrict to questions whose actor carries this network id. */
+  networkId?: string;
   /** IDs already shown in this chat session — skip them. */
   surfacedQuestionIds: Set<string>;
 }
@@ -40,8 +42,13 @@ export async function mergePendingQuestions(
     return { questions: [], surfacedIds: [] };
   }
 
-  const filters = input.sourceType
-    ? { sourceType: input.sourceType, ...(input.sourceId ? { sourceId: input.sourceId } : {}) }
+  const hasFilters = Boolean(input.sourceType || input.networkId);
+  const filters = hasFilters
+    ? {
+        ...(input.sourceType ? { sourceType: input.sourceType } : {}),
+        ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+        ...(input.networkId ? { networkId: input.networkId } : {}),
+      }
     : undefined;
 
   let pending: PendingQuestionSummary[];

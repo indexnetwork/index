@@ -90,6 +90,11 @@ export class FromIntentQueue {
       return;
     }
 
+    if (networkIds && networkIds.length === 0) {
+      this.logger.warn('[FromIntent] Empty scoped networkIds provided, skipping fail-closed', { intentId, userId });
+      return;
+    }
+
     if (networkIds && networkIds.length > 1) {
       this.logger.warn('[FromIntent] Multiple networkIds provided, only first used', { intentId, networkIds });
     }

@@ -148,6 +148,10 @@ export class QuestionerQueue {
       return;
     }
 
+    const actorNetworkId = data.scopeType === 'network' && data.scopeId?.trim()
+      ? data.scopeId.trim()
+      : undefined;
+
     const batch: PersistableQuestion[] = result.questions.map((question, i) => ({
       detection: {
         mode: data.mode,
@@ -156,7 +160,7 @@ export class QuestionerQueue {
         timestamp: new Date().toISOString(),
         ...(data.messageId ? { messageId: data.messageId } : {}),
       },
-      actors: [{ userId: data.userId, role: 'subject' as const }],
+      actors: [{ userId: data.userId, ...(actorNetworkId ? { networkId: actorNetworkId } : {}), role: 'subject' as const }],
       payload: question,
       strategy: result.strategies[i],
       conversationId: data.conversationId,

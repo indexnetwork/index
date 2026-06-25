@@ -30,6 +30,14 @@ import { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD } from '@indexnetwork/protocol';
 /** Cast a plain object to IntentQueueDatabase for tests and provide assignment-policy defaults. */
 const asIntentDb = (db: Partial<IntentQueueDatabase> & { getUserIndexIds?: (userId: string) => Promise<string[]> }): IntentQueueDatabase => ({
   getIntentForIndexing: async () => null,
+  getAssignmentNetworkMembershipsForUser: async (userId: string) => {
+    if (db.getAssignmentNetworkIdsForUser) {
+      const networkIds = await db.getAssignmentNetworkIdsForUser(userId);
+      return networkIds.map((networkId) => ({ networkId, isPersonal: false }));
+    }
+    const networkIds = await db.getUserIndexIds?.(userId) ?? [];
+    return networkIds.map((networkId) => ({ networkId, isPersonal: false }));
+  },
   getAssignmentNetworkIdsForUser: async (userId: string) => db.getUserIndexIds?.(userId) ?? [],
   getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
   assignIntentToNetwork: async () => {},
@@ -105,10 +113,10 @@ describe('IntentQueue', () => {
 
     it('addReconcileJob scopes the jobId to the network when provided', async () => {
       const queue = new IntentQueue();
-      await queue.addReconcileJob({ intentId: 'i1', userId: 'u1', networkScopeId: 'net-x' });
+      await queue.addReconcileJob({ intentId: 'i1', userId: 'u1', scopeType: 'network', scopeId: 'net-x' });
       expect(mockAdd).toHaveBeenCalledWith(
         'reconcile_intent_networks',
-        { intentId: 'i1', userId: 'u1', networkScopeId: 'net-x' },
+        { intentId: 'i1', userId: 'u1', scopeType: 'network', scopeId: 'net-x' },
         expect.objectContaining({ jobId: 'reconcile-i1-net-x' }),
       );
     });
@@ -124,12 +132,12 @@ describe('IntentQueue', () => {
       expect(getActiveIntents).toHaveBeenCalledWith('u1');
       expect(mockAdd).toHaveBeenCalledWith(
         'reconcile_intent_networks',
-        { intentId: 'i1', userId: 'u1', networkScopeId: 'net-1' },
+        { intentId: 'i1', userId: 'u1', scopeType: 'network', scopeId: 'net-1' },
         expect.objectContaining({ jobId: 'reconcile-i1-net-1' }),
       );
       expect(mockAdd).toHaveBeenCalledWith(
         'reconcile_intent_networks',
-        { intentId: 'i2', userId: 'u1', networkScopeId: 'net-1' },
+        { intentId: 'i2', userId: 'u1', scopeType: 'network', scopeId: 'net-1' },
         expect.objectContaining({ jobId: 'reconcile-i2-net-1' }),
       );
     });
@@ -260,26 +268,28 @@ describe('IntentQueue', () => {
       expect(invokeHyde).toHaveBeenCalled();
     });
 
-    it('generate_hyde: networkScopeId restricts assignment to active network only', async () => {
+    it('generate_hyde: network scope assigns focused plus personal but discovers focused only', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => ({}));
       const assignIntentToNetwork = mock(async () => {});
-      const getAssignmentNetworkIdsForUser = mock(async () => ['scope-net', 'personal-net', 'other-net']);
+      const getAssignmentNetworkMembershipsForUser = mock(async () => [
+        { networkId: 'scope-net', isPersonal: false },
+        { networkId: 'personal-net', isPersonal: true },
+        { networkId: 'other-net', isPersonal: false },
+      ]);
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-        getAssignmentNetworkIdsForUser,
+        getAssignmentNetworkMembershipsForUser,
         getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
         assignIntentToNetwork,
         deleteHydeDocumentsForSource: async () => 0,
       };
       const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
-      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1', networkScopeId: 'scope-net' });
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1', scopeType: 'network', scopeId: 'scope-net' });
 
-      expect(getAssignmentNetworkIdsForUser).toHaveBeenCalledWith('u1');
-      expect(assignIntentToNetwork.mock.calls.map((c) => c[1])).toEqual(['scope-net']);
+      expect(getAssignmentNetworkMembershipsForUser).toHaveBeenCalledWith('u1');
+      expect(assignIntentToNetwork.mock.calls.map((c) => c[1])).toEqual(['scope-net', 'personal-net']);
       expect(invokeHyde).toHaveBeenCalled();
-      // Discovery must inherit the agent's network scope — otherwise a network-scoped
-      // agent's intent gets matched against every network the user belongs to.
       expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1', networkIds: ['scope-net'] });
     });
 
@@ -369,23 +379,28 @@ describe('IntentQueue', () => {
         }
       });
 
-      it('limits network-scoped assignment to the requested network', async () => {
+      it('limits network-scoped assignment to the focused network plus personal networks', async () => {
         const getNetworkAssignmentContext = mock(async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }));
         const assignIntentToNetwork = mock(async () => {});
         const db = {
           getIntentForIndexing: async () => ({ id: 'intent-1', payload: 'Build protocol tools', userId: 'user-1', sourceType: null, sourceId: null }),
-          getAssignmentNetworkIdsForUser: mock(async () => ['net-a', 'net-b']),
+          getAssignmentNetworkMembershipsForUser: mock(async () => [
+            { networkId: 'net-a', isPersonal: false },
+            { networkId: 'net-b', isPersonal: false },
+            { networkId: 'personal-net', isPersonal: true },
+          ]),
           getNetworkAssignmentContext,
           assignIntentToNetwork,
           deleteHydeDocumentsForSource: async () => 0,
         };
         const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde: mock(async () => {}), addOpportunityJob: mock(async () => ({})) });
 
-        await queue.processJob('generate_hyde', { intentId: 'intent-1', userId: 'user-1', networkScopeId: 'net-b' });
+        await queue.processJob('generate_hyde', { intentId: 'intent-1', userId: 'user-1', scopeType: 'network', scopeId: 'net-b' });
 
-        expect(getNetworkAssignmentContext).toHaveBeenCalledTimes(1);
+        expect(getNetworkAssignmentContext).toHaveBeenCalledTimes(2);
         expect(getNetworkAssignmentContext).toHaveBeenCalledWith('net-b', 'user-1');
-        expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-b']);
+        expect(getNetworkAssignmentContext).toHaveBeenCalledWith('personal-net', 'user-1');
+        expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-b', 'personal-net']);
       });
 
       it('skips assignment fail-closed when membership context disappears', async () => {

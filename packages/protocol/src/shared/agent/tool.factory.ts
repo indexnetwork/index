@@ -18,6 +18,7 @@ import { protocolLogger } from "../observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
+import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
 import { createIntentTools } from "../../intent/intent.tools.js";
@@ -65,13 +66,24 @@ export async function createChatTools(
       contactsEnabled: deps.contactsEnabled,
     }));
 
-  // Allow callers (e.g. MCP server, tests) to override the computed indexScope
-  // without going through a full re-resolve. The MCP path sets this via
-  // applyNetworkScopeToContext; ToolContext.indexScope provides the same override
-  // when no preResolvedContext is given.
-  if (!preResolvedContext && deps.indexScope !== undefined) {
-    resolvedContext.indexScope = deps.indexScope;
+  const explicitScope = deps.scopeType && deps.scopeId
+    ? { scopeType: deps.scopeType, scopeId: deps.scopeId }
+    : scopeFromNetworkId(deps.networkId);
+
+  if (!preResolvedContext && explicitScope.scopeType && explicitScope.scopeId) {
+    resolvedContext.scopeType = explicitScope.scopeType;
+    resolvedContext.scopeId = explicitScope.scopeId;
+    resolvedContext.networkId = explicitScope.scopeId;
   }
+
+  const allowedNetworkIds = deriveAllowedNetworkIds({
+    memberships: resolvedContext.userNetworks,
+    ...(resolvedContext.scopeType && resolvedContext.scopeId
+      ? { scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId }
+      : {}),
+  });
+  // Deprecated compatibility reach until remaining tool call sites migrate.
+  resolvedContext.indexScope = allowedNetworkIds;
 
   // ─── Tool wrapper ──────────────────────────────────────────────────────────
   /**
@@ -113,10 +125,13 @@ export async function createChatTools(
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
 
-  // Wrap questionerEnqueue to include session context when available
+  // Wrap questionerEnqueue to include scoped/session context when available.
   const sessionAwareEnqueue: QuestionerEnqueueFn | undefined = deps.questionerEnqueue
     ? (input) => deps.questionerEnqueue!({
         ...input,
+        ...(resolvedContext.scopeType && resolvedContext.scopeId && !input.scopeId
+          ? { scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId }
+          : {}),
         ...(resolvedContext.sessionId && !input.conversationId ? { conversationId: resolvedContext.sessionId } : {}),
       })
     : undefined;
@@ -161,14 +176,11 @@ export async function createChatTools(
   // database used for graphs so that scope checks (e.g. ensureScopedMembership, opportunity
   // update) use the same adapter as the rest of the tool pipeline.
   //
-  // The systemDb's DB-level clamp uses `resolvedContext.indexScope` — the same
-  // set tools see — so the JSDoc claim that indexScope is "the same set used
-  // to clamp the DB-level systemDb" holds for both the MCP path (where the
-  // MCP server already populated indexScope via applyNetworkScopeToContext)
-  // and the web-chat path (where resolveChatContext clamps to [bound, personal]
-  // when networkId is set).
+  // The systemDb's DB-level clamp derives concrete allowed network IDs from the
+  // focused scope envelope plus memberships. The legacy indexScope field is
+  // populated above only as a compatibility bridge for unmigrated tool call sites.
   const userDb = deps.userDb ?? deps.createUserDatabase(database, resolvedContext.userId);
-  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, resolvedContext.indexScope, embedder);
+  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, allowedNetworkIds, embedder);
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const cache = deps.cache;

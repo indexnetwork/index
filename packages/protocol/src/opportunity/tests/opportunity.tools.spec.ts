@@ -3,8 +3,98 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it, test } from "bun:test";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
-import { buildMinimalOpportunityCard } from "../opportunity.tools.js";
+import type { ResolvedToolContext, ToolDeps } from "../../shared/agent/tool.helpers.js";
+import { buildMinimalOpportunityCard, createOpportunityTools } from "../opportunity.tools.js";
 import { deduplicateByPerson } from "../opportunity.utils.js";
+
+type CapturedDiscoverInput = {
+  indexScope: string[];
+};
+
+function captureDiscoverToolForScopeTest(runDiscoverFromQuery: (input: CapturedDiscoverInput) => Promise<unknown>) {
+  let captured: { handler: (input: { context: ResolvedToolContext; query: Record<string, unknown> }) => Promise<string> } | undefined;
+  const defineTool = (def: { name: string }) => {
+    if (def.name === "discover_opportunities") captured = def as never;
+    return def;
+  };
+  const deps = {
+    database: {} as never,
+    systemDb: {} as never,
+    userDb: {} as never,
+    cache: {} as never,
+    graphs: {
+      opportunity: { invoke: async () => ({}) },
+      index: { invoke: async () => ({ readResult: { memberOf: [] } }) },
+      networkMembership: { invoke: async () => ({}) },
+    } as never,
+    opportunityDiscovery: {
+      runDiscoverFromQuery: runDiscoverFromQuery as never,
+    },
+  } as unknown as ToolDeps;
+  createOpportunityTools(defineTool as never, deps);
+  if (!captured) throw new Error("discover_opportunities tool not registered");
+  return captured;
+}
+
+function makeScopeTestContext(overrides?: Partial<ResolvedToolContext>): ResolvedToolContext {
+  return {
+    userId: "viewer-1",
+    userName: "Viewer",
+    userEmail: "viewer@example.com",
+    user: { id: "viewer-1", name: "Viewer", email: "viewer@example.com" } as never,
+    userProfile: null,
+    userNetworks: [
+      { networkId: "focused-net", networkTitle: "Focused", isPersonal: false, permissions: ["member"], memberPrompt: null, indexPrompt: null, autoAssign: true, joinedAt: new Date() },
+      { networkId: "personal-net", networkTitle: "Personal", isPersonal: true, permissions: ["owner"], memberPrompt: null, indexPrompt: null, autoAssign: true, joinedAt: new Date() },
+      { networkId: "other-net", networkTitle: "Other", isPersonal: false, permissions: ["member"], memberPrompt: null, indexPrompt: null, autoAssign: true, joinedAt: new Date() },
+    ],
+    indexScope: ["focused-net", "personal-net"],
+    networkId: "focused-net",
+    scopeType: "network",
+    scopeId: "focused-net",
+    isOnboarding: false,
+    hasName: true,
+    ...overrides,
+  } as ResolvedToolContext;
+}
+
+describe("discover_opportunities — scoped discovery reach", () => {
+  it("uses focused network only, excluding personal-index assignment reach", async () => {
+    let capturedInput: CapturedDiscoverInput | undefined;
+    const tool = captureDiscoverToolForScopeTest(async (input) => {
+      capturedInput = input;
+      return { found: false, message: "No matching opportunities found." };
+    });
+
+    const raw = await tool.handler({
+      context: makeScopeTestContext(),
+      query: { searchQuery: "AI collaborators" },
+    });
+    const result = JSON.parse(raw) as { success: boolean };
+
+    expect(result.success).toBe(true);
+    expect(capturedInput?.indexScope).toEqual(["focused-net"]);
+    expect(capturedInput?.indexScope).not.toContain("personal-net");
+    expect(capturedInput?.indexScope).not.toContain("other-net");
+  });
+
+  it("fails closed when the scope envelope points at a non-membership network", async () => {
+    let capturedInput: CapturedDiscoverInput | undefined;
+    const tool = captureDiscoverToolForScopeTest(async (input) => {
+      capturedInput = input;
+      return { found: false, message: "No matching opportunities found." };
+    });
+
+    const raw = await tool.handler({
+      context: makeScopeTestContext({ scopeId: "missing-net", networkId: "missing-net" }),
+      query: { searchQuery: "AI collaborators" },
+    });
+    const result = JSON.parse(raw) as { success: boolean };
+
+    expect(result.success).toBe(true);
+    expect(capturedInput?.indexScope).toEqual([]);
+  });
+});
 
 describe("buildMinimalOpportunityCard - IND-113", () => {
   const mockOpportunity = {
