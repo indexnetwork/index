@@ -154,7 +154,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     updateIndexSettings: (networkId: string, data: Parameters<ChatDatabaseAdapter['updateIndexSettings']>[2]) => db.updateIndexSettings(networkId, authUserId, data),
     softDeleteNetwork: async (networkId: string) => {
       const isOwner = await db.isIndexOwner(networkId, authUserId);
-      if (!isOwner) throw new Error('Access denied: not index owner');
+      if (!isOwner) throw new Error('Access denied: not network owner');
       const isPersonal = await db.isPersonalNetwork(networkId);
       if (isPersonal) throw new Error('Cannot delete personal network');
       return db.softDeleteNetwork(networkId);

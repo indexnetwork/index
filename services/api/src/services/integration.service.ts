@@ -197,7 +197,7 @@ export class IntegrationService {
   /**
    * List all linked integrations for an index.
    *
-   * @param userId - Authenticated user ID (must be index owner)
+   * @param userId - Authenticated user ID (must be network owner)
    * @param networkId - The index to query
    * @returns Array of toolkit/connectedAccountId pairs
    */
@@ -254,7 +254,7 @@ export class IntegrationService {
    * Configure sync settings (interval, calendarId, status) for an integration on an index.
    * The integration must already be linked via linkToIndex.
    *
-   * @param userId - Authenticated user (must be index owner)
+   * @param userId - Authenticated user (must be network owner)
    * @param networkId - Target index
    * @param toolkit - Toolkit slug (e.g. 'google_calendar')
    * @param config - Partial sync configuration to merge

@@ -417,7 +417,7 @@ describe('ChatDatabaseAdapter', () => {
     expect(o!.intentCount).toBeGreaterThanOrEqual(1);
   });
 
-  it('should report index owner', async () => {
+  it('should report network owner', async () => {
     expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
     expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
   });

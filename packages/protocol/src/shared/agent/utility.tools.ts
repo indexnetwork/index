@@ -250,7 +250,7 @@ Discovery is the process of finding meaningful connections between users based o
 - Users can only read profiles of people in shared networks
 - Network-scoped operations are restricted to that index
 - Personal networks cannot be deleted or renamed
-- Only index owners can update settings, add/remove members (for invite_only indexes)
+- Only network owners can update settings, add/remove members (for invite_only networks)
 
 ### Rate Limits & Best Practices
 - Avoid unnecessary read_intents/read_networks calls — cache results within a conversation

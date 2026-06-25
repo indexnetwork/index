@@ -157,7 +157,7 @@ export class IntentIndexer {
 
   /**
    * Alias for invoke. Evaluates the appropriateness of an intent for a given index and member context.
-   * Kept for compatibility with callers (e.g. Index Graph) that use evaluate().
+   * Kept for compatibility with callers (e.g. Network Graph) that use evaluate().
    */
   @Timed()
   public async evaluate(

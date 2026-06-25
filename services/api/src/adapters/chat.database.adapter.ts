@@ -3090,7 +3090,7 @@ export class ChatDatabaseAdapter {
    * Contacts are sorted by most recent intent (freshest first) for introducer discovery.
    *
    * @param personalIndexId - The personal network to query
-   * @param ownerId - The index owner (excluded from results)
+   * @param ownerId - The network owner (excluded from results)
    * @param limit - Maximum contacts to return
    * @returns Contacts with intent freshness data
    */

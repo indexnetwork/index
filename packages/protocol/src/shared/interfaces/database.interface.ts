@@ -388,7 +388,7 @@ export interface OwnedIndex {
 }
 
 /**
- * Member details visible to index owners (and optionally to members with privacy rules).
+ * Member details visible to network owners (and optionally to members with privacy rules).
  */
 export interface IndexMemberDetails {
   /** User ID */
@@ -414,7 +414,7 @@ export interface IndexMemberDetails {
 }
 
 /**
- * Intent details visible to index owners.
+ * Intent details visible to network owners.
  */
 export interface IndexedIntentDetails {
   /** Intent ID */
@@ -1139,7 +1139,7 @@ export interface Database {
 
   /**
    * Removes a user from an index.
-   * Only the index owner can remove members. Cannot remove the owner.
+   * Only the network owner can remove members. Cannot remove the owner.
    *
    * @param networkId - The index to remove from
    * @param userId - The user to remove

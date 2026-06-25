@@ -154,7 +154,7 @@ describe("IntegrationController", () => {
       expect(linkedIntegrations[0].toolkit).toBe("gmail");
     });
 
-    test("should return 400 when user is not index owner", async () => {
+    test("should return 400 when user is not network owner", async () => {
       const req = new Request("http://test/api/integrations/gmail/link", {
         method: "POST",
         body: JSON.stringify({ networkId: INDEX_NOT_OWNED }),
@@ -212,7 +212,7 @@ describe("IntegrationController", () => {
       expect(linkedIntegrations).toHaveLength(0);
     });
 
-    test("should return 400 when user is not index owner", async () => {
+    test("should return 400 when user is not network owner", async () => {
       const req = new Request(`http://test/api/integrations/gmail/link?networkId=${INDEX_NOT_OWNED}`, {
         method: "DELETE",
       });
