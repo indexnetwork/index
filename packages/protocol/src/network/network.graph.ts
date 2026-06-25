@@ -100,7 +100,7 @@ export class NetworkGraphFactory {
                 stats: {
                   memberOfCount: memberOf.length,
                   ownsCount: owns.length,
-                  scopeNote: "Showing current index and your personal network. Use showAll: true for all networks.",
+                  scopeNote: "Showing current network and your personal network. Use showAll: true for all networks.",
                 },
               },
             };

@@ -308,7 +308,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       "use these as the source of truth for whether the user still needs onboarding (do not rely on local file state).",
     querySchema: z.object({
       userId: z.string().optional().describe("Fetch a specific user's profile by their user ID. Get user IDs from read_network_memberships or list_contacts."),
-      networkId: z.string().optional().describe("Index UUID — fetch profiles of all members in this index, or narrow a name search to this index. Get from read_networks."),
+      networkId: z.string().optional().describe("Network UUID — fetch profiles of all members in this network, or narrow a name search to this network. Get from read_networks."),
       query: z.string().optional().describe("Name to search for (case-insensitive substring match). Searches across all the user's indexes unless networkId is also provided. Use this when the user asks to 'find' or 'look up' someone."),
     }),
     handler: async ({ context, query }) => {
@@ -326,7 +326,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (nameQuery) {
         const pattern = nameQuery.toLowerCase();
         const MAX_RESULTS = 20;
-        // When chat is index-scoped, restrict name search to that index
+        // When chat is network-scoped, restrict name search to that index
         const searchIndexId = effectiveIndexId || scopedNetworkId || undefined;
 
         let candidates: Array<{ userId: string; name: string; avatar: string | null }>;
@@ -395,12 +395,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // --- Mode 3: networkId provided → fetch all member profiles ---
       if (effectiveIndexId) {
-        // Strict scope enforcement: when chat is index-scoped, only allow querying that index
+        // Strict scope enforcement: when chat is network-scoped, only allow querying that index
         if (scopedNetworkId && effectiveIndexId !== scopedNetworkId) {
           return error(`This chat is scoped to ${scopedIndexLabel}. You can only read profiles from this community.`);
         }
 
-        // Verify the caller is a member of the index they're querying
+        // Verify the caller is a member of the network they're querying
         const callerIsMember = await systemDb.isNetworkMember(effectiveIndexId, context.userId);
         if (!callerIsMember) {
           return error(
@@ -408,7 +408,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
-        // Use systemDb for cross-user access within shared indexes
+        // Use systemDb for cross-user access within shared networkes
         const members = await systemDb.getNetworkMembers(effectiveIndexId);
         const profiles = await Promise.all(
           members.map(async (member) => {
@@ -430,7 +430,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // --- Mode 2: userId provided (different user) → fetch single profile directly ---
       if (targetUserId && targetUserId !== context.userId) {
-        // Strict scope enforcement: when chat is index-scoped, verify user is in that index
+        // Strict scope enforcement: when chat is network-scoped, verify user is in that index
         if (scopedNetworkId) {
           const isInScopedIndex = await systemDb.isNetworkMember(scopedNetworkId, targetUserId);
           if (!isInScopedIndex) {
@@ -438,7 +438,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           }
         }
 
-        // Use systemDb for cross-user profile access (requires shared index)
+        // Use systemDb for cross-user profile access (requires shared network)
         const profile = await systemDb.getProfile(targetUserId);
         if (profile) {
           // Thin identity + the user's global user_context text (profile-replacing

@@ -343,6 +343,10 @@ describe("PROMPT_MODULES registry", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolContext {
+  const scopeOverrides = overrides.networkId && !overrides.scopeType
+    ? { scopeType: 'network' as const, scopeId: overrides.networkId }
+    : {};
+
   return {
     userId: "user-1",
     userName: "Alice Test",
@@ -379,6 +383,7 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
     isOnboarding: false,
     hasName: true,
     contactsEnabled: true,
+    ...scopeOverrides,
     ...overrides,
   };
 }
@@ -435,9 +440,9 @@ describe("buildSystemContent snapshot identity", () => {
     });
     const output = buildSystemContent(ctx);
 
-    expect(output).toContain('This chat is scoped to index "AI Builders"');
+    expect(output).toContain('This chat is scoped to network "AI Builders"');
     expect(output).toContain("You are the **owner** of this network");
-    expect(output).toContain("scoped to current index");
+    expect(output).toContain("scoped to current network");
 
     expect(output).toMatchSnapshot();
   });

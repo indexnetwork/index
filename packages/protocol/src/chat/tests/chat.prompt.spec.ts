@@ -25,6 +25,10 @@ import { extractRecentToolCalls, resolveModules, type IterationContext } from ".
 function makeCtx(
   overrides: Partial<ResolvedToolContext> = {},
 ): ResolvedToolContext {
+  const scopeOverrides = overrides.networkId && !overrides.scopeType
+    ? { scopeType: 'network' as const, scopeId: overrides.networkId }
+    : {};
+
   return {
     userId: "user-1",
     userName: "Alice Test",
@@ -55,6 +59,7 @@ function makeCtx(
     ],
     isOnboarding: false,
     hasName: true,
+    ...scopeOverrides,
     ...overrides,
   } as unknown as ResolvedToolContext;
 }
