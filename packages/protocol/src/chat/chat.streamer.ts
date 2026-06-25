@@ -45,7 +45,10 @@ export class ChatStreamer {
       message: string;
       sessionId: string;
       maxContextMessages?: number;
+      /** @deprecated Use scopeType/scopeId. Kept for REST/session edge compatibility. */
       networkId?: string;
+      scopeType?: 'network';
+      scopeId?: string;
       prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
       /** Per-run identifier used to form a composite LangGraph thread_id (sessionId:runId).
        * When provided, prevents stale checkpoint state from a prior run being resumed.
@@ -61,16 +64,21 @@ export class ChatStreamer {
       sessionId,
       maxContextMessages = 20,
       networkId,
+      scopeType,
+      scopeId,
       prefillMessages,
       runId,
     } = input;
+    const effectiveScopeType = scopeType ?? (networkId ? 'network' as const : undefined);
+    const effectiveScopeId = scopeId ?? networkId;
     logger.verbose("Starting context-aware streaming", {
       userId,
       sessionId,
       maxContextMessages,
       hasCheckpointer: !!checkpointer,
-      hasIndexId: !!networkId,
-      networkId: networkId ?? undefined,
+      hasIndexScope: !!effectiveScopeId,
+      scopeType: effectiveScopeType,
+      scopeId: effectiveScopeId,
     });
 
     try {
@@ -99,7 +107,7 @@ export class ChatStreamer {
 
       // Stream with context using the optional checkpointer
       yield* this.streamChatEvents(
-        { userId, messages: allMessages, networkId },
+        { userId, messages: allMessages, scopeType: effectiveScopeType, scopeId: effectiveScopeId },
         sessionId,
         checkpointer,
         signal,
@@ -133,7 +141,7 @@ export class ChatStreamer {
    * @yields ChatStreamEvent objects
    */
   public async *streamChatEvents(
-    input: { userId: string; messages: BaseMessage[]; networkId?: string },
+    input: { userId: string; messages: BaseMessage[]; networkId?: string; scopeType?: 'network'; scopeId?: string },
     sessionId: string,
     checkpointer?: BaseCheckpointSaver,
     signal?: AbortSignal,
@@ -146,12 +154,20 @@ export class ChatStreamer {
         userId: string;
         messages: BaseMessage[];
         networkId?: string;
+        scopeType?: 'network';
+        scopeId?: string;
         sessionId?: string;
       } = {
         userId: input.userId,
         messages: input.messages,
       };
+      const effectiveScopeType = input.scopeType ?? (input.networkId ? 'network' as const : undefined);
+      const effectiveScopeId = input.scopeId ?? input.networkId;
       if (input.networkId) initialState.networkId = input.networkId;
+      if (effectiveScopeType && effectiveScopeId) {
+        initialState.scopeType = effectiveScopeType;
+        initialState.scopeId = effectiveScopeId;
+      }
       initialState.sessionId = sessionId;
 
       // Use graph.stream() with custom + updates modes.

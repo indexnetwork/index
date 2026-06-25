@@ -72,11 +72,22 @@ export const ChatGraphState = Annotation.Root({
   userId: Annotation<string>,
 
   /**
-   * Optional index (community) ID when chat is scoped to a specific index.
-   * When set, the agent and tools use this as the current index (e.g. read_intents,
-   * create_intent with networkId, scope index assignment to this index only).
+   * Legacy optional index (community) ID when chat is scoped to a specific index.
+   * New callers should set scopeType/scopeId; networkId is retained as an edge alias.
    */
   networkId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope type. Currently only `network` exists. */
+  scopeType: Annotation<'network' | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope id. When scopeType is `network`, this is the network id. */
+  scopeId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

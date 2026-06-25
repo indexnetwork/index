@@ -289,11 +289,9 @@ export const computeAgentAllowedNetworkIds = (
 
 /**
  * Promotes a network-scoped agent's bound network into the resolved tool
- * context as the implicit chat scope. Every tool that branches on
- * `context.networkId` (read_networks, read_intents, read_user_contexts,
- * opportunity tools, etc.) then enforces scope automatically — without this
- * step tools that shape their response off `context.networkId` (notably
- * `read_networks`' `publicNetworks` branch) would still leak the global view.
+ * context as the implicit chat scope. Every tool derives its focused network
+ * from the `scopeType`/`scopeId` envelope; without this step scoped API-key
+ * calls would still resolve an unscoped/global view.
  *
  * No-op when there is no scope, or when an explicit scope is already set
  * (a user-driven index-scoped chat must keep precedence over the agent
@@ -310,9 +308,6 @@ export const applyNetworkScopeToContext = (
   const scope = scopeFromNetworkId(networkScopeId);
   context.scopeType = scope.scopeType;
   context.scopeId = scope.scopeId;
-  context.networkId = networkScopeId;
-  // Deprecated compatibility reach until remaining tool call sites migrate.
-  context.indexScope = computeAgentAllowedNetworkIds(context.userNetworks, context.scopeType, context.scopeId);
 
   const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
   if (!bound) return;
@@ -620,10 +615,8 @@ export function createMcpServer(
           }
 
           // Network-scoped agents inherit their bound network as the implicit chat
-          // scope. Every tool that branches on `context.networkId` then enforces
-          // the same focused boundary — most importantly `read_networks`, which
-          // would otherwise return the global `publicNetworks` catalog for
-          // unscoped contexts.
+          // scope. Tools consume the scope envelope and derive any concrete
+          // allowed network IDs from it plus the user's memberships.
           applyNetworkScopeToContext(context, networkScopeId);
 
           // Gate: API-key callers (background agents) must register before using most tools.
@@ -674,8 +667,6 @@ export function createMcpServer(
               ? { scopeType: context.scopeType, scopeId: context.scopeId }
               : {}),
           });
-          // Deprecated compatibility reach until remaining tool call sites migrate.
-          context.indexScope = allowedNetworkIds;
           const scopedDbs = scopedDepsFactory.create(userId, allowedNetworkIds);
 
           // Override deps with per-request scoped databases
@@ -777,8 +768,8 @@ export function createMcpServer(
               },
               context: {
                 agentId: reportContext?.agentId,
-                networkId: reportContext?.networkId,
-                indexScope: reportContext?.indexScope,
+                scopeType: reportContext?.scopeType,
+                scopeId: reportContext?.scopeId,
               },
             });
           }

@@ -476,7 +476,7 @@ describe("read_intents tool", () => {
     expect(capturedRequestingUserId).toBe(testUserId);
   });
 
-  test("when context.networkId is set with indexScope, omit networkId to get caller-own intents via indexScope", async () => {
+  test("when scope envelope is set, omit networkId to get caller-own intents via indexScope", async () => {
     const personalIndexId = "personal-test-scope-idx";
     let getActiveIntentsAcrossIndexesCalled = false;
     const callerIntents = [
@@ -484,6 +484,10 @@ describe("read_intents tool", () => {
     ];
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
+      getNetworkMemberships: async () => [
+        { networkId: testIndexId, networkTitle: "Scoped", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
+        { networkId: personalIndexId, networkTitle: "Personal", indexPrompt: null, permissions: ["owner"], memberPrompt: null, autoAssign: true, isPersonal: true, joinedAt: new Date() },
+      ],
       getActiveIntentsAcrossIndexes: async (_uid: string, ids: string[]) => {
         getActiveIntentsAcrossIndexesCalled = true;
         expect(ids.sort()).toEqual([testIndexId, personalIndexId].sort());
@@ -495,8 +499,8 @@ describe("read_intents tool", () => {
       database: mockDb,
       embedder: mockEmbedder,
       scraper: mockScraper,
-      networkId: testIndexId,
-      indexScope: [testIndexId, personalIndexId],
+      scopeType: 'network',
+      scopeId: testIndexId,
       ...mockProtocolDeps,
     };
     const tools = await createChatTools(context);
@@ -676,7 +680,7 @@ describe("read_intents tool (no networkId)", () => {
     expect(parsed.data.intents[0]).toMatchObject({ id: "g1", description: "Global intent A" });
   });
 
-  test("with context.networkId and no args, returns caller-only intents across indexScope (does not call getNetworkIntentsForMember)", async () => {
+  test("with scope envelope and no args, returns caller-only intents across derived scope (does not call getNetworkIntentsForMember)", async () => {
     const networkId = testIndexId;
     const personalIndexId = "personal-test-idx";
     let getActiveIntentsAcrossIndexesCalled = false;
@@ -689,6 +693,10 @@ describe("read_intents tool (no networkId)", () => {
 
     const mockDb = createMockDatabase(async () => [], {
       isNetworkMember: async () => true,
+      getNetworkMemberships: async () => [
+        { networkId, networkTitle: "Scoped", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
+        { networkId: personalIndexId, networkTitle: "Personal", indexPrompt: null, permissions: ["owner"], memberPrompt: null, autoAssign: true, isPersonal: true, joinedAt: new Date() },
+      ],
       getActiveIntentsAcrossIndexes: async (uid: string, ids: string[]) => {
         getActiveIntentsAcrossIndexesCalled = true;
         expect(uid).toBe(testUserId);
@@ -706,8 +714,8 @@ describe("read_intents tool (no networkId)", () => {
       database: mockDb,
       embedder: mockEmbedder,
       scraper: mockScraper,
-      networkId,
-      indexScope: [networkId, personalIndexId],
+      scopeType: 'network',
+      scopeId: networkId,
       ...mockProtocolDeps,
     };
     const tools = await createChatTools(context);
@@ -723,7 +731,7 @@ describe("read_intents tool (no networkId)", () => {
     expect(parsed.data.intents.map((i: { id: string }) => i.id).sort()).toEqual(["self-a", "self-b"]);
   });
 
-  test("with context.networkId and explicit networkId arg, still browses all members in that network (existing behavior)", async () => {
+  test("with scope envelope and explicit networkId arg, still browses all members in that network (existing behavior)", async () => {
     const networkId = testIndexId;
     let getNetworkIntentsForMemberCalled = false;
     const allMembersIntents: IndexedIntentDetails[] = [
@@ -758,7 +766,7 @@ describe("read_intents tool (no networkId)", () => {
     expect(parsed.data.count).toBe(2);
   });
 
-  test("with context.networkId and explicit userId of co-member, reads that member's intents in the bound network (not caller's globals)", async () => {
+  test("with scope envelope and explicit userId of co-member, reads that member's intents in the bound network (not caller's globals)", async () => {
     const networkId = testIndexId;
     const otherUserId = "00000000-0000-0000-0000-000000000099";
     let getIntentsInIndexForMemberCall: { userId: string; networkId: string } | null = null;
@@ -1021,7 +1029,7 @@ describe("scrape_url tool", () => {
 describe("read_networks (Phase 3 network-scoped)", () => {
   const scopedIndexId = "a1b2c3d4-0000-4000-8000-000000000010";
 
-  test("when context.networkId is set and showAll not true, returns only current index membership with scopeNote", async () => {
+  test("when scope envelope is set and showAll not true, returns only current index membership with scopeNote", async () => {
     const oneMembership = [{ networkId: scopedIndexId, networkTitle: "Current Index", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }];
     const mockDb = createMockDatabase(async () => [], {
       getNetworkMemberships: async (uid) => (uid === testUserId ? oneMembership : []),
@@ -1039,7 +1047,7 @@ describe("read_networks (Phase 3 network-scoped)", () => {
     expect(parsed.data.stats.scopeNote).toContain("Showing current index");
   });
 
-  test("when context.networkId is set, showAll parameter is ignored (strict scope enforcement)", async () => {
+  test("when scope envelope is set, showAll parameter is ignored (strict scope enforcement)", async () => {
     const allMemberships = [
       { networkId: scopedIndexId, networkTitle: "Index A", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
       { networkId: "b2c3d4e5-0000-4000-8000-000000000011", networkTitle: "Index B", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: false, isPersonal: false, joinedAt: new Date() },
@@ -1069,7 +1077,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
   const intentInIndex = { id: "c2505011-2e45-426e-81dd-b9abb9b72001", payload: "In scope", summary: "X", createdAt: new Date() };
   const intentNotInIndex = "c2505011-2e45-426e-81dd-b9abb9b72099"; // Valid UUID but not in index
 
-  test("update_intent when context.networkId set and intent not in index returns success false and error", async () => {
+  test("update_intent when scope envelope set and intent not in index returns success false and error", async () => {
     const mockDb = createMockDatabase(async (uid, idx) => {
       if (uid === testUserId && idx === networkId) return [intentInIndex];
       return [];
@@ -1087,7 +1095,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     expect(parsed.error).toMatch(/fail|update/i);
   });
 
-  test("delete_intent when context.networkId set and intent not in index returns success false and error", async () => {
+  test("delete_intent when scope envelope set and intent not in index returns success false and error", async () => {
     const mockDb = createMockDatabase(async (uid, idx) => {
       if (uid === testUserId && idx === networkId) return [intentInIndex];
       return [];
@@ -1105,7 +1113,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     expect(parsed.error).toMatch(/fail|delete|archived/i);
   });
 
-  test("update_intent when context.networkId set and intent in index returns success and data shape", async () => {
+  test("update_intent when scope envelope set and intent in index returns success and data shape", async () => {
     const mockDb = createMockDatabase(async (uid, idx) => {
       if (uid === testUserId && idx === networkId) return [intentInIndex];
       return [];
@@ -1124,7 +1132,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     expect(parsed.data.message).toBe("Intent updated.");
   });
 
-  test("delete_intent when context.networkId set and intent in index returns success and data shape", async () => {
+  test("delete_intent when scope envelope set and intent in index returns success and data shape", async () => {
     const mockDb = createMockDatabase(async (uid, idx) => {
       if (uid === testUserId && idx === networkId) return [intentInIndex];
       return [];
@@ -1408,7 +1416,7 @@ describe("discover_opportunities tool", () => {
         status: "draft",
       }],
     };
-    // Use getNetworkMemberships to populate indexScope via graphs.index (avoids UUID check on context.networkId)
+    // Use getNetworkMemberships to populate scope-derived memberships via graphs.index
     const mockDb = createMockDatabase(async () => [], {
       getNetworkMemberships: async () => [{
         networkId: "00000000-0000-0000-0000-000000000001",

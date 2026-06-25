@@ -34,6 +34,22 @@ export function hasNetworkScope(scope: ToolScopeEnvelope): scope is { scopeType:
   return scope.scopeType === 'network' && typeof scope.scopeId === 'string' && scope.scopeId.trim().length > 0;
 }
 
+/**
+ * Returns the focused network id from the canonical scope envelope.
+ *
+ * This intentionally does not inspect legacy `networkId` fields; callers that
+ * still need a transition fallback should pass `scopeFromNetworkId(networkId)`
+ * at the boundary so tool logic remains envelope-driven.
+ */
+export function focusedNetworkId(scope: ToolScopeEnvelope): string | undefined {
+  return hasNetworkScope(scope) ? scope.scopeId.trim() : undefined;
+}
+
+/** Human-readable label for a focused scope, used in scope-restriction notes. */
+export function focusedNetworkLabel(scope: ToolScopeEnvelope & { indexName?: string }): string {
+  return scope.indexName ?? focusedNetworkId(scope) ?? 'this index';
+}
+
 export function deriveAllowedNetworkIds(input: DeriveNetworkScopeInput): string[] {
   if (!hasNetworkScope(input)) {
     return uniqueNetworkIds(input.memberships.map((membership) => membership.networkId));

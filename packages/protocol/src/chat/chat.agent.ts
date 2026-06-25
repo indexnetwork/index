@@ -2,6 +2,7 @@ import type { ChatOpenAI } from "@langchain/openai";
 import { AIMessage, BaseMessage, SystemMessage, ToolMessage, AIMessageChunk } from "@langchain/core/messages";
 import { createChatTools, type ToolContext, type ResolvedToolContext } from "../shared/agent/tool.factory.js";
 import { resolveChatContext } from "../shared/agent/tool.helpers.js";
+import { scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import { ITERATION_NUDGE, buildSystemContent } from "./chat.prompt.js";
 import { extractRecentToolCalls, type IterationContext } from "./chat.prompt.modules.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -249,13 +250,22 @@ export class ChatAgent {
    * Resolves user/index identity from DB during tool initialization.
    */
   static async create(context: ToolContext): Promise<ChatAgent> {
+    const { networkId: legacyNetworkId } = context;
+    const explicitScope = context.scopeType && context.scopeId
+      ? { scopeType: context.scopeType, scopeId: context.scopeId }
+      : scopeFromNetworkId(legacyNetworkId);
+    const scopedNetworkId = explicitScope.scopeType === 'network' ? explicitScope.scopeId : undefined;
     const resolved: ResolvedToolContext = await resolveChatContext({
       database: context.database,
       userId: context.userId,
-      networkId: context.networkId,
+      networkId: scopedNetworkId,
       sessionId: context.sessionId,
       contactsEnabled: context.contactsEnabled,
     });
+    if (explicitScope.scopeType && explicitScope.scopeId) {
+      resolved.scopeType = explicitScope.scopeType;
+      resolved.scopeId = explicitScope.scopeId;
+    }
     const tools = await createChatTools(context, resolved);
     return new ChatAgent(resolved, tools, context.modelConfig);
   }

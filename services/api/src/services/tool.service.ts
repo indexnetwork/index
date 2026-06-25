@@ -140,8 +140,6 @@ export class ToolService {
         ? { scopeType: context.scopeType, scopeId: context.scopeId }
         : {}),
     });
-    // Deprecated compatibility reach until remaining tool call sites migrate.
-    context.indexScope = allowedNetworkIds;
     const userDb = createUserDatabase(database, userId);
     const systemDb = createSystemDatabase(database, userId, allowedNetworkIds, this.embedder);
 

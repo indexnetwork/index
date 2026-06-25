@@ -79,11 +79,11 @@ describe('applyNetworkScopeToContext', () => {
     expect(ctx.indexName).toBe('Other Community');
   });
 
-  test('promotes networkScopeId into context.networkId when bound network is in memberships', () => {
+  test('promotes networkScopeId into scope envelope when bound network is in memberships', () => {
     const ctx = baseContext();
     applyNetworkScopeToContext(ctx, 'experiment-net');
 
-    expect(ctx.networkId).toBe('experiment-net');
+    expect(ctx.networkId).toBeUndefined();
     expect(ctx.scopeType).toBe('network');
     expect(ctx.scopeId).toBe('experiment-net');
     expect(ctx.indexName).toBe('Edge City');
@@ -100,18 +100,19 @@ describe('applyNetworkScopeToContext', () => {
     const ctx = baseContext();
     applyNetworkScopeToContext(ctx, 'community-B');
 
-    expect(ctx.networkId).toBe('community-B');
+    expect(ctx.networkId).toBeUndefined();
+    expect(ctx.scopeId).toBe('community-B');
     expect(ctx.scopedMembershipRole).toBe('owner');
     expect(ctx.isOwner).toBe(true);
   });
 
-  test('promotes networkId even when bound network is not in memberships (defensive)', () => {
+  test('promotes scope envelope even when bound network is not in memberships (defensive)', () => {
     const ctx = baseContext();
     applyNetworkScopeToContext(ctx, 'unknown-network');
 
     // We still apply the network scope so downstream tools refuse cross-scope access.
     // indexName/scopedIndex remain unset because we have no authoritative title/prompt.
-    expect(ctx.networkId).toBe('unknown-network');
+    expect(ctx.networkId).toBeUndefined();
     expect(ctx.scopeType).toBe('network');
     expect(ctx.scopeId).toBe('unknown-network');
     expect(ctx.indexName).toBeUndefined();
@@ -122,7 +123,7 @@ describe('applyNetworkScopeToContext', () => {
     const ctx = baseContext();
     applyNetworkScopeToContext(ctx, 'experiment-net');
     expect(computeAgentAllowedNetworkIds(ctx.userNetworks, ctx.scopeType, ctx.scopeId).sort()).toEqual(['experiment-net', 'personal-1'].sort());
-    expect(ctx.indexScope.sort()).toEqual(['experiment-net', 'personal-1'].sort());
+    expect(ctx.indexScope.sort()).toEqual(['personal-1', 'experiment-net', 'community-B'].sort());
   });
 
   test('leaves indexScope unchanged when scope is null (already set by resolveChatContext)', () => {
