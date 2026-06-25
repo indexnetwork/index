@@ -1,0 +1,2 @@
+{"runId":"2026-06-25_10-08-18-4b40","workflow":"ship","input":"let's build this.","ts":"2026-06-25T07:08:18.127Z","v":1,"trigger":{"kind":"command","name":"wf"}}
+{"stageNumber":1,"stage":"blueprint","skill":"blueprint","status":"aborted","ts":"2026-06-25T07:08:47.266Z","errMsg":"blueprint aborted by user (ESC)","session":{"id":"019efd9b-ab55-7f1f-bb72-3345b45fd902","file":"/Users/yanek/.pi/agent/sessions/--Users-yanek-Projects-index--/2026-06-25T07-08-18-133Z_019efd9b-ab55-7f1f-bb72-3345b45fd902.jsonl"}}
