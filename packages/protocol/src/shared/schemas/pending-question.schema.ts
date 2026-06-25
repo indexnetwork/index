@@ -16,4 +16,6 @@ export interface PendingQuestionSummary {
   sourceId: string;
   createdAt: string;
   expiresAt?: string;
+  /** Internal actor projection used for defense-in-depth scoped filtering; tool responses strip it before returning. */
+  actors?: Array<{ userId: string; networkId?: string }>;
 }

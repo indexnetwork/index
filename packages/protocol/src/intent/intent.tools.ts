@@ -247,6 +247,9 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const effectiveIndexId = context.networkId || query.networkId?.trim() || undefined;
+      const scopeEnvelope = context.scopeType && context.scopeId
+        ? { scopeType: context.scopeType, scopeId: context.scopeId }
+        : {};
 
       // Fetch profile (the intent graph needs it for inference)
       const _profileGraphStart1 = Date.now();
@@ -264,6 +267,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         inputContent: query.description,
         operationMode: 'propose' as const,
         ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
+        ...scopeEnvelope,
       }));
       const _intentGraphMs1 = Date.now() - _intentGraphStart1;
       logger.debug("Intent graph propose response", { result });
@@ -338,6 +342,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
             inputContent: v.description,
             operationMode: 'create' as const,
             ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
+            ...scopeEnvelope,
           }));
           const _createGraphMs = Date.now() - _createGraphStart;
 
@@ -462,6 +467,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         inputContent: query.description,
         targetIntentIds: [intentId],
         ...(context.networkId && { networkId: context.networkId }),
+        ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
       }));
       const _intentGraphMs2 = Date.now() - _intentGraphStart2;
 
@@ -528,6 +534,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         operationMode: 'delete' as const,
         targetIntentIds: [intentId],
         ...(context.networkId && { networkId: context.networkId }),
+        ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
       }));
       const _deleteIntentGraphMs = Date.now() - _deleteIntentGraphStart;
 

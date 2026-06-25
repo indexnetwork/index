@@ -4,6 +4,7 @@ import { requestContext } from "../shared/observability/request-context.js";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import { deriveDiscoveryNetworkIds } from "../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
@@ -495,16 +496,20 @@ function discoveryRunSignature(input: DiscoveryRunInput, scopeKey: string): stri
 
 /**
  * Stable key for the resolved discovery scope of a request. Two requests
- * coalesce only when they resolve to the same reach — the focus index
- * (`networkId`) and the full reachable `indexScope` set. When `query.networkId`
- * is omitted, scope comes from context (network-scoped agent vs unscoped
- * session), so folding it into the signature prevents a scoped caller from
- * coalescing onto an unscoped run and receiving out-of-scope opportunities.
+ * coalesce only when they resolve to the same focused discovery boundary. For
+ * scoped contexts, that boundary is the scope envelope (`scopeType`/`scopeId`),
+ * not the personal-inclusive allowed network reach used for self-owned writes.
+ * When no scope envelope is present, legacy `indexScope` remains part of the
+ * key so older contexts with different unscoped reach do not coalesce.
  */
-function discoveryScopeKey(ctx: { networkId?: string; indexScope?: string[] }): string {
+function discoveryScopeKey(ctx: { networkId?: string; scopeType?: string; scopeId?: string; indexScope?: string[] }): string {
   return JSON.stringify({
     networkId: (ctx.networkId ?? "").trim(),
-    indexScope: [...(ctx.indexScope ?? [])].map((s) => s.trim()).sort(),
+    scopeType: (ctx.scopeType ?? "").trim(),
+    scopeId: (ctx.scopeId ?? "").trim(),
+    indexScope: ctx.scopeType && ctx.scopeId
+      ? []
+      : [...(ctx.indexScope ?? [])].map((s) => s.trim()).sort(),
   });
 }
 
@@ -601,7 +606,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z
         .string()
         .optional()
-        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. In an index-scoped chat, omitting this runs discovery across the full reachable scope (the bound community plus the user's personal index); pass an explicit networkId to force single-index discovery. Pass the personal index ID (from read_networks, isPersonal=true) to scope to the user's contacts only."),
+        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. In an index-scoped chat, omitting this runs discovery only in the scoped community; pass the personal index ID (from read_networks, isPersonal=true) only when the user explicitly asks to discover among contacts."),
       intentId: z
         .string()
         .optional()
@@ -679,11 +684,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // Distinguish an explicit `query.networkId` override (caller wants discovery
-      // scoped to one specific index) from an implicit scoped-chat context
-      // (caller is in a scoped chat with no explicit override — discovery should
-      // span the chat's reach, i.e. context.indexScope = [bound, personal]).
-      // Conflating them via `context.networkId || query.networkId` made the
-      // implicit branch unreachable.
+      // scoped to one specific index) from an implicit scoped-chat context.
+      // Scoped-chat discovery stays focused to the scoped community only; the
+      // personal-inclusive allowed reach is reserved for self-owned writes.
       const explicitIndexId = query.networkId?.trim() || undefined;
       const effectiveIndexId = explicitIndexId;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
@@ -731,6 +734,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             userName: context.userName,
             userEmail: context.userEmail,
             ...(context.networkId ? { networkId: context.networkId } : {}),
+            ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
             ...(context.indexName ? { indexName: context.indexName } : {}),
             indexScope: context.indexScope,
             ...(context.sessionId ? { sessionId: context.sessionId } : {}),
@@ -1080,12 +1084,19 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           return error("Network not found or you are not a member.");
         }
         indexScope = [effectiveIndexId];
+      } else if (context.scopeType === 'network' && context.scopeId) {
+        // Scoped chat: discovery is focused-network only. Self-owned writes may
+        // include personal indexes, but opportunity visibility must not.
+        const scopedDiscoveryIds = deriveDiscoveryNetworkIds({
+          memberships: context.userNetworks,
+          scopeType: context.scopeType,
+          scopeId: context.scopeId,
+        });
+        indexScope = scopedDiscoveryIds;
       } else if (context.networkId) {
-        // Scoped chat: use the agent's full reach so personal-index
-        // signals participate in opportunity discovery. See IND-306.
-        indexScope = context.indexScope.length > 0
-          ? [...context.indexScope]
-          : [context.networkId];
+        // Legacy scoped context without a scope envelope: preserve focused-only
+        // discovery using the focused network id.
+        indexScope = [context.networkId];
       } else {
         // No scope - use all indexes (only in unscoped chat)
         const _scopeGraphStart = Date.now();
@@ -1155,6 +1166,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
         ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
         ...(deps.questionerEnqueue && { questionerEnqueue: deps.questionerEnqueue }),
+        ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
         ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
         // Decision questions add an LLM call after the negotiation phase.
         // Capped at DISCOVERY_QUESTIONS_TIMEOUT_MS (12 s default,
@@ -1180,6 +1192,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         findPendingQuestions: deps.findPendingQuestions,
         userId: context.userId,
         sourceType: 'discovery',
+        ...(context.scopeType === 'network' && context.scopeId ? { networkId: context.scopeId } : {}),
         surfacedQuestionIds: new Set(), // Dedup handled at chat.agent level
       });
       const pendingQuestions = pendingQuestionResult.questions;

@@ -21,6 +21,13 @@ export type { ChatTools } from "./shared/agent/tool.factory.js";
 export type { ModelConfig, ModelSettings } from "./shared/agent/model.config.js";
 export type { ToolContext, ResolvedToolContext, ToolDeps, ProtocolDeps, RawToolDefinition, CompiledGraph } from "./shared/agent/tool.helpers.js";
 export { ChatContextAccessError, resolveChatContext } from "./shared/agent/tool.helpers.js";
+export {
+  deriveAllowedNetworkIds,
+  deriveDiscoveryNetworkIds,
+  hasNetworkScope,
+  scopeFromNetworkId,
+} from "./shared/agent/tool.scope.js";
+export type { ToolScopeEnvelope, ToolScopeType, ScopeMembership, DeriveNetworkScopeInput } from "./shared/agent/tool.scope.js";
 export { requestContext } from "./shared/observability/request-context.js";
 export { setTimingWrapper } from "./shared/observability/performance.js";
 export { ToolRuntimeError, getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } from "./shared/agent/tool.runtime.js";
@@ -48,7 +55,7 @@ export type {
   Opportunity, OpportunityActor, OpportunityContext, OpportunityDetection, OpportunityInterpretation,
   OpportunityQueryOptions, OpportunitySignal, OpportunityStatus,
   ActiveIntent, CreatedIntent, CreateIntentData, UpdateIntentData, IntentRecord, SimilarIntent, SimilarIntentSearchOptions,
-  IndexedIntentDetails, IndexMemberDetails, NetworkAssignmentContext, NetworkMembership, OwnedIndex,
+  IndexedIntentDetails, IndexMemberDetails, AssignmentNetworkMembership, NetworkAssignmentContext, NetworkMembership, OwnedIndex,
   CreateHydeDocumentData, HydeDocument, HydeSourceType, CreateOpportunityData,
   PremiseAnalysis, PremiseAssertion, PremiseProvenance, PremiseRecord, PremiseValidity,
   OnboardingPrivacyState, OnboardingProfileSeed, OnboardingState, PrivacyConsentDecision, PrivacyConsentSource,
@@ -91,7 +98,7 @@ export type { DiscoverySourceProfile, DiscoverySummary, DiscoveryNegotiation, Di
 export { NetworkAssignmentResourceTypeSchema, NetworkAssignmentModeSchema, NetworkAssignmentScopeSchema, NetworkAssignmentPromptPresenceSchema, NetworkAssignmentPolicySchema, NetworkAssignmentRawScoresSchema, NetworkAssignmentMetadataSchema, OpportunityEvidenceKindSchema, OpportunityEvidenceSchema } from "./shared/schemas/network-assignment.schema.js";
 export type { NetworkAssignmentResourceType, NetworkAssignmentMode, NetworkAssignmentScope, NetworkAssignmentPromptPresence, NetworkAssignmentPolicy, NetworkAssignmentRawScores, NetworkAssignmentMetadata, OpportunityEvidenceKind, OpportunityEvidence } from "./shared/schemas/network-assignment.schema.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, classifyPromptPresence, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision, combineAssignmentScores } from "./shared/assignment/network-assignment.policy.js";
-export type { PromptPresenceInput, ResolveAssignmentNetworkScopeArgs, BuildNetworkAssignmentDecisionArgs, NetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
+export type { PromptPresenceInput, ResolveAssignmentNetworkScopeArgs, AssignmentScopeMembership, BuildNetworkAssignmentDecisionArgs, NetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
 export { buildCandidateEvidence, withCandidateEvidence, mergeOpportunityEvidence, withMatchedStrategies, renderOpportunityEvidenceForPrompt } from "./opportunity/opportunity.evidence.js";
 export type { EvidenceCandidateInput } from "./opportunity/opportunity.evidence.js";
 
@@ -176,7 +183,7 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 // ─── MCP ──────────────────────────────────────────────────────────────────────
 
-export { createMcpServer, computeAgentIndexScope, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
+export { createMcpServer, computeAgentAllowedNetworkIds, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
 export { buildElicitationCreate, flattenChoice } from "./mcp/elicitation.builder.js";
 export { dispatchElicitations } from "./mcp/elicitation.dispatcher.js";

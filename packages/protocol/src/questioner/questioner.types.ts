@@ -6,6 +6,7 @@
  * working preset implementation. The others are type stubs for future slices.
  */
 import type { DiscoveryQuestionInput } from "../opportunity/question.prompt.js";
+import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
@@ -74,6 +75,10 @@ export interface QuestionerInput {
   sourceId: string;
   /** Mode-specific context. Must align with the selected mode. */
   context: QuestionerContext;
+  /** Scoped question context. Network scopes persist as QuestionActor.networkId. */
+  scopeType?: ToolScopeType;
+  /** Scoped question id. When scopeType is `network`, this is the actor networkId. */
+  scopeId?: string;
   /** Conversation ID — set when the question originates from a chat session. Persisted on the question row for frontend filtering. */
   conversationId?: string;
   /** Assistant message ID — set when we know which message triggered the question. Stored in detection.messageId for inline anchoring. */

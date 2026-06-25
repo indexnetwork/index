@@ -196,7 +196,11 @@ export class IntentService {
     }
 
     try {
-      await intentQueue.addGenerateHydeJob({ intentId: created.id, userId });
+      await intentQueue.addGenerateHydeJob({
+        intentId: created.id,
+        userId,
+        ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
+      });
     } catch (err) {
       logger.warn('[IntentService] Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
     }

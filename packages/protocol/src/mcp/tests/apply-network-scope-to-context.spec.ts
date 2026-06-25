@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { applyNetworkScopeToContext } from '../mcp.server.js';
+import { applyNetworkScopeToContext, computeAgentAllowedNetworkIds } from '../mcp.server.js';
 import type { ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
 
 const memberships = [
@@ -69,9 +69,13 @@ describe('applyNetworkScopeToContext', () => {
   test('preserves an explicit chat scope when one is already set', () => {
     const ctx = baseContext();
     ctx.networkId = 'community-B';
+    ctx.scopeType = 'network';
+    ctx.scopeId = 'community-B';
     ctx.indexName = 'Other Community';
     applyNetworkScopeToContext(ctx, 'experiment-net');
     expect(ctx.networkId).toBe('community-B');
+    expect(ctx.scopeType).toBe('network');
+    expect(ctx.scopeId).toBe('community-B');
     expect(ctx.indexName).toBe('Other Community');
   });
 
@@ -80,6 +84,8 @@ describe('applyNetworkScopeToContext', () => {
     applyNetworkScopeToContext(ctx, 'experiment-net');
 
     expect(ctx.networkId).toBe('experiment-net');
+    expect(ctx.scopeType).toBe('network');
+    expect(ctx.scopeId).toBe('experiment-net');
     expect(ctx.indexName).toBe('Edge City');
     expect(ctx.scopedIndex).toEqual({
       id: 'experiment-net',
@@ -106,14 +112,17 @@ describe('applyNetworkScopeToContext', () => {
     // We still apply the network scope so downstream tools refuse cross-scope access.
     // indexName/scopedIndex remain unset because we have no authoritative title/prompt.
     expect(ctx.networkId).toBe('unknown-network');
+    expect(ctx.scopeType).toBe('network');
+    expect(ctx.scopeId).toBe('unknown-network');
     expect(ctx.indexName).toBeUndefined();
     expect(ctx.scopedIndex).toBeUndefined();
   });
 
-  test('sets indexScope to [boundNetwork, personalIndex] when scoped', () => {
+  test('derives allowed network IDs as [boundNetwork, personalIndex] when scoped', () => {
     const ctx = baseContext();
     applyNetworkScopeToContext(ctx, 'experiment-net');
-    expect(ctx.indexScope).toEqual(['personal-1', 'experiment-net']);
+    expect(computeAgentAllowedNetworkIds(ctx.userNetworks, ctx.scopeType, ctx.scopeId).sort()).toEqual(['experiment-net', 'personal-1'].sort());
+    expect(ctx.indexScope.sort()).toEqual(['experiment-net', 'personal-1'].sort());
   });
 
   test('leaves indexScope unchanged when scope is null (already set by resolveChatContext)', () => {

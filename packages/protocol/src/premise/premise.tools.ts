@@ -44,6 +44,9 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const effectiveVolatile = query.volatile ?? (query.tier === "contextual" ? true : false);
+      const scopeEnvelope = context.scopeType && context.scopeId
+        ? { scopeType: context.scopeType, scopeId: context.scopeId }
+        : {};
 
       logger.verbose(`[createPremise] Creating premise for user ${context.userId}: "${query.text.substring(0, 60)}..."`);
 
@@ -55,6 +58,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         validUntil: query.validUntil,
         volatile: effectiveVolatile,
         operationMode: "create",
+        ...scopeEnvelope,
       });
 
       if (result.error) {
@@ -219,6 +223,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         volatile: query.volatile ?? existing.validity.volatile,
         operationMode: "update",
         targetPremiseId: query.premiseId,
+        ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
       });
 
       if (result.error) {

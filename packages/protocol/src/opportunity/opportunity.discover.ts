@@ -14,6 +14,7 @@ import type { Cache } from "../shared/interfaces/cache.interface.js";
 import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
 import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
+import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult, type HomeCardPresentationResult, type HomeCardLLMResult, type HomeCardPresenterInput } from "./opportunity.presenter.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
@@ -153,6 +154,10 @@ export interface DiscoverInput {
    * completes).
    */
   questionerEnqueue?: QuestionerEnqueueFn;
+  /** Focused request scope type for generated discovery questions. */
+  scopeType?: ToolScopeType;
+  /** Focused request scope id. When `scopeType === 'network'`, persisted as actor networkId. */
+  scopeId?: string;
 }
 
 /** Context used by the minimal (no-LLM) path; only introducerName is needed for narrator chip. */
@@ -789,6 +794,8 @@ export async function runDiscoverFromQuery(
           query: queryOrEmpty,
           questionerEnqueue: input.questionerEnqueue,
           userId: input.userId,
+          scopeType: input.scopeType,
+          scopeId: input.scopeId,
           userContext: input.userId
             ? ((await input.database.getUserContext(input.userId, null))?.text ?? '')
             : '',
@@ -986,6 +993,10 @@ interface MaybeBuildQuestionsInput {
   questionerEnqueue?: DiscoverInput['questionerEnqueue'];
   /** User ID needed for the enqueue payload. */
   userId?: string;
+  /** Focused request scope type for generated discovery questions. */
+  scopeType?: ToolScopeType;
+  /** Focused request scope id. When `scopeType === 'network'`, persisted as actor networkId. */
+  scopeId?: string;
   /** The seeker's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
 }
@@ -1111,6 +1122,7 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
         sourceType: 'discovery',
         sourceId: args.chatSessionId ?? crypto.randomUUID(),
         context: enqueueInput,
+        ...(args.scopeType && args.scopeId ? { scopeType: args.scopeType, scopeId: args.scopeId } : {}),
         conversationId: args.chatSessionId,
       });
       logger.info("Question generation enqueued to QuestionerQueue", {

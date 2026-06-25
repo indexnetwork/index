@@ -5,8 +5,8 @@ import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
-import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput } from '@indexnetwork/protocol';
+import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
+import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
@@ -16,7 +16,11 @@ export const QUEUE_NAME = 'intent-hyde-queue';
 export interface IntentJobData {
   intentId: string;
   userId: string;
-  /** When set, intent indexing is restricted to this network plus the user's personal networks. */
+  /** Focused request scope type. Currently only `network` is supported. */
+  scopeType?: ToolScopeType;
+  /** Focused request scope id. When `scopeType === 'network'`, this is the focused network id. */
+  scopeId?: string;
+  /** @deprecated Use `scopeType: 'network'` + `scopeId`. */
   networkScopeId?: string;
 }
 
@@ -28,10 +32,25 @@ export interface IntentDeleteData {
 /** Union of all job payloads accepted by the intent queue. */
 export type IntentJobPayload = IntentJobData | IntentDeleteData;
 
+type IntentJobScope = { scopeType?: ToolScopeType; scopeId?: string };
+
+function resolveIntentJobScope(data: { scopeType?: ToolScopeType; scopeId?: string; networkScopeId?: string } | undefined): IntentJobScope {
+  if (data?.scopeType === 'network' && data.scopeId?.trim()) {
+    return { scopeType: 'network', scopeId: data.scopeId.trim() };
+  }
+  const legacyScopeId = data?.networkScopeId?.trim();
+  return legacyScopeId ? { scopeType: 'network', scopeId: legacyScopeId } : {};
+}
+
+function deriveIntentDiscoveryNetworkIds(memberships: AssignmentNetworkMembership[], scope: IntentJobScope): { networkIds?: string[] } {
+  const networkIds = deriveDiscoveryNetworkIds({ memberships, ...scope });
+  return scope.scopeType && scope.scopeId ? { networkIds } : {};
+}
+
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -76,12 +95,12 @@ export class IntentQueue implements IntentGraphQueue {
 
   /**
    * Enqueue a job to generate HyDE documents for an intent (implements {@link IntentGraphQueue}).
-   * @param data - intentId, userId, and optional networkScopeId. When networkScopeId
-   *   is set, the worker restricts indexing to that network plus the user's personal
-   *   networks (see {@link IntentJobData}).
+   * @param data - intentId, userId, and optional scope envelope. When scopeType/scopeId
+   *   is set, the worker restricts indexing to the focused network plus the user's
+   *   personal networks (see {@link IntentJobData}).
    * @returns The BullMQ job
    */
-  addGenerateHydeJob(data: { intentId: string; userId: string; networkScopeId?: string }): Promise<Job<IntentJobPayload>> {
+  addGenerateHydeJob(data: IntentJobData): Promise<Job<IntentJobPayload>> {
     return this.addJob('generate_hyde', data);
   }
 
@@ -109,6 +128,15 @@ export class IntentQueue implements IntentGraphQueue {
     this.database = deps?.database ?? new ChatDatabaseAdapter();
     this.graphDb = (this.database as ChatDatabaseAdapter) as unknown as HydeGraphDatabase;
     // When deps is omitted, default adapter implements the same interface.
+  }
+
+  private async getAssignmentMemberships(userId: string): Promise<AssignmentNetworkMembership[]> {
+    const db = this.deps?.database ?? this.database;
+    if (typeof db.getAssignmentNetworkMembershipsForUser === 'function') {
+      return db.getAssignmentNetworkMembershipsForUser(userId);
+    }
+    const networkIds = await db.getAssignmentNetworkIdsForUser(userId);
+    return networkIds.map((networkId) => ({ networkId, isPersonal: false }));
   }
 
   /**
@@ -160,13 +188,13 @@ export class IntentQueue implements IntentGraphQueue {
    * opportunity discovery — it only (re)evaluates and writes intent_networks
    * rows. Used by network-join backfill and the orphan-reconcile sweep.
    *
-   * @param data - intentId, userId, and optional networkScopeId to restrict the
+   * @param data - intentId, userId, and optional scope envelope to restrict the
    *   evaluated network set (defaults to all assignment-eligible memberships).
    * @returns The BullMQ job.
    */
   addReconcileJob(data: IntentJobData): Promise<Job<IntentJobPayload>> {
     return this.addJob('reconcile_intent_networks', data, {
-      jobId: `reconcile-${data.intentId}-${data.networkScopeId ?? 'global'}`,
+      jobId: `reconcile-${data.intentId}-${data.scopeId ?? data.networkScopeId ?? 'global'}`,
     });
   }
 
@@ -190,7 +218,7 @@ export class IntentQueue implements IntentGraphQueue {
     const intents = await db.getActiveIntents(userId);
     await Promise.all(
       intents.map((i) =>
-        this.addReconcileJob({ intentId: i.id, userId, networkScopeId: networkId }).catch((err) =>
+        this.addReconcileJob({ intentId: i.id, userId, scopeType: 'network', scopeId: networkId }).catch((err) =>
           this.logger.warn('[IntentReconcile] enqueue failed', { intentId: i.id, networkId, userId, error: err }),
         ),
       ),
@@ -239,7 +267,8 @@ export class IntentQueue implements IntentGraphQueue {
     data: IntentJobData,
     overrides?: { addOpportunityJob?: (d: { intentId: string; userId: string; networkIds?: string[] }) => Promise<unknown> }
   ): Promise<void> {
-    const { intentId, userId, networkScopeId } = data;
+    const { intentId, userId } = data;
+    const scope = resolveIntentJobScope(data);
     const db = this.deps?.database ?? this.database;
     const intent = await db.getIntentForIndexing(intentId);
     if (!intent) {
@@ -248,7 +277,7 @@ export class IntentQueue implements IntentGraphQueue {
     }
     this.logger.info('[IntentHyde] Starting HyDE generation', { intentId, userId });
     this.logger.debug('[IntentHyde] Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
-    const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, { networkScopeId });
+    const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, scope);
     this.logger.info('[IntentHyde] Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
 
     // Fetch discoverer global context + active intents for HyDE context (best-effort).
@@ -307,14 +336,21 @@ export class IntentQueue implements IntentGraphQueue {
       overrides?.addOpportunityJob ??
       this.deps?.addOpportunityJob ??
       ((d: { intentId: string; userId: string; networkIds?: string[] }) => fromIntentQueue.addJob(d));
-    // Carry the agent's network scope into discovery. Without this, a network-scoped
-    // agent's intent is matched against every network the user belongs to, leaking
-    // opportunities across networks (e.g. agentvillage setups matching outside their
-    // bound community). The from-intent queue scopes the opportunity graph to networkIds[0].
+    // Carry only the focused network scope into discovery. Assignment writes may
+    // include the user's personal index, but scoped opportunity discovery must not.
+    const discoveryScope: { networkIds?: string[] } = await (async () => {
+      try {
+        const assignmentMemberships = await this.getAssignmentMemberships(userId);
+        return deriveIntentDiscoveryNetworkIds(assignmentMemberships, scope);
+      } catch (err) {
+        this.logger.warn('[IntentHyde] Failed to resolve assignment memberships for discovery scope, falling back to focused scope', { intentId, userId, error: err });
+        return scope.scopeType && scope.scopeId ? { networkIds: [scope.scopeId] } : {};
+      }
+    })();
     await addJob({
       intentId,
       userId,
-      ...(networkScopeId ? { networkIds: [networkScopeId] } : {}),
+      ...discoveryScope,
     }).catch((err: unknown) =>
       this.logger.error('[IntentHyde] Failed to enqueue opportunity discovery', { intentId, error: err })
     );
@@ -332,16 +368,16 @@ export class IntentQueue implements IntentGraphQueue {
    *
    * @param intentId - Intent to assign.
    * @param userId - Owner of the intent.
-   * @param opts - Optional `networkScopeId` to restrict the evaluated set and a
+   * @param opts - Optional scope envelope to restrict the evaluated set and a
    *   `source` tag recorded in assignment metadata.
    * @returns Assigned network IDs and the number of networks evaluated.
    */
   private async assignIntentToNetworks(
     intentId: string,
     userId: string,
-    opts?: { networkScopeId?: string; source?: string },
+    opts?: { scopeType?: ToolScopeType; scopeId?: string; networkScopeId?: string; source?: string },
   ): Promise<{ assignedNetworkIds: string[]; evaluatedCount: number }> {
-    const networkScopeId = opts?.networkScopeId;
+    const scope = resolveIntentJobScope(opts);
     const source = opts?.source ?? 'intent-hyde-queue';
     const db = this.deps?.database ?? this.database;
     const intent = await db.getIntentForIndexing(intentId);
@@ -353,8 +389,8 @@ export class IntentQueue implements IntentGraphQueue {
     const assignedNetworkIds: string[] = [];
     let evaluatedCount = 0;
     try {
-      const membershipNetworkIds = await db.getAssignmentNetworkIdsForUser(userId);
-      const userIndexIds = resolveAssignmentNetworkScope({ memberships: membershipNetworkIds, networkScopeId });
+      const assignmentMemberships = await this.getAssignmentMemberships(userId);
+      const userIndexIds = resolveAssignmentNetworkScope({ memberships: assignmentMemberships, ...scope });
       evaluatedCount = userIndexIds.length;
       this.logger.info('[IntentAssign] User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
 
@@ -397,7 +433,7 @@ export class IntentQueue implements IntentGraphQueue {
           const decision = buildNetworkAssignmentDecision({
             resourceType: 'intent',
             mode: 'automatic',
-            scope: networkScopeId ? 'network' : 'global',
+            scope: scope.scopeType ? 'network' : 'global',
             indexPrompt,
             memberPrompt,
             rawScores: result ? { indexScore: result.indexScore, memberScore: result.memberScore } : undefined,
@@ -429,7 +465,7 @@ export class IntentQueue implements IntentGraphQueue {
       // Explicit orphan signal: an intent registered to no network is invisible
       // in every network UI. Surface it so it can be alerted on or swept rather
       // than silently lost.
-      this.logger.warn('[IntentAssign] Intent assigned to NO networks', { intentId, userId, networkScopeId, evaluatedCount });
+      this.logger.warn('[IntentAssign] Intent assigned to NO networks', { intentId, userId, scopeType: scope.scopeType, scopeId: scope.scopeId, evaluatedCount });
     }
     return { assignedNetworkIds, evaluatedCount };
   }
@@ -438,11 +474,11 @@ export class IntentQueue implements IntentGraphQueue {
    * Handle a `reconcile_intent_networks` job: run assignment only, with no HyDE
    * regeneration or opportunity discovery. Idempotent and safe to re-run.
    *
-   * @param data - intentId, userId, and optional networkScopeId.
+   * @param data - intentId, userId, and optional scope envelope.
    */
   private async handleReconcileNetworks(data: IntentJobData): Promise<void> {
-    const { intentId, userId, networkScopeId } = data;
-    await this.assignIntentToNetworks(intentId, userId, { networkScopeId, source: 'intent-reconcile-queue' });
+    const { intentId, userId } = data;
+    await this.assignIntentToNetworks(intentId, userId, { ...resolveIntentJobScope(data), source: 'intent-reconcile-queue' });
   }
 
   private async handleDeleteHyde(data: IntentDeleteData): Promise<void> {

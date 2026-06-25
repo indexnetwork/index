@@ -799,10 +799,13 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  async getAssignmentNetworkIdsForUser(userId: string): Promise<string[]> {
+  async getAssignmentNetworkMembershipsForUser(userId: string): Promise<Array<{ networkId: string; isPersonal: boolean }>> {
     try {
       const result = await db
-        .select({ networkId: schema.networkMembers.networkId })
+        .select({
+          networkId: schema.networkMembers.networkId,
+          isPersonal: schema.networks.isPersonal,
+        })
         .from(schema.networkMembers)
         .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
         .leftJoin(schema.personalNetworks, eq(schema.networks.id, schema.personalNetworks.networkId))
@@ -820,11 +823,16 @@ export class ChatDatabaseAdapter {
             ),
           )
         );
-      return result.map((r) => r.networkId);
+      return result.map((r) => ({ networkId: r.networkId, isPersonal: r.isPersonal }));
     } catch (error: unknown) {
-      logger.error('ChatDatabaseAdapter.getAssignmentNetworkIdsForUser error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('ChatDatabaseAdapter.getAssignmentNetworkMembershipsForUser error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
+  }
+
+  async getAssignmentNetworkIdsForUser(userId: string): Promise<string[]> {
+    const memberships = await this.getAssignmentNetworkMembershipsForUser(userId);
+    return memberships.map((membership) => membership.networkId);
   }
 
   async getNetworkAssignmentContext(networkId: string, userId: string) {

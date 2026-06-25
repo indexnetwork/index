@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { error, success } from "../shared/agent/tool.helpers.js";
+import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
 
 /**
@@ -12,6 +13,15 @@ import type { QuestionMode } from "../shared/schemas/question.schema.js";
  * other users' content (same leak class as the getOpportunitiesForUser fix).
  */
 const SELF_OWNED_MODES: QuestionMode[] = ["enrichment", "intent", "discovery"];
+
+function isVisibleInScopedNetwork(question: PendingQuestionSummary, userId: string, networkId: string): boolean {
+  return question.actors?.some((actor) => actor.userId === userId && actor.networkId === networkId) === true;
+}
+
+function stripInternalActors(question: PendingQuestionSummary): Omit<PendingQuestionSummary, "actors"> {
+  const { actors: _actors, ...publicQuestion } = question;
+  return publicQuestion;
+}
 
 /**
  * Creates MCP tool definitions for the questioner domain.
@@ -35,7 +45,7 @@ export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
       "system to help surface missing signals, refine intents, or capture engagement context.\n\n" +
       "**Returns:** List of pending questions, each with `id`, `title`, `prompt`, `options`, " +
       "`multiSelect`, `mode`, `sourceType`, `sourceId`, `createdAt`, and optional `expiresAt`. " +
-      "Network-scoped agents receive only profile/intent/discovery questions plus a " +
+      "Network-scoped agents receive only profile/intent/discovery questions for the scoped network plus a " +
       "`scopeRestriction` note.\n\n" +
       "**Use:** Call with no arguments to get all pending questions, or pass `limit` to cap the " +
       "count. For the daily brief the script calls with a small `limit` and renders the first " +
@@ -55,21 +65,29 @@ export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const limit = query.limit ?? 10;
-      // Scoped-key discriminator: applyNetworkScopeToContext sets networkId
-      // only for network-scoped agent keys (mcp.server.ts:558).
-      const isScoped = Boolean(context.networkId);
+      // Scoped-key discriminator: scoped contexts carry a network scope envelope.
+      const scopedNetworkId = context.scopeType === 'network' && context.scopeId
+        ? context.scopeId
+        : context.networkId;
+      const isScoped = Boolean(scopedNetworkId);
 
       try {
         const fetched = await deps.findPendingQuestions(context.userId, {
-          ...(isScoped ? { modes: SELF_OWNED_MODES } : {}),
+          ...(isScoped ? { modes: SELF_OWNED_MODES, networkId: scopedNetworkId } : {}),
           limit,
         });
-        // Defense-in-depth: hosts apply `modes`/`limit` SQL-side; re-apply both
-        // here so the clamp holds even when a custom dep ignores the filters.
+        // Defense-in-depth: hosts apply `modes`/`networkId`/`limit` SQL-side;
+        // re-apply all three here so the clamp holds even when a custom dep
+        // ignores the filters. Scoped rows without actor network metadata are
+        // hidden fail-closed because they cannot prove membership in this scope.
         const visible = isScoped
-          ? fetched.filter((q) => (SELF_OWNED_MODES as string[]).includes(q.mode))
+          ? fetched.filter(
+              (q) =>
+                (SELF_OWNED_MODES as string[]).includes(q.mode) &&
+                isVisibleInScopedNetwork(q, context.userId, scopedNetworkId!),
+            )
           : fetched;
-        const limited = visible.slice(0, limit);
+        const limited = visible.slice(0, limit).map(stripInternalActors);
 
         if (isScoped) {
           return success({
@@ -78,8 +96,8 @@ export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
               isScoped: true,
               scopedToIndex: context.indexName ?? context.networkId,
               message:
-                `Results exclude negotiation questions because this agent is scoped to ` +
-                `"${context.indexName ?? "this index"}".`,
+                `Results are restricted to "${context.indexName ?? "this index"}" and ` +
+                `exclude negotiation questions because this agent is scoped to that index.`,
             },
           });
         }

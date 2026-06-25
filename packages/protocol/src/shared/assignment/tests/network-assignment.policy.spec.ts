@@ -15,9 +15,17 @@ describe("network-assignment.policy", () => {
     expect(resolveAssignmentNetworkScope({ memberships: ["n1", "n2"] })).toEqual(["n1", "n2"]);
   });
 
-  it("evaluates only the active network in network scope", () => {
-    expect(resolveAssignmentNetworkScope({ memberships: ["n1", "n2"], networkScopeId: "n2" })).toEqual(["n2"]);
-    expect(resolveAssignmentNetworkScope({ memberships: ["n1"], networkScopeId: "n2" })).toEqual([]);
+  it("evaluates the focused network plus personal networks in network scope", () => {
+    expect(resolveAssignmentNetworkScope({
+      memberships: [
+        { networkId: "n1", isPersonal: false },
+        { networkId: "n2", isPersonal: false },
+        { networkId: "personal", isPersonal: true },
+      ],
+      scopeType: "network",
+      scopeId: "n2",
+    })).toEqual(["n2", "personal"]);
+    expect(resolveAssignmentNetworkScope({ memberships: ["n1"], scopeType: "network", scopeId: "n2" })).toEqual([]);
   });
 
   it("assigns when weighted score meets the unified threshold", () => {

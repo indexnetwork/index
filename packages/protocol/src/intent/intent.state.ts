@@ -4,6 +4,7 @@ import { InferredIntent } from "./intent.inferrer.js";
 import { SemanticVerifierOutput } from "./intent.verifier.js";
 import { IntentReconcilerOutput } from "./intent.reconciler.js";
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
+import type { ToolScopeType } from '../shared/agent/tool.scope.js';
 
 /**
  * Extended InferredIntent that includes verification results.
@@ -96,6 +97,18 @@ export const IntentGraphState = Annotation.Root({
    * getActiveIntents(userId) regardless of index scope (for global dedup/reconciliation).
    */
   networkId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope type for write-side assignment and follow-up queues. */
+  scopeType: Annotation<ToolScopeType | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope id. When scopeType is `network`, this is the focused network id. */
+  scopeId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

@@ -39,6 +39,7 @@ function createMockDatabase(): PremiseGraphDatabase {
     },
     assignPremiseToNetwork: async () => {},
     getPremiseNetworks: async () => [],
+    getAssignmentNetworkMembershipsForUser: async () => [],
     getAssignmentNetworkIdsForUser: async () => [],
     getNetworkAssignmentContext: async () => null,
     getUserIndexIds: async () => [],
@@ -55,11 +56,24 @@ function createMockEmbedder(): Embedder {
   } as Embedder;
 }
 
+function createMockAnalyzer() {
+  return {
+    invoke: async () => ({
+      reasoning: "deterministic test analysis",
+      speechActType: "DECLARATIVE" as const,
+      felicityAuthority: 90,
+      felicitySincerity: 90,
+      felicityClarity: 90,
+      semanticEntropy: 0.2,
+    }),
+  };
+}
+
 describe("PremiseGraphFactory", () => {
   it("creates a premise with analysis and embedding", async () => {
     const db = createMockDatabase();
     const embedder = createMockEmbedder();
-    const factory = new PremiseGraphFactory(db, embedder);
+    const factory = new PremiseGraphFactory(db, embedder, undefined, createMockAnalyzer());
     const graph = factory.createGraph();
 
     const result = await graph.invoke({
@@ -82,7 +96,7 @@ describe("PremiseGraphFactory", () => {
   it("respects custom provenanceSource and provenanceConfidence overrides", async () => {
     const db = createMockDatabase();
     const embedder = createMockEmbedder();
-    const factory = new PremiseGraphFactory(db, embedder);
+    const factory = new PremiseGraphFactory(db, embedder, undefined, createMockAnalyzer());
     const graph = factory.createGraph();
 
     const result = await graph.invoke({
@@ -106,7 +120,10 @@ describe("PremiseGraphFactory", () => {
     const assignments: Array<{ networkId: string; score: number; metadata: unknown }> = [];
     const db = {
       ...createMockDatabase(),
-      getAssignmentNetworkIdsForUser: async () => ["n1", "n2"],
+      getAssignmentNetworkMembershipsForUser: async () => [
+        { networkId: "n1", isPersonal: false },
+        { networkId: "n2", isPersonal: false },
+      ],
       getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
       assignPremiseToNetwork: async (_premiseId: string, networkId: string, score: number, metadata: unknown) => {
         assignments.push({ networkId, score, metadata });
@@ -114,7 +131,7 @@ describe("PremiseGraphFactory", () => {
     };
     const embedder = createMockEmbedder();
     const premiseIndexer = { invoke: async () => ({ indexScore: 0, memberScore: 0, reasoning: "unused" }) };
-    const factory = new PremiseGraphFactory(db, embedder, premiseIndexer as never);
+    const factory = new PremiseGraphFactory(db, embedder, premiseIndexer as never, createMockAnalyzer());
     const graph = factory.createGraph();
 
     await graph.invoke({
@@ -128,17 +145,21 @@ describe("PremiseGraphFactory", () => {
     expect(assignments[0].metadata).toMatchObject({ resourceType: "premise", scope: "global", assigned: true, finalScore: 1 });
   }, 60_000);
 
-  it("restricts premise assignment to active network scope", async () => {
+  it("restricts premise assignment to focused plus personal networks in active network scope", async () => {
     const assignments: string[] = [];
     const db = {
       ...createMockDatabase(),
-      getAssignmentNetworkIdsForUser: async () => ["active-network", "other-network"],
+      getAssignmentNetworkMembershipsForUser: async () => [
+        { networkId: "active-network", isPersonal: false },
+        { networkId: "personal-network", isPersonal: true },
+        { networkId: "other-network", isPersonal: false },
+      ],
       getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
       assignPremiseToNetwork: async (_premiseId: string, networkId: string) => {
         assignments.push(networkId);
       },
     };
-    const factory = new PremiseGraphFactory(db, createMockEmbedder(), { invoke: async () => ({ indexScore: 0, memberScore: 0, reasoning: "unused" }) } as never);
+    const factory = new PremiseGraphFactory(db, createMockEmbedder(), { invoke: async () => ({ indexScore: 0, memberScore: 0, reasoning: "unused" }) } as never, createMockAnalyzer());
     const graph = factory.createGraph();
 
     await graph.invoke({
@@ -146,10 +167,11 @@ describe("PremiseGraphFactory", () => {
       assertionText: "I am attending the active network event",
       tier: "assertive" as const,
       volatile: false,
-      networkScopeId: "active-network",
+      scopeType: "network" as const,
+      scopeId: "active-network",
     });
 
-    expect(assignments).toEqual(["active-network"]);
+    expect(assignments).toEqual(["active-network", "personal-network"]);
   }, 60_000);
 
   it("skips persisting a near-duplicate premise on create", async () => {
@@ -167,7 +189,7 @@ describe("PremiseGraphFactory", () => {
       throw new Error("createPremise should not be called for a near-duplicate");
     }) as never;
 
-    const factory = new PremiseGraphFactory(db, createMockEmbedder());
+    const factory = new PremiseGraphFactory(db, createMockEmbedder(), undefined, createMockAnalyzer());
     const graph = factory.createGraph();
 
     const result = await graph.invoke({
@@ -189,7 +211,7 @@ describe("PremiseGraphFactory", () => {
       ...createMockDatabase(),
       findSimilarActivePremise: async () => null,
     };
-    const factory = new PremiseGraphFactory(db, createMockEmbedder());
+    const factory = new PremiseGraphFactory(db, createMockEmbedder(), undefined, createMockAnalyzer());
     const graph = factory.createGraph();
 
     const result = await graph.invoke({
@@ -207,7 +229,7 @@ describe("PremiseGraphFactory", () => {
   it("returns premises in query mode without LLM calls", async () => {
     const db = createMockDatabase();
     const embedder = createMockEmbedder();
-    const factory = new PremiseGraphFactory(db, embedder);
+    const factory = new PremiseGraphFactory(db, embedder, undefined, createMockAnalyzer());
     const graph = factory.createGraph();
 
     // Seed a premise directly into the mock DB

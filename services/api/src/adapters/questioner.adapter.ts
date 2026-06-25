@@ -90,6 +90,8 @@ export interface AdapterQuestionFilters {
   mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
   sourceType?: string;
   sourceId?: string;
+  /** Restrict to questions whose actor carries this network id. */
+  networkId?: string;
   /** Filter to questions linked to a specific conversation. */
   conversationId?: string;
   /** When true, only return questions with no conversationId (sidebar-only). */
@@ -144,9 +146,12 @@ export class QuestionerAdapter {
     userId: string,
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
+    const actorMatch = filters?.networkId
+      ? [{ userId, networkId: filters.networkId }]
+      : [{ userId }];
     const conditions = [
       eq(questions.status, 'pending'),
-      sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+      sql`${questions.actors}::jsonb @> ${JSON.stringify(actorMatch)}::jsonb`,
       or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
     ];
 

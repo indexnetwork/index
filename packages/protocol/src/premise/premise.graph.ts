@@ -2,10 +2,12 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 
 import { PremiseGraphState } from "./premise.state.js";
 import { PremiseAnalyzer } from "./premise.analyzer.js";
+import type { PremiseAnalyzerOutput } from "./premise.analyzer.js";
 import { PremiseIndexer } from "./premise.indexer.js";
 
 import { buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from "../shared/assignment/network-assignment.policy.js";
 import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
+import { scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { PremiseGraphDatabase, PremiseAnalysis } from "../shared/interfaces/database.interface.js";
 import type { Embedder } from "../shared/interfaces/embedder.interface.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -47,6 +49,7 @@ export class PremiseGraphFactory {
     private database: PremiseGraphDatabase,
     private embedder: Embedder,
     private premiseIndexer: PremiseIndexer = new PremiseIndexer(),
+    private premiseAnalyzer: { invoke(premiseText: string, profileContext?: string): Promise<PremiseAnalyzerOutput> } = new PremiseAnalyzer(),
   ) {}
 
   /**
@@ -55,7 +58,7 @@ export class PremiseGraphFactory {
    * @returns A compiled LangGraph graph handling create, update, and query modes.
    */
   public createGraph() {
-    const analyzer = new PremiseAnalyzer();
+    const analyzer = this.premiseAnalyzer;
     const indexer = this.premiseIndexer;
 
     const queryNode = async (state: typeof PremiseGraphState.State) => {
@@ -208,12 +211,15 @@ export class PremiseGraphFactory {
 
         logger.verbose(`[PremiseGraph.index] Scoring premise against user networks`);
 
-        const membershipNetworkIds = await this.database.getAssignmentNetworkIdsForUser(state.userId);
+        const assignmentMemberships = await this.database.getAssignmentNetworkMembershipsForUser(state.userId);
+        const requestScope = state.scopeType && state.scopeId
+          ? { scopeType: state.scopeType, scopeId: state.scopeId }
+          : scopeFromNetworkId(state.networkScopeId);
         const indexIds = resolveAssignmentNetworkScope({
-          memberships: membershipNetworkIds,
-          networkScopeId: state.networkScopeId,
+          memberships: assignmentMemberships,
+          ...requestScope,
         });
-        const scope = state.networkScopeId ? "network" : "global";
+        const scope = requestScope.scopeType ? "network" : "global";
         const assignments: Array<{ networkId: string; relevancyScore: number }> = [];
         const agentTimings: DebugMetaAgent[] = [];
 
