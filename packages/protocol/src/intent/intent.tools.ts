@@ -9,6 +9,7 @@ import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import type { UserRecord } from "../shared/interfaces/database.interface.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { deriveAllowedNetworkIds, focusedNetworkId, focusedNetworkLabel, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
 
 const logger = protocolLogger("ChatTools:Intent");
 
@@ -22,13 +23,14 @@ function sanitizeJsonForCodeFence(json: string): string {
 
 /** When context is index-scoped, verifies the caller is still a member of that index. Returns error message or null. */
 async function ensureScopedMembership(
-  context: { networkId?: string; indexName?: string; userId: string },
+  context: ToolScopeEnvelope & { indexName?: string; userId: string },
   systemDb: ToolDeps['systemDb']
 ): Promise<string | null> {
-  if (!context.networkId) return null;
-  const isMember = await systemDb.isNetworkMember(context.networkId, context.userId);
+  const scopedNetworkId = focusedNetworkId(context);
+  if (!scopedNetworkId) return null;
+  const isMember = await systemDb.isNetworkMember(scopedNetworkId, context.userId);
   if (!isMember) {
-    return `This chat is scoped to ${context.indexName ?? 'this index'}. You are no longer a member of this community.`;
+    return `This chat is scoped to ${focusedNetworkLabel(context)}. You are no longer a member of this community.`;
   }
   return null;
 }
@@ -97,6 +99,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (scopeErr) return error(scopeErr);
 
       // Distinguish "explicit network browse" from "implicit scope-aware read"
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
       const explicitNetworkId = query.networkId?.trim();
       const explicitUserId = query.userId?.trim();
 
@@ -106,32 +110,31 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // Strict scope enforcement: in a scoped chat, the only allowed explicit
-      // networkId is context.networkId itself. The chat's focus is the bound
-      // network; cross-network browse must happen in a separate (unscoped)
-      // chat or a chat scoped to that other network.
-      if (context.networkId && explicitNetworkId && explicitNetworkId !== context.networkId) {
+      // networkId is the envelope's scoped network. Cross-network browse must
+      // happen in a separate unscoped chat or a chat scoped to that network.
+      if (scopedNetworkId && explicitNetworkId && explicitNetworkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from this community.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only read intents from this community.`
         );
       }
 
       // Cross-user read in scoped chat: target user must be a member of the scoped index
-      if (context.networkId && explicitUserId && explicitUserId !== context.userId) {
-        const isInScopedIndex = await deps.systemDb.isNetworkMember(context.networkId, explicitUserId);
+      if (scopedNetworkId && explicitUserId && explicitUserId !== context.userId) {
+        const isInScopedIndex = await deps.systemDb.isNetworkMember(scopedNetworkId, explicitUserId);
         if (!isInScopedIndex) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from members of this community.`
+            `This chat is scoped to ${scopedIndexLabel}. You can only read intents from members of this community.`
           );
         }
       }
 
       // Cross-user global read is disallowed without an index scope
-      if (!explicitNetworkId && !context.networkId && explicitUserId && explicitUserId !== context.userId) {
+      if (!explicitNetworkId && !scopedNetworkId && explicitUserId && explicitUserId !== context.userId) {
         return error("Cannot read another user's global intents. Use networkId to scope to a shared network.");
       }
 
       // Membership check for explicit cross-network reads in unscoped chats
-      if (!context.networkId && explicitNetworkId) {
+      if (!scopedNetworkId && explicitNetworkId) {
         const callerIsMember = await deps.systemDb.isNetworkMember(explicitNetworkId, context.userId);
         if (!callerIsMember) {
           return error("You can only read intents from indexes you are a member of.");
@@ -153,18 +156,22 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (explicitNetworkId) {
         graphInput.networkId = explicitNetworkId;
         if (explicitUserId) graphInput.queryUserId = explicitUserId;
-      } else if (explicitUserId && context.networkId) {
+      } else if (explicitUserId && scopedNetworkId) {
         // Scoped chat + userId: implicit network is the chat's bound network.
         // Membership of the target user was verified above.
-        graphInput.networkId = context.networkId;
+        graphInput.networkId = scopedNetworkId;
         graphInput.queryUserId = explicitUserId;
       } else if (explicitUserId) {
         // Unscoped chat + userId: only allowed for self (others rejected above).
         graphInput.queryUserId = explicitUserId;
         graphInput.allUserIntents = true;
-      } else if (context.indexScope && context.indexScope.length > 0 && context.networkId) {
+      } else if (scopedNetworkId) {
         // Scoped chat, implicit read: caller-only across reachable indexes.
-        graphInput.indexScope = context.indexScope;
+        graphInput.indexScope = deriveAllowedNetworkIds({
+          memberships: context.userNetworks,
+          scopeType: 'network',
+          scopeId: scopedNetworkId,
+        });
       } else {
         // Unscoped, implicit read: caller's global intents.
         graphInput.allUserIntents = true;
@@ -239,16 +246,19 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Description is required.");
       }
 
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+
       // Strict scope enforcement
-      if (context.networkId && query.networkId?.trim() && query.networkId.trim() !== context.networkId) {
+      if (scopedNetworkId && query.networkId?.trim() && query.networkId.trim() !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only create intents in this community.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only create intents in this community.`
         );
       }
 
-      const effectiveIndexId = context.networkId || query.networkId?.trim() || undefined;
-      const scopeEnvelope = context.scopeType && context.scopeId
-        ? { scopeType: context.scopeType, scopeId: context.scopeId }
+      const effectiveIndexId = scopedNetworkId || query.networkId?.trim() || undefined;
+      const scopeEnvelope = scopedNetworkId
+        ? { scopeType: 'network' as const, scopeId: scopedNetworkId }
         : {};
 
       // Fetch profile (the intent graph needs it for inference)
@@ -441,13 +451,16 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("This intent is archived and cannot be updated. Create a new intent instead.");
       }
 
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+
       // Strict scope enforcement: when chat is index-scoped, verify intent is linked to that index
-      if (context.networkId) {
+      if (scopedNetworkId) {
         const db = deps.userDb;
         const intentNetworks = await db.getNetworkIdsForIntent(intentId);
-        if (!intentNetworks.includes(context.networkId)) {
+        if (!intentNetworks.includes(scopedNetworkId)) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only update intents linked to this community.`
+            `This chat is scoped to ${scopedIndexLabel}. You can only update intents linked to this community.`
           );
         }
       }
@@ -466,8 +479,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         operationMode: 'update' as const,
         inputContent: query.description,
         targetIntentIds: [intentId],
-        ...(context.networkId && { networkId: context.networkId }),
-        ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
+        ...(scopedNetworkId && { networkId: scopedNetworkId, scopeType: 'network' as const, scopeId: scopedNetworkId }),
       }));
       const _intentGraphMs2 = Date.now() - _intentGraphStart2;
 
@@ -516,13 +528,16 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Intent not found or you can only delete your own intents.");
       }
 
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+
       // Strict scope enforcement: when chat is index-scoped, verify intent is linked to that index
-      if (context.networkId) {
+      if (scopedNetworkId) {
         const db = deps.userDb;
         const intentNetworks = await db.getNetworkIdsForIntent(intentId);
-        if (!intentNetworks.includes(context.networkId)) {
+        if (!intentNetworks.includes(scopedNetworkId)) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only delete intents linked to this community.`
+            `This chat is scoped to ${scopedIndexLabel}. You can only delete intents linked to this community.`
           );
         }
       }
@@ -533,8 +548,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         userProfile: "",
         operationMode: 'delete' as const,
         targetIntentIds: [intentId],
-        ...(context.networkId && { networkId: context.networkId }),
-        ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
+        ...(scopedNetworkId && { networkId: scopedNetworkId, scopeType: 'network' as const, scopeId: scopedNetworkId }),
       }));
       const _deleteIntentGraphMs = Date.now() - _deleteIntentGraphStart;
 
@@ -567,16 +581,18 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() ?? "";
-      const networkId = query.networkId?.trim() || context.networkId || "";
+      const networkId = query.networkId?.trim() || scopedNetworkId || "";
       if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(networkId)) {
         return error("Invalid ID format. Both must be UUIDs.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow linking to that index
-      if (context.networkId && networkId !== context.networkId) {
+      if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only link intents to this community.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only link intents to this community.`
         );
       }
 
@@ -625,8 +641,10 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() || undefined;
-      let networkId = query.networkId?.trim() || context.networkId || undefined;
+      let networkId = query.networkId?.trim() || scopedNetworkId || undefined;
       const queryUserId = query.userId?.trim() || undefined;
 
       if (intentId && !UUID_REGEX.test(intentId)) {
@@ -640,17 +658,17 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-      if (context.networkId && networkId && networkId !== context.networkId) {
+      if (scopedNetworkId && networkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intent links from this community.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only read intent links from this community.`
         );
       }
 
       // When only intentId is provided, enforce scope - don't reveal all linked indexes
       if (intentId && !networkId) {
-        if (context.networkId) {
+        if (scopedNetworkId) {
           // When scoped, only check if intent is linked to the scoped index
-          networkId = context.networkId;
+          networkId = scopedNetworkId;
         } else {
           // When unscoped, still don't reveal all indexes - require explicit networkId
           return error(
@@ -694,16 +712,18 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() ?? "";
-      const networkId = query.networkId?.trim() || context.networkId || "";
+      const networkId = query.networkId?.trim() || scopedNetworkId || "";
       if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(networkId)) {
         return error("Invalid ID format. Both must be UUIDs.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow unlinking from that index
-      if (context.networkId && networkId !== context.networkId) {
+      if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only unlink intents from this community.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only unlink intents from this community.`
         );
       }
 

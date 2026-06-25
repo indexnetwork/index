@@ -4,7 +4,7 @@ import { requestContext } from "../shared/observability/request-context.js";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
-import { deriveDiscoveryNetworkIds } from "../shared/agent/tool.scope.js";
+import { deriveDiscoveryNetworkIds, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
@@ -499,17 +499,13 @@ function discoveryRunSignature(input: DiscoveryRunInput, scopeKey: string): stri
  * coalesce only when they resolve to the same focused discovery boundary. For
  * scoped contexts, that boundary is the scope envelope (`scopeType`/`scopeId`),
  * not the personal-inclusive allowed network reach used for self-owned writes.
- * When no scope envelope is present, legacy `indexScope` remains part of the
- * key so older contexts with different unscoped reach do not coalesce.
+ * Unscoped requests intentionally share a single empty-scope key; concrete
+ * allowed reach is derived from memberships at execution time.
  */
-function discoveryScopeKey(ctx: { networkId?: string; scopeType?: string; scopeId?: string; indexScope?: string[] }): string {
+function discoveryScopeKey(ctx: { scopeType?: string; scopeId?: string }): string {
   return JSON.stringify({
-    networkId: (ctx.networkId ?? "").trim(),
     scopeType: (ctx.scopeType ?? "").trim(),
     scopeId: (ctx.scopeId ?? "").trim(),
-    indexScope: ctx.scopeType && ctx.scopeId
-      ? []
-      : [...(ctx.indexScope ?? [])].map((s) => s.trim()).sort(),
   });
 }
 
@@ -672,14 +668,17 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ),
     }),
     handler: async ({ context, query }) => {
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+
       // Strict scope enforcement: when chat is index-scoped, only allow that index
       if (
-        context.networkId &&
+        scopedNetworkId &&
         query.networkId?.trim() &&
-        query.networkId.trim() !== context.networkId
+        query.networkId.trim() !== scopedNetworkId
       ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? "this index"}. You can only create opportunities in this community.`,
+          `This chat is scoped to ${scopedIndexLabel}. You can only create opportunities in this community.`,
         );
       }
 
@@ -733,10 +732,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             userId: context.userId,
             userName: context.userName,
             userEmail: context.userEmail,
-            ...(context.networkId ? { networkId: context.networkId } : {}),
-            ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
+            ...(scopedNetworkId ? { scopeType: 'network' as const, scopeId: scopedNetworkId } : {}),
             ...(context.indexName ? { indexName: context.indexName } : {}),
-            indexScope: context.indexScope,
             ...(context.sessionId ? { sessionId: context.sessionId } : {}),
             ...(context.agentId ? { agentId: context.agentId } : {}),
             ...(context.clientSurface ? { clientSurface: context.clientSurface } : {}),
@@ -784,7 +781,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           cache,
           userId: context.userId,
           discoveryId: query.continueFrom,
-          expectedIndexId: context.networkId,
+          expectedIndexId: scopedNetworkId,
           limit: 20,
           presenter: createOpportunityPresenter(),
           useHomeCardFormat: true,
@@ -924,7 +921,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           networkId: primaryNetworkId,
           introductionEntities: evaluatorEntities,
           introductionHint: query.hint,
-          requiredNetworkId: context.networkId ?? undefined,
+          requiredNetworkId: scopedNetworkId,
           options: {
             initialStatus: "draft" as const,
             ...(context.sessionId ? { conversationId: context.sessionId } : {}),
@@ -1093,10 +1090,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           scopeId: context.scopeId,
         });
         indexScope = scopedDiscoveryIds;
-      } else if (context.networkId) {
-        // Legacy scoped context without a scope envelope: preserve focused-only
-        // discovery using the focused network id.
-        indexScope = [context.networkId];
+      } else if (scopedNetworkId) {
+        // Scoped context: preserve focused-only discovery using the scope envelope.
+        indexScope = [scopedNetworkId];
       } else {
         // No scope - use all indexes (only in unscoped chat)
         const _scopeGraphStart = Date.now();
@@ -1565,21 +1561,22 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .describe("Internal scheduled-digest mode only. When true, includes hidden delivery markers so the digest send pass can confirm only edited-in opportunities."),
     }),
     handler: async ({ context, query }) => {
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+
       // Strict scope enforcement: when chat is index-scoped, only allow that index
       if (
-        context.networkId &&
+        scopedNetworkId &&
         query.networkId?.trim() &&
-        query.networkId.trim() !== context.networkId
+        query.networkId.trim() !== scopedNetworkId
       ) {
         return error(
-          "This chat is scoped to " +
-            (context.indexName ?? "this index") +
-            ". You can only list opportunities from this community.",
+          `This chat is scoped to ${scopedIndexLabel}. You can only list opportunities from this community.`,
         );
       }
 
       const effectiveIndexId =
-        (context.networkId || query.networkId?.trim()) ?? undefined;
+        (scopedNetworkId || query.networkId?.trim()) ?? undefined;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
         return error("Invalid network ID format.");
       }
@@ -2172,11 +2169,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // Strict scope enforcement: when chat is index-scoped, the caller's own
       // actor entry on this opportunity must be anchored on the bound network.
       // Mirrors the per-actor filter in getOpportunitiesForUser — relying on
-      // `context.networkId` or any-actor matches would let a counterpart's
-      // network presence shadow a viewer whose own actor is elsewhere.
-      if (context.networkId) {
+      // a focus-scope id or any-actor matches would let a counterpart's network
+      // presence shadow a viewer whose own actor is elsewhere.
+      const scopedNetworkId = focusedNetworkId(context);
+      if (scopedNetworkId) {
         const callerOnBoundNetwork = opportunity.actors?.some(
-          (a) => a.userId === context.userId && a.networkId === context.networkId,
+          (a) => a.userId === context.userId && a.networkId === scopedNetworkId,
         );
         if (!callerOnBoundNetwork) {
           return error("Opportunity not found.");

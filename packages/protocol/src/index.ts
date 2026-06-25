@@ -24,6 +24,8 @@ export { ChatContextAccessError, resolveChatContext } from "./shared/agent/tool.
 export {
   deriveAllowedNetworkIds,
   deriveDiscoveryNetworkIds,
+  focusedNetworkId,
+  focusedNetworkLabel,
   hasNetworkScope,
   scopeFromNetworkId,
 } from "./shared/agent/tool.scope.js";

@@ -73,6 +73,7 @@ mock.module('@indexnetwork/protocol', () => ({
       defineTool({ name, handler });
     }
   },
+  deriveAllowedNetworkIds: ({ memberships }: { memberships: Array<{ networkId: string }> }) => memberships.map((m) => m.networkId),
   getToolTimeoutPolicy: () => ({ maxOutputBytes: 1_000_000 }),
   requestContext: { run: async (_ctx: unknown, fn: () => Promise<unknown>) => fn() },
   resolveChatContext: mockResolveChatContext,
@@ -97,8 +98,8 @@ type ProfileRunFixture = {
     userId: string;
     userName: string;
     userEmail: string;
-    indexScope: string[];
-    networkId?: string;
+    scopeType?: 'network';
+    scopeId?: string;
     sessionId?: string;
     clientSurface?: 'telegram' | 'web';
   };
@@ -117,7 +118,8 @@ function runFixture(overrides: Partial<ProfileRunFixture> = {}): ProfileRunFixtu
       userId: 'user-1',
       userName: 'Test User',
       userEmail: 'test@example.com',
-      indexScope: ['net-1'],
+      scopeType: 'network',
+      scopeId: 'net-1',
       clientSurface: 'telegram',
     },
     createdAt: new Date(),

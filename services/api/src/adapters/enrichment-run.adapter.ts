@@ -35,9 +35,9 @@ interface EnrichmentRunContext {
   userId: string;
   userName: string;
   userEmail: string;
-  networkId?: string;
+  scopeType?: 'network';
+  scopeId?: string;
   indexName?: string;
-  indexScope: string[];
   sessionId?: string;
   agentId?: string;
   clientSurface?: 'telegram' | 'web';

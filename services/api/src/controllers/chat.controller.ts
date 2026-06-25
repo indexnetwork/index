@@ -20,7 +20,10 @@ const streamBodySchema = z.object({
   sessionId: z.string().nullish(),
   useCheckpointer: z.boolean().optional(),
   fileIds: z.array(z.string()).optional(),
+  /** @deprecated Use scopeType/scopeId. Retained as the REST edge alias for network-scoped sessions. */
   networkId: z.string().nullish(),
+  scopeType: z.enum(['network']).nullish(),
+  scopeId: z.string().nullish(),
   /** The recipient user ID for DM-style chats (used for ghost invite emails). */
   recipientUserId: z.string().nullish(),
   prefillMessages: z.array(z.object({
@@ -121,7 +124,7 @@ export class ChatController {
         return Response.json(
           {
             error:
-              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], networkId?: string | null }",
+              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], scopeType?: 'network' | null, scopeId?: string | null, networkId?: string | null }",
           },
           { status: 400 },
         );
@@ -158,9 +161,11 @@ export class ChatController {
 
     // 2. Validate or create session
     const requestIndexId =
-      typeof body.networkId === "string" && body.networkId.trim()
-        ? body.networkId.trim()
-        : undefined;
+      body.scopeType === 'network' && typeof body.scopeId === "string" && body.scopeId.trim()
+        ? body.scopeId.trim()
+        : typeof body.networkId === "string" && body.networkId.trim()
+          ? body.networkId.trim()
+          : undefined;
     if (requestIndexId) {
       const requestScopeValidation =
         await chatSessionService.validateIndexScope(user.id, requestIndexId);
@@ -297,7 +302,7 @@ export class ChatController {
               message: messageContent,
               sessionId,
               maxContextMessages: 20,
-              networkId: networkIdForStream,
+              ...(networkIdForStream ? { scopeType: 'network' as const, scopeId: networkIdForStream } : {}),
               prefillMessages: body.prefillMessages,
               runId,
             },

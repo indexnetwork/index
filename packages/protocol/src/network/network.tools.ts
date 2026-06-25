@@ -5,6 +5,7 @@ import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import { focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import { NetworkRecommender } from "./network.recommender.js";
 
 // Lazy singleton — only instantiated on first onboarding ranking call so that
@@ -44,12 +45,15 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("You can only list your own indexes. Omit userId to see the current user's indexes.");
       }
 
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+
       const _readIndexGraphStart = Date.now();
       const _readIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
       _readIndexTraceEmitter?.({ type: "graph_start", name: "index" });
       const result = await graphs.index.invoke({
         userId: context.userId,
-        networkId: context.networkId || undefined,
+        networkId: scopedNetworkId,
         operationMode: 'read' as const,
         showAll: false, // Never allow bypass - strict scope enforcement
       });
@@ -69,13 +73,13 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         };
 
         // When scoped, add clear metadata so model knows results are limited
-        if (context.networkId) {
+        if (scopedNetworkId) {
           return success({
             ...enriched,
             scopeRestriction: {
               isScoped: true,
-              scopedToIndex: context.indexName ?? context.networkId,
-              message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
+              scopedToIndex: scopedIndexLabel,
+              message: `Results are limited to "${scopedIndexLabel}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
             },
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
@@ -178,6 +182,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       userId: z.string().optional().describe("User ID — lists that user's index memberships. Omit to get the current user's memberships. When combined with networkId, checks if this user is in that specific index."),
     }),
     handler: async ({ context, query }) => {
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
       const networkId = query.networkId?.trim() || undefined;
       const userId = query.userId?.trim() || undefined;
 
@@ -188,9 +194,9 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       // Mode 1: list members of an index
       if (networkId && !userId) {
         // Enforce strict scope: when chat is index-scoped, only allow querying that index
-        if (context.networkId && networkId !== context.networkId) {
+        if (scopedNetworkId && networkId !== scopedNetworkId) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query members of this index.`
+            `This chat is scoped to ${scopedIndexLabel}. You can only query members of this index.`
           );
         }
 
@@ -224,9 +230,9 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         const callerMemberships = await userDb.getNetworkMemberships();
         if (networkId) {
           // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-          if (context.networkId && networkId !== context.networkId) {
+          if (scopedNetworkId && networkId !== scopedNetworkId) {
             return error(
-              `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query membership in this community.`
+              `This chat is scoped to ${scopedIndexLabel}. You can only query membership in this community.`
             );
           }
 
@@ -244,29 +250,29 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
           return success({ isMember: false, userId: targetUserId, networkId, message: "User is not a member of this index." });
         } else {
           // Strict scope enforcement: when chat is index-scoped, only check the scoped index
-          if (context.networkId) {
-            const isMember = await systemDb.isNetworkMember(context.networkId, targetUserId);
+          if (scopedNetworkId) {
+            const isMember = await systemDb.isNetworkMember(scopedNetworkId, targetUserId);
             if (isMember) {
               return success({
                 isMember: true,
                 userId: targetUserId,
-                networkId: context.networkId,
+                networkId: scopedNetworkId,
                 scopeRestriction: {
                   isScoped: true,
-                  scopedToIndex: context.indexName ?? context.networkId,
-                  message: `This chat is scoped to "${context.indexName ?? 'this index'}". Only membership in this community is shown.`,
+                  scopedToIndex: scopedIndexLabel,
+                  message: `This chat is scoped to "${scopedIndexLabel}". Only membership in this community is shown.`,
                 },
               });
             }
             return success({
               isMember: false,
               userId: targetUserId,
-              networkId: context.networkId,
+              networkId: scopedNetworkId,
               message: "User is not a member of this community.",
               scopeRestriction: {
                 isScoped: true,
-                scopedToIndex: context.indexName ?? context.networkId,
-                message: `This chat is scoped to "${context.indexName ?? 'this index'}". Only membership in this community was checked.`,
+                scopedToIndex: scopedIndexLabel,
+                message: `This chat is scoped to "${scopedIndexLabel}". Only membership in this community was checked.`,
               },
             });
           }
@@ -298,21 +304,20 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
         // Own memberships - use userDb
         memberships = await userDb.getNetworkMemberships();
 
-        // NOTE: context.networkId here is the *focus* of the scoped chat — it filters
-        // what we show, not what we can reach. indexScope is the reach; the bound
-        // network is one element of it. See IND-306 for the equivalent in read_intents.
+        // The scope envelope's network id is the focus of the scoped chat — it filters
+        // what we show, not what we can reach. Concrete reach is derived separately.
         // Strict scope enforcement: when chat is index-scoped, only return the scoped index membership
-        if (context.networkId && !networkId) {
-          memberships = memberships.filter((m) => m.networkId === context.networkId);
+        if (scopedNetworkId && !networkId) {
+          memberships = memberships.filter((m) => m.networkId === scopedNetworkId);
         }
       }
 
       // If both networkId and userId: filter to that specific membership
       if (networkId) {
         // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-        if (context.networkId && networkId !== context.networkId) {
+        if (scopedNetworkId && networkId !== scopedNetworkId) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query membership in this community.`
+            `This chat is scoped to ${scopedIndexLabel}. You can only query membership in this community.`
           );
         }
 
@@ -340,7 +345,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // When scoped, add clear metadata so model knows results are limited
-      if (context.networkId && targetUserId === context.userId) {
+      if (scopedNetworkId && targetUserId === context.userId) {
         return success({
           userId: targetUserId,
           count: memberships.length,
@@ -352,8 +357,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
           })),
           scopeRestriction: {
             isScoped: true,
-            scopedToIndex: context.indexName ?? context.networkId,
-            message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
+            scopedToIndex: scopedIndexLabel,
+            message: `Results are limited to "${scopedIndexLabel}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
           },
         });
       }
@@ -395,15 +400,17 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       settings: updateNetworkSettingsSchema.describe("Object with fields to update. All fields are optional — only include the ones to change. title: display name. prompt: purpose description (used for intent auto-assignment). imageUrl: community image URL (null to remove). joinPolicy: 'anyone' or 'invite_only'. allowGuestVibeCheck: boolean."),
     }),
     handler: async ({ context, query }) => {
-      const effectiveIndexId = (query.networkId?.trim() || context.networkId) ?? null;
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+      const effectiveIndexId = (query.networkId?.trim() || scopedNetworkId) ?? null;
       if (!effectiveIndexId || !UUID_REGEX.test(effectiveIndexId)) {
         return error("Valid networkId required.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow updating that index
-      if (context.networkId && effectiveIndexId !== context.networkId) {
+      if (scopedNetworkId && effectiveIndexId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only update this community's settings.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only update this community's settings.`
         );
       }
 
@@ -490,15 +497,17 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z.string().optional().describe("Index UUID to delete. Get from read_networks. Defaults to the scoped index in index-scoped chats. Cannot be a personal index."),
     }),
     handler: async ({ context, query }) => {
-      const networkId = query.networkId?.trim() || context.networkId;
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+      const networkId = query.networkId?.trim() || scopedNetworkId;
       if (!networkId || !UUID_REGEX.test(networkId)) {
         return error("Valid networkId required.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow deleting that index
-      if (context.networkId && networkId !== context.networkId) {
+      if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only delete this community.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only delete this community.`
         );
       }
 
@@ -536,16 +545,18 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z.string().optional().describe("Index UUID to add the member to. Get from read_networks. Defaults to the scoped index in index-scoped chats."),
     }),
     handler: async ({ context, query }) => {
-      const networkId = query.networkId?.trim() || context.networkId;
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+      const networkId = query.networkId?.trim() || scopedNetworkId;
       const targetUserId = query.userId?.trim() || context.userId;
       if (!networkId || !UUID_REGEX.test(networkId)) {
         return error("Invalid index ID format. Use the exact UUID from read_networks.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow adding to that index
-      if (context.networkId && networkId !== context.networkId) {
+      if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only add members to this community.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only add members to this community.`
         );
       }
 
@@ -590,7 +601,9 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z.string().optional().describe("Index UUID to remove the member from. Get from read_networks. Defaults to the scoped index in index-scoped chats."),
     }),
     handler: async ({ context, query }) => {
-      const networkId = query.networkId?.trim() || context.networkId;
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
+      const networkId = query.networkId?.trim() || scopedNetworkId;
       const targetUserId = query.userId?.trim();
 
       if (!networkId || !UUID_REGEX.test(networkId)) {
@@ -601,9 +614,9 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow that index
-      if (context.networkId && networkId !== context.networkId) {
+      if (scopedNetworkId && networkId !== scopedNetworkId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only manage members of this community.`
+          `This chat is scoped to ${scopedIndexLabel}. You can only manage members of this community.`
         );
       }
 

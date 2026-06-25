@@ -10,7 +10,7 @@ function makeContext(userId = "user-src", networkId?: string): ResolvedToolConte
     userProfile: null,
     userNetworks: [],
     isMcp: true,
-    ...(networkId ? { networkId } : {}),
+    ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
   } as unknown as ResolvedToolContext;
 }
 
@@ -454,7 +454,7 @@ describe("respond_to_negotiation — handler", () => {
 
 // ── network-scope enforcement ─────────────────────────────────────────────────
 //
-// When `context.networkId` is set (i.e. the caller's API key carries a
+// When `context.scopeType/scopeId` is set (i.e. the caller's API key carries a
 // network-scoped agent), every negotiation tool must refuse to surface or act
 // on tasks tied to a different network. Tasks created before this hardening
 // landed have no `networkId` in their metadata; for those legacy tasks we fall
@@ -462,7 +462,7 @@ describe("respond_to_negotiation — handler", () => {
 // persisted (after the first park).
 
 describe("list_negotiations — network scope", () => {
-  test("filters out tasks not in the caller's bound network when context.networkId is set", async () => {
+  test("filters out tasks not in the caller's bound network when scope envelope is set", async () => {
     const inScope = makeTask("working", "user-src", "user-cand", { id: "task-in", networkId: "net-A" });
     const outOfScope = makeTask("working", "user-src", "user-cand", { id: "task-out", networkId: "net-B" });
 
@@ -483,7 +483,7 @@ describe("list_negotiations — network scope", () => {
     expect(result.data.negotiations[0].id).toBe("task-in");
   });
 
-  test("returns all tasks when context.networkId is unset (global agent)", async () => {
+  test("returns all tasks when scope envelope is unset (global agent)", async () => {
     const t1 = makeTask("working", "user-src", "user-cand", { id: "task-1", networkId: "net-A" });
     const t2 = makeTask("working", "user-src", "user-cand", { id: "task-2", networkId: "net-B" });
 

@@ -202,14 +202,17 @@ export class ChatGraphFactory {
         });
 
         const runLoop = async () => {
-          const networkId = state.networkId;
+          const legacyNetworkId = state.networkId;
+          const scopeType = state.scopeType ?? (legacyNetworkId ? 'network' as const : undefined);
+          const scopeId = state.scopeId ?? legacyNetworkId;
           const agent = await ChatAgent.create({
             ...protocolDeps,
             userId: state.userId,
             database,
             embedder,
             scraper,
-            networkId,
+            ...(legacyNetworkId ? { networkId: legacyNetworkId } : {}),
+            ...(scopeType && scopeId ? { scopeType, scopeId } : {}),
             sessionId: state.sessionId,
           } as import("../shared/agent/tool.helpers.js").ToolContext);
           // Direct streaming writer - emit events immediately instead of buffering

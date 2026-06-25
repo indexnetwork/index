@@ -1,5 +1,6 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
 
+import { deriveAllowedNetworkIds, focusedNetworkId } from "../shared/agent/tool.scope.js";
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { resolveModules } from "./chat.prompt.modules.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
@@ -22,14 +23,18 @@ export const ITERATION_NUDGE = `[System Note: You've made several tool calls. Pl
  * Corresponds to the opening of the system prompt through the Session section.
  */
 function buildCoreHead(ctx: ResolvedToolContext): string {
-  const roleLabel = !ctx.networkId
+  const scopedNetworkId = focusedNetworkId(ctx);
+  const roleLabel = !scopedNetworkId
     ? "general"
     : (ctx.scopedMembershipRole ?? (ctx.isOwner ? "owner" : "member"));
-  const reachable = ctx.networkId
-    ? `, reach: ${ctx.indexScope.length} index(es) including your personal index`
+  const reachableIds = scopedNetworkId
+    ? deriveAllowedNetworkIds({ memberships: ctx.userNetworks, scopeType: 'network', scopeId: scopedNetworkId })
+    : [];
+  const reachable = scopedNetworkId
+    ? `, reach: ${reachableIds.length} index(es) including your personal index`
     : "";
-  const indexScope = ctx.networkId
-    ? `index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.networkId}), role: ${roleLabel}${reachable}`
+  const indexScope = scopedNetworkId
+    ? `index "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}), role: ${roleLabel}${reachable}`
     : "no index scope (general chat)";
 
   return `You are Index. You help the right people find the user and help the user find them.
@@ -134,7 +139,7 @@ ${ctx.contactsEnabled ? `5. **Connect Gmail**
    - When the user provides a location → call \`create_user_context(location="[their answer]")\` to persist it, then proceed to step 6
    - If the user says "skip", "not sure", or any variant indicating they don't want to share → proceed directly to step 6 without persisting
 
-${ctx.networkId ? `6. **Community discovery (skipped — already in scoped community)**
+${focusedNetworkId(ctx) ? `6. **Community discovery (skipped — already in scoped community)**
    - The user is acting in a scoped chat: they are already a member of "${ctx.indexName ?? 'their community'}" and cannot join other communities here.
    - Do NOT call \`read_networks\`. Do NOT show the \`\`\`networks_panel\`\`\` block. Do NOT propose anything to join.
    - Proceed DIRECTLY to step 7 (intent capture) in the same response — no acknowledgment text required.` : `6. **Discover communities**
@@ -191,8 +196,9 @@ function buildCoreBody(ctx: ResolvedToolContext): string {
 
   // When scoped to an index, only include that index in memberships context
   // When not scoped (general chat), include all indexes
-  const relevantIndexes = ctx.networkId
-    ? ctx.userNetworks.filter((m) => m.networkId === ctx.networkId)
+  const scopedNetworkId = focusedNetworkId(ctx);
+  const relevantIndexes = scopedNetworkId
+    ? ctx.userNetworks.filter((m) => m.networkId === scopedNetworkId)
     : ctx.userNetworks;
   const indexesContext = JSON.stringify(
     relevantIndexes.map((membership) => ({
@@ -228,7 +234,7 @@ ${userContext}
 ${profileContext}
 \`\`\`
 
-### Current User Index Memberships (preloaded context${ctx.networkId ? " — scoped to current index" : ""})
+### Current User Index Memberships (preloaded context${scopedNetworkId ? " — scoped to current index" : ""})
 \`\`\`json
 ${indexesContext}
 \`\`\`
@@ -305,15 +311,16 @@ ${ctx.contactsEnabled ? `| **add_contact** | email, name? | Manually add single 
 }
 
 /**
- * Index scope block. Returns scoped variant when ctx.networkId is set,
+ * Index scope block. Returns scoped variant when a network scope envelope is set,
  * scopeless variant otherwise. Includes owner line.
  */
 function buildScoping(ctx: ResolvedToolContext): string {
+  const scopedNetworkId = focusedNetworkId(ctx);
   return `
 ### Index Scope
 ${
-  ctx.networkId
-    ? `- This chat is scoped to index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.networkId}). Default networkId for create_intent is ${ctx.networkId}. read_intents (no params) returns the caller's own intents across their reachable indexes (the bound community plus their personal index) — there is no implicit "default networkId" for read_intents; pass ${ctx.networkId} explicitly to browse all members' intents in this community.
+  scopedNetworkId
+    ? `- This chat is scoped to index "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}). Default networkId for create_intent is ${scopedNetworkId}. read_intents (no params) returns the caller's own intents across their reachable indexes (the bound community plus their personal index) — there is no implicit "default networkId" for read_intents; pass ${scopedNetworkId} explicitly to browse all members' intents in this community.
 - **Scope enforcement**: read_intents with no args returns caller-owned intents across the reachable indexes (bound + personal). read_intents(networkId) browses all members' intents in that community. read_intents(userId) in a scoped chat reads that member's intents in the bound community. discover_opportunities with no networkId arg is limited to this focused community only; the personal index is still used for self-owned writes/assignments, not for scoped opportunity visibility. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar signals" or "fresh slate" from an empty read_intents result here.
 - **Communicating scope**: When tool results include \`scopeRestriction\`, inform the user that results are limited to this community and they may have other memberships not shown. Never imply the scoped results represent all their data.
 - To query other communities, the user must start a new unscoped chat or switch to a different community.

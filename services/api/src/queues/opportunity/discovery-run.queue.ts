@@ -173,13 +173,13 @@ export class DiscoveryRunQueue {
     const resolved = await resolveChatContext({
       database: chatDatabaseAdapter,
       userId: run.userId,
-      networkId: run.context.networkId,
+      networkId: run.context.scopeType === 'network' ? run.context.scopeId : undefined,
       sessionId: run.context.sessionId,
     });
     const context: ResolvedToolContext = {
       ...resolved,
       ...(run.context.scopeType && run.context.scopeId
-        ? { scopeType: run.context.scopeType, scopeId: run.context.scopeId, networkId: run.context.scopeId }
+        ? { scopeType: run.context.scopeType, scopeId: run.context.scopeId }
         : {}),
       isMcp: true,
       ...(run.agentId ? { agentId: run.agentId } : {}),
@@ -191,8 +191,6 @@ export class DiscoveryRunQueue {
         ? { scopeType: context.scopeType, scopeId: context.scopeId }
         : {}),
     });
-    // Deprecated compatibility reach until remaining tool call sites migrate.
-    context.indexScope = allowedNetworkIds;
 
     const userDb = createUserDatabase(chatDatabaseAdapter, run.userId);
     const systemDb = createSystemDatabase(chatDatabaseAdapter, run.userId, allowedNetworkIds, embedderAdapter);

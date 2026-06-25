@@ -55,25 +55,26 @@ export async function createChatTools(
 ) {
   const { database, embedder, scraper } = deps;
 
+  const explicitScope = deps.scopeType && deps.scopeId
+    ? { scopeType: deps.scopeType, scopeId: deps.scopeId }
+    : scopeFromNetworkId(deps.networkId);
+
   // ─── Resolve context from DB ───────────────────────────────────────────────
+  // resolveChatContext still accepts a networkId because it loads scoped index
+  // presentation metadata; the canonical request scope is explicitScope.
   const resolvedContext =
     preResolvedContext ??
     (await resolveChatContext({
       database,
       userId: deps.userId,
-      networkId: deps.networkId,
+      networkId: explicitScope.scopeType === 'network' ? explicitScope.scopeId : deps.networkId,
       sessionId: deps.sessionId,
       contactsEnabled: deps.contactsEnabled,
     }));
 
-  const explicitScope = deps.scopeType && deps.scopeId
-    ? { scopeType: deps.scopeType, scopeId: deps.scopeId }
-    : scopeFromNetworkId(deps.networkId);
-
   if (!preResolvedContext && explicitScope.scopeType && explicitScope.scopeId) {
     resolvedContext.scopeType = explicitScope.scopeType;
     resolvedContext.scopeId = explicitScope.scopeId;
-    resolvedContext.networkId = explicitScope.scopeId;
   }
 
   const allowedNetworkIds = deriveAllowedNetworkIds({
@@ -82,8 +83,6 @@ export async function createChatTools(
       ? { scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId }
       : {}),
   });
-  // Deprecated compatibility reach until remaining tool call sites migrate.
-  resolvedContext.indexScope = allowedNetworkIds;
 
   // ─── Tool wrapper ──────────────────────────────────────────────────────────
   /**
@@ -99,7 +98,7 @@ export async function createChatTools(
     return tool(
       async (query: z.infer<T>) => {
         logger.info(`Tool: ${opts.name}`, {
-          context: { userId: resolvedContext.userId, networkId: resolvedContext.networkId },
+          context: { userId: resolvedContext.userId, scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId },
           query: redactSensitiveFields(query),
         });
         try {
@@ -177,8 +176,8 @@ export async function createChatTools(
   // update) use the same adapter as the rest of the tool pipeline.
   //
   // The systemDb's DB-level clamp derives concrete allowed network IDs from the
-  // focused scope envelope plus memberships. The legacy indexScope field is
-  // populated above only as a compatibility bridge for unmigrated tool call sites.
+  // focused scope envelope plus memberships, rather than consuming a transported
+  // legacy indexScope array.
   const userDb = deps.userDb ?? deps.createUserDatabase(database, resolvedContext.userId);
   const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, allowedNetworkIds, embedder);
 

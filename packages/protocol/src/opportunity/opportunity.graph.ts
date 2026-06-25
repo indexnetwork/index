@@ -2842,7 +2842,7 @@ export class OpportunityGraphFactory {
               }
 
               // Index-agnostic dedup: find ANY existing opportunity between these users,
-              // regardless of which index it was created in or whether context.networkId is set.
+              // regardless of which index it was created in or whether a focused network scope is set.
               const candidateUserId = evaluated.actors.find((a) => a.userId !== state.userId)?.userId;
               logger.verbose('[Graph:Persist:Dedup] Checking overlapping opportunities', {
                 stateUserId: state.userId,
