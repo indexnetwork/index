@@ -32,6 +32,59 @@ const discoverBodySchema = z.object({
 });
 
 const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
+const uuidQuerySchema = z.string().uuid();
+const scopeTypeQuerySchema = z.enum(['intent']);
+
+function parseIntentScopeFromUrl(url: URL): { scopeType?: 'intent'; scopeId?: string } | Response {
+  const rawScopeType = url.searchParams.get('scopeType') ?? undefined;
+  const rawScopeId = url.searchParams.get('scopeId') ?? undefined;
+  const rawIntentId = url.searchParams.get('intentId') ?? undefined;
+
+  if (rawScopeType || rawScopeId) {
+    const parsedScopeType = scopeTypeQuerySchema.safeParse(rawScopeType);
+    if (!parsedScopeType.success) return Response.json({ error: 'Invalid scopeType; use intent' }, { status: 400 });
+    const parsedScopeId = uuidQuerySchema.safeParse(rawScopeId);
+    if (!parsedScopeId.success) return Response.json({ error: 'Invalid scopeId; must be a UUID' }, { status: 400 });
+    if (rawIntentId && rawIntentId !== rawScopeId) return Response.json({ error: 'intentId must match scopeId when both are provided' }, { status: 400 });
+    return { scopeType: 'intent', scopeId: rawScopeId };
+  }
+
+  if (rawIntentId) {
+    const parsedIntentId = uuidQuerySchema.safeParse(rawIntentId);
+    if (!parsedIntentId.success) return Response.json({ error: 'Invalid intentId; must be a UUID' }, { status: 400 });
+    return { scopeType: 'intent', scopeId: rawIntentId };
+  }
+
+  return {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeId?: string } | Response {
+  if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  const rawScopeType = typeof body.scopeType === 'string' ? body.scopeType : undefined;
+  const rawScopeId = typeof body.scopeId === 'string' ? body.scopeId : undefined;
+  const rawIntentId = typeof body.intentId === 'string' ? body.intentId : undefined;
+
+  if (rawScopeType || rawScopeId) {
+    const parsedScopeType = scopeTypeQuerySchema.safeParse(rawScopeType);
+    if (!parsedScopeType.success) return Response.json({ error: 'Invalid scopeType; use intent' }, { status: 400 });
+    const parsedScopeId = uuidQuerySchema.safeParse(rawScopeId);
+    if (!parsedScopeId.success) return Response.json({ error: 'Invalid scopeId; must be a UUID' }, { status: 400 });
+    if (rawIntentId && rawIntentId !== rawScopeId) return Response.json({ error: 'intentId must match scopeId when both are provided' }, { status: 400 });
+    return { scopeType: 'intent', scopeId: rawScopeId };
+  }
+
+  if (rawIntentId) {
+    const parsedIntentId = uuidQuerySchema.safeParse(rawIntentId);
+    if (!parsedIntentId.success) return Response.json({ error: 'Invalid intentId; must be a UUID' }, { status: 400 });
+    return { scopeType: 'intent', scopeId: rawIntentId };
+  }
+
+  return {};
+}
 
 /** Route params when path has :id or :networkId */
 type RouteParams = Record<string, string>;
@@ -64,9 +117,13 @@ export class OpportunityController {
       }
     }
 
+    const scope = parseIntentScopeFromUrl(url);
+    if (scope instanceof Response) return scope;
+
     const options = {
       status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
       networkId,
+      ...scope,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     };
@@ -113,8 +170,12 @@ export class OpportunityController {
     const limitParam = url.searchParams.get('limit');
     const noCacheParam = url.searchParams.get('noCache');
     const noCache = noCacheParam === '1' || noCacheParam === 'true';
+    const scope = parseIntentScopeFromUrl(url);
+    if (scope instanceof Response) return scope;
+
     const result = await opportunityService.getHomeView(user.id, {
       networkId,
+      ...scope,
       limit: limitParam ? parseInt(limitParam, 10) : undefined,
       noCache,
     });
@@ -194,20 +255,25 @@ export class OpportunityController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    let body: { status?: string };
+    let body: unknown;
     try {
-      body = (await req.json()) as { status?: string };
+      body = await req.json();
     } catch {
       return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
+    if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 
-    const status = body.status as 'latent' | 'draft' | 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const rawStatus = typeof body.status === 'string' ? body.status : undefined;
+    const status = rawStatus as 'latent' | 'draft' | 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
     const allowed = ['latent', 'draft', 'pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return Response.json({ error: 'Invalid status; use one of: ' + allowed.join(', ') }, { status: 400 });
     }
 
-    const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id);
+    const scope = parseIntentScopeFromBody(body);
+    if (scope instanceof Response) return scope;
+
+    const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, scope);
 
     if (result && 'error' in result) {
       return Response.json({ error: result.error }, { status: result.status as number });
@@ -232,7 +298,7 @@ export class OpportunityController {
    */
   @Post('/:id/start-chat')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async startChat(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async startChat(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
       return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
@@ -243,7 +309,17 @@ export class OpportunityController {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const result = await opportunityService.startChat(resolved.id, user.id);
+    let body: unknown;
+    try {
+      const rawBody = await req.text();
+      body = rawBody.trim() ? JSON.parse(rawBody) : {};
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const scope = parseIntentScopeFromBody(body);
+    if (scope instanceof Response) return scope;
+
+    const result = await opportunityService.startChat(resolved.id, user.id, scope);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
     }

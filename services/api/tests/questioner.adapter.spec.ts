@@ -6,13 +6,18 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
 
-import { questions } from '../src/schemas/database.schema';
+import { questions, opportunities } from '../src/schemas/database.schema';
 import { QuestionerAdapter } from '../src/adapters/questioner.adapter';
 import type { AdapterPersistableQuestion } from '../src/adapters/questioner.adapter';
 
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle>;
 let adapter: QuestionerAdapter;
+
+const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
+const OTHER_INTENT_ID = '00000000-0000-4000-8000-00000000a222';
+const SELECTED_OPPORTUNITY_ID = '00000000-0000-4000-8000-00000000b111';
+const OTHER_OPPORTUNITY_ID = '00000000-0000-4000-8000-00000000b222';
 
 beforeAll(() => {
   client = postgres(process.env.DATABASE_URL!, { prepare: false });
@@ -28,6 +33,7 @@ afterAll(async () => {
   await db.delete(questions).where(
     sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: 'test-user-2' }])}::jsonb`,
   );
+  await db.delete(opportunities).where(sql`${opportunities.id} IN (${SELECTED_OPPORTUNITY_ID}, ${OTHER_OPPORTUNITY_ID})`);
   await client.end({ timeout: 5 });
 });
 
@@ -186,5 +192,52 @@ describe('QuestionerAdapter', () => {
     const limited = await adapter.findPending('test-user-2', { limit: 1 });
     expect(limited).toHaveLength(1);
     expect(limited[0].id).toBe(all[0].id);
+  });
+
+  it('findPending filters by selected intent scope across direct intent and negotiation questions', async () => {
+    await db.delete(questions).where(sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: 'test-user-2' }])}::jsonb`);
+    await db.delete(opportunities).where(sql`${opportunities.id} IN (${SELECTED_OPPORTUNITY_ID}, ${OTHER_OPPORTUNITY_ID})`);
+
+    await db.insert(opportunities).values([
+      {
+        id: SELECTED_OPPORTUNITY_ID,
+        detection: { source: 'opportunity_graph', triggeredBy: SELECTED_INTENT_ID, timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'peer', intent: SELECTED_INTENT_ID }],
+        interpretation: { summary: 'Selected opportunity', reasoning: 'Selected intent match', confidence: 0.9, category: 'connection' },
+        context: {},
+        confidence: '0.9',
+        status: 'pending',
+      },
+      {
+        id: OTHER_OPPORTUNITY_ID,
+        detection: { source: 'opportunity_graph', triggeredBy: OTHER_INTENT_ID, timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'peer', intent: OTHER_INTENT_ID }],
+        interpretation: { summary: 'Other opportunity', reasoning: 'Other intent match', confidence: 0.8, category: 'connection' },
+        context: {},
+        confidence: '0.8',
+        status: 'pending',
+      },
+    ]).onConflictDoNothing();
+
+    const insertedIds = await adapter.persist([
+      makePersistable({
+        detection: { mode: 'intent', sourceType: 'intent', sourceId: SELECTED_INTENT_ID, timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'subject' as const }],
+      }),
+      makePersistable({
+        detection: { mode: 'negotiation', sourceType: 'opportunity', sourceId: SELECTED_OPPORTUNITY_ID, timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'subject' as const }],
+      }),
+      makePersistable({
+        detection: { mode: 'negotiation', sourceType: 'opportunity', sourceId: OTHER_OPPORTUNITY_ID, timestamp: new Date().toISOString() },
+        actors: [{ userId: 'test-user-2', role: 'subject' as const }],
+      }),
+    ]);
+
+    const scoped = await adapter.findPending('test-user-2', { scopeType: 'intent', scopeId: SELECTED_INTENT_ID });
+    const scopedIds = new Set(scoped.map((q) => q.id));
+    expect(scopedIds.has(insertedIds[0])).toBe(true);
+    expect(scopedIds.has(insertedIds[1])).toBe(true);
+    expect(scopedIds.has(insertedIds[2])).toBe(false);
   });
 });

@@ -70,11 +70,13 @@ describe("OpportunityService list status filtering (IND-254)", () => {
       expect(userCall.opts?.statuses).toEqual(["expired", "rejected"]);
     });
 
-    it("preserves other options (networkId) alongside the default allow-list", async () => {
+    it("preserves other options (networkId and intent scope) alongside the default allow-list", async () => {
       const { service, userCall } = createService();
-      await service.getOpportunitiesForUser("user-1", { networkId: "net-1" });
+      await service.getOpportunitiesForUser("user-1", { networkId: "net-1", scopeType: 'intent', scopeId: "intent-1" });
 
       expect(userCall.opts?.networkId).toBe("net-1");
+      expect(userCall.opts?.scopeType).toBe('intent');
+      expect(userCall.opts?.scopeId).toBe("intent-1");
       expect(userCall.opts?.statuses).toEqual(EXPECTED_USER_STATUSES);
     });
   });

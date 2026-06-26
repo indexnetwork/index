@@ -4,7 +4,7 @@ import { requestContext } from "../shared/observability/request-context.js";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
-import { deriveDiscoveryNetworkIds, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
+import { deriveDiscoveryNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
@@ -210,6 +210,16 @@ const UPDATE_OPPORTUNITY_BLOCKED_STATUSES = new Set<OpportunityStatus>([
   "expired",
   "negotiating",
 ]);
+
+function matchesSelectedIntentScope(
+  opportunity: Opportunity,
+  viewerId: string,
+  scope?: { scopeType?: 'intent'; scopeId?: string },
+): boolean {
+  if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
+  if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
+  return opportunity.actors.some((actor) => actor.userId === viewerId && actor.intent === scope.scopeId);
+}
 
 /**
  * Maximum number of opportunity cards to show per chat response.
@@ -668,7 +678,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ),
     }),
     handler: async ({ context, query }) => {
-      const scopedNetworkId = focusedNetworkId(context);
+      const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
       const scopedIndexLabel = focusedNetworkLabel(context);
 
       // Strict scope enforcement: when chat is network-scoped, only allow that index
@@ -1555,13 +1565,21 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .string()
         .optional()
         .describe("Network UUID to filter opportunities to a specific community. Get from read_networks. Defaults to the scoped network in network-scoped chats. Omit to see opportunities across all networks."),
+      scopeType: z
+        .enum(['intent'])
+        .optional()
+        .describe("Optional selected scope type. Use 'intent' to narrow listed opportunities to a selected intent."),
+      scopeId: z
+        .string()
+        .optional()
+        .describe("Selected intent UUID when scopeType is 'intent'. Ignored only when absent."),
       includeDigestMarkers: z
         .boolean()
         .optional()
         .describe("Internal scheduled-digest mode only. When true, includes hidden delivery markers so the digest send pass can confirm only edited-in opportunities."),
     }),
     handler: async ({ context, query }) => {
-      const scopedNetworkId = focusedNetworkId(context);
+      const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
       const scopedIndexLabel = focusedNetworkLabel(context);
 
       // Strict scope enforcement: when chat is network-scoped, only allow that index
@@ -1581,6 +1599,26 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid network ID format.");
       }
 
+      const contextIntentId = focusedIntentId(context);
+      const rawScopeId = query.scopeId?.trim() || undefined;
+      if (query.scopeType === 'intent' && !rawScopeId) {
+        return error("scopeId required when scopeType is intent.");
+      }
+      if (!query.scopeType && rawScopeId) {
+        return error("scopeType=intent required when scopeId is provided.");
+      }
+      if (rawScopeId && !UUID_REGEX.test(rawScopeId)) {
+        return error("Invalid scope ID format.");
+      }
+      if (contextIntentId && rawScopeId && contextIntentId !== rawScopeId) {
+        return error("This chat is scoped to a different intent.");
+      }
+      const effectiveIntentScope = contextIntentId
+        ? { scopeType: 'intent' as const, scopeId: contextIntentId }
+        : query.scopeType === 'intent' && rawScopeId
+          ? { scopeType: 'intent' as const, scopeId: rawScopeId }
+          : {};
+
       // The MCP/chat surface exposes actionable opportunities.
       // `latent` is included so the introducer-as-viewer can see their unapproved
       // connector-flow cards ("do you know someone for X?"). Other latent visibility
@@ -1596,6 +1634,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         context.userId,
         {
           networkId: effectiveIndexId,
+          ...effectiveIntentScope,
           statuses,
           limit: CHAT_FETCH_LIMIT,
         },
@@ -1669,8 +1708,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       if (isDigestMode && deduped.length > 0) {
         const acceptedCounterpartIds = new Set<string>();
         try {
+          // effectiveIntentScope scopes the statuses: ["accepted"] suppression fetch.
           const acceptedOpps = await database.getOpportunitiesForUser(context.userId, {
             ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
+            ...effectiveIntentScope,
             statuses: ["accepted"],
             limit: ACCEPTED_SUPPRESSION_FETCH_LIMIT,
           });
@@ -2140,12 +2181,40 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           "New status: 'pending' = send the draft to the other party, 'accepted' = accept the connection, " +
           "'rejected' = decline, 'expired' = mark as timed out.",
         ),
+      scopeType: z
+        .enum(['intent'])
+        .optional()
+        .describe("Optional selected scope type. Use 'intent' to require this opportunity to belong to a selected intent."),
+      scopeId: z
+        .string()
+        .optional()
+        .describe("Selected intent UUID when scopeType is 'intent'. Must match the chat's focused intent when one exists."),
     }),
     handler: async ({ context, query }) => {
       const opportunityId = query.opportunityId?.trim();
       if (!opportunityId || !UUID_REGEX.test(opportunityId)) {
         return error("Valid opportunityId required.");
       }
+
+      const contextIntentId = focusedIntentId(context);
+      const rawScopeId = query.scopeId?.trim() || undefined;
+      if (query.scopeType === 'intent' && !rawScopeId) {
+        return error("scopeId required when scopeType is intent.");
+      }
+      if (!query.scopeType && rawScopeId) {
+        return error("scopeType=intent required when scopeId is provided.");
+      }
+      if (rawScopeId && !UUID_REGEX.test(rawScopeId)) {
+        return error("Invalid scope ID format.");
+      }
+      if (contextIntentId && rawScopeId && contextIntentId !== rawScopeId) {
+        return error("This chat is scoped to a different intent.");
+      }
+      const effectiveIntentScope = contextIntentId
+        ? { scopeType: 'intent' as const, scopeId: contextIntentId }
+        : query.scopeType === 'intent' && rawScopeId
+          ? { scopeType: 'intent' as const, scopeId: rawScopeId }
+          : {};
 
       // Always fetch the opportunity — needed for actor guard and state machine
       const opportunity = await systemDb.getOpportunity(opportunityId);
@@ -2171,7 +2240,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // Mirrors the per-actor filter in getOpportunitiesForUser — relying on
       // a focus-scope id or any-actor matches would let a counterpart's network
       // presence shadow a viewer whose own actor is elsewhere.
-      const scopedNetworkId = focusedNetworkId(context);
+      const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
       if (scopedNetworkId) {
         const callerOnBoundNetwork = opportunity.actors?.some(
           (a) => a.userId === context.userId && a.networkId === scopedNetworkId,
@@ -2179,6 +2248,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         if (!callerOnBoundNetwork) {
           return error("Opportunity not found.");
         }
+      }
+
+      if (!matchesSelectedIntentScope(opportunity, context.userId, effectiveIntentScope)) {
+        return error("Opportunity not found.");
       }
 
       const isSend = query.status === "pending";

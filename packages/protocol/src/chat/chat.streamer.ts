@@ -1,6 +1,7 @@
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { BaseCheckpointSaver } from "@langchain/langgraph";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { ChatStreamEvent, DebugMetaDiscoveryQuestions, DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
 import { createAgentEndEvent, createAgentStartEvent, createDebugMetaEvent, createDecisionQuestionsEvent, createErrorEvent, createGraphEndEvent, createPhaseStartEvent, createPhaseEndEvent, createGraphStartEvent, createIterationStartEvent, createLlmStartEvent, createLlmEndEvent, createResponseCompleteEvent, createResponseResetEvent, createHallucinationDetectedEvent, createStatusEvent, createTokenEvent, createToolActivityEvent, createChatSummarizerStartEvent, createChatSummarizerEndEvent, createQuestionGeneratorStartEvent, createQuestionGeneratorEndEvent } from "./chat-streaming.types.js";
 import type { AgentStreamEvent } from "./chat.agent.js";
@@ -47,7 +48,7 @@ export class ChatStreamer {
       maxContextMessages?: number;
       /** @deprecated Use scopeType/scopeId. Kept for REST/session edge compatibility. */
       networkId?: string;
-      scopeType?: 'network';
+      scopeType?: ToolScopeType;
       scopeId?: string;
       prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
       /** Per-run identifier used to form a composite LangGraph thread_id (sessionId:runId).
@@ -69,8 +70,8 @@ export class ChatStreamer {
       prefillMessages,
       runId,
     } = input;
-    const effectiveScopeType = scopeType ?? (networkId ? 'network' as const : undefined);
-    const effectiveScopeId = scopeId ?? networkId;
+    const effectiveScopeType: ToolScopeType | undefined = scopeType ?? (networkId ? 'network' : undefined);
+    const effectiveScopeId = scopeId ?? (effectiveScopeType === 'network' ? networkId : undefined);
     logger.verbose("Starting context-aware streaming", {
       userId,
       sessionId,
@@ -141,7 +142,7 @@ export class ChatStreamer {
    * @yields ChatStreamEvent objects
    */
   public async *streamChatEvents(
-    input: { userId: string; messages: BaseMessage[]; networkId?: string; scopeType?: 'network'; scopeId?: string },
+    input: { userId: string; messages: BaseMessage[]; networkId?: string; scopeType?: ToolScopeType; scopeId?: string },
     sessionId: string,
     checkpointer?: BaseCheckpointSaver,
     signal?: AbortSignal,
@@ -154,15 +155,15 @@ export class ChatStreamer {
         userId: string;
         messages: BaseMessage[];
         networkId?: string;
-        scopeType?: 'network';
+        scopeType?: ToolScopeType;
         scopeId?: string;
         sessionId?: string;
       } = {
         userId: input.userId,
         messages: input.messages,
       };
-      const effectiveScopeType = input.scopeType ?? (input.networkId ? 'network' as const : undefined);
-      const effectiveScopeId = input.scopeId ?? input.networkId;
+      const effectiveScopeType: ToolScopeType | undefined = input.scopeType ?? (input.networkId ? 'network' : undefined);
+      const effectiveScopeId = input.scopeId ?? (effectiveScopeType === 'network' ? input.networkId : undefined);
       if (input.networkId) initialState.networkId = input.networkId;
       if (effectiveScopeType && effectiveScopeId) {
         initialState.scopeType = effectiveScopeType;

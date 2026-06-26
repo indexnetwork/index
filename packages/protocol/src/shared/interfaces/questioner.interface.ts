@@ -31,6 +31,9 @@ export interface QuestionFilters {
   mode?: QuestionMode;
   sourceType?: string;
   sourceId?: string;
+  /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */
+  scopeType?: 'intent';
+  scopeId?: string;
 }
 
 export interface QuestionerDatabase {

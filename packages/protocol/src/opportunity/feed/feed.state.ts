@@ -68,6 +68,14 @@ export const HomeGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
+  scopeType: Annotation<'intent' | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+  scopeId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
   limit: Annotation<number>({
     reducer: (curr, next) => next ?? curr,
     default: () => 50,

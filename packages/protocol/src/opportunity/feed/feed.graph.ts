@@ -35,6 +35,8 @@ type HomeGraphDb = HomeGraphDatabase;
 export type HomeGraphInvokeInput = {
   userId: string;
   networkId?: string;
+  scopeType?: 'intent';
+  scopeId?: string;
   limit?: number;
   noCache?: boolean;
   /** When set, filter loaded opportunities to these lifecycle statuses. Defaults to `DEFAULT_HOME_STATUSES`. */
@@ -193,11 +195,15 @@ export class HomeGraphFactory {
           // its soft targets, even after visibility filtering and dedup.
           const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
           const statuses = state.statuses ?? DEFAULT_HOME_STATUSES;
-          const options: { limit?: number; networkId?: string; statuses?: OpportunityStatus[] } = {
+          const options: { limit?: number; networkId?: string; scopeType?: 'intent'; scopeId?: string; statuses?: OpportunityStatus[] } = {
             limit: fetchLimit,
             statuses,
           };
           if (state.networkId) options.networkId = state.networkId;
+          if (state.scopeType === 'intent' && state.scopeId) {
+            options.scopeType = 'intent';
+            options.scopeId = state.scopeId;
+          }
           // Do not pass conversationId: home view excludes draft opportunities (chat-only drafts).
           const raw = await this.database.getOpportunitiesForUser(state.userId, options);
           const visible = raw.filter((opp) =>
