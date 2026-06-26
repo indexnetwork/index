@@ -18,10 +18,12 @@ function createMockCache(): OpportunityCache {
   };
 }
 
-function createMockDb(captured: { statuses?: OpportunityStatus[] }): HomeGraphDatabase {
+function createMockDb(captured: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string }): HomeGraphDatabase {
   return {
-    getOpportunitiesForUser: (_userId: string, opts?: { statuses?: OpportunityStatus[] }) => {
+    getOpportunitiesForUser: (_userId: string, opts?: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string }) => {
       captured.statuses = opts?.statuses;
+      captured.scopeType = opts?.scopeType;
+      captured.scopeId = opts?.scopeId;
       return Promise.resolve([] as Opportunity[]);
     },
     getOpportunity: () => Promise.resolve(null),
@@ -57,5 +59,14 @@ describe('home graph status filter', () => {
     const graph = new HomeGraphFactory(createMockDb(captured), createMockCache()).createGraph();
     await graph.invoke({ userId: 'u1', statuses: ALL_OPPORTUNITY_STATUSES });
     expect(captured.statuses).toEqual(ALL_OPPORTUNITY_STATUSES);
+  });
+
+  test('explicit intent scope is forwarded with the load query before home dedupe', async () => {
+    const captured: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string } = {};
+    const graph = new HomeGraphFactory(createMockDb(captured), createMockCache()).createGraph();
+    await graph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: '00000000-0000-4000-8000-00000000a111' });
+    expect(captured.statuses).toEqual(DEFAULT_HOME_STATUSES);
+    expect(captured.scopeType).toBe('intent');
+    expect(captured.scopeId).toBe('00000000-0000-4000-8000-00000000a111');
   });
 });

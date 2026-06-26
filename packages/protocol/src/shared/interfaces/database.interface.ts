@@ -517,6 +517,9 @@ export interface OpportunityQueryOptions {
   /** When set, filter to opportunities whose status is in this list. Orthogonal to `status` (single) — callers pick one. */
   statuses?: OpportunityStatus[];
   networkId?: string;
+  /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */
+  scopeType?: 'intent';
+  scopeId?: string;
   role?: string;
   limit?: number;
   offset?: number;

@@ -20,6 +20,31 @@ const answerBodySchema = z.object({
 
 const statusQuerySchema = z.enum(['pending', 'answered', 'dismissed']).default('pending');
 const modeQuerySchema = z.enum(['discovery', 'intent', 'enrichment', 'negotiation']);
+const uuidQuerySchema = z.string().uuid();
+const scopeTypeQuerySchema = z.enum(['intent']);
+
+function parseIntentScopeFromUrl(url: URL): { scopeType?: 'intent'; scopeId?: string } | Response {
+  const rawScopeType = url.searchParams.get('scopeType') ?? undefined;
+  const rawScopeId = url.searchParams.get('scopeId') ?? undefined;
+  const rawIntentId = url.searchParams.get('intentId') ?? undefined;
+
+  if (rawScopeType || rawScopeId) {
+    const parsedScopeType = scopeTypeQuerySchema.safeParse(rawScopeType);
+    if (!parsedScopeType.success) return Response.json({ error: 'Invalid scopeType; use intent' }, { status: 400 });
+    const parsedScopeId = uuidQuerySchema.safeParse(rawScopeId);
+    if (!parsedScopeId.success) return Response.json({ error: 'Invalid scopeId; must be a UUID' }, { status: 400 });
+    if (rawIntentId && rawIntentId !== rawScopeId) return Response.json({ error: 'intentId must match scopeId when both are provided' }, { status: 400 });
+    return { scopeType: 'intent', scopeId: rawScopeId };
+  }
+
+  if (rawIntentId) {
+    const parsedIntentId = uuidQuerySchema.safeParse(rawIntentId);
+    if (!parsedIntentId.success) return Response.json({ error: 'Invalid intentId; must be a UUID' }, { status: 400 });
+    return { scopeType: 'intent', scopeId: rawIntentId };
+  }
+
+  return {};
+}
 
 /**
  * QuestionController: REST API for question delivery and lifecycle.
@@ -50,6 +75,8 @@ export class QuestionController {
     const sourceId = url.searchParams.get('sourceId');
     const conversationId = url.searchParams.get('conversationId');
     const noConversation = url.searchParams.get('noConversation');
+    const scope = parseIntentScopeFromUrl(url);
+    if (scope instanceof Response) return scope;
 
     const statusResult = statusQuerySchema.safeParse(rawStatus ?? 'pending');
     if (!statusResult.success) {
@@ -81,6 +108,10 @@ export class QuestionController {
     }
     if (sourceType) filters.sourceType = sourceType;
     if (sourceId) filters.sourceId = sourceId;
+    if (scope.scopeType === 'intent') {
+      filters.scopeType = 'intent';
+      filters.scopeId = scope.scopeId;
+    }
     if (conversationId) filters.conversationId = conversationId;
     if (noConversation === 'true') filters.noConversation = true;
 

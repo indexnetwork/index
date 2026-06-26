@@ -5,7 +5,7 @@
  * networks a caller may read or write. Helper functions derive concrete network
  * id sets from the focused scope plus the caller's memberships.
  */
-export type ToolScopeType = 'network';
+export type ToolScopeType = 'network' | 'intent';
 
 export interface ToolScopeEnvelope {
   scopeType?: ToolScopeType;
@@ -30,8 +30,17 @@ export function scopeFromNetworkId(networkId: string | null | undefined): ToolSc
   return scopeId ? { scopeType: 'network', scopeId } : {};
 }
 
+export function scopeFromIntentId(intentId: string | null | undefined): ToolScopeEnvelope {
+  const scopeId = intentId?.trim();
+  return scopeId ? { scopeType: 'intent', scopeId } : {};
+}
+
 export function hasNetworkScope(scope: ToolScopeEnvelope): scope is { scopeType: 'network'; scopeId: string } {
   return scope.scopeType === 'network' && typeof scope.scopeId === 'string' && scope.scopeId.trim().length > 0;
+}
+
+export function hasIntentScope(scope: ToolScopeEnvelope): scope is { scopeType: 'intent'; scopeId: string } {
+  return scope.scopeType === 'intent' && typeof scope.scopeId === 'string' && scope.scopeId.trim().length > 0;
 }
 
 /**
@@ -43,6 +52,10 @@ export function hasNetworkScope(scope: ToolScopeEnvelope): scope is { scopeType:
  */
 export function focusedNetworkId(scope: ToolScopeEnvelope): string | undefined {
   return hasNetworkScope(scope) ? scope.scopeId.trim() : undefined;
+}
+
+export function focusedIntentId(scope: ToolScopeEnvelope): string | undefined {
+  return hasIntentScope(scope) ? scope.scopeId.trim() : undefined;
 }
 
 /** Human-readable label for a focused scope, used in scope-restriction notes. */

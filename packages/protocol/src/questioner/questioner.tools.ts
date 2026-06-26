@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { error, success } from "../shared/agent/tool.helpers.js";
-import { focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
+import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
 
@@ -66,20 +66,23 @@ export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const limit = query.limit ?? 10;
-      // Scoped-key discriminator: scoped contexts carry a network scope envelope.
+      // Scoped-key discriminator: scoped contexts carry a scope envelope.
       const scopedNetworkId = focusedNetworkId(context);
-      const isScoped = Boolean(scopedNetworkId);
+      const scopedIntentId = focusedIntentId(context);
+      const isNetworkScoped = Boolean(scopedNetworkId);
+      const isIntentScoped = Boolean(scopedIntentId);
 
       try {
         const fetched = await deps.findPendingQuestions(context.userId, {
-          ...(isScoped ? { modes: SELF_OWNED_MODES, networkId: scopedNetworkId } : {}),
+          ...(isNetworkScoped ? { modes: SELF_OWNED_MODES, networkId: scopedNetworkId } : {}),
+          ...(isIntentScoped ? { scopeType: 'intent' as const, scopeId: scopedIntentId } : {}),
           limit,
         });
         // Defense-in-depth: hosts apply `modes`/`networkId`/`limit` SQL-side;
-        // re-apply all three here so the clamp holds even when a custom dep
-        // ignores the filters. Scoped rows without actor network metadata are
+        // re-apply all three here so the network clamp holds even when a custom
+        // dep ignores the filters. Scoped rows without actor network metadata are
         // hidden fail-closed because they cannot prove membership in this scope.
-        const visible = isScoped
+        const visible = isNetworkScoped
           ? fetched.filter(
               (q) =>
                 (SELF_OWNED_MODES as string[]).includes(q.mode) &&
@@ -88,7 +91,18 @@ export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
           : fetched;
         const limited = visible.slice(0, limit).map(stripInternalActors);
 
-        if (isScoped) {
+        if (isIntentScoped) {
+          return success({
+            questions: limited,
+            scopeRestriction: {
+              isScoped: true,
+              scopedToIntent: scopedIntentId,
+              message: "Results are restricted to the selected intent, including direct intent questions and negotiation questions from matching opportunities.",
+            },
+          });
+        }
+
+        if (isNetworkScoped) {
           return success({
             questions: limited,
             scopeRestriction: {

@@ -1,6 +1,7 @@
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
 
+import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -80,13 +81,13 @@ export const ChatGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /** Focused request scope type. Currently only `network` exists. */
-  scopeType: Annotation<'network' | undefined>({
+  /** Focused request scope type. Network scope uses a network id; intent scope uses an intent id. */
+  scopeType: Annotation<ToolScopeType | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
 
-  /** Focused request scope id. When scopeType is `network`, this is the network id. */
+  /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
   scopeId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,

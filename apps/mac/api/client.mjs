@@ -119,7 +119,15 @@ export function createIndexApiClient(options = {}) {
 
     opportunities: {
       list: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
+      listForIntent: (intentId, query = {}, options = {}) => request(
+        `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        options,
+      ),
       home: (query = {}, options = {}) => request(`/opportunities/home${toQueryString(query)}`, options),
+      homeForIntent: (intentId, query = {}, options = {}) => request(
+        `/opportunities/home${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        options,
+      ),
       chatContext: (peerUserId, options = {}) => request(
         `/opportunities/chat-context${toQueryString({ peerUserId })}`,
         options,
@@ -133,15 +141,27 @@ export function createIndexApiClient(options = {}) {
         `/opportunities/${encodeURIComponent(opportunityId)}/status`,
         { ...options, method: 'PATCH', body: { status } },
       ),
+      updateStatusForIntent: (opportunityId, status, intentId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/status`,
+        { ...options, method: 'PATCH', body: { status, scopeType: 'intent', scopeId: intentId } },
+      ),
       startChat: (opportunityId, options = {}) => request(
         `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
         { ...options, method: 'POST', body: {} },
+      ),
+      startChatForIntent: (opportunityId, intentId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
+        { ...options, method: 'POST', body: { scopeType: 'intent', scopeId: intentId } },
       ),
     },
 
     questions: {
       pending: (filters = {}, options = {}) => request(
         `/questions${toQueryString({ status: 'pending', ...filters })}`,
+        options,
+      ),
+      pendingForIntent: (intentId, filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'pending', ...filters, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
       answer: (questionId, body, options = {}) => request(

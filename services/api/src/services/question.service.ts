@@ -25,8 +25,10 @@ export class QuestionService {
   }
 
   /**
-   * Find pending questions for a given user, optionally filtered by
-   * detection mode, source type, or source id.
+   * Find pending questions for a given user, optionally filtered by detection
+   * mode, source type, source id, or selected-intent scope. Intent scope returns
+   * direct intent questions plus negotiation questions whose source opportunity
+   * belongs to that intent for the same viewer.
    *
    * @param userId  - The user to find pending questions for.
    * @param filters - Optional narrowing filters.

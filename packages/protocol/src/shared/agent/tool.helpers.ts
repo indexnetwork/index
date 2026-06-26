@@ -62,11 +62,11 @@ export interface ResolvedToolContext {
   userId: string;
   userName: string;
   userEmail: string;
-  /** Focused network for scoped chats/agents. Prefer `scopeType`/`scopeId` in new code. */
+  /** Legacy focused network alias. Prefer `scopeType`/`scopeId` in new code. */
   networkId?: string;
-  /** Focused request scope type. Currently only network scopes exist. */
+  /** Focused request scope type: `network` for community focus, `intent` for selected-intent focus. */
   scopeType?: ToolScopeType;
-  /** Focused request scope id. When `scopeType === 'network'`, this is the focused network id. */
+  /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
   scopeId?: string;
   indexName?: string;
   /** True when chat is network-scoped and the user owns the index. */
@@ -135,11 +135,11 @@ export interface ToolContext {
   systemDb?: SystemDatabase;
   embedder: Embedder;
   scraper: Scraper;
-  /** When set, chat is scoped to this network; tools use it as the default focused network. */
+  /** When set, chat is scoped to this network; converted to `{ scopeType: 'network', scopeId: networkId }` at the boundary. */
   networkId?: string;
-  /** Focused request scope type. Currently only `network` is supported. */
+  /** Focused request scope type: `network` or `intent`. */
   scopeType?: ToolScopeType;
-  /** Focused request scope id. When omitted, `networkId` is converted to a network scope. */
+  /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
   scopeId?: string;
   /** @deprecated indexScope is legacy; use `scopeType`/`scopeId`, retained until wiring phases migrate call sites. */
   indexScope?: string[];
@@ -501,6 +501,9 @@ export interface ToolDeps {
     filters?: {
       sourceType?: string;
       sourceId?: string;
+      /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */
+      scopeType?: 'intent';
+      scopeId?: string;
       /** Restrict to questions whose actor carries this network id. */
       networkId?: string;
       /** Restrict to questions whose detection mode is in this set. */

@@ -13,7 +13,7 @@
 
 import { eq, and, sql, or, isNull } from 'drizzle-orm/sql';
 
-import { questions } from '../schemas/database.schema';
+import { questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
@@ -90,6 +90,9 @@ export interface AdapterQuestionFilters {
   mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
   sourceType?: string;
   sourceId?: string;
+  /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */
+  scopeType?: 'intent';
+  scopeId?: string;
   /** Restrict to questions whose actor carries this network id. */
   networkId?: string;
   /** Filter to questions linked to a specific conversation. */
@@ -133,13 +136,13 @@ export class QuestionerAdapter {
 
   /**
    * Find pending questions for a given user, optionally filtered by
-   * detection mode, source type, or source id.
+   * detection mode, source type, source id, or selected-intent scope.
    *
    * Uses a jsonb containment query (`@>`) to locate rows where the
    * `actors` array includes an entry with the target userId.
    *
    * @param userId  - The user to find pending questions for.
-   * @param filters - Optional narrowing filters (mode/modes, source, conversation, SQL limit).
+   * @param filters - Optional narrowing filters (mode/modes, source, conversation, intent scope, SQL limit).
    * @returns Pending questions ordered by creation time (oldest first).
    */
   async findPending(
@@ -163,6 +166,33 @@ export class QuestionerAdapter {
     }
     if (filters?.sourceId) {
       conditions.push(sql`${questions.detection}->>'sourceId' = ${filters.sourceId}`);
+    }
+    if (filters?.scopeType === 'intent' && filters.scopeId) {
+      conditions.push(sql`(
+        (
+          ${questions.detection}->>'mode' = 'intent'
+          AND ${questions.detection}->>'sourceType' = 'intent'
+          AND ${questions.detection}->>'sourceId' = ${filters.scopeId}
+        )
+        OR (
+          ${questions.detection}->>'mode' = 'negotiation'
+          AND ${questions.detection}->>'sourceType' = 'opportunity'
+          AND EXISTS (
+            SELECT 1
+            FROM ${opportunities} scoped_opp
+            WHERE scoped_opp.id::text = ${questions.detection}->>'sourceId'
+              AND (
+                scoped_opp.detection->>'triggeredBy' = ${filters.scopeId}
+                OR EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(scoped_opp.actors) AS actor
+                  WHERE actor->>'userId' = ${userId}
+                    AND actor->>'intent' = ${filters.scopeId}
+                )
+              )
+          )
+        )
+      )`);
     }
     if (filters?.conversationId) {
       conditions.push(eq(questions.conversationId, filters.conversationId));
