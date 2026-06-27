@@ -169,7 +169,7 @@ def main() -> None:
 
     dashboard_manifest = json.loads((ROOT / "dashboard" / "manifest.json").read_text())
     assert dashboard_manifest["name"] == "index-network"
-    assert dashboard_manifest["label"] == "Index Network"
+    assert dashboard_manifest["label"] == "Index"
     assert dashboard_manifest["entry"] == "dist/index.js"
     assert dashboard_manifest["css"] == "dist/style.css"
     assert dashboard_manifest["api"] == "plugin_api.py"
@@ -181,12 +181,20 @@ def main() -> None:
     subprocess.run(["node", "--check", str(dashboard_js_path)], check=True)
     dashboard_js = dashboard_js_path.read_text()
     assert 'register("index-network"' in dashboard_js
-    assert "Question answers enabled" in dashboard_js
-    assert "Questions" in dashboard_js
     assert "Intents" in dashboard_js
-    assert "Opportunities" in dashboard_js
-    assert "Negotiation activity" in dashboard_js
     assert "Networks" in dashboard_js
+    assert "Questions" in dashboard_js
+    assert "Radar" in dashboard_js
+    assert "hashchange" in dashboard_js
+    assert "index-dashboard__skip" in dashboard_js
+    assert "/dismiss" in dashboard_js
+    assert "index-dashboard__header-refresh" in dashboard_js
+    assert 'header[role="banner"]' in dashboard_js
+    assert "index-dashboard__avatar-img" in dashboard_js
+    assert "AUTO-REFRESH" in dashboard_js
+    assert "index-dashboard__switch" in dashboard_js
+    assert "setInterval" in dashboard_js
+    assert "5000" in dashboard_js
     assert "/api/" + "plugins/index-network" in dashboard_js
     assert "SDK.fetchJSON" in dashboard_js
     assert "index_pickup_negotiation" not in dashboard_js
@@ -382,11 +390,9 @@ def main() -> None:
                         "data": {
                             "intents": [
                                 {
-                                    "id": "intent-hidden",
+                                    "id": "intent-1",
                                     "summary": "Find robotics mentors",
                                     "description": "Looking for mentors in applied robotics.",
-                                    "status": "active",
-                                    "confidence": 0.91,
                                 }
                             ],
                             "count": 1,
@@ -407,9 +413,20 @@ def main() -> None:
                                     "multiSelect": False,
                                     "mode": "intent",
                                     "sourceType": "intent",
-                                }
+                                    "sourceId": "intent-1",
+                                },
+                                {
+                                    "id": "question-2",
+                                    "title": "Onboarding",
+                                    "prompt": "Tell us about yourself.",
+                                    "options": [],
+                                    "multiSelect": False,
+                                    "mode": "enrichment",
+                                    "sourceType": "profile",
+                                    "sourceId": "user-1",
+                                },
                             ],
-                            "count": 1,
+                            "count": 2,
                         },
                     },
                     response_id=11,
@@ -418,20 +435,9 @@ def main() -> None:
                     {
                         "success": True,
                         "data": {
-                            "found": True,
-                            "count": 1,
-                            "message": "You have 1 opportunity.\n\n1. Ada\n   Can advise on robotics hiring.\n   status: draft\n   opportunityId: hidden\n\nDo NOT print raw JSON.",
-                        },
-                    },
-                    response_id=12,
-                ),
-                mcp_text_response(
-                    {
-                        "success": True,
-                        "data": {
                             "memberOf": [
                                 {
-                                    "networkId": "network-hidden",
+                                    "networkId": "network-1",
                                     "title": "Robotics Guild",
                                     "prompt": "People building robotics companies.",
                                     "permissions": ["member"],
@@ -447,11 +453,11 @@ def main() -> None:
                     {
                         "success": True,
                         "data": {
-                            "userId": "user-hidden",
+                            "userId": "user-1",
                             "count": 1,
                             "memberships": [
                                 {
-                                    "networkId": "network-hidden",
+                                    "networkId": "network-1",
                                     "networkTitle": "Robotics Guild",
                                     "permissions": ["member"],
                                 }
@@ -460,72 +466,64 @@ def main() -> None:
                     },
                     response_id=13,
                 ),
-                mcp_text_response(
+                FakeResponse(
                     {
-                        "success": True,
-                        "data": {
-                            "links": [
-                                {
-                                    "intentId": "intent-hidden",
-                                    "networkId": "network-hidden",
-                                    "intentTitle": "Looking for mentors in applied robotics.",
-                                    "relevancyScore": 0.94,
-                                }
-                            ],
-                            "count": 1,
-                        },
-                    },
-                    response_id=14,
+                        "opportunities": [
+                            {
+                                "id": "opp-1",
+                                "status": "negotiating",
+                                "detection": {"triggeredBy": "intent-1"},
+                                "counterpartName": "Ada",
+                                "counterpartAvatar": "avatars/other/pic.png",
+                                "interpretation": {"category": "mentor", "reasoning": "Can advise on robotics hiring."},
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
+                                    {"userId": "other", "networkId": "network-1", "intent": "other-intent", "role": "patient"},
+                                ],
+                            }
+                        ]
+                    }
                 ),
-                mcp_text_response(
-                    {"success": True, "data": {"count": 1, "totalCount": 7, "negotiations": [{"status": "completed"}]}},
-                    response_id=15,
-                ),
-                mcp_text_response(
-                    {"success": True, "data": {"count": 1, "totalCount": 2, "negotiations": [{"status": "active"}]}},
-                    response_id=16,
-                ),
-                mcp_text_response(
-                    {"success": True, "data": {"count": 1, "totalCount": 1, "negotiations": [{"status": "waiting_for_agent"}]}},
-                    response_id=17,
-                ),
-                mcp_text_response(
-                    {"success": True, "data": {"count": 1, "totalCount": 4, "negotiations": [{"status": "completed"}]}},
-                    response_id=18,
-                ),
+                FakeResponse({"opportunities": []}),
             ],
             captured,
         )
         summary = dashboard_api.summary()
         assert summary["success"] is True
-        sections = summary["sections"]
-        assert sections["intents"]["items"][0]["title"] == "Find robotics mentors"
-        assert sections["intents"]["items"][0]["detail"] == "Looking for mentors in applied robotics."
-        assert sections["intents"]["items"][0]["networks"] == ["Robotics Guild"]
-        assert sections["questions"]["count"] == 1
-        assert sections["questions"]["items"][0]["id"] == "question-1"
-        assert sections["questions"]["items"][0]["options"][0]["label"] == "Hiring"
-        assert sections["opportunities"]["items"][0]["title"] == "Ada"
-        assert sections["negotiations"]["count"] == 7
-        assert sections["negotiations"]["summary"] == {
-            "active": 2,
-            "waitingForAgent": 1,
-            "completed": 4,
-            "needsAttention": 1,
+        intents = summary["intents"]
+        assert len(intents) == 1
+        intent = intents[0]
+        assert intent["id"] == "intent-1"
+        assert intent["title"] == "Find robotics mentors"
+        assert intent["status"] == "running"
+        assert intent["questionCount"] == 1
+        assert intent["opportunityCount"] == 1
+        assert intent["statusCounts"]["negotiating"] == 1
+        assert intent["networks"] == ["Robotics Guild"]
+        assert intent["questions"][0]["id"] == "question-1"
+        assert intent["questions"][0]["options"][0]["label"] == "Hiring"
+        assert intent["opportunities"][0]["opportunityId"] == "opp-1"
+        assert intent["opportunities"][0]["avatar"] == "https://api.example.test/api/storage/avatars/other/pic.png"
+        assert intent["opportunities"][0]["name"] == "Ada"
+        assert intent["opportunities"][0]["subtitle"] == "Suggested connection"
+        assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
+        assert intent["opportunities"][0]["networks"] == ["Robotics Guild"]
+        assert summary["general"]["count"] == 1
+        assert summary["general"]["questions"][0]["id"] == "question-2"
+        assert summary["networks"]["count"] == 1
+        assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
+        assert summary["totals"] == {
+            "intents": 1,
+            "questions": 2,
+            "opportunities": 1,
+            "statusCounts": {"ready": 0, "negotiating": 1, "accepted": 0, "expired": 0},
         }
-        assert sections["networks"]["items"][0]["title"] == "Robotics Guild"
-        assert sections["networks"]["count"] == 1
-        assert [entry["body"]["params"]["name"] for entry in captured] == [
-            "read_intents",
-            "read_pending_questions",
-            "list_opportunities",
-            "read_networks",
-            "read_network_memberships",
-            "read_intent_indexes",
-            "list_negotiations",
-            "list_negotiations",
-            "list_negotiations",
-            "list_negotiations",
+        mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
+        assert mcp_calls == ["read_intents", "read_pending_questions", "read_networks", "read_network_memberships"]
+        rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
+        assert rest_calls == [
+            ("GET", "https://api.example.test/api/opportunities"),
+            ("GET", "https://api.example.test/api/opportunities?status=expired"),
         ]
 
         captured = []
@@ -542,6 +540,12 @@ def main() -> None:
             "success": False,
             "error": "Choose an option or add a free-text answer.",
         }
+
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True})], captured)
+        assert dashboard_api.dismiss_question("question-1") == {"success": True}
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/questions/question-1/dismiss"
     finally:
         urllib.request.urlopen = old_urlopen
         if old_api_key is not None:

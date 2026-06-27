@@ -331,10 +331,10 @@ export class OpportunityService {
         allUserIds.add(actor.userId);
       }
     }
-    const userMap = new Map<string, string>();
+    const userMap = new Map<string, { name?: string; avatar: string | null }>();
     const lookups = [...allUserIds].map(async (uid) => {
       const user = await this.db.getUser(uid);
-      if (user?.name) userMap.set(uid, user.name);
+      if (user) userMap.set(uid, { name: user.name ?? undefined, avatar: user.avatar ?? null });
     });
     await Promise.all(lookups);
 
@@ -342,12 +342,15 @@ export class OpportunityService {
       const counterpart = resolveCounterpart(opp.actors, userId);
       const enrichedActors = opp.actors.map((a) => ({
         ...a,
-        name: userMap.get(a.userId) ?? undefined,
+        name: userMap.get(a.userId)?.name ?? undefined,
+        avatar: userMap.get(a.userId)?.avatar ?? null,
       }));
+      const counterpartInfo = counterpart ? userMap.get(counterpart.userId) : undefined;
       return {
         ...opp,
         actors: enrichedActors,
-        counterpartName: counterpart ? (userMap.get(counterpart.userId) ?? undefined) : undefined,
+        counterpartName: counterpartInfo?.name ?? undefined,
+        counterpartAvatar: counterpartInfo?.avatar ?? null,
       };
     });
   }
