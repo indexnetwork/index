@@ -1,15 +1,10 @@
 {
   "packages": [
-    "npm:@juicesharp/rpiv-pi",
-    "npm:@juicesharp/rpiv-advisor",
-    "npm:@juicesharp/rpiv-args",
-    "npm:@juicesharp/rpiv-ask-user-question",
     "npm:@juicesharp/rpiv-btw",
     "npm:@juicesharp/rpiv-todo",
-    "npm:@juicesharp/rpiv-web-tools",
-    "npm:@juicesharp/rpiv-workflow",
     "npm:@tintinweb/pi-subagents",
-    "npm:@juicesharp/rpiv-i18n",
-    "npm:context-mode"
+    "npm:context-mode",
+    "npm:@juicesharp/rpiv-advisor",
+    "npm:@juicesharp/rpiv-ask-user-question"
   ]
 }
