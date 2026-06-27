@@ -120,12 +120,15 @@
       params[key] = idx >= 0 ? decodeURIComponent(pair.slice(idx + 1)) : "";
     });
     if (params.view === "networks") return { view: "networks", intentId: null };
+    if (params.view === "negotiations") return { view: "negotiations", intentId: null };
     if (params.intent) return { view: "intents", intentId: params.intent };
     return { view: "intents", intentId: null };
   }
 
   function writeHash(view, intentId) {
-    const next = view === "networks" ? "view=networks" : intentId ? "intent=" + encodeURIComponent(intentId) : "";
+    const next = view === "networks" ? "view=networks"
+      : view === "negotiations" ? "view=negotiations"
+      : intentId ? "intent=" + encodeURIComponent(intentId) : "";
     const target = next ? "#" + next : "";
     if ((window.location.hash || "") !== target) {
       window.location.hash = target;
@@ -418,6 +421,7 @@
     }
     return React.createElement("div", { className: "inline-flex border border-midground/15 bg-background/30 w-fit shrink-0", role: "radiogroup" },
       tab("intents", "Intents"),
+      tab("negotiations", "Negotiations"),
       tab("networks", "Networks"),
     );
   }
@@ -528,6 +532,23 @@
     const networks = props.networks || { items: [], count: 0 };
     return React.createElement(Panel, { cron: true, icon: ICON_SHARE(), title: "Networks", count: networks.count },
       React.createElement(ItemList, { items: networks.items, error: networks.error, empty: "You are not joined to any networks yet." }),
+    );
+  }
+
+  function ICON_HANDSHAKE() {
+    return svgIcon("h-4 w-4", [
+      svgPath("m11 17 2 2a1 1 0 1 0 3-3"),
+      svgPath("m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"),
+      svgPath("m21 3 1 11h-2"),
+      svgPath("M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"),
+      svgPath("M3 4h8"),
+    ]);
+  }
+
+  function NegotiationsView(props) {
+    const negotiations = props.negotiations || { items: [], count: 0 };
+    return React.createElement(Panel, { cron: true, icon: ICON_HANDSHAKE(), title: "Negotiations", count: negotiations.count },
+      React.createElement(RadarList, { items: negotiations.items, error: negotiations.error, empty: "No active negotiations right now." }),
     );
   }
 
@@ -650,7 +671,7 @@
       seg.className = "inline-flex border border-midground/15 bg-background/30 w-fit shrink-0 index-dashboard__hdr-seg";
       seg.setAttribute("role", "radiogroup");
       const segButtons = {};
-      [["intents", "Intents"], ["networks", "Networks"]].forEach(function (pair) {
+      [["intents", "Intents"], ["negotiations", "Negotiations"], ["networks", "Networks"]].forEach(function (pair) {
         const b = document.createElement("button");
         b.type = "button";
         b.setAttribute("role", "radio");
@@ -808,7 +829,9 @@
           segInHeader ? null : React.createElement(Segmented, { view: view, onChange: changeView }),
           view === "networks"
             ? React.createElement(NetworksView, { networks: summary && summary.networks })
-            : intentsView,
+            : view === "negotiations"
+              ? React.createElement(NegotiationsView, { negotiations: summary && summary.negotiations })
+              : intentsView,
         ),
     );
   }

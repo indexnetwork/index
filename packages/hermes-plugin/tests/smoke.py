@@ -182,6 +182,7 @@ def main() -> None:
     dashboard_js = dashboard_js_path.read_text()
     assert 'register("index-network"' in dashboard_js
     assert "Intents" in dashboard_js
+    assert "Negotiations" in dashboard_js
     assert "Networks" in dashboard_js
     assert "Questions" in dashboard_js
     assert "Radar" in dashboard_js
@@ -510,6 +511,9 @@ def main() -> None:
         assert intent["opportunities"][0]["networks"] == ["Robotics Guild"]
         assert summary["general"]["count"] == 1
         assert summary["general"]["questions"][0]["id"] == "question-2"
+        assert summary["negotiations"]["count"] == 1
+        assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
+        assert summary["negotiations"]["items"][0]["subtitle"] == "Find robotics mentors"
         assert summary["networks"]["count"] == 1
         assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
         assert summary["totals"] == {

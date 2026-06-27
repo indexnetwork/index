@@ -388,6 +388,7 @@ def _build_dashboard(
 ) -> dict[str, Any]:
     intents: dict[str, dict[str, Any]] = {}
     order: list[str] = []
+    negotiations: list[dict[str, Any]] = []
 
     def ensure(intent_id: str, title: str | None = None) -> dict[str, Any]:
         existing = intents.get(intent_id)
@@ -435,7 +436,12 @@ def _build_dashboard(
         intent["statusCounts"][bucket] = intent["statusCounts"].get(bucket, 0) + 1
         if counted_only:
             return
-        intent["opportunities"].append(_opportunity_item(opp, network_titles))
+        item = _opportunity_item(opp, network_titles)
+        intent["opportunities"].append(item)
+        if bucket == "negotiating":
+            nego = dict(item)
+            nego["subtitle"] = intent["title"]
+            negotiations.append(nego)
         for net in _opportunity_networks(opp, network_titles):
             if net not in intent["networks"]:
                 intent["networks"].append(net)
@@ -481,6 +487,7 @@ def _build_dashboard(
     return {
         "intents": ordered_intents,
         "general": {"questions": general, "count": len(general)},
+        "negotiations": {"items": negotiations, "count": len(negotiations)},
         "totals": totals,
     }
 
@@ -499,6 +506,10 @@ def summary() -> dict[str, Any]:
     network_titles = _network_title_map(networks_payload, memberships_payload)
     dashboard = _build_dashboard(intents_payload, opps_live, opps_expired, questions_payload, network_titles)
 
+    negotiations = dashboard["negotiations"]
+    if opps_error:
+        negotiations["error"] = opps_error
+
     errors = {
         "intents": _section_error(intents_payload),
         "questions": _section_error(questions_payload),
@@ -510,6 +521,7 @@ def summary() -> dict[str, Any]:
         "success": True,
         "intents": dashboard["intents"],
         "general": dashboard["general"],
+        "negotiations": negotiations,
         "networks": _normalize_networks(networks_payload),
         "totals": dashboard["totals"],
         "errors": {key: value for key, value in errors.items() if value},
