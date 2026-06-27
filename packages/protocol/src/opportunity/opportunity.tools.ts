@@ -149,7 +149,6 @@ export async function attachActionableLinks(
     counterpartUserId: string;
     mintConnectLink: NonNullable<ToolDeps["mintConnectLink"]>;
     frontendUrl: string | undefined;
-    preferredSurface?: 'telegram' | 'web';
   },
 ): Promise<void> {
   // profileUrl is independent of whether the (status, viewerRole) combination
@@ -182,7 +181,6 @@ export async function attachActionableLinks(
       opportunityId: card.opportunityId,
       kind,
       greeting: null,
-      preferredSurface: opts.preferredSurface,
     });
     card.acceptUrl = url;
     card.feedCategory = card.viewerRole === "introducer" ? "connector-flow" : "connection";
@@ -1038,7 +1036,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             counterpartUserId: firstPartyId,
             mintConnectLink: deps.mintConnectLink,
             frontendUrl: deps.frontendUrl,
-            preferredSurface: context.clientSurface,
           });
         }
 
@@ -1390,7 +1387,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               counterpartUserId: source?.userId ?? card.userId,
               mintConnectLink,
               frontendUrl: deps.frontendUrl,
-              preferredSurface: context.clientSurface,
             });
           }),
         );
@@ -1992,7 +1988,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                       counterpartUserId,
                       mintConnectLink: deps.mintConnectLink,
                       frontendUrl: deps.frontendUrl,
-                      preferredSurface: context.clientSurface,
                     });
                   }
 
@@ -2112,7 +2107,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 counterpartUserId,
                 mintConnectLink: deps.mintConnectLink,
                 frontendUrl: deps.frontendUrl,
-                preferredSurface: context.clientSurface,
               });
             }
 

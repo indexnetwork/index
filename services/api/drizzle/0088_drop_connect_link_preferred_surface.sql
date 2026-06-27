@@ -1,0 +1,1 @@
+ALTER TABLE "connect_links" DROP COLUMN "preferred_surface";

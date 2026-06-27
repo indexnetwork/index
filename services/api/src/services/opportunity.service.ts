@@ -726,9 +726,11 @@ export class OpportunityService {
       });
       return { conversationId: conversation.id, counterpartUserId: counterpart.userId, opportunity: opp };
     }
-    if (opp.status !== 'pending' && opp.status !== 'draft' && opp.status !== 'latent') {
+    // Allow opening the chat from any non-terminal status. Terminal statuses
+    // (expired/rejected) are already masked at connect-link resolution.
+    if (opp.status === 'rejected' || opp.status === 'expired') {
       return {
-        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending, draft, or latent.`,
+        error: `Cannot start chat on opportunity in status '${opp.status}'.`,
         status: 400,
       };
     }
@@ -740,11 +742,9 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    // Self-accept guard: if the caller already committed (actedAt is set) they
-    // cannot accept again — the other party must be the one to accept.
-    if (callerActor.actedAt) {
-      return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
-    }
+    // Self-accept guard intentionally bypassed: a caller who has already acted
+    // (actedAt set) is routed straight to the conversation instead of being
+    // blocked, so the connect link always opens the chat.
 
     const counterpart = resolveCounterpart(opp.actors, userId);
     if (!counterpart) {

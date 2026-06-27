@@ -72,14 +72,13 @@ const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeout
 
 const apiBaseUrl = resolveProtocolBaseUrl();
 
-const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferredSurface }: {
+const mintConnectLink = async ({ userId, opportunityId, kind, greeting }: {
   userId: string;
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting?: string | null;
-  preferredSurface?: 'telegram' | 'web';
 }): Promise<{ url: string }> => {
-  const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting, preferredSurface });
+  const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
   return { url: buildConnectShortUrl(apiBaseUrl, code) };
 };
 

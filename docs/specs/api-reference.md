@@ -137,14 +137,12 @@ API keys created for personal agents include `metadata.agentId`. MCP auth resolv
 
 MCP clients SHOULD declare the rendering surface for their user on every request via the `x-index-surface` header. Accepted values: `telegram | web` (case-insensitive, whitespace-trimmed). Absent or unknown values are coerced to `web` (the default).
 
-The value drives the click-time redirect on opportunity connect links (`/c/{code}/go`):
+The header no longer influences connect-link routing. The click-time redirect on opportunity connect links (`/c/{code}/go`) is resolved live from the **counterparty's** reachability, independent of who minted the link or on which surface:
 
-- `telegram` — when the target user has a Telegram handle, redirects to `https://t.me/{handle}?text=...`; falls back to the web chat URL if the target has no handle.
-- `web` (or absent) — always redirects to `${FRONTEND_URL}/u/{counterpartUserId}/chat?msg=...`.
+- The target user has a Telegram handle → redirects to `https://t.me/{handle}?text=...`.
+- Otherwise → redirects to `${FRONTEND_URL}/u/{counterpartUserId}/chat?msg=...`.
 
-The surface is snapshotted onto each minted `connect_links` row at MCP-call time (the auth resolver reads the header, the protocol threads it through `ResolvedToolContext.clientSurface`, and `mintConnectLink` writes it). First mint wins for the link's lifetime; rotation of an expired row re-stamps the surface.
-
-Today only the Telegram-bot MCP surface sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback. Telegram MCP clients may also send `x-index-telegram-username` (or `x-index-telegram-handle`); when present with `x-index-surface: telegram`, the MCP auth resolver upserts that handle into `user_socials` while preserving other socials.
+The remaining role of `x-index-surface` is Telegram identity binding: Telegram MCP clients may also send `x-index-telegram-username` (or `x-index-telegram-handle`); when present with `x-index-surface: telegram`, the MCP auth resolver upserts that handle into `user_socials` while preserving other socials.
 
 ### MCP runtime limits and error envelopes
 

@@ -104,31 +104,26 @@ export class ConnectLinkController {
       const result = await opportunityService.startChat(link.opportunityId, user.id);
       if ('error' in result) return jsonError(result.error, result.status);
 
-      if (link.preferredSurface === 'telegram') {
-        const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);
-        const target = handle
-          ? (greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`)
-          : (greeting
-              ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
-              : `${frontendUrl}/u/${result.counterpartUserId}/chat`);
-        return Response.json({ url: target } satisfies ConnectLinkGoResponse);
-      }
-
-      const target = greeting
-        ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
-        : `${frontendUrl}/u/${result.counterpartUserId}/chat`;
+      // Route by the counterparty's live reachability, not the link's stored
+      // surface: if they have a Telegram handle, hand off to Telegram; else
+      // open the Index App web DM.
+      const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);
+      const target = handle
+        ? (greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`)
+        : (greeting
+            ? `${frontendUrl}/u/${result.counterpartUserId}/chat?msg=${encodeURIComponent(greeting)}`
+            : `${frontendUrl}/u/${result.counterpartUserId}/chat`);
       return Response.json({ url: target } satisfies ConnectLinkGoResponse);
     }
 
     if (link.kind === 'outreach') {
       const greeting = await greetingForRecipient();
 
-      if (link.preferredSurface === 'telegram') {
-        const handle = await opportunityService.getCounterpartTelegramHandleForOpp(link.opportunityId, user.id);
-        if (handle) {
-          const target = greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`;
-          return Response.json({ url: target } satisfies ConnectLinkGoResponse);
-        }
+      // Route by the counterparty's live reachability, not the link's stored surface.
+      const handle = await opportunityService.getCounterpartTelegramHandleForOpp(link.opportunityId, user.id);
+      if (handle) {
+        const target = greeting ? `https://t.me/${handle}?text=${encodeURIComponent(greeting)}` : `https://t.me/${handle}`;
+        return Response.json({ url: target } satisfies ConnectLinkGoResponse);
       }
       const conversationId = await opportunityService.getConversationIdForOpp(link.opportunityId, user.id);
       const target = conversationId

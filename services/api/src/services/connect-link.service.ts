@@ -59,16 +59,12 @@ export interface MintArgs {
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting?: string | null;
-  preferredSurface?: 'telegram' | 'web' | null;
 }
 
 /**
  * Idempotent mint: if a non-expired link exists for (opportunityId, userId, kind),
  * return it. Otherwise insert a fresh row. Greeting is snapshotted at first mint
- * and preserved across re-mints until expiry. `preferredSurface`, by contrast,
- * is refreshed on reuse when the caller supplies one: the surface should
- * reflect where the link was most recently delivered, and this also self-heals
- * rows that were mis-stamped by a caller that omitted its surface.
+ * and preserved across re-mints until expiry.
  *
  * @param args - Recipient/opportunity/kind tuple plus optional greeting snapshot.
  * @returns The short code and stored greeting (null if none was supplied at mint).
@@ -79,7 +75,6 @@ export async function mintConnectLink({
   opportunityId,
   kind,
   greeting,
-  preferredSurface,
 }: MintArgs): Promise<{ code: string; greeting: string | null }> {
   const now = new Date();
 
@@ -100,22 +95,13 @@ export async function mintConnectLink({
     .limit(1);
 
   if (existing && existing.expiresAt > now) {
-    // Reuse the fresh row, but let the latest delivery surface win so the
-    // click-time redirect matches where the link was actually sent. Only
-    // update when the caller declares a surface — omission keeps the stamp.
-    if (preferredSurface && existing.preferredSurface !== preferredSurface) {
-      await db
-        .update(connectLinks)
-        .set({ preferredSurface })
-        .where(eq(connectLinks.code, existing.code));
-    }
     return { code: existing.code, greeting: existing.greeting };
   }
 
   const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
 
   if (existing) {
-    // Expired row — rotate code + greeting + preferredSurface + expiresAt in place.
+    // Expired row — rotate code + greeting + expiresAt in place.
     for (let attempt = 0; attempt < 3; attempt++) {
       const code = generateCode();
       try {
@@ -124,7 +110,6 @@ export async function mintConnectLink({
           .set({
             code,
             greeting: greeting ?? null,
-            preferredSurface: preferredSurface ?? null,
             expiresAt,
           })
           .where(
@@ -156,7 +141,6 @@ export async function mintConnectLink({
           opportunityId,
           kind,
           greeting: greeting ?? null,
-          preferredSurface: preferredSurface ?? null,
           expiresAt,
         })
         .returning();
@@ -189,7 +173,6 @@ export interface ResolvedLink {
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting: string | null;
-  preferredSurface: 'telegram' | 'web' | null;
 }
 
 function toResolvedLink(row: typeof connectLinks.$inferSelect, opportunityId: string = row.opportunityId): ResolvedLink {
@@ -199,10 +182,6 @@ function toResolvedLink(row: typeof connectLinks.$inferSelect, opportunityId: st
     opportunityId,
     kind: row.kind as ConnectLinkKind,
     greeting: row.greeting,
-    preferredSurface:
-      row.preferredSurface === 'telegram' || row.preferredSurface === 'web'
-        ? row.preferredSurface
-        : null,
   };
 }
 

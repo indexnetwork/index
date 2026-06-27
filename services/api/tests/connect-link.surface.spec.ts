@@ -110,7 +110,7 @@ describe('GET /c/:code/go — surface-aware redirect', () => {
       .where(eq(opportunities.id, INTRO_OPP_ID));
   }, TEST_TIMEOUT_MS);
 
-  test('preferredSurface=telegram + counterpart has TG handle → t.me URL', async () => {
+  test('counterpart has TG handle → t.me URL', async () => {
     await db.insert(userSocials).values({
       userId: COUNTERPART_ID,
       label: 'telegram',
@@ -122,7 +122,6 @@ describe('GET /c/:code/go — surface-aware redirect', () => {
       opportunityId: OPP_ID,
       kind: 'connect',
       greeting: 'hello there',
-      preferredSurface: 'telegram',
     });
 
     const res = await controller.go(makeRequest(`/c/${code}/go`), mockUser(), { code });
@@ -132,13 +131,12 @@ describe('GET /c/:code/go — surface-aware redirect', () => {
     expect(body.url).toContain('text=hello%20there');
   }, TEST_TIMEOUT_MS);
 
-  test('preferredSurface=telegram + counterpart has no TG handle → web fallback', async () => {
+  test('counterpart has no TG handle → web fallback', async () => {
     const { code } = await mintConnectLink({
       userId: CALLER_ID,
       opportunityId: OPP_ID,
       kind: 'connect',
       greeting: 'hello there',
-      preferredSurface: 'telegram',
     });
 
     const res = await controller.go(makeRequest(`/c/${code}/go`), mockUser(), { code });
@@ -149,7 +147,7 @@ describe('GET /c/:code/go — surface-aware redirect', () => {
     expect(body.url).toContain('msg=hello%20there');
   }, TEST_TIMEOUT_MS);
 
-  test('preferredSurface unset + counterpart has TG handle → web URL', async () => {
+  test('preferredSurface unset + counterpart has TG handle → t.me URL (routes by counterpart reachability)', async () => {
     await db.insert(userSocials).values({
       userId: COUNTERPART_ID,
       label: 'telegram',
@@ -166,8 +164,8 @@ describe('GET /c/:code/go — surface-aware redirect', () => {
     const res = await controller.go(makeRequest(`/c/${code}/go`), mockUser(), { code });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { url: string };
-    expect(body.url).not.toMatch(/^https:\/\/t\.me/);
-    expect(body.url).toContain(`${FRONTEND_URL}/u/${COUNTERPART_ID}/chat`);
+    expect(body.url).toMatch(/^https:\/\/t\.me\/counterpart_handle/);
+    expect(body.url).toContain('text=hello%20there');
   }, TEST_TIMEOUT_MS);
 
   test('send_direct uses authenticated recipient and opens the same web chat destination as connect', async () => {
@@ -231,7 +229,6 @@ describe('GET /c/:code/go — surface-aware redirect', () => {
       opportunityId: OPP_ID,
       kind: 'connect',
       greeting: 'hello there',
-      preferredSurface: 'telegram',
     });
 
     const [before] = await db
@@ -272,7 +269,6 @@ describe('GET /c/:code/go — surface-aware redirect', () => {
         opportunityId: item.opportunityId,
         kind: item.kind,
         greeting: 'wrong account should not use this',
-        preferredSurface: 'telegram',
       });
 
       const res = await controller.go(makeRequest(`/c/${code}/go`), mockUser(OTHER_USER_ID), { code });
