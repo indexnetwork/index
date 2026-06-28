@@ -13,7 +13,7 @@ dashboard/plugin_api.py   # FastAPI routes mounted by Hermes dashboard
 
 The dashboard is intent-centric and write-enabled for pending-question answers. A segmented control switches between three views:
 
-- **Intents** — a master-detail layout. The left list shows each intent with a derived status and its opportunity/question counts, plus a pinned **General** entry for questions not tied to any intent. The right detail pane shows the selected intent's pending questions (with answer submission) above its opportunity **radar** (surfaced people grouped into a ready/negotiating/accepted/expired status strip).
+- **Intents** — a master-detail layout. The left list shows each intent with a derived status and its opportunity/question counts, plus a pinned **General** entry for questions not tied to any intent. The right detail pane shows the selected intent's pending questions (with answer submission) above its opportunity **radar** (surfaced people grouped into a selectable status strip — **Awaiting you** (pending) / negotiating / accepted / rejected / **Missed** (expired); `latent`/`draft` fold into pending and `stalled` into negotiating). The chips act as filters for the radar list and default to **Awaiting you**; selection resets per intent.
 - **Negotiations** — a flat list of every opportunity currently in negotiation (status `pending`/`negotiating`/`stalled`) across all intents, each card subtitled with its originating intent.
 - **Networks** — the authenticated user's joined and owned networks.
 

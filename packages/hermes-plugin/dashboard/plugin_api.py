@@ -46,16 +46,22 @@ _QUESTION_LIMIT = 10
 _PREVIEW_CHARS = 240
 
 # Maps raw opportunity status values to the radar status strip buckets.
+# latent/draft (pre-send) fold into "pending"; stalled (a stalled negotiation)
+# folds into "negotiating".
 _STATUS_BUCKET = {
-    "latent": "ready",
-    "draft": "ready",
-    "pending": "negotiating",
+    "latent": "pending",
+    "draft": "pending",
+    "pending": "pending",
     "negotiating": "negotiating",
     "stalled": "negotiating",
     "accepted": "accepted",
-    "rejected": "expired",
+    "rejected": "rejected",
     "expired": "expired",
 }
+
+# Raw statuses surfaced in the flat Negotiations view (decoupled from the
+# split pending/negotiating display buckets above).
+_NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
 
 
 def _load_tools_module():
@@ -446,7 +452,7 @@ def _normalize_networks(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _empty_status_counts() -> dict[str, int]:
-    return {"ready": 0, "negotiating": 0, "accepted": 0, "expired": 0}
+    return {"pending": 0, "negotiating": 0, "accepted": 0, "rejected": 0, "expired": 0}
 
 
 def _sanitize_answer_payload(body: Any) -> tuple[dict[str, Any] | None, str | None]:
@@ -471,7 +477,7 @@ def _sanitize_answer_payload(body: Any) -> tuple[dict[str, Any] | None, str | No
 def _build_dashboard(
     intents_payload: dict[str, Any],
     opps_live: list[dict[str, Any]],
-    opps_expired: list[dict[str, Any]],
+    opps_extra: list[dict[str, Any]],
     questions_payload: dict[str, Any],
     network_titles: dict[str, str],
     current_user_id: str | None = None,
@@ -515,21 +521,25 @@ def _build_dashboard(
     known_ids = set(intents.keys())
     opp_to_intent: dict[str, str] = {}
 
-    def place_opportunity(opp: dict[str, Any], counted_only: bool) -> None:
+    seen_opp_ids: set[str] = set()
+
+    def place_opportunity(opp: dict[str, Any]) -> None:
         intent_id = _intent_for_opportunity(opp, known_ids)
         intent = intents.get(intent_id) if intent_id else None
         if intent is None:
             return
         opp_id = _text(opp.get("id"))
         if opp_id:
+            if opp_id in seen_opp_ids:
+                return
+            seen_opp_ids.add(opp_id)
             opp_to_intent[opp_id] = intent_id
-        bucket = _STATUS_BUCKET.get(_text(opp.get("status")), "ready")
+        status = _text(opp.get("status"))
+        bucket = _STATUS_BUCKET.get(status, "pending")
         intent["statusCounts"][bucket] = intent["statusCounts"].get(bucket, 0) + 1
-        if counted_only:
-            return
         item = _opportunity_item(opp, network_titles, current_user_id)
         intent["opportunities"].append(item)
-        if bucket == "negotiating":
+        if status in _NEGOTIATION_STATUSES:
             nego = dict(item)
             nego["subtitle"] = intent["title"]
             negotiations.append(nego)
@@ -538,9 +548,9 @@ def _build_dashboard(
                 intent["networks"].append(net)
 
     for opp in opps_live:
-        place_opportunity(opp, counted_only=False)
-    for opp in opps_expired:
-        place_opportunity(opp, counted_only=True)
+        place_opportunity(opp)
+    for opp in opps_extra:
+        place_opportunity(opp)
 
     known_ids = set(intents.keys())
     general: list[dict[str, Any]] = []
@@ -592,14 +602,17 @@ def summary() -> dict[str, Any]:
     memberships_payload = _call_mcp("read_network_memberships")
 
     opps_live, opps_error = _fetch_opportunities()
+    # The default list hides resolved statuses, so fetch them explicitly to keep
+    # the radar's expired/rejected chip counts and their listed items consistent.
     opps_expired, _ = _fetch_opportunities("?status=expired")
+    opps_rejected, _ = _fetch_opportunities("?status=rejected")
 
     memberships_data = _data(memberships_payload)
     current_user_id = _text(memberships_data.get("userId")) if isinstance(memberships_data, dict) else ""
 
     network_titles = _network_title_map(networks_payload, memberships_payload)
     dashboard = _build_dashboard(
-        intents_payload, opps_live, opps_expired, questions_payload, network_titles, current_user_id or None
+        intents_payload, opps_live, opps_expired + opps_rejected, questions_payload, network_titles, current_user_id or None
     )
 
     negotiations = dashboard["negotiations"]

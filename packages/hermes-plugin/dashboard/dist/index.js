@@ -196,10 +196,22 @@
   }
 
   function StatPill(props) {
-    return React.createElement("div", { className: "index-dashboard__stat" },
-      React.createElement("strong", null, formatCount(props.value)),
-      React.createElement("span", null, props.label),
-    );
+    const className = "index-dashboard__stat"
+      + (props.onSelect ? " index-dashboard__stat--selectable" : "")
+      + (props.active ? " index-dashboard__stat--active" : "");
+    const children = [
+      React.createElement("strong", { key: "v" }, formatCount(props.value)),
+      React.createElement("span", { key: "l" }, props.label),
+    ];
+    if (props.onSelect) {
+      return React.createElement("button", {
+        type: "button",
+        className: className,
+        "aria-pressed": props.active ? "true" : "false",
+        onClick: props.onSelect,
+      }, children);
+    }
+    return React.createElement("div", { className: className }, children);
   }
 
   function letterFor(index) {
@@ -325,17 +337,46 @@
     return React.createElement("div", { className: "index-dashboard__stack" }, cards);
   }
 
+  // Mirrors plugin_api.py _STATUS_BUCKET: raw status -> display bucket.
+  const STATUS_BUCKET = {
+    latent: "pending",
+    draft: "pending",
+    pending: "pending",
+    negotiating: "negotiating",
+    stalled: "negotiating",
+    accepted: "accepted",
+    rejected: "rejected",
+    expired: "expired",
+  };
+
+  const RADAR_BUCKETS = [
+    { key: "pending", label: "Awaiting you" },
+    { key: "negotiating", label: "negotiating" },
+    { key: "accepted", label: "accepted" },
+    { key: "rejected", label: "rejected" },
+    { key: "expired", label: "Missed" },
+  ];
+
+  function bucketForStatus(status) {
+    return STATUS_BUCKET[String(status || "")] || "pending";
+  }
+
   function RadarStrip(props) {
     const counts = props.counts || {};
     return React.createElement("div", { className: "index-dashboard__radar-strip" },
-      React.createElement(StatPill, { value: counts.ready || 0, label: "ready" }),
-      React.createElement(StatPill, { value: counts.negotiating || 0, label: "negotiating" }),
-      React.createElement(StatPill, { value: counts.accepted || 0, label: "accepted" }),
-      React.createElement(StatPill, { value: counts.expired || 0, label: "expired" }),
+      RADAR_BUCKETS.map(function (bucket) {
+        return React.createElement(StatPill, {
+          key: bucket.key,
+          value: counts[bucket.key] || 0,
+          label: bucket.label,
+          active: props.selected === bucket.key,
+          onSelect: props.onSelect ? function () { props.onSelect(bucket.key); } : null,
+        });
+      }),
     );
   }
 
-  const OPP_RESOLVED_LABEL = { accepted: "Connected", rejected: "Declined", expired: "Expired" };
+  const OPP_RESOLVED_LABEL = { accepted: "Connected", rejected: "Declined", expired: "Missed" };
 
   function initialsFor(name) {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
@@ -504,12 +545,20 @@
 
   function IntentDetail(props) {
     const intent = props.intent;
+    const bucketState = React.useState("pending");
+    const selectedBucket = bucketState[0];
+    const setSelectedBucket = bucketState[1];
     if (!intent) {
       return React.createElement("div", { className: "index-dashboard__detail" },
         React.createElement(EmptyState, null, "Select an intent to see its questions and radar."),
       );
     }
     const questionSection = { items: intent.questions || [] };
+    const allOpps = Array.isArray(intent.opportunities) ? intent.opportunities : [];
+    const visibleOpps = allOpps.filter(function (opp) {
+      return bucketForStatus(opp.status) === selectedBucket;
+    });
+    const radarEmpty = "No matches here yet.";
     return React.createElement("div", { className: "index-dashboard__detail" },
       React.createElement(DetailHead, {
         title: intent.title || "Untitled intent",
@@ -526,8 +575,8 @@
         React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
         React.createElement(Panel, { title: "Radar", count: intent.opportunityCount, description: "People the network surfaced for this intent." },
-          React.createElement(RadarStrip, { counts: intent.statusCounts }),
-          React.createElement(RadarList, { items: intent.opportunities, empty: "No matches surfaced yet.", onOpenUser: props.onOpenUser }),
+          React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
+          React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser }),
         ),
       ),
     );
@@ -1259,7 +1308,7 @@
     const intentsView = showDetail
       ? (selectedId === "general"
         ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack })
-        : React.createElement(IntentDetail, { intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser }))
+        : React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser }))
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(Panel, { cron: true, icon: ICON_TARGET(), title: "Intents", count: intents.length },
           React.createElement(IntentList, { intents: intents, generalCount: general.count, selectedId: selectedId, onSelect: selectIntent }),

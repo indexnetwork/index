@@ -493,6 +493,7 @@ def main() -> None:
                     }
                 ),
                 FakeResponse({"opportunities": []}),
+                FakeResponse({"opportunities": []}),
             ],
             captured,
         )
@@ -529,7 +530,7 @@ def main() -> None:
             "intents": 1,
             "questions": 2,
             "opportunities": 1,
-            "statusCounts": {"ready": 0, "negotiating": 1, "accepted": 0, "expired": 0},
+            "statusCounts": {"pending": 0, "negotiating": 1, "accepted": 0, "rejected": 0, "expired": 0},
         }
         mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
         assert mcp_calls == ["read_intents", "read_pending_questions", "read_networks", "read_network_memberships"]
@@ -537,6 +538,7 @@ def main() -> None:
         assert rest_calls == [
             ("GET", "https://api.example.test/api/opportunities"),
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
+            ("GET", "https://api.example.test/api/opportunities?status=rejected"),
         ]
 
         captured = []

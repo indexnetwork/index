@@ -133,6 +133,31 @@
   background: color-mix(in srgb, var(--color-background, #020617) 34%, transparent);
 }
 
+.index-dashboard__stat--selectable {
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.index-dashboard__stat--selectable:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #6366f1) 55%, transparent);
+}
+
+.index-dashboard__stat--selectable:focus-visible {
+  outline: none;
+  border-color: var(--color-primary, #6366f1);
+}
+
+.index-dashboard__stat--active {
+  border-color: var(--color-primary, #6366f1);
+  background: color-mix(in srgb, var(--color-primary, #6366f1) 22%, transparent);
+}
+
+.index-dashboard__stat--active strong,
+.index-dashboard__stat--active span {
+  color: var(--color-card-foreground, inherit);
+}
+
 .index-dashboard__stat strong {
   color: var(--color-card-foreground, inherit);
   font-size: 0.95rem;
