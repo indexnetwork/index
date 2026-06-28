@@ -32,6 +32,9 @@ except Exception:  # Allows local smoke tests without dashboard dependencies.
         def post(self, *_args, **_kwargs):
             return lambda fn: fn
 
+        def patch(self, *_args, **_kwargs):
+            return lambda fn: fn
+
 router = APIRouter()
 
 _DASHBOARD_DIR = Path(__file__).resolve().parent
@@ -116,6 +119,77 @@ def _call_answer_question(question_id: str, answer: dict[str, Any]) -> dict[str,
 
 def _call_dismiss_question(question_id: str) -> dict[str, Any]:
     return tools._api_request("POST", f"/questions/{quote(question_id, safe='')}/dismiss")
+
+
+def _resolve_user_id() -> str | None:
+    """Resolve the current API-key principal's userId via read_network_memberships."""
+    data = _data(_call_mcp("read_network_memberships"))
+    if isinstance(data, dict):
+        user_id = _text(data.get("userId"))
+        if user_id:
+            return user_id
+    return None
+
+
+def _fetch_user(user_id: str) -> dict[str, Any]:
+    """Fetch the public user row (avatar, socials, intro, location) over REST."""
+    payload = tools._api_request("GET", f"/users/{quote(user_id, safe='')}")
+    if payload.get("success") is False:
+        return payload
+    user = payload.get("user")
+    return user if isinstance(user, dict) else {}
+
+
+def _profile_socials(user: dict[str, Any]) -> list[dict[str, str]]:
+    socials: list[dict[str, str]] = []
+    for social in _list(user.get("socials")):
+        if not isinstance(social, dict):
+            continue
+        label = _text(social.get("label"))
+        value = _text(social.get("value"))
+        if label and value:
+            socials.append({"label": label, "value": value})
+    return socials
+
+
+# Fields the dashboard surfaces but cannot read or persist with an API key today
+# (their Index endpoints are session-only). They are mocked client-visibly so the
+# UI is complete; real persistence is tracked for the guard-relaxation follow-up.
+_MOCKED_PROFILE_FIELDS = ["email", "timezone", "notificationPreferences", "avatarUpload"]
+
+
+def _sanitize_profile_update(body: Any) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(body, dict):
+        return None, "Profile body must be an object."
+    update: dict[str, Any] = {}
+    for key in ("name", "intro", "location", "timezone"):
+        value = body.get(key)
+        if value is not None:
+            if not isinstance(value, str):
+                return None, f"{key} must be a string."
+            update[key] = value.strip()
+    socials = body.get("socials")
+    if socials is not None:
+        if not isinstance(socials, list):
+            return None, "socials must be an array."
+        clean_socials: list[dict[str, str]] = []
+        for social in socials:
+            if not isinstance(social, dict):
+                return None, "Each social must be an object."
+            label = _text(social.get("label"))
+            value = _text(social.get("value"))
+            if label and value:
+                clean_socials.append({"label": label, "value": value})
+        update["socials"] = clean_socials
+    prefs = body.get("notificationPreferences")
+    if prefs is not None:
+        if not isinstance(prefs, dict):
+            return None, "notificationPreferences must be an object."
+        update["notificationPreferences"] = {
+            "connectionUpdates": bool(prefs.get("connectionUpdates")),
+            "weeklyNewsletter": bool(prefs.get("weeklyNewsletter")),
+        }
+    return update, None
 
 
 def _fetch_opportunities(query: str = "") -> tuple[list[dict[str, Any]], str | None]:
@@ -248,7 +322,19 @@ def _avatar_url(value: Any) -> str:
     return f"{origin}/{path}"
 
 
-def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str]) -> dict[str, Any]:
+def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> str:
+    """Resolve the other party's userId from an opportunity's actors."""
+    if not current_user_id:
+        return ""
+    for actor in _list(opp.get("actors")):
+        if isinstance(actor, dict):
+            uid = _text(actor.get("userId"))
+            if uid and uid != current_user_id:
+                return uid
+    return ""
+
+
+def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], current_user_id: str | None = None) -> dict[str, Any]:
     """Build a card-shaped opportunity item aligned with the Index web OpportunityCard."""
     interpretation = opp.get("interpretation") if isinstance(opp.get("interpretation"), dict) else {}
     item: dict[str, Any] = {
@@ -274,6 +360,9 @@ def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str]) -> di
             score = None
     if isinstance(score, (int, float)) and score > 0:
         item["score"] = score
+    counterpart_id = _counterpart_user_id(opp, current_user_id)
+    if counterpart_id:
+        item["counterpartUserId"] = counterpart_id
     return item
 
 
@@ -385,6 +474,7 @@ def _build_dashboard(
     opps_expired: list[dict[str, Any]],
     questions_payload: dict[str, Any],
     network_titles: dict[str, str],
+    current_user_id: str | None = None,
 ) -> dict[str, Any]:
     intents: dict[str, dict[str, Any]] = {}
     order: list[str] = []
@@ -415,8 +505,9 @@ def _build_dashboard(
         if not intent_id:
             continue
         title = (
-            _truncate(intent.get("summary"), 140)
-            or _truncate(intent.get("description") or intent.get("payload"), 140)
+            _text(intent.get("description"))
+            or _text(intent.get("payload"))
+            or _text(intent.get("summary"))
             or "Untitled intent"
         )
         ensure(intent_id, title)
@@ -436,7 +527,7 @@ def _build_dashboard(
         intent["statusCounts"][bucket] = intent["statusCounts"].get(bucket, 0) + 1
         if counted_only:
             return
-        item = _opportunity_item(opp, network_titles)
+        item = _opportunity_item(opp, network_titles, current_user_id)
         intent["opportunities"].append(item)
         if bucket == "negotiating":
             nego = dict(item)
@@ -503,8 +594,13 @@ def summary() -> dict[str, Any]:
     opps_live, opps_error = _fetch_opportunities()
     opps_expired, _ = _fetch_opportunities("?status=expired")
 
+    memberships_data = _data(memberships_payload)
+    current_user_id = _text(memberships_data.get("userId")) if isinstance(memberships_data, dict) else ""
+
     network_titles = _network_title_map(networks_payload, memberships_payload)
-    dashboard = _build_dashboard(intents_payload, opps_live, opps_expired, questions_payload, network_titles)
+    dashboard = _build_dashboard(
+        intents_payload, opps_live, opps_expired, questions_payload, network_titles, current_user_id or None
+    )
 
     negotiations = dashboard["negotiations"]
     if opps_error:
@@ -547,3 +643,95 @@ def dismiss_question(question_id: str) -> dict[str, Any]:
     if payload.get("success") is False:
         return payload
     return {"success": True}
+
+
+@router.get("/profile")
+def profile() -> dict[str, Any]:
+    """Return the current user's profile.
+
+    Identity (name, bio, location, context) comes from the MCP `read_user_contexts`
+    self-read; avatar and socials come from the public `GET /users/:id`. Email,
+    timezone, and notification preferences are session-only on Index, so they are
+    returned as mock defaults (see `_MOCKED_PROFILE_FIELDS`).
+    """
+    user_id = _resolve_user_id()
+    if not user_id:
+        return {"success": False, "error": "Could not resolve the current user from the configured API key."}
+
+    contexts = _data(_call_mcp("read_user_contexts")) or {}
+    user = _fetch_user(user_id)
+
+    name = _text(user.get("name")) or _text(contexts.get("name") if isinstance(contexts, dict) else None)
+    intro = _text(user.get("intro")) or _text(contexts.get("bio") if isinstance(contexts, dict) else None)
+    location = _text(user.get("location")) or _text(contexts.get("location") if isinstance(contexts, dict) else None)
+    context_text = _text(contexts.get("context") if isinstance(contexts, dict) else None)
+
+    profile_obj: dict[str, Any] = {
+        "id": user_id,
+        "name": name,
+        "intro": intro,
+        "location": location,
+        "avatar": _avatar_url(user.get("avatar")),
+        "socials": _profile_socials(user),
+        "context": context_text,
+        # Mocked (session-only on Index — not readable with an API key):
+        "email": "",
+        "timezone": "",
+        "notificationPreferences": {"connectionUpdates": True, "weeklyNewsletter": True},
+    }
+    return {"success": True, "profile": profile_obj, "mockedFields": _MOCKED_PROFILE_FIELDS}
+
+
+@router.get("/profile/{user_id}")
+def public_profile(user_id: str) -> dict[str, Any]:
+    """Return another user's public, read-only profile (web `/u/:id` equivalent).
+
+    Backed by the public `GET /users/:id` (avatar, socials, intro, location) plus the
+    user's `context` paragraph from MCP `read_user_contexts(userId)`.
+    """
+    user_id = _text(user_id)
+    if not user_id:
+        return {"success": False, "error": "A user id is required."}
+
+    user = _fetch_user(user_id)
+    if isinstance(user, dict) and user.get("success") is False:
+        return user
+
+    contexts = _data(_call_mcp("read_user_contexts", {"userId": user_id})) or {}
+    context_text = _text(contexts.get("context") if isinstance(contexts, dict) else None)
+
+    profile_obj: dict[str, Any] = {
+        "id": user_id,
+        "name": _text(user.get("name")),
+        "intro": _text(user.get("intro")),
+        "location": _text(user.get("location")),
+        "avatar": _avatar_url(user.get("avatar")),
+        "socials": _profile_socials(user),
+        "context": context_text,
+    }
+    return {"success": True, "profile": profile_obj, "readOnly": True}
+
+
+@router.patch("/profile")
+def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Validate a profile update and acknowledge it.
+
+    Index's profile-write endpoints (`PATCH /auth/profile/update`, avatar upload)
+    are session-only, so this is a mock acknowledgement — the payload is validated
+    but not persisted. Real persistence is tracked for the guard-relaxation follow-up.
+    """
+    update, validation_error = _sanitize_profile_update(body)
+    if validation_error:
+        return {"success": False, "error": validation_error}
+    return {"success": True, "mock": True, "applied": update or {}}
+
+
+@router.post("/profile/intro")
+def generate_intro(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Acknowledge an AI intro-generation request.
+
+    Index's intro generation (`POST /enrichment/sync`) is session-only, so this is a
+    mock that echoes the current intro back unchanged.
+    """
+    current = _text(body.get("intro")) if isinstance(body, dict) else ""
+    return {"success": True, "mock": True, "intro": current}

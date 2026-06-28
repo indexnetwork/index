@@ -200,6 +200,13 @@ def main() -> None:
     assert "SDK.fetchJSON" in dashboard_js
     assert "index_pickup_negotiation" not in dashboard_js
     assert "index_respond_negotiation" not in dashboard_js
+    assert "index-dashboard__hdr-account" in dashboard_js
+    assert "ProfilePanel" in dashboard_js
+    assert "Notification Settings" in dashboard_js
+    assert "/profile" in dashboard_js
+    assert "index-dashboard__opp-id--clickable" in dashboard_js
+    assert "onOpenUser" in dashboard_js
+    assert "counterpartUserId" in dashboard_js
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
@@ -495,7 +502,7 @@ def main() -> None:
         assert len(intents) == 1
         intent = intents[0]
         assert intent["id"] == "intent-1"
-        assert intent["title"] == "Find robotics mentors"
+        assert intent["title"] == "Looking for mentors in applied robotics."
         assert intent["status"] == "running"
         assert intent["questionCount"] == 1
         assert intent["opportunityCount"] == 1
@@ -509,11 +516,13 @@ def main() -> None:
         assert intent["opportunities"][0]["subtitle"] == "Suggested connection"
         assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
         assert intent["opportunities"][0]["networks"] == ["Robotics Guild"]
+        assert intent["opportunities"][0]["counterpartUserId"] == "other"
         assert summary["general"]["count"] == 1
         assert summary["general"]["questions"][0]["id"] == "question-2"
         assert summary["negotiations"]["count"] == 1
         assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
-        assert summary["negotiations"]["items"][0]["subtitle"] == "Find robotics mentors"
+        assert summary["negotiations"]["items"][0]["subtitle"] == "Looking for mentors in applied robotics."
+        assert summary["negotiations"]["items"][0]["counterpartUserId"] == "other"
         assert summary["networks"]["count"] == 1
         assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
         assert summary["totals"] == {
@@ -550,6 +559,107 @@ def main() -> None:
         assert dashboard_api.dismiss_question("question-1") == {"success": True}
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/questions/question-1/dismiss"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
+                    response_id=20,
+                ),
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "hasProfile": True,
+                        "name": "Ada Lovelace",
+                        "bio": "Builds robots.",
+                        "location": "London",
+                        "context": "Ada is a robotics engineer.",
+                    },
+                    response_id=21,
+                ),
+                FakeResponse(
+                    {
+                        "user": {
+                            "id": "user-1",
+                            "name": "Ada Lovelace",
+                            "intro": "Builds robots.",
+                            "location": "London",
+                            "avatar": "avatars/user-1/a.png",
+                            "socials": [{"id": "s1", "label": "twitter", "value": "ada"}],
+                        }
+                    }
+                ),
+            ],
+            captured,
+        )
+        prof = dashboard_api.profile()
+        assert prof["success"] is True
+        profile_obj = prof["profile"]
+        assert profile_obj["id"] == "user-1"
+        assert profile_obj["name"] == "Ada Lovelace"
+        assert profile_obj["intro"] == "Builds robots."
+        assert profile_obj["location"] == "London"
+        assert profile_obj["avatar"] == "https://api.example.test/api/storage/avatars/user-1/a.png"
+        assert profile_obj["socials"] == [{"label": "twitter", "value": "ada"}]
+        assert profile_obj["context"] == "Ada is a robotics engineer."
+        assert profile_obj["notificationPreferences"] == {"connectionUpdates": True, "weeklyNewsletter": True}
+        assert "timezone" in prof["mockedFields"]
+        profile_mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
+        assert profile_mcp_calls == ["read_network_memberships", "read_user_contexts"]
+        profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
+        assert profile_rest_calls == [("GET", "https://api.example.test/api/users/user-1")]
+
+        update_ok = dashboard_api.update_profile(
+            {"name": "Ada L.", "notificationPreferences": {"connectionUpdates": False, "weeklyNewsletter": True}}
+        )
+        assert update_ok["success"] is True
+        assert update_ok["mock"] is True
+        assert update_ok["applied"]["name"] == "Ada L."
+        assert update_ok["applied"]["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
+        assert dashboard_api.update_profile("nope") == {"success": False, "error": "Profile body must be an object."}
+
+        assert dashboard_api.generate_intro({"intro": "current"}) == {"success": True, "mock": True, "intro": "current"}
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "user": {
+                            "id": "other",
+                            "name": "Grace Hopper",
+                            "intro": "Compiler pioneer.",
+                            "location": "New York",
+                            "avatar": "avatars/other/g.png",
+                            "socials": [{"id": "s2", "label": "github", "value": "grace"}],
+                        }
+                    }
+                ),
+                mcp_text_response(
+                    {"success": True, "hasProfile": True, "name": "Grace Hopper", "context": "Grace builds compilers."},
+                    response_id=30,
+                ),
+            ],
+            captured,
+        )
+        other = dashboard_api.public_profile("other")
+        assert other["success"] is True
+        assert other["readOnly"] is True
+        other_profile = other["profile"]
+        assert other_profile["id"] == "other"
+        assert other_profile["name"] == "Grace Hopper"
+        assert other_profile["intro"] == "Compiler pioneer."
+        assert other_profile["location"] == "New York"
+        assert other_profile["avatar"] == "https://api.example.test/api/storage/avatars/other/g.png"
+        assert other_profile["socials"] == [{"label": "github", "value": "grace"}]
+        assert other_profile["context"] == "Grace builds compilers."
+        public_rest = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
+        assert public_rest == [("GET", "https://api.example.test/api/users/other")]
+        public_mcp = [entry["body"]["params"] for entry in captured if entry["body"]]
+        assert public_mcp == [{"name": "read_user_contexts", "arguments": {"userId": "other"}}]
+
+        assert dashboard_api.public_profile("") == {"success": False, "error": "A user id is required."}
     finally:
         urllib.request.urlopen = old_urlopen
         if old_api_key is not None:

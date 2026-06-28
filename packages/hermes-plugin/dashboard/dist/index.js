@@ -28,6 +28,9 @@
   const Button = components.Button || "button";
   const API = "/api/plugins/index-network";
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
+  const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+  const SOCIAL_FIELDS = [["twitter", "x.com/"], ["linkedin", "linkedin.com/in/"], ["github", "github.com/"], ["telegram", "t.me/"]];
+  const FIXED_SOCIAL_LABELS = ["twitter", "linkedin", "github", "telegram"];
 
   function fetchPluginJSON(path, options) {
     if (SDK.fetchJSON) {
@@ -346,9 +349,20 @@
     const status = opportunity.status || "";
     const resolved = OPP_RESOLVED_LABEL[status];
     const networks = Array.isArray(opportunity.networks) ? opportunity.networks : [];
+    const clickable = !!props.onOpenUser && !!opportunity.counterpartUserId;
+    const idProps = clickable
+      ? {
+        className: "index-dashboard__opp-id index-dashboard__opp-id--clickable",
+        role: "button",
+        tabIndex: 0,
+        title: "View " + (opportunity.name || "profile"),
+        onClick: function () { props.onOpenUser(opportunity.counterpartUserId); },
+        onKeyDown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.onOpenUser(opportunity.counterpartUserId); } },
+      }
+      : { className: "index-dashboard__opp-id" };
     return React.createElement("article", { className: "index-dashboard__opp" },
       React.createElement("div", { className: "index-dashboard__opp-head" },
-        React.createElement("div", { className: "index-dashboard__opp-id" },
+        React.createElement("div", idProps,
           React.createElement("span", { className: "index-dashboard__avatar", "aria-hidden": "true" },
             initialsFor(opportunity.name),
             opportunity.avatar
@@ -399,7 +413,7 @@
     }
     return React.createElement("div", { className: "index-dashboard__opps" },
       items.map(function (opportunity, index) {
-        return React.createElement(OpportunityCard, { key: opportunity.opportunityId || String(index), opportunity: opportunity });
+        return React.createElement(OpportunityCard, { key: opportunity.opportunityId || String(index), opportunity: opportunity, onOpenUser: props.onOpenUser });
       }),
     );
   }
@@ -471,18 +485,20 @@
   function DetailHead(props) {
     return React.createElement("div", { className: "index-dashboard__detail-head" },
       props.onBack ? React.createElement("button", { type: "button", className: "index-dashboard__back", onClick: props.onBack }, "← back") : null,
-      React.createElement("div", { className: "flex items-center justify-between gap-3" },
-        React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
-        props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
+      React.createElement("div", { className: "index-dashboard__detail-card" },
+        React.createElement("div", { className: "index-dashboard__detail-title-row" },
+          React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
+          props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
+        ),
+        Array.isArray(props.networks) && props.networks.length > 0
+          ? React.createElement("div", { className: "index-dashboard__item-networks" },
+            React.createElement("span", null, "Networks"),
+            props.networks.map(function (network) {
+              return React.createElement(BadgeText, { key: String(network), variant: "outline" }, network);
+            }),
+          )
+          : null,
       ),
-      Array.isArray(props.networks) && props.networks.length > 0
-        ? React.createElement("div", { className: "index-dashboard__item-networks" },
-          React.createElement("span", null, "Networks"),
-          props.networks.map(function (network) {
-            return React.createElement(BadgeText, { key: String(network), variant: "outline" }, network);
-          }),
-        )
-        : null,
     );
   }
 
@@ -511,7 +527,7 @@
       ),
         React.createElement(Panel, { title: "Radar", count: intent.opportunityCount, description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts }),
-          React.createElement(RadarList, { items: intent.opportunities, empty: "No matches surfaced yet." }),
+          React.createElement(RadarList, { items: intent.opportunities, empty: "No matches surfaced yet.", onOpenUser: props.onOpenUser }),
         ),
       ),
     );
@@ -548,7 +564,414 @@
   function NegotiationsView(props) {
     const negotiations = props.negotiations || { items: [], count: 0 };
     return React.createElement(Panel, { cron: true, icon: ICON_HANDSHAKE(), title: "Negotiations", count: negotiations.count },
-      React.createElement(RadarList, { items: negotiations.items, error: negotiations.error, empty: "No active negotiations right now." }),
+      React.createElement(RadarList, { items: negotiations.items, error: negotiations.error, empty: "No active negotiations right now.", onOpenUser: props.onOpenUser }),
+    );
+  }
+
+  function defaultTimezone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch (e) {
+      return "UTC";
+    }
+  }
+
+  function timezoneOptions() {
+    try {
+      if (typeof Intl.supportedValuesOf === "function") {
+        return Intl.supportedValuesOf("timeZone");
+      }
+    } catch (e) { /* fall through */ }
+    return [defaultTimezone(), "UTC"];
+  }
+
+  function socialUrl(label, raw) {
+    const value = String(raw || "").trim();
+    if (/^https?:\/\//i.test(value)) return value;
+    const handle = value.replace(/^@/, "");
+    if (label === "twitter") return "https://x.com/" + handle;
+    if (label === "linkedin") return "https://linkedin.com/in/" + handle;
+    if (label === "github") return "https://github.com/" + handle;
+    if (label === "telegram") return "https://t.me/" + handle;
+    return value.indexOf("http") === 0 ? value : "https://" + value;
+  }
+
+  function ProfileField(props) {
+    return React.createElement("label", { className: "index-dashboard__profile-field" },
+      React.createElement("span", { className: "index-dashboard__profile-label" }, props.label),
+      props.children,
+      props.hint ? React.createElement("span", { className: "index-dashboard__profile-hint" }, props.hint) : null,
+    );
+  }
+
+  function ProfilePanel(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const loadingState = useState(true);
+    const loading = loadingState[0];
+    const setLoading = loadingState[1];
+    const errorState = useState(null);
+    const panelError = errorState[0];
+    const setPanelError = errorState[1];
+    const tabState = useState("profile");
+    const tab = tabState[0];
+    const setTab = tabState[1];
+    const formState = useState(null);
+    const form = formState[0];
+    const setForm = formState[1];
+    const dirtyState = useState(false);
+    const dirty = dirtyState[0];
+    const setDirty = dirtyState[1];
+    const savingState = useState(false);
+    const saving = savingState[0];
+    const setSaving = savingState[1];
+    const noteState = useState(null);
+    const note = noteState[0];
+    const setNote = noteState[1];
+    const generatingState = useState(false);
+    const generating = generatingState[0];
+    const setGenerating = generatingState[1];
+    const avatarPreviewState = useState(null);
+    const avatarPreview = avatarPreviewState[0];
+    const setAvatarPreview = avatarPreviewState[1];
+
+    const readOnly = !!props.readOnly;
+
+    function load() {
+      setLoading(true);
+      setPanelError(null);
+      fetchPluginJSON(props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile")
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Profile could not be loaded.");
+          }
+          const p = payload.profile || {};
+          setForm({
+            id: p.id || "",
+            name: p.name || "",
+            intro: p.intro || "",
+            location: p.location || "",
+            email: p.email || "",
+            avatar: p.avatar || "",
+            context: p.context || "",
+            timezone: p.timezone || defaultTimezone(),
+            socials: Array.isArray(p.socials) ? p.socials.slice() : [],
+            notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
+          });
+          setDirty(false);
+        })
+        .catch(function (err) {
+          setPanelError(err && err.message ? err.message : String(err));
+        })
+        .finally(function () {
+          setLoading(false);
+        });
+    }
+
+    useEffect(function () { load(); }, []);
+
+    function patchForm(patch) {
+      setForm(function (prev) { return Object.assign({}, prev, patch); });
+      setDirty(true);
+      setNote(null);
+    }
+
+    function getSocial(label) {
+      const found = (form.socials || []).filter(function (s) { return s.label === label; })[0];
+      return found ? found.value : "";
+    }
+
+    function setSocial(label, value) {
+      setForm(function (prev) {
+        const without = (prev.socials || []).filter(function (s) { return s.label !== label; });
+        const next = value ? without.concat([{ label: label, value: value }]) : without;
+        return Object.assign({}, prev, { socials: next });
+      });
+      setDirty(true);
+      setNote(null);
+    }
+
+    function customSocials() {
+      return (form.socials || []).filter(function (s) { return FIXED_SOCIAL_LABELS.indexOf(s.label) < 0; });
+    }
+
+    function updateCustom(index, value) {
+      setForm(function (prev) {
+        let seen = -1;
+        const next = (prev.socials || []).map(function (s) {
+          if (FIXED_SOCIAL_LABELS.indexOf(s.label) < 0) {
+            seen += 1;
+            if (seen === index) return { label: "custom", value: value };
+          }
+          return s;
+        });
+        return Object.assign({}, prev, { socials: next });
+      });
+      setDirty(true);
+      setNote(null);
+    }
+
+    function removeCustom(index) {
+      setForm(function (prev) {
+        let seen = -1;
+        const next = (prev.socials || []).filter(function (s) {
+          if (FIXED_SOCIAL_LABELS.indexOf(s.label) < 0) {
+            seen += 1;
+            return seen !== index;
+          }
+          return true;
+        });
+        return Object.assign({}, prev, { socials: next });
+      });
+      setDirty(true);
+      setNote(null);
+    }
+
+    function addCustom() {
+      setForm(function (prev) {
+        return Object.assign({}, prev, { socials: (prev.socials || []).concat([{ label: "custom", value: "" }]) });
+      });
+      setDirty(true);
+      setNote(null);
+    }
+
+    function onAvatarFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (e) { setAvatarPreview(e.target ? e.target.result : null); };
+      reader.readAsDataURL(file);
+    }
+
+    function save() {
+      setSaving(true);
+      setNote(null);
+      setPanelError(null);
+      fetchPluginJSON(API + "/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          intro: form.intro,
+          location: form.location,
+          timezone: form.timezone,
+          socials: (form.socials || []).filter(function (s) { return s.value && s.value.trim(); }),
+          notificationPreferences: form.notificationPreferences,
+        }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Profile could not be saved.");
+          }
+          setDirty(false);
+          setNote(payload.mock ? "Saved as preview — not yet persisted to Index." : "Saved.");
+        })
+        .catch(function (err) {
+          setPanelError(err && err.message ? err.message : String(err));
+        })
+        .finally(function () {
+          setSaving(false);
+        });
+    }
+
+    function generate() {
+      setGenerating(true);
+      setNote(null);
+      fetchPluginJSON(API + "/profile/intro", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intro: form.intro }),
+      })
+        .then(function (payload) {
+          if (payload && typeof payload.intro === "string" && payload.intro) {
+            patchForm({ intro: payload.intro });
+          }
+          setNote(payload && payload.mock ? "AI intro generation isn't available from the dashboard yet." : null);
+        })
+        .catch(function (err) {
+          setPanelError(err && err.message ? err.message : String(err));
+        })
+        .finally(function () {
+          setGenerating(false);
+        });
+    }
+
+    function tabButton(id, label) {
+      const active = tab === id;
+      return React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__profile-tab" + (active ? " index-dashboard__profile-tab--active" : ""),
+        onClick: function () { setTab(id); },
+      }, label);
+    }
+
+    function socialRows() {
+      return SOCIAL_FIELDS.map(function (pair) {
+        const label = pair[0];
+        const prefix = pair[1];
+        return React.createElement("div", { key: label, className: "index-dashboard__profile-social" },
+          React.createElement("span", { className: "index-dashboard__profile-social-prefix" }, prefix),
+          React.createElement("input", {
+            className: "index-dashboard__profile-input index-dashboard__profile-social-input",
+            value: getSocial(label),
+            onChange: function (e) { setSocial(label, e.target.value); },
+          }),
+        );
+      }).concat(customSocials().map(function (social, index) {
+        return React.createElement("div", { key: "custom-" + index, className: "index-dashboard__profile-social" },
+          React.createElement("input", {
+            className: "index-dashboard__profile-input index-dashboard__profile-social-input",
+            value: social.value,
+            placeholder: "https://example.com",
+            onChange: function (e) { updateCustom(index, e.target.value); },
+          }),
+          React.createElement("button", {
+            type: "button",
+            className: "index-dashboard__profile-social-remove",
+            "aria-label": "Remove link",
+            onClick: function () { removeCustom(index); },
+          }, "×"),
+        );
+      })).concat([
+        customSocials().length < 3
+          ? React.createElement("button", { key: "add", type: "button", className: "index-dashboard__profile-add", onClick: addCustom }, "+ Add website")
+          : null,
+      ]);
+    }
+
+    function profileTab() {
+      const initials = initialsFor(form.name);
+      const avatarSrc = avatarPreview || form.avatar;
+      return React.createElement("div", { className: "index-dashboard__profile-section" },
+        React.createElement("div", { className: "index-dashboard__profile-identity" },
+          React.createElement("label", { className: "index-dashboard__profile-avatar" },
+            React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
+              initials,
+              avatarSrc ? React.createElement("img", { className: "index-dashboard__avatar-img", src: avatarSrc, alt: "", loading: "lazy" }) : null,
+            ),
+            React.createElement("input", { type: "file", accept: "image/*", className: "index-dashboard__profile-avatar-input", onChange: onAvatarFile }),
+          ),
+          React.createElement("div", { className: "index-dashboard__profile-identity-main" },
+            React.createElement("strong", { className: "index-dashboard__profile-identity-name" }, form.name || "Your name"),
+            form.location ? React.createElement("span", { className: "index-dashboard__profile-identity-sub" }, form.location) : null,
+          ),
+        ),
+        React.createElement("div", { className: "index-dashboard__profile-grid" },
+          React.createElement(ProfileField, { label: "Name" },
+            React.createElement("input", { className: "index-dashboard__profile-input", value: form.name, placeholder: "John Doe", onChange: function (e) { patchForm({ name: e.target.value }); } }),
+          ),
+          React.createElement(ProfileField, { label: "Location" },
+            React.createElement("input", { className: "index-dashboard__profile-input", value: form.location, placeholder: "Brooklyn, NY", onChange: function (e) { patchForm({ location: e.target.value }); } }),
+          ),
+        ),
+        React.createElement(ProfileField, {
+          label: "Introduction",
+          hint: form.context ? "Index context: " + form.context : null,
+        },
+          React.createElement("div", { className: "index-dashboard__profile-intro-head" },
+            React.createElement("button", { type: "button", className: "index-dashboard__profile-generate", disabled: generating, onClick: generate }, generating ? "Generating…" : (form.intro ? "Regenerate" : "Generate")),
+          ),
+          React.createElement("textarea", { className: "index-dashboard__textarea", rows: 4, value: form.intro, placeholder: "Tell others about yourself…", onChange: function (e) { patchForm({ intro: e.target.value }); } }),
+        ),
+        React.createElement(ProfileField, { label: "Socials" },
+          React.createElement("div", { className: "index-dashboard__profile-socials" }, socialRows()),
+        ),
+      );
+    }
+
+    function notificationsTab() {
+      const prefs = form.notificationPreferences || {};
+      function setPref(key, value) {
+        patchForm({ notificationPreferences: Object.assign({}, prefs, (function () { const o = {}; o[key] = value; return o; })()) });
+      }
+      return React.createElement("div", { className: "index-dashboard__profile-section" },
+        React.createElement(ProfileField, { label: "Timezone" },
+          React.createElement("select", {
+            className: "index-dashboard__profile-input index-dashboard__profile-select",
+            value: form.timezone,
+            onChange: function (e) { patchForm({ timezone: e.target.value }); },
+          }, timezoneOptions().map(function (tz) {
+            return React.createElement("option", { key: tz, value: tz }, tz.replace(/_/g, " "));
+          })),
+        ),
+        React.createElement("div", { className: "index-dashboard__profile-checks" },
+          [["connectionUpdates", "Connection updates", "Email when someone connects with you"], ["weeklyNewsletter", "Weekly newsletter", "Weekly summary of new connections"]].map(function (row) {
+            const key = row[0];
+            return React.createElement("label", { key: key, className: "index-dashboard__profile-check" },
+              React.createElement("div", null,
+                React.createElement("p", { className: "index-dashboard__profile-check-label" }, row[1]),
+                React.createElement("p", { className: "index-dashboard__profile-check-desc" }, row[2]),
+              ),
+              React.createElement("input", { type: "checkbox", checked: !!prefs[key], onChange: function (e) { setPref(key, e.target.checked); } }),
+            );
+          }),
+        ),
+      );
+    }
+
+    function readOnlyView() {
+      const initials = initialsFor(form.name);
+      const socials = (form.socials || []).filter(function (s) { return s.value && s.value.trim(); });
+      return React.createElement("div", { className: "index-dashboard__profile-section" },
+        React.createElement("div", { className: "index-dashboard__profile-identity" },
+          React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
+            initials,
+            form.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: form.avatar, alt: "", loading: "lazy" }) : null,
+          ),
+          React.createElement("div", { className: "index-dashboard__profile-identity-main" },
+            React.createElement("strong", { className: "index-dashboard__profile-identity-name" }, form.name || "Profile"),
+            form.location ? React.createElement("span", { className: "index-dashboard__profile-identity-sub" }, form.location) : null,
+          ),
+        ),
+        form.intro
+          ? React.createElement(ProfileField, { label: "Intro" }, React.createElement("p", { className: "index-dashboard__profile-read-text" }, form.intro))
+          : null,
+        form.context
+          ? React.createElement(ProfileField, { label: "Context" }, React.createElement("p", { className: "index-dashboard__profile-read-text" }, form.context))
+          : null,
+        socials.length > 0
+          ? React.createElement(ProfileField, { label: "Socials" },
+            React.createElement("div", { className: "index-dashboard__profile-read-socials" },
+              socials.map(function (s, index) {
+                return React.createElement("a", { key: String(index) + s.label, className: "index-dashboard__profile-read-social", href: socialUrl(s.label, s.value), target: "_blank", rel: "noopener noreferrer" }, s.label + ": " + s.value);
+              }),
+            ),
+          )
+          : null,
+        !form.intro && !form.context && socials.length === 0
+          ? React.createElement(EmptyState, null, "This person hasn't shared profile details yet.")
+          : null,
+      );
+    }
+
+    const title = readOnly ? ((form && form.name) || "Profile") : "Settings";
+
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", { className: "index-dashboard__profile-panel", onClick: function (e) { e.stopPropagation(); } },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
+          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
+        readOnly ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
+          tabButton("profile", "Profile Settings"),
+          tabButton("notifications", "Notification Settings"),
+        ),
+        panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
+        loading || !form
+          ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
+          : React.createElement("div", { className: "index-dashboard__profile-body" },
+            readOnly ? readOnlyView() : (tab === "notifications" ? notificationsTab() : profileTab()),
+          ),
+        (!readOnly && form)
+          ? React.createElement("div", { className: "index-dashboard__profile-bar" },
+            React.createElement("span", { className: "index-dashboard__profile-note" }, note || (dirty ? "You have unsaved changes" : "")),
+            React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
+              React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
+              React.createElement(Button, { type: "button", disabled: saving || !dirty, onClick: save }, saving ? "Saving…" : "Save Changes"),
+            ),
+          )
+          : null,
+      ),
     );
   }
 
@@ -581,9 +1004,16 @@
     const autoState = useState(true);
     const autoRefresh = autoState[0];
     const setAutoRefresh = autoState[1];
+    const profileOpenState = useState(false);
+    const profileOpen = profileOpenState[0];
+    const setProfileOpen = profileOpenState[1];
+    const viewUserState = useState(null);
+    const viewUserId = viewUserState[0];
+    const setViewUserId = viewUserState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
     const changeViewRef = useRef(null);
+    const toggleProfileRef = useRef(null);
     const segCtlRef = useRef(null);
     const segInHeaderState = useState(false);
     const segInHeader = segInHeaderState[0];
@@ -722,16 +1152,29 @@
       };
       refresh.addEventListener("click", onRefresh);
 
+      const account = document.createElement("button");
+      account.type = "button";
+      account.className = "index-dashboard__hdr-account";
+      account.setAttribute("aria-label", "Profile & settings");
+      account.title = "Profile & settings";
+      account.innerHTML = ACCOUNT_ICON_SVG;
+      const onAccount = function () {
+        if (toggleProfileRef.current) toggleProfileRef.current();
+      };
+      account.addEventListener("click", onAccount);
+
       wrap.appendChild(label);
       wrap.appendChild(sw);
       wrap.appendChild(live);
       wrap.appendChild(refresh);
+      wrap.appendChild(account);
       container.appendChild(wrap);
-      headerCtlRef.current = { sw: sw, live: live, refresh: refresh };
+      headerCtlRef.current = { sw: sw, live: live, refresh: refresh, account: account };
 
       return function () {
         sw.removeEventListener("click", onToggle);
         refresh.removeEventListener("click", onRefresh);
+        account.removeEventListener("click", onAccount);
         wrap.remove();
         seg.remove();
         headerCtlRef.current = null;
@@ -797,6 +1240,11 @@
     }
 
     changeViewRef.current = changeView;
+    toggleProfileRef.current = function () { setProfileOpen(function (open) { return !open; }); };
+
+    function openUser(userId) {
+      if (userId) setViewUserId(userId);
+    }
 
     function goBack() {
       setSelectedId(null);
@@ -811,7 +1259,7 @@
     const intentsView = showDetail
       ? (selectedId === "general"
         ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack })
-        : React.createElement(IntentDetail, { intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack }))
+        : React.createElement(IntentDetail, { intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser }))
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(Panel, { cron: true, icon: ICON_TARGET(), title: "Intents", count: intents.length },
           React.createElement(IntentList, { intents: intents, generalCount: general.count, selectedId: selectedId, onSelect: selectIntent }),
@@ -819,6 +1267,9 @@
       );
 
     return React.createElement("div", { className: "index-dashboard" },
+      viewUserId
+        ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
+        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
@@ -829,8 +1280,8 @@
           segInHeader ? null : React.createElement(Segmented, { view: view, onChange: changeView }),
           view === "networks"
             ? React.createElement(NetworksView, { networks: summary && summary.networks })
-            : view === "negotiations"
-              ? React.createElement(NegotiationsView, { negotiations: summary && summary.negotiations })
+              : view === "negotiations"
+              ? React.createElement(NegotiationsView, { negotiations: summary && summary.negotiations, onOpenUser: openUser })
               : intentsView,
         ),
     );
