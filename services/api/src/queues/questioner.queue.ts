@@ -151,6 +151,9 @@ export class QuestionerQueue {
     const actorNetworkId = data.scopeType === 'network' && data.scopeId?.trim()
       ? data.scopeId.trim()
       : undefined;
+    const triggeredByIntentId = data.scopeType === 'intent' && data.scopeId?.trim()
+      ? data.scopeId.trim()
+      : undefined;
 
     const batch: PersistableQuestion[] = result.questions.map((question, i) => ({
       detection: {
@@ -158,6 +161,7 @@ export class QuestionerQueue {
         sourceType: data.sourceType,
         sourceId: data.sourceId,
         timestamp: new Date().toISOString(),
+        ...(triggeredByIntentId ? { triggeredBy: triggeredByIntentId } : {}),
         ...(data.messageId ? { messageId: data.messageId } : {}),
       },
       actors: [{ userId: data.userId, ...(actorNetworkId ? { networkId: actorNetworkId } : {}), role: 'subject' as const }],
