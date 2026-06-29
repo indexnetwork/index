@@ -178,6 +178,22 @@ export interface ToolContext {
    * Injected by the composition root when QUESTIONER_ENABLED=true.
    */
   questionerEnqueue?: QuestionerEnqueueFn;
+  /**
+   * Lookup pending questions for a user, optionally filtered by source,
+   * detection mode, selected intent scope, or capped by count.
+   */
+  findPendingQuestions?: (
+    userId: string,
+    filters?: {
+      sourceType?: string;
+      sourceId?: string;
+      scopeType?: 'intent';
+      scopeId?: string;
+      networkId?: string;
+      modes?: QuestionMode[];
+      limit?: number;
+    },
+  ) => Promise<PendingQuestionSummary[]>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Profile enrichment from external data sources. */

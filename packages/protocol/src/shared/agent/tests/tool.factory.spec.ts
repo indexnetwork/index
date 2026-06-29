@@ -381,7 +381,7 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
 };
 
 describe("createChatTools", () => {
-  test("returns an array that includes read_intents, read_networks, read_network_memberships", async () => {
+  test("returns an array that includes read_intents, read_networks, read_network_memberships, read_pending_questions", async () => {
     const mockDb = createMockDatabase(async () => []);
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
@@ -389,6 +389,7 @@ describe("createChatTools", () => {
     expect(tools.find((t: { name: string }) => t.name === "read_intents")).toBeDefined();
     expect(tools.find((t: { name: string }) => t.name === "read_networks")).toBeDefined();
     expect(tools.find((t: { name: string }) => t.name === "read_network_memberships")).toBeDefined();
+    expect(tools.find((t: { name: string }) => t.name === "read_pending_questions")).toBeDefined();
   });
 
   test("includes list_opportunities alongside discover_opportunities and update_opportunity", async () => {
