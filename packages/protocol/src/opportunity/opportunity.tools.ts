@@ -742,7 +742,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             userId: context.userId,
             userName: context.userName,
             userEmail: context.userEmail,
-            ...(scopedNetworkId ? { scopeType: 'network' as const, scopeId: scopedNetworkId } : {}),
+            ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : scopedNetworkId ? { scopeType: 'network' as const, scopeId: scopedNetworkId } : {}),
             ...(context.indexName ? { indexName: context.indexName } : {}),
             ...(context.sessionId ? { sessionId: context.sessionId } : {}),
             ...(context.agentId ? { agentId: context.agentId } : {}),
@@ -1125,10 +1125,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         { step: "resolve_index_scope", detail: `${indexScope.length} index(es)` },
       ];
 
-      const triggerIntentId = query.intentId?.trim() || undefined;
-      if (triggerIntentId != null && !UUID_REGEX.test(triggerIntentId)) {
+      const contextIntentId = focusedIntentId(context);
+      const requestedIntentId = query.intentId?.trim() || undefined;
+      if (requestedIntentId != null && !UUID_REGEX.test(requestedIntentId)) {
         return error("Invalid intent ID format.");
       }
+      if (contextIntentId && requestedIntentId && requestedIntentId !== contextIntentId) {
+        return error("This chat is scoped to a different intent.");
+      }
+      const triggerIntentId = contextIntentId ?? requestedIntentId;
 
       if (query.introTargetUserId?.trim() && query.introTargetUserId.trim() === context.userId) {
         return error("You cannot discover introductions for yourself. Try regular discovery instead.");
@@ -1199,6 +1204,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         userId: context.userId,
         sourceType: 'discovery',
         ...(context.scopeType === 'network' && context.scopeId ? { networkId: context.scopeId } : {}),
+        ...(contextIntentId ? { scopeType: 'intent' as const, scopeId: contextIntentId } : {}),
         surfacedQuestionIds: new Set(), // Dedup handled at chat.agent level
       });
       const pendingQuestions = pendingQuestionResult.questions;

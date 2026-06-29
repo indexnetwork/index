@@ -349,7 +349,9 @@ SSE streaming endpoint for chat messages with context support. Streams graph eve
   "sessionId": "string | null (optional — creates new session if omitted)",
   "useCheckpointer": "boolean (optional, default: true)",
   "fileIds": ["string (optional — file IDs to attach)"],
-  "indexId": "string | null (optional — scope to a specific index)",
+  "scopeType": "network | intent | null (optional — mutually-exclusive focused scope)",
+  "scopeId": "string | null (required when scopeType is provided)",
+  "networkId": "string | null (deprecated alias for scopeType=network)",
   "recipientUserId": "string | null (optional — DM recipient for ghost invites)",
   "prefillMessages": [
     { "role": "assistant | user", "content": "string (max 10000 chars)" }
@@ -383,6 +385,33 @@ List all chat sessions for the authenticated user.
 }
 ```
 
+### POST /api/chat/session/resolve
+
+Resolve or create the stable orchestrator chat session for a selected intent. Repeated calls by the same user for the same intent return the same session.
+
+**Auth**: AuthGuard
+
+**Request body**:
+```json
+{
+  "scopeType": "intent",
+  "scopeId": "intent UUID"
+}
+```
+
+**Response**:
+```json
+{
+  "session": {
+    "id": "...",
+    "scopeType": "intent",
+    "scopeId": "...",
+    "title": "..."
+  },
+  "created": false
+}
+```
+
 ### POST /api/chat/session
 
 Get a specific session with its messages (including assistant metadata).
@@ -399,7 +428,13 @@ Get a specific session with its messages (including assistant metadata).
 **Response**:
 ```json
 {
-  "session": { ... },
+  "session": {
+    "id": "...",
+    "title": "...",
+    "networkId": "... (legacy network alias, nullable)",
+    "scopeType": "network | intent | null",
+    "scopeId": "... (nullable)"
+  },
   "messages": [
     {
       "id": "...",

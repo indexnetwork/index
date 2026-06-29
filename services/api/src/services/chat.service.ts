@@ -1,5 +1,6 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
+import type { ChatScopeType } from '../adapters/database.shared';
 import { ChatGraphFactory, ChatTitleGenerator } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
@@ -63,11 +64,28 @@ export class ChatSessionService {
    * @param networkId - Optional index (community) ID to scope the conversation
    * @returns The created session ID
    */
-  async createSession(userId: string, title?: string, networkId?: string): Promise<string> {
-    logger.verbose('Creating new session', { userId, hasTitle: Boolean(title?.trim()), networkId: networkId ?? undefined });
+  async createSession(
+    userId: string,
+    title?: string,
+    networkId?: string,
+    scope?: { scopeType: ChatScopeType; scopeId: string },
+  ): Promise<string> {
+    logger.verbose('Creating new session', {
+      userId,
+      hasTitle: Boolean(title?.trim()),
+      networkId: networkId ?? undefined,
+      scopeType: scope?.scopeType,
+      scopeId: scope?.scopeId,
+    });
 
     const id = crypto.randomUUID();
-    await this.db.createChatSession({ id, userId, title, networkId });
+    await this.db.createChatSession({
+      id,
+      userId,
+      title,
+      networkId,
+      ...(scope ? { scopeType: scope.scopeType, scopeId: scope.scopeId } : {}),
+    });
 
     return id;
   }
@@ -93,6 +111,30 @@ export class ChatSessionService {
   }
 
   /**
+   * Update the canonical focused scope for a session. Validates ownership.
+   */
+  async updateSessionScope(
+    sessionId: string,
+    userId: string,
+    scope: { scopeType: ChatScopeType; scopeId: string } | null,
+  ): Promise<boolean> {
+    const session = await this.getSession(sessionId, userId);
+    if (!session) {
+      return false;
+    }
+
+    await this.db.updateChatSessionScope(
+      sessionId,
+      userId,
+      scope?.scopeType ?? null,
+      scope?.scopeId ?? null,
+    );
+
+    logger.verbose('Session scope updated', { sessionId, scopeType: scope?.scopeType ?? null, scopeId: scope?.scopeId ?? null });
+    return true;
+  }
+
+  /**
    * Validate that a user can scope chat to an index.
    * Requires the index to exist and the user to be a member.
    */
@@ -112,6 +154,76 @@ export class ChatSessionService {
     }
 
     return { ok: true };
+  }
+
+  /**
+   * Validate that a user can scope chat to one of their intents.
+   * Intent scope is owner-only because intent listing pages show the user's own intents.
+   */
+  async validateIntentScope(
+    userId: string,
+    intentId: string,
+  ): Promise<{ ok: true; title: string } | { ok: false; status: 403 | 404; error: string }> {
+    const normalizedIntentId = intentId.trim();
+    const intent = await this.graphDb.getIntent(normalizedIntentId);
+    if (!intent || intent.archivedAt) {
+      return { ok: false, status: 404, error: 'Intent not found' };
+    }
+    if (intent.userId !== userId) {
+      return { ok: false, status: 403, error: 'You do not have access to this intent' };
+    }
+
+    const rawTitle = (intent.summary?.trim() || intent.payload?.trim() || 'Intent chat').replace(/\s+/g, ' ');
+    const title = rawTitle.length > 80 ? `${rawTitle.slice(0, 77)}…` : rawTitle;
+    return { ok: true, title };
+  }
+
+  /**
+   * Resolve or create the stable orchestrator session for a scoped entity.
+   */
+  async resolveSessionForScope(
+    userId: string,
+    scope: { scopeType: ChatScopeType; scopeId: string },
+  ) {
+    const normalizedScopeId = scope.scopeId.trim();
+    if (!normalizedScopeId) {
+      return { error: 'scopeId is required', status: 400 as const };
+    }
+
+    let title: string | undefined;
+    if (scope.scopeType === 'network') {
+      const validation = await this.validateIndexScope(userId, normalizedScopeId);
+      if (!validation.ok) return validation;
+    } else {
+      const validation = await this.validateIntentScope(userId, normalizedScopeId);
+      if (!validation.ok) return validation;
+      title = validation.title;
+    }
+
+    const existing = await this.db.getChatSessionByScope(userId, scope.scopeType, normalizedScopeId);
+    if (existing) return { session: existing, created: false };
+
+    try {
+      const id = await this.createSession(
+        userId,
+        title,
+        scope.scopeType === 'network' ? normalizedScopeId : undefined,
+        { scopeType: scope.scopeType, scopeId: normalizedScopeId },
+      );
+      const session = await this.getSession(id, userId);
+      if (!session) return { error: 'Failed to create session', status: 500 as const };
+      return { session, created: true };
+    } catch (err) {
+      if (this.isUniqueViolation(err)) {
+        const raced = await this.db.getChatSessionByScope(userId, scope.scopeType, normalizedScopeId);
+        if (raced) return { session: raced, created: false };
+      }
+      throw err;
+    }
+  }
+
+  private isUniqueViolation(err: unknown): boolean {
+    return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === '23505';
   }
 
   /**

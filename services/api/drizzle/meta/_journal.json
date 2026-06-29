@@ -610,6 +610,13 @@
       "when": 1781778982776,
       "tag": "0086_rename_question_mode_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1782566344414,
+      "tag": "0087_add_chat_session_scopes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { LogOut } from 'lucide-react';
 import { Network } from '@/lib/types';
@@ -6,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useAIChat } from '@/contexts/AIChatContext';
+import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
 
@@ -18,8 +21,11 @@ interface NetworkOverviewPanelProps {
 }
 
 export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
+  const navigate = useNavigate();
   const { removeIndex } = useNetworksState();
   const { success, error } = useNotifications();
+  const { clearChat, resolveIntentSession } = useAIChat();
+  const { setSelectedNetworkIds } = useNetworkFilter();
   const api = useAuthenticatedAPI();
   const indexesService = useNetworks();
 
@@ -63,6 +69,18 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
     loadOverview();
   }, [index.id, indexesService]);
 
+  const handleOpenIntentChat = useCallback(async (intent: { id: string; payload: string; summary?: string | null }) => {
+    try {
+      clearChat({ abortStream: false });
+      setSelectedNetworkIds([]);
+      const label = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
+      const sessionId = await resolveIntentSession({ id: intent.id, label });
+      navigate(`/d/${sessionId}`);
+    } catch {
+      error('Failed to open intent chat');
+    }
+  }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error]);
+
   const handleLeaveNetwork = async () => {
     try {
       setIsLeaving(true);
@@ -99,6 +117,7 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
             intents={intents}
             isLoading={intentsLoading}
             emptyMessage="You haven't shared any intents in this network yet"
+            onIntentClick={handleOpenIntentChat}
           />
         </div>
 

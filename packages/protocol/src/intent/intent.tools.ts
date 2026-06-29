@@ -9,7 +9,7 @@ import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import type { UserRecord } from "../shared/interfaces/database.interface.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import { deriveAllowedNetworkIds, focusedNetworkId, focusedNetworkLabel, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
+import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
 
 const logger = protocolLogger("ChatTools:Intent");
 
@@ -100,9 +100,14 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // Distinguish "explicit network browse" from "implicit scope-aware read"
       const scopedNetworkId = focusedNetworkId(context);
+      const scopedIntentId = focusedIntentId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
       const explicitNetworkId = query.networkId?.trim();
       const explicitUserId = query.userId?.trim();
+
+      if (scopedIntentId && (explicitNetworkId || (explicitUserId && explicitUserId !== context.userId))) {
+        return error("This chat is scoped to one selected intent. Only that intent is available here.");
+      }
 
       // Validate explicit networkId format
       if (explicitNetworkId && !UUID_REGEX.test(explicitNetworkId)) {
@@ -152,6 +157,28 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         userProfile: "",
         operationMode: 'read' as const,
       };
+
+      if (scopedIntentId) {
+        const intent = await deps.systemDb.getIntent(scopedIntentId);
+        if (!intent || intent.userId !== context.userId || intent.archivedAt) {
+          return error("This selected intent is no longer available.");
+        }
+        return success({
+          count: 1,
+          totalCount: 1,
+          intents: [{
+            id: intent.id,
+            description: intent.payload,
+            summary: intent.summary,
+            createdAt: intent.createdAt,
+          }],
+          scopeRestriction: {
+            isScoped: true,
+            scopedToIntent: scopedIntentId,
+            message: "Results are restricted to the selected intent.",
+          },
+        });
+      }
 
       if (explicitNetworkId) {
         graphInput.networkId = explicitNetworkId;
@@ -247,7 +274,12 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const scopedNetworkId = focusedNetworkId(context);
+      const scopedIntentId = focusedIntentId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
+
+      if (scopedIntentId) {
+        return error("This chat is scoped to an existing selected intent. Update that intent instead of creating a different one here.");
+      }
 
       // Strict scope enforcement
       if (scopedNetworkId && query.networkId?.trim() && query.networkId.trim() !== scopedNetworkId) {
@@ -452,7 +484,12 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const scopedNetworkId = focusedNetworkId(context);
+      const scopedIntentId = focusedIntentId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
+
+      if (scopedIntentId && scopedIntentId !== intentId) {
+        return error("This chat is scoped to one selected intent. You can only update that intent here.");
+      }
 
       // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
       if (scopedNetworkId) {
@@ -529,7 +566,12 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const scopedNetworkId = focusedNetworkId(context);
+      const scopedIntentId = focusedIntentId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
+
+      if (scopedIntentId && scopedIntentId !== intentId) {
+        return error("This chat is scoped to one selected intent. You can only delete that intent here.");
+      }
 
       // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
       if (scopedNetworkId) {
@@ -582,9 +624,13 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
+      const scopedIntentId = focusedIntentId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() ?? "";
       const networkId = query.networkId?.trim() || scopedNetworkId || "";
+      if (scopedIntentId && intentId !== scopedIntentId) {
+        return error("This chat is scoped to one selected intent. You can only link that intent here.");
+      }
       if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(networkId)) {
         return error("Invalid ID format. Both must be UUIDs.");
       }
@@ -642,10 +688,18 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
+      const scopedIntentId = focusedIntentId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
-      const intentId = query.intentId?.trim() || undefined;
+      const intentId = query.intentId?.trim() || scopedIntentId || undefined;
       let networkId = query.networkId?.trim() || scopedNetworkId || undefined;
       const queryUserId = query.userId?.trim() || undefined;
+
+      if (scopedIntentId && query.intentId?.trim() && query.intentId.trim() !== scopedIntentId) {
+        return error("This chat is scoped to one selected intent. You can only read links for that intent here.");
+      }
+      if (scopedIntentId && queryUserId && queryUserId !== context.userId) {
+        return error("This chat is scoped to one selected intent. Other users' intent links are not available here.");
+      }
 
       if (intentId && !UUID_REGEX.test(intentId)) {
         return error("Invalid intent ID format.");
@@ -713,9 +767,13 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
       if (scopeErr) return error(scopeErr);
       const scopedNetworkId = focusedNetworkId(context);
+      const scopedIntentId = focusedIntentId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
       const intentId = query.intentId?.trim() ?? "";
       const networkId = query.networkId?.trim() || scopedNetworkId || "";
+      if (scopedIntentId && intentId !== scopedIntentId) {
+        return error("This chat is scoped to one selected intent. You can only unlink that intent here.");
+      }
       if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(networkId)) {
         return error("Invalid ID format. Both must be UUIDs.");
       }

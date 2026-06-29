@@ -628,6 +628,8 @@ function createMcpServerInstance(): McpServer {
         sourceType?: string;
         sourceId?: string;
         networkId?: string;
+        scopeType?: 'intent';
+        scopeId?: string;
         modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation'>;
         limit?: number;
       },

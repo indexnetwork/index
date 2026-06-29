@@ -1,6 +1,6 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
 
-import { deriveAllowedNetworkIds, focusedNetworkId } from "../shared/agent/tool.scope.js";
+import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId } from "../shared/agent/tool.scope.js";
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { resolveModules } from "./chat.prompt.modules.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
@@ -24,6 +24,7 @@ export const ITERATION_NUDGE = `[System Note: You've made several tool calls. Pl
  */
 function buildCoreHead(ctx: ResolvedToolContext): string {
   const scopedNetworkId = focusedNetworkId(ctx);
+  const scopedIntentId = focusedIntentId(ctx);
   const roleLabel = !scopedNetworkId
     ? "general"
     : (ctx.scopedMembershipRole ?? (ctx.isOwner ? "owner" : "member"));
@@ -33,9 +34,11 @@ function buildCoreHead(ctx: ResolvedToolContext): string {
   const reachable = scopedNetworkId
     ? `, reach: ${reachableIds.length} network(s) including your personal network`
     : "";
-  const indexScope = scopedNetworkId
-    ? `network "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}), role: ${roleLabel}${reachable}`
-    : "no network scope (general chat)";
+  const indexScope = scopedIntentId
+    ? `selected intent (id: ${scopedIntentId}) — only this intent is available; use list_opportunities and read_pending_questions to inspect its related opportunities, negotiation context, and questions`
+    : scopedNetworkId
+      ? `network "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}), role: ${roleLabel}${reachable}`
+      : "no network scope (general chat)";
 
   return `You are Index. You help the right people find the user and help the user find them.
 Here's what you can do:
@@ -316,11 +319,18 @@ ${ctx.contactsEnabled ? `| **add_contact** | email, name? | Manually add single 
  */
 function buildScoping(ctx: ResolvedToolContext): string {
   const scopedNetworkId = focusedNetworkId(ctx);
+  const scopedIntentId = focusedIntentId(ctx);
   return `
-### Network Scope
+### Scope
 ${
-  scopedNetworkId
-    ? `- This chat is scoped to network "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}). Default networkId for create_intent is ${scopedNetworkId}. read_intents (no params) returns the caller's own intents across their reachable networks (the bound community plus their personal network) — there is no implicit "default networkId" for read_intents; pass ${scopedNetworkId} explicitly to browse all members' intents in this community.
+  scopedIntentId
+    ? `- This chat is scoped to one selected intent (id: ${scopedIntentId}). Only that intent is available here.
+- **Scope enforcement**: read_intents returns exactly the selected intent. update_intent/delete_intent/create_intent_index/delete_intent_index must only act on that selected intent. Do not create a different intent from this chat.
+- **Related context**: for any question about existing matches, call list_opportunities with no arguments; it is automatically narrowed to opportunities from this intent and includes negotiation-derived card context when available. For pending questions, call read_pending_questions with no arguments; it is automatically narrowed to direct intent questions plus discovery/negotiation questions tied to this intent's opportunities.
+- **Discovery**: discover_opportunities with no intentId uses this selected intent as the discovery source. If an intentId is supplied it must match ${scopedIntentId}.
+- Never imply results represent the user's other intents.`
+    : scopedNetworkId
+      ? `- This chat is scoped to network "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}). Default networkId for create_intent is ${scopedNetworkId}. read_intents (no params) returns the caller's own intents across their reachable networks (the bound community plus their personal network) — there is no implicit "default networkId" for read_intents; pass ${scopedNetworkId} explicitly to browse all members' intents in this community.
 - **Scope enforcement**: read_intents with no args returns caller-owned intents across the reachable networks (bound + personal). read_intents(networkId) browses all members' intents in that community. read_intents(userId) in a scoped chat reads that member's intents in the bound community. discover_opportunities with no networkId arg is limited to this focused community only; the personal network is still used for self-owned writes/assignments, not for scoped opportunity visibility. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar signals" or "fresh slate" from an empty read_intents result here.
 - **Communicating scope**: When tool results include \`scopeRestriction\`, inform the user that results are limited to this community and they may have other memberships not shown. Never imply the scoped results represent all their data.
 - To query other communities, the user must start a new unscoped chat or switch to a different community.

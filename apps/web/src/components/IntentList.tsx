@@ -124,6 +124,7 @@ interface IntentListProps<T extends BaseIntent> {
   onArchiveIntent?: (intent: T) => void;
   onRemoveIntent?: (intent: T) => void;
   onOpenIntentSource?: (intent: T) => void;
+  onIntentClick?: (intent: T) => void;
   newIntentIds?: Set<string>;
   selectedIntentIds?: Set<string>;
   removingIntentIds?: Set<string>;
@@ -137,6 +138,7 @@ export default function IntentList<T extends BaseIntent>({
   onArchiveIntent,
   onRemoveIntent,
   onOpenIntentSource,
+  onIntentClick,
   newIntentIds = new Set(),
   selectedIntentIds = new Set(),
   removingIntentIds = new Set(),
@@ -190,9 +192,19 @@ export default function IntentList<T extends BaseIntent>({
         
         return (
           <div 
-            key={intent.id} 
+            key={intent.id}
+            role={onIntentClick ? "button" : undefined}
+            tabIndex={onIntentClick ? 0 : undefined}
+            onClick={onIntentClick ? () => onIntentClick(intent) : undefined}
+            onKeyDown={onIntentClick ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onIntentClick(intent);
+              }
+            } : undefined}
             className={cn(
               "group relative p-4 rounded-lg border transition-all duration-200",
+              onIntentClick && "cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30",
               isSelectedSource 
                 ? "border-blue-200 bg-blue-50/50" 
                 : isFresh
@@ -238,7 +250,9 @@ export default function IntentList<T extends BaseIntent>({
 
               {/* Actions */}
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <DebugCopyButton fetchPath={`/debug/intents/${intent.id}`} />
+                <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                  <DebugCopyButton fetchPath={`/debug/intents/${intent.id}`} />
+                </div>
                 {onOpenIntentSource && canOpenSource && (
                   <button
                     onClick={(e) => {

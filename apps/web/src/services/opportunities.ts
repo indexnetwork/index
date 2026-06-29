@@ -80,6 +80,8 @@ export interface HomeViewResponse {
 
 export interface GetHomeViewOptions {
   networkId?: string;
+  scopeType?: 'intent';
+  scopeId?: string;
   limit?: number;
   noCache?: boolean;
 }
@@ -148,6 +150,8 @@ export const createOpportunitiesService = (
   ): Promise<HomeViewResponse> => {
     const params = new URLSearchParams();
     if (options?.networkId) params.set('networkId', options.networkId);
+    if (options?.scopeType) params.set('scopeType', options.scopeType);
+    if (options?.scopeId) params.set('scopeId', options.scopeId);
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.noCache) params.set('noCache', '1');
     const qs = params.toString();
@@ -186,11 +190,12 @@ export const createOpportunitiesService = (
 
   updateStatus: async (
     opportunityId: string,
-    status: OpportunityStatus
+    status: OpportunityStatus,
+    scope?: { scopeType: 'intent'; scopeId: string },
   ): Promise<OpportunityStatusUpdateResponse> => {
     return api.patch<OpportunityStatusUpdateResponse>(
       `/opportunities/${opportunityId}/status`,
-      { status }
+      { status, ...(scope ?? {}) }
     );
   },
 
@@ -213,6 +218,7 @@ export const createOpportunitiesService = (
    */
   startChat: async (
     opportunityId: string,
+    scope?: { scopeType: 'intent'; scopeId: string },
   ): Promise<{
     conversationId: string;
     counterpartUserId: string;
@@ -222,7 +228,7 @@ export const createOpportunitiesService = (
       conversationId: string;
       counterpartUserId: string;
       opportunity: { id: string; status: OpportunityStatus };
-    }>(`/opportunities/${opportunityId}/start-chat`, {});
+    }>(`/opportunities/${opportunityId}/start-chat`, scope ?? {});
   },
 
   /**

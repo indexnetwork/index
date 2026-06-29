@@ -169,10 +169,16 @@ export class QuestionerAdapter {
     }
     if (filters?.scopeType === 'intent' && filters.scopeId) {
       conditions.push(sql`(
-        (
+        ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
+        OR (
           ${questions.detection}->>'mode' = 'intent'
           AND ${questions.detection}->>'sourceType' = 'intent'
           AND ${questions.detection}->>'sourceId' = ${filters.scopeId}
+        )
+        OR (
+          ${questions.detection}->>'mode' = 'discovery'
+          AND ${questions.detection}->>'sourceType' = 'discovery'
+          AND ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
         )
         OR (
           ${questions.detection}->>'mode' = 'negotiation'

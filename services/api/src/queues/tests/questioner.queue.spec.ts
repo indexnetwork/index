@@ -57,6 +57,49 @@ describe('QuestionerQueue', () => {
     ]);
   });
 
+  it('persists selected intent scope as detection.triggeredBy without actor networkId', async () => {
+    let captured: PersistableQuestion[] = [];
+    const queue = new QuestionerQueue({
+      adapter: {
+        persist: async (batch) => {
+          captured = batch;
+          return ['question-1'];
+        },
+      },
+      agent: {
+        invoke: async () => ({
+          questions: [
+            {
+              title: 'Focus',
+              prompt: 'Which collaboration focus matters most?',
+              options: [
+                { label: 'Build', description: 'Build together' },
+                { label: 'Learn', description: 'Exchange knowledge' },
+              ],
+              multiSelect: false,
+            },
+          ],
+          strategies: ['surface_missing_detail'],
+        }),
+      },
+    });
+    queues.push(queue);
+
+    await queue.processJob('generate_questions', {
+      mode: 'discovery',
+      userId: 'user-1',
+      sourceType: 'discovery',
+      sourceId: 'session-1',
+      context: {} as never,
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+      conversationId: 'session-1',
+    });
+
+    expect(captured[0].actors).toEqual([{ userId: 'user-1', role: 'subject' }]);
+    expect(captured[0].detection.triggeredBy).toBe('intent-1');
+  });
+
   it('omits actor networkId for unscoped question jobs', async () => {
     let captured: PersistableQuestion[] = [];
     const queue = new QuestionerQueue({

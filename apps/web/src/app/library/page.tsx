@@ -6,6 +6,8 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useAPI } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useAIChat } from "@/contexts/AIChatContext";
+import { useNetworkFilter } from "@/contexts/IndexFilterContext";
 import { formatDate } from "@/lib/utils";
 import { formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
 import IntentList from "@/components/IntentList";
@@ -57,6 +59,8 @@ export default function LibraryPage() {
   const { filesService, linksService, intentsService } = useAPI();
   const api = useAuthenticatedAPI();
   const { success, error } = useNotifications();
+  const { clearChat, resolveIntentSession } = useAIChat();
+  const { setSelectedNetworkIds } = useNetworkFilter();
 
   const activeTab: TabValue = VALID_TABS.includes(tab as TabValue) ? (tab as TabValue) : 'intents';
   const setActiveTab = (v: string) => navigate(`/library/${v}`, { replace: true });
@@ -198,6 +202,18 @@ export default function LibraryPage() {
     }
   }, [intentsService, success, error, loadIntents]);
 
+  const handleOpenIntentChat = useCallback(async (intent: LibrarySourceIntent) => {
+    try {
+      clearChat({ abortStream: false });
+      setSelectedNetworkIds([]);
+      const label = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
+      const sessionId = await resolveIntentSession({ id: intent.id, label });
+      navigate(`/d/${sessionId}`);
+    } catch {
+      error('Failed to open intent chat');
+    }
+  }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error]);
+
   // Delete file handler
   const handleDeleteFile = useCallback(async (fileId: string) => {
     setFiles(prev => prev.filter(f => f.id !== fileId));
@@ -290,6 +306,7 @@ export default function LibraryPage() {
                 isLoading={loadingIntents}
                 emptyMessage="No intents yet"
                 onArchiveIntent={handleArchiveIntent}
+                onIntentClick={handleOpenIntentChat}
                 className="w-full"
               />
             )}

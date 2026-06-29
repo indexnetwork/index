@@ -330,11 +330,18 @@ export function ownIntentsListWhere(
 /**
  * Database adapter for intent CRUD (Intent Graph).
  */
+export type ChatScopeType = 'network' | 'intent';
+
 export interface ChatSession {
   id: string;
   userId: string;
   title: string | null;
+  /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId: string | null;
+  /** Canonical focused scope for this orchestrator chat, when persisted. */
+  scopeType: ChatScopeType | null;
+  /** Canonical focused scope id. Network scope uses a network id; intent scope uses an intent id. */
+  scopeId: string | null;
   shareToken: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -355,7 +362,12 @@ export interface ChatMessage {
 /** Shape stored inside conversation_metadata.metadata for agent-chat sessions. */
 export interface ChatConversationMeta {
   title?: string | null;
+  /** Legacy network alias retained for existing clients and session rows. */
   networkId?: string | null;
+  /** Canonical focused scope for this orchestrator chat. */
+  scopeType?: ChatScopeType | null;
+  /** Canonical focused scope id. */
+  scopeId?: string | null;
   shareToken?: string | null;
   ghostInviteSent?: boolean;
   [key: string]: unknown;
@@ -384,7 +396,10 @@ export interface CreateSessionInput {
   id: string;
   userId: string;
   title?: string;
+  /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId?: string;
+  scopeType?: ChatScopeType;
+  scopeId?: string;
 }
 
 export interface CreateMessageInput {
