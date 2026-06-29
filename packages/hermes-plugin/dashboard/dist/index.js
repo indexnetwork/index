@@ -2,9 +2,8 @@
  * Index Network Hermes dashboard.
  *
  * Intent-centric layout: each intent owns its pending questions and
- * its opportunities ("radar"). A segmented control switches between the
- * Intents master-detail view and the Networks view. View + selected intent
- * are mirrored into the URL hash so browser Back/Forward navigate between
+ * its opportunities ("radar"), in a master-detail view. The selected intent
+ * is mirrored into the URL hash so browser Back/Forward navigate between
  * intents. Data loads through the plugin backend, which reuses native Hermes
  * tool handlers so INDEX_API_KEY scoping and protocol visibility rules stay
  * centralized.
@@ -69,16 +68,6 @@
     ]);
   }
 
-  function ICON_SHARE() {
-    return svgIcon("h-4 w-4", [
-      React.createElement("circle", { key: "a", cx: 18, cy: 5, r: 3 }),
-      React.createElement("circle", { key: "b", cx: 6, cy: 12, r: 3 }),
-      React.createElement("circle", { key: "c", cx: 18, cy: 19, r: 3 }),
-      React.createElement("line", { key: "d", x1: 8.59, x2: 15.42, y1: 13.51, y2: 17.49 }),
-      React.createElement("line", { key: "e", x1: 15.41, x2: 8.59, y1: 6.51, y2: 10.49 }),
-    ]);
-  }
-
   function ICON_PAUSE() {
     return svgIcon("", [
       React.createElement("rect", { key: "a", x: 14, y: 3, width: 5, height: 18, rx: 1 }),
@@ -108,9 +97,9 @@
       type: "button",
       title: props.title,
       "aria-label": props.title,
-      className: "font-mono group relative grid cursor-pointer items-center leading-0 font-bold tracking-[0.2em] p-2 aspect-square grid-cols-1 place-items-center [&>svg]:size-3.5 bg-transparent hover:bg-midground/10 shadow-none " + (props.tone || "text-current"),
+      className: "font-mono group relative flex cursor-pointer items-center gap-1.5 leading-0 font-bold tracking-[0.2em] px-2 py-2 [&>svg]:size-3.5 border border-current/30 bg-transparent hover:bg-midground/10 shadow-none " + (props.tone || "text-current"),
       onClick: props.onClick,
-    }, props.children);
+    }, props.children, props.label ? React.createElement("span", { className: "text-[10px] uppercase" }, props.label) : null);
   }
 
   function parseHash() {
@@ -122,17 +111,12 @@
       const key = idx >= 0 ? pair.slice(0, idx) : pair;
       params[key] = idx >= 0 ? decodeURIComponent(pair.slice(idx + 1)) : "";
     });
-    if (params.view === "networks") return { view: "networks", intentId: null };
-    if (params.view === "negotiations") return { view: "negotiations", intentId: null };
-    if (params.intent) return { view: "intents", intentId: params.intent };
-    return { view: "intents", intentId: null };
+    if (params.intent) return { intentId: params.intent };
+    return { intentId: null };
   }
 
-  function writeHash(view, intentId) {
-    const next = view === "networks" ? "view=networks"
-      : view === "negotiations" ? "view=negotiations"
-      : intentId ? "intent=" + encodeURIComponent(intentId) : "";
-    const target = next ? "#" + next : "";
+  function writeHash(intentId) {
+    const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
     if ((window.location.hash || "") !== target) {
       window.location.hash = target;
     }
@@ -140,36 +124,6 @@
 
   function EmptyState(props) {
     return React.createElement("div", { className: "index-dashboard__empty" }, props.children || "Nothing to show yet.");
-  }
-
-  function ItemList(props) {
-    const items = Array.isArray(props.items) ? props.items : [];
-    if (props.error) {
-      return React.createElement("div", { className: "index-dashboard__error" }, props.error);
-    }
-    if (items.length === 0) {
-      return React.createElement(EmptyState, null, props.emptyMessage || props.empty || "Nothing to show yet.");
-    }
-    return React.createElement("div", { className: props.compact ? "index-dashboard__items index-dashboard__items--compact" : "index-dashboard__items" },
-      items.map(function (item, index) {
-        return React.createElement("article", { className: "index-dashboard__item", key: String(index) + (item.title || "") },
-          React.createElement("div", { className: "index-dashboard__item-head" },
-            React.createElement("h3", { className: "index-dashboard__item-title" }, item.title || "Untitled"),
-            item.status ? React.createElement(BadgeText, { variant: item.status === "accepted" ? "default" : "outline" }, String(item.status).replace(/_/g, " ")) : null,
-          ),
-          item.detail ? React.createElement("p", { className: "index-dashboard__item-detail" }, item.detail) : null,
-          Array.isArray(item.networks) && item.networks.length > 0
-            ? React.createElement("div", { className: "index-dashboard__item-networks" },
-              React.createElement("span", null, "Surfaced in"),
-              item.networks.map(function (network) {
-                return React.createElement(BadgeText, { key: String(network), variant: "outline" }, network);
-              }),
-            )
-            : null,
-          item.meta ? React.createElement("p", { className: "index-dashboard__item-meta" }, item.meta) : null,
-        );
-      }),
-    );
   }
 
   function Panel(props) {
@@ -309,8 +263,8 @@
         })
         : null,
       React.createElement("div", { className: "index-dashboard__question-actions" },
-        React.createElement("button", { type: "button", className: "index-dashboard__skip", disabled: submitting, onClick: function () { props.onSkip(question); } }, "Skip"),
-        React.createElement(Button, { type: "submit", disabled: !canSubmit || submitting }, submitting ? "Saving…" : "Submit"),
+        React.createElement(Button, { type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md", disabled: submitting, onClick: function () { props.onSkip(question); } }, "Skip"),
+        React.createElement(Button, { type: "submit", size: "sm", className: "index-dashboard__btn-md", disabled: !canSubmit || submitting }, submitting ? "Saving…" : "Submit"),
       ),
     );
   }
@@ -390,6 +344,37 @@
     const status = opportunity.status || "";
     const resolved = OPP_RESOLVED_LABEL[status];
     const networks = Array.isArray(opportunity.networks) ? opportunity.networks : [];
+    const acting = !!props.actingId && props.actingId === opportunity.opportunityId;
+    let actions = null;
+    if (props.onAccept && bucketForStatus(status) === "pending") {
+      actions = React.createElement("div", { className: "index-dashboard__opp-actions" },
+        React.createElement(Button, {
+          type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
+          disabled: acting,
+          onClick: function () { if (props.onSkip) props.onSkip(opportunity.opportunityId); },
+        }, "Skip"),
+        React.createElement(Button, {
+          type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md",
+          disabled: acting,
+          onClick: function () { props.onAccept(opportunity.opportunityId); },
+        }, acting ? "Working…" : "Start chat"),
+      );
+    } else if (status === "accepted") {
+      const chatHref = opportunity.chatUrl
+        || (props.webUrl && opportunity.counterpartUserId
+          ? props.webUrl + "/u/" + encodeURIComponent(opportunity.counterpartUserId)
+          : null);
+      if (chatHref) {
+        actions = React.createElement("div", { className: "index-dashboard__opp-actions" },
+          React.createElement("a", {
+            className: "index-dashboard__opp-openchat",
+            href: chatHref,
+            target: "_blank",
+            rel: "noopener noreferrer",
+          }, "Open chat ↗"),
+        );
+      }
+    }
     const clickable = !!props.onOpenUser && !!opportunity.counterpartUserId;
     const idProps = clickable
       ? {
@@ -441,6 +426,7 @@
             : null,
         )
         : null,
+      actions,
     );
   }
 
@@ -454,30 +440,16 @@
     }
     return React.createElement("div", { className: "index-dashboard__opps" },
       items.map(function (opportunity, index) {
-        return React.createElement(OpportunityCard, { key: opportunity.opportunityId || String(index), opportunity: opportunity, onOpenUser: props.onOpenUser });
+        return React.createElement(OpportunityCard, {
+          key: opportunity.opportunityId || String(index),
+          opportunity: opportunity,
+          onOpenUser: props.onOpenUser,
+          onAccept: props.onAccept,
+          onSkip: props.onSkip,
+          actingId: props.actingId,
+          webUrl: props.webUrl,
+        });
       }),
-    );
-  }
-
-  const SEG_BASE_CLASS = "font-mondwest tracking-[0.1em] transition-colors cursor-pointer whitespace-nowrap border-r border-midground/15 last:border-r-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-midground/30 h-8 px-3 text-xs";
-  const SEG_ACTIVE_CLASS = " bg-midground text-background";
-  const SEG_INACTIVE_CLASS = " text-text-secondary hover:bg-midground/10 hover:text-midground";
-
-  function Segmented(props) {
-    function tab(id, label) {
-      const active = props.view === id;
-      return React.createElement("button", {
-        type: "button",
-        role: "radio",
-        "aria-checked": active ? "true" : "false",
-        className: SEG_BASE_CLASS + (active ? SEG_ACTIVE_CLASS : SEG_INACTIVE_CLASS),
-        onClick: function () { props.onChange(id); },
-      }, label);
-    }
-    return React.createElement("div", { className: "inline-flex border border-midground/15 bg-background/30 w-fit shrink-0", role: "radiogroup" },
-      tab("intents", "Intents"),
-      tab("negotiations", "Negotiations"),
-      tab("networks", "Networks"),
     );
   }
 
@@ -506,6 +478,216 @@
       React.createElement("div", { className: "index-dashboard__intent-counts" },
         props.count ? React.createElement(BadgeText, { variant: "default" }, formatCount(props.count) + " Q") : null,
       ),
+    );
+  }
+
+  function IntentPitch() {
+    return React.createElement("aside", { className: "index-dashboard__pitch" },
+      React.createElement("h2", { className: "index-dashboard__pitch-title" },
+        "meet the person your agent is ",
+        React.createElement("mark", { className: "index-dashboard__pitch-mark" }, "already"),
+        " looking for.",
+      ),
+      React.createElement("p", { className: "index-dashboard__pitch-text" },
+        "tell index what you're after. agents negotiate quietly in the background, and let you know if there's an alignment.",
+      ),
+    );
+  }
+
+  function ICON_USERS() {
+    return svgIcon("index-dashboard__net-sub-icon", [
+      svgPath("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"),
+      React.createElement("circle", { key: "head", cx: 9, cy: 7, r: 4 }),
+      svgPath("M22 21v-2a4 4 0 0 0-3-3.87"),
+      svgPath("M16 3.13a4 4 0 0 1 0 7.75"),
+    ]);
+  }
+
+  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
+  // palette, so dashboard network avatars match the Index web app exactly.
+  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+
+  function baHash(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = (hash << 5) - hash + name.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  }
+
+  function baDigit(num, ntn) {
+    return Math.floor((num / Math.pow(10, ntn)) % 10);
+  }
+
+  function baBool(num, ntn) {
+    return !(baDigit(num, ntn) % 2);
+  }
+
+  function baUnit(num, range, index) {
+    const value = num % range;
+    if (index && baDigit(num, index) % 2 === 0) return -value;
+    return value;
+  }
+
+  function baColor(num) {
+    return BORING_PALETTE[num % BORING_PALETTE.length];
+  }
+
+  function BoringAvatar(props) {
+    const SIZE = 80;
+    const ELEMENTS = 4;
+    const seed = String(props.seed || "default");
+    const num = baHash(seed);
+    const props_ = [];
+    for (let t = 0; t < ELEMENTS; t++) {
+      props_.push({
+        color: baColor(num + t),
+        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
+        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
+        rotate: baUnit(num * (t + 1), 360),
+        isSquare: baBool(num, 2),
+      });
+    }
+    const maskId = "ba-mask-" + num;
+    return React.createElement("svg", {
+      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
+      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
+    },
+      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
+        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
+      ),
+      React.createElement("g", { mask: "url(#" + maskId + ")" },
+        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
+        React.createElement("rect", {
+          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
+          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
+          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+        React.createElement("circle", {
+          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
+          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
+        }),
+        React.createElement("line", {
+          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
+          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+      ),
+    );
+  }
+
+  function NetworkMiniRow(props) {
+    const network = props.network;
+    const count = typeof network.memberCount === "number" ? network.memberCount : null;
+    const isEvent = network.type === "event";
+    const isOwner = network.role === "owner";
+    return React.createElement("button", { type: "button", className: "index-dashboard__net-row", onClick: function () { if (props.onOpen) props.onOpen(network); } },
+      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
+        network.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: network.id || network.title }),
+      ),
+      React.createElement("span", { className: "index-dashboard__net-meta" },
+        React.createElement("span", { className: "index-dashboard__net-title" }, network.title || "Untitled network"),
+        React.createElement("span", { className: "index-dashboard__net-sub" },
+          ICON_USERS(),
+          (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
+        ),
+      ),
+      isEvent ? React.createElement("span", { className: "index-dashboard__net-event" }, "Event") : null,
+      React.createElement("span", { className: "index-dashboard__net-role index-dashboard__net-role--" + (isOwner ? "owner" : "member") }, isOwner ? "Owner" : "Member"),
+    );
+  }
+
+  function NetworkDiscoverRow(props) {
+    const network = props.network;
+    const count = typeof network.memberCount === "number" ? network.memberCount : null;
+    const isEvent = network.type === "event";
+    const joining = props.joiningId === network.id;
+    return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-row--static" },
+      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
+        network.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: network.id || network.title }),
+      ),
+      React.createElement("span", { className: "index-dashboard__net-meta" },
+        React.createElement("span", { className: "index-dashboard__net-title" }, network.title || "Untitled network"),
+        React.createElement("span", { className: "index-dashboard__net-sub" },
+          ICON_USERS(),
+          (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
+        ),
+      ),
+      isEvent ? React.createElement("span", { className: "index-dashboard__net-event" }, "Event") : null,
+      React.createElement(Button, {
+        type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md",
+        disabled: joining, onClick: function () { if (props.onJoin) props.onJoin(network.id); },
+      }, joining ? "Joining…" : "Join"),
+    );
+  }
+
+  function NetworkRows(props) {
+    const items = Array.isArray(props.items) ? props.items : [];
+    if (props.error) {
+      return React.createElement("div", { className: "index-dashboard__error" }, props.error);
+    }
+    if (items.length === 0) {
+      return React.createElement(EmptyState, null, props.empty || "Nothing to show yet.");
+    }
+    return React.createElement("div", { className: "index-dashboard__net-list" },
+      items.map(function (network, index) {
+        return props.discover
+          ? React.createElement(NetworkDiscoverRow, { key: network.id || String(index), network: network, onJoin: props.onJoin, joiningId: props.joiningId })
+          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
+      }),
+    );
+  }
+
+  function ICON_COMPASS() {
+    return svgIcon("index-dashboard__net-discover-icon", [
+      React.createElement("circle", { key: "c", cx: 12, cy: 12, r: 10 }),
+      React.createElement("polygon", { key: "n", points: "16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" }),
+    ]);
+  }
+
+  function NetworkDiscoverModal(props) {
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__net-modal", onClick: function (e) { e.stopPropagation(); } },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Discover networks"),
+          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
+        React.createElement("div", { className: "index-dashboard__net-modal-body" },
+          React.createElement(NetworkRows, { items: props.discover, discover: true, error: props.error, empty: "No public networks to discover right now.", onJoin: props.onJoin, joiningId: props.joiningId }),
+        ),
+      ),
+    );
+  }
+
+  function NetworksMini(props) {
+    const networks = props.networks || { items: [], count: 0, discover: [] };
+    const items = Array.isArray(networks.items) ? networks.items : [];
+    const discover = Array.isArray(networks.discover) ? networks.discover : [];
+    const openState = React.useState(false);
+    const open = openState[0];
+    const setOpen = openState[1];
+    return React.createElement("section", { className: "index-dashboard__net-card" },
+      React.createElement("div", { className: "index-dashboard__net-head" },
+        React.createElement("span", { className: "index-dashboard__net-heading" }, "Networks"),
+        React.createElement("div", { className: "index-dashboard__net-head-actions" },
+          items.length > 0 ? React.createElement(BadgeText, null, formatCount(networks.count || items.length)) : null,
+          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { setOpen(true); } }, ICON_COMPASS(), "Discover"),
+        ),
+      ),
+      networks.error
+        ? React.createElement("div", { className: "index-dashboard__error" }, networks.error)
+        : items.length === 0
+          ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
+          : React.createElement("div", { className: "index-dashboard__net-list" },
+            items.map(function (network, index) {
+              return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
+            }),
+          ),
+      open ? React.createElement(NetworkDiscoverModal, { discover: discover, error: networks.error, onJoin: props.onJoin, joiningId: props.joiningId, onClose: function () { setOpen(false); } }) : null,
     );
   }
 
@@ -565,7 +747,7 @@
         networks: intent.networks,
         onBack: props.onBack,
         actions: [
-          React.createElement(HeaderActionButton, { key: "pause", title: "Pause", tone: "text-warning" }, ICON_PAUSE()),
+          React.createElement(HeaderActionButton, { key: "pause", title: "Pause", label: "Pause", tone: "text-warning" }, ICON_PAUSE()),
           React.createElement(HeaderActionButton, { key: "edit", title: "Edit" }, ICON_PENCIL()),
           React.createElement(HeaderActionButton, { key: "remove", title: "Remove", tone: "text-destructive" }, ICON_TRASH()),
         ],
@@ -576,7 +758,7 @@
       ),
         React.createElement(Panel, { title: "Radar", count: intent.opportunityCount, description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
-          React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser }),
+          React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -590,30 +772,6 @@
       React.createElement(Panel, { primary: true, title: "Questions", count: questionSection.items.length, description: "Onboarding and follow-ups not tied to an intent." },
         React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
-    );
-  }
-
-  function NetworksView(props) {
-    const networks = props.networks || { items: [], count: 0 };
-    return React.createElement(Panel, { cron: true, icon: ICON_SHARE(), title: "Networks", count: networks.count },
-      React.createElement(ItemList, { items: networks.items, error: networks.error, empty: "You are not joined to any networks yet." }),
-    );
-  }
-
-  function ICON_HANDSHAKE() {
-    return svgIcon("h-4 w-4", [
-      svgPath("m11 17 2 2a1 1 0 1 0 3-3"),
-      svgPath("m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"),
-      svgPath("m21 3 1 11h-2"),
-      svgPath("M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"),
-      svgPath("M3 4h8"),
-    ]);
-  }
-
-  function NegotiationsView(props) {
-    const negotiations = props.negotiations || { items: [], count: 0 };
-    return React.createElement(Panel, { cron: true, icon: ICON_HANDSHAKE(), title: "Negotiations", count: negotiations.count },
-      React.createElement(RadarList, { items: negotiations.items, error: negotiations.error, empty: "No active negotiations right now.", onOpenUser: props.onOpenUser }),
     );
   }
 
@@ -1044,9 +1202,12 @@
     const submittingState = useState(null);
     const submittingId = submittingState[0];
     const setSubmittingId = submittingState[1];
-    const viewState = useState(initial.view);
-    const view = viewState[0];
-    const setView = viewState[1];
+    const actingState = useState(null);
+    const actingId = actingState[0];
+    const setActingId = actingState[1];
+    const joiningState = useState(null);
+    const joiningId = joiningState[0];
+    const setJoiningId = joiningState[1];
     const selectedState = useState(initial.intentId);
     const selectedId = selectedState[0];
     const setSelectedId = selectedState[1];
@@ -1061,12 +1222,7 @@
     const setViewUserId = viewUserState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
-    const changeViewRef = useRef(null);
     const toggleProfileRef = useRef(null);
-    const segCtlRef = useRef(null);
-    const segInHeaderState = useState(false);
-    const segInHeader = segInHeaderState[0];
-    const setSegInHeader = segInHeaderState[1];
 
     function load() {
       setLoading(true);
@@ -1135,6 +1291,72 @@
         });
     }
 
+    function opportunityAction(opportunityId, action, onPayload) {
+      if (!opportunityId) return;
+      setActingId(opportunityId);
+      setActionError(null);
+      fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(opportunityId) + "/" + action, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "That action could not be completed.");
+          }
+          if (onPayload) onPayload(payload);
+          load();
+        })
+        .catch(function (err) {
+          setActionError(err && err.message ? err.message : String(err));
+        })
+        .finally(function () {
+          setActingId(null);
+        });
+    }
+
+    function acceptOpportunity(opportunityId) {
+      opportunityAction(opportunityId, "accept", function (payload) {
+        if (payload.chatUrl) {
+          try { window.open(payload.chatUrl, "_blank", "noopener"); } catch (e) { /* popup blocked */ }
+        }
+      });
+    }
+
+    function skipOpportunity(opportunityId) {
+      opportunityAction(opportunityId, "skip");
+    }
+
+    function joinNetwork(networkId) {
+      if (!networkId) return;
+      setJoiningId(networkId);
+      setActionError(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(networkId) + "/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not join that network.");
+          }
+          load();
+        })
+        .catch(function (err) {
+          setActionError(err && err.message ? err.message : String(err));
+        })
+        .finally(function () {
+          setJoiningId(null);
+        });
+    }
+
+    function openNetworkInWeb(network) {
+      const base = summary && summary.webUrl;
+      if (base && network && network.id) {
+        try { window.open(base + "/networks/" + encodeURIComponent(network.id), "_blank", "noopener"); } catch (e) { /* popup blocked */ }
+      }
+    }
+
     loadRef.current = load;
 
     useEffect(function () {
@@ -1145,28 +1367,6 @@
       const header = document.querySelector('header[role="banner"]');
       if (!header) return undefined;
       const container = header.querySelector("div") || header;
-
-      const seg = document.createElement("div");
-      seg.className = "inline-flex border border-midground/15 bg-background/30 w-fit shrink-0 index-dashboard__hdr-seg";
-      seg.setAttribute("role", "radiogroup");
-      const segButtons = {};
-      [["intents", "Intents"], ["negotiations", "Negotiations"], ["networks", "Networks"]].forEach(function (pair) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.setAttribute("role", "radio");
-        b.className = SEG_BASE_CLASS;
-        b.textContent = pair[1];
-        b.addEventListener("click", function () {
-          if (changeViewRef.current) changeViewRef.current(pair[0]);
-        });
-        seg.appendChild(b);
-        segButtons[pair[0]] = b;
-      });
-      const titleHeading = container.querySelector("h1");
-      const titleGroup = (titleHeading && titleHeading.parentElement) || container.firstElementChild || container;
-      titleGroup.appendChild(seg);
-      segCtlRef.current = segButtons;
-      setSegInHeader(true);
 
       const wrap = document.createElement("div");
       wrap.className = "index-dashboard__hdr";
@@ -1225,22 +1425,9 @@
         refresh.removeEventListener("click", onRefresh);
         account.removeEventListener("click", onAccount);
         wrap.remove();
-        seg.remove();
         headerCtlRef.current = null;
-        segCtlRef.current = null;
-        setSegInHeader(false);
       };
     }, []);
-
-    useEffect(function () {
-      const ctl = segCtlRef.current;
-      if (!ctl) return;
-      Object.keys(ctl).forEach(function (id) {
-        const active = view === id;
-        ctl[id].setAttribute("aria-checked", active ? "true" : "false");
-        ctl[id].className = SEG_BASE_CLASS + (active ? SEG_ACTIVE_CLASS : SEG_INACTIVE_CLASS) + " index-dashboard__hdr-seg-btn";
-      });
-    }, [view, segInHeader]);
 
     useEffect(function () {
       const ctl = headerCtlRef.current;
@@ -1264,9 +1451,7 @@
 
     useEffect(function () {
       function onHashChange() {
-        const parsed = parseHash();
-        setView(parsed.view);
-        setSelectedId(parsed.intentId);
+        setSelectedId(parseHash().intentId);
       }
       window.addEventListener("hashchange", onHashChange);
       return function () {
@@ -1279,16 +1464,9 @@
 
     function selectIntent(id) {
       setSelectedId(id);
-      setView("intents");
-      writeHash("intents", id);
+      writeHash(id);
     }
 
-    function changeView(nextView) {
-      setView(nextView);
-      writeHash(nextView, nextView === "networks" ? null : selectedId);
-    }
-
-    changeViewRef.current = changeView;
     toggleProfileRef.current = function () { setProfileOpen(function (open) { return !open; }); };
 
     function openUser(userId) {
@@ -1297,7 +1475,7 @@
 
     function goBack() {
       setSelectedId(null);
-      writeHash("intents", null);
+      writeHash(null);
     }
 
     const selectedIntent = selectedId && selectedId !== "general"
@@ -1308,10 +1486,16 @@
     const intentsView = showDetail
       ? (selectedId === "general"
         ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack })
-        : React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser }))
+        : React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, actingId: actingId, webUrl: summary && summary.webUrl }))
       : React.createElement("div", { className: "index-dashboard__list-page" },
-        React.createElement(Panel, { cron: true, icon: ICON_TARGET(), title: "Intents", count: intents.length },
-          React.createElement(IntentList, { intents: intents, generalCount: general.count, selectedId: selectedId, onSelect: selectIntent }),
+        React.createElement(IntentPitch, null),
+        React.createElement("div", { className: "index-dashboard__list-cols" },
+          React.createElement(Panel, { cron: true, icon: ICON_TARGET(), title: "Intents", count: intents.length },
+            React.createElement(IntentList, { intents: intents, generalCount: general.count, selectedId: selectedId, onSelect: selectIntent }),
+          ),
+          React.createElement("div", { className: "index-dashboard__list-side" },
+            React.createElement(NetworksMini, { networks: summary && summary.networks, onOpen: openNetworkInWeb, onJoin: joinNetwork, joiningId: joiningId }),
+          ),
         ),
       );
 
@@ -1325,14 +1509,7 @@
 
       loading && !summary
         ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading Index Network data…")
-        : React.createElement("div", { className: "index-dashboard__body" },
-          segInHeader ? null : React.createElement(Segmented, { view: view, onChange: changeView }),
-          view === "networks"
-            ? React.createElement(NetworksView, { networks: summary && summary.networks })
-              : view === "negotiations"
-              ? React.createElement(NegotiationsView, { negotiations: summary && summary.negotiations, onOpenUser: openUser })
-              : intentsView,
-        ),
+        : React.createElement("div", { className: "index-dashboard__body" }, intentsView),
     );
   }
 

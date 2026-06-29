@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -117,6 +118,16 @@ def _call_mcp(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, A
 
 def _call_pending_questions() -> dict[str, Any]:
     return _call_mcp("read_pending_questions", {"limit": _QUESTION_LIMIT})
+
+
+def _web_url() -> str:
+    """Resolve the Index web app origin for outbound chat/profile links."""
+    raw = os.environ.get("INDEX_WEB_URL", "").strip()
+    return (raw or "https://index.network").rstrip("/")
+
+
+def _update_opportunity(opportunity_id: str, status: str) -> dict[str, Any]:
+    return _call_mcp("update_opportunity", {"opportunityId": opportunity_id, "status": status})
 
 
 def _call_answer_question(question_id: str, answer: dict[str, Any]) -> dict[str, Any]:
@@ -426,7 +437,32 @@ def _network_title_map(networks_payload: dict[str, Any], memberships_payload: di
     return titles
 
 
+def _member_count(network: dict[str, Any]) -> int | None:
+    for key in ("memberCount", "members"):
+        value = network.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return int(value)
+    count_obj = network.get("_count")
+    if isinstance(count_obj, dict) and isinstance(count_obj.get("members"), (int, float)):
+        return int(count_obj["members"])
+    return None
+
+
+def _owned_networks_map(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Map of network id -> raw `owns` entry (carries memberCount and implies owner role)."""
+    data = _data(payload)
+    owned: dict[str, dict[str, Any]] = {}
+    if isinstance(data, dict):
+        for network in _list(data.get("owns")):
+            if isinstance(network, dict):
+                network_id = _text(network.get("networkId") or network.get("id"))
+                if network_id:
+                    owned[network_id] = network
+    return owned
+
+
 def _normalize_networks(payload: dict[str, Any]) -> dict[str, Any]:
+    owned = _owned_networks_map(payload)
     seen: set[str] = set()
     items = []
     for network in _joined_networks(payload):
@@ -436,19 +472,68 @@ def _normalize_networks(payload: dict[str, Any]) -> dict[str, Any]:
         seen.add(key)
         title = _text(network.get("title") or network.get("name"), "Untitled network")
         detail = _truncate(network.get("renderedContext") or network.get("prompt") or network.get("description"))
-        permissions = _list(network.get("permissions"))
-        meta_parts = []
-        if network.get("isPersonal") is True:
-            meta_parts.append("personal")
-        if permissions:
-            meta_parts.append(", ".join(_text(p) for p in permissions if _text(p)))
+        permissions = [_text(p).lower() for p in _list(network.get("permissions")) if _text(p)]
+        network_id = _text(network.get("networkId") or network.get("id"))
+        is_personal = network.get("isPersonal") is True
+        is_owner = (network_id and network_id in owned) or ("owner" in permissions)
+        member_count = _member_count(network)
+        if member_count is None and network_id in owned:
+            member_count = _member_count(owned[network_id])
+
         item: dict[str, Any] = {"title": title}
+        if network_id:
+            item["id"] = network_id
+        image_url = _text(network.get("imageUrl"))
+        if image_url:
+            item["imageUrl"] = image_url
+        if member_count is not None:
+            item["memberCount"] = member_count
+        item["isPersonal"] = is_personal
+        item["role"] = "owner" if is_owner else "member"
+        net_type = _text(network.get("type"))
+        if net_type:
+            item["type"] = net_type
         if detail:
             item["detail"] = detail
-        if meta_parts:
-            item["meta"] = " · ".join(meta_parts)
         items.append(item)
-    return {"items": items, "count": len(items), "error": _section_error(payload)}
+    items.sort(key=lambda n: (not n.get("isPersonal"), n.get("title", "").lower()))
+    return {
+        "items": items,
+        "count": len(items),
+        "discover": _normalize_public_networks(payload),
+        "error": _section_error(payload),
+    }
+
+
+def _normalize_public_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Joinable public communities (read_networks `publicNetworks`) for the Discover tab."""
+    data = _data(payload)
+    raw = _list(data.get("publicNetworks")) if isinstance(data, dict) else []
+    seen: set[str] = set()
+    items = []
+    for network in raw:
+        if not isinstance(network, dict):
+            continue
+        network_id = _text(network.get("networkId") or network.get("id"))
+        key = network_id or _text(network.get("title"))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        item: dict[str, Any] = {"title": _text(network.get("title") or network.get("name"), "Untitled network")}
+        if network_id:
+            item["id"] = network_id
+        member_count = _member_count(network)
+        if member_count is not None:
+            item["memberCount"] = member_count
+        net_type = _text(network.get("type"))
+        if net_type:
+            item["type"] = net_type
+        detail = _truncate(network.get("renderedContext") or network.get("prompt") or network.get("description"))
+        if detail:
+            item["detail"] = detail
+        items.append(item)
+    items.sort(key=lambda n: n.get("title", "").lower())
+    return items
 
 
 def _empty_status_counts() -> dict[str, int]:
@@ -628,6 +713,7 @@ def summary() -> dict[str, Any]:
 
     return {
         "success": True,
+        "webUrl": _web_url(),
         "intents": dashboard["intents"],
         "general": dashboard["general"],
         "negotiations": negotiations,
@@ -656,6 +742,51 @@ def dismiss_question(question_id: str) -> dict[str, Any]:
     if payload.get("success") is False:
         return payload
     return {"success": True}
+
+
+@router.post("/networks/{network_id}/join")
+def join_network(network_id: str) -> dict[str, Any]:
+    """Self-join an open (joinPolicy 'anyone') community via MCP create_network_membership."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = _call_mcp("create_network_membership", {"networkId": network_id})
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+@router.post("/opportunities/{opportunity_id}/accept")
+def accept_opportunity(opportunity_id: str) -> dict[str, Any]:
+    """Accept an opportunity (Start chat) via MCP update_opportunity → status=accepted.
+
+    Returns the new conversation's web chat URL when the tool surfaces one.
+    """
+    opportunity_id = _text(opportunity_id)
+    if not opportunity_id:
+        return {"success": False, "error": "An opportunity id is required."}
+    payload = _update_opportunity(opportunity_id, "accepted")
+    if payload.get("success") is False:
+        return payload
+    data = _data(payload)
+    conversation_id = _text(data.get("conversationId")) if isinstance(data, dict) else ""
+    result: dict[str, Any] = {"success": True, "status": "accepted"}
+    if conversation_id:
+        result["conversationId"] = conversation_id
+        result["chatUrl"] = f"{_web_url()}/chat/{quote(conversation_id, safe='')}"
+    return result
+
+
+@router.post("/opportunities/{opportunity_id}/skip")
+def skip_opportunity(opportunity_id: str) -> dict[str, Any]:
+    """Skip (decline) an opportunity via MCP update_opportunity → status=rejected."""
+    opportunity_id = _text(opportunity_id)
+    if not opportunity_id:
+        return {"success": False, "error": "An opportunity id is required."}
+    payload = _update_opportunity(opportunity_id, "rejected")
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "status": "rejected"}
 
 
 @router.get("/profile")

@@ -182,12 +182,11 @@ def main() -> None:
     dashboard_js = dashboard_js_path.read_text()
     assert 'register("index-network"' in dashboard_js
     assert "Intents" in dashboard_js
-    assert "Negotiations" in dashboard_js
     assert "Networks" in dashboard_js
     assert "Questions" in dashboard_js
     assert "Radar" in dashboard_js
     assert "hashchange" in dashboard_js
-    assert "index-dashboard__skip" in dashboard_js
+    assert "index-dashboard__question-actions" in dashboard_js
     assert "/dismiss" in dashboard_js
     assert "index-dashboard__header-refresh" in dashboard_js
     assert 'header[role="banner"]' in dashboard_js
@@ -561,6 +560,31 @@ def main() -> None:
         assert dashboard_api.dismiss_question("question-1") == {"success": True}
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/questions/question-1/dismiss"
+
+        captured = []
+        install_fake_urlopen([mcp_text_response({"success": True, "conversationId": "conv-9"})], captured)
+        accept_result = dashboard_api.accept_opportunity("opp-1")
+        assert accept_result["success"] is True
+        assert accept_result["status"] == "accepted"
+        assert accept_result["conversationId"] == "conv-9"
+        assert accept_result["chatUrl"] == "https://index.network/chat/conv-9"
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["body"]["params"] == {
+            "name": "update_opportunity",
+            "arguments": {"opportunityId": "opp-1", "status": "accepted"},
+        }
+        assert dashboard_api.accept_opportunity("") == {
+            "success": False,
+            "error": "An opportunity id is required.",
+        }
+
+        captured = []
+        install_fake_urlopen([mcp_text_response({"success": True})], captured)
+        assert dashboard_api.skip_opportunity("opp-1") == {"success": True, "status": "rejected"}
+        assert captured[-1]["body"]["params"] == {
+            "name": "update_opportunity",
+            "arguments": {"opportunityId": "opp-1", "status": "rejected"},
+        }
 
         captured = []
         install_fake_urlopen(
