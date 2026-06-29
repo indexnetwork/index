@@ -168,8 +168,15 @@ def main() -> None:
         assert (ROOT / relative_path).exists(), f"missing dashboard file: {relative_path}"
 
     dashboard_manifest = json.loads((ROOT / "dashboard" / "manifest.json").read_text())
+    package_json = json.loads((ROOT / "package.json").read_text())
+    plugin_yaml_version = next(
+        line.split(":", 1)[1].strip()
+        for line in (ROOT / "plugin.yaml").read_text().splitlines()
+        if line.startswith("version:")
+    )
+    assert dashboard_manifest["version"] == package_json["version"] == plugin_yaml_version
     assert dashboard_manifest["name"] == "index-network"
-    assert dashboard_manifest["label"] == "Index Network"
+    assert dashboard_manifest["label"] == "Index"
     assert dashboard_manifest["entry"] == "dist/index.js"
     assert dashboard_manifest["css"] == "dist/style.css"
     assert dashboard_manifest["api"] == "plugin_api.py"
@@ -181,16 +188,31 @@ def main() -> None:
     subprocess.run(["node", "--check", str(dashboard_js_path)], check=True)
     dashboard_js = dashboard_js_path.read_text()
     assert 'register("index-network"' in dashboard_js
-    assert "Question answers enabled" in dashboard_js
-    assert "Questions" in dashboard_js
     assert "Intents" in dashboard_js
-    assert "Opportunities" in dashboard_js
-    assert "Negotiation activity" in dashboard_js
     assert "Networks" in dashboard_js
+    assert "Questions" in dashboard_js
+    assert "Radar" in dashboard_js
+    assert "hashchange" in dashboard_js
+    assert "index-dashboard__question-actions" in dashboard_js
+    assert "/dismiss" in dashboard_js
+    assert "index-dashboard__header-refresh" in dashboard_js
+    assert 'header[role="banner"]' in dashboard_js
+    assert "index-dashboard__avatar-img" in dashboard_js
+    assert "AUTO-REFRESH" in dashboard_js
+    assert "index-dashboard__switch" in dashboard_js
+    assert "setInterval" in dashboard_js
+    assert "5000" in dashboard_js
     assert "/api/" + "plugins/index-network" in dashboard_js
     assert "SDK.fetchJSON" in dashboard_js
     assert "index_pickup_negotiation" not in dashboard_js
     assert "index_respond_negotiation" not in dashboard_js
+    assert "index-dashboard__hdr-account" in dashboard_js
+    assert "ProfilePanel" in dashboard_js
+    assert "Notification Settings" in dashboard_js
+    assert "/profile" in dashboard_js
+    assert "index-dashboard__opp-id--clickable" in dashboard_js
+    assert "onOpenUser" in dashboard_js
+    assert "counterpartUserId" in dashboard_js
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
@@ -382,11 +404,9 @@ def main() -> None:
                         "data": {
                             "intents": [
                                 {
-                                    "id": "intent-hidden",
+                                    "id": "intent-1",
                                     "summary": "Find robotics mentors",
                                     "description": "Looking for mentors in applied robotics.",
-                                    "status": "active",
-                                    "confidence": 0.91,
                                 }
                             ],
                             "count": 1,
@@ -407,9 +427,20 @@ def main() -> None:
                                     "multiSelect": False,
                                     "mode": "intent",
                                     "sourceType": "intent",
-                                }
+                                    "sourceId": "intent-1",
+                                },
+                                {
+                                    "id": "question-2",
+                                    "title": "Onboarding",
+                                    "prompt": "Tell us about yourself.",
+                                    "options": [],
+                                    "multiSelect": False,
+                                    "mode": "enrichment",
+                                    "sourceType": "profile",
+                                    "sourceId": "user-1",
+                                },
                             ],
-                            "count": 1,
+                            "count": 2,
                         },
                     },
                     response_id=11,
@@ -418,20 +449,9 @@ def main() -> None:
                     {
                         "success": True,
                         "data": {
-                            "found": True,
-                            "count": 1,
-                            "message": "You have 1 opportunity.\n\n1. Ada\n   Can advise on robotics hiring.\n   status: draft\n   opportunityId: hidden\n\nDo NOT print raw JSON.",
-                        },
-                    },
-                    response_id=12,
-                ),
-                mcp_text_response(
-                    {
-                        "success": True,
-                        "data": {
                             "memberOf": [
                                 {
-                                    "networkId": "network-hidden",
+                                    "networkId": "network-1",
                                     "title": "Robotics Guild",
                                     "prompt": "People building robotics companies.",
                                     "permissions": ["member"],
@@ -447,11 +467,11 @@ def main() -> None:
                     {
                         "success": True,
                         "data": {
-                            "userId": "user-hidden",
+                            "userId": "user-1",
                             "count": 1,
                             "memberships": [
                                 {
-                                    "networkId": "network-hidden",
+                                    "networkId": "network-1",
                                     "networkTitle": "Robotics Guild",
                                     "permissions": ["member"],
                                 }
@@ -460,72 +480,144 @@ def main() -> None:
                     },
                     response_id=13,
                 ),
-                mcp_text_response(
+                FakeResponse(
                     {
-                        "success": True,
-                        "data": {
-                            "links": [
-                                {
-                                    "intentId": "intent-hidden",
-                                    "networkId": "network-hidden",
-                                    "intentTitle": "Looking for mentors in applied robotics.",
-                                    "relevancyScore": 0.94,
-                                }
-                            ],
-                            "count": 1,
-                        },
-                    },
-                    response_id=14,
+                        "opportunities": [
+                            {
+                                "id": "opp-1",
+                                "status": "pending",
+                                "detection": {"triggeredBy": "intent-1"},
+                                "counterpartName": "Ada",
+                                "counterpartAvatar": "avatars/other/pic.png",
+                                "interpretation": {"category": "mentor", "reasoning": "Can advise on robotics hiring."},
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
+                                    {"userId": "other", "networkId": "network-1", "intent": "other-intent", "role": "patient"},
+                                ],
+                            },
+                            {
+                                "id": "opp-general",
+                                "status": "pending",
+                                "detection": {},
+                                "counterpartName": "Grace",
+                                "interpretation": {"category": "intro", "reasoning": "Worth a direct follow-up."},
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "role": "agent"},
+                                    {"userId": "intro", "networkId": "network-1", "role": "introducer"},
+                                    {"userId": "other-general", "networkId": "network-1", "role": "patient"},
+                                ],
+                            },
+                            {
+                                "id": "opp-waiting-on-other",
+                                "status": "pending",
+                                "detection": {},
+                                "counterpartName": "Already Sent",
+                                "interpretation": {"category": "intro", "reasoning": "Waiting for the other side."},
+                                "actors": [
+                                    {
+                                        "userId": "user-1",
+                                        "networkId": "network-1",
+                                        "role": "agent",
+                                        "actedAt": "2026-05-12T10:00:00.000Z",
+                                    },
+                                    {"userId": "other-waiting", "networkId": "network-1", "role": "patient"},
+                                ],
+                            }
+                        ]
+                    }
                 ),
-                mcp_text_response(
-                    {"success": True, "data": {"count": 1, "totalCount": 7, "negotiations": [{"status": "completed"}]}},
-                    response_id=15,
+                FakeResponse(
+                    {
+                        "opportunities": [
+                            {
+                                "id": "opp-expired",
+                                "status": "expired",
+                                "detection": {"triggeredBy": "intent-1"},
+                                "counterpartName": "Expired Match",
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
+                                    {"userId": "expired-other", "networkId": "network-1", "role": "patient"},
+                                ],
+                            }
+                        ]
+                    }
                 ),
-                mcp_text_response(
-                    {"success": True, "data": {"count": 1, "totalCount": 2, "negotiations": [{"status": "active"}]}},
-                    response_id=16,
-                ),
-                mcp_text_response(
-                    {"success": True, "data": {"count": 1, "totalCount": 1, "negotiations": [{"status": "waiting_for_agent"}]}},
-                    response_id=17,
-                ),
-                mcp_text_response(
-                    {"success": True, "data": {"count": 1, "totalCount": 4, "negotiations": [{"status": "completed"}]}},
-                    response_id=18,
+                FakeResponse(
+                    {
+                        "opportunities": [
+                            {
+                                "id": "opp-rejected",
+                                "status": "rejected",
+                                "detection": {"triggeredBy": "intent-1"},
+                                "counterpartName": "Rejected Match",
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
+                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
+                                ],
+                            }
+                        ]
+                    }
                 ),
             ],
             captured,
         )
         summary = dashboard_api.summary()
         assert summary["success"] is True
-        sections = summary["sections"]
-        assert sections["intents"]["items"][0]["title"] == "Find robotics mentors"
-        assert sections["intents"]["items"][0]["detail"] == "Looking for mentors in applied robotics."
-        assert sections["intents"]["items"][0]["networks"] == ["Robotics Guild"]
-        assert sections["questions"]["count"] == 1
-        assert sections["questions"]["items"][0]["id"] == "question-1"
-        assert sections["questions"]["items"][0]["options"][0]["label"] == "Hiring"
-        assert sections["opportunities"]["items"][0]["title"] == "Ada"
-        assert sections["negotiations"]["count"] == 7
-        assert sections["negotiations"]["summary"] == {
-            "active": 2,
-            "waitingForAgent": 1,
-            "completed": 4,
-            "needsAttention": 1,
+        intents = summary["intents"]
+        assert len(intents) == 1
+        intent = intents[0]
+        assert intent["id"] == "intent-1"
+        assert intent["title"] == "Looking for mentors in applied robotics."
+        assert intent["status"] == "running"
+        assert intent["questionCount"] == 1
+        assert intent["opportunityCount"] == 1
+        assert intent["totalOpportunityCount"] == 3
+        assert intent["statusCounts"]["pending"] == 1
+        assert intent["statusCounts"]["rejected"] == 1
+        assert intent["statusCounts"]["expired"] == 1
+        assert intent["networks"] == ["Robotics Guild"]
+        assert intent["questions"][0]["id"] == "question-1"
+        assert intent["questions"][0]["options"][0]["label"] == "Hiring"
+        assert intent["opportunities"][0]["opportunityId"] == "opp-1"
+        assert intent["opportunities"][0]["avatar"] == "https://api.example.test/api/storage/avatars/other/pic.png"
+        assert intent["opportunities"][0]["name"] == "Ada"
+        assert intent["opportunities"][0]["subtitle"] == "Suggested connection"
+        assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
+        assert intent["opportunities"][0]["networks"] == ["Robotics Guild"]
+        assert intent["opportunities"][0]["counterpartUserId"] == "other"
+        assert summary["general"]["count"] == 2
+        assert summary["general"]["questionCount"] == 1
+        assert summary["general"]["opportunityCount"] == 1
+        assert summary["general"]["questions"][0]["id"] == "question-2"
+        assert summary["general"]["opportunities"][0]["opportunityId"] == "opp-general"
+        assert summary["general"]["opportunities"][0]["counterpartUserId"] == "other-general"
+        all_opp_ids = [
+            opp["opportunityId"]
+            for group in summary["intents"] + [summary["general"]]
+            for opp in group.get("opportunities", [])
+        ]
+        assert "opp-waiting-on-other" not in all_opp_ids
+        assert summary["general"]["statusCounts"]["pending"] == 1
+        assert summary["negotiations"]["count"] == 2
+        assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
+        assert summary["negotiations"]["items"][0]["subtitle"] == "Looking for mentors in applied robotics."
+        assert summary["negotiations"]["items"][0]["counterpartUserId"] == "other"
+        assert summary["networks"]["count"] == 1
+        assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
+        assert summary["totals"] == {
+            "intents": 1,
+            "questions": 2,
+            "opportunities": 2,
+            "totalOpportunities": 4,
+            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "rejected": 1, "expired": 1},
         }
-        assert sections["networks"]["items"][0]["title"] == "Robotics Guild"
-        assert sections["networks"]["count"] == 1
-        assert [entry["body"]["params"]["name"] for entry in captured] == [
-            "read_intents",
-            "read_pending_questions",
-            "list_opportunities",
-            "read_networks",
-            "read_network_memberships",
-            "read_intent_indexes",
-            "list_negotiations",
-            "list_negotiations",
-            "list_negotiations",
-            "list_negotiations",
+        mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
+        assert mcp_calls == ["read_intents", "read_pending_questions", "read_networks", "read_network_memberships"]
+        rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
+        assert rest_calls == [
+            ("GET", "https://api.example.test/api/opportunities"),
+            ("GET", "https://api.example.test/api/opportunities?status=expired"),
+            ("GET", "https://api.example.test/api/opportunities?status=rejected"),
         ]
 
         captured = []
@@ -542,6 +634,165 @@ def main() -> None:
             "success": False,
             "error": "Choose an option or add a free-text answer.",
         }
+
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True})], captured)
+        assert dashboard_api.dismiss_question("question-1") == {"success": True}
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/questions/question-1/dismiss"
+
+        captured = []
+        install_fake_urlopen([mcp_text_response({"success": True, "conversationId": "conv-9"})], captured)
+        accept_result = dashboard_api.accept_opportunity("opp-1")
+        assert accept_result["success"] is True
+        assert accept_result["status"] == "accepted"
+        assert accept_result["conversationId"] == "conv-9"
+        assert accept_result["chatUrl"] == "https://index.network/chat/conv-9"
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["body"]["params"] == {
+            "name": "update_opportunity",
+            "arguments": {"opportunityId": "opp-1", "status": "accepted"},
+        }
+        assert dashboard_api.accept_opportunity("") == {
+            "success": False,
+            "error": "An opportunity id is required.",
+        }
+
+        captured = []
+        install_fake_urlopen([mcp_text_response({"success": True})], captured)
+        assert dashboard_api.skip_opportunity("opp-1") == {"success": True, "status": "rejected"}
+        assert captured[-1]["body"]["params"] == {
+            "name": "update_opportunity",
+            "arguments": {"opportunityId": "opp-1", "status": "rejected"},
+        }
+
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
+                    response_id=20,
+                ),
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "hasProfile": True,
+                        "name": "Ada Lovelace",
+                        "bio": "Builds robots.",
+                        "location": "London",
+                        "context": "Ada is a robotics engineer.",
+                    },
+                    response_id=21,
+                ),
+                FakeResponse(
+                    {
+                        "user": {
+                            "id": "user-1",
+                            "name": "Ada Lovelace",
+                            "intro": "Builds robots.",
+                            "location": "London",
+                            "avatar": "avatars/user-1/a.png",
+                            "socials": [{"id": "s1", "label": "twitter", "value": "ada"}],
+                        }
+                    }
+                ),
+            ],
+            captured,
+        )
+        prof = dashboard_api.profile()
+        assert prof["success"] is True
+        profile_obj = prof["profile"]
+        assert profile_obj["id"] == "user-1"
+        assert profile_obj["name"] == "Ada Lovelace"
+        assert profile_obj["intro"] == "Builds robots."
+        assert profile_obj["location"] == "London"
+        assert profile_obj["avatar"] == "https://api.example.test/api/storage/avatars/user-1/a.png"
+        assert profile_obj["socials"] == [{"label": "twitter", "value": "ada"}]
+        assert profile_obj["context"] == "Ada is a robotics engineer."
+        assert profile_obj["notificationPreferences"] == {"connectionUpdates": True, "weeklyNewsletter": True}
+        assert "timezone" in prof["mockedFields"]
+        profile_mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
+        assert profile_mcp_calls == ["read_network_memberships", "read_user_contexts"]
+        profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
+        assert profile_rest_calls == [("GET", "https://api.example.test/api/users/user-1")]
+
+        update_ok = dashboard_api.update_profile(
+            {"name": "Ada L.", "notificationPreferences": {"connectionUpdates": False, "weeklyNewsletter": True}}
+        )
+        assert update_ok["success"] is True
+        assert update_ok["mock"] is True
+        assert update_ok["applied"]["name"] == "Ada L."
+        assert update_ok["applied"]["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
+        assert dashboard_api.update_profile("nope") == {"success": False, "error": "Profile body must be an object."}
+
+        assert dashboard_api.generate_intro({"intro": "current"}) == {"success": True, "mock": True, "intro": "current"}
+
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
+                    response_id=30,
+                ),
+                FakeResponse(
+                    {
+                        "opportunities": [
+                            {
+                                "id": "opp-profile",
+                                "actors": [
+                                    {"userId": "user-1", "role": "agent"},
+                                    {"userId": "other", "role": "patient"},
+                                ],
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse({"opportunities": []}),
+                FakeResponse({"opportunities": []}),
+                FakeResponse(
+                    {
+                        "user": {
+                            "id": "other",
+                            "name": "Grace Hopper",
+                            "intro": "Compiler pioneer.",
+                            "location": "New York",
+                            "avatar": "avatars/other/g.png",
+                            "socials": [{"id": "s2", "label": "github", "value": "grace"}],
+                        }
+                    }
+                ),
+                mcp_text_response(
+                    {"success": True, "hasProfile": True, "name": "Grace Hopper", "context": "Grace builds compilers."},
+                    response_id=31,
+                ),
+            ],
+            captured,
+        )
+        other = dashboard_api.public_profile("other")
+        assert other["success"] is True
+        assert other["readOnly"] is True
+        other_profile = other["profile"]
+        assert other_profile["id"] == "other"
+        assert other_profile["name"] == "Grace Hopper"
+        assert other_profile["intro"] == "Compiler pioneer."
+        assert other_profile["location"] == "New York"
+        assert other_profile["avatar"] == "https://api.example.test/api/storage/avatars/other/g.png"
+        assert other_profile["socials"] == [{"label": "github", "value": "grace"}]
+        assert other_profile["context"] == "Grace builds compilers."
+        public_rest = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
+        assert public_rest == [
+            ("GET", "https://api.example.test/api/opportunities"),
+            ("GET", "https://api.example.test/api/opportunities?status=expired"),
+            ("GET", "https://api.example.test/api/opportunities?status=rejected"),
+            ("GET", "https://api.example.test/api/users/other"),
+        ]
+        public_mcp = [entry["body"]["params"] for entry in captured if entry["body"]]
+        assert public_mcp == [
+            {"name": "read_network_memberships", "arguments": {}},
+            {"name": "read_user_contexts", "arguments": {"userId": "other"}},
+        ]
+
+        assert dashboard_api.public_profile("") == {"success": False, "error": "A user id is required."}
     finally:
         urllib.request.urlopen = old_urlopen
         if old_api_key is not None:

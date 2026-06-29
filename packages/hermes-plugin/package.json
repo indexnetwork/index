@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.5.1",
+  "version": "0.8.0",
   "description": "Hermes-native Index Network plugin with MCP and personal-agent tools",
   "license": "MIT",
   "type": "module",
