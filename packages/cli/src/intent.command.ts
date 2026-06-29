@@ -1,12 +1,12 @@
 /**
  * Intent (signal) command handlers for the Index CLI.
  *
- * Implements: list, show, create, archive subcommands.
+ * Implements signal listing, mutation, and network-link subcommands.
  * Follows the same handleX(client, subcommand, positionals, options)
  * pattern as network.command.ts and conversation.command.ts.
  */
 
-import type { ApiClient } from "./api.client";
+import type { ApiClient, Network } from "./api.client";
 import * as output from "./output";
 
 const INTENT_HELP = `
@@ -18,13 +18,23 @@ Usage:
   index intent archive <id>                     Archive a signal (accepts short ID)
   index intent link <id> <network-id>           Link a signal to a network
   index intent unlink <id> <network-id>         Unlink a signal from a network
+  index intent links <id>                       List networks linked to a signal
 `;
+
+type IntentNetworkLink = {
+  intentId?: string;
+  networkId?: string;
+};
+
+type IntentNetworkReadData = {
+  links?: IntentNetworkLink[];
+};
 
 /**
  * Route an intent subcommand to the appropriate handler.
  *
  * @param client - Authenticated API client.
- * @param subcommand - The subcommand (list, show, create, archive).
+ * @param subcommand - The intent subcommand.
  * @param options - Additional options (intentId, intentContent, archived, limit, json).
  */
 export async function handleIntent(
@@ -171,7 +181,61 @@ export async function handleIntent(
       output.success("Signal unlinked from network.");
       return;
     }
+
+    case "links": {
+      await intentLinks(client, options.intentId, options.json);
+      return;
+    }
   }
+}
+
+async function intentLinks(client: ApiClient, id: string | undefined, json?: boolean): Promise<void> {
+  if (!id) {
+    output.error("Missing signal ID. Usage: index intent links <id>", 1);
+    return;
+  }
+
+  const intent = await client.getIntent(id);
+  const networks = await client.listNetworks();
+  const results = await Promise.all(
+    networks.map(async (network) => ({
+      network,
+      result: await client.callTool("read_intent_indexes", {
+        intentId: intent.id,
+        networkId: network.id,
+      }),
+    })),
+  );
+
+  const failed = results.find(({ result }) => !result.success);
+  if (failed) {
+    if (json) {
+      console.log(JSON.stringify(failed.result));
+      return;
+    }
+    output.error(failed.result.error ?? "Failed to list linked networks", 1);
+    return;
+  }
+
+  const linkedNetworks: Network[] = results
+    .filter(({ network, result }) => {
+      const links = (result.data as IntentNetworkReadData | undefined)?.links ?? [];
+      return links.some((link) => link.intentId === intent.id && link.networkId === network.id);
+    })
+    .map(({ network }) => network);
+
+  if (json) {
+    console.log(JSON.stringify({ intentId: intent.id, networks: linkedNetworks }));
+    return;
+  }
+
+  output.heading("Linked networks");
+  if (linkedNetworks.length === 0) {
+    output.dim("  No linked networks found.");
+  } else {
+    output.networkTable(linkedNetworks);
+  }
+  console.log();
 }
 
 /**

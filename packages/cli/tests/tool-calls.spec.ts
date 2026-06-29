@@ -245,6 +245,42 @@ describe("CLI tool call contracts", () => {
       });
     });
 
+    it("links checks the resolved intent against each accessible network", async () => {
+      mock.onRest("GET", "/api/intents/abc123", () =>
+        Response.json({ intent: { id: "full-uuid-abc123", payload: "test", status: "active" } }),
+      );
+      mock.onRest("GET", "/api/networks", () =>
+        Response.json({
+          networks: [
+            { id: "index-456", title: "Builders", memberCount: 3 },
+            { id: "index-789", title: "Researchers", memberCount: 2 },
+          ],
+        }),
+      );
+      mock.setToolResponse("read_intent_indexes", {
+        success: true,
+        data: {
+          links: [{ intentId: "full-uuid-abc123", networkId: "index-456" }],
+          count: 1,
+        },
+      });
+
+      await handleIntent(client, "links", {
+        intentId: "abc123",
+        json: true,
+      });
+
+      expect(mock.toolCalls).toHaveLength(2);
+      expect(mock.toolCalls.map((c) => c.toolName)).toEqual([
+        "read_intent_indexes",
+        "read_intent_indexes",
+      ]);
+      expect(mock.toolCalls.map((c) => c.query)).toEqual([
+        { intentId: "full-uuid-abc123", networkId: "index-456" },
+        { intentId: "full-uuid-abc123", networkId: "index-789" },
+      ]);
+    });
+
     it("archive calls delete_intent with intentId (CLI: intent archive)", async () => {
       mock.onRest("GET", "/api/intents/abc123", () =>
         Response.json({ intent: { id: "full-uuid-abc123", payload: "test", status: "active" } }),

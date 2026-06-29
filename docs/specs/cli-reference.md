@@ -194,6 +194,13 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 2. Calls `delete_intent_index` tool via Tool HTTP API with `{ intentId, networkId }`.
 3. Prints "Signal unlinked from network." on success, error on failure.
 
+### `index intent links <id>`
+
+1. Resolves short ID to full UUID via `GET /api/intents/:id`.
+2. Calls `GET /api/networks` to enumerate networks visible to the authenticated user.
+3. Calls `read_intent_indexes` with `{ intentId, networkId }` for each visible network.
+4. Renders the linked networks as a network table. JSON mode returns `{ intentId, networks }`.
+
 ---
 
 ## Negotiation

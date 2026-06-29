@@ -73,6 +73,7 @@ index intent update <id> "revised text"     # Update a signal (runs full pipelin
 index intent archive <id>                   # Archive a signal
 index intent link <id> <network-id>         # Link a signal to a network
 index intent unlink <id> <network-id>       # Unlink a signal from a network
+index intent links <id>                     # List networks linked to a signal
 ```
 
 ### `index negotiation`

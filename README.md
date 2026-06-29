@@ -110,6 +110,7 @@ The code follows strict inward-pointing layering — **Controllers -> Services -
 | `index intent create <content>` | Create a signal |
 | `index intent update <id> <text>` | Update a signal |
 | `index intent link <id> <network>` | Link a signal to a network |
+| `index intent links <id>` | List networks linked to a signal |
 | `index opportunity list` | List your opportunities |
 | `index opportunity accept/reject <id>` | Act on an opportunity |
 | `index opportunity discover <query>` | Discover new opportunities |
