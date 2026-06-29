@@ -340,15 +340,36 @@ def _avatar_url(value: Any) -> str:
 
 
 def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> str:
-    """Resolve the other party's userId from an opportunity's actors."""
+    """Resolve the displayed counterpart, preferring non-introducer actors."""
     if not current_user_id:
         return ""
+    fallback = ""
     for actor in _list(opp.get("actors")):
-        if isinstance(actor, dict):
-            uid = _text(actor.get("userId"))
-            if uid and uid != current_user_id:
-                return uid
-    return ""
+        if not isinstance(actor, dict):
+            continue
+        uid = _text(actor.get("userId"))
+        if not uid or uid == current_user_id:
+            continue
+        if not fallback:
+            fallback = uid
+        if _text(actor.get("role")) != "introducer":
+            return uid
+    return fallback
+
+
+def _visible_counterpart_user_ids(current_user_id: str) -> set[str]:
+    """Return user ids visible through the caller's opportunity cards."""
+    visible: set[str] = set()
+    for query in ("", "?status=expired", "?status=rejected"):
+        opportunities, _ = _fetch_opportunities(query)
+        for opp in opportunities:
+            status = _text(opp.get("status"))
+            if status in {"latent", "pending"} and not _is_actionable_for_viewer(opp, current_user_id):
+                continue
+            counterpart_id = _counterpart_user_id(opp, current_user_id)
+            if counterpart_id:
+                visible.add(counterpart_id)
+    return visible
 
 
 def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], current_user_id: str | None = None) -> dict[str, Any]:
@@ -381,6 +402,34 @@ def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], curre
     if counterpart_id:
         item["counterpartUserId"] = counterpart_id
     return item
+
+
+def _is_actionable_for_viewer(opp: dict[str, Any], current_user_id: str | None) -> bool:
+    """Mirror HomeGraph isActionableForViewer for live radar statuses."""
+    if not current_user_id:
+        return False
+    actors = [actor for actor in _list(opp.get("actors")) if isinstance(actor, dict)]
+    viewer_actors = [actor for actor in actors if _text(actor.get("userId")) == current_user_id]
+    if not viewer_actors:
+        return False
+
+    status = _text(opp.get("status"))
+    introducer = next((actor for actor in actors if _text(actor.get("role")) == "introducer"), None)
+    has_introducer = introducer is not None
+    introducer_approved = bool(introducer and introducer.get("approved") is True)
+
+    for actor in viewer_actors:
+        role = _text(actor.get("role"))
+        acted_at = _text(actor.get("actedAt"))
+        if role == "introducer":
+            if status == "latent" and not introducer_approved:
+                return True
+            continue
+        if status == "latent" and (not has_introducer or introducer_approved):
+            return True
+        if status == "pending" and not acted_at:
+            return True
+    return False
 
 
 def _intent_for_opportunity(opp: dict[str, Any], known_ids: set[str]) -> str | None:
@@ -608,21 +657,33 @@ def _build_dashboard(
 
     seen_opp_ids: set[str] = set()
 
+    general_opportunities: list[dict[str, Any]] = []
+    general_status_counts = _empty_status_counts()
+
     def place_opportunity(opp: dict[str, Any]) -> None:
         intent_id = _intent_for_opportunity(opp, known_ids)
         intent = intents.get(intent_id) if intent_id else None
-        if intent is None:
-            return
         opp_id = _text(opp.get("id"))
         if opp_id:
             if opp_id in seen_opp_ids:
                 return
             seen_opp_ids.add(opp_id)
-            opp_to_intent[opp_id] = intent_id
+            if intent is not None:
+                opp_to_intent[opp_id] = intent_id
         status = _text(opp.get("status"))
+        if status in {"latent", "pending"} and not _is_actionable_for_viewer(opp, current_user_id):
+            return
         bucket = _STATUS_BUCKET.get(status, "pending")
-        intent["statusCounts"][bucket] = intent["statusCounts"].get(bucket, 0) + 1
         item = _opportunity_item(opp, network_titles, current_user_id)
+        if intent is None:
+            general_status_counts[bucket] = general_status_counts.get(bucket, 0) + 1
+            general_opportunities.append(item)
+            if status in _NEGOTIATION_STATUSES:
+                nego = dict(item)
+                nego["subtitle"] = "General"
+                negotiations.append(nego)
+            return
+        intent["statusCounts"][bucket] = intent["statusCounts"].get(bucket, 0) + 1
         intent["opportunities"].append(item)
         if status in _NEGOTIATION_STATUSES:
             nego = dict(item)
@@ -652,27 +713,48 @@ def _build_dashboard(
         else:
             general.append(item)
 
-    totals = {"intents": 0, "questions": len(general), "opportunities": 0, "statusCounts": _empty_status_counts()}
+    general_total_opportunity_count = sum(general_status_counts.values())
+    general_actionable_opportunity_count = general_status_counts.get("pending", 0)
+    totals = {
+        "intents": 0,
+        "questions": len(general),
+        # Sidebar/header opportunity counts represent cards the viewer can act on now,
+        # matching HomeGraph rather than historical radar totals.
+        "opportunities": general_actionable_opportunity_count,
+        "totalOpportunities": general_total_opportunity_count,
+        "statusCounts": dict(general_status_counts),
+    }
     ordered_intents: list[dict[str, Any]] = []
     for intent_id in order:
         intent = intents[intent_id]
         counts = intent["statusCounts"]
-        opportunity_count = sum(counts.values())
+        total_opportunity_count = sum(counts.values())
+        actionable_opportunity_count = counts.get("pending", 0)
         question_count = len(intent["questions"])
-        intent["opportunityCount"] = opportunity_count
+        intent["opportunityCount"] = actionable_opportunity_count
+        intent["totalOpportunityCount"] = total_opportunity_count
         intent["questionCount"] = question_count
         intent["networks"] = intent["networks"][:4]
-        intent["status"] = "running" if opportunity_count else ("calibrating" if question_count else "idle")
+        intent["status"] = "running" if actionable_opportunity_count else ("calibrating" if question_count else "idle")
         totals["intents"] += 1
         totals["questions"] += question_count
-        totals["opportunities"] += opportunity_count
+        totals["opportunities"] += actionable_opportunity_count
+        totals["totalOpportunities"] += total_opportunity_count
         for bucket, value in counts.items():
             totals["statusCounts"][bucket] += value
         ordered_intents.append(intent)
 
     return {
         "intents": ordered_intents,
-        "general": {"questions": general, "count": len(general)},
+        "general": {
+            "questions": general,
+            "opportunities": general_opportunities,
+            "statusCounts": general_status_counts,
+            "questionCount": len(general),
+            "opportunityCount": general_actionable_opportunity_count,
+            "totalOpportunityCount": general_total_opportunity_count,
+            "count": len(general) + general_actionable_opportunity_count,
+        },
         "negotiations": {"items": negotiations, "count": len(negotiations)},
         "totals": totals,
     }
@@ -836,6 +918,12 @@ def public_profile(user_id: str) -> dict[str, Any]:
     user_id = _text(user_id)
     if not user_id:
         return {"success": False, "error": "A user id is required."}
+
+    current_user_id = _resolve_user_id()
+    if not current_user_id:
+        return {"success": False, "error": "Could not resolve the current user from the configured API key."}
+    if user_id != current_user_id and user_id not in _visible_counterpart_user_ids(current_user_id):
+        return {"success": False, "error": "Profile is not visible from the current dashboard."}
 
     user = _fetch_user(user_id)
     if isinstance(user, dict) and user.get("success") is False:

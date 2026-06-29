@@ -168,6 +168,13 @@ def main() -> None:
         assert (ROOT / relative_path).exists(), f"missing dashboard file: {relative_path}"
 
     dashboard_manifest = json.loads((ROOT / "dashboard" / "manifest.json").read_text())
+    package_json = json.loads((ROOT / "package.json").read_text())
+    plugin_yaml_version = next(
+        line.split(":", 1)[1].strip()
+        for line in (ROOT / "plugin.yaml").read_text().splitlines()
+        if line.startswith("version:")
+    )
+    assert dashboard_manifest["version"] == package_json["version"] == plugin_yaml_version
     assert dashboard_manifest["name"] == "index-network"
     assert dashboard_manifest["label"] == "Index"
     assert dashboard_manifest["entry"] == "dist/index.js"
@@ -478,7 +485,7 @@ def main() -> None:
                         "opportunities": [
                             {
                                 "id": "opp-1",
-                                "status": "negotiating",
+                                "status": "pending",
                                 "detection": {"triggeredBy": "intent-1"},
                                 "counterpartName": "Ada",
                                 "counterpartAvatar": "avatars/other/pic.png",
@@ -487,12 +494,70 @@ def main() -> None:
                                     {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
                                     {"userId": "other", "networkId": "network-1", "intent": "other-intent", "role": "patient"},
                                 ],
+                            },
+                            {
+                                "id": "opp-general",
+                                "status": "pending",
+                                "detection": {},
+                                "counterpartName": "Grace",
+                                "interpretation": {"category": "intro", "reasoning": "Worth a direct follow-up."},
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "role": "agent"},
+                                    {"userId": "intro", "networkId": "network-1", "role": "introducer"},
+                                    {"userId": "other-general", "networkId": "network-1", "role": "patient"},
+                                ],
+                            },
+                            {
+                                "id": "opp-waiting-on-other",
+                                "status": "pending",
+                                "detection": {},
+                                "counterpartName": "Already Sent",
+                                "interpretation": {"category": "intro", "reasoning": "Waiting for the other side."},
+                                "actors": [
+                                    {
+                                        "userId": "user-1",
+                                        "networkId": "network-1",
+                                        "role": "agent",
+                                        "actedAt": "2026-05-12T10:00:00.000Z",
+                                    },
+                                    {"userId": "other-waiting", "networkId": "network-1", "role": "patient"},
+                                ],
                             }
                         ]
                     }
                 ),
-                FakeResponse({"opportunities": []}),
-                FakeResponse({"opportunities": []}),
+                FakeResponse(
+                    {
+                        "opportunities": [
+                            {
+                                "id": "opp-expired",
+                                "status": "expired",
+                                "detection": {"triggeredBy": "intent-1"},
+                                "counterpartName": "Expired Match",
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
+                                    {"userId": "expired-other", "networkId": "network-1", "role": "patient"},
+                                ],
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "opportunities": [
+                            {
+                                "id": "opp-rejected",
+                                "status": "rejected",
+                                "detection": {"triggeredBy": "intent-1"},
+                                "counterpartName": "Rejected Match",
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
+                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
+                                ],
+                            }
+                        ]
+                    }
+                ),
             ],
             captured,
         )
@@ -506,7 +571,10 @@ def main() -> None:
         assert intent["status"] == "running"
         assert intent["questionCount"] == 1
         assert intent["opportunityCount"] == 1
-        assert intent["statusCounts"]["negotiating"] == 1
+        assert intent["totalOpportunityCount"] == 3
+        assert intent["statusCounts"]["pending"] == 1
+        assert intent["statusCounts"]["rejected"] == 1
+        assert intent["statusCounts"]["expired"] == 1
         assert intent["networks"] == ["Robotics Guild"]
         assert intent["questions"][0]["id"] == "question-1"
         assert intent["questions"][0]["options"][0]["label"] == "Hiring"
@@ -517,9 +585,20 @@ def main() -> None:
         assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
         assert intent["opportunities"][0]["networks"] == ["Robotics Guild"]
         assert intent["opportunities"][0]["counterpartUserId"] == "other"
-        assert summary["general"]["count"] == 1
+        assert summary["general"]["count"] == 2
+        assert summary["general"]["questionCount"] == 1
+        assert summary["general"]["opportunityCount"] == 1
         assert summary["general"]["questions"][0]["id"] == "question-2"
-        assert summary["negotiations"]["count"] == 1
+        assert summary["general"]["opportunities"][0]["opportunityId"] == "opp-general"
+        assert summary["general"]["opportunities"][0]["counterpartUserId"] == "other-general"
+        all_opp_ids = [
+            opp["opportunityId"]
+            for group in summary["intents"] + [summary["general"]]
+            for opp in group.get("opportunities", [])
+        ]
+        assert "opp-waiting-on-other" not in all_opp_ids
+        assert summary["general"]["statusCounts"]["pending"] == 1
+        assert summary["negotiations"]["count"] == 2
         assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
         assert summary["negotiations"]["items"][0]["subtitle"] == "Looking for mentors in applied robotics."
         assert summary["negotiations"]["items"][0]["counterpartUserId"] == "other"
@@ -528,8 +607,9 @@ def main() -> None:
         assert summary["totals"] == {
             "intents": 1,
             "questions": 2,
-            "opportunities": 1,
-            "statusCounts": {"pending": 0, "negotiating": 1, "accepted": 0, "rejected": 0, "expired": 0},
+            "opportunities": 2,
+            "totalOpportunities": 4,
+            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "rejected": 1, "expired": 1},
         }
         mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
         assert mcp_calls == ["read_intents", "read_pending_questions", "read_networks", "read_network_memberships"]
@@ -650,6 +730,25 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
+                mcp_text_response(
+                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
+                    response_id=30,
+                ),
+                FakeResponse(
+                    {
+                        "opportunities": [
+                            {
+                                "id": "opp-profile",
+                                "actors": [
+                                    {"userId": "user-1", "role": "agent"},
+                                    {"userId": "other", "role": "patient"},
+                                ],
+                            }
+                        ]
+                    }
+                ),
+                FakeResponse({"opportunities": []}),
+                FakeResponse({"opportunities": []}),
                 FakeResponse(
                     {
                         "user": {
@@ -664,7 +763,7 @@ def main() -> None:
                 ),
                 mcp_text_response(
                     {"success": True, "hasProfile": True, "name": "Grace Hopper", "context": "Grace builds compilers."},
-                    response_id=30,
+                    response_id=31,
                 ),
             ],
             captured,
@@ -681,9 +780,17 @@ def main() -> None:
         assert other_profile["socials"] == [{"label": "github", "value": "grace"}]
         assert other_profile["context"] == "Grace builds compilers."
         public_rest = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
-        assert public_rest == [("GET", "https://api.example.test/api/users/other")]
+        assert public_rest == [
+            ("GET", "https://api.example.test/api/opportunities"),
+            ("GET", "https://api.example.test/api/opportunities?status=expired"),
+            ("GET", "https://api.example.test/api/opportunities?status=rejected"),
+            ("GET", "https://api.example.test/api/users/other"),
+        ]
         public_mcp = [entry["body"]["params"] for entry in captured if entry["body"]]
-        assert public_mcp == [{"name": "read_user_contexts", "arguments": {"userId": "other"}}]
+        assert public_mcp == [
+            {"name": "read_network_memberships", "arguments": {}},
+            {"name": "read_user_contexts", "arguments": {"userId": "other"}},
+        ]
 
         assert dashboard_api.public_profile("") == {"success": False, "error": "A user id is required."}
     finally:

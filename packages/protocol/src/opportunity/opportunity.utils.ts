@@ -152,7 +152,7 @@ export function canUserSeeOpportunity(
  *   (1) `latent`, no introducer                   → all actors actionable
  *   (2) `latent`, introducer `approved !== true`  → introducer only
  *   (3) `latent`, introducer `approved === true`  → all non-introducer actors
- *   (4) `pending` (any introducer config)         → all non-introducer actors
+ *   (4) `pending` (any introducer config)         → non-introducer actors who have not acted
  *   (5) `accepted`/`rejected`/`expired`/`stalled`/`draft`/`negotiating`
  *                                                 → never actionable
  *
@@ -162,7 +162,7 @@ export function canUserSeeOpportunity(
  * across the flip while a background negotiation runs.
  */
 export function isActionableForViewer(
-  actors: Array<{ userId: string; role: string; approved?: boolean }>,
+  actors: Array<{ userId: string; role: string; approved?: boolean; actedAt?: string | null }>,
   status: string,
   viewerId: string
 ): boolean {
@@ -173,7 +173,7 @@ export function isActionableForViewer(
   const hasIntroducer = !!introducer;
   const introducerApproved = introducer?.approved === true;
 
-  return viewerActors.some(({ role }) => {
+  return viewerActors.some(({ role, actedAt }) => {
     if (role === 'introducer') {
       // Rule 2: introducer sees own latent opp only while not yet approved.
       return status === 'latent' && !introducerApproved;
@@ -186,8 +186,10 @@ export function isActionableForViewer(
       return !hasIntroducer || introducerApproved;
     }
     if (status === 'pending') {
-      // Rule 4: visible to all non-introducer actors.
-      return true;
+      // Rule 4: pending is actionable only for actors who have not already
+      // acted. Once an actor has `actedAt`, the opportunity is waiting on the
+      // counterparty and should not appear in that actor's home feed.
+      return !actedAt;
     }
     // Rule 5: never actionable at terminal or internal statuses.
     return false;

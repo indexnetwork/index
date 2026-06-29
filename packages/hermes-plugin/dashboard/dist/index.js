@@ -360,10 +360,7 @@
         }, acting ? "Working…" : "Start chat"),
       );
     } else if (status === "accepted") {
-      const chatHref = opportunity.chatUrl
-        || (props.webUrl && opportunity.counterpartUserId
-          ? props.webUrl + "/u/" + encodeURIComponent(opportunity.counterpartUserId)
-          : null);
+      const chatHref = opportunity.chatUrl || null;
       if (chatHref) {
         actions = React.createElement("div", { className: "index-dashboard__opp-actions" },
           React.createElement("a", {
@@ -476,7 +473,8 @@
         React.createElement("span", { className: "index-dashboard__intent-sub" }, "Not tied to an intent"),
       ),
       React.createElement("div", { className: "index-dashboard__intent-counts" },
-        props.count ? React.createElement(BadgeText, { variant: "default" }, formatCount(props.count) + " Q") : null,
+        props.opportunityCount ? React.createElement(BadgeText, null, formatCount(props.opportunityCount) + " opps") : null,
+        props.questionCount ? React.createElement(BadgeText, { variant: "default" }, formatCount(props.questionCount) + " Q") : null,
       ),
     );
   }
@@ -693,9 +691,11 @@
 
   function IntentList(props) {
     const intents = Array.isArray(props.intents) ? props.intents : [];
+    const general = props.general || {};
+    const generalCount = general.count || 0;
     return React.createElement("div", { className: "index-dashboard__intent-list" },
-      props.generalCount > 0
-        ? React.createElement(GeneralRow, { count: props.generalCount, selected: props.selectedId === "general", onSelect: props.onSelect })
+      generalCount > 0
+        ? React.createElement(GeneralRow, { questionCount: general.questionCount, opportunityCount: general.opportunityCount, selected: props.selectedId === "general", onSelect: props.onSelect })
         : null,
       intents.length === 0
         ? React.createElement(EmptyState, null, "No active intents yet.")
@@ -765,12 +765,25 @@
   }
 
   function GeneralDetail(props) {
-    const general = props.general || { questions: [] };
+    const general = props.general || { questions: [], opportunities: [] };
+    const bucketState = React.useState("pending");
+    const selectedBucket = bucketState[0];
+    const setSelectedBucket = bucketState[1];
     const questionSection = { items: general.questions || [] };
+    const allOpps = Array.isArray(general.opportunities) ? general.opportunities : [];
+    const visibleOpps = allOpps.filter(function (opp) {
+      return bucketForStatus(opp.status) === selectedBucket;
+    });
     return React.createElement("div", { className: "index-dashboard__detail" },
       React.createElement(DetailHead, { title: "General", onBack: props.onBack }),
-      React.createElement(Panel, { primary: true, title: "Questions", count: questionSection.items.length, description: "Onboarding and follow-ups not tied to an intent." },
-        React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
+      React.createElement("div", { className: "index-dashboard__detail-cols" },
+        React.createElement(Panel, { primary: true, title: "Questions", count: questionSection.items.length, description: "Onboarding and follow-ups not tied to an intent." },
+          React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
+        ),
+        React.createElement(Panel, { title: "Radar", count: general.opportunityCount || 0, description: "People surfaced outside a specific intent." },
+          React.createElement(RadarStrip, { counts: general.statusCounts || {}, selected: selectedBucket, onSelect: setSelectedBucket }),
+          React.createElement(RadarList, { items: visibleOpps, empty: "No general matches here yet.", onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, actingId: props.actingId, webUrl: props.webUrl }),
+        ),
       ),
     );
   }
@@ -1485,13 +1498,13 @@
 
     const intentsView = showDetail
       ? (selectedId === "general"
-        ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack })
+        ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, actingId: actingId, webUrl: summary && summary.webUrl })
         : React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, actingId: actingId, webUrl: summary && summary.webUrl }))
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
           React.createElement(Panel, { cron: true, icon: ICON_TARGET(), title: "Intents", count: intents.length },
-            React.createElement(IntentList, { intents: intents, generalCount: general.count, selectedId: selectedId, onSelect: selectIntent }),
+            React.createElement(IntentList, { intents: intents, general: general, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
             React.createElement(NetworksMini, { networks: summary && summary.networks, onOpen: openNetworkInWeb, onJoin: joinNetwork, joiningId: joiningId }),

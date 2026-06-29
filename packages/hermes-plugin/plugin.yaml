@@ -1,5 +1,5 @@
 name: index-network
-version: 0.5.1
+version: 0.8.0
 description: Index Network Hermes plugin with native tools backed by Index MCP and personal-agent APIs.
 provides_tools:
   - index_read_intents
