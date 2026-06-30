@@ -78,6 +78,12 @@
 .post-body strong { color: var(--cream); font-weight: 600; }
 .post-body em { font-style: italic; }
 
+.post-body hr {
+  border: 0;
+  border-top: 1px dashed var(--rule);
+  margin: 32px 0;
+}
+
 .post-body h2 {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-weight: 700;
