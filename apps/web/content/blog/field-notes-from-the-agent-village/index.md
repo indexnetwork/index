@@ -2,8 +2,10 @@
 title: Field Notes from the Agent Village
 date: "2026-06-30"
 description: "Preliminary findings from the first large-scale multi-agent coordination experiment with human participants at Edge Esmeralda."
-image: "opportunities.jpg"
+image: "cover.jpg"
 ---
+
+![It's working](cover.jpg)
 
 So, it's working. ❤️
 
