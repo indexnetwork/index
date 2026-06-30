@@ -34,7 +34,7 @@ Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, A
 - **User** — has one Profile, many Memberships, many Intents
 - **Profile** — identity (name, bio, location) plus a synthesized `context` paragraph
 - **Index** — community with title, prompt (purpose), join policy. Has many Members
-- **Membership** — User ↔ Index junction. `isPersonal: true` marks the user's personal index (contacts)
+- **Membership** — User ↔ Index junction. `isPersonal: true` marks the user's personal network (contacts)
 - **Intent** — what a user is looking for (signal). Description, summary, embedding
 - **IntentIndex** — Intent ↔ Index junction (auto-assigned by system)
 - **Opportunity** — discovered connection between users. Roles, status, reasoning

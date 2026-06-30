@@ -63,18 +63,22 @@ export const createQuestionsService = (
 ) => ({
   /**
    * Fetch pending questions for the authenticated user.
-   * Optionally filter by mode, sourceType, sourceId, or noConversation.
+   * Optionally filter by mode, sourceType, sourceId, selected intent scope, or noConversation.
    */
   getPending: async (filters?: {
     mode?: QuestionDetection['mode'];
     sourceType?: string;
     sourceId?: string;
+    scopeType?: 'intent';
+    scopeId?: string;
     noConversation?: boolean;
   }): Promise<PendingQuestion[]> => {
     const params = new URLSearchParams({ status: 'pending' });
     if (filters?.mode) params.set('mode', filters.mode);
     if (filters?.sourceType) params.set('sourceType', filters.sourceType);
     if (filters?.sourceId) params.set('sourceId', filters.sourceId);
+    if (filters?.scopeType) params.set('scopeType', filters.scopeType);
+    if (filters?.scopeId) params.set('scopeId', filters.scopeId);
     if (filters?.noConversation) params.set('noConversation', 'true');
     const res = await api.get<QuestionsListResponse>(`/questions?${params}`);
     return res.questions ?? [];

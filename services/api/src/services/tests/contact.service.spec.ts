@@ -31,7 +31,7 @@ let svc: ContactService;
 
 /**
  * Helper: build the WHERE predicate matching a user's contact-permission
- * membership row in the owner's personal index.
+ * membership row in the owner's personal network.
  */
 function contactMembershipQuery(userId: string) {
   return and(
@@ -42,17 +42,17 @@ function contactMembershipQuery(userId: string) {
 }
 
 /**
- * Helper: create a user and personal index for testing.
+ * Helper: create a user and personal network for testing.
  */
 async function createTestUser(id: string, email: string, name: string): Promise<string> {
   await db.insert(users).values({ id, name, email });
   createdUserIds.push(id);
 
-  // Create personal index
+  // Create personal network
   const networkId = crypto.randomUUID();
   await db.insert(networks).values({
     id: networkId,
-    title: `${name}'s Personal Index`,
+    title: `${name}'s Personal Network`,
     isPersonal: true,
   });
   await db.insert(personalNetworks).values({ userId: id, networkId });
@@ -71,10 +71,10 @@ beforeAll(async () => {
   ownerId = crypto.randomUUID();
   existingUserId = crypto.randomUUID();
 
-  // Create owner with personal index
+  // Create owner with personal network
   personalIndexId = await createTestUser(ownerId, ownerEmail, TEST_PREFIX + 'Owner');
 
-  // Create an existing (non-ghost) user (no personal index needed for them)
+  // Create an existing (non-ghost) user (no personal network needed for them)
   await db.insert(users).values({
     id: existingUserId,
     name: TEST_PREFIX + 'ExistingContact',
@@ -89,7 +89,7 @@ afterAll(async () => {
   if (allUserIds.length > 0) {
     await db.delete(networkMembers).where(inArray(networkMembers.userId, allUserIds));
   }
-  // Remove all members from personal index before deleting it (avoids FK constraint)
+  // Remove all members from personal network before deleting it (avoids FK constraint)
   await db.delete(networkMembers).where(eq(networkMembers.networkId, personalIndexId));
   // Clean personal_indexes for owner
   await db.delete(personalNetworks).where(eq(personalNetworks.userId, ownerId));
@@ -196,10 +196,10 @@ describe('addContact', () => {
     const otherEmail = `${TEST_PREFIX}other@example.com`;
     const otherId = crypto.randomUUID();
 
-    // Create "other" user with personal index
+    // Create "other" user with personal network
     const otherIndexId = await createTestUser(otherId, otherEmail, TEST_PREFIX + 'Other');
 
-    // Simulate: other user has owner as a soft-deleted contact in their personal index
+    // Simulate: other user has owner as a soft-deleted contact in their personal network
     await db.insert(networkMembers).values({
       networkId: otherIndexId,
       userId: ownerId,
@@ -211,7 +211,7 @@ describe('addContact', () => {
     // Owner adds other as contact — should clear reverse opt-out
     await svc.addContact(ownerId, otherEmail);
 
-    // The soft-deleted row in other's personal index for owner should be gone
+    // The soft-deleted row in other's personal network for owner should be gone
     const rows = await db
       .select()
       .from(networkMembers)
@@ -224,7 +224,7 @@ describe('addContact', () => {
       );
     expect(rows.length).toBe(0);
 
-    // Cleanup: remove the other personal index
+    // Cleanup: remove the other personal network
     await db.delete(networkMembers).where(eq(networkMembers.networkId, otherIndexId));
     await db.delete(personalNetworks).where(eq(personalNetworks.userId, otherId));
     await db.delete(networks).where(eq(networks.id, otherIndexId));

@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
 import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
@@ -173,19 +173,27 @@ export class DiscoveryRunQueue {
     const resolved = await resolveChatContext({
       database: chatDatabaseAdapter,
       userId: run.userId,
-      networkId: run.context.networkId,
+      networkId: run.context.scopeType === 'network' ? run.context.scopeId : undefined,
       sessionId: run.context.sessionId,
     });
     const context: ResolvedToolContext = {
       ...resolved,
-      indexScope: run.context.indexScope ?? resolved.indexScope,
+      ...(run.context.scopeType && run.context.scopeId
+        ? { scopeType: run.context.scopeType, scopeId: run.context.scopeId }
+        : {}),
       isMcp: true,
       ...(run.agentId ? { agentId: run.agentId } : {}),
       ...(run.context.clientSurface ? { clientSurface: run.context.clientSurface } : {}),
     };
+    const allowedNetworkIds = deriveAllowedNetworkIds({
+      memberships: context.userNetworks,
+      ...(context.scopeType && context.scopeId
+        ? { scopeType: context.scopeType, scopeId: context.scopeId }
+        : {}),
+    });
 
     const userDb = createUserDatabase(chatDatabaseAdapter, run.userId);
-    const systemDb = createSystemDatabase(chatDatabaseAdapter, run.userId, context.indexScope, embedderAdapter);
+    const systemDb = createSystemDatabase(chatDatabaseAdapter, run.userId, allowedNetworkIds, embedderAdapter);
     const graphDb = chatDatabaseAdapter as unknown as OpportunityGraphDatabase & HydeGraphDatabase;
     const hydeGraph = new HydeGraphFactory(
       graphDb,

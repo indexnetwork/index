@@ -278,8 +278,8 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
               <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
                 {isGhost ? (
                   <>
-                    <p className="text-sm font-medium">{userName} hasn&apos;t joined Index yet.</p>
-                    <p className="text-xs text-gray-400 mt-1">Send a message and we&apos;ll let you know when they join.</p>
+                    <p className="text-sm font-medium">{userName} hasn&apos;t joined yet.</p>
+                    <p className="text-xs text-gray-400 mt-1">Send a message and we&apos;ll let you know when they do.</p>
                   </>
                 ) : (
                   <p className="text-sm">Start a conversation with {userName}</p>
@@ -290,7 +290,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
             {isGhost && messages.length > 0 && (
               <div className="text-center py-3">
                 <p className="text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 inline-block">
-                  <span className="font-medium text-gray-500">{userName}</span> is invited by you &mdash; we&apos;ll let you know when they join Index.
+                  <span className="font-medium text-gray-500">{userName}</span> is invited by you &mdash; we&apos;ll let you know when they join.
                 </p>
               </div>
             )}

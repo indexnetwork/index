@@ -125,7 +125,7 @@ export default function IntegrationsTab({
       await loadConnections();
       autoImportContacts(toolkit);
     } catch {
-      error(`Failed to link ${toolkitLabel(toolkit)} to this index`);
+      error(`Failed to link ${toolkitLabel(toolkit)} to this network`);
     }
   };
 
@@ -138,7 +138,7 @@ export default function IntegrationsTab({
       const allConns = await integrationsService.getConnections();
       const existingConn = allConns.connections.find(c => c.toolkit === toolkit);
       if (existingConn) {
-        // Already OAuth'd -- just link to this index
+        // Already OAuth'd -- just link to this network
         success(`${toolkitLabel(toolkit)} connected`);
         await linkAndImport(toolkit);
         setPendingToolkit(null);
@@ -209,7 +209,7 @@ export default function IntegrationsTab({
     setPendingToolkit(toolkit);
     try {
       await integrationsService.unlinkIntegration(toolkit, networkId);
-      success(`${toolkitLabel(toolkit)} removed from this index`);
+      success(`${toolkitLabel(toolkit)} removed from this network`);
       await loadConnections();
     } catch {
       error(`Failed to remove ${toolkitLabel(toolkit)}`);

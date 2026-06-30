@@ -13,6 +13,7 @@ import type { McpAuthResolver } from '../shared/interfaces/auth.interface.js';
 import type { McpAuthInput } from '../shared/schemas/mcp-auth.schema.js';
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
+import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
 import type { Question } from '../shared/schemas/question.schema.js';
 import { QuestionSchema } from '../shared/schemas/question.schema.js';
 import { dispatchElicitations } from './elicitation.dispatcher.js';
@@ -268,39 +269,32 @@ export function renderQuestionsEnvelope(questions: Question[]): string {
  * free of direct adapter imports.
  */
 export interface ScopedDepsFactory {
-  /** Creates scoped userDb and systemDb for the given user and index scope. */
-  create(userId: string, indexScope: string[]): Pick<ToolDeps, 'userDb' | 'systemDb'>;
+  /** Creates scoped userDb and systemDb for the given user and allowed network IDs. */
+  create(userId: string, allowedNetworkIds: string[]): Pick<ToolDeps, 'userDb' | 'systemDb'>;
 }
 
 /**
- * Computes the index scope passed to the per-request scoped DB factory. When
- * `networkScopeId` is non-null, the agent is bound to a single network and
- * may only reach that network plus the user's personal index. Otherwise the
- * full set of the user's network memberships is returned.
+ * Computes the concrete network IDs passed to the per-request scoped DB factory.
+ * When a network scope is present, the agent reaches that network plus the
+ * user's personal network. Otherwise the full membership set is returned.
  */
-export const computeAgentIndexScope = (
+export const computeAgentAllowedNetworkIds = (
   userNetworks: { networkId: string; isPersonal?: boolean | null }[],
-  networkScopeId: string | null | undefined,
-): string[] => {
-  if (!networkScopeId) {
-    return userNetworks.map((m) => m.networkId);
-  }
-  return userNetworks
-    .filter((m) => m.networkId === networkScopeId || m.isPersonal === true)
-    .map((m) => m.networkId);
-};
+  scopeType: 'network' | undefined,
+  scopeId: string | null | undefined,
+): string[] => deriveAllowedNetworkIds({
+  memberships: userNetworks,
+  ...(scopeType && scopeId ? { scopeType, scopeId } : {}),
+});
 
 /**
  * Promotes a network-scoped agent's bound network into the resolved tool
- * context as the implicit chat scope. Every tool that branches on
- * `context.networkId` (read_networks, read_intents, read_user_contexts,
- * opportunity tools, etc.) then enforces scope automatically — without this
- * step the DB-level `indexScope` clamp guards cross-user data but tools that
- * shape their response off `context.networkId` (notably `read_networks`'
- * `publicNetworks` branch) would still leak the global view.
+ * context as the implicit chat scope. Every tool derives its focused network
+ * from the `scopeType`/`scopeId` envelope; without this step scoped API-key
+ * calls would still resolve an unscoped/global view.
  *
- * No-op when there is no scope, or when an explicit chat scope is already
- * set (a user-driven index-scoped chat must keep precedence over the agent
+ * No-op when there is no scope, or when an explicit scope is already set
+ * (a user-driven network-scoped chat must keep precedence over the agent
  * binding — which would be a strict subset anyway, since the API key cannot
  * reach beyond its bound network).
  */
@@ -309,14 +303,11 @@ export const applyNetworkScopeToContext = (
   networkScopeId: string | null | undefined,
 ): void => {
   if (!networkScopeId) return;
-  if (context.networkId) return;
+  if (context.scopeType && context.scopeId) return;
 
-  context.networkId = networkScopeId;
-  // Clamp indexScope to [boundNetwork, personalIndex] BEFORE the membership
-  // check below. If the bound network is not in userNetworks (defensive case),
-  // this still produces a safe scope (personal index only) rather than
-  // leaving the unclamped scope set by resolveChatContext.
-  context.indexScope = computeAgentIndexScope(context.userNetworks, networkScopeId);
+  const scope = scopeFromNetworkId(networkScopeId);
+  context.scopeType = scope.scopeType;
+  context.scopeId = scope.scopeId;
 
   const bound = context.userNetworks.find((m) => m.networkId === networkScopeId);
   if (!bound) return;
@@ -447,7 +438,7 @@ NEVER use "search" in any form. Use "looking up" for indexed data, "find" / "loo
 - User — has one Profile, many Memberships, many Intents.
 - Profile — identity (bio, skills, interests, location).
 - Index — community with title, prompt (purpose), join policy. Has Members.
-- Membership — User↔Index junction. \`isPersonal: true\` marks the user's personal index (contacts).
+- Membership — User↔Index junction. \`isPersonal: true\` marks the user's personal network (contacts).
 - Intent — what a user is looking for (signal). Description, summary, embedding.
 - IntentIndex — Intent↔Index junction (auto-assigned).
 - Opportunity — discovered connection between users. Roles, status, reasoning.
@@ -624,10 +615,8 @@ export function createMcpServer(
           }
 
           // Network-scoped agents inherit their bound network as the implicit chat
-          // scope. Every tool that branches on `context.networkId` then enforces
-          // the same boundary the DB-level `indexScope` clamp enforces below —
-          // most importantly `read_networks`, which would otherwise return the
-          // global `publicNetworks` catalog for unscoped contexts.
+          // scope. Tools consume the scope envelope and derive any concrete
+          // allowed network IDs from it plus the user's memberships.
           applyNetworkScopeToContext(context, networkScopeId);
 
           // Gate: API-key callers (background agents) must register before using most tools.
@@ -669,12 +658,16 @@ export function createMcpServer(
 
           // Build per-request scoped databases via injected factory.
           // Network-scoped agents are clamped to their bound network plus the user's
-          // personal index — they cannot reach other networks even when the user is
+          // personal network — they cannot reach other networks even when the user is
           // a member of them. The personal-index reachability is preserved so the
           // agent can still manage its owner's profile and contacts.
-          // context.indexScope is now the single source of truth: set by
-          // resolveChatContext (full set) and narrowed by applyNetworkScopeToContext.
-          const scopedDbs = scopedDepsFactory.create(userId, context.indexScope);
+          const allowedNetworkIds = deriveAllowedNetworkIds({
+            memberships: context.userNetworks,
+            ...(context.scopeType && context.scopeId
+              ? { scopeType: context.scopeType, scopeId: context.scopeId }
+              : {}),
+          });
+          const scopedDbs = scopedDepsFactory.create(userId, allowedNetworkIds);
 
           // Override deps with per-request scoped databases
           const requestDeps: ToolDeps = { ...deps, ...scopedDbs };
@@ -775,8 +768,8 @@ export function createMcpServer(
               },
               context: {
                 agentId: reportContext?.agentId,
-                networkId: reportContext?.networkId,
-                indexScope: reportContext?.indexScope,
+                scopeType: reportContext?.scopeType,
+                scopeId: reportContext?.scopeId,
               },
             });
           }

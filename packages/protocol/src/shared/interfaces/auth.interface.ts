@@ -18,9 +18,9 @@ export interface McpAuthResolver {
    *   agent, and `clientSurface` declaring which kind of UI is rendering the
    *   MCP response (drives connect-link redirect choice at click time).
    *
-   *   When `networkScopeId` is set, the MCP server clamps `indexScope` to that
-   *   single network plus the user's personal index — every downstream tool
-   *   then operates against that clamped scope.
+   *   When `networkScopeId` is set, the MCP server promotes it into the
+   *   canonical `{ scopeType: 'network', scopeId }` envelope. Downstream tools
+   *   derive concrete allowed network IDs from that envelope plus memberships.
    *
    *   `isSessionAuth` is true for OAuth/JWT bearer sessions — the agent-
    *   registration gate in the MCP server is skipped for these callers.

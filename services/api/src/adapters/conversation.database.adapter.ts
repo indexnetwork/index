@@ -1,4 +1,4 @@
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, opportunities, or, sql } from './database.shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, opportunities, or, sql } from './database.shared';
 
 
 export class ConversationDatabaseAdapter {
@@ -1093,15 +1093,26 @@ export class ConversationDatabaseAdapter {
     userId: string,
     meta: ChatConversationMeta | null,
   ): ChatSession {
+    const legacyNetworkId = meta?.networkId ?? null;
+    const scopeType = this._normalizeScopeType(meta?.scopeType) ?? (legacyNetworkId ? 'network' : null);
+    const scopeId = typeof meta?.scopeId === 'string' && meta.scopeId.trim()
+      ? meta.scopeId.trim()
+      : legacyNetworkId;
     return {
       id: conv.id,
       userId,
       title: meta?.title ?? null,
-      networkId: meta?.networkId ?? null,
+      networkId: legacyNetworkId,
+      scopeType,
+      scopeId: scopeType ? scopeId : null,
       shareToken: meta?.shareToken ?? null,
       createdAt: conv.createdAt,
       updatedAt: conv.updatedAt,
     };
+  }
+
+  private _normalizeScopeType(value: unknown): ChatScopeType | null {
+    return value === 'network' || value === 'intent' ? value : null;
   }
 
   /**
@@ -1123,14 +1134,37 @@ export class ConversationDatabaseAdapter {
         { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
       ]);
 
-      // Store title and networkId in conversation_metadata
+      // Store title and canonical scope in conversation_metadata.
+      const normalizedScopeType = this._normalizeScopeType(data.scopeType);
+      const normalizedScopeId = data.scopeId?.trim() || undefined;
+      const networkId = normalizedScopeType === 'network'
+        ? normalizedScopeId
+        : data.networkId?.trim() || undefined;
       const meta: ChatConversationMeta = {};
       if (data.title) meta.title = data.title;
-      if (data.networkId?.trim()) meta.networkId = data.networkId.trim();
+      if (networkId) meta.networkId = networkId;
+      if (normalizedScopeType && normalizedScopeId) {
+        meta.scopeType = normalizedScopeType;
+        meta.scopeId = normalizedScopeId;
+      } else if (networkId) {
+        meta.scopeType = 'network';
+        meta.scopeId = networkId;
+      }
       if (Object.keys(meta).length > 0) {
         await tx.insert(schema.conversationMetadata).values({
           conversationId: data.id,
           metadata: meta,
+        });
+      }
+
+      if (normalizedScopeType === 'intent' && normalizedScopeId) {
+        await tx.insert(schema.chatSessionScopes).values({
+          conversationId: data.id,
+          userId: data.userId,
+          scopeType: normalizedScopeType,
+          scopeId: normalizedScopeId,
+          createdAt: now,
+          updatedAt: now,
         });
       }
     });
@@ -1402,10 +1436,90 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Update chat session index scope.
+   * Find a stable H2A chat session by canonical scope.
+   */
+  async getChatSessionByScope(
+    userId: string,
+    scopeType: ChatScopeType,
+    scopeId: string,
+  ): Promise<ChatSession | null> {
+    const normalizedScopeId = scopeId.trim();
+    if (!normalizedScopeId) return null;
+
+    if (scopeType === 'intent') {
+      const [row] = await db
+        .select({ conversationId: schema.chatSessionScopes.conversationId })
+        .from(schema.chatSessionScopes)
+        .where(
+          and(
+            eq(schema.chatSessionScopes.userId, userId),
+            eq(schema.chatSessionScopes.scopeType, scopeType),
+            eq(schema.chatSessionScopes.scopeId, normalizedScopeId),
+          ),
+        )
+        .limit(1);
+      return row ? this.getChatSession(row.conversationId) : null;
+    }
+
+    // Network-scoped sessions predate chat_session_scopes; look them up through metadata.
+    const rows = await db
+      .select({ conversationId: schema.conversationMetadata.conversationId })
+      .from(schema.conversationMetadata)
+      .where(
+        sql`(${schema.conversationMetadata.metadata}->>'scopeType' = ${scopeType} AND ${schema.conversationMetadata.metadata}->>'scopeId' = ${normalizedScopeId}) OR ${schema.conversationMetadata.metadata}->>'networkId' = ${normalizedScopeId}`,
+      )
+      .limit(10);
+
+    for (const row of rows) {
+      const session = await this.getChatSession(row.conversationId);
+      if (session?.userId === userId) return session;
+    }
+    return null;
+  }
+
+  /**
+   * Update chat session canonical scope metadata.
+   * Intent scope also upserts the stable scope mapping used by the resolver.
+   */
+  async updateChatSessionScope(
+    sessionId: string,
+    userId: string,
+    scopeType: ChatScopeType | null,
+    scopeId: string | null,
+  ): Promise<void> {
+    const normalizedScopeId = scopeId?.trim() || null;
+    const networkId = scopeType === 'network' ? normalizedScopeId : null;
+    await this._upsertConvMeta(sessionId, { scopeType, scopeId: normalizedScopeId, networkId });
+
+    await db.delete(schema.chatSessionScopes).where(eq(schema.chatSessionScopes.conversationId, sessionId));
+    if (scopeType === 'intent' && normalizedScopeId) {
+      const now = new Date();
+      await db.insert(schema.chatSessionScopes).values({
+        conversationId: sessionId,
+        userId,
+        scopeType,
+        scopeId: normalizedScopeId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await db
+      .update(schema.conversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.conversations.id, sessionId));
+  }
+
+  /**
+   * Update chat session network scope.
    */
   async updateChatSessionIndex(sessionId: string, networkId: string | null): Promise<void> {
-    await this._upsertConvMeta(sessionId, { networkId });
+    await this._upsertConvMeta(sessionId, {
+      networkId,
+      scopeType: networkId ? 'network' : null,
+      scopeId: networkId,
+    });
+    await db.delete(schema.chatSessionScopes).where(eq(schema.chatSessionScopes.conversationId, sessionId));
     await db
       .update(schema.conversations)
       .set({ updatedAt: new Date() })

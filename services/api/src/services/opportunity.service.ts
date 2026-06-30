@@ -45,6 +45,21 @@ interface OpportunityStatusUpdateResult {
   counterpartUserId?: string;
 }
 
+interface IntentScopeOptions {
+  scopeType?: 'intent';
+  scopeId?: string;
+}
+
+function matchesSelectedIntentScope(
+  opportunity: Pick<Opportunity, 'detection' | 'actors'>,
+  userId: string,
+  scope?: IntentScopeOptions,
+): boolean {
+  if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
+  if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
+  return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === scope.scopeId);
+}
+
 
 /** Events emitted after opportunity lifecycle changes (e.g. create, expire). */
 export type OpportunityCreatedPayload = { opportunity: Opportunity };
@@ -60,12 +75,12 @@ export class OpportunityServiceEvents extends EventEmitter {
 
 /**
  * OpportunityService
- * 
+ *
  * Manages opportunity operations including discovery, listing, and creation.
  * Uses OpportunityControllerDatabase adapter for database operations.
  * Uses OpportunityGraph for AI-powered opportunity discovery.
  * Emits opportunity events (created, expired) after transactional writes so subscribers see consistent state.
- * 
+ *
  * RESPONSIBILITIES:
  * - List opportunities for users and indexes
  * - Get and present individual opportunities
@@ -218,20 +233,23 @@ export class OpportunityService {
    */
   async getHomeView(
     userId: string,
-    options?: { networkId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[] }
+    options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[] }
   ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
     logger.verbose('[OpportunityService] Getting home view', { userId, options });
     if (!this.homeGraph) {
       return { error: 'Home view not available' };
     }
     try {
-      const result = await this.homeGraph.invoke({
+      const homeInput = {
         userId,
         networkId: options?.networkId,
+        scopeType: options?.scopeType,
+        scopeId: options?.scopeId,
         limit: options?.limit ?? 50,
         noCache: options?.noCache,
         statuses: options?.statuses,
-      });
+      };
+      const result = await this.homeGraph.invoke(homeInput);
       if (result.error) {
         return { error: result.error };
       }
@@ -241,7 +259,9 @@ export class OpportunityService {
         maintenanceTriggered: false,
       };
 
-      // Fire-and-forget maintenance: health-scored check replaces empty-feed-only trigger
+      // Fire-and-forget maintenance: health-scored check replaces empty-feed-only trigger.
+      // Intent scope is a feed narrowing, not a maintenance target, so it does not suppress
+      // the existing unscoped maintenance trigger. Network scope retains current behavior.
       if (this.maintenanceGraph && !options?.networkId) {
         meta.maintenanceTriggered = true;
         logger.info('[OpportunityService] Triggering maintenance via health scoring', { userId, source: 'home-view' });
@@ -287,6 +307,8 @@ export class OpportunityService {
       status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
       networkId?: string;
+      scopeType?: 'intent';
+      scopeId?: string;
       limit?: number;
       offset?: number;
     }
@@ -309,10 +331,10 @@ export class OpportunityService {
         allUserIds.add(actor.userId);
       }
     }
-    const userMap = new Map<string, string>();
+    const userMap = new Map<string, { name?: string; avatar: string | null }>();
     const lookups = [...allUserIds].map(async (uid) => {
       const user = await this.db.getUser(uid);
-      if (user?.name) userMap.set(uid, user.name);
+      if (user) userMap.set(uid, { name: user.name ?? undefined, avatar: user.avatar ?? null });
     });
     await Promise.all(lookups);
 
@@ -320,12 +342,15 @@ export class OpportunityService {
       const counterpart = resolveCounterpart(opp.actors, userId);
       const enrichedActors = opp.actors.map((a) => ({
         ...a,
-        name: userMap.get(a.userId) ?? undefined,
+        name: userMap.get(a.userId)?.name ?? undefined,
+        avatar: userMap.get(a.userId)?.avatar ?? null,
       }));
+      const counterpartInfo = counterpart ? userMap.get(counterpart.userId) : undefined;
       return {
         ...opp,
         actors: enrichedActors,
-        counterpartName: counterpart ? (userMap.get(counterpart.userId) ?? undefined) : undefined,
+        counterpartName: counterpartInfo?.name ?? undefined,
+        counterpartAvatar: counterpartInfo?.avatar ?? null,
       };
     });
   }
@@ -381,7 +406,7 @@ export class OpportunityService {
 
   /**
    * Get a single opportunity with full presentation details.
-   * 
+   *
    * @param opportunityId - The opportunity ID
    * @param viewerId - The user viewing the opportunity
    * @returns Opportunity with presentation data or null
@@ -463,7 +488,7 @@ export class OpportunityService {
 
   /**
    * Update opportunity status.
-   * 
+   *
    * @param opportunityId - The opportunity ID
    * @param status - New status
    * @param userId - User making the update (for authorization)
@@ -472,9 +497,16 @@ export class OpportunityService {
   async updateOpportunityStatus(
     opportunityId: string,
     status: OpportunityStatus,
-    userId: string
+    userId: string,
+    options?: IntentScopeOptions,
   ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
-    logger.verbose('[OpportunityService] Updating opportunity status', { opportunityId, status, userId });
+    logger.verbose('[OpportunityService] Updating opportunity status', {
+      opportunityId,
+      status,
+      userId,
+      scopeType: options?.scopeType,
+      scopeId: options?.scopeId,
+    });
 
     const opp = await this.db.getOpportunity(opportunityId);
     if (!opp) {
@@ -484,6 +516,9 @@ export class OpportunityService {
     const callerActor = opp.actors.find((a) => a.userId === userId);
     if (!callerActor) {
       return { error: 'Not authorized to update this opportunity', status: 403 };
+    }
+    if (!matchesSelectedIntentScope(opp, userId, options)) {
+      return { error: 'Opportunity not found', status: 404 };
     }
 
     // Self-accept guard: if the caller has already committed (actedAt is set)
@@ -529,14 +564,16 @@ export class OpportunityService {
 
     const counterpartUserId = counterpart.userId;
 
-    await this.db.acceptSiblingOpportunities(userId, counterpartUserId, opportunityId).catch((err) => {
-      logger.error('[OpportunityService.updateOpportunityStatus] acceptSiblingOpportunities failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId,
-        error: err,
+    if (options?.scopeType !== 'intent') {
+      await this.db.acceptSiblingOpportunities(userId, counterpartUserId, opportunityId).catch((err) => {
+        logger.error('[OpportunityService.updateOpportunityStatus] acceptSiblingOpportunities failed (non-blocking)', {
+          opportunityId,
+          userId,
+          counterpartUserId,
+          error: err,
+        });
       });
-    });
+    }
 
     // Accepter explicitly acted — restore if previously removed.
     // Counterpart: add them to the accepter but honour any prior opt-out on their side.
@@ -652,6 +689,7 @@ export class OpportunityService {
   async startChat(
     opportunityId: string,
     userId: string,
+    options?: IntentScopeOptions,
   ): Promise<
     | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
     | { error: string; status: number }
@@ -664,6 +702,9 @@ export class OpportunityService {
       const isActor = opp.actors.some((a) => a.userId === userId);
       if (!isActor) {
         return { error: 'Not authorized to start chat for this opportunity', status: 403 };
+      }
+      if (!matchesSelectedIntentScope(opp, userId, options)) {
+        return { error: 'Opportunity not found', status: 404 };
       }
       const counterpart = resolveCounterpart(opp.actors, userId);
       if (!counterpart) {
@@ -694,6 +735,9 @@ export class OpportunityService {
     const callerActor = opp.actors.find((a) => a.userId === userId);
     if (!callerActor) {
       return { error: 'Not authorized to start chat for this opportunity', status: 403 };
+    }
+    if (!matchesSelectedIntentScope(opp, userId, options)) {
+      return { error: 'Opportunity not found', status: 404 };
     }
 
     // Self-accept guard: if the caller already committed (actedAt is set) they
@@ -742,14 +786,16 @@ export class OpportunityService {
     // Best-effort side effects — their failure must not block the user from
     // reaching the chat. The opp is already accepted and the DM already
     // resolved; these keep the home feed and contacts view in sync.
-    await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
-      logger.error('[OpportunityService.startChat] acceptSiblingOpportunities failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId: counterpart.userId,
-        error: err,
+    if (options?.scopeType !== 'intent') {
+      await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
+        logger.error('[OpportunityService.startChat] acceptSiblingOpportunities failed (non-blocking)', {
+          opportunityId,
+          userId,
+          counterpartUserId: counterpart.userId,
+          error: err,
+        });
       });
-    });
+    }
     await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true }).catch((err) => {
       logger.error('[OpportunityService.startChat] upsertContactMembership failed (non-blocking)', {
         opportunityId,
@@ -776,7 +822,7 @@ export class OpportunityService {
 
   /**
    * Discover opportunities via HyDE graph.
-   * 
+   *
    * @param userId - The user ID
    * @param query - Search query
    * @param limit - Number of results
@@ -812,8 +858,8 @@ export class OpportunityService {
 
   /**
    * Get opportunities for a specific index.
-   * 
-   * @param networkId - The index ID
+   *
+   * @param networkId - The network ID
    * @param userId - User requesting (for authorization)
    * @param options - Filter options
    * @returns List of opportunities or error
@@ -850,8 +896,8 @@ export class OpportunityService {
 
   /**
    * Create a manual opportunity (curator feature).
-   * 
-   * @param networkId - The index ID
+   *
+   * @param networkId - The network ID
    * @param creatorId - User creating the opportunity
    * @param data - Opportunity creation data
    * @returns Created opportunity or error
@@ -1120,7 +1166,7 @@ export class OpportunityService {
    *
    * @param creatorId - User creating the opportunity
    * @param parties - Parties involved
-   * @param networkId - The index ID
+   * @param networkId - The network ID
    * @returns Permission result
    */
   private async checkCreatePermission(
@@ -1130,13 +1176,13 @@ export class OpportunityService {
   ): Promise<{ allowed: boolean }> {
     const isOwner = await this.db.isIndexOwner(networkId, creatorId);
     const isSelfIncluded = parties.some((p) => p.userId === creatorId);
-    
+
     if (isOwner) return { allowed: true };
-    
+
     const isMember = await this.db.isNetworkMember(networkId, creatorId);
     if (!isMember) return { allowed: false };
     if (isSelfIncluded) return { allowed: true };
-    
+
     return { allowed: true };
   }
 

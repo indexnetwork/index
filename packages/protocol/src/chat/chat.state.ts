@@ -1,6 +1,7 @@
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
 
+import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -23,7 +24,7 @@ export interface IntentSubgraphResult {
   intents?: unknown[];
   count?: number;
   error?: string;
-  /** When the intent graph exits early (e.g. index-scoped without intents); surface to user. */
+  /** When the intent graph exits early (e.g. network-scoped without intents); surface to user. */
   requiredMessage?: string;
 }
 
@@ -72,11 +73,22 @@ export const ChatGraphState = Annotation.Root({
   userId: Annotation<string>,
 
   /**
-   * Optional index (community) ID when chat is scoped to a specific index.
-   * When set, the agent and tools use this as the current index (e.g. read_intents,
-   * create_intent with networkId, scope index assignment to this index only).
+   * Legacy optional index (community) ID when chat is scoped to a specific index.
+   * New callers should set scopeType/scopeId; networkId is retained as an edge alias.
    */
   networkId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope type. Network scope uses a network id; intent scope uses an intent id. */
+  scopeType: Annotation<ToolScopeType | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
+  scopeId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

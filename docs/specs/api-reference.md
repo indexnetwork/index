@@ -349,7 +349,9 @@ SSE streaming endpoint for chat messages with context support. Streams graph eve
   "sessionId": "string | null (optional — creates new session if omitted)",
   "useCheckpointer": "boolean (optional, default: true)",
   "fileIds": ["string (optional — file IDs to attach)"],
-  "indexId": "string | null (optional — scope to a specific index)",
+  "scopeType": "network | intent | null (optional — mutually-exclusive focused scope)",
+  "scopeId": "string | null (required when scopeType is provided)",
+  "networkId": "string | null (deprecated alias for scopeType=network)",
   "recipientUserId": "string | null (optional — DM recipient for ghost invites)",
   "prefillMessages": [
     { "role": "assistant | user", "content": "string (max 10000 chars)" }
@@ -383,6 +385,33 @@ List all chat sessions for the authenticated user.
 }
 ```
 
+### POST /api/chat/session/resolve
+
+Resolve or create the stable orchestrator chat session for a selected intent. Repeated calls by the same user for the same intent return the same session.
+
+**Auth**: AuthGuard
+
+**Request body**:
+```json
+{
+  "scopeType": "intent",
+  "scopeId": "intent UUID"
+}
+```
+
+**Response**:
+```json
+{
+  "session": {
+    "id": "...",
+    "scopeType": "intent",
+    "scopeId": "...",
+    "title": "..."
+  },
+  "created": false
+}
+```
+
 ### POST /api/chat/session
 
 Get a specific session with its messages (including assistant metadata).
@@ -399,7 +428,13 @@ Get a specific session with its messages (including assistant metadata).
 **Response**:
 ```json
 {
-  "session": { ... },
+  "session": {
+    "id": "...",
+    "title": "...",
+    "networkId": "... (legacy network alias, nullable)",
+    "scopeType": "network | intent | null",
+    "scopeId": "... (nullable)"
+  },
   "messages": [
     {
       "id": "...",
@@ -1343,7 +1378,7 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
 
 ### GET /api/debug/home
 
-Returns a home-level diagnostic snapshot for the authenticated user, including intent stats, index memberships, opportunity aggregates, simulated home-view filtering, and a pipeline-health diagnosis.
+Returns a home-level diagnostic snapshot for the authenticated user, including intent stats, network memberships, opportunity aggregates, simulated home-view filtering, and a pipeline-health diagnosis.
 
 **Auth**: DebugGuard + AuthGuard
 
@@ -1459,7 +1494,7 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 
 ### GET /api/networks
 
-List indexes the authenticated user is a member of, including their personal index.
+List networks the authenticated user is a member of, including their personal network.
 
 **Auth**: AuthGuard
 
@@ -1513,7 +1548,7 @@ Search users by name/email, optionally excluding existing members of an index.
 
 ### GET /api/networks/my-members
 
-Get all members of every index the signed-in user is a member of (deduplicated). Used for @mentions in chat.
+Get all members of every network the signed-in user is a member of (deduplicated). Used for @mentions in chat.
 
 **Auth**: AuthGuard
 
@@ -1526,7 +1561,7 @@ Get all members of every index the signed-in user is a member of (deduplicated).
 
 ### GET /api/networks/discovery/public
 
-Get public indexes the user has not joined.
+Get public networks the user has not joined.
 
 **Auth**: AuthGuard
 
@@ -1555,7 +1590,7 @@ Get an index by its invitation share code. Used for invitation page preview.
 
 ### GET /api/networks/public/:id
 
-Get a public index by ID. Only works for indexes with `joinPolicy: 'anyone'`.
+Get a public network by ID. Only works for indexes with `joinPolicy: 'anyone'`.
 
 **Auth**: None (public)
 
@@ -1571,7 +1606,7 @@ Get a public index by ID. Only works for indexes with `joinPolicy: 'anyone'`.
 
 ### GET /api/networks/shared/:userId
 
-Get non-personal indexes shared between the authenticated user and a target user.
+Get non-personal networks shared between the authenticated user and a target user.
 
 **Auth**: AuthGuard
 
@@ -1618,7 +1653,7 @@ Key must match `/^[a-z0-9][a-z0-9-]*[a-z0-9]$/`, be 3–64 characters, and not c
 
 ### GET /api/networks/:id
 
-Get a single index by ID with owner info and member count. Members only.
+Get a single network by ID with owner info and member count. Members only.
 
 **Auth**: AuthGuard
 
@@ -1661,7 +1696,7 @@ Update an index (title, prompt, image, join policy). Owner only.
 
 ### DELETE /api/networks/:id
 
-Soft-delete an index. Owner only.
+Soft-delete a network. Owner only.
 
 **Auth**: AuthGuard
 
@@ -1834,7 +1869,7 @@ Get current user's intents in an index. Members only.
 
 ### POST /api/networks/:id/join
 
-Join a public index.
+Join a public network.
 
 **Auth**: AuthGuard
 
@@ -2201,7 +2236,7 @@ Import contacts from a connected toolkit into an index.
 **Request body**:
 ```json
 {
-  "indexId": "string (optional — defaults to personal index)"
+  "indexId": "string (optional — defaults to personal network)"
 }
 ```
 
@@ -2496,6 +2531,9 @@ List opportunities for the authenticated user.
 **Query params**:
 - `status` — Filter by status: `pending`, `stalled`, `accepted`, `rejected`, `expired` (optional)
 - `networkId` — Filter by network (optional)
+- `scopeType` — Optional selected scope type. Use `intent` for selected-intent scope.
+- `scopeId` — Required when `scopeType=intent`; selected intent UUID. Composes with `networkId`; it never broadens network visibility.
+- `intentId` — Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`.
 - `limit` — Max results (optional)
 - `offset` — Pagination offset (optional)
 
@@ -2524,8 +2562,12 @@ Home view with dynamic sections including LLM-categorized opportunities, present
 **Auth**: AuthGuard
 
 **Query params**:
-- `indexId` — Scope to a specific network (optional)
+- `networkId` — Scope to a specific network (optional)
+- `scopeType` — Optional selected scope type. Use `intent` for selected-intent scope.
+- `scopeId` — Required when `scopeType=intent`; selected intent UUID. Applied before home visibility filtering, sorting, and counterpart dedupe.
+- `intentId` — Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`.
 - `limit` — Max results (optional)
+- `noCache` — Bypass home cache when `true` or `1` (optional)
 
 **Response**: JSON with categorized home sections.
 
@@ -2579,9 +2621,14 @@ Update opportunity status.
 **Request body**:
 ```json
 {
-  "status": "latent | draft | negotiating | pending | stalled | accepted | rejected | expired"
+  "status": "latent | draft | negotiating | pending | stalled | accepted | rejected | expired",
+  "scopeType": "intent (optional)",
+  "scopeId": "selected intent UUID when scopeType=intent (optional)",
+  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId> (optional)"
 }
 ```
+
+When selected-intent scope is supplied, an `accepted` update affects only this opportunity row and does not accept same-counterpart sibling opportunities from other intents. Unscoped behavior preserves existing sibling acceptance.
 
 **Response**: JSON with updated opportunity.
 
@@ -2603,7 +2650,16 @@ Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling
 **Path params**:
 - `id` — Opportunity ID (full UUID or short prefix; resolved server-side)
 
-**Request body**: empty
+**Request body**: empty, or an optional selected-intent scope body:
+```json
+{
+  "scopeType": "intent",
+  "scopeId": "selected intent UUID",
+  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId>"
+}
+```
+
+When selected-intent scope is supplied, sibling acceptance is skipped. Unscoped behavior preserves existing same-counterpart sibling acceptance.
 
 **Response**:
 ```json
@@ -3146,7 +3202,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `update_intent` | Intent | Update an intent (runs full graph pipeline) |
 | `delete_intent` | Intent | Archive/delete an intent |
 | `create_intent_index` | Intent | Link an intent to an index |
-| `read_intent_indexes` | Intent | List indexes linked to an intent |
+| `read_intent_indexes` | Intent | List networks linked to an intent |
 | `delete_intent_index` | Intent | Unlink an intent from an index |
 | `read_networks` | Network | List user's networks |
 | `read_network_memberships` | Network | List members of a network |
@@ -3156,8 +3212,8 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `create_network_membership` | Network | Add a member to a network |
 | `delete_network_membership` | Network | Remove a member from a network |
 | `discover_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
-| `list_opportunities` | Opportunity | List user's opportunities with filters |
-| `update_opportunity` | Opportunity | Accept or reject an opportunity. Accepting returns a `conversationId` (opens a DM between both parties) |
+| `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
+| `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. Accepting returns a `conversationId` |
 | `list_contacts` | Contact | List user's contacts |
 | `add_contact` | Contact | Add a contact by email |
 | `remove_contact` | Contact | Remove a contact |
@@ -3185,6 +3241,9 @@ List pending questions for the authenticated user.
 | `mode` | `discovery` \| `intent` \| `profile` \| `negotiation` | — | Filter by generation mode |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
+| `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
+| `scopeId` | UUID | — | Required when `scopeType=intent`; returns direct intent questions plus negotiation questions whose source opportunity matches the selected-intent predicate. |
+| `intentId` | UUID | — | Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`. |
 | `conversationId` | string | — | Filter to questions linked to a specific chat session |
 | `noConversation` | `true` | — | Exclude questions that have a `conversationId` (sidebar badge use) |
 

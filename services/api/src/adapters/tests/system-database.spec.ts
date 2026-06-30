@@ -36,8 +36,8 @@ import type { ChatDatabaseAdapter } from '../database.adapter';
 
 const AUTH_USER = 'user-auth-123';
 const OTHER_USER = 'user-other-456';
-const SCOPED_INDEX = 'index-scoped-1';
-const SCOPED_INDEX_2 = 'index-scoped-2';
+const SCOPED_INDEX = 'network-scoped-1';
+const SCOPED_INDEX_2 = 'network-scoped-2';
 const OUT_OF_SCOPE_INDEX = 'index-out-of-scope';
 
 function createMockDb(): ChatDatabaseAdapter {
@@ -468,12 +468,12 @@ describe('createSystemDatabase', () => {
       (mockDb.getNetworkMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([
         { networkId: 'some-unrelated-network' },
       ]);
-      await expect(sysDb.getProfile(OTHER_USER)).rejects.toThrow('no shared index');
+      await expect(sysDb.getProfile(OTHER_USER)).rejects.toThrow('no shared network');
     });
 
     it('getUser throws when other user shares no scoped network and no personal network contact', async () => {
       (mockDb.getNetworkMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([]);
-      await expect(sysDb.getUser(OTHER_USER)).rejects.toThrow('no shared index');
+      await expect(sysDb.getUser(OTHER_USER)).rejects.toThrow('no shared network');
     });
   });
 });

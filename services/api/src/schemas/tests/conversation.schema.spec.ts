@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from 'bun:test';
-import { conversations, conversationParticipants, messages, tasks, artifacts, conversationMetadata, participantTypeEnum, messageRoleEnum, taskStateEnum } from '../conversation.schema';
+import { conversations, conversationParticipants, messages, tasks, artifacts, conversationMetadata, chatSessionScopes, participantTypeEnum, messageRoleEnum, taskStateEnum } from '../conversation.schema';
 
 describe('conversation schema', () => {
   it('exports all tables', () => {
@@ -12,6 +12,7 @@ describe('conversation schema', () => {
     expect(tasks).toBeDefined();
     expect(artifacts).toBeDefined();
     expect(conversationMetadata).toBeDefined();
+    expect(chatSessionScopes).toBeDefined();
   });
 
   it('exports all enums', () => {

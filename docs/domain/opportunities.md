@@ -169,7 +169,7 @@ Each opportunity carries interpretations written from a third-party analytical p
 
 Key properties of interpretations:
 - **Non-leaking**: Neither description reveals the other party's raw intent text. If an intent is incognito, the interpretation describes relevant attributes instead.
-- **Contextually grounded**: Uses publicly shareable signals (profile data, shared index membership)
+- **Contextually grounded**: Uses publicly shareable signals (profile data, shared network membership)
 - **Specific**: Explains what each side brings to the connection and why it is mutually valuable
 
 The interpretation `reasoning` field is sanitized to strip UUIDs, preventing internal identifiers from leaking into user-facing text.
@@ -218,7 +218,7 @@ The evaluator's analysis:
 ### Context
 
 Additional metadata:
-- `indexId`: The index scope (if index-scoped discovery)
+- `indexId`: The network scope (if network-scoped discovery)
 - `conversationId`: The conversation where this opportunity was discussed (if chat-driven)
 
 ---

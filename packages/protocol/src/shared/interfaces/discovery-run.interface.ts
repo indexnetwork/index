@@ -58,9 +58,9 @@ export interface DiscoveryRunRecord {
     "userId" |
     "userName" |
     "userEmail" |
-    "networkId" |
+    "scopeType" |
+    "scopeId" |
     "indexName" |
-    "indexScope" |
     "sessionId" |
     "agentId" |
     "clientSurface"

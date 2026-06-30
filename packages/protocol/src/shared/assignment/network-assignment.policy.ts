@@ -1,3 +1,5 @@
+import { deriveAllowedNetworkIds, scopeFromNetworkId } from "../agent/tool.scope.js";
+import type { ScopeMembership, ToolScopeEnvelope } from "../agent/tool.scope.js";
 import type { NetworkAssignmentMetadata, NetworkAssignmentMode, NetworkAssignmentPromptPresence, NetworkAssignmentRawScores, NetworkAssignmentResourceType, NetworkAssignmentScope } from "../schemas/network-assignment.schema.js";
 
 /** Centralized default for unified premise/intent network assignment. */
@@ -8,8 +10,11 @@ export interface PromptPresenceInput {
   memberPrompt?: string | null;
 }
 
-export interface ResolveAssignmentNetworkScopeArgs {
-  memberships: string[];
+export type AssignmentScopeMembership = ScopeMembership | string;
+
+export interface ResolveAssignmentNetworkScopeArgs extends ToolScopeEnvelope {
+  memberships: AssignmentScopeMembership[];
+  /** @deprecated Use `scopeType: 'network'` + `scopeId`. */
   networkScopeId?: string;
 }
 
@@ -47,16 +52,24 @@ export function classifyPromptPresence(input: PromptPresenceInput): NetworkAssig
 }
 
 /**
- * Resolves the networks to evaluate: all memberships in global scope, only the
- * requested network in network scope. The requested network must also be a
- * membership to avoid broadening scope accidentally.
+ * Resolves the networks to evaluate: all memberships in global scope, or the
+ * focused network plus personal memberships in network scope. The focused
+ * network must also be a membership to avoid broadening scope accidentally.
  *
  * @param args - User memberships plus optional active network scope.
  * @returns Network IDs that assignment should evaluate.
  */
 export function resolveAssignmentNetworkScope(args: ResolveAssignmentNetworkScopeArgs): string[] {
-  if (!args.networkScopeId) return [...args.memberships];
-  return args.memberships.includes(args.networkScopeId) ? [args.networkScopeId] : [];
+  const memberships = args.memberships.map((membership) => (
+    typeof membership === "string"
+      ? { networkId: membership, isPersonal: false }
+      : membership
+  ));
+  const scope = args.scopeType && args.scopeId
+    ? { scopeType: args.scopeType, scopeId: args.scopeId }
+    : scopeFromNetworkId(args.networkScopeId);
+
+  return deriveAllowedNetworkIds({ memberships, ...scope });
 }
 
 /**

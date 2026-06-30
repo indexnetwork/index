@@ -15,7 +15,7 @@ function isAllowedToolkit(t: string): t is AllowedToolkit {
 }
 
 /**
- * Manages external integration connections (OAuth), index-scoped linking, and contact import.
+ * Manages external integration connections (OAuth), network-scoped linking, and contact import.
  * OAuth connections are user-level (Composio); the index_integrations table tracks
  * which connections are linked to which indexes.
  */
@@ -124,8 +124,8 @@ export class IntegrationController {
 
   /**
    * Import contacts from a connected toolkit into an index.
-   * Personal indexes receive contacts with 'contact' permission;
-   * non-personal indexes receive members with 'member' permission.
+   * Personal networks receive contacts with 'contact' permission;
+   * non-personal networks receive members with 'member' permission.
    * POST /api/integrations/:toolkit/import
    */
   @Post('/:toolkit/import')

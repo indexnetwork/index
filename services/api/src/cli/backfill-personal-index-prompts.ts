@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Backfill CLI: heal personal indexes after removing the hidden boilerplate prompt.
+ * Backfill CLI: heal personal networks after removing the hidden boilerplate prompt.
  *
  * Two idempotent steps:
- *   1. Clear the system boilerplate prompt from personal indexes (only the exact
+ *   1. Clear the system boilerplate prompt from personal networks (only the exact
  *      boilerplate string — any user-authored prompt is preserved).
- *   2. Assign every active intent to its owner's personal index (relevancy 1.0)
- *      when that personal index is now prompt-less and the intent isn't already
- *      a member. Prompt-less personal index == "no filtration" == holds everything.
+ *   2. Assign every active intent to its owner's personal network (relevancy 1.0)
+ *      when that personal network is now prompt-less and the intent isn't already
+ *      a member. Prompt-less personal network == "no filtration" == holds everything.
  *
  * Dry-run by default: pass --apply to write. Defaults to .env.development unless
  * NODE_ENV=production (mirrors the other maintenance scripts).
@@ -26,7 +26,7 @@ import { sql } from 'drizzle-orm/sql';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 
-const BOILERPLATE = "Personal index containing the owner's imported contacts for network-scoped discovery.";
+const BOILERPLATE = "Personal network containing the owner's imported contacts for network-scoped discovery.";
 
 async function main() {
   const apply = process.argv.slice(2).includes('--apply');
@@ -56,8 +56,8 @@ async function main() {
   `);
   const orphanCount = Number((orphanRows[0] as { count: number | string })?.count ?? 0);
 
-  console.log(`Personal indexes with boilerplate prompt to clear: ${boilerplateCount}`);
-  console.log(`Active intents missing from their personal index to heal: ${orphanCount}`);
+  console.log(`Personal networks with boilerplate prompt to clear: ${boilerplateCount}`);
+  console.log(`Active intents missing from their personal network to heal: ${orphanCount}`);
 
   if (!apply) {
     console.log('\nDry-run only — re-run with --apply to write changes.\n');
@@ -70,9 +70,9 @@ async function main() {
     where is_personal = true and deleted_at is null and prompt = ${BOILERPLATE}
     returning id
   `);
-  console.log(`Step 1: cleared boilerplate prompt on ${(cleared as unknown[]).length} personal indexes.`);
+  console.log(`Step 1: cleared boilerplate prompt on ${(cleared as unknown[]).length} personal networks.`);
 
-  // --- Step 2: assign missing active intents to their personal index ---------
+  // --- Step 2: assign missing active intents to their personal network ---------
   // Runs AFTER step 1 so n.prompt is null for indexes we just cleared; any
   // user-authored prompt remains non-null and is intentionally skipped.
   const healed = await db.execute(sql`
@@ -90,7 +90,7 @@ async function main() {
     on conflict (intent_id, network_id) do nothing
     returning intent_id
   `);
-  console.log(`Step 2: assigned ${(healed as unknown[]).length} intents to their personal index.\n`);
+  console.log(`Step 2: assigned ${(healed as unknown[]).length} intents to their personal network.\n`);
 }
 
 main()

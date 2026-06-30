@@ -57,9 +57,9 @@ export interface EnrichmentRunRecord {
     "userId" |
     "userName" |
     "userEmail" |
-    "networkId" |
+    "scopeType" |
+    "scopeId" |
     "indexName" |
-    "indexScope" |
     "sessionId" |
     "agentId" |
     "clientSurface"

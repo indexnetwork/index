@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useNavigate } from "react-router";
-import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users } from "lucide-react";
+import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
@@ -62,6 +62,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     sessionId,
     sessionTitle,
     suggestions: contextSuggestions,
+    chatScope,
+    setChatScope,
     setScopeNetworkId,
     sessionNetworkId,
     updateSessionTitle,
@@ -188,18 +190,31 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const questionsService = useQuestionsService();
   const [injectedQuestions, setInjectedQuestions] = useState<PendingQuestion[]>([]);
 
-  // Fetch conversation-linked questions on session load
+  // Fetch conversation-linked questions on session load. In intent-scoped
+  // sessions, also include pending questions derived from that selected intent,
+  // its opportunities, and their negotiations.
   useEffect(() => {
     if (!sessionId) {
       setInjectedQuestions([]);
       return;
     }
     let active = true;
-    questionsService.getByConversation(sessionId).then((qs) => {
-      if (active) setInjectedQuestions(qs);
+    const scopeQuestionPromise = chatScope?.type === "intent"
+      ? questionsService.getPending({ scopeType: "intent", scopeId: chatScope.id })
+      : Promise.resolve([] as PendingQuestion[]);
+    Promise.all([
+      questionsService.getByConversation(sessionId),
+      scopeQuestionPromise,
+    ]).then(([conversationQuestions, scopeQuestions]) => {
+      if (!active) return;
+      const deduped = new Map<string, PendingQuestion>();
+      for (const question of [...conversationQuestions, ...scopeQuestions]) {
+        deduped.set(question.id, question);
+      }
+      setInjectedQuestions([...deduped.values()]);
     }).catch(() => {});
     return () => { active = false; };
-  }, [sessionId, questionsService]);
+  }, [sessionId, questionsService, chatScope]);
 
   // Group injected questions by messageId
   const injectedByMessageId = useMemo(() => {
@@ -299,12 +314,18 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const { selectedNetworkIds, setSelectedNetworkIds } = useNetworkFilter();
   const selectedIndexId =
     selectedNetworkIds.length === 1 ? selectedNetworkIds[0] : null;
+  const intentOpportunityScope = useMemo(
+    () => chatScope?.type === "intent"
+      ? { scopeType: "intent" as const, scopeId: chatScope.id }
+      : undefined,
+    [chatScope],
+  );
 
   // Suggestions: from context (done event) when we have messages, else static starters
   const { suggestions } = useSuggestions({
     contextSuggestions: contextSuggestions ?? null,
     hasMessages: messages.length > 0,
-    networkId: selectedIndexId,
+    networkId: chatScope?.type === "network" ? selectedIndexId : undefined,
     enabled: messages.length > 0,
   });
 
@@ -321,12 +342,14 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // Sync network filter selection to chat scope so backend receives networkId when user has selected a network
   useEffect(() => {
+    if (chatScope?.type === "intent") return;
     setScopeNetworkId(selectedIndexId);
-  }, [selectedIndexId, setScopeNetworkId]);
+  }, [selectedIndexId, setScopeNetworkId, chatScope?.type]);
 
-  // Fetch home view when on home (no messages) and USE_HOME_API
+  // Fetch home view only on the root/home composer. Empty /d/:sessionId
+  // conversations should render the chat shell, not the discovery home feed.
   useEffect(() => {
-    if (!USE_HOME_API || messages.length > 0) {
+    if (!USE_HOME_API || messages.length > 0 || sessionIdFromUrl) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setHomeViewData(null);
       return;
@@ -336,7 +359,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     const urlParams = new URLSearchParams(window.location.search);
     const noCache = urlParams.get('noCache') === '1' || urlParams.get('noCache') === 'true';
     opportunitiesService
-      .getHomeView({ networkId: selectedIndexId ?? undefined, limit: 5, noCache })
+      .getHomeView({
+        ...(chatScope?.type === "network" ? { networkId: selectedIndexId ?? undefined } : {}),
+        ...(intentOpportunityScope ?? {}),
+        limit: 5,
+        noCache,
+      })
       .then((res) => {
         setHomeViewData(res);
         setHomeViewLoading(false);
@@ -346,7 +374,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setHomeViewData(null);
         setHomeViewLoading(false);
       });
-  }, [messages.length, selectedIndexId, opportunitiesService]);
+  }, [messages.length, sessionIdFromUrl, selectedIndexId, opportunitiesService, chatScope?.type, intentOpportunityScope]);
 
   const handleSuggestionClick = useCallback(
     (suggestion: {
@@ -381,11 +409,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       navigatingToHomeRef.current = true;
       // Don't abort in-flight stream so the new session can finish and appear in the sidebar
       clearChat({ abortStream: false });
+      setChatScope(null);
       setSelectedNetworkIds([]);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSessionLoaded(true);
     }
-  }, [sessionIdFromUrl, loadSession, clearChat]);
+  }, [sessionIdFromUrl, loadSession, clearChat, setChatScope, setSelectedNetworkIds]);
 
 
   useEffect(() => {
@@ -462,7 +491,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
-          const result = await opportunitiesService.updateStatus(opportunityId, "accepted");
+          const result = await opportunitiesService.updateStatus(opportunityId, "accepted", intentOpportunityScope);
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
           removeOpportunityFromHomeView(opportunityId);
           const counterpartUserId = result.counterpartUserId ?? fallbackUserId;
@@ -482,7 +511,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       if (action === "accepted" && !isIntroducer && !isGhost) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
-          const result = await opportunitiesService.startChat(opportunityId);
+          const result = await opportunitiesService.startChat(opportunityId, intentOpportunityScope);
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
           removeOpportunityFromHomeView(opportunityId);
           refreshConversations();
@@ -502,7 +531,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
       try {
         const effectiveStatus = isIntroducer && action === "accepted" ? "pending" : action;
-        const result = await opportunitiesService.updateStatus(opportunityId, effectiveStatus);
+        const result = await opportunitiesService.updateStatus(opportunityId, effectiveStatus, intentOpportunityScope);
         setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: effectiveStatus }));
 
         if (action === "accepted" && isIntroducer) {
@@ -525,7 +554,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, navigate, showError, showSuccess, refreshConversations, removeOpportunityFromHomeView],
+    [opportunitiesService, navigate, showError, showSuccess, refreshConversations, removeOpportunityFromHomeView, intentOpportunityScope],
   );
 
   /**
@@ -539,7 +568,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     async (opportunityId: string, counterpartUserId: string) => {
       setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
       try {
-        const result = await opportunitiesService.startChat(opportunityId);
+        const result = await opportunitiesService.startChat(opportunityId, intentOpportunityScope);
         setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
         refreshConversations();
         // Always route to the h2h chat page (`/u/:peer/chat`). `/chat/:id`
@@ -552,7 +581,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, navigate, showError, refreshConversations],
+    [opportunitiesService, navigate, showError, refreshConversations, intentOpportunityScope],
   );
 
   const archiveProposalIntent = useCallback(
@@ -857,12 +886,34 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     </>
   );
 
-  // HOME STATE - No messages yet
-  if (messages.length === 0) {
+  // HOME STATE - No messages yet. A resolved /d/:sessionId may legitimately
+  // have no messages yet; keep that in conversation mode so intent-scoped
+  // sessions open directly into the chat shell with their scope chip visible.
+  if (messages.length === 0 && !sessionIdFromUrl) {
     const personalIndex = indexes.find((i) => i.isPersonal);
     const selectedIndex = indexes.find((i) => selectedNetworkIds.includes(i.id));
 
     const renderScopeDropdown = () => {
+      if (chatScope?.type === "intent") {
+        return (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-black bg-gray-100 border border-gray-200">
+            <MessageSquare className="w-4 h-4" />
+            {!isInputMultiline && (
+              <span className="max-w-48 truncate">
+                {chatScope.label || "Selected intent"}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setChatScope(null)}
+              className="p-0.5 rounded-full text-gray-500 hover:text-black hover:bg-gray-200"
+              aria-label="Clear intent scope"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        );
+      }
       if (indexes.length === 0) return null;
       return (
         <div className="relative shrink-0">
@@ -1273,7 +1324,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }
 
   // CONVERSATION MODE - Has messages
-  const boundIndexId = sessionNetworkId ?? selectedIndexId;
+  const boundIndexId = chatScope?.type === "network" ? (sessionNetworkId ?? selectedIndexId) : null;
   const boundIndex = indexes.find((i) => i.id === boundIndexId) ?? null;
 
   return (
@@ -1285,6 +1336,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           type="button"
           onClick={() => {
             clearChat({ abortStream: false });
+            setChatScope(null);
             setSelectedNetworkIds([]);
             navigate("/");
           }}
@@ -1350,6 +1402,14 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   <DebugCopyButton fetchPath={`/debug/chat/${sessionId}`} title="Copy chat debug JSON" />
                 )}
               </>
+            )}
+            {chatScope?.type === "intent" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 ml-2">
+                <MessageSquare className="w-3 h-3" />
+                <span className="truncate max-w-40">
+                  {chatScope.label || "Selected intent"}
+                </span>
+              </span>
             )}
             {boundIndex && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 ml-2">

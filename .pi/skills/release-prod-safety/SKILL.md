@@ -21,6 +21,8 @@ Build fails BEFORE the release/`db:migrate` phase, so no migration runs and the 
 ```bash
 bun install --frozen-lockfile   # must print "no changes" / not error
 ```
+If `bun install --lockfile-only` reports success but the workspace metadata in `bun.lock` still shows the old version, update the package's `version` entry in `bun.lock` directly and rerun `bun install --frozen-lockfile` to prove the lockfile is internally consistent. This has happened for workspace package version bumps (`packages/protocol`, `services/api`) where only the lockfile metadata stanza was stale.
+
 If prod already failed: regenerate the lockfile, hotfix it to `main` (then sync the identical fix to `dev` — it is equally stale), and the next deploy proceeds to build → migrate → boot.
 
 ## 2. Destructive migration without a verified prod data backfill

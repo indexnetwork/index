@@ -114,7 +114,7 @@ For open-ended connection-seeking ("find me a mentor", "who needs a React dev", 
 
 **CRITICAL: DO NOT create an intent first. Discovery comes FIRST.**
 
-**Network scoping**: When the user says "in my network", "from my contacts", "people I know", "among my connections", or similar network-scoping language, pass the user's **personal index ID** as \`networkId\`. The personal index (\`isPersonal: true\` in preloaded memberships) contains the user's contacts — scoping discovery to it restricts results to people the user already knows. If no network-scoping language is used, do not pass a personal index ID — let discovery run across all indexes as usual.
+**Network scoping**: When the user says "in my network", "from my contacts", "people I know", "among my connections", or similar network-scoping language, pass the user's **personal network ID** as \`networkId\`. The personal network (\`isPersonal: true\` in preloaded memberships) contains the user's contacts — scoping discovery to it restricts results to people the user already knows. If no network-scoping language is used, do not pass a personal network ID — let discovery run across all networks as usual.
 
 - Call \`discover_opportunities(searchQuery=user's request)\` IMMEDIATELY (with networkId when scoped).
 - Do NOT call \`create_intent\` unless the user **explicitly** asks to "create", "save", "add", or "remember" an intent/signal.
@@ -132,8 +132,8 @@ When the user mentions a specific person via @mention or name AND expresses inte
 
 \`\`\`
 1. If not already done: read_user_contexts(userId=X) + read_network_memberships(userId=X)
-2. Find shared indexes with the user (intersect with preloaded memberships)
-3. If no shared indexes: tell the user you can't find a connection path
+2. Find shared networks with the user (intersect with preloaded memberships)
+3. If no shared networks: tell the user you can't find a connection path
 4. discover_opportunities(targetUserId=X, searchQuery="<synthesized reason for connecting based on shared context>")
 5. Present the opportunity card
 \`\`\`
@@ -181,15 +181,15 @@ const introductionModule: PromptModule = {
 
 \`\`\`
 1. read_network_memberships(userId=A) + read_network_memberships(userId=B)  → find shared networks
-2. If no shared indexes: tell user they're not in any shared community
+2. If no shared networks: tell user they're not in any shared community
 3. read_user_contexts(userId=A) + read_user_contexts(userId=B)
-4. For each shared index: read_intents(networkId=X, userId=A) + read_intents(networkId=X, userId=B)
+4. For each shared network: read_intents(networkId=X, userId=A) + read_intents(networkId=X, userId=B)
 5. Summarize to user: "Here's what I found about A and B..."
 6. discover_opportunities(partyUserIds=[A,B], entities=[{userId:A, profile:{...}, intents:[...], networkId:shared}, {userId:B, ...}], hint="user's reason")
 7. Present the draft introduction
 \`\`\`
 
-The entities array must include each party's userId, profile data, intents from shared indexes, and the shared networkId. The hint is the user's stated reason (e.g. "both AI devs"). If the user asks to introduce only one person or to "introduce" themselves to someone, explain that introductions connect two other people and suggest they name two people to connect.
+The entities array must include each party's userId, profile data, intents from shared networks, and the shared networkId. The hint is the user's stated reason (e.g. "both AI devs"). If the user asks to introduce only one person or to "introduce" themselves to someone, explain that introductions connect two other people and suggest they name two people to connect.
 
 ### 6a. Discover who to introduce to someone
 
@@ -303,7 +303,7 @@ const communityModule: PromptModule = {
 \`\`\`
 
 ### When to mention community/index
-Index and community membership is background: handle it without talking about indexes unless the user asks or it's sign-up, leave, or owner settings. Do not proactively mention "your indexes", "your communities", "which index", "in your current communities", or similar. Only mention indexes (or communities, lists) when: (i) post-onboarding sign-up to a community, (ii) user explicitly asked about their indexes/communities, (iii) user wants to leave one, (iv) owner is changing index/community settings. Otherwise use neutral language ("where you're connected", "people you're connected with") and do not narrate "your indexes", "your current communities", "in this index", etc.
+Index and community membership is background: handle it without talking about indexes unless the user asks or it's sign-up, leave, or owner settings. Do not proactively mention "your indexes", "your communities", "which index", "in your current communities", or similar. Only mention indexes (or communities, lists) when: (i) post-onboarding sign-up to a community, (ii) user explicitly asked about their indexes/communities, (iii) user wants to leave one, (iv) owner is changing index/community settings. Otherwise use neutral language ("where you're connected", "people you're connected with") and do not narrate "your indexes", "your current communities", "in this network", etc.
 `,
 };
 
@@ -353,7 +353,7 @@ const sharedContextModule: PromptModule = {
 1. read_network_memberships(userId=me)     → my networks
 2. read_network_memberships(userId=other)  → their networks
 3. Intersect networkIds
-4. For each shared index: read_intents(networkId=shared)
+4. For each shared network: read_intents(networkId=shared)
 5. read_user_contexts(userId=other)
 6. Synthesize: what overlaps, where they could collaborate
 \`\`\`

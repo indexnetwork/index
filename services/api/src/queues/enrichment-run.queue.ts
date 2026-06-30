@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { PremiseGraphFactory, EnrichmentGraphFactory, createEnrichmentTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
+import { PremiseGraphFactory, EnrichmentGraphFactory, createEnrichmentTools, deriveAllowedNetworkIds, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
 import type { CompiledGraph, PremiseGraphDatabase, EnrichmentRunInput, EnrichmentRunRecord, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -148,19 +148,25 @@ export class EnrichmentRunQueue {
     const resolved = await resolveChatContext({
       database: chatDatabaseAdapter,
       userId: run.userId,
-      networkId: run.context.networkId,
+      networkId: run.context.scopeType === 'network' ? run.context.scopeId : undefined,
       sessionId: run.context.sessionId,
     });
     const context: ResolvedToolContext = {
       ...resolved,
-      indexScope: run.context.indexScope ?? resolved.indexScope,
+      ...(run.context.scopeType && run.context.scopeId
+        ? { scopeType: run.context.scopeType, scopeId: run.context.scopeId }
+        : {}),
       isMcp: false,
       ...(run.agentId ? { agentId: run.agentId } : {}),
       ...(run.context.clientSurface ? { clientSurface: run.context.clientSurface } : {}),
     };
+    const allowedNetworkIds = deriveAllowedNetworkIds({
+      memberships: context.userNetworks,
+      ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
+    });
 
     const userDb = createUserDatabase(chatDatabaseAdapter, run.userId);
-    const systemDb = createSystemDatabase(chatDatabaseAdapter, run.userId, context.indexScope, embedderAdapter);
+    const systemDb = createSystemDatabase(chatDatabaseAdapter, run.userId, allowedNetworkIds, embedderAdapter);
     const premiseGraph = new PremiseGraphFactory(chatDatabaseAdapter as unknown as PremiseGraphDatabase, embedderAdapter).createGraph();
     const profileGraph = new EnrichmentGraphFactory(
       chatDatabaseAdapter,

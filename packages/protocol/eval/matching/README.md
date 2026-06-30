@@ -111,7 +111,7 @@ use Tier 1 when introducing a new surgical behavior or minimal-pair rule.
 co-researchers on a landmark paper, a songwriting duo, a first-check investor + founder,
 a cross-disciplinary biomedical research pair), recreated as the people looked *before* they
 connected. Each case places the discoverer, the eventual partner, and three plausible
-contemporary distractors in one shared index, and asserts the evaluator surfaces the partner
+contemporary distractors in one shared network, and asserts the evaluator surfaces the partner
 (band `[60, 100]`) while the distractors do not (`[0, 29]`). Evaluator input names stay
 anonymized so the model judges on fit, not fame, but `reportNames` exposes the real-world
 referents in HTML/reports. Run with `bun run eval:matching -- --rule historical`.

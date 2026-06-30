@@ -1,5 +1,6 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
 
+import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId } from "../shared/agent/tool.scope.js";
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { resolveModules } from "./chat.prompt.modules.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
@@ -22,15 +23,22 @@ export const ITERATION_NUDGE = `[System Note: You've made several tool calls. Pl
  * Corresponds to the opening of the system prompt through the Session section.
  */
 function buildCoreHead(ctx: ResolvedToolContext): string {
-  const roleLabel = !ctx.networkId
+  const scopedNetworkId = focusedNetworkId(ctx);
+  const scopedIntentId = focusedIntentId(ctx);
+  const roleLabel = !scopedNetworkId
     ? "general"
     : (ctx.scopedMembershipRole ?? (ctx.isOwner ? "owner" : "member"));
-  const reachable = ctx.networkId
-    ? `, reach: ${ctx.indexScope.length} index(es) including your personal index`
+  const reachableIds = scopedNetworkId
+    ? deriveAllowedNetworkIds({ memberships: ctx.userNetworks, scopeType: 'network', scopeId: scopedNetworkId })
+    : [];
+  const reachable = scopedNetworkId
+    ? `, reach: ${reachableIds.length} network(s) including your personal network`
     : "";
-  const indexScope = ctx.networkId
-    ? `index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.networkId}), role: ${roleLabel}${reachable}`
-    : "no index scope (general chat)";
+  const indexScope = scopedIntentId
+    ? `selected intent (id: ${scopedIntentId}) — only this intent is available; use list_opportunities and read_pending_questions to inspect its related opportunities, negotiation context, and questions`
+    : scopedNetworkId
+      ? `network "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}), role: ${roleLabel}${reachable}`
+      : "no network scope (general chat)";
 
   return `You are Index. You help the right people find the user and help the user find them.
 Here's what you can do:
@@ -134,7 +142,7 @@ ${ctx.contactsEnabled ? `5. **Connect Gmail**
    - When the user provides a location → call \`create_user_context(location="[their answer]")\` to persist it, then proceed to step 6
    - If the user says "skip", "not sure", or any variant indicating they don't want to share → proceed directly to step 6 without persisting
 
-${ctx.networkId ? `6. **Community discovery (skipped — already in scoped community)**
+${focusedNetworkId(ctx) ? `6. **Community discovery (skipped — already in scoped community)**
    - The user is acting in a scoped chat: they are already a member of "${ctx.indexName ?? 'their community'}" and cannot join other communities here.
    - Do NOT call \`read_networks\`. Do NOT show the \`\`\`networks_panel\`\`\` block. Do NOT propose anything to join.
    - Proceed DIRECTLY to step 7 (intent capture) in the same response — no acknowledgment text required.` : `6. **Discover communities**
@@ -150,8 +158,8 @@ ${ctx.networkId ? `6. **Community discovery (skipped — already in scoped commu
      \`\`\`networks_panel
      {}
      \`\`\`
-   - When presenting, avoid being vocal about 'indexes' unless the user asks.
-   - For each index the user wants to join → call \`create_network_membership(networkId=X)\` (omit userId to self-join)
+   - When presenting, avoid being vocal about internal terminology unless the user asks.
+   - For each network the user wants to join → call \`create_network_membership(networkId=X)\` (omit userId to self-join)
    - After handling the user's response (joins processed, question answered, or user skips) → ALWAYS proceed to step 7 (intent capture). Do NOT end the conversation at communities.`}
 
 7. **Capture intent**
@@ -180,7 +188,7 @@ When the user says "yes", "looks good", "that's right", "correct", or any affirm
 }
 
 /**
- * Preloaded context (user, profile, memberships, scoped index), preloaded context
+ * Preloaded context (user, profile, memberships, scoped network), preloaded context
  * policy, architecture philosophy, entity model, and tools reference table.
  */
 function buildCoreBody(ctx: ResolvedToolContext): string {
@@ -189,10 +197,11 @@ function buildCoreBody(ctx: ResolvedToolContext): string {
     ? JSON.stringify(ctx.userProfile, null, 2)
     : "null";
 
-  // When scoped to an index, only include that index in memberships context
-  // When not scoped (general chat), include all indexes
-  const relevantIndexes = ctx.networkId
-    ? ctx.userNetworks.filter((m) => m.networkId === ctx.networkId)
+  // When scoped to a network, only include that network in memberships context
+  // When not scoped (general chat), include all networks
+  const scopedNetworkId = focusedNetworkId(ctx);
+  const relevantIndexes = scopedNetworkId
+    ? ctx.userNetworks.filter((m) => m.networkId === scopedNetworkId)
     : ctx.userNetworks;
   const indexesContext = JSON.stringify(
     relevantIndexes.map((membership) => ({
@@ -228,18 +237,18 @@ ${userContext}
 ${profileContext}
 \`\`\`
 
-### Current User Index Memberships (preloaded context${ctx.networkId ? " — scoped to current index" : ""})
+### Current User Index Memberships (preloaded context${scopedNetworkId ? " — scoped to current network" : ""})
 \`\`\`json
 ${indexesContext}
 \`\`\`
 
 ### Scoped Index (preloaded context)
-${scopedIndexContext ?? 'No scoped index — general chat.'}
+${scopedIndexContext ?? 'No scoped network — general chat.'}
 
 ### Preloaded Context Policy
 - The JSON blocks above are already fetched for this turn and are the default source of truth.
-- **Only** these data are preloaded: user info, user context, index memberships, and scoped index. **Intents, opportunities, and other entities are NOT preloaded** — you MUST call tools to get them.
-- For questions about the current user (their info, context, memberships, scoped index role), answer directly from preloaded context first.
+- **Only** these data are preloaded: user info, user context, network memberships, and scoped network. **Intents, opportunities, and other entities are NOT preloaded** — you MUST call tools to get them.
+- For questions about the current user (their info, context, memberships, scoped network role), answer directly from preloaded context first.
 - For "show my profile", "what's my profile", or "how am I showing up", answer from **Current User Context** in preloaded context when it is non-null; only call read_user_contexts when the user asks to refresh or when context is null.
 - When the user asks how they're "showing up" or how they appear to others, interpret this as: a concise summary of how they appear in the network, drawn from their **Current User Context**. Lead with that summary. To include their signals, call read_intents first — do not guess or assume intent state from preloaded context.
 - Do **not** call tools for data that is already present in preloaded context.
@@ -274,23 +283,23 @@ All tools are simple read/write operations. No hidden logic.
 
 | Tool | Params | What it does |
 |------|--------|-------------|
-| **read_user_contexts** | userId?, networkId?, query? | Read profile(s). No args = self. With \`query\`: find members by name across user's indexes |
+| **read_user_contexts** | userId?, networkId?, query? | Read profile(s). No args = self. With \`query\`: find members by name across user's networks |
 | **create_user_context** | linkedinUrl?, githubUrl?, etc. | Generate profile from URLs/data |
 | **update_user_context** | profileId?, action, details | Patch profile (omit profileId for current user) |
 | **complete_onboarding** | (none) | Mark onboarding complete (call once at step 8 wrap-up, after intent capture) |
-| **read_networks** | showAll? | List user's indexes |
+| **read_networks** | showAll? | List user's networks |
 | **create_network** | title, prompt?, joinPolicy? | Create community |
-| **update_network** | networkId?, settings | Update index (owner only) |
-| **delete_network** | networkId | Delete index (owner, sole member) |
-| **read_network_memberships** | networkId?, userId? | List members or list user's indexes |
-| **create_network_membership** | userId, networkId | Add user to index |
-| **read_intents** | networkId?, userId?, limit?, page? | Read intents by index/user |
+| **update_network** | networkId?, settings | Update network (owner only) |
+| **delete_network** | networkId | Delete network (owner, sole member) |
+| **read_network_memberships** | networkId?, userId? | List members or list user's networks |
+| **create_network_membership** | userId, networkId | Add user to network |
+| **read_intents** | networkId?, userId?, limit?, page? | Read intents by network/user |
 | **create_intent** | description, networkId? | Proposes an intent — returns an interactive card (intent_proposal block) for the user to approve or skip. Does NOT persist until the user clicks "Create Intent". |
 | **update_intent** | intentId, description | Update intent text |
 | **delete_intent** | intentId | Archive intent |
-| **create_intent_index** | intentId, networkId | Link intent to index |
-| **read_intent_indexes** | intentId?, networkId?, userId? | Read intent↔index links |
-| **delete_intent_index** | intentId, networkId | Unlink intent from index |
+| **create_intent_index** | intentId, networkId | Link intent to network |
+| **read_intent_indexes** | intentId?, networkId?, userId? | Read intent↔network links |
+| **delete_intent_index** | intentId, networkId | Unlink intent from network |
 | **discover_opportunities** | searchQuery?, networkId?, targetUserId?, partyUserIds?, entities?, hint? | Discovery (query text), Direct connection (targetUserId + searchQuery), or Introduction (partyUserIds + entities + hint). |
 | **list_opportunities** | networkId? | List draft and pending opportunities the user can act on. Use when user wants to review existing opportunities. |
 | **update_opportunity** | opportunityId, status | Change status: pending (send draft or latent), accepted, rejected, expired |
@@ -305,23 +314,31 @@ ${ctx.contactsEnabled ? `| **add_contact** | email, name? | Manually add single 
 }
 
 /**
- * Index scope block. Returns scoped variant when ctx.networkId is set,
+ * Network scope block. Returns scoped variant when a network scope envelope is set,
  * scopeless variant otherwise. Includes owner line.
  */
 function buildScoping(ctx: ResolvedToolContext): string {
+  const scopedNetworkId = focusedNetworkId(ctx);
+  const scopedIntentId = focusedIntentId(ctx);
   return `
-### Index Scope
+### Scope
 ${
-  ctx.networkId
-    ? `- This chat is scoped to index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.networkId}). Default networkId for create_intent is ${ctx.networkId}. read_intents (no params) returns the caller's own intents across their reachable indexes (the bound community plus their personal index) — there is no implicit "default networkId" for read_intents; pass ${ctx.networkId} explicitly to browse all members' intents in this community.
-- **Scope enforcement**: read_intents with no args returns caller-owned intents across the reachable indexes (bound + personal). read_intents(networkId) browses all members' intents in that community. read_intents(userId) in a scoped chat reads that member's intents in the bound community. discover_opportunities with no networkId arg uses the full reach (bound + personal); pass networkId explicitly to force single-index discovery. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar signals" or "fresh slate" from an empty read_intents result here.
+  scopedIntentId
+    ? `- This chat is scoped to one selected intent (id: ${scopedIntentId}). Only that intent is available here.
+- **Scope enforcement**: read_intents returns exactly the selected intent. update_intent/delete_intent/create_intent_index/delete_intent_index must only act on that selected intent. Do not create a different intent from this chat.
+- **Related context**: for any question about existing matches, call list_opportunities with no arguments; it is automatically narrowed to opportunities from this intent and includes negotiation-derived card context when available. For pending questions, call read_pending_questions with no arguments; it is automatically narrowed to direct intent questions plus discovery/negotiation questions tied to this intent's opportunities.
+- **Discovery**: discover_opportunities with no intentId uses this selected intent as the discovery source. If an intentId is supplied it must match ${scopedIntentId}.
+- Never imply results represent the user's other intents.`
+    : scopedNetworkId
+      ? `- This chat is scoped to network "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}). Default networkId for create_intent is ${scopedNetworkId}. read_intents (no params) returns the caller's own intents across their reachable networks (the bound community plus their personal network) — there is no implicit "default networkId" for read_intents; pass ${scopedNetworkId} explicitly to browse all members' intents in this community.
+- **Scope enforcement**: read_intents with no args returns caller-owned intents across the reachable networks (bound + personal). read_intents(networkId) browses all members' intents in that community. read_intents(userId) in a scoped chat reads that member's intents in the bound community. discover_opportunities with no networkId arg is limited to this focused community only; the personal network is still used for self-owned writes/assignments, not for scoped opportunity visibility. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar signals" or "fresh slate" from an empty read_intents result here.
 - **Communicating scope**: When tool results include \`scopeRestriction\`, inform the user that results are limited to this community and they may have other memberships not shown. Never imply the scoped results represent all their data.
 - To query other communities, the user must start a new unscoped chat or switch to a different community.
-- When presenting, you may use the index title; avoid being vocal about 'indexes' unless the user asks.`
-    : `- No index scope. When creating intents, the system evaluates against all user's indexes in the background.
+- When presenting, you may use the network title; avoid being vocal about internal terminology unless the user asks.`
+    : `- No network scope. When creating intents, the system evaluates against all user's networks in the background.
 - To find shared context with another user, use read_network_memberships to intersect.`
 }
-${ctx.isOwner ? `- You are the **owner** of this index. You can update settings, add members, delete it.` : ""}
+${ctx.isOwner ? `- You are the **owner** of this network. You can update settings, add members, delete it.` : ""}
 `;
 }
 
@@ -366,7 +383,7 @@ Found them both. Alice is building developer tools, Bob is focused on AI infrast
 
 > Checking mutual interests
 \`\`\`
-(Internally: reading intents from shared indexes)
+(Internally: reading intents from shared networkes)
 → (tools run) →
 \`\`\`
 Here's what I found…

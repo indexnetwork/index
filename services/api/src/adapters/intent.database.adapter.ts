@@ -351,7 +351,7 @@ export class IntentDatabaseAdapter {
   /**
    * Associates an intent with an index (inserts intent_indexes row).
    * @param intentId - The intent identifier.
-   * @param networkId - The index identifier.
+   * @param networkId - The network identifier.
    * @returns Promise that resolves when the row is inserted.
    * @throws May throw on database insertion errors (db.insert/schema.intentNetworks).
    */
@@ -378,9 +378,9 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Returns personal index IDs where the given user is a contact member.
+   * Returns personal network IDs where the given user is a contact member.
    * @param userId - The user whose contact memberships to look up
-   * @returns Array of personal index IDs
+   * @returns Array of personal network IDs
    */
   async getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]> {
     return db
@@ -463,7 +463,7 @@ export class IntentDatabaseAdapter {
     options?: { limit?: number; offset?: number }
   ) {
     const isMember = await this.isNetworkMember(networkId, requestingUserId);
-    if (!isMember) throw new Error('Access denied: Not a member of this index');
+    if (!isMember) throw new Error('Access denied: Not a member of this network');
 
     const limit = options?.limit ?? 50;
     const offset = options?.offset ?? 0;

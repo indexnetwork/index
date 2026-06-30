@@ -173,7 +173,7 @@ describe('opportunity.utils', () => {
   //   (1) latent, no introducer            → all actors actionable
   //   (2) latent, introducer !approved     → introducer only
   //   (3) latent, introducer approved      → all non-introducer actors
-  //   (4) pending, any introducer config   → all non-introducer actors
+  //   (4) pending, any introducer config   → non-introducer actors who have not acted
   //   (5) terminal / stalled / draft / negotiating → never actionable
 
   describe('isActionableForViewer', () => {
@@ -244,8 +244,12 @@ describe('opportunity.utils', () => {
             expect(isActionableForViewer(actors(role, undefined), 'latent', VIEWER)).toBe(true);
           });
 
-          it('is actionable at pending', () => {
+          it('is actionable at pending until the viewer has acted', () => {
             expect(isActionableForViewer(actors(role, undefined), 'pending', VIEWER)).toBe(true);
+            expect(isActionableForViewer([
+              { userId: VIEWER, role, actedAt: '2026-05-12T10:00:00.000Z' },
+              { userId: OTHER, role: role === 'patient' ? 'agent' : 'patient' },
+            ], 'pending', VIEWER)).toBe(false);
           });
 
           it('is not actionable at terminal or internal statuses', () => {
@@ -264,8 +268,13 @@ describe('opportunity.utils', () => {
             expect(isActionableForViewer(actors(role, false), 'latent', VIEWER)).toBe(false);
           });
 
-          it('is actionable at pending', () => {
+          it('is actionable at pending until the viewer has acted', () => {
             expect(isActionableForViewer(actors(role, false), 'pending', VIEWER)).toBe(true);
+            expect(isActionableForViewer([
+              { userId: VIEWER, role, actedAt: '2026-05-12T10:00:00.000Z' },
+              { userId: OTHER, role: role === 'patient' ? 'agent' : 'patient' },
+              { userId: INTRO, role: 'introducer', approved: false },
+            ], 'pending', VIEWER)).toBe(false);
           });
 
           it('is not actionable at terminal or internal statuses', () => {
@@ -284,8 +293,13 @@ describe('opportunity.utils', () => {
             expect(isActionableForViewer(actors(role, true), 'latent', VIEWER)).toBe(true);
           });
 
-          it('is actionable at pending', () => {
+          it('is actionable at pending until the viewer has acted', () => {
             expect(isActionableForViewer(actors(role, true), 'pending', VIEWER)).toBe(true);
+            expect(isActionableForViewer([
+              { userId: VIEWER, role, actedAt: '2026-05-12T10:00:00.000Z' },
+              { userId: OTHER, role: role === 'patient' ? 'agent' : 'patient' },
+              { userId: INTRO, role: 'introducer', approved: true },
+            ], 'pending', VIEWER)).toBe(false);
           });
 
           it('is not actionable at terminal or internal statuses', () => {

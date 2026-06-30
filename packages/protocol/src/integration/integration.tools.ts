@@ -35,7 +35,7 @@ export function createIntegrationTools(defineTool: DefineTool, deps: ToolDeps) {
       "After they complete OAuth, call this tool again to perform the actual import.\n\n" +
       "**What happens on import:** All Gmail contacts with valid name+email are imported. " +
       "Contacts without existing platform accounts become ghost users (enriched with public profile data from LinkedIn, GitHub, etc.). " +
-      "All imported contacts are added to the user's personal index for opportunity discovery.\n\n" +
+      "All imported contacts are added to the user's personal network for opportunity discovery.\n\n" +
       "**When to use:** When the user asks to import or sync their Gmail/Google contacts. No parameters needed.\n\n" +
       "**Returns:** Either `{ requiresAuth: true, authUrl }` (user needs to authenticate) or import statistics: " +
       "imported (total), newContacts (ghost users created), existingContacts (already in network), skipped (invalid entries).",

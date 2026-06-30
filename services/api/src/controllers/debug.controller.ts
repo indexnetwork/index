@@ -204,7 +204,7 @@ export class DebugController {
 
   /**
    * Returns a home-level diagnostic snapshot for the authenticated user.
-   * Gathers intent stats, index memberships, opportunity aggregates,
+   * Gathers intent stats, network memberships, opportunity aggregates,
    * simulated home-view filtering, and a pipeline-health diagnosis.
    * @param _req - Incoming request (unused beyond guard processing)
    * @param user - Authenticated user from AuthGuard
@@ -464,7 +464,7 @@ export class DebugController {
         exportedAt: new Date().toISOString(),
         preflight,
         result: null,
-        diagnosis: 'User has no index memberships — cannot discover opportunities.',
+        diagnosis: 'User has no network memberships — cannot discover opportunities.',
       });
     }
     if (preflight.candidatePool.otherMembersInIndexes === 0) {

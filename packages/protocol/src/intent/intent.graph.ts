@@ -102,7 +102,7 @@ export class IntentGraphFactory {
      * Node 0: Prep
      * Always fetches ALL of the user's active intents from the DB via getActiveIntents(userId).
      * This ensures reconciliation can detect duplicates and modifications globally,
-     * regardless of index scope.
+     * regardless of network scope.
      */
     const prepNode = async (state: typeof IntentGraphState.State) => {
       return timed("IntentGraph.prep", async () => {
@@ -513,6 +513,9 @@ export class IntentGraphFactory {
 
         logger.verbose(`Executing ${actions.length} actions...`);
         const results: ExecutionResult[] = [];
+        const scopeEnvelope = state.scopeType && state.scopeId
+          ? { scopeType: state.scopeType, scopeId: state.scopeId }
+          : {};
         const verifiedIntentByPayload = new Map<string, VerifiedIntent>();
         for (const verifiedIntent of state.verifiedIntents) {
           verifiedIntentByPayload.set(verifiedIntent.description, verifiedIntent);
@@ -566,7 +569,7 @@ export class IntentGraphFactory {
               this.intentQueue?.addGenerateHydeJob({
                 intentId: created.id,
                 userId: state.userId,
-                ...(state.networkId ? { networkScopeId: state.networkId } : {}),
+                ...scopeEnvelope,
               }).catch((err) =>
                 logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
               );
@@ -578,6 +581,7 @@ export class IntentGraphFactory {
                   userId: state.userId,
                   sourceType: 'intent',
                   sourceId: created.id,
+                  ...scopeEnvelope,
                   context: {
                     intentId: created.id,
                     payload: sanitizedPayload,
@@ -629,7 +633,7 @@ export class IntentGraphFactory {
                 this.intentQueue?.addGenerateHydeJob({
                   intentId: updateAction.id,
                   userId: state.userId,
-                  ...(state.networkId ? { networkScopeId: state.networkId } : {}),
+                  ...scopeEnvelope,
                 }).catch((err) =>
                   logger.error('Failed to enqueue intent HyDE job', { intentId: updateAction.id, error: err })
                 );
@@ -671,7 +675,7 @@ export class IntentGraphFactory {
     /**
      * Node: Query
      * Fast-path read node — fetches intents from DB based on scope.
-     * Handles: global user intents, index-scoped (all or filtered by user).
+     * Handles: global user intents, network-scoped (all or filtered by user).
      * No LLM calls; no inference/verification/reconciliation.
      */
     const queryNode = async (state: typeof IntentGraphState.State) => {
@@ -684,7 +688,7 @@ export class IntentGraphFactory {
         });
 
         try {
-          // Scope-aware default: caller's intents across all reachable indexes.
+          // Scope-aware default: caller's intents across all reachable networks.
           // Triggered when the tool layer passed indexScope and did not pick a
           // specific networkId or queryUserId — i.e. "my intents" in a chat
           // where the agent's reach is more than one index.
@@ -720,7 +724,7 @@ export class IntentGraphFactory {
             };
           }
 
-          // When allUserIntents is true, ignore index scope and return all
+          // When allUserIntents is true, ignore network scope and return all
           const effectiveIndexId = state.allUserIntents ? undefined : state.networkId;
 
           if (effectiveIndexId) {
@@ -736,7 +740,7 @@ export class IntentGraphFactory {
               };
             }
 
-            // Index-scoped read
+            // Network-scoped read
             if (!state.queryUserId) {
               // All intents in the index (any member can see)
               const intents = await this.database.getNetworkIntentsForMember(
@@ -749,7 +753,7 @@ export class IntentGraphFactory {
                   readResult: {
                     count: 0,
                     intents: [],
-                    message: "No intents in this index yet.",
+                    message: "No intents in this network yet.",
                     networkId: effectiveIndexId,
                   },
                 };
@@ -783,8 +787,8 @@ export class IntentGraphFactory {
                   intents: [],
                   message:
                     effectiveUserId === state.userId
-                      ? "You don't have any intents in this index yet."
-                      : "No intents for that user in this index.",
+                      ? "You don't have any intents in this network yet."
+                      : "No intents for that user in this network.",
                   networkId: effectiveIndexId,
                 },
               };
@@ -807,7 +811,7 @@ export class IntentGraphFactory {
             };
           }
 
-          // Global (no index scope): return user's own active intents
+          // Global (no network scope): return user's own active intents
           const intents = await this.database.getActiveIntents(state.userId);
           if (intents.length === 0) {
             return {
@@ -859,7 +863,7 @@ export class IntentGraphFactory {
       }
       return shouldRunInference(state);
     };
-    
+
     /**
      * Determines if inference should run based on operation mode.
      * Delete operations skip inference entirely and go straight to reconciliation.
@@ -869,13 +873,13 @@ export class IntentGraphFactory {
         logger.verbose('Delete mode - skipping inference, routing to reconciliation');
         return 'reconciler';
       }
-      
+
       logger.verbose('Running inference', {
         operationMode: state.operationMode
       });
       return 'inference';
     };
-    
+
     /**
      * Determines if verification should run based on operation mode and inferred intents.
      * Skips verification for:
@@ -891,17 +895,17 @@ export class IntentGraphFactory {
         logger.verbose('No intents to verify - skipping verification, routing to reconciliation');
         return 'reconciler';
       }
-      
+
       if (state.operationMode === 'update') {
         logger.verbose('Update mode with new intents - running verification');
         return 'verification';
       }
-      
+
       if (state.operationMode === 'create') {
         logger.verbose('Create mode - running verification');
         return 'verification';
       }
-      
+
       // Default to verification for safety
       logger.verbose('Default routing to verification');
       return 'verification';
@@ -924,7 +928,7 @@ export class IntentGraphFactory {
       // - DELETE:  prep → reconciliation → executor → END (skips inference and verification)
       // - PROPOSE: prep → inference → verification → END (no reconciliation/execution, no DB writes)
       .addEdge(START, "prep")
-      
+
       // After prep: read mode → query; else inference or reconciler
       .addConditionalEdges("prep", afterPrepRoute, {
         query: "query",
@@ -935,14 +939,14 @@ export class IntentGraphFactory {
 
       // Query (read mode) always ends
       .addEdge("query", END)
-      
+
       // After inference: decide if we need verification (skip if no intents)
       .addConditionalEdges("inference", shouldRunVerification, {
         verification: "verification",
         reconciler: "reconciler",
         __end__: END,
       })
-      
+
       // After verification: propose mode exits early; others continue to reconciliation
       .addConditionalEdges("verification", (state: typeof IntentGraphState.State) => {
         if (state.operationMode === 'propose') {
@@ -954,10 +958,10 @@ export class IntentGraphFactory {
         reconciler: "reconciler",
         __end__: END,
       })
-      
+
       // Reconciliation always goes to executor
       .addEdge("reconciler", "executor")
-      
+
       // Executor is always the end
       .addEdge("executor", END);
 

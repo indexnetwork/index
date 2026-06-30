@@ -12,6 +12,7 @@ import { socialsToEnrichmentRequest, detectSocialLabel } from "../shared/utils/s
 import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 import { EnrichmentGenerator } from "./enrichment.generator.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 
 const logger = protocolLogger("ChatTools:Enrichment");
 
@@ -142,9 +143,8 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         userId: context.userId,
         userName: context.userName,
         userEmail: context.userEmail,
-        ...(context.networkId ? { networkId: context.networkId } : {}),
+        ...(focusedNetworkId(context) ? { scopeType: 'network' as const, scopeId: focusedNetworkId(context)! } : {}),
         ...(context.indexName ? { indexName: context.indexName } : {}),
-        indexScope: context.indexScope,
         ...(context.sessionId ? { sessionId: context.sessionId } : {}),
         ...(context.agentId ? { agentId: context.agentId } : {}),
         ...(context.clientSurface ? { clientSurface: context.clientSurface } : {}),
@@ -308,10 +308,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       "use these as the source of truth for whether the user still needs onboarding (do not rely on local file state).",
     querySchema: z.object({
       userId: z.string().optional().describe("Fetch a specific user's profile by their user ID. Get user IDs from read_network_memberships or list_contacts."),
-      networkId: z.string().optional().describe("Index UUID — fetch profiles of all members in this index, or narrow a name search to this index. Get from read_networks."),
+      networkId: z.string().optional().describe("Network UUID — fetch profiles of all members in this network, or narrow a name search to this network. Get from read_networks."),
       query: z.string().optional().describe("Name to search for (case-insensitive substring match). Searches across all the user's indexes unless networkId is also provided. Use this when the user asks to 'find' or 'look up' someone."),
     }),
     handler: async ({ context, query }) => {
+      const scopedNetworkId = focusedNetworkId(context);
+      const scopedIndexLabel = focusedNetworkLabel(context);
       const effectiveIndexId = query.networkId?.trim() || undefined;
       const targetUserId = query.userId?.trim() || undefined;
       const nameQuery = query.query?.trim() || undefined;
@@ -324,19 +326,15 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (nameQuery) {
         const pattern = nameQuery.toLowerCase();
         const MAX_RESULTS = 20;
-        // When chat is index-scoped, restrict name search to that index
-        const searchIndexId = effectiveIndexId || context.networkId || undefined;
+        // When chat is network-scoped, restrict name search to that index
+        const searchIndexId = effectiveIndexId || scopedNetworkId || undefined;
 
         let candidates: Array<{ userId: string; name: string; avatar: string | null }>;
 
         if (searchIndexId) {
           // Scoped to a specific index
-          if (context.networkId && searchIndexId !== context.networkId) {
-            return error(
-              context.indexName
-                ? `This chat is scoped to ${context.indexName}. You can only look up people in this community.`
-                : `This chat is scoped to this index. You can only look up people in this community.`
-            );
+          if (scopedNetworkId && searchIndexId !== scopedNetworkId) {
+            return error(`This chat is scoped to ${scopedIndexLabel}. You can only look up people in this community.`);
           }
           const callerIsMember = await systemDb.isNetworkMember(searchIndexId, context.userId);
           if (!callerIsMember) {
@@ -397,16 +395,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // --- Mode 3: networkId provided → fetch all member profiles ---
       if (effectiveIndexId) {
-        // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-        if (context.networkId && effectiveIndexId !== context.networkId) {
-          return error(
-            context.indexName
-              ? `This chat is scoped to ${context.indexName}. You can only read profiles from this community.`
-              : `This chat is scoped to this index. You can only read profiles from this community.`
-          );
+        // Strict scope enforcement: when chat is network-scoped, only allow querying that index
+        if (scopedNetworkId && effectiveIndexId !== scopedNetworkId) {
+          return error(`This chat is scoped to ${scopedIndexLabel}. You can only read profiles from this community.`);
         }
 
-        // Verify the caller is a member of the index they're querying
+        // Verify the caller is a member of the network they're querying
         const callerIsMember = await systemDb.isNetworkMember(effectiveIndexId, context.userId);
         if (!callerIsMember) {
           return error(
@@ -414,7 +408,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
-        // Use systemDb for cross-user access within shared indexes
+        // Use systemDb for cross-user access within shared networkes
         const members = await systemDb.getNetworkMembers(effectiveIndexId);
         const profiles = await Promise.all(
           members.map(async (member) => {
@@ -436,19 +430,15 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // --- Mode 2: userId provided (different user) → fetch single profile directly ---
       if (targetUserId && targetUserId !== context.userId) {
-        // Strict scope enforcement: when chat is index-scoped, verify user is in that index
-        if (context.networkId) {
-          const isInScopedIndex = await systemDb.isNetworkMember(context.networkId, targetUserId);
+        // Strict scope enforcement: when chat is network-scoped, verify user is in that index
+        if (scopedNetworkId) {
+          const isInScopedIndex = await systemDb.isNetworkMember(scopedNetworkId, targetUserId);
           if (!isInScopedIndex) {
-            return error(
-              context.indexName
-                ? `This chat is scoped to ${context.indexName}. You can only read profiles of members in this community.`
-                : `This chat is scoped to this index. You can only read profiles of members in this community.`
-            );
+            return error(`This chat is scoped to ${scopedIndexLabel}. You can only read profiles of members in this community.`);
           }
         }
 
-        // Use systemDb for cross-user profile access (requires shared index)
+        // Use systemDb for cross-user profile access (requires shared network)
         const profile = await systemDb.getProfile(targetUserId);
         if (profile) {
           // Thin identity + the user's global user_context text (profile-replacing
@@ -594,9 +584,10 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
+      const scopedNetworkId = focusedNetworkId(context);
       const onboarding = user.onboarding ?? context.user.onboarding;
       const hasEdgeosConsent = hasEdgeosImportConsent(onboarding);
-      const seed = hasEdgeosConsent ? selectProfileSeed(onboarding, context.networkId) : undefined;
+      const seed = hasEdgeosConsent ? selectProfileSeed(onboarding, scopedNetworkId) : undefined;
       const authenticatedIdentity = resolveAuthenticatedLookupIdentity(user, context);
       const name = seed?.name || authenticatedIdentity.name || query.name?.trim() || undefined;
       const location = query.location?.trim() || seed?.location || user.location || undefined;
@@ -680,7 +671,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (query.draft) {
         const profile = { ...query.draft, userId: context.userId };
         await userDb.saveProfile({ userId: context.userId, identity: profile.identity, context: profile.narrative?.context ?? '' });
-        await persistApprovedProfileContext(profile, user, context.networkId);
+        await persistApprovedProfileContext(profile, user, focusedNetworkId(context));
 
         const decomposeLogLabel = context.isMcp
           ? 'Approved draft premise decomposition failed'
@@ -719,7 +710,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           location: approvedLocation && approvedLocation.length > 0 ? approvedLocation : user?.location ?? '',
         },
       };
-      await persistApprovedProfileContext(rawProfile, user, context.networkId);
+      await persistApprovedProfileContext(rawProfile, user, focusedNetworkId(context));
 
       const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
       const _confirmGraphStart = Date.now();

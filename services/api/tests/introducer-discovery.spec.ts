@@ -54,7 +54,7 @@ describe('IntroducerDiscovery', () => {
   });
 
   describe('selectContactsForDiscovery', () => {
-    it('returns empty when user has no personal index', async () => {
+    it('returns empty when user has no personal network', async () => {
       const db = createMockDatabase({ personalIndexId: null });
       const result = await selectContactsForDiscovery(db, userId);
       expect(result).toEqual([]);
@@ -108,7 +108,7 @@ describe('IntroducerDiscovery', () => {
       expect(queue.addJob).not.toHaveBeenCalled();
     });
 
-    it('returns early when user has no personal index', async () => {
+    it('returns early when user has no personal network', async () => {
       const db = createMockDatabase({ personalIndexId: null });
       const queue = createMockQueue();
       const result = await runIntroducerDiscovery(db, queue, userId);
@@ -130,7 +130,7 @@ describe('IntroducerDiscovery', () => {
       expect(result.jobsEnqueued).toBe(2);
       expect(queue.addJob).toHaveBeenCalledTimes(2);
 
-      // Verify job data includes introducer prefix and personal index
+      // Verify job data includes introducer prefix and personal network
       const firstCall = (queue.addJob as ReturnType<typeof mock>).mock.calls[0];
       expect(firstCall[0].intentId).toStartWith('introducer:');
       expect(firstCall[0].userId).toBe(userId);

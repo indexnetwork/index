@@ -129,6 +129,20 @@ describe('FromIntentQueue', () => {
       );
     });
 
+    it('discover: empty networkIds skips fail-closed instead of broadening to unscoped discovery', async () => {
+      const invokeOpportunityGraph = mock(async () => {});
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+      };
+      const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph });
+      await queue.processJob('discover_opportunities', {
+        intentId: 'i1',
+        userId: 'u1',
+        networkIds: [],
+      });
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+    });
+
     it('discover: without invokeOpportunityGraph uses real graph (may need Redis)', async () => {
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),

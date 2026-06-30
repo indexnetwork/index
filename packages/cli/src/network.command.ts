@@ -72,7 +72,7 @@ export async function handleNetwork(
 }
 
 /**
- * List networks the user is a member of, excluding personal indexes.
+ * List networks the user is a member of, excluding personal networks.
  */
 async function networkList(client: ApiClient, json?: boolean): Promise<void> {
   const networks = await client.listNetworks();

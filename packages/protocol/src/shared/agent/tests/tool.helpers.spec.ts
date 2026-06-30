@@ -4,6 +4,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, test } from "bun:test";
 import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface.js";
+import { deriveAllowedNetworkIds, deriveDiscoveryNetworkIds } from "../tool.scope.js";
 import { ChatContextAccessError, redactSensitiveFields, resolveChatContext } from "../tool.helpers.js";
 
 const userId = "00000000-0000-4000-8000-000000000111";
@@ -92,7 +93,7 @@ describe("resolveChatContext", () => {
     expect(ctx.contactsEnabled).toBeUndefined();
   });
 
-  test("clamps indexScope to [scopedIndex, personalIndex] when networkId is provided", async () => {
+  test("sets network scope envelope and derives allowed/discovery IDs when networkId is provided", async () => {
     const personalIndexId = "00000000-0000-0000-0000-000000000099";
     const otherIndexId = "00000000-0000-0000-0000-000000000088";
     const memberships = [
@@ -134,12 +135,15 @@ describe("resolveChatContext", () => {
     });
 
     const ctx = await resolveChatContext({ database: db, userId, networkId });
-    expect(ctx.indexScope.sort()).toEqual([networkId, personalIndexId].sort());
+    expect(ctx.scopeType).toBe("network");
+    expect(ctx.scopeId).toBe(networkId);
+    expect(deriveAllowedNetworkIds({ memberships: ctx.userNetworks, scopeType: ctx.scopeType, scopeId: ctx.scopeId }).sort()).toEqual([networkId, personalIndexId].sort());
+    expect(deriveDiscoveryNetworkIds({ memberships: ctx.userNetworks, scopeType: ctx.scopeType, scopeId: ctx.scopeId })).toEqual([networkId]);
     // Other Community should NOT be in scope despite being a membership.
     expect(ctx.indexScope).not.toContain(otherIndexId);
   });
 
-  test("indexScope spans all memberships when networkId is not provided", async () => {
+  test("unscoped contexts derive all memberships for allowed and discovery IDs", async () => {
     const personalIndexId = "00000000-0000-0000-0000-000000000099";
     const otherIndexId = "00000000-0000-0000-0000-000000000088";
     const memberships = [
@@ -152,6 +156,10 @@ describe("resolveChatContext", () => {
     });
 
     const ctx = await resolveChatContext({ database: db, userId });
+    expect(ctx.scopeType).toBeUndefined();
+    expect(ctx.scopeId).toBeUndefined();
+    expect(deriveAllowedNetworkIds({ memberships: ctx.userNetworks }).sort()).toEqual([networkId, personalIndexId, otherIndexId].sort());
+    expect(deriveDiscoveryNetworkIds({ memberships: ctx.userNetworks }).sort()).toEqual([networkId, personalIndexId, otherIndexId].sort());
     expect(ctx.indexScope.sort()).toEqual([networkId, personalIndexId, otherIndexId].sort());
   });
 

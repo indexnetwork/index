@@ -14,20 +14,20 @@ const logger = log.service.from("NetworkService");
 
 /**
  * NetworkService
- * 
+ *
  * Manages index/community operations.
  * Uses ChatDatabaseAdapter for database operations.
- * 
+ *
  * RESPONSIBILITIES:
- * - List indexes for users
+ * - List networks for users
  * - Get single index details
- * - Manage index memberships
+ * - Manage network memberships
  */
 export class NetworkService {
   constructor(private adapter = new ChatDatabaseAdapter()) {}
 
   /**
-   * Get all indexes that a user is a member of, including their personal index.
+   * Get all networks that a user is a member of, including their personal network.
    */
   async getNetworksForUser(userId: string) {
     logger.verbose('[NetworkService] Getting networks for user', { userId });
@@ -55,7 +55,7 @@ export class NetworkService {
     // Fetch the full index details with user and member count
     const fullIndex = await this.adapter.getNetworkDetail(index.id, userId);
     if (!fullIndex) {
-      throw new Error('Failed to create index');
+      throw new Error('Failed to create network');
     }
     return fullIndex;
   }
@@ -102,15 +102,15 @@ export class NetworkService {
   }
 
   /**
-   * Get a public index by ID (no auth required). Returns null if not public.
+   * Get a public network by ID (no auth required). Returns null if not public.
    */
   async getPublicNetworkById(networkId: string) {
-    logger.verbose('[NetworkService] Getting public index by id', { networkId });
+    logger.verbose('[NetworkService] Getting public network by id', { networkId });
     return this.adapter.getPublicIndexDetail(networkId);
   }
 
   /**
-   * Get a single index by ID with owner info and member count.
+   * Get a single network by ID with owner info and member count.
    * Only members of the index can view it.
    */
   async getNetworkById(networkId: string, userId: string) {
@@ -120,13 +120,13 @@ export class NetworkService {
 
   /**
    * Update index settings (title, prompt, permissions). Owner-only.
-   * @throws Error if the index is a personal index.
+   * @throws Error if the index is a personal network.
    * @throws Error if attempting to change join policy on an experiment network.
    */
   async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
     logger.verbose('[NetworkService] Updating index', { networkId, userId });
     if (await this.adapter.isPersonalNetwork(networkId)) {
-      // Personal indexes can't be renamed/deleted/repurposed (see assertNotPersonal),
+      // Personal networks can't be renamed/deleted/repurposed (see assertNotPersonal),
       // but the owner may set or clear a discovery prompt to curate what auto-assigns
       // into My Network. Restrict edits to the prompt field only; ownership is
       // enforced inside updateIndexSettings.
@@ -135,7 +135,7 @@ export class NetworkService {
         (k) => (data as Record<string, unknown>)[k] !== undefined && !editableForPersonal.has(k),
       );
       if (rejected.length > 0) {
-        throw new Error(`Access denied: personal indexes only allow editing the prompt (rejected: ${rejected.join(', ')}).`);
+        throw new Error(`Access denied: personal networks only allow editing the prompt (rejected: ${rejected.join(', ')}).`);
       }
       return this.adapter.updateIndexSettings(networkId, userId, { prompt: data.prompt });
     }
@@ -196,7 +196,7 @@ export class NetworkService {
   }
 
   /**
-   * Search users within the caller's personal index members,
+   * Search users within the caller's personal network members,
    * optionally excluding existing members of a target index.
    */
   async searchPersonalNetworkMembers(userId: string, q: string, excludeIndexId?: string) {
@@ -205,7 +205,7 @@ export class NetworkService {
 
   /**
    * Add a member to an index. Owner-only.
-   * @throws Error if the index is a personal index.
+   * @throws Error if the index is a personal network.
    */
   async addMember(networkId: string, userId: string, requestingUserId: string, role: 'owner' | 'member' = 'member') {
     logger.verbose('[NetworkService] Adding member', { networkId, userId, role });
@@ -225,7 +225,7 @@ export class NetworkService {
 
   /**
    * Remove a member from an index. Owner-only.
-   * @throws Error if the index is a personal index.
+   * @throws Error if the index is a personal network.
    */
   async removeMember(networkId: string, memberId: string, userId: string) {
     logger.verbose('[NetworkService] Removing member', { networkId, memberId, userId });
@@ -234,8 +234,8 @@ export class NetworkService {
   }
 
   /**
-   * Soft-delete an index. Owner-only.
-   * @throws Error if the index is a personal index.
+   * Soft-delete a network. Owner-only.
+   * @throws Error if the index is a personal network.
    */
   async deleteNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Deleting index', { networkId, userId });
@@ -251,7 +251,7 @@ export class NetworkService {
     if (network?.isExperiment) {
       // Verify ownership first
       const isOwner = await this.adapter.isIndexOwner(networkId, userId);
-      if (!isOwner) throw new Error('Access denied: Not an owner of this index');
+      if (!isOwner) throw new Error('Access denied: Not an owner of this network');
       await this.adapter.softDeleteExperimentNetwork(networkId);
     } else {
       await this.adapter.deleteIndexForOwner(networkId, userId);
@@ -277,7 +277,7 @@ export class NetworkService {
   }
 
   /**
-   * Get all members from every index the signed-in user is a member of (deduplicated).
+   * Get all members from every network the signed-in user is a member of (deduplicated).
    * Used for mentionable users / @mentions.
    */
   async getMembersFromMyNetworks(userId: string) {
@@ -302,10 +302,10 @@ export class NetworkService {
   }
 
   /**
-   * Get public indexes that the user has not joined (for discovery).
+   * Get public networks that the user has not joined (for discovery).
    */
   async getPublicNetworks(userId: string) {
-    logger.verbose('[NetworkService] Getting public indexes for user', { userId });
+    logger.verbose('[NetworkService] Getting public networks for user', { userId });
     return this.adapter.getPublicIndexesNotJoined(userId);
   }
 
@@ -332,17 +332,17 @@ export class NetworkService {
   }
 
   /**
-   * Join a public index.
+   * Join a public network.
    */
   async joinPublicNetwork(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Joining public index', { networkId, userId });
+    logger.verbose('[NetworkService] Joining public network', { networkId, userId });
     await this.adapter.joinPublicNetwork(networkId, userId);
     return this.adapter.getNetworkDetail(networkId, userId);
   }
 
   /**
    * Leave an index. Members (non-owners) can leave.
-   * @throws Error if the index is a personal index.
+   * @throws Error if the index is a personal network.
    */
   async leaveNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Leaving index', { networkId, userId });
@@ -357,7 +357,7 @@ export class NetworkService {
     logger.verbose('[NetworkService] Getting member settings', { networkId, userId });
     const settings = await this.adapter.getMemberSettings(networkId, userId);
     if (!settings) {
-      throw new Error('Not a member of this index');
+      throw new Error('Not a member of this network');
     }
     return settings;
   }
@@ -383,7 +383,7 @@ export class NetworkService {
     logger.verbose('[NetworkService] Getting network overview', { networkId, userId });
     const isMember = await this.adapter.isNetworkMember(networkId, userId);
     if (!isMember) {
-      throw new Error('Access denied: Not a member of this index');
+      throw new Error('Access denied: Not a member of this network');
     }
     const [intents, premises, userContext] = await Promise.all([
       this.adapter.getNetworkIntentsForMemberOwn(networkId, userId),
@@ -398,9 +398,9 @@ export class NetworkService {
   }
 
   /**
-   * Resolve an index identifier (UUID or key) to a UUID.
+   * Resolve an network identifier (UUID or key) to a UUID.
    * @param idOrKey - UUID or human-readable key
-   * @returns The index UUID, or null if not found
+   * @returns The network UUID, or null if not found
    */
   async resolveIndexId(idOrKey: string): Promise<string | null> {
     logger.verbose('[NetworkService] Resolving network ID or key', { idOrKey });
@@ -460,13 +460,13 @@ export class NetworkService {
   }
 
   /**
-   * Assert that an index is not a personal index.
+   * Assert that an index is not a personal network.
    * @throws Error if the index is personal.
    */
   private async assertNotPersonal(networkId: string): Promise<void> {
     const isPersonal = await this.adapter.isPersonalNetwork(networkId);
     if (isPersonal) {
-      throw new Error('Access denied: personal indexes cannot be modified directly.');
+      throw new Error('Access denied: personal networks cannot be modified directly.');
     }
   }
 

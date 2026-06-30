@@ -183,6 +183,45 @@ describe('list_opportunities digest presenter path', () => {
     expect(String(result.data?.message)).not.toContain('Test personalized summary');
   });
 
+  it('uses OpportunityPresenter text for regular chat list cards', async () => {
+    candidateOpps = [makeOpp('opp-chat', 'c-chat')];
+    getUser = mock(async (userId?: string) => ({ id: userId ?? testUserId, name: userId === 'c-chat' ? 'Chris' : 'Viewer' }) as UserRecord | null);
+    getProfile = mock(async () => ({ identity: { name: 'Chris', bio: '', location: '' }, userId: 'c-chat' }) as unknown as UserIdentity | null);
+    presentHomeCardMock = mock(async () => ({
+      headline: 'Meet Chris',
+      personalizedSummary: 'Chris is a strong fit for your current search.',
+      digestSummary: 'Digest text should not be used for regular chat.',
+      suggestedAction: 'Start with a focused intro.',
+      narratorRemark: 'Relevant match.',
+      mutualIntentsLabel: 'Shared interests',
+      greeting: '',
+    }));
+
+    const deps = makeDeps();
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
+
+    const result = parseResult(
+      await listTool.handler({
+        context: {
+          userId: testUserId,
+          isMcp: false,
+          networkId: undefined,
+          sessionId: 'chat-session',
+          userName: 'Viewer',
+          userNetworks: [],
+        },
+        query: {},
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(gatherPresenterContextMock).toHaveBeenCalled();
+    expect(presentHomeCardMock).toHaveBeenCalled();
+    expect(String(result.data?.message)).toContain('Chris is a strong fit for your current search.');
+    expect(String(result.data?.message)).not.toContain('Reasoning for c-chat');
+  });
+
   it('emits a negotiationUrl marker and feeds negotiationContext to the presenter when a negotiation exists', async () => {
     candidateOpps = [makeOpp('opp-neg', 'c-neg', 'pending')];
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);

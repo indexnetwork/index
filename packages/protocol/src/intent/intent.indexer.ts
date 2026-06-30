@@ -38,7 +38,7 @@ Determine if a User Intent is appropriate for a specific Index (community) and m
 
 INPUTS:
 1. Intent: The content/action the user wants to perform.
-2. Index Prompt: The purpose/scope of the target community (Index).
+2. Network Prompt: The purpose/scope of the target community (Index).
 3. Member Prompt: The specific sharing preferences of the user in that community (optional).
 4. Source: Origin of the intent (file, link, etc.) (optional).
 5. Network Context: Rendered context about the network including type, dates, location, and events (optional).
@@ -46,7 +46,7 @@ INPUTS:
 NETWORK TYPE AWARENESS:
 - When Network Context is provided, use it to inform your scoring.
 - For EVENT networks: consider temporal relevance. An intent about "meeting at the venue" is highly relevant to an upcoming event but irrelevant after it ends. Intents about topics aligned with the event's themes should score higher.
-- For COMMUNITY networks: score based on the index prompt and member preferences as usual.
+- For COMMUNITY networks: score based on the network prompt and member preferences as usual.
 - If the network context includes dates and the intent is time-sensitive, factor temporal proximity into the score.
 
 SCORING RUBRIC:
@@ -57,7 +57,7 @@ SCORING RUBRIC:
 - 0.0-0.2: Not appropriate.
 
 OUTPUT RULES:
-- Provide \`indexScore\` based on how well the Intent fits the Index Prompt.
+- Provide \`indexScore\` based on how well the Intent fits the Network Prompt.
 - Provide \`memberScore\` based on how well the Intent fits the Member Prompt (if provided). If Member Prompt is missing/empty, return 0.0 for memberScore.
 - Provide concise \`reasoning\`.
 `;
@@ -157,7 +157,7 @@ export class IntentIndexer {
 
   /**
    * Alias for invoke. Evaluates the appropriateness of an intent for a given index and member context.
-   * Kept for compatibility with callers (e.g. Index Graph) that use evaluate().
+   * Kept for compatibility with callers (e.g. Network Graph) that use evaluate().
    */
   @Timed()
   public async evaluate(

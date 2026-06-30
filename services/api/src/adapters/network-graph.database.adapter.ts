@@ -108,7 +108,7 @@ export class NetworkGraphDatabaseAdapter {
   }
 
   /**
-   * Delete an index and its members/intent-index links (for test teardown).
+   * Delete a network and its members/intent-network links (for test teardown).
    */
   async deleteNetworkAndMembers(networkId: string): Promise<void> {
     await db.delete(intentNetworks).where(eq(intentNetworks.networkId, networkId));

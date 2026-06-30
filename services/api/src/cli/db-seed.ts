@@ -236,7 +236,7 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
 /**
  * Create or get users for the given accounts and ensure they are members of all seed indexes.
  * @param accounts - List of accounts (real or synthetic).
- * @param options.ownerIndex - Index in this array that receives 'owner' on all indexes; others get 'member'. Omit for all 'member'.
+ * @param options.ownerIndex - Index in this array that receives 'owner' on all networks; others get 'member'. Omit for all 'member'.
  */
 async function ensureUsersAndMemberships(
   accounts: SeedAccount[],
@@ -305,7 +305,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     if (!silent && DB_SEED_TESTER_PERSONAS.length > 0) console.log(`  Personas to seed: ${personasToSeed.length} (--personas=${personasLimit}, max ${TESTER_PERSONAS_MAX})`);
     if (!silent) console.log('Creating indexes...');
 
-    // Create all indexes
+    // Create all networks
     for (let i = 0; i < SEED_INDEXES.length; i++) {
       const idx = SEED_INDEXES[i];
       try {
@@ -333,7 +333,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     if (!silent) console.log(`  System admin users: ${adminUsers.length} ready`);
 
     if (!silent) console.log(`Creating synthetic persona users (1..${personasToSeed.length})...`);
-    // Synthetic tester personas (first is owner of all indexes); count controlled by --personas
+    // Synthetic tester personas (first is owner of all networks); count controlled by --personas
     const personaAccounts: SeedAccount[] = personasToSeed.map((p) => ({
       email: p.email,
       name: p.name,
@@ -345,7 +345,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     const personaUsers = await ensureUsersAndMemberships(personaAccounts, { ownerIndex: 0 });
     if (!silent) console.log(`  Persona users: ${personaUsers.length} ready`);
 
-    if (!silent) console.log('Enqueueing profile HyDE jobs for index members...');
+    if (!silent) console.log('Enqueueing profile HyDE jobs for network members...');
     let successfulEnqueues = 0;
     for (const user of personaUsers) {
       try {

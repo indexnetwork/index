@@ -156,7 +156,7 @@ The `sourceId` field references the originating record in the corresponding tabl
 
 ---
 
-## Intent-Index Assignment and Relevancy Scoring
+## Intent-Network Assignment and Relevancy Scoring
 
 Intents do not exist in isolation -- they are assigned to one or more indexes (communities). The many-to-many relationship between intents and indexes is tracked in the `intent_networks` junction table, which carries an optional `relevancyScore` (0.0-1.0).
 
@@ -164,7 +164,7 @@ Intents do not exist in isolation -- they are assigned to one or more indexes (c
 
 When an intent is created or updated, the Intent Indexer agent evaluates how well it fits each candidate index. The agent considers:
 
-1. **Index prompt** -- the purpose/scope of the community
+1. **Network prompt** -- the purpose/scope of the community
 2. **Member prompt** -- the user's specific sharing preferences in that community
 3. **Intent content** -- what the intent actually says
 4. **Source context** -- where the intent came from
@@ -184,7 +184,7 @@ An intent qualifies for an index when its `indexScore` reaches 0.7 or above. Bel
 
 ### Relevancy in discovery
 
-The `relevancyScore` stored on the junction table is used during opportunity discovery to break ties. When a candidate appears across multiple shared indexes, the index with the highest relevancy to the trigger intent wins. Indexes without prompts default to a score of 1.0.
+The `relevancyScore` stored on the junction table is used during opportunity discovery to break ties. When a candidate appears across multiple shared networks, the index with the highest relevancy to the trigger intent wins. Networks without prompts default to a score of 1.0.
 
 ---
 

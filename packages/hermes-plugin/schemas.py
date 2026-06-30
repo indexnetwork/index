@@ -9,10 +9,10 @@ INDEX_READ_INTENTS = {
     "description": (
         "Read Index Network intents/signals through the authenticated Index MCP "
         "server. Use this when the user asks what they are looking for, what "
-        "signals they have, or what members of a specific Index/community are "
+        "signals they have, or what members of a specific network/community are "
         "seeking. With no parameters, returns the caller's own active intents. "
         "Pass networkId to browse intents in an Index the caller can access; "
-        "pass userId to filter to one user where the Index scope allows it."
+        "pass userId to filter to one user where the network scope allows it."
     ),
     "parameters": {
         "type": "object",
@@ -20,8 +20,8 @@ INDEX_READ_INTENTS = {
             "networkId": {
                 "type": "string",
                 "description": (
-                    "Optional Index/network UUID. When provided, reads intents "
-                    "in that Index/community."
+                    "Optional network UUID. When provided, reads intents "
+                    "in that network/community."
                 ),
             },
             "userId": {

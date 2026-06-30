@@ -54,7 +54,7 @@ Permissions (`agent_permissions` table) define what actions an agent may perform
 | `scopeId` | UUID or null | When `scope = 'network'`, this is the network the agent is restricted to. |
 | `actions` | string array | e.g. `manage:intents`, `manage:networks`, `manage:negotiations` |
 
-A permission row is per-`(agentId, userId)` pair. An agent with `scope = 'global'` has no resource restriction. An agent with `scope = 'network'` is enforced at the HTTP layer by `AgentScopeGuard` (403 on scope violation) and at the MCP layer by `computeAgentIndexScope` (clamps the agent's accessible networks before any tool call).
+A permission row is per-`(agentId, userId)` pair. An agent with `scope = 'global'` has no resource restriction. An agent with `scope = 'network'` is enforced at the HTTP layer by `AgentScopeGuard` (403 on scope violation) and at the MCP layer by promoting the bound network into the `{ scopeType: 'network', scopeId }` envelope before any tool call; concrete allowed networks are derived from that envelope and the user's memberships.
 
 System agents have their permissions seeded during onboarding and are never stored with `scope = 'network'`.
 

@@ -4,6 +4,7 @@ import { requestContext } from "../shared/observability/request-context.js";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import { deriveDiscoveryNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
@@ -209,6 +210,16 @@ const UPDATE_OPPORTUNITY_BLOCKED_STATUSES = new Set<OpportunityStatus>([
   "expired",
   "negotiating",
 ]);
+
+function matchesSelectedIntentScope(
+  opportunity: Opportunity,
+  viewerId: string,
+  scope?: { scopeType?: 'intent'; scopeId?: string },
+): boolean {
+  if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
+  if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
+  return opportunity.actors.some((actor) => actor.userId === viewerId && actor.intent === scope.scopeId);
+}
 
 /**
  * Maximum number of opportunity cards to show per chat response.
@@ -465,7 +476,7 @@ export function buildOpportunityPresentation(
  * Encoded as JSON of a normalized object — NOT a delimiter join — so a
  * user-supplied string containing the delimiter can never make two distinct
  * requests collide. `hint` and each entity's `networkId` are included because
- * they change the discovery result (different reason / different shared index),
+ * they change the discovery result (different reason / different shared network),
  * so requests that differ only in those must NOT coalesce. Natural-language
  * fields (`searchQuery`, `hint`) are lowercased; identifiers and the opaque
  * `continueFrom` pagination token are only trimmed (case-sensitive) so distinct
@@ -495,16 +506,16 @@ function discoveryRunSignature(input: DiscoveryRunInput, scopeKey: string): stri
 
 /**
  * Stable key for the resolved discovery scope of a request. Two requests
- * coalesce only when they resolve to the same reach — the focus index
- * (`networkId`) and the full reachable `indexScope` set. When `query.networkId`
- * is omitted, scope comes from context (network-scoped agent vs unscoped
- * session), so folding it into the signature prevents a scoped caller from
- * coalescing onto an unscoped run and receiving out-of-scope opportunities.
+ * coalesce only when they resolve to the same focused discovery boundary. For
+ * scoped contexts, that boundary is the scope envelope (`scopeType`/`scopeId`),
+ * not the personal-inclusive allowed network reach used for self-owned writes.
+ * Unscoped requests intentionally share a single empty-scope key; concrete
+ * allowed reach is derived from memberships at execution time.
  */
-function discoveryScopeKey(ctx: { networkId?: string; indexScope?: string[] }): string {
+function discoveryScopeKey(ctx: { scopeType?: string; scopeId?: string }): string {
   return JSON.stringify({
-    networkId: (ctx.networkId ?? "").trim(),
-    indexScope: [...(ctx.indexScope ?? [])].map((s) => s.trim()).sort(),
+    scopeType: (ctx.scopeType ?? "").trim(),
+    scopeId: (ctx.scopeId ?? "").trim(),
   });
 }
 
@@ -556,9 +567,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "Opportunities are the core output of the discovery engine, representing potential valuable connections between people.\n\n" +
       "**NOT for person lookup** — use read_user_contexts(query=name) to find people by name.\n\n" +
       "**Four modes:**\n" +
-      "1. **Discovery** (most common): pass `searchQuery` and/or `networkId`. The system finds other users in shared indexes " +
+      "1. **Discovery** (most common): pass `searchQuery` and/or `networkId`. The system finds other users in shared networkes " +
       "whose intents semantically complement the query. Uses HyDE embeddings and LLM evaluation for scoring.\n" +
-      "2. **Introduction**: pass `partyUserIds` (2+ user IDs) + `entities` (pre-gathered profiles and intents from shared indexes). " +
+      "2. **Introduction**: pass `partyUserIds` (2+ user IDs) + `entities` (pre-gathered profiles and intents from shared networkes). " +
       "You MUST call read_user_contexts and read_intents for each party BEFORE calling this. " +
       "Optionally pass `hint` with the user's reason for the introduction.\n" +
       "3. **Direct connection**: pass `targetUserId` + `searchQuery`. Creates an opportunity between the current user and one specific person.\n" +
@@ -576,13 +587,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "Do NOT call create_intent for these phrasings — create_intent is only for when the user explicitly " +
       "asks to \"create\", \"save\", \"add\", or \"remember\" a signal.\n\n" +
       "**Personal-index scoping.** When the user says \"in my network\", \"from my contacts\", \"people I know\", " +
-      "or similar scoping language, pass the user's personal index ID (from memberships where `isPersonal: true`) " +
-      "as `networkId`. The personal index contains the user's contacts — scoping discovery to it restricts " +
+      "or similar scoping language, pass the user's personal network ID (from memberships where `isPersonal: true`) " +
+      "as `networkId`. The personal network contains the user's contacts — scoping discovery to it restricts " +
       "results to people the user already knows. Without this scoping language, omit networkId to let discovery " +
-      "run across all indexes.\n\n" +
+      "run across all networks.\n\n" +
       "**Introduction mode prerequisites.** When using `partyUserIds` + `entities`, YOU must pre-fetch each party's " +
       "profile and intents before calling this tool. The entities array must include each party's userId, profile, " +
-      "intents from shared indexes, and the shared networkId. Call read_user_contexts, read_network_memberships, " +
+      "intents from shared networkes, and the shared networkId. Call read_user_contexts, read_network_memberships, " +
       "and read_intents for both parties first. The introducer (current user) must NOT appear in entities.\n\n" +
       "**Signal-visibility follow-up.** If the response includes `suggestIntentCreationForVisibility: true` and " +
       "`suggestedIntentDescription`, after presenting opportunity cards ask the user ONCE whether they'd also like " +
@@ -601,7 +612,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z
         .string()
         .optional()
-        .describe("Index UUID to scope discovery to a specific community. Get from read_networks. In an index-scoped chat, omitting this runs discovery across the full reachable scope (the bound community plus the user's personal index); pass an explicit networkId to force single-index discovery. Pass the personal index ID (from read_networks, isPersonal=true) to scope to the user's contacts only."),
+        .describe("Network UUID to scope discovery to a specific community. Get from read_networks. In an network-scoped chat, omitting this runs discovery only in the scoped community; pass the personal network ID (from read_networks, isPersonal=true) only when the user explicitly asks to discover among contacts."),
       intentId: z
         .string()
         .optional()
@@ -648,15 +659,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               .optional(),
             networkId: z
               .string()
-              .describe("Shared index this entity's data comes from (required for intro mode)"),
+              .describe("Shared network this entity's data comes from (required for intro mode)"),
           }),
         )
         .optional()
         .describe(
           "Introduction mode: pre-gathered profile and intent data for each party being introduced. " +
-          "Each entry needs userId, networkId (the shared index), and optionally profile (name, bio, skills, interests) and intents (intentId, payload). " +
+          "Each entry needs userId, networkId (the shared network), and optionally profile (name, bio, skills, interests) and intents (intentId, payload). " +
           "Gather this data by calling read_user_contexts and read_intents for each party BEFORE calling discover_opportunities. " +
-          "All entities must share the same networkId (the shared index where both parties are members).",
+          "All entities must share the same networkId (the shared network where both parties are members).",
         ),
       hint: z
         .string()
@@ -667,23 +678,24 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ),
     }),
     handler: async ({ context, query }) => {
-      // Strict scope enforcement: when chat is index-scoped, only allow that index
+      const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
+      const scopedIndexLabel = focusedNetworkLabel(context);
+
+      // Strict scope enforcement: when chat is network-scoped, only allow that index
       if (
-        context.networkId &&
+        scopedNetworkId &&
         query.networkId?.trim() &&
-        query.networkId.trim() !== context.networkId
+        query.networkId.trim() !== scopedNetworkId
       ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? "this index"}. You can only create opportunities in this community.`,
+          `This chat is scoped to ${scopedIndexLabel}. You can only create opportunities in this community.`,
         );
       }
 
       // Distinguish an explicit `query.networkId` override (caller wants discovery
-      // scoped to one specific index) from an implicit scoped-chat context
-      // (caller is in a scoped chat with no explicit override — discovery should
-      // span the chat's reach, i.e. context.indexScope = [bound, personal]).
-      // Conflating them via `context.networkId || query.networkId` made the
-      // implicit branch unreachable.
+      // scoped to one specific index) from an implicit scoped-chat context.
+      // Scoped-chat discovery stays focused to the scoped community only; the
+      // personal-inclusive allowed reach is reserved for self-owned writes.
       const explicitIndexId = query.networkId?.trim() || undefined;
       const effectiveIndexId = explicitIndexId;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
@@ -730,9 +742,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             userId: context.userId,
             userName: context.userName,
             userEmail: context.userEmail,
-            ...(context.networkId ? { networkId: context.networkId } : {}),
+            ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : scopedNetworkId ? { scopeType: 'network' as const, scopeId: scopedNetworkId } : {}),
             ...(context.indexName ? { indexName: context.indexName } : {}),
-            indexScope: context.indexScope,
             ...(context.sessionId ? { sessionId: context.sessionId } : {}),
             ...(context.agentId ? { agentId: context.agentId } : {}),
             ...(context.clientSurface ? { clientSurface: context.clientSurface } : {}),
@@ -780,7 +791,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           cache,
           userId: context.userId,
           discoveryId: query.continueFrom,
-          expectedIndexId: context.networkId,
+          expectedIndexId: scopedNetworkId,
           limit: 20,
           presenter: createOpportunityPresenter(),
           useHomeCardFormat: true,
@@ -920,7 +931,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           networkId: primaryNetworkId,
           introductionEntities: evaluatorEntities,
           introductionHint: query.hint,
-          requiredNetworkId: context.networkId ?? undefined,
+          requiredNetworkId: scopedNetworkId,
           options: {
             initialStatus: "draft" as const,
             ...(context.sessionId ? { conversationId: context.sessionId } : {}),
@@ -1080,14 +1091,20 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           return error("Network not found or you are not a member.");
         }
         indexScope = [effectiveIndexId];
-      } else if (context.networkId) {
-        // Scoped chat: use the agent's full reach so personal-index
-        // signals participate in opportunity discovery. See IND-306.
-        indexScope = context.indexScope.length > 0
-          ? [...context.indexScope]
-          : [context.networkId];
+      } else if (context.scopeType === 'network' && context.scopeId) {
+        // Scoped chat: discovery is focused-network only. Self-owned writes may
+        // include personal networkes, but opportunity visibility must not.
+        const scopedDiscoveryIds = deriveDiscoveryNetworkIds({
+          memberships: context.userNetworks,
+          scopeType: context.scopeType,
+          scopeId: context.scopeId,
+        });
+        indexScope = scopedDiscoveryIds;
+      } else if (scopedNetworkId) {
+        // Scoped context: preserve focused-only discovery using the scope envelope.
+        indexScope = [scopedNetworkId];
       } else {
-        // No scope - use all indexes (only in unscoped chat)
+        // No scope - use all networks (only in unscoped chat)
         const _scopeGraphStart = Date.now();
         const _scopeIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
         _scopeIndexTraceEmitter?.({ type: "graph_start", name: "index" });
@@ -1108,10 +1125,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         { step: "resolve_index_scope", detail: `${indexScope.length} index(es)` },
       ];
 
-      const triggerIntentId = query.intentId?.trim() || undefined;
-      if (triggerIntentId != null && !UUID_REGEX.test(triggerIntentId)) {
+      const contextIntentId = focusedIntentId(context);
+      const requestedIntentId = query.intentId?.trim() || undefined;
+      if (requestedIntentId != null && !UUID_REGEX.test(requestedIntentId)) {
         return error("Invalid intent ID format.");
       }
+      if (contextIntentId && requestedIntentId && requestedIntentId !== contextIntentId) {
+        return error("This chat is scoped to a different intent.");
+      }
+      const triggerIntentId = contextIntentId ?? requestedIntentId;
 
       if (query.introTargetUserId?.trim() && query.introTargetUserId.trim() === context.userId) {
         return error("You cannot discover introductions for yourself. Try regular discovery instead.");
@@ -1155,6 +1177,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
         ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
         ...(deps.questionerEnqueue && { questionerEnqueue: deps.questionerEnqueue }),
+        ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
         ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
         // Decision questions add an LLM call after the negotiation phase.
         // Capped at DISCOVERY_QUESTIONS_TIMEOUT_MS (12 s default,
@@ -1180,6 +1203,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         findPendingQuestions: deps.findPendingQuestions,
         userId: context.userId,
         sourceType: 'discovery',
+        ...(context.scopeType === 'network' && context.scopeId ? { networkId: context.scopeId } : {}),
+        ...(contextIntentId ? { scopeType: 'intent' as const, scopeId: contextIntentId } : {}),
         surfacedQuestionIds: new Set(), // Dedup handled at chat.agent level
       });
       const pendingQuestions = pendingQuestionResult.questions;
@@ -1534,7 +1559,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     name: "list_opportunities",
     description:
       "Lists the authenticated user's actionable opportunities (discovered connections). Returns opportunity cards ready for display.\n\n" +
-      "**What are opportunities?** Matches between users whose intents complement each other within shared indexes. " +
+      "**What are opportunities?** Matches between users whose intents complement each other within shared networkes. " +
       "Each opportunity has a status: draft (not yet sent), pending (sent, awaiting response), accepted, rejected, or expired.\n\n" +
       "**What this returns:** Only draft and pending opportunities — the ones the user can still act on. " +
       "Accepted, rejected, and expired ones are not surfaced through this tool.\n\n" +
@@ -1545,31 +1570,60 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       networkId: z
         .string()
         .optional()
-        .describe("Index UUID to filter opportunities to a specific community. Get from read_networks. Defaults to the scoped index in index-scoped chats. Omit to see opportunities across all indexes."),
+        .describe("Network UUID to filter opportunities to a specific community. Get from read_networks. Defaults to the scoped network in network-scoped chats. Omit to see opportunities across all networks."),
+      scopeType: z
+        .enum(['intent'])
+        .optional()
+        .describe("Optional selected scope type. Use 'intent' to narrow listed opportunities to a selected intent."),
+      scopeId: z
+        .string()
+        .optional()
+        .describe("Selected intent UUID when scopeType is 'intent'. Ignored only when absent."),
       includeDigestMarkers: z
         .boolean()
         .optional()
         .describe("Internal scheduled-digest mode only. When true, includes hidden delivery markers so the digest send pass can confirm only edited-in opportunities."),
     }),
     handler: async ({ context, query }) => {
-      // Strict scope enforcement: when chat is index-scoped, only allow that index
+      const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
+      const scopedIndexLabel = focusedNetworkLabel(context);
+
+      // Strict scope enforcement: when chat is network-scoped, only allow that index
       if (
-        context.networkId &&
+        scopedNetworkId &&
         query.networkId?.trim() &&
-        query.networkId.trim() !== context.networkId
+        query.networkId.trim() !== scopedNetworkId
       ) {
         return error(
-          "This chat is scoped to " +
-            (context.indexName ?? "this index") +
-            ". You can only list opportunities from this community.",
+          `This chat is scoped to ${scopedIndexLabel}. You can only list opportunities from this community.`,
         );
       }
 
       const effectiveIndexId =
-        (context.networkId || query.networkId?.trim()) ?? undefined;
+        (scopedNetworkId || query.networkId?.trim()) ?? undefined;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
         return error("Invalid network ID format.");
       }
+
+      const contextIntentId = focusedIntentId(context);
+      const rawScopeId = query.scopeId?.trim() || undefined;
+      if (query.scopeType === 'intent' && !rawScopeId) {
+        return error("scopeId required when scopeType is intent.");
+      }
+      if (!query.scopeType && rawScopeId) {
+        return error("scopeType=intent required when scopeId is provided.");
+      }
+      if (rawScopeId && !UUID_REGEX.test(rawScopeId)) {
+        return error("Invalid scope ID format.");
+      }
+      if (contextIntentId && rawScopeId && contextIntentId !== rawScopeId) {
+        return error("This chat is scoped to a different intent.");
+      }
+      const effectiveIntentScope = contextIntentId
+        ? { scopeType: 'intent' as const, scopeId: contextIntentId }
+        : query.scopeType === 'intent' && rawScopeId
+          ? { scopeType: 'intent' as const, scopeId: rawScopeId }
+          : {};
 
       // The MCP/chat surface exposes actionable opportunities.
       // `latent` is included so the introducer-as-viewer can see their unapproved
@@ -1586,6 +1640,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         context.userId,
         {
           networkId: effectiveIndexId,
+          ...effectiveIntentScope,
           statuses,
           limit: CHAT_FETCH_LIMIT,
         },
@@ -1659,8 +1714,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       if (isDigestMode && deduped.length > 0) {
         const acceptedCounterpartIds = new Set<string>();
         try {
+          // effectiveIntentScope scopes the statuses: ["accepted"] suppression fetch.
           const acceptedOpps = await database.getOpportunitiesForUser(context.userId, {
             ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
+            ...effectiveIntentScope,
             statuses: ["accepted"],
             limit: ACCEPTED_SUPPRESSION_FETCH_LIMIT,
           });
@@ -1759,12 +1816,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const allUserIds = [
         ...new Set([...counterpartUserIds, ...introducerUserIds]),
       ];
-      const [viewerUser, profileResults, userResults] = await Promise.all([
-        database.getUser(context.userId),
+      const [profileResults, userResults] = await Promise.all([
         Promise.all(allUserIds.map((id) => database.getProfile(id))),
         Promise.all(allUserIds.map((id) => database.getUser(id))),
       ]);
-      const viewerName = viewerUser?.name ?? undefined;
       const profileMap = new Map<string, Awaited<ReturnType<typeof database.getProfile>>>();
       const userMap = new Map<string, Awaited<ReturnType<typeof database.getUser>>>();
       allUserIds.forEach((userId, i) => {
@@ -1967,106 +2022,171 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           }
         }
       } else {
-        // ── Chat mode: fast heuristic path (no LLM) ──
-        for (const opp of opportunities) {
-          if (seenOpportunityIds.has(opp.id)) continue;
-          seenOpportunityIds.add(opp.id);
-          try {
-            const counterpartActor = opp.actors.find(
-              (a) => a.userId !== context.userId && a.role !== "introducer",
-            );
-            const counterpartUserId = counterpartActor?.userId;
-            if (!counterpartUserId) continue;
+        // ── Chat/list mode: use OpportunityPresenter for user-facing card copy ──
+        const presenter = createOpportunityPresenter();
+        const presenterDb: PresenterDatabase = database;
+        const PRESENTER_CONCURRENCY = 6;
 
-            const viewerIsIntroducerHere = opp.actors.some(
-              (a) => a.role === "introducer" && a.userId === context.userId,
-            );
-            const secondPartyActorForHeadline = viewerIsIntroducerHere
-              ? opp.actors.find(
-                  (a) =>
-                    a.userId !== context.userId &&
-                    a.userId !== counterpartUserId &&
-                    a.role !== "introducer",
-                )
-              : undefined;
-            const secondPartyNameForHeadline = secondPartyActorForHeadline
-              ? (profileMap.get(secondPartyActorForHeadline.userId)?.identity?.name ??
-                userMap.get(secondPartyActorForHeadline.userId)?.name ??
-                undefined)
-              : undefined;
+        for (let i = 0; i < opportunities.length; i += PRESENTER_CONCURRENCY) {
+          const chunk = opportunities.slice(i, i + PRESENTER_CONCURRENCY);
+          const chunkCards = await Promise.all(
+            chunk.map(async (opp) => {
+              if (seenOpportunityIds.has(opp.id)) return null;
+              seenOpportunityIds.add(opp.id);
+              try {
+                const counterpartActor = opp.actors.find(
+                  (a) => a.userId !== context.userId && a.role !== "introducer",
+                );
+                const counterpartUserId = counterpartActor?.userId;
+                if (!counterpartUserId) return null;
 
-            const introducerActor = opp.actors.find(
-              (a) => a.role === "introducer" && a.userId !== context.userId,
-            );
-            const createdByName = opp.detection.createdByName;
+                const viewerIsIntroducerHere = opp.actors.some(
+                  (a) => a.role === "introducer" && a.userId === context.userId,
+                );
+                const secondPartyActorForHeadline = viewerIsIntroducerHere
+                  ? opp.actors.find(
+                      (a) =>
+                        a.userId !== context.userId &&
+                        a.userId !== counterpartUserId &&
+                        a.role !== "introducer",
+                    )
+                  : undefined;
 
-            const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
-            const counterpartUser = userMap.get(counterpartUserId) ?? null;
-            const introducerProfile =
-              introducerActor && !createdByName
-                ? profileMap.get(introducerActor.userId) ?? null
-                : null;
+                const introducerActor = opp.actors.find(
+                  (a) => a.role === "introducer" && a.userId !== context.userId,
+                );
+                const createdByName = opp.detection.createdByName;
 
-            const counterpartName =
-              counterpartProfile?.identity?.name ??
-              counterpartUser?.name ??
-              "Someone";
-            const introducerName =
-              createdByName ??
-              (introducerActor ? introducerProfile?.identity?.name ?? null : null);
-            const introducerUser = introducerActor
-              ? userMap.get(introducerActor.userId) ?? null
-              : null;
+                const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
+                const counterpartUser = userMap.get(counterpartUserId) ?? null;
+                const introducerProfile =
+                  introducerActor && !createdByName
+                    ? profileMap.get(introducerActor.userId) ?? null
+                    : null;
 
-            const secondPartyUser = secondPartyActorForHeadline
-              ? userMap.get(secondPartyActorForHeadline.userId) ?? null
-              : null;
-            const cardData = buildMinimalOpportunityCard(
-              opp,
-              context.userId,
-              counterpartUserId,
-              counterpartName,
-              counterpartUser?.avatar ?? null,
-              introducerName,
-              introducerUser?.avatar ?? null,
-              viewerName,
-              secondPartyNameForHeadline,
-              secondPartyUser?.avatar ?? null,
-              secondPartyActorForHeadline?.userId,
-            );
+                const counterpartName =
+                  counterpartProfile?.identity?.name ??
+                  counterpartUser?.name ??
+                  "Someone";
+                const introducerName =
+                  createdByName ??
+                  (introducerActor ? introducerProfile?.identity?.name ?? null : null);
+                const introducerUser = introducerActor
+                  ? userMap.get(introducerActor.userId) ?? null
+                  : null;
 
-            // For MCP callers (e.g. Edge Claw), mint a connect token and attach
-            // acceptUrl + profileUrl when the (status, viewerRole) is actionable
-            // for the viewer. Non-actionable combos (sender-on-draft,
-            // pending-on-introducer-waiting, rejected, etc.) deliberately get
-            // no link — the LLM would otherwise hallucinate `/api/.../connect`
-            // URLs from the exposed opportunityId.
-            if (context.isMcp && deps.mintConnectLink) {
-              const viewerActor = opp.actors.find((a) => a.userId === context.userId);
-              const viewerApproved =
-                viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
-              await attachActionableLinks(cardData as Record<string, unknown> & {
-                opportunityId: string;
-                viewerRole: string;
-                status: string;
-              }, {
-                viewerId: context.userId,
-                viewerApproved,
-                counterpartUserId,
-                mintConnectLink: deps.mintConnectLink,
-                frontendUrl: deps.frontendUrl,
-                preferredSurface: context.clientSurface,
-              });
-            }
+                const secondPartyUser = secondPartyActorForHeadline
+                  ? userMap.get(secondPartyActorForHeadline.userId) ?? null
+                  : null;
+                const secondPartyNameForHeadline = secondPartyActorForHeadline
+                  ? (profileMap.get(secondPartyActorForHeadline.userId)?.identity?.name ??
+                    secondPartyUser?.name ??
+                    undefined)
+                  : undefined;
 
-            cardDataList.push(cardData);
-          } catch (err) {
-            logger.warn("Skipping opportunity that failed to build minimal card", {
-              opportunityId: opp.id,
-              err,
-            });
-            skippedIds.push(opp.id);
-            continue;
+                const viewerActor = opp.actors.find((a) => a.userId === context.userId);
+                const viewerRole = viewerActor?.role ?? "party";
+                const isCounterpartGhost = counterpartUser?.isGhost ?? false;
+
+                const [ctx, negotiationContext] = await Promise.all([
+                  gatherOpportunityPresenterContext(
+                    presenterDb,
+                    opp,
+                    context.userId,
+                    counterpartUserId,
+                  ),
+                  loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status),
+                ]);
+
+                const presentation = await presenter.presentHomeCard({
+                  ...ctx,
+                  opportunityStatus: opp.status,
+                  ...(negotiationContext ? { negotiationContext } : {}),
+                });
+
+                let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
+                const introducerIsCounterpart = introducerActor && counterpartActor && introducerActor.userId === counterpartActor.userId;
+                if (introducerActor && introducerActor.userId !== context.userId && !introducerIsCounterpart) {
+                  const narratorName = introducerName?.trim() || "Someone";
+                  narratorChip = {
+                    name: narratorName,
+                    text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
+                    avatar: introducerUser?.avatar ?? null,
+                    userId: introducerActor.userId,
+                  };
+                } else if (introducerActor?.userId === context.userId) {
+                  narratorChip = { name: "You", text: presentation.narratorRemark, userId: context.userId };
+                } else {
+                  narratorChip = { name: "Index", text: presentation.narratorRemark };
+                }
+
+                const cardData: Record<string, unknown> & { opportunityId: string } = {
+                  opportunityId: opp.id,
+                  userId: counterpartUserId,
+                  name: counterpartName,
+                  avatar: counterpartUser?.avatar ?? null,
+                  mainText: stripUuids(presentation.personalizedSummary),
+                  cta: presentation.suggestedAction,
+                  headline: viewerIsIntroducerHere && secondPartyNameForHeadline
+                    ? `${counterpartName} → ${secondPartyNameForHeadline}`
+                    : presentation.headline,
+                  primaryActionLabel: getPrimaryActionLabel(viewerRole),
+                  secondaryActionLabel: SECONDARY_ACTION_LABEL,
+                  mutualIntentsLabel: presentation.mutualIntentsLabel,
+                  narratorChip,
+                  viewerRole,
+                  score: typeof opp.interpretation?.confidence === "number"
+                    ? opp.interpretation.confidence
+                    : undefined,
+                  status: opp.status,
+                  isGhost: isCounterpartGhost,
+                  ...(viewerIsIntroducerHere && secondPartyNameForHeadline
+                    ? {
+                        secondParty: {
+                          name: secondPartyNameForHeadline,
+                          ...(secondPartyUser?.avatar != null ? { avatar: secondPartyUser.avatar } : {}),
+                          ...(secondPartyActorForHeadline?.userId ? { userId: secondPartyActorForHeadline.userId } : {}),
+                        },
+                      }
+                    : {}),
+                };
+
+                // For MCP callers (e.g. Edge Claw), mint a connect token and attach
+                // acceptUrl + profileUrl when the (status, viewerRole) is actionable
+                // for the viewer. Non-actionable combos (sender-on-draft,
+                // pending-on-introducer-waiting, rejected, etc.) deliberately get
+                // no link — the LLM would otherwise hallucinate `/api/.../connect`
+                // URLs from the exposed opportunityId.
+                if (context.isMcp && deps.mintConnectLink) {
+                  const viewerApproved =
+                    viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
+                  await attachActionableLinks(cardData as Record<string, unknown> & {
+                    opportunityId: string;
+                    viewerRole: string;
+                    status: string;
+                  }, {
+                    viewerId: context.userId,
+                    viewerApproved,
+                    counterpartUserId,
+                    mintConnectLink: deps.mintConnectLink,
+                    frontendUrl: deps.frontendUrl,
+                    preferredSurface: context.clientSurface,
+                  });
+                }
+
+                return cardData;
+              } catch (err) {
+                logger.warn("Skipping opportunity that failed to build presenter card", {
+                  opportunityId: opp.id,
+                  err,
+                });
+                skippedIds.push(opp.id);
+                return null;
+              }
+            }),
+          );
+          for (const card of chunkCards) {
+            if (card) cardDataList.push(card);
           }
         }
       }
@@ -2130,12 +2250,40 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           "New status: 'pending' = send the draft to the other party, 'accepted' = accept the connection, " +
           "'rejected' = decline, 'expired' = mark as timed out.",
         ),
+      scopeType: z
+        .enum(['intent'])
+        .optional()
+        .describe("Optional selected scope type. Use 'intent' to require this opportunity to belong to a selected intent."),
+      scopeId: z
+        .string()
+        .optional()
+        .describe("Selected intent UUID when scopeType is 'intent'. Must match the chat's focused intent when one exists."),
     }),
     handler: async ({ context, query }) => {
       const opportunityId = query.opportunityId?.trim();
       if (!opportunityId || !UUID_REGEX.test(opportunityId)) {
         return error("Valid opportunityId required.");
       }
+
+      const contextIntentId = focusedIntentId(context);
+      const rawScopeId = query.scopeId?.trim() || undefined;
+      if (query.scopeType === 'intent' && !rawScopeId) {
+        return error("scopeId required when scopeType is intent.");
+      }
+      if (!query.scopeType && rawScopeId) {
+        return error("scopeType=intent required when scopeId is provided.");
+      }
+      if (rawScopeId && !UUID_REGEX.test(rawScopeId)) {
+        return error("Invalid scope ID format.");
+      }
+      if (contextIntentId && rawScopeId && contextIntentId !== rawScopeId) {
+        return error("This chat is scoped to a different intent.");
+      }
+      const effectiveIntentScope = contextIntentId
+        ? { scopeType: 'intent' as const, scopeId: contextIntentId }
+        : query.scopeType === 'intent' && rawScopeId
+          ? { scopeType: 'intent' as const, scopeId: rawScopeId }
+          : {};
 
       // Always fetch the opportunity — needed for actor guard and state machine
       const opportunity = await systemDb.getOpportunity(opportunityId);
@@ -2156,18 +2304,23 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error(`This opportunity is already ${opportunity.status} and cannot be updated.`);
       }
 
-      // Strict scope enforcement: when chat is index-scoped, the caller's own
+      // Strict scope enforcement: when chat is network-scoped, the caller's own
       // actor entry on this opportunity must be anchored on the bound network.
       // Mirrors the per-actor filter in getOpportunitiesForUser — relying on
-      // `context.networkId` or any-actor matches would let a counterpart's
-      // network presence shadow a viewer whose own actor is elsewhere.
-      if (context.networkId) {
+      // a focus-scope id or any-actor matches would let a counterpart's network
+      // presence shadow a viewer whose own actor is elsewhere.
+      const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
+      if (scopedNetworkId) {
         const callerOnBoundNetwork = opportunity.actors?.some(
-          (a) => a.userId === context.userId && a.networkId === context.networkId,
+          (a) => a.userId === context.userId && a.networkId === scopedNetworkId,
         );
         if (!callerOnBoundNetwork) {
           return error("Opportunity not found.");
         }
+      }
+
+      if (!matchesSelectedIntentScope(opportunity, context.userId, effectiveIntentScope)) {
+        return error("Opportunity not found.");
       }
 
       const isSend = query.status === "pending";

@@ -4,6 +4,7 @@ import { InferredIntent } from "./intent.inferrer.js";
 import { SemanticVerifierOutput } from "./intent.verifier.js";
 import { IntentReconcilerOutput } from "./intent.reconciler.js";
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
+import type { ToolScopeType } from '../shared/agent/tool.scope.js';
 
 /**
  * Extended InferredIntent that includes verification results.
@@ -91,11 +92,23 @@ export const IntentGraphState = Annotation.Root({
   }),
 
   /**
-   * Optional index scope (index ID). Used for linking created intents to an index
+   * Optional network scope (network ID). Used for linking created intents to a network
    * and for scoping read operations. Prep always fetches ALL user intents via
-   * getActiveIntents(userId) regardless of index scope (for global dedup/reconciliation).
+   * getActiveIntents(userId) regardless of network scope (for global dedup/reconciliation).
    */
   networkId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope type for write-side assignment and follow-up queues. */
+  scopeType: Annotation<ToolScopeType | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Focused request scope id. When scopeType is `network`, this is the focused network id. */
+  scopeId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
@@ -181,10 +194,10 @@ export const IntentGraphState = Annotation.Root({
   // --- Read Mode Fields ---
 
   /**
-   * For read mode: the set of index IDs the caller's agent can reach.
+   * For read mode: the set of network IDs the caller's agent can reach.
    * When set and neither networkId nor queryUserId is provided, the graph
-   * returns the caller's own intents across all indexes in this set (scope-aware
-   * default path). Populated by the tool layer from context.indexScope.
+   * returns the caller's own intents across all networks in this set (scope-aware
+   * default path). Derived by the tool layer from the scope envelope plus memberships.
    */
   indexScope: Annotation<string[] | undefined>({
     reducer: (_curr, next) => next,
@@ -192,8 +205,8 @@ export const IntentGraphState = Annotation.Root({
   }),
 
   /**
-   * For read mode: filter intents by a specific user when reading in an index.
-   * When omitted and index-scoped, returns all intents in the index.
+   * For read mode: filter intents by a specific user when reading in a network.
+   * When omitted and network-scoped, returns all intents in the network.
    */
   queryUserId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
@@ -202,7 +215,7 @@ export const IntentGraphState = Annotation.Root({
 
   /**
    * For read mode: when true, return all of the current user's intents
-   * ignoring index scope. Used before create_intent to detect duplicates.
+   * ignoring network scope. Used before create_intent to detect duplicates.
    */
   allUserIntents: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,

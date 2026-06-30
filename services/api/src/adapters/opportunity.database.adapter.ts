@@ -72,7 +72,7 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; statuses?: string[]; networkId?: string; scopeType?: 'intent'; scopeId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
     const visibilityGuard = sql`(
@@ -132,6 +132,21 @@ export class OpportunityDatabaseAdapter {
           SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS a_in
           WHERE a_in->>'userId' = a_out->>'userId'
             AND a_in->>'networkId' = ${options.networkId}
+        )
+      )`);
+    }
+    if (options?.scopeType === 'intent' && options.scopeId) {
+      // Optional selected-intent narrowing. This composes with the existing
+      // visibility/network/status predicates above: it never broadens a scoped
+      // read. From-intent discovery records `detection.triggeredBy`; older or
+      // manually linked rows can still be selected when the viewer's own actor
+      // carries the selected `intent` id.
+      conditions.push(sql`(
+        ${opportunities.detection}->>'triggeredBy' = ${options.scopeId}
+        OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+          WHERE actor->>'userId' = ${userId}
+            AND actor->>'intent' = ${options.scopeId}
         )
       )`);
     }
@@ -744,9 +759,9 @@ export class OpportunityDatabaseAdapter {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Index Graph Database Adapter
+// Network Graph Database Adapter
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Database adapter for Index Graph (intent/index context and assignment).
+ * Database adapter for Network Graph (intent/network context and assignment).
  */

@@ -12,7 +12,7 @@ description: Use when the user asks about finding people, connections, opportuni
 On activation, silently call (do not show raw output):
 1. `read_user_contexts` — load the current user's profile
 2. `read_intents` — load their active signals
-3. `read_network_memberships` — load their index memberships (note which has `isPersonal: true`)
+3. `read_network_memberships` — load their network memberships (note which has `isPersonal: true`)
 
 If MCP tools are unavailable:
 - **OAuth (default):** call any Index tool — it challenges with OAuth on first use. Complete the browser flow.
@@ -39,7 +39,7 @@ For "find me a mentor", "who needs a React dev", "looking for investors":
 
 **Call `discover_opportunities(searchQuery=user's request)` FIRST. Do NOT call `create_intent` unless the user explicitly says "save", "create", "add", or "remember" a signal.**
 
-- For "in my network" / "from my contacts" / "people I know": pass the personal index ID (`isPersonal: true`) as `networkId`
+- For "in my network" / "from my contacts" / "people I know": pass the personal network ID (`isPersonal: true`) as `networkId`
 - If the tool returns `suggestIntentCreationForVisibility: true` and `suggestedIntentDescription`: after presenting results, ask once: "Would you also like to create a signal for this so others can find you?" If yes, call `create_intent(description=suggestedIntentDescription)` and include the returned ` ```intent_proposal ` block verbatim
 - When all candidates are exhausted, suggest the user create a signal — do NOT offer "show more"
 
@@ -74,8 +74,8 @@ When the user mentions a specific person AND wants to connect:
 
 ```
 1. read_user_contexts(userId=X) + read_network_memberships(userId=X)
-2. Intersect their indexes with the current user's preloaded memberships → find shared indexes
-3. If no shared indexes: tell the user there is no connection path
+2. Intersect their indexes with the current user's preloaded memberships → find shared networks
+3. If no shared networks: tell the user there is no connection path
 4. discover_opportunities(targetUserId=X, searchQuery="<synthesized reason>")
 5. Present the opportunity card
 ```
@@ -126,16 +126,16 @@ Exception: for profile creation, pass URLs directly to `create_user_context` —
 **Always gather context before calling `discover_opportunities`. The tool does NOT fetch data internally for introductions.**
 
 ```
-1. read_network_memberships(userId=A) + read_network_memberships(userId=B) → shared indexes
-2. If no shared indexes: tell user there is no shared community
+1. read_network_memberships(userId=A) + read_network_memberships(userId=B) → shared networks
+2. If no shared networks: tell user there is no shared community
 3. read_user_contexts(userId=A) + read_user_contexts(userId=B)
-4. For each shared index: read_intents(networkId=X, userId=A) + read_intents(networkId=X, userId=B)
+4. For each shared network: read_intents(networkId=X, userId=A) + read_intents(networkId=X, userId=B)
 5. Summarize: "Here's what I found about A and B..."
 6. discover_opportunities(partyUserIds=[A,B], entities=[{userId:A, profile:{...}, intents:[...], networkId:sharedId}, {userId:B, ...}], hint="user's reason")
 7. Present the draft introduction
 ```
 
-The `entities` array must include each party's userId, full profile, intents from the shared index, and the shared networkId. Never include the current user in `entities`.
+The `entities` array must include each party's userId, full profile, intents from the shared network, and the shared networkId. Never include the current user in `entities`.
 
 ## Pattern 5a: Discover connections for someone else
 
@@ -163,7 +163,7 @@ Do NOT use Pattern 5 here. Do NOT ask for a second person. Do NOT suggest creati
 2. read_intents(networkId=X) → what members are looking for
 3. read_network_memberships(networkId=X) → who's in it
 
-# Create an index
+# Create a network
 create_intent_index(title=..., prompt=...)
 
 # Join an index

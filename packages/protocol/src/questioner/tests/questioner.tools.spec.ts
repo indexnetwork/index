@@ -12,6 +12,7 @@ const userId = '00000000-0000-4000-8000-000000000001';
 type CapturedFilters = {
   sourceType?: string;
   sourceId?: string;
+  networkId?: string;
   modes?: string[];
   limit?: number;
 } | undefined;
@@ -44,6 +45,7 @@ const mockQuestion: PendingQuestionSummary = {
   sourceType: 'profile',
   sourceId: userId,
   createdAt: '2026-06-11T00:00:00Z',
+  actors: [{ userId, networkId: 'net-0001' }],
 };
 
 function makeDeps(overrides?: {
@@ -127,13 +129,14 @@ describe("createQuestionerTools", () => {
           return [mockQuestion];
         },
       }));
-      const scoped = makeContext({ networkId: 'net-0001', indexName: 'Edge Esmeralda' });
+      const scoped = makeContext({ networkId: 'net-0001', scopeType: 'network', scopeId: 'net-0001', indexName: 'Edge Esmeralda' });
       const result = await call("read_pending_questions", {}, scoped) as {
         success: boolean;
         data: { questions: PendingQuestionSummary[]; scopeRestriction?: { isScoped: boolean; scopedToIndex: string } };
       };
       expect(result.success).toBe(true);
       expect(captured?.modes).toEqual(["enrichment", "intent", "discovery"]);
+      expect(captured?.networkId).toBe('net-0001');
       expect(result.data.scopeRestriction?.isScoped).toBe(true);
       expect(result.data.scopeRestriction?.scopedToIndex).toBe("Edge Esmeralda");
     });
@@ -161,10 +164,26 @@ describe("createQuestionerTools", () => {
           mockQuestion,
         ],
       }));
-      const scoped = makeContext({ networkId: 'net-0001', indexName: 'Edge Esmeralda' });
+      const scoped = makeContext({ networkId: 'net-0001', scopeType: 'network', scopeId: 'net-0001', indexName: 'Edge Esmeralda' });
       const result = await call("read_pending_questions", {}, scoped) as { success: boolean; data: { questions: PendingQuestionSummary[] } };
       expect(result.success).toBe(true);
       expect(result.data.questions.map((q) => q.id)).toEqual(["q-0001"]);
+    });
+
+    it("excludes other-network rows for scoped callers even when the dep ignores the network filter", async () => {
+      const { defineTool, call } = makeDefineTool();
+      createQuestionerTools(defineTool as never, makeDeps({
+        findPendingQuestions: async () => [
+          { ...mockQuestion, id: "q-other", actors: [{ userId, networkId: "net-0002" }] },
+          { ...mockQuestion, id: "q-missing", actors: undefined },
+          mockQuestion,
+        ],
+      }));
+      const scoped = makeContext({ networkId: 'net-0001', scopeType: 'network', scopeId: 'net-0001', indexName: 'Edge Esmeralda' });
+      const result = await call("read_pending_questions", {}, scoped) as { success: boolean; data: { questions: PendingQuestionSummary[] } };
+      expect(result.success).toBe(true);
+      expect(result.data.questions.map((q) => q.id)).toEqual(["q-0001"]);
+      expect(result.data.questions[0].actors).toBeUndefined();
     });
 
     it("reports and surfaces an error when the lookup throws", async () => {

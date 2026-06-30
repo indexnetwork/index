@@ -69,7 +69,7 @@ export function useMentionableUsers({
     }
   }, [enabled, indexService, indexesLoading]);
 
-  // Stable signature of index IDs so joins/leaves trigger refetch even when length is unchanged
+  // Stable signature of network IDs so joins/leaves trigger refetch even when length is unchanged
   const indexesSignature =
     indexes.length === 0
       ? ''

@@ -1,7 +1,7 @@
 /**
  * Unit tests for IntegrationController.
  * Tests ownership verification on disconnect, basic list/connect flows,
- * and index-scoped link/unlink/import operations.
+ * and network-scoped link/unlink/import operations.
  */
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
@@ -154,7 +154,7 @@ describe("IntegrationController", () => {
       expect(linkedIntegrations[0].toolkit).toBe("gmail");
     });
 
-    test("should return 400 when user is not index owner", async () => {
+    test("should return 400 when user is not network owner", async () => {
       const req = new Request("http://test/api/integrations/gmail/link", {
         method: "POST",
         body: JSON.stringify({ networkId: INDEX_NOT_OWNED }),
@@ -212,7 +212,7 @@ describe("IntegrationController", () => {
       expect(linkedIntegrations).toHaveLength(0);
     });
 
-    test("should return 400 when user is not index owner", async () => {
+    test("should return 400 when user is not network owner", async () => {
       const req = new Request(`http://test/api/integrations/gmail/link?networkId=${INDEX_NOT_OWNED}`, {
         method: "DELETE",
       });
@@ -253,7 +253,7 @@ describe("IntegrationController", () => {
       expect(res.status).toBe(400);
     });
 
-    test("should import contacts for an owned non-personal index", async () => {
+    test("should import contacts for an owned non-personal network", async () => {
       const req = new Request("http://test/api/integrations/gmail/import", {
         method: "POST",
         body: JSON.stringify({ networkId: INDEX_OWNED }),

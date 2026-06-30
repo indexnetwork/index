@@ -14,6 +14,8 @@ import { OpportunityService } from '../src/services/opportunity.service';
 const OPP_ID = '00000000-0000-4000-8000-000000000001';
 const SENDER_ID = '00000000-0000-4000-8000-000000000002';
 const COUNTERPART_ID = '00000000-0000-4000-8000-000000000003';
+const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
+const OTHER_INTENT_ID = '00000000-0000-4000-8000-00000000a222';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -111,5 +113,40 @@ describe('OpportunityService — self-accept guard', () => {
     expect('error' in result).toBe(false);
     expect(db.updateOpportunityStatus).toHaveBeenCalledWith(OPP_ID, 'rejected');
     expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
+  });
+
+  it('updateOpportunityStatus: scoped accept skips sibling acceptance but keeps direct side effects', async () => {
+    const db = makeDb({
+      detection: { source: 'opportunity_graph', triggeredBy: SELECTED_INTENT_ID, timestamp: new Date().toISOString() },
+    });
+    const svc = makeService(db);
+
+    const result = await svc.updateOpportunityStatus(OPP_ID, 'accepted', COUNTERPART_ID, { scopeType: 'intent', scopeId: SELECTED_INTENT_ID });
+
+    expect('opportunity' in result).toBe(true);
+    expect(db.getOrCreateDM).toHaveBeenCalledWith(COUNTERPART_ID, SENDER_ID);
+    expect(db.stampOpportunityActorAction).toHaveBeenCalledWith(
+      OPP_ID,
+      COUNTERPART_ID,
+      'accepted',
+      COUNTERPART_ID,
+    );
+    expect(db.acceptSiblingOpportunities).not.toHaveBeenCalled();
+    expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
+  });
+
+  it('updateOpportunityStatus: scoped mutation rejects non-matching selected intent before side effects', async () => {
+    const db = makeDb({
+      detection: { source: 'opportunity_graph', triggeredBy: SELECTED_INTENT_ID, timestamp: new Date().toISOString() },
+    });
+    const svc = makeService(db);
+
+    const result = await svc.updateOpportunityStatus(OPP_ID, 'accepted', COUNTERPART_ID, { scopeType: 'intent', scopeId: OTHER_INTENT_ID });
+
+    expect(result).toMatchObject({ error: 'Opportunity not found', status: 404 });
+    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+    expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
+    expect(db.acceptSiblingOpportunities).not.toHaveBeenCalled();
+    expect(db.upsertContactMembership).not.toHaveBeenCalled();
   });
 });

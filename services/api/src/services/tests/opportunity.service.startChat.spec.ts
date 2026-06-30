@@ -17,6 +17,8 @@ const VIEWER_ID = 'user-viewer-001';
 const PEER_ID = 'user-peer-002';
 const OPP_ID = 'opp-001';
 const CONV_ID = 'conv-001';
+const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
+const OTHER_INTENT_ID = '00000000-0000-4000-8000-00000000a222';
 
 function makeOpportunity(overrides: Partial<Opportunity> = {}): Opportunity {
   return {
@@ -179,6 +181,38 @@ describe('OpportunityService.startChat', () => {
     // conversation even if the flip fails. On retry the opp is still
     // pending/draft and the button can recover.
     expect(db.getOrCreateDM).toHaveBeenCalledWith(VIEWER_ID, PEER_ID);
+  });
+
+  it('scoped startChat accepts only the selected row and skips sibling acceptance', async () => {
+    const opp = makeOpportunity({
+      status: 'pending',
+      detection: { source: 'opportunity_graph', triggeredBy: SELECTED_INTENT_ID, timestamp: new Date().toISOString() },
+    });
+    const { service, db } = makeServiceWithDb(opp);
+
+    const result = await service.startChat(OPP_ID, VIEWER_ID, { scopeType: 'intent', scopeId: SELECTED_INTENT_ID });
+
+    expect('error' in result).toBe(false);
+    if ('error' in result) return;
+    expect(result.conversationId).toBe(CONV_ID);
+    expect(db.stampOpportunityActorAction).toHaveBeenCalledWith(OPP_ID, VIEWER_ID, 'accepted', VIEWER_ID);
+    expect(db.acceptSiblingOpportunities).not.toHaveBeenCalled();
+    expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
+  });
+
+  it('scoped startChat rejects a non-matching selected intent before mutation side effects', async () => {
+    const opp = makeOpportunity({
+      status: 'pending',
+      detection: { source: 'opportunity_graph', triggeredBy: SELECTED_INTENT_ID, timestamp: new Date().toISOString() },
+    });
+    const { service, db } = makeServiceWithDb(opp);
+
+    const result = await service.startChat(OPP_ID, VIEWER_ID, { scopeType: 'intent', scopeId: OTHER_INTENT_ID });
+
+    expect(result).toMatchObject({ error: 'Opportunity not found', status: 404 });
+    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+    expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
+    expect(db.acceptSiblingOpportunities).not.toHaveBeenCalled();
   });
 
   describe('partial-failure recovery', () => {

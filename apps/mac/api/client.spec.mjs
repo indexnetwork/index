@@ -2,6 +2,8 @@ import { describe, expect, it } from 'bun:test';
 
 import { createIndexApiClient, normalizeApiBaseUrl, toQueryString } from './client.mjs';
 
+const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
+
 function createRecordingFetch() {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
@@ -54,16 +56,24 @@ describe('mac Index API client endpoint contract', () => {
 
   it('uses controller-backed opportunity endpoints', async () => {
     await expectCall('opportunities.list', (client) => client.opportunities.list({ status: 'pending', limit: 10 }), { path: '/opportunities?status=pending&limit=10' });
+    await expectCall('opportunities.list scoped intent', (client) => client.opportunities.list({ status: 'pending', scopeType: 'intent', scopeId: SELECTED_INTENT_ID, limit: 10 }), { path: `/opportunities?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}&limit=10` });
+    await expectCall('opportunities.listForIntent', (client) => client.opportunities.listForIntent(SELECTED_INTENT_ID, { status: 'pending', limit: 10 }), { path: `/opportunities?status=pending&limit=10&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('opportunities.home', (client) => client.opportunities.home({ noCache: true }), { path: '/opportunities/home?noCache=true' });
+    await expectCall('opportunities.home scoped intent', (client) => client.opportunities.home({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID, noCache: true }), { path: `/opportunities/home?scopeType=intent&scopeId=${SELECTED_INTENT_ID}&noCache=true` });
+    await expectCall('opportunities.homeForIntent', (client) => client.opportunities.homeForIntent(SELECTED_INTENT_ID, { noCache: true }), { path: `/opportunities/home?noCache=true&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('opportunities.chatContext', (client) => client.opportunities.chatContext('user/1'), { path: '/opportunities/chat-context?peerUserId=user%2F1' });
     await expectCall('opportunities.get', (client) => client.opportunities.get('opp/1'), { path: '/opportunities/opp%2F1' });
     await expectCall('opportunities.inviteMessage', (client) => client.opportunities.inviteMessage('opp/1'), { path: '/opportunities/opp%2F1/invite-message' });
     await expectCall('opportunities.updateStatus', (client) => client.opportunities.updateStatus('opp/1', 'accepted'), { path: '/opportunities/opp%2F1/status', method: 'PATCH', body: { status: 'accepted' } });
+    await expectCall('opportunities.updateStatusForIntent', (client) => client.opportunities.updateStatusForIntent('opp/1', 'accepted', SELECTED_INTENT_ID), { path: '/opportunities/opp%2F1/status', method: 'PATCH', body: { status: 'accepted', scopeType: 'intent', scopeId: SELECTED_INTENT_ID } });
     await expectCall('opportunities.startChat', (client) => client.opportunities.startChat('opp/1'), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: {} });
+    await expectCall('opportunities.startChatForIntent', (client) => client.opportunities.startChatForIntent('opp/1', SELECTED_INTENT_ID), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: { scopeType: 'intent', scopeId: SELECTED_INTENT_ID } });
   });
 
   it('uses controller-backed question and conversation endpoints', async () => {
     await expectCall('questions.pending', (client) => client.questions.pending({ sourceId: 'intent/1' }), { path: '/questions?status=pending&sourceId=intent%2F1' });
+    await expectCall('questions.pending scoped intent', (client) => client.questions.pending({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID }), { path: `/questions?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    await expectCall('questions.pendingForIntent', (client) => client.questions.pendingForIntent(SELECTED_INTENT_ID), { path: `/questions?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('questions.answer', (client) => client.questions.answer('question/1', { selectedOptions: ['yes'] }), { path: '/questions/question%2F1/answer', method: 'POST', body: { selectedOptions: ['yes'] } });
     await expectCall('questions.dismiss', (client) => client.questions.dismiss('question/1'), { path: '/questions/question%2F1/dismiss', method: 'POST', body: {} });
 

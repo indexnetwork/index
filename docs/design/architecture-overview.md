@@ -205,8 +205,8 @@ Graphs are LangGraph state machines. Each graph is created by a factory class th
 | Enrichment | Enrich users and decompose identity into premises, with optional scraping |
 | Opportunity | HyDE-based discovery: search, evaluate, rank, persist |
 | HyDE | Generate hypothetical document embeddings (cache-aware) |
-| Network | Manage index (network) CRUD |
-| NetworkMembership | Manage index member join/leave |
+| Network | Manage network (network) CRUD |
+| NetworkMembership | Manage network member join/leave |
 | IntentNetwork | Evaluate and assign/unassign intents to indexes |
 | Home | Categorize and curate home feed content |
 | Maintenance | Periodic maintenance tasks |
@@ -224,7 +224,7 @@ Agents are pure LLM reasoning units. They accept structured input (Zod schemas),
 | Intent Inferrer | Extracts intents from uploaded content |
 | Intent Reconciler | Decides create/update/expire actions for intents |
 | Intent Verifier | Validates felicity conditions on intents |
-| Intent Indexer | Scores intent-to-index fit (relevancy 0.0-1.0) |
+| Intent Indexer | Scores intent-to-network fit (relevancy 0.0-1.0) |
 | Opportunity Evaluator | Scores and synthesizes opportunity matches |
 | Enrichment Generator | Generates identity drafts from identity signals (onboarding draft tools) |
 | HyDE Generator | Creates hypothetical document embeddings |
@@ -236,8 +236,8 @@ Tools are the capabilities exposed to the chat agent. They bridge the agent loop
 | Tool File | Capabilities |
 |-----------|-------------|
 | `enrichment.tools.ts` | read/create/update user profiles |
-| `intent.tools.ts` | CRUD intents, manage intent-index assignments |
-| `network.tools.ts` | CRUD indexes (networks), manage memberships |
+| `intent.tools.ts` | CRUD intents, manage intent-network assignments |
+| `network.tools.ts` | CRUD networks (networks), manage memberships |
 | `contact.tools.ts` | import, add, remove, and list contacts |
 | `opportunity.tools.ts` | Discover and send opportunities |
 | `agent.tools.ts` | register, list, update, delete agents and manage agent permissions |
@@ -271,8 +271,8 @@ Every tool and negotiation endpoint checks the caller's `agent_permissions` for 
 `agent_permissions.scope` accepts `'global' | 'node' | 'network'`. A network-scoped permission row — `scope='network', scopeId=<networkId>` — restricts the agent to a single network. Two enforcement layers:
 
 - **HTTP**: `services/api/src/guards/agent-scope.guard.ts` exposes `resolveAgentNetworkScope(req)`, `assertAgentNetworkScope(req, networkId)`, and `withAgentScope(req, user)`. Network/intent/opportunity controllers assert on writes that take a path-param networkId, and filter list endpoints via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`.
-- **MCP**: the auth resolver also returns `networkScopeId`. `applyNetworkScopeToContext` (in `packages/protocol/src/mcp/mcp.server.ts`) clamps `ResolvedToolContext.indexScope` to `[networkScopeId, personalIndex]`, and the per-request `systemDb` is constructed from that same set, so every downstream tool call is bounded at both the prompt-visible scope and the DB-level scope check.
-- **Chat tools (shared)**: the same `[scopedNetwork, personalIndex]` clamp applies on the web-chat path via `resolveChatContext({ networkId })` — so an MCP-scoped agent and a web-scoped chat see the same data perimeter. `createChatTools` constructs `systemDb` from `resolvedContext.indexScope`, keeping the prompt-advertised reach and the DB-level clamp consistent.
+- **MCP**: the auth resolver also returns `networkScopeId`. `applyNetworkScopeToContext` (in `packages/protocol/src/mcp/mcp.server.ts`) promotes that binding into `ResolvedToolContext.scopeType/scopeId`; tools derive concrete allowed network IDs from the scope envelope plus memberships, and the per-request `systemDb` is constructed from the same derived set, so every downstream tool call is bounded at both the prompt-visible scope and the DB-level scope check.
+- **Chat tools (shared)**: the same `[scopedNetwork, personalIndex]` clamp applies on the web-chat path via `scopeType/scopeId` (with `networkId` accepted only as a REST/session edge alias) — so an MCP-scoped agent and a web-scoped chat see the same data perimeter. `createChatTools` constructs `systemDb` from network IDs derived from the scope envelope plus memberships, keeping the prompt-advertised reach and the DB-level clamp consistent.
 - **DB (opportunity reads)**: `OpportunityDatabaseAdapter.getOpportunitiesForUser` requires the requesting user's *own* actor entry to be anchored on the bound network — `EXISTS actor WHERE userId=$1 AND networkId=$2`, not two independent `actors @>` checks. `update_opportunity` mirrors the rule. `actors[].networkId` is the source of truth for scope; the `opportunity.context.networkId` denormalization is no longer consulted by security-relevant filters.
 
 The primary use case is bulk experiment-network onboarding: `networkInvitationService.invite({ networkId, email })` provisions user + network-scoped agent + API key + invitation email. Possession of the email account *is* the user's verification — there is no separate `users.experimentNetworkId` column anymore.
@@ -356,7 +356,7 @@ The chat system is the primary entry point for user interaction. When a user sen
 
 1. **HTTP layer**: The request hits `ChatController`, which validates input and delegates to the chat service.
 
-2. **Graph initialization**: The chat graph loads session context (conversation history, user profile, index memberships) and truncates to fit the context window.
+2. **Graph initialization**: The chat graph loads session context (conversation history, user profile, network memberships) and truncates to fit the context window.
 
 3. **ReAct loop**: The `ChatAgent` enters a loop (up to 12 iterations). Each iteration, the LLM sees the full conversation and decides to either call tools or produce a final response.
 
@@ -514,7 +514,7 @@ The canonical schema lives in `services/api/src/schemas/database.schema.ts`. All
 
 **Soft deletes**: Records use `deletedAt` timestamps rather than hard deletes, preserving audit trails and enabling recovery.
 
-**Vector similarity search**: Intents and premises have vector embeddings. Queries use pgvector's cosine similarity with HNSW indexes for sub-millisecond approximate nearest-neighbor lookups. This powers opportunity discovery, finding similar intents and premises across index members.
+**Vector similarity search**: Intents and premises have vector embeddings. Queries use pgvector's cosine similarity with HNSW indexes for sub-millisecond approximate nearest-neighbor lookups. This powers opportunity discovery, finding similar intents and premises across network members.
 
 ### Migration Workflow
 

@@ -148,15 +148,23 @@ export class QuestionerQueue {
       return;
     }
 
+    const actorNetworkId = data.scopeType === 'network' && data.scopeId?.trim()
+      ? data.scopeId.trim()
+      : undefined;
+    const triggeredByIntentId = data.scopeType === 'intent' && data.scopeId?.trim()
+      ? data.scopeId.trim()
+      : undefined;
+
     const batch: PersistableQuestion[] = result.questions.map((question, i) => ({
       detection: {
         mode: data.mode,
         sourceType: data.sourceType,
         sourceId: data.sourceId,
         timestamp: new Date().toISOString(),
+        ...(triggeredByIntentId ? { triggeredBy: triggeredByIntentId } : {}),
         ...(data.messageId ? { messageId: data.messageId } : {}),
       },
-      actors: [{ userId: data.userId, role: 'subject' as const }],
+      actors: [{ userId: data.userId, ...(actorNetworkId ? { networkId: actorNetworkId } : {}), role: 'subject' as const }],
       payload: question,
       strategy: result.strategies[i],
       conversationId: data.conversationId,

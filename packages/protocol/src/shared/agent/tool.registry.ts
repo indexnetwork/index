@@ -44,7 +44,7 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
       schema: opts.querySchema,
       handler: async (input: { context: ResolvedToolContext; query: unknown }) => {
         logger.verbose(`Tool: ${opts.name}`, {
-          context: { userId: input.context.userId, networkId: input.context.networkId },
+          context: { userId: input.context.userId, scopeType: input.context.scopeType, scopeId: input.context.scopeId },
           query: redactSensitiveFields(input.query),
         });
         try {

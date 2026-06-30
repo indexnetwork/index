@@ -84,7 +84,7 @@ describe("handleNetwork", () => {
     await mock.stop();
   });
 
-  it("lists networks, filtering out personal indexes", async () => {
+  it("lists networks, filtering out personal networks", async () => {
     mock.on("GET", "/api/networks", () =>
       Response.json({
         networks: [
@@ -94,7 +94,7 @@ describe("handleNetwork", () => {
       }),
     );
 
-    // Should not throw; personal index filtered in handler
+    // Should not throw; personal network filtered in handler
     await handleNetwork(client, "list", [], {});
   });
 

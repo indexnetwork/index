@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
+import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
+import type { ToolScopeType } from "./tool.scope.js";
 import type { UserIdentity } from "../schemas/identity.schema.js";
 import type { ChatGraphCompositeDatabase, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
 import type { Scraper } from "../interfaces/scraper.interface.js";
@@ -52,7 +54,7 @@ export type CompiledGraph = { invoke: (input: any) => Promise<any> };
 
 /**
  * Resolved context available to every tool handler.
- * Contains the current user and optional index identity, resolved from DB at init.
+ * Contains the current user and optional network identity, resolved from DB at init.
  * The LLM can see this context (via system prompt) but cannot change it.
  */
 export interface ResolvedToolContext {
@@ -60,21 +62,23 @@ export interface ResolvedToolContext {
   userId: string;
   userName: string;
   userEmail: string;
+  /** Legacy focused network alias. Prefer `scopeType`/`scopeId` in new code. */
   networkId?: string;
+  /** Focused request scope type: `network` for community focus, `intent` for selected-intent focus. */
+  scopeType?: ToolScopeType;
+  /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
+  scopeId?: string;
   indexName?: string;
-  /** True when chat is index-scoped and the user owns the index. */
+  /** True when chat is network-scoped and the user owns the index. */
   isOwner?: boolean;
   // Rich identity context for prompt/tool orchestration.
   user: UserRecord;
   userProfile: IdentityContext;
   userNetworks: NetworkMembership[];
   /**
-   * The set of index IDs this caller can reach in the current request.
-   * For unscoped chats: every index the user is a member of.
-   * For network-scoped agents: `[boundNetwork, personalIndex]`.
-   * This is the same set used to clamp the DB-level systemDb.
-   * Tools that filter intents/profiles default to this set; `networkId` is
-   * the "primary focus" hint, not a read filter.
+   * @deprecated indexScope is legacy concrete network reach. New code should derive reach
+   * from `scopeType`/`scopeId` plus `userNetworks` via `tool.scope.ts`.
+   * Removed after call sites are migrated in this plan.
    */
   indexScope: string[];
   scopedIndex?: {
@@ -127,23 +131,17 @@ export interface ToolContext {
   database: ChatGraphCompositeDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. Created internally if not provided. */
   userDb?: UserDatabase;
-  /** Context-bound database for LLM/system operations on cross-user resources within shared indexes. Created internally if not provided. */
+  /** Context-bound database for LLM/system operations on cross-user resources within shared networks. Created internally if not provided. */
   systemDb?: SystemDatabase;
   embedder: Embedder;
   scraper: Scraper;
-  /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
+  /** When set, chat is scoped to this network; converted to `{ scopeType: 'network', scopeId: networkId }` at the boundary. */
   networkId?: string;
-  /**
-   * Optional override of the resolved `indexScope`. `resolveChatContext` always
-   * computes `indexScope` from the user's memberships (clamped to [bound,
-   * personal] when `networkId` is set). When the caller has already computed
-   * a clamped scope — notably the MCP server, which clamps via
-   * `applyNetworkScopeToContext` for network-scoped agents — passing it on
-   * `ToolContext.indexScope` causes `createChatTools` (in tool.factory.ts) to
-   * override `resolvedContext.indexScope` with this value rather than the
-   * freshly computed one. See ResolvedToolContext.indexScope for the
-   * resolved-side semantics.
-   */
+  /** Focused request scope type: `network` or `intent`. */
+  scopeType?: ToolScopeType;
+  /** Focused request scope id. Network scope uses a network id; intent scope uses an intent id. */
+  scopeId?: string;
+  /** @deprecated indexScope is legacy; use `scopeType`/`scopeId`, retained until wiring phases migrate call sites. */
   indexScope?: string[];
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
@@ -180,6 +178,22 @@ export interface ToolContext {
    * Injected by the composition root when QUESTIONER_ENABLED=true.
    */
   questionerEnqueue?: QuestionerEnqueueFn;
+  /**
+   * Lookup pending questions for a user, optionally filtered by source,
+   * detection mode, selected intent scope, or capped by count.
+   */
+  findPendingQuestions?: (
+    userId: string,
+    filters?: {
+      sourceType?: string;
+      sourceId?: string;
+      scopeType?: 'intent';
+      scopeId?: string;
+      networkId?: string;
+      modes?: QuestionMode[];
+      limit?: number;
+    },
+  ) => Promise<PendingQuestionSummary[]>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Profile enrichment from external data sources. */
@@ -280,7 +294,7 @@ export class ChatContextAccessError extends Error {
 
 /**
  * Resolve the canonical context used by chat tools and system prompt.
- * This preloads user identity, profile, index memberships, and scoped index role.
+ * This preloads user identity, profile, network memberships, and scoped index role.
  */
 export async function resolveChatContext(params: {
   database: Pick<
@@ -334,7 +348,7 @@ export async function resolveChatContext(params: {
 
     if (!isMember) {
       throw new ChatContextAccessError(
-        "You are not a member of this index",
+        "You are not a member of this network",
         403,
         "INDEX_MEMBERSHIP_REQUIRED"
       );
@@ -361,28 +375,27 @@ export async function resolveChatContext(params: {
   const userEmail = user.email ?? "";
   const hasName = !!user.name?.trim();
 
-  // When scoped to an index, clamp the caller's reach to [scopedIndex, personalIndex]
-  // so the chat's data model matches its "focus" semantic: a chat scoped to a
-  // community sees that community plus the user's personal index, not their
-  // other unrelated memberships. Mirrors the MCP path's clamp for network-scoped
-  // agents (see applyNetworkScopeToContext / computeAgentIndexScope).
-  const indexScope = networkId
-    ? userNetworks
-        .filter((m) => m.networkId === networkId || m.isPersonal === true)
-        .map((m) => m.networkId)
-    : userNetworks.map((m) => m.networkId);
+  const scope = scopeFromNetworkId(networkId);
+
+  // Deprecated compatibility reach. New call sites should call
+  // deriveAllowedNetworkIds({ memberships: userNetworks, ...scope }) directly.
+  const allowedNetworkIds = deriveAllowedNetworkIds({
+    memberships: userNetworks,
+    ...scope,
+  });
 
   return {
     userId,
     userName,
     userEmail,
     networkId,
+    ...scope,
     indexName,
     isOwner,
     user,
     userProfile,
     userNetworks,
-    indexScope,
+    indexScope: allowedNetworkIds,
     scopedIndex,
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
@@ -437,7 +450,7 @@ export interface ToolDeps {
   database: ChatGraphCompositeDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. */
   userDb: UserDatabase;
-  /** Context-bound database for LLM/system operations on cross-user resources within shared indexes. */
+  /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */
   systemDb: SystemDatabase;
   scraper: Scraper;
   embedder: import('../interfaces/embedder.interface.js').Embedder;
@@ -504,6 +517,11 @@ export interface ToolDeps {
     filters?: {
       sourceType?: string;
       sourceId?: string;
+      /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */
+      scopeType?: 'intent';
+      scopeId?: string;
+      /** Restrict to questions whose actor carries this network id. */
+      networkId?: string;
       /** Restrict to questions whose detection mode is in this set. */
       modes?: QuestionMode[];
       /** Maximum rows to return; hosts should apply this in the query. */

@@ -1,7 +1,7 @@
 import { Annotation } from "@langchain/langgraph";
 
 /**
- * Index Graph State.
+ * Network Graph State.
  * Handles CRUD operations for indexes (communities).
  *
  * Flow:
@@ -13,7 +13,7 @@ export const NetworkGraphState = Annotation.Root({
   /** User performing the action. Always required. */
   userId: Annotation<string>,
 
-  /** Target index ID. Required for read/update/delete. From ChatGraph or tool arg. */
+  /** Target network ID. Required for read/update/delete. From ChatGraph or tool arg. */
   networkId: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,
@@ -50,7 +50,7 @@ export const NetworkGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /** When true and index-scoped, read returns all user indexes (not just scoped one). */
+  /** When true and network-scoped, read returns all user indexes (not just scoped one). */
   showAll: Annotation<boolean>({
     reducer: (_, next) => next,
     default: () => false,

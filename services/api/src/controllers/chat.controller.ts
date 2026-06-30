@@ -12,15 +12,66 @@ import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueu
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
 type RouteParams = Record<string, string>;
+type ChatScope = { scopeType: 'network' | 'intent'; scopeId: string };
 
 const logger = log.controller.from("chat");
+
+function normalizeChatScope(input: {
+  scopeType?: 'network' | 'intent' | null;
+  scopeId?: string | null;
+  networkId?: string | null;
+}): ChatScope | Response | undefined {
+  const explicitScopeType = input.scopeType ?? undefined;
+  const explicitScopeId = input.scopeId?.trim() || undefined;
+  const legacyNetworkId = input.networkId?.trim() || undefined;
+
+  if (explicitScopeType && !explicitScopeId) {
+    return Response.json({ error: 'scopeId is required when scopeType is provided' }, { status: 400 });
+  }
+  if (!explicitScopeType && explicitScopeId) {
+    return Response.json({ error: 'scopeType is required when scopeId is provided' }, { status: 400 });
+  }
+  if (explicitScopeType === 'intent' && legacyNetworkId) {
+    return Response.json({ error: 'networkId cannot be combined with intent scope' }, { status: 400 });
+  }
+  if (explicitScopeType === 'network' && legacyNetworkId && legacyNetworkId !== explicitScopeId) {
+    return Response.json({ error: 'networkId must match scopeId when scopeType is network' }, { status: 400 });
+  }
+
+  if (explicitScopeType && explicitScopeId) {
+    return { scopeType: explicitScopeType, scopeId: explicitScopeId };
+  }
+  if (legacyNetworkId) {
+    return { scopeType: 'network', scopeId: legacyNetworkId };
+  }
+  return undefined;
+}
+
+function sessionScope(session: { scopeType?: string | null; scopeId?: string | null; networkId?: string | null } | null): ChatScope | undefined {
+  if (!session) return undefined;
+  if ((session.scopeType === 'network' || session.scopeType === 'intent') && session.scopeId?.trim()) {
+    return { scopeType: session.scopeType, scopeId: session.scopeId.trim() };
+  }
+  if (session.networkId?.trim()) {
+    return { scopeType: 'network', scopeId: session.networkId.trim() };
+  }
+  return undefined;
+}
+
+function sameScope(a: ChatScope | undefined, b: ChatScope | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.scopeType === b.scopeType && a.scopeId === b.scopeId;
+}
 
 const streamBodySchema = z.object({
   message: z.string().nullish(),
   sessionId: z.string().nullish(),
   useCheckpointer: z.boolean().optional(),
   fileIds: z.array(z.string()).optional(),
+  /** @deprecated Use scopeType/scopeId. Retained as the REST edge alias for network-scoped sessions. */
   networkId: z.string().nullish(),
+  scopeType: z.enum(['network', 'intent']).nullish(),
+  scopeId: z.string().nullish(),
   /** The recipient user ID for DM-style chats (used for ghost invite emails). */
   recipientUserId: z.string().nullish(),
   prefillMessages: z.array(z.object({
@@ -36,6 +87,11 @@ function getSuggestionGenerator(): SuggestionGenerator {
   }
   return suggestionGeneratorInstance;
 }
+
+const resolveSessionBodySchema = z.object({
+  scopeType: z.enum(['intent']),
+  scopeId: z.string().min(1),
+});
 
 const interruptBodySchema = z.object({
   sessionId: z.string(),
@@ -121,7 +177,7 @@ export class ChatController {
         return Response.json(
           {
             error:
-              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], networkId?: string | null }",
+              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], scopeType?: 'network' | 'intent' | null, scopeId?: string | null, networkId?: string | null }",
           },
           { status: 400 },
         );
@@ -157,69 +213,72 @@ export class ChatController {
     }
 
     // 2. Validate or create session
-    const requestIndexId =
-      typeof body.networkId === "string" && body.networkId.trim()
-        ? body.networkId.trim()
-        : undefined;
-    if (requestIndexId) {
-      const requestScopeValidation =
-        await chatSessionService.validateIndexScope(user.id, requestIndexId);
-      if (!requestScopeValidation.ok) {
+    const requestedScope = normalizeChatScope(body);
+    if (requestedScope instanceof Response) return requestedScope;
+
+    const validateScope = async (scope: ChatScope | undefined) => {
+      if (!scope) return undefined;
+      const validation = scope.scopeType === 'network'
+        ? await chatSessionService.validateIndexScope(user.id, scope.scopeId)
+        : await chatSessionService.validateIntentScope(user.id, scope.scopeId);
+      if (!validation.ok) {
         return Response.json(
-          { error: requestScopeValidation.error },
-          { status: requestScopeValidation.status },
+          { error: validation.error },
+          { status: validation.status },
         );
       }
-    }
+      return undefined;
+    };
+
+    const requestScopeError = await validateScope(requestedScope);
+    if (requestScopeError) return requestScopeError;
 
     let currentSessionId = body.sessionId;
-    let session: Awaited<
-      ReturnType<typeof chatSessionService.getSession>
-    > | null = null;
+    let effectiveScope = requestedScope;
     if (!currentSessionId) {
       const initialTitle = body.prefillMessages?.length
         ? "Set Up Your Social Agent"
         : undefined;
-      currentSessionId = await chatSessionService.createSession(
-        user.id,
-        initialTitle,
-        requestIndexId,
-      );
+      if (requestedScope?.scopeType === 'intent') {
+        const resolved = await chatSessionService.resolveSessionForScope(user.id, requestedScope);
+        if ('error' in resolved) {
+          return Response.json({ error: resolved.error }, { status: resolved.status });
+        }
+        currentSessionId = resolved.session.id;
+      } else {
+        currentSessionId = await chatSessionService.createSession(
+          user.id,
+          initialTitle,
+          requestedScope?.scopeType === 'network' ? requestedScope.scopeId : undefined,
+          requestedScope,
+        );
+      }
     } else {
-      session = await chatSessionService.getSession(
+      let loadedSession = await chatSessionService.getSession(
         currentSessionId,
         user.id,
       );
-      if (!session) {
+      if (!loadedSession) {
         return Response.json({ error: "Session not found" }, { status: 404 });
       }
-      if (requestIndexId !== undefined) {
-        await chatSessionService.updateSessionIndex(
-          currentSessionId,
-          user.id,
-          requestIndexId,
-        );
+      const persistedScope = sessionScope(loadedSession);
+      if (requestedScope && persistedScope && !sameScope(requestedScope, persistedScope)) {
+        return Response.json({ error: "Session is already scoped differently" }, { status: 409 });
       }
+      if (requestedScope && !persistedScope) {
+        await chatSessionService.updateSessionScope(currentSessionId, user.id, requestedScope);
+        loadedSession = await chatSessionService.getSession(currentSessionId, user.id);
+      }
+      effectiveScope = requestedScope ?? sessionScope(loadedSession);
     }
 
-    // Effective index for this run: request body overrides; otherwise use session's persisted index
-    const effectiveIndexId = requestIndexId ?? session?.networkId ?? undefined;
-    if (effectiveIndexId) {
-      const effectiveScopeValidation =
-        await chatSessionService.validateIndexScope(user.id, effectiveIndexId);
-      if (!effectiveScopeValidation.ok) {
-        return Response.json(
-          { error: effectiveScopeValidation.error },
-          { status: effectiveScopeValidation.status },
-        );
-      }
-    }
+    const effectiveScopeError = await validateScope(effectiveScope);
+    if (effectiveScopeError) return effectiveScopeError;
 
     // Capture for closure
     const sessionId = currentSessionId;
     const factory = chatSessionService.getGraphFactory();
     const useCheckpointer = body.useCheckpointer ?? true;
-    const networkIdForStream = effectiveIndexId;
     const runId = crypto.randomUUID();
     const streamAbortController = new AbortController();
     // Forward HTTP client disconnect into the stream abort controller
@@ -297,7 +356,7 @@ export class ChatController {
               message: messageContent,
               sessionId,
               maxContextMessages: 20,
-              networkId: networkIdForStream,
+              ...(effectiveScope ? { scopeType: effectiveScope.scopeType, scopeId: effectiveScope.scopeId } : {}),
               prefillMessages: body.prefillMessages,
               runId,
             },
@@ -511,6 +570,45 @@ export class ChatController {
   async getSessions(req: Request, user: AuthenticatedUser) {
     const sessions = await chatSessionService.getUserSessions(user.id);
     return Response.json({ sessions });
+  }
+
+  /**
+   * Resolve or create the stable orchestrator chat session for a selected intent.
+   *
+   * @param req - The HTTP request object (body: { scopeType: 'intent', scopeId: string })
+   * @param user - The authenticated user from AuthGuard
+   * @returns JSON response with the resolved session and whether it was created
+   */
+  @Post("/session/resolve")
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async resolveSession(req: Request, user: AuthenticatedUser) {
+    let body: z.infer<typeof resolveSessionBodySchema>;
+    try {
+      const raw = await req.json();
+      const parsed = resolveSessionBodySchema.safeParse(raw);
+      if (!parsed.success) {
+        return Response.json(
+          { error: "Invalid request body. Expected { scopeType: 'intent', scopeId: string }" },
+          { status: 400 },
+        );
+      }
+      body = parsed.data;
+    } catch {
+      return Response.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 },
+      );
+    }
+
+    const result = await chatSessionService.resolveSessionForScope(user.id, {
+      scopeType: body.scopeType,
+      scopeId: body.scopeId,
+    });
+    if ('error' in result) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
+
+    return Response.json({ session: result.session, created: result.created });
   }
 
   /**

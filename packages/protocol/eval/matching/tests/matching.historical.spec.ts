@@ -60,7 +60,7 @@ describe("tier-3 historical corpus", () => {
     }
   });
 
-  it("uses at most two indexes per case, and every index used has a context entry", () => {
+  it("uses at most two indexes per case, and every network used has a context entry", () => {
     for (const c of HISTORICAL_CASES) {
       const nets = new Set(c.input.entities.map((e) => e.networkId));
       expect(nets.size).toBeLessThanOrEqual(2);

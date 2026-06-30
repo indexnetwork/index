@@ -18,6 +18,7 @@ import { protocolLogger } from "../observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
+import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
 import { createIntentTools } from "../../intent/intent.tools.js";
@@ -29,6 +30,7 @@ import { createContactTools } from "../../contact/contact.tools.js";
 import { createAgentTools } from "../../agent/agent.tools.js";
 import { createNegotiationTools } from "../../negotiation/negotiation.tools.js";
 import { createPremiseTools } from "../../premise/premise.tools.js";
+import { createQuestionerTools } from "../../questioner/questioner.tools.js";
 
 // Re-export types for consumers
 export type { ToolContext, ResolvedToolContext, ProtocolDeps } from "./tool.helpers.js";
@@ -42,7 +44,7 @@ const logger = protocolLogger("ChatTools");
 
 /**
  * Creates all chat tools bound to a specific user context.
- * Resolves user/index identity from DB at init time.
+ * Resolves user/network identity from DB at init time.
  * Tools are created fresh for each user session to ensure proper isolation.
  *
  * All external dependencies (cache, integration, queue, etc.) are provided
@@ -54,24 +56,34 @@ export async function createChatTools(
 ) {
   const { database, embedder, scraper } = deps;
 
+  const explicitScope = deps.scopeType && deps.scopeId
+    ? { scopeType: deps.scopeType, scopeId: deps.scopeId }
+    : scopeFromNetworkId(deps.networkId);
+
   // ─── Resolve context from DB ───────────────────────────────────────────────
+  // resolveChatContext still accepts a networkId because it loads scoped index
+  // presentation metadata; the canonical request scope is explicitScope.
   const resolvedContext =
     preResolvedContext ??
     (await resolveChatContext({
       database,
       userId: deps.userId,
-      networkId: deps.networkId,
+      networkId: explicitScope.scopeType === 'network' ? explicitScope.scopeId : deps.networkId,
       sessionId: deps.sessionId,
       contactsEnabled: deps.contactsEnabled,
     }));
 
-  // Allow callers (e.g. MCP server, tests) to override the computed indexScope
-  // without going through a full re-resolve. The MCP path sets this via
-  // applyNetworkScopeToContext; ToolContext.indexScope provides the same override
-  // when no preResolvedContext is given.
-  if (!preResolvedContext && deps.indexScope !== undefined) {
-    resolvedContext.indexScope = deps.indexScope;
+  if (!preResolvedContext && explicitScope.scopeType && explicitScope.scopeId) {
+    resolvedContext.scopeType = explicitScope.scopeType;
+    resolvedContext.scopeId = explicitScope.scopeId;
   }
+
+  const allowedNetworkIds = deriveAllowedNetworkIds({
+    memberships: resolvedContext.userNetworks,
+    ...(resolvedContext.scopeType && resolvedContext.scopeId
+      ? { scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId }
+      : {}),
+  });
 
   // ─── Tool wrapper ──────────────────────────────────────────────────────────
   /**
@@ -87,7 +99,7 @@ export async function createChatTools(
     return tool(
       async (query: z.infer<T>) => {
         logger.info(`Tool: ${opts.name}`, {
-          context: { userId: resolvedContext.userId, networkId: resolvedContext.networkId },
+          context: { userId: resolvedContext.userId, scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId },
           query: redactSensitiveFields(query),
         });
         try {
@@ -113,10 +125,13 @@ export async function createChatTools(
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
 
-  // Wrap questionerEnqueue to include session context when available
+  // Wrap questionerEnqueue to include scoped/session context when available.
   const sessionAwareEnqueue: QuestionerEnqueueFn | undefined = deps.questionerEnqueue
     ? (input) => deps.questionerEnqueue!({
         ...input,
+        ...(resolvedContext.scopeType && resolvedContext.scopeId && !input.scopeId
+          ? { scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId }
+          : {}),
         ...(resolvedContext.sessionId && !input.conversationId ? { conversationId: resolvedContext.sessionId } : {}),
       })
     : undefined;
@@ -161,14 +176,11 @@ export async function createChatTools(
   // database used for graphs so that scope checks (e.g. ensureScopedMembership, opportunity
   // update) use the same adapter as the rest of the tool pipeline.
   //
-  // The systemDb's DB-level clamp uses `resolvedContext.indexScope` — the same
-  // set tools see — so the JSDoc claim that indexScope is "the same set used
-  // to clamp the DB-level systemDb" holds for both the MCP path (where the
-  // MCP server already populated indexScope via applyNetworkScopeToContext)
-  // and the web-chat path (where resolveChatContext clamps to [bound, personal]
-  // when networkId is set).
+  // The systemDb's DB-level clamp derives concrete allowed network IDs from the
+  // focused scope envelope plus memberships, rather than consuming a transported
+  // legacy indexScope array.
   const userDb = deps.userDb ?? deps.createUserDatabase(database, resolvedContext.userId);
-  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, resolvedContext.indexScope, embedder);
+  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, allowedNetworkIds, embedder);
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const cache = deps.cache;
@@ -203,6 +215,7 @@ export async function createChatTools(
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
     ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
+    ...(deps.findPendingQuestions && { findPendingQuestions: deps.findPendingQuestions }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     graphs: {
       profile: profileGraph,
@@ -228,6 +241,7 @@ export async function createChatTools(
     ? createNegotiationTools(defineTool, toolDeps)
     : [];
   const premiseTools = createPremiseTools(defineTool, toolDeps);
+  const questionerTools = createQuestionerTools(defineTool, toolDeps);
 
   // confirm_opportunity_delivery is an OpenClaw-delivery ledger write and must not be
   // callable from regular chat sessions.
@@ -249,6 +263,7 @@ export async function createChatTools(
     ...agentTools,
     ...negotiationTools,
     ...premiseTools,
+    ...questionerTools,
   ];
 }
 
