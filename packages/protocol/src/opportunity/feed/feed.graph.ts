@@ -22,6 +22,7 @@ import { HomeCategorizerAgent } from './feed.categorizer.js';
 import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } from '../opportunity.utils.js';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../../shared/ui/lucide.icon-catalog.js';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../opportunity.labels.js';
+import { safeFallbackSummary } from '../opportunity.safe-presentation.js';
 import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
@@ -393,10 +394,18 @@ export class HomeGraphFactory {
               if (profileName) userName = profileName;
             }
             const userAvatar = otherUser?.avatar ?? null;
-            const reasoningSnippet =
-              (typeof opportunity.interpretation?.reasoning === 'string'
-                ? opportunity.interpretation.reasoning.replace(/\s+/g, ' ').trim().slice(0, MAX_REASONING_SNIPPET_LENGTH)
-                : '') || 'A promising connection.';
+            // Shared sanitization standard (UUID strip, viewer-centric rewrite,
+            // boundary truncation) — raw reasoning must never render verbatim.
+            const reasoningSnippet = safeFallbackSummary(
+              typeof opportunity.interpretation?.reasoning === 'string'
+                ? opportunity.interpretation.reasoning
+                : '',
+              {
+                counterpartName: userName !== 'Unknown' ? userName : undefined,
+                maxChars: MAX_REASONING_SNIPPET_LENGTH,
+                emptyText: 'A promising connection.',
+              },
+            );
 
             // Build secondParty for introducer arrow layout (the party that isn't the display counterpart)
             let secondPartyData: { name: string; avatar?: string | null; userId?: string } | undefined;
@@ -419,7 +428,7 @@ export class HomeGraphFactory {
               userId: otherActor?.userId ?? '',
               name: userName,
               avatar: userAvatar,
-              mainText: reasoningSnippet.slice(0, 300),
+              mainText: reasoningSnippet,
               cta: isIntroducer
                 ? (isPendingIntroducerFallback ? 'Share this introduction to get things started.' : 'Take a look and decide if this is a good match.')
                 : 'Take a look and decide whether to reach out.',

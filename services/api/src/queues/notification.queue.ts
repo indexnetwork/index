@@ -1,4 +1,5 @@
 import { Job } from 'bullmq';
+import { safeFallbackSummary } from '@indexnetwork/protocol';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
@@ -155,9 +156,11 @@ export class NotificationQueue {
       return;
     }
 
-    const summary =
-      opportunity.interpretation.reasoning ??
-      'A new match that might be relevant to you.';
+    // Shared sanitization standard (UUID strip, truncation) — raw evaluator
+    // reasoning must never reach email/Telegram copy verbatim.
+    const summary = safeFallbackSummary(opportunity.interpretation.reasoning, {
+      emptyText: 'A new match that might be relevant to you.',
+    });
 
     switch (priority) {
       case 'immediate': {

@@ -6,7 +6,8 @@ import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { deriveDiscoveryNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
+import { narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
+import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.safe-presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
@@ -310,13 +311,14 @@ export function buildMinimalOpportunityCard(
     (a) => a.role === "introducer" && a.userId === viewerId,
   );
   const reasoning = opp.interpretation?.reasoning ?? "";
-  const mainText = viewerCentricCardSummary(
-    reasoning,
+  // Shared sanitization standard — see opportunity.safe-presentation.ts.
+  const mainText = safeFallbackSummary(reasoning, {
     counterpartName,
-    MINIMAL_MAIN_TEXT_MAX_CHARS,
     viewerName,
-    introducerName ?? undefined,
-  );
+    introducerName: introducerName ?? undefined,
+    maxChars: MINIMAL_MAIN_TEXT_MAX_CHARS,
+    emptyText: "A suggested connection.",
+  });
   const score =
     typeof opp.interpretation?.confidence === "number"
       ? opp.interpretation.confidence
@@ -825,7 +827,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           userId: opp.userId,
           name: opp.name,
           avatar: opp.avatar,
-          mainText: opp.homeCardPresentation?.personalizedSummary ?? opp.matchReason ?? "",
+          mainText: getSafePresentationOrSkip(opp, { counterpartName: opp.name })?.summary ?? "",
           cta: opp.homeCardPresentation?.suggestedAction,
           headline: opp.homeCardPresentation?.headline,
           primaryActionLabel: opp.homeCardPresentation?.primaryActionLabel,
@@ -1005,13 +1007,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             (firstEntity?.profile as { avatar?: string | null } | undefined)
               ?.avatar ??
             null,
-          mainText: viewerCentricCardSummary(
-            reasoning,
+          mainText: safeFallbackSummary(reasoning, {
             counterpartName,
-            MINIMAL_MAIN_TEXT_MAX_CHARS,
-            undefined, // viewerName not available in this context; introducer name passed separately
-            introducerUser?.name ?? undefined,
-          ),
+            // viewerName not available in this context; introducer name passed separately
+            introducerName: introducerUser?.name ?? undefined,
+            maxChars: MINIMAL_MAIN_TEXT_MAX_CHARS,
+            emptyText: "A suggested connection.",
+          }),
           cta: "Start a conversation to connect.",
           headline,
           primaryActionLabel,
@@ -1363,9 +1365,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         name: opp.name,
         avatar: opp.avatar,
         mainText:
-          opp.homeCardPresentation?.personalizedSummary ??
-          opp.matchReason ??
-          "",
+          getSafePresentationOrSkip(opp, { counterpartName: opp.name })?.summary ?? "",
         cta: opp.homeCardPresentation?.suggestedAction,
         headline: opp.homeCardPresentation?.headline,
         primaryActionLabel: opp.homeCardPresentation?.primaryActionLabel,

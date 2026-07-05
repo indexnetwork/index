@@ -17,7 +17,8 @@ import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult, type HomeCardPresentationResult, type HomeCardLLMResult, type HomeCardPresenterInput } from "./opportunity.presenter.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
+import { narratorRemarkFromReasoning } from "./opportunity.presentation.js";
+import { safeFallbackSummary } from "./opportunity.safe-presentation.js";
 import { protocolLogger, withCallLogging } from "../shared/observability/protocol.logger.js";
 import type { ChatSummaryReader } from "../shared/interfaces/chat-summary.interface.js";
 import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
@@ -447,13 +448,14 @@ async function enrichOpportunities(
       }
 
       const isCounterpartGhost = isGhostByUserId.get(item.candidateUserId) ?? false;
-      const personalizedSummary = viewerCentricCardSummary(
-        reasoning,
-        name,
-        MINIMAL_MAIN_TEXT_MAX_CHARS,
+      // Shared sanitization standard — see opportunity.safe-presentation.ts.
+      const personalizedSummary = safeFallbackSummary(reasoning, {
+        counterpartName: name,
         viewerName,
         introducerName,
-      );
+        maxChars: MINIMAL_MAIN_TEXT_MAX_CHARS,
+        emptyText: "A suggested connection.",
+      });
       return {
         headline: viewerIsIntroducer && secondPartyName
           ? `${name} → ${secondPartyName}`

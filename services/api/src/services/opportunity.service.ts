@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
-import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, stripUuids, stripIntroducerMentions } from '@indexnetwork/protocol';
+import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, HydeCache, OpportunityCache } from '@indexnetwork/protocol';
 import { and, eq } from 'drizzle-orm/sql';
 
@@ -1060,15 +1060,16 @@ export class OpportunityService {
           logger.warn('[OpportunityService] getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });
           const introducerActor = opp.actors.find((a) => a.role === 'introducer');
           const introducerName = introducerActor ? opp.detection?.createdByName ?? null : null;
-          let rawReasoning = opp.interpretation?.reasoning ?? '';
-          rawReasoning = stripUuids(rawReasoning);
-          if (introducerName) {
-            rawReasoning = stripIntroducerMentions(rawReasoning, introducerName);
-          }
+          // Shared sanitization standard — see opportunity.safe-presentation.ts in protocol.
+          const fallbackSummary = safeFallbackSummary(opp.interpretation?.reasoning, {
+            counterpartName: peerUser?.name ?? undefined,
+            introducerName,
+            emptyText: 'Connection opportunity',
+          });
           return {
             opportunityId: opp.id,
-            headline: rawReasoning.substring(0, 80) || 'Connection opportunity',
-            personalizedSummary: rawReasoning,
+            headline: truncateAtBoundary(fallbackSummary, 80) || 'Connection opportunity',
+            personalizedSummary: fallbackSummary,
             narratorRemark: '',
             introducerName,
             peerName: peerUser?.name ?? 'Someone',
