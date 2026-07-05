@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import base64
 import importlib.util
 import json
 import os
@@ -212,7 +213,44 @@ def main() -> None:
     assert "/profile" in dashboard_js
     assert "index-dashboard__opp-id--clickable" in dashboard_js
     assert "onOpenUser" in dashboard_js
+    assert "onStartChat" in dashboard_js
+    assert "startChatWithOpportunity" in dashboard_js
     assert "counterpartUserId" in dashboard_js
+    assert "MessagesPanel" in dashboard_js
+    assert "index-dashboard__msg-thread" in dashboard_js
+    assert "/conversations/stream" in dashboard_js
+    assert "extractContent" in dashboard_js
+    assert "isInternal" in dashboard_js
+    assert "index-dashboard__msg-bubble--internal" in dashboard_js
+    assert 'senderId === "agent:" + currentUserId' in dashboard_js
+    assert "index_msg_read" in dashboard_js
+    assert "index-dashboard__msg-conv-badge" in dashboard_js
+    assert "index-dashboard__msg-search" in dashboard_js
+    # Realtime is authoritative streaming (web-app parity): reconnect with
+    # exponential backoff + optimistic send/rollback, not interval polling.
+    # The stream is consumed via SDK.authedFetch + a body reader (NOT a raw
+    # EventSource, which cannot carry the Hermes session-token header in
+    # loopback mode).
+    assert "Math.pow(2, retries" in dashboard_js
+    assert "scheduleRetry" in dashboard_js
+    assert "optimisticId" in dashboard_js
+    assert "SDK.authedFetch" in dashboard_js
+    assert "getReader" in dashboard_js
+    assert "text/event-stream" in dashboard_js
+    assert "document.hidden" not in dashboard_js
+    assert "new window.EventSource" not in dashboard_js
+    assert "/profile/avatar" in dashboard_js
+    assert "onArchive" in dashboard_js
+    assert "/archive" in dashboard_js
+    assert "payload.mock" not in dashboard_js
+
+    dashboard_css = (ROOT / "dashboard" / "dist" / "style.css").read_text()
+    assert "index-dashboard__msg-panel" in dashboard_css
+    assert "index-dashboard__msg-bubble" in dashboard_css
+    assert "index-dashboard__msg-bubble--internal" in dashboard_css
+    assert "index-dashboard__msg-conv-badge" in dashboard_css
+    assert "index-dashboard__msg-conv-dot" in dashboard_css
+    assert "index-dashboard__msg-search" in dashboard_css
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
@@ -696,6 +734,16 @@ def main() -> None:
                         }
                     }
                 ),
+                FakeResponse(
+                    {
+                        "user": {
+                            "id": "user-1",
+                            "email": "ada@example.test",
+                            "timezone": "Europe/London",
+                            "notificationPreferences": {"connectionUpdates": False, "weeklyNewsletter": True},
+                        }
+                    }
+                ),
             ],
             captured,
         )
@@ -709,23 +757,255 @@ def main() -> None:
         assert profile_obj["avatar"] == "https://api.example.test/api/storage/avatars/user-1/a.png"
         assert profile_obj["socials"] == [{"label": "twitter", "value": "ada"}]
         assert profile_obj["context"] == "Ada is a robotics engineer."
-        assert profile_obj["notificationPreferences"] == {"connectionUpdates": True, "weeklyNewsletter": True}
-        assert "timezone" in prof["mockedFields"]
+        assert profile_obj["email"] == "ada@example.test"
+        assert profile_obj["timezone"] == "Europe/London"
+        assert profile_obj["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
+        assert prof["mockedFields"] == ["email"]
         profile_mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
         assert profile_mcp_calls == ["read_network_memberships", "read_user_contexts"]
         profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
-        assert profile_rest_calls == [("GET", "https://api.example.test/api/users/user-1")]
+        assert profile_rest_calls == [
+            ("GET", "https://api.example.test/api/users/user-1"),
+            ("GET", "https://api.example.test/api/auth/me"),
+        ]
 
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True, "user": {"id": "user-1"}})], captured)
         update_ok = dashboard_api.update_profile(
             {"name": "Ada L.", "notificationPreferences": {"connectionUpdates": False, "weeklyNewsletter": True}}
         )
         assert update_ok["success"] is True
-        assert update_ok["mock"] is True
+        assert "mock" not in update_ok
         assert update_ok["applied"]["name"] == "Ada L."
         assert update_ok["applied"]["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
+        assert captured[-1]["method"] == "PATCH"
+        assert captured[-1]["url"] == "https://api.example.test/api/auth/profile/update"
+        assert captured[-1]["body"]["name"] == "Ada L."
         assert dashboard_api.update_profile("nope") == {"success": False, "error": "Profile body must be an object."}
 
-        assert dashboard_api.generate_intro({"intro": "current"}) == {"success": True, "mock": True, "intro": "current"}
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True, "intro": "Generated intro."})], captured)
+        intro_result = dashboard_api.generate_intro({})
+        assert intro_result == {"success": True, "intro": "Generated intro."}
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/enrichment/sync"
+
+        avatar_calls = []
+        original_multipart = dashboard_api._api_multipart
+
+        def fake_multipart(path, field, filename, content, content_type):
+            avatar_calls.append((path, field, filename, content_type, len(content)))
+            return {"success": True, "avatarUrl": "avatars/user-1/uploaded.png"}
+
+        dashboard_api._api_multipart = fake_multipart
+        try:
+            avatar_ok = dashboard_api.upload_avatar(
+                {"dataUrl": "data:image/png;base64," + base64.b64encode(b"pixels").decode("ascii")}
+            )
+        finally:
+            dashboard_api._api_multipart = original_multipart
+        assert avatar_ok["success"] is True
+        assert avatar_ok["avatarUrl"] == "https://api.example.test/api/storage/avatars/user-1/uploaded.png"
+        assert avatar_calls == [("/storage/avatars", "avatar", "avatar.png", "image/png", 6)]
+        assert dashboard_api.upload_avatar({"dataUrl": "not-a-data-url"})["success"] is False
+
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True})], captured)
+        archive_ok = dashboard_api.archive_intent("intent-1")
+        assert archive_ok == {"success": True}
+        assert captured[-1]["method"] == "PATCH"
+        assert captured[-1]["url"] == "https://api.example.test/api/intents/intent-1/archive"
+        assert dashboard_api.archive_intent("") == {"success": False, "error": "An intent id is required."}
+
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
+                    response_id=40,
+                ),
+                FakeResponse(
+                    {
+                        "conversations": [
+                            {
+                                "id": "conv-1",
+                                "participants": [
+                                    {"participantId": "user-1", "participantType": "user", "name": "Me"},
+                                    {
+                                        "participantId": "other",
+                                        "participantType": "user",
+                                        "name": "Grace",
+                                        "avatar": "avatars/other/g.png",
+                                    },
+                                ],
+                                "metadata": {},
+                                "lastMessage": {
+                                    "parts": [{"type": "text", "text": "hi there"}],
+                                    "senderId": "other",
+                                    "createdAt": "2026-06-01T00:00:00.000Z",
+                                },
+                                "lastMessageAt": "2026-06-01T00:00:00.000Z",
+                                "createdAt": "2026-05-31T00:00:00.000Z",
+                            },
+                            {
+                                # Human-to-agent thread — must be filtered out of the list.
+                                "id": "conv-h2a",
+                                "participants": [
+                                    {"participantId": "user-1", "participantType": "user", "name": "Me"},
+                                    {"participantId": "agent:peer", "participantType": "agent", "name": "SF Connections", "ownerName": "Grace"},
+                                ],
+                                "metadata": {},
+                                "lastMessage": {
+                                    "parts": [{"kind": "data", "data": {"message": "I've looked through your network"}}],
+                                    "senderId": "agent:peer",
+                                    "createdAt": "2026-06-01T01:00:00.000Z",
+                                },
+                                "lastMessageAt": "2026-06-01T01:00:00.000Z",
+                                "createdAt": "2026-05-31T00:00:00.000Z",
+                            },
+                        ]
+                    }
+                ),
+            ],
+            captured,
+        )
+        conv_list = dashboard_api.list_conversations()
+        assert conv_list["success"] is True
+        assert conv_list["currentUserId"] == "user-1"
+        # Only the human-to-human conversation is listed (H2A is excluded).
+        assert len(conv_list["conversations"]) == 1
+        assert [c["id"] for c in conv_list["conversations"]] == ["conv-1"]
+        conv = conv_list["conversations"][0]
+        assert conv["id"] == "conv-1"
+        assert conv["counterpartUserId"] == "other"
+        assert conv["counterpartName"] == "Grace"
+        assert conv["title"] == "Grace"
+        assert conv["avatar"] == "https://api.example.test/api/storage/avatars/other/g.png"
+        assert conv["lastMessagePreview"] == "hi there"
+        assert conv["kind"] == "dm"
+
+        # Agent/negotiation threads: the user's own agent must be skipped as the
+        # counterpart, the human behind the peer agent surfaces via ownerName,
+        # and the conversation is tagged as a negotiation.
+        negotiation = dashboard_api._normalize_conversation(
+            {
+                "id": "conv-neg",
+                "participants": [
+                    {"participantId": "agent:user-1", "participantType": "agent", "name": "My Agent", "ownerName": "Me"},
+                    {"participantId": "agent:peer", "participantType": "agent", "name": "Peer Agent", "ownerName": "Grace"},
+                ],
+                "metadata": {},
+                "lastMessageAt": "2026-06-02T00:00:00.000Z",
+            },
+            "user-1",
+        )
+        assert negotiation["kind"] == "negotiation"
+        assert negotiation["counterpartUserId"] == "agent:peer"
+        assert negotiation["counterpartName"] == "Grace"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "conversation": {
+                            "id": "conv-2",
+                            "participants": [
+                                {"participantId": "user-1", "participantType": "user", "name": "Me"},
+                                {"participantId": "other", "participantType": "user", "name": "Grace"},
+                            ],
+                            "metadata": {},
+                            "lastMessage": None,
+                            "lastMessageAt": None,
+                            "createdAt": "2026-06-02T00:00:00.000Z",
+                        }
+                    }
+                ),
+                mcp_text_response(
+                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
+                    response_id=41,
+                ),
+            ],
+            captured,
+        )
+        dm = dashboard_api.create_dm({"peerUserId": "other"})
+        assert dm["success"] is True
+        assert dm["conversation"]["id"] == "conv-2"
+        assert dm["conversation"]["counterpartUserId"] == "other"
+        assert captured[0]["method"] == "POST"
+        assert captured[0]["url"] == "https://api.example.test/api/conversations/dm"
+        assert captured[0]["body"] == {"peerUserId": "other"}
+        assert dashboard_api.create_dm({}) == {"success": False, "error": "peerUserId is required."}
+
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
+                    response_id=42,
+                ),
+                FakeResponse(
+                    {
+                        "messages": [
+                            {
+                                "id": "m1",
+                                "conversationId": "conv-1",
+                                "senderId": "other",
+                                "parts": [{"type": "text", "text": "hi there"}],
+                                "createdAt": "2026-06-01T00:00:00.000Z",
+                            }
+                        ]
+                    }
+                ),
+            ],
+            captured,
+        )
+        msgs = dashboard_api.list_messages("conv-1")
+        assert msgs["success"] is True
+        assert msgs["currentUserId"] == "user-1"
+        assert msgs["messages"][0]["id"] == "m1"
+        assert msgs["messages"][0]["parts"] == [{"type": "text", "text": "hi there"}]
+        assert dashboard_api.list_messages("") == {"success": False, "error": "A conversation id is required."}
+
+        # _message_text must extract text from every part shape the backend emits:
+        # plain text (type), agent text (kind), and data parts (data.message / reasoning).
+        assert dashboard_api._message_text([{"type": "text", "text": "hi there"}]) == "hi there"
+        assert dashboard_api._message_text([{"kind": "text", "text": "from seren"}]) == "from seren"
+        assert dashboard_api._message_text([{"kind": "data", "data": {"message": "agent msg"}}]) == "agent msg"
+        assert dashboard_api._message_text([{"kind": "data", "data": {"assessment": {"reasoning": "because"}}}]) == "because"
+        assert dashboard_api._message_text([{"kind": "other"}]) == ""
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "message": {
+                            "id": "m2",
+                            "conversationId": "conv-1",
+                            "senderId": "user-1",
+                            "parts": [{"type": "text", "text": "yo"}],
+                            "createdAt": "2026-06-01T00:01:00.000Z",
+                        }
+                    }
+                )
+            ],
+            captured,
+        )
+        sent = dashboard_api.send_message("conv-1", {"text": "yo"})
+        assert sent["success"] is True
+        assert sent["message"]["id"] == "m2"
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/conversations/conv-1/messages"
+        assert captured[-1]["body"] == {"parts": [{"type": "text", "text": "yo"}]}
+        assert dashboard_api.send_message("conv-1", {"text": ""}) == {
+            "success": False,
+            "error": "Message text is required.",
+        }
+        assert dashboard_api.send_message("", {"text": "yo"}) == {
+            "success": False,
+            "error": "A conversation id is required.",
+        }
 
         captured = []
         install_fake_urlopen(

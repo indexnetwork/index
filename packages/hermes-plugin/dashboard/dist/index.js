@@ -26,8 +26,29 @@
   const Badge = components.Badge || "span";
   const Button = components.Button || "button";
   const API = "/api/plugins/index-network";
+  // Resolve sibling static assets (e.g. dist/loading-white.webp) relative to this
+  // bundle's own URL so the image loads regardless of the host's plugin mount path.
+  const ASSET_BASE = (function () {
+    const strip = function (url) { return url ? url.replace(/[^/]*$/, "") : ""; };
+    try {
+      if (document.currentScript && document.currentScript.src) {
+        return strip(document.currentScript.src);
+      }
+    } catch (e) { /* no-op */ }
+    try {
+      const nodes = document.querySelectorAll('script[src*="index-network"][src*="index.js"], link[href*="index-network"][href*="style.css"]');
+      for (let i = 0; i < nodes.length; i++) {
+        const url = nodes[i].src || nodes[i].href;
+        if (url) return strip(url);
+      }
+    } catch (e) { /* no-op */ }
+    return "";
+  })();
+  const PITCH_IMAGE = ASSET_BASE + "loading-white.webp";
+  const RADAR_IMAGE = ASSET_BASE + "goz-white.webp";
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+  const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   const SOCIAL_FIELDS = [["twitter", "x.com/"], ["linkedin", "linkedin.com/in/"], ["github", "github.com/"], ["telegram", "t.me/"]];
   const FIXED_SOCIAL_LABELS = ["twitter", "linkedin", "github", "telegram"];
 
@@ -140,7 +161,9 @@
             React.createElement(CardTitle, { className: "index-dashboard__card-title" }, props.title),
             props.description ? React.createElement("p", { className: "index-dashboard__card-description" }, props.description) : null,
           ),
-          props.count !== undefined ? React.createElement(BadgeText, null, formatCount(props.count)) : null,
+          props.media
+            ? React.createElement("img", { className: "index-dashboard__card-title-media", src: props.media, alt: "", "aria-hidden": "true", loading: "lazy" })
+            : (props.count !== undefined ? React.createElement(BadgeText, null, formatCount(props.count)) : null),
         ),
       );
     return React.createElement(Card, { className: props.primary ? "index-dashboard__card index-dashboard__card--primary" : "index-dashboard__card" },
@@ -360,12 +383,19 @@
         }, acting ? "Working…" : "Start chat"),
       );
     } else if (status === "accepted") {
-      const chatHref = opportunity.chatUrl || null;
-      if (chatHref) {
+      if (props.onStartChat && opportunity.counterpartUserId) {
+        actions = React.createElement("div", { className: "index-dashboard__opp-actions" },
+          React.createElement(Button, {
+            type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md",
+            disabled: acting,
+            onClick: function () { props.onStartChat(opportunity); },
+          }, acting ? "Working…" : "Start chat"),
+        );
+      } else if (opportunity.chatUrl) {
         actions = React.createElement("div", { className: "index-dashboard__opp-actions" },
           React.createElement("a", {
             className: "index-dashboard__opp-openchat",
-            href: chatHref,
+            href: opportunity.chatUrl,
             target: "_blank",
             rel: "noopener noreferrer",
           }, "Open chat ↗"),
@@ -443,6 +473,7 @@
           onOpenUser: props.onOpenUser,
           onAccept: props.onAccept,
           onSkip: props.onSkip,
+          onStartChat: props.onStartChat,
           actingId: props.actingId,
           webUrl: props.webUrl,
         });
@@ -481,13 +512,20 @@
 
   function IntentPitch() {
     return React.createElement("aside", { className: "index-dashboard__pitch" },
-      React.createElement("h2", { className: "index-dashboard__pitch-title" },
-        "meet the person your agent is ",
-        React.createElement("mark", { className: "index-dashboard__pitch-mark" }, "already"),
-        " looking for.",
-      ),
-      React.createElement("p", { className: "index-dashboard__pitch-text" },
-        "tell index what you're after. agents negotiate quietly in the background, and let you know if there's an alignment.",
+      React.createElement("img", {
+        className: "index-dashboard__pitch-media",
+        src: PITCH_IMAGE,
+        alt: "",
+        "aria-hidden": "true",
+        loading: "lazy",
+      }),
+      React.createElement("div", { className: "index-dashboard__pitch-body" },
+        React.createElement("h2", { className: "index-dashboard__pitch-title" },
+          "meet the person your agent is already looking for.",
+        ),
+        React.createElement("p", { className: "index-dashboard__pitch-text" },
+          "tell index what you're after. agents negotiate quietly in the background, and let you know if there's an alignment.",
+        ),
       ),
     );
   }
@@ -749,16 +787,22 @@
         actions: [
           React.createElement(HeaderActionButton, { key: "pause", title: "Pause", label: "Pause", tone: "text-warning" }, ICON_PAUSE()),
           React.createElement(HeaderActionButton, { key: "edit", title: "Edit" }, ICON_PENCIL()),
-          React.createElement(HeaderActionButton, { key: "remove", title: "Remove", tone: "text-destructive" }, ICON_TRASH()),
+          React.createElement(HeaderActionButton, {
+            key: "archive",
+            title: props.archivingId === intent.id ? "Archiving…" : "Archive",
+            label: "Archive",
+            tone: "text-destructive",
+            onClick: props.archivingId === intent.id ? undefined : function () { if (props.onArchive) props.onArchive(intent.id); },
+          }, ICON_TRASH()),
         ],
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
       React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
         React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
-        React.createElement(Panel, { title: "Radar", count: intent.opportunityCount, description: "People the network surfaced for this intent." },
+        React.createElement(Panel, { title: "Radar", media: RADAR_IMAGE, description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
-          React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, actingId: props.actingId, webUrl: props.webUrl }),
+          React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -780,9 +824,9 @@
         React.createElement(Panel, { primary: true, title: "Questions", count: questionSection.items.length, description: "Onboarding and follow-ups not tied to an intent." },
           React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
         ),
-        React.createElement(Panel, { title: "Radar", count: general.opportunityCount || 0, description: "People surfaced outside a specific intent." },
+        React.createElement(Panel, { title: "Radar", media: RADAR_IMAGE, description: "People surfaced outside a specific intent." },
           React.createElement(RadarStrip, { counts: general.statusCounts || {}, selected: selectedBucket, onSelect: setSelectedBucket }),
-          React.createElement(RadarList, { items: visibleOpps, empty: "No general matches here yet.", onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, actingId: props.actingId, webUrl: props.webUrl }),
+          React.createElement(RadarList, { items: visibleOpps, empty: "No general matches here yet.", onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -959,7 +1003,11 @@
       const file = event.target.files && event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function (e) { setAvatarPreview(e.target ? e.target.result : null); };
+      reader.onload = function (e) {
+        setAvatarPreview(e.target ? e.target.result : null);
+        setDirty(true);
+        setNote(null);
+      };
       reader.readAsDataURL(file);
     }
 
@@ -967,25 +1015,49 @@
       setSaving(true);
       setNote(null);
       setPanelError(null);
-      fetchPluginJSON(API + "/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+
+      function persist(avatarUrl) {
+        const body = {
           name: form.name,
           intro: form.intro,
           location: form.location,
           timezone: form.timezone,
           socials: (form.socials || []).filter(function (s) { return s.value && s.value.trim(); }),
           notificationPreferences: form.notificationPreferences,
-        }),
-      })
-        .then(function (payload) {
+        };
+        if (avatarUrl) body.avatar = avatarUrl;
+        return fetchPluginJSON(API + "/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (payload) {
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Profile could not be saved.");
           }
+          if (avatarUrl) {
+            setForm(function (prev) { return Object.assign({}, prev, { avatar: avatarUrl }); });
+            setAvatarPreview(null);
+          }
           setDirty(false);
-          setNote(payload.mock ? "Saved as preview — not yet persisted to Index." : "Saved.");
-        })
+          setNote("Saved.");
+        });
+      }
+
+      const uploadStep = avatarPreview
+        ? fetchPluginJSON(API + "/profile/avatar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataUrl: avatarPreview }),
+          }).then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Avatar could not be uploaded.");
+            }
+            return payload.avatarUrl || "";
+          })
+        : Promise.resolve("");
+
+      uploadStep
+        .then(function (avatarUrl) { return persist(avatarUrl); })
         .catch(function (err) {
           setPanelError(err && err.message ? err.message : String(err));
         })
@@ -997,16 +1069,22 @@
     function generate() {
       setGenerating(true);
       setNote(null);
+      setPanelError(null);
       fetchPluginJSON(API + "/profile/intro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intro: form.intro }),
+        body: JSON.stringify({}),
       })
         .then(function (payload) {
-          if (payload && typeof payload.intro === "string" && payload.intro) {
-            patchForm({ intro: payload.intro });
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Intro could not be generated.");
           }
-          setNote(payload && payload.mock ? "AI intro generation isn't available from the dashboard yet." : null);
+          if (typeof payload.intro === "string" && payload.intro) {
+            patchForm({ intro: payload.intro });
+            setNote("Intro regenerated from your Index profile.");
+          } else {
+            setNote("No intro was generated — add more about yourself first.");
+          }
         })
         .catch(function (err) {
           setPanelError(err && err.message ? err.message : String(err));
@@ -1195,6 +1273,435 @@
     );
   }
 
+  function extractContent(parts) {
+    // Mirrors the web app: message text lives either in a data part
+    // (data.message / data.assessment.reasoning) or in a plain text part.
+    // Parts use `kind` (agent A2A) or `type` (plain) as the discriminator.
+    // A data part carrying only reasoning (no message, no plain text) is an
+    // internal agent assessment and is styled distinctly.
+    if (!Array.isArray(parts)) return { text: "", isInternal: false };
+    let dataPart = null;
+    let textPart = null;
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (!p || typeof p !== "object") continue;
+      if (!dataPart && (p.kind === "data" || p.type === "data") && p.data) dataPart = p;
+      if (!textPart && typeof p.text === "string" && p.text.trim()) textPart = p;
+    }
+    let message = "";
+    let reasoning = "";
+    if (dataPart && dataPart.data) {
+      if (typeof dataPart.data.message === "string") message = dataPart.data.message.trim();
+      const assessment = dataPart.data.assessment;
+      if (assessment && typeof assessment.reasoning === "string") reasoning = assessment.reasoning.trim();
+    }
+    const plain = textPart ? textPart.text.trim() : "";
+    return {
+      text: message || reasoning || plain,
+      isInternal: !message && !plain && !!reasoning,
+    };
+  }
+
+  function normalizeMessage(raw, currentUserId) {
+    if (!raw || typeof raw !== "object") return null;
+    const senderId = raw.senderId || "";
+    const content = extractContent(raw.parts);
+    // The user's own side may be either the bare userId (DMs) or the
+    // `agent:<userId>` participant (negotiation/opportunity threads).
+    const mine = !!currentUserId && (senderId === currentUserId || senderId === "agent:" + currentUserId);
+    return {
+      id: raw.id || (senderId + ":" + (raw.createdAt || "")),
+      senderId: senderId,
+      text: content.text,
+      isInternal: content.isInternal,
+      createdAt: raw.createdAt || "",
+      mine: mine,
+    };
+  }
+
+  function MessagesPanel(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
+
+    const convState = useState([]);
+    const convs = convState[0];
+    const setConvs = convState[1];
+    const userIdState = useState("");
+    const currentUserId = userIdState[0];
+    const setCurrentUserId = userIdState[1];
+    const activeState = useState(props.initialConversationId || null);
+    const activeId = activeState[0];
+    const setActiveId = activeState[1];
+    const messagesState = useState([]);
+    const messages = messagesState[0];
+    const setMessages = messagesState[1];
+    const listErrState = useState(null);
+    const listErr = listErrState[0];
+    const setListErr = listErrState[1];
+    const listLoadingState = useState(true);
+    const listLoading = listLoadingState[0];
+    const setListLoading = listLoadingState[1];
+    const threadLoadingState = useState(false);
+    const threadLoading = threadLoadingState[0];
+    const setThreadLoading = threadLoadingState[1];
+    const inputState = useState("");
+    const input = inputState[0];
+    const setInput = inputState[1];
+    const sendingState = useState(false);
+    const sending = sendingState[0];
+    const setSending = sendingState[1];
+    const queryState = useState("");
+    const query = queryState[0];
+    const setQuery = queryState[1];
+    const readState = useState(function () {
+      try { return JSON.parse(window.localStorage.getItem("index_msg_read") || "{}") || {}; }
+      catch (e) { return {}; }
+    });
+    const readMap = readState[0];
+    const setReadMap = readState[1];
+
+    const activeIdRef = useRef(props.initialConversationId || null);
+    const userIdRef = useRef("");
+    const threadRef = useRef(null);
+
+    function markRead(id, at) {
+      if (!id) return;
+      setReadMap(function (prev) {
+        const stamp = at || new Date().toISOString();
+        if ((prev[id] || "") >= stamp) return prev;
+        const next = Object.assign({}, prev);
+        next[id] = stamp;
+        try { window.localStorage.setItem("index_msg_read", JSON.stringify(next)); } catch (e) { /* noop */ }
+        return next;
+      });
+    }
+    activeIdRef.current = activeId;
+    userIdRef.current = currentUserId;
+
+    function appendMessage(msg) {
+      if (!msg) return;
+      setMessages(function (prev) {
+        if (prev.some(function (m) { return m.id === msg.id; })) return prev;
+        return prev.concat([msg]);
+      });
+    }
+
+    function loadThread(id) {
+      if (!id) return;
+      setActiveId(id);
+      setThreadLoading(true);
+      setMessages([]);
+      fetchPluginJSON(API + "/conversations/" + encodeURIComponent(id) + "/messages")
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Messages could not be loaded.");
+          }
+          const uid = payload.currentUserId || userIdRef.current || "";
+          if (payload.currentUserId) setCurrentUserId(payload.currentUserId);
+          const list = (payload.messages || [])
+            .map(function (m) { return normalizeMessage(m, uid); })
+            .filter(Boolean);
+          setMessages(list);
+        })
+        .catch(function (err) { setListErr(err && err.message ? err.message : String(err)); })
+        .finally(function () { setThreadLoading(false); });
+    }
+
+    function loadList(selectId) {
+      setListLoading(true);
+      setListErr(null);
+      fetchPluginJSON(API + "/conversations")
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Conversations could not be loaded.");
+          }
+          setCurrentUserId(payload.currentUserId || "");
+          setConvs(payload.conversations || []);
+          const target = selectId || activeIdRef.current;
+          if (target) loadThread(target);
+        })
+        .catch(function (err) { setListErr(err && err.message ? err.message : String(err)); })
+        .finally(function () { setListLoading(false); });
+    }
+
+    // Re-fetch the conversation list (e.g. when a message arrives for a
+    // conversation not yet in the local list, mirroring the web app).
+    function refreshList() {
+      fetchPluginJSON(API + "/conversations")
+        .then(function (payload) {
+          if (!payload || payload.success === false) return;
+          if (payload.currentUserId) setCurrentUserId(payload.currentUserId);
+          setConvs(payload.conversations || []);
+        })
+        .catch(function () { /* ignore transient refresh errors */ });
+    }
+
+    useEffect(function () { loadList(props.initialConversationId || null); }, []);
+
+    // Authoritative realtime, mirroring the web app's ConversationContext:
+    // dedup by message id, live conversation-summary updates, refresh-on-unknown,
+    // and reconnect with exponential backoff (5s * 2^n, capped at 60s, 10 tries).
+    //
+    // The plugin backend relays the upstream Redis stream with its own API key.
+    // We consume that relay with SDK.authedFetch (which injects the Hermes
+    // dashboard session auth — the `X-Hermes-Session-Token` header in loopback
+    // mode, cookies in gated mode) plus a streaming body reader, rather than a
+    // raw EventSource: EventSource cannot set the session header and the host
+    // does not accept a ?token= query param on plugin routes, so it would fail
+    // to authenticate in the default desktop (loopback) mode.
+    function applyIncoming(dataStr) {
+      let data;
+      try { data = JSON.parse(dataStr); } catch (e) { return; }
+      if (!data || data.type !== "message" || !data.message) return;
+      const convId = data.conversationId || data.message.conversationId;
+      if (!convId) return;
+      const msg = normalizeMessage(data.message, userIdRef.current);
+      if (convId === activeIdRef.current) appendMessage(msg);
+      setConvs(function (prev) {
+        if (!prev.some(function (c) { return c.id === convId; })) { refreshList(); return prev; }
+        return prev.map(function (c) {
+          if (c.id !== convId) return c;
+          return Object.assign({}, c, { lastMessagePreview: msg ? msg.text : c.lastMessagePreview, lastMessageAt: msg ? msg.createdAt : c.lastMessageAt });
+        });
+      });
+    }
+
+    useEffect(function () {
+      let retryTimer = null;
+      let retries = 0;
+      let stopped = false;
+      let reader = null;
+
+      function scheduleRetry() {
+        if (stopped) return;
+        retries += 1;
+        if (retries > 10) return;
+        const delay = Math.min(5000 * Math.pow(2, retries - 1), 60000);
+        retryTimer = setTimeout(connect, delay);
+      }
+
+      function streamFetch() {
+        const url = API + "/conversations/stream";
+        const opts = { headers: { Accept: "text/event-stream" } };
+        if (SDK.authedFetch) return SDK.authedFetch(url, opts);
+        return window.fetch(url, Object.assign({ credentials: "include" }, opts));
+      }
+
+      function connect() {
+        streamFetch()
+          .then(function (response) {
+            if (!response || !response.ok || !response.body || !response.body.getReader) {
+              throw new Error("stream unavailable");
+            }
+            retries = 0;
+            reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            function pump() {
+              return reader.read().then(function (result) {
+                if (stopped) { try { reader.cancel(); } catch (e) { /* noop */ } return; }
+                if (result.done) { scheduleRetry(); return; }
+                buffer += decoder.decode(result.value, { stream: true });
+                let sep;
+                while ((sep = buffer.indexOf("\n\n")) >= 0) {
+                  const frame = buffer.slice(0, sep);
+                  buffer = buffer.slice(sep + 2);
+                  const lines = frame.split("\n");
+                  for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].indexOf("data:") === 0) applyIncoming(lines[i].slice(5).trim());
+                  }
+                }
+                return pump();
+              });
+            }
+            return pump();
+          })
+          .catch(function () { if (!stopped) scheduleRetry(); });
+      }
+
+      connect();
+      return function () {
+        stopped = true;
+        if (retryTimer) clearTimeout(retryTimer);
+        if (reader) { try { reader.cancel(); } catch (e) { /* noop */ } }
+      };
+    }, []);
+
+    useEffect(function () {
+      const node = threadRef.current;
+      if (node) node.scrollTop = node.scrollHeight;
+    }, [messages, threadLoading]);
+
+    // Keep the open conversation marked as read up to its latest activity.
+    useEffect(function () {
+      if (!activeId) return;
+      const conv = convs.filter(function (c) { return c.id === activeId; })[0];
+      markRead(activeId, (conv && conv.lastMessageAt) || new Date().toISOString());
+    }, [activeId, convs]);
+
+    // Optimistic send, mirroring the web app: render the outgoing bubble and bump
+    // the conversation summary immediately, then reconcile with the server row
+    // (dedup by id in case SSE already delivered it), rolling back on failure.
+    function send() {
+      const text = input.trim();
+      if (!text || !activeId || sending) return;
+      const convId = activeId;
+      const uid = userIdRef.current || "";
+      const nowIso = new Date().toISOString();
+      const optimisticId = (window.crypto && window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : ("optimistic-" + Date.now());
+      const optimistic = { id: optimisticId, senderId: uid, text: text, isInternal: false, createdAt: nowIso, mine: true };
+      setMessages(function (prev) { return prev.concat([optimistic]); });
+      setConvs(function (prev) {
+        return prev.map(function (c) {
+          if (c.id !== convId) return c;
+          return Object.assign({}, c, { lastMessagePreview: text, lastMessageAt: nowIso });
+        });
+      });
+      setInput("");
+      setSending(true);
+      fetchPluginJSON(API + "/conversations/" + encodeURIComponent(convId) + "/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Message could not be sent.");
+          }
+          const real = normalizeMessage(payload.message, userIdRef.current);
+          setMessages(function (prev) {
+            const withReal = prev.map(function (m) { return m.id === optimisticId ? (real || m) : m; });
+            const seen = {};
+            return withReal.filter(function (m) {
+              if (seen[m.id]) return false;
+              seen[m.id] = true;
+              return true;
+            });
+          });
+        })
+        .catch(function (err) {
+          setMessages(function (prev) { return prev.filter(function (m) { return m.id !== optimisticId; }); });
+          setInput(text);
+          setListErr(err && err.message ? err.message : String(err));
+        })
+        .finally(function () { setSending(false); });
+    }
+
+    function onComposerKey(event) {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        send();
+      }
+    }
+
+    const activeConv = convs.filter(function (c) { return c.id === activeId; })[0] || null;
+
+    const q = query.trim().toLowerCase();
+    const filteredConvs = convs
+      .filter(function (c) {
+        if (!q) return true;
+        return ((c.title || "") + " " + (c.counterpartName || "") + " " + (c.lastMessagePreview || "")).toLowerCase().indexOf(q) >= 0;
+      })
+      .sort(function (a, b) { return (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""); });
+
+    function isUnread(c) {
+      return c.id !== activeId && !!c.lastMessageAt && c.lastMessageAt > (readMap[c.id] || "");
+    }
+
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__msg-panel", onClick: function (e) { e.stopPropagation(); } },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Messages"),
+          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
+        listErr ? React.createElement("div", { className: "index-dashboard__error" }, listErr) : null,
+        React.createElement("div", { className: "index-dashboard__msg-body" },
+          React.createElement("div", { className: "index-dashboard__msg-list" },
+            React.createElement("input", {
+              type: "search",
+              className: "index-dashboard__msg-search",
+              placeholder: "Search conversations…",
+              value: query,
+              onChange: function (e) { setQuery(e.target.value); },
+              "aria-label": "Search conversations",
+            }),
+            listLoading
+              ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading…")
+              : (convs.length === 0
+                ? React.createElement(EmptyState, null, "No conversations yet.")
+                : (filteredConvs.length === 0
+                  ? React.createElement(EmptyState, null, "No matches.")
+                  : filteredConvs.map(function (c) {
+                    const active = c.id === activeId;
+                    const unread = isUnread(c);
+                    return React.createElement("button", {
+                      key: c.id,
+                      type: "button",
+                      className: "index-dashboard__msg-conv" + (active ? " index-dashboard__msg-conv--active" : "") + (unread ? " index-dashboard__msg-conv--unread" : ""),
+                      onClick: function () { loadThread(c.id); },
+                    },
+                      React.createElement("span", { className: "index-dashboard__avatar index-dashboard__msg-conv-avatar", "aria-hidden": "true" },
+                        initialsFor(c.counterpartName || c.title),
+                        c.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: c.avatar, alt: "", loading: "lazy" }) : null,
+                      ),
+                      React.createElement("span", { className: "index-dashboard__msg-conv-main" },
+                        React.createElement("span", { className: "index-dashboard__msg-conv-name" },
+                          unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
+                          c.title || "Conversation",
+                          c.kind === "negotiation" ? React.createElement("span", { className: "index-dashboard__msg-conv-badge" }, "Agent") : null,
+                        ),
+                        c.lastMessagePreview ? React.createElement("span", { className: "index-dashboard__msg-conv-preview" }, c.lastMessagePreview) : null,
+                      ),
+                    );
+                  }))),
+          ),
+          React.createElement("div", { className: "index-dashboard__msg-thread-col" },
+            activeId
+              ? React.createElement(React.Fragment, null,
+                React.createElement("div", { className: "index-dashboard__msg-thread", ref: threadRef },
+                  threadLoading
+                    ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading messages…")
+                    : (function () {
+                        const visible = messages.filter(function (m) { return m.text && m.text.trim(); });
+                        if (visible.length === 0) return React.createElement(EmptyState, null, "No messages yet. Say hello.");
+                        return visible.map(function (m) {
+                          let cls = "index-dashboard__msg-bubble";
+                          if (m.mine) cls += " index-dashboard__msg-bubble--mine";
+                          if (m.isInternal) cls += " index-dashboard__msg-bubble--internal";
+                          if (m.isInternal) {
+                            return React.createElement("div", { key: m.id, className: cls },
+                              React.createElement("span", { className: "index-dashboard__msg-internal-label" }, "Internal assessment"),
+                              React.createElement("span", null, m.text),
+                            );
+                          }
+                          return React.createElement("div", { key: m.id, className: cls }, m.text);
+                        });
+                      })(),
+                ),
+                React.createElement("div", { className: "index-dashboard__msg-composer" },
+                  React.createElement("textarea", {
+                    className: "index-dashboard__textarea index-dashboard__msg-input",
+                    rows: 1,
+                    value: input,
+                    placeholder: activeConv ? ("Message " + (activeConv.counterpartName || activeConv.title) + "…") : "Type a message…",
+                    onChange: function (e) { setInput(e.target.value); },
+                    onKeyDown: onComposerKey,
+                  }),
+                  React.createElement(Button, { type: "button", disabled: sending || !input.trim(), onClick: send }, sending ? "Sending…" : "Send"),
+                ),
+              )
+              : React.createElement("div", { className: "index-dashboard__msg-thread" },
+                React.createElement(EmptyState, null, "Select a conversation to view messages."),
+              ),
+          ),
+        ),
+      ),
+    );
+  }
+
   function IndexNetworkDashboard() {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -1233,9 +1740,19 @@
     const viewUserState = useState(null);
     const viewUserId = viewUserState[0];
     const setViewUserId = viewUserState[1];
+    const messagesOpenState = useState(false);
+    const messagesOpen = messagesOpenState[0];
+    const setMessagesOpen = messagesOpenState[1];
+    const messagesTargetState = useState(null);
+    const messagesTarget = messagesTargetState[0];
+    const setMessagesTarget = messagesTargetState[1];
+    const archivingState = useState(null);
+    const archivingId = archivingState[0];
+    const setArchivingId = archivingState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
+    const openMessagesRef = useRef(null);
 
     function load() {
       setLoading(true);
@@ -1330,7 +1847,10 @@
 
     function acceptOpportunity(opportunityId) {
       opportunityAction(opportunityId, "accept", function (payload) {
-        if (payload.chatUrl) {
+        if (payload.conversationId) {
+          setMessagesTarget(payload.conversationId);
+          setMessagesOpen(true);
+        } else if (payload.chatUrl) {
           try { window.open(payload.chatUrl, "_blank", "noopener"); } catch (e) { /* popup blocked */ }
         }
       });
@@ -1338,6 +1858,55 @@
 
     function skipOpportunity(opportunityId) {
       opportunityAction(opportunityId, "skip");
+    }
+
+    // Open the in-dashboard DM for an already-accepted opportunity, resolving
+    // (or creating) the H2H conversation with the counterpart, mirroring the
+    // in-dashboard chat that pending accept opens.
+    function startChatWithOpportunity(opportunity) {
+      const counterpartId = opportunity && opportunity.counterpartUserId;
+      if (!counterpartId) return;
+      setActingId(opportunity.opportunityId);
+      setActionError(null);
+      fetchPluginJSON(API + "/conversations/dm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ peerUserId: counterpartId }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false || !payload.conversation || !payload.conversation.id) {
+            throw new Error((payload && payload.error) || "That chat could not be opened.");
+          }
+          setMessagesTarget(payload.conversation.id);
+          setMessagesOpen(true);
+        })
+        .catch(function (err) { setActionError(err && err.message ? err.message : String(err)); })
+        .finally(function () { setActingId(null); });
+    }
+
+    function archiveIntent(intentId) {
+      if (!intentId) return;
+      if (typeof window.confirm === "function" && !window.confirm("Archive this intent? It will stop matching.")) return;
+      setArchivingId(intentId);
+      setActionError(null);
+      fetchPluginJSON(API + "/intents/" + encodeURIComponent(intentId) + "/archive", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Intent could not be archived.");
+          }
+          goBack();
+          load();
+        })
+        .catch(function (err) {
+          setActionError(err && err.message ? err.message : String(err));
+        })
+        .finally(function () {
+          setArchivingId(null);
+        });
     }
 
     function joinNetwork(networkId) {
@@ -1414,6 +1983,17 @@
       };
       refresh.addEventListener("click", onRefresh);
 
+      const messages = document.createElement("button");
+      messages.type = "button";
+      messages.className = "index-dashboard__hdr-account";
+      messages.setAttribute("aria-label", "Messages");
+      messages.title = "Messages";
+      messages.innerHTML = MESSAGES_ICON_SVG;
+      const onMessages = function () {
+        if (openMessagesRef.current) openMessagesRef.current(null);
+      };
+      messages.addEventListener("click", onMessages);
+
       const account = document.createElement("button");
       account.type = "button";
       account.className = "index-dashboard__hdr-account";
@@ -1429,13 +2009,15 @@
       wrap.appendChild(sw);
       wrap.appendChild(live);
       wrap.appendChild(refresh);
+      wrap.appendChild(messages);
       wrap.appendChild(account);
       container.appendChild(wrap);
-      headerCtlRef.current = { sw: sw, live: live, refresh: refresh, account: account };
+      headerCtlRef.current = { sw: sw, live: live, refresh: refresh, account: account, messages: messages };
 
       return function () {
         sw.removeEventListener("click", onToggle);
         refresh.removeEventListener("click", onRefresh);
+        messages.removeEventListener("click", onMessages);
         account.removeEventListener("click", onAccount);
         wrap.remove();
         headerCtlRef.current = null;
@@ -1481,6 +2063,10 @@
     }
 
     toggleProfileRef.current = function () { setProfileOpen(function (open) { return !open; }); };
+    openMessagesRef.current = function (conversationId) {
+      setMessagesTarget(conversationId || null);
+      setMessagesOpen(true);
+    };
 
     function openUser(userId) {
       if (userId) setViewUserId(userId);
@@ -1498,8 +2084,8 @@
 
     const intentsView = showDetail
       ? (selectedId === "general"
-        ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, actingId: actingId, webUrl: summary && summary.webUrl })
-        : React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, actingId: actingId, webUrl: summary && summary.webUrl }))
+        ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl })
+        : React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId }))
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
@@ -1516,6 +2102,9 @@
       viewUserId
         ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
         : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
+      messagesOpen
+        ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
+        : null,
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
