@@ -1,7 +1,7 @@
 import { ZodError } from 'zod';
 
 import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
-import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
@@ -19,7 +19,7 @@ export class NetworkController {
    * List networks the authenticated user is a member of, including their personal network.
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async list(req: Request, user: AuthenticatedUser) {
     const { networkScopeId } = await withAgentScope(req, user);
     const result = await networkService.getNetworksForUser(user.id);
@@ -128,7 +128,7 @@ export class NetworkController {
    * Get members of a network. Owner-only.
    */
   @Get('/:id/members')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getMembers(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -152,7 +152,7 @@ export class NetworkController {
    * Add a member to a network. Owner-only.
    */
   @Post('/:id/members')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async addMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const body = await req.json().catch(() => ({})) as { userId?: string; permissions?: string[] };
     if (!body.userId) {
@@ -188,7 +188,7 @@ export class NetworkController {
    * Accepts { permissions: ['owner'] } or { permissions: ['member'] }.
    */
   @Patch('/:id/members/:memberId')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updateMemberRole(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const body = await req.json().catch(() => ({})) as { permissions?: string[] };
     if (!body.permissions || !Array.isArray(body.permissions)) {
@@ -225,7 +225,7 @@ export class NetworkController {
    * Remove a member from a network. Owner-only.
    */
   @Delete('/:id/members/:memberId')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async removeMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -251,7 +251,7 @@ export class NetworkController {
    * Update a network (title, prompt, permissions). Owner-only.
    */
   @Put('/:id')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async update(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -293,7 +293,7 @@ export class NetworkController {
    * Update network permissions. Owner-only.
    */
   @Patch('/:id/permissions')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -323,7 +323,7 @@ export class NetworkController {
    * The previously shared link stops resolving once rotated.
    */
   @Patch('/:id/regenerate-invitation')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async regenerateInvitation(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -376,7 +376,7 @@ export class NetworkController {
    * Delete (soft-delete) a network. Owner-only.
    */
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async delete(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -397,7 +397,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Post('/:id/join')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async joinPublicNetwork(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -421,7 +421,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/member-settings')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getMemberSettings(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -442,7 +442,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/my-intents')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getMyIntents(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -464,7 +464,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/overview')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getOverview(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -485,7 +485,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Post('/:id/leave')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async leaveNetwork(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -557,7 +557,7 @@ export class NetworkController {
    * IMPORTANT: This must come AFTER specific routes like /discovery/public and /:id/join.
    */
   @Get('/:id')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async get(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);

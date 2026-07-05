@@ -80,7 +80,7 @@
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.8.0",
+      "version": "0.8.1",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",

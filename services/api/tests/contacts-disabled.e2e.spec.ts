@@ -46,8 +46,9 @@ async function dispatchAddContact(req: Request): Promise<Response> {
       return Response.json({ error: message }, { status: 404 });
     }
     if (
-      message === 'Access token required' ||
-      message === 'Invalid or expired access token'
+      message === 'Access token or API key required' ||
+      message === 'Invalid or expired access token' ||
+      message === 'Invalid API key'
     ) {
       return Response.json({ error: message }, { status: 401 });
     }
@@ -96,12 +97,12 @@ describe('POST /users/contacts — CONTACTS_ENABLED gate (E2E)', () => {
     expect(res.status).toBe(404);
   });
 
-  test('passes the contacts gate when enabled, then 401 at auth (no token)', async () => {
+  test('passes the contacts gate when enabled, then 401 at auth (no credentials)', async () => {
     process.env.CONTACTS_ENABLED = 'true';
     const res = await post();
     // Not 404 — proves the gate let it through; auth then rejects the tokenless
     // request with 401.
     expect(res.status).toBe(401);
-    expect(await res.json()).toMatchObject({ error: 'Access token required' });
+    expect(await res.json()).toMatchObject({ error: 'Access token or API key required' });
   });
 });

@@ -169,9 +169,9 @@ def _profile_socials(user: dict[str, Any]) -> list[dict[str, str]]:
     return socials
 
 
-# Fields the dashboard surfaces but cannot read or persist with an API key today
-# (their Index endpoints are session-only). They are mocked client-visibly so the
-# UI is complete; real persistence is tracked for the guard-relaxation follow-up.
+# Fields the dashboard surfaces but does not read or persist through the API yet.
+# They are mocked client-visibly so the UI is complete; real persistence requires
+# wiring these now API-key-capable AuthGuard endpoints into the dashboard client.
 _MOCKED_PROFILE_FIELDS = ["email", "timezone", "notificationPreferences", "avatarUpload"]
 
 
@@ -877,8 +877,8 @@ def profile() -> dict[str, Any]:
 
     Identity (name, bio, location, context) comes from the MCP `read_user_contexts`
     self-read; avatar and socials come from the public `GET /users/:id`. Email,
-    timezone, and notification preferences are session-only on Index, so they are
-    returned as mock defaults (see `_MOCKED_PROFILE_FIELDS`).
+    timezone, and notification preferences are not wired through this dashboard
+    client yet, so they are returned as mock defaults (see `_MOCKED_PROFILE_FIELDS`).
     """
     user_id = _resolve_user_id()
     if not user_id:
@@ -900,7 +900,7 @@ def profile() -> dict[str, Any]:
         "avatar": _avatar_url(user.get("avatar")),
         "socials": _profile_socials(user),
         "context": context_text,
-        # Mocked (session-only on Index — not readable with an API key):
+        # Mocked until the dashboard wires the API-key-capable profile endpoints:
         "email": "",
         "timezone": "",
         "notificationPreferences": {"connectionUpdates": True, "weeklyNewsletter": True},
@@ -949,8 +949,8 @@ def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str
     """Validate a profile update and acknowledge it.
 
     Index's profile-write endpoints (`PATCH /auth/profile/update`, avatar upload)
-    are session-only, so this is a mock acknowledgement — the payload is validated
-    but not persisted. Real persistence is tracked for the guard-relaxation follow-up.
+    are API-key-capable through AuthGuard, but this dashboard has not wired them
+    yet, so this is a mock acknowledgement — the payload is validated but not persisted.
     """
     update, validation_error = _sanitize_profile_update(body)
     if validation_error:
@@ -962,8 +962,9 @@ def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str
 def generate_intro(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Acknowledge an AI intro-generation request.
 
-    Index's intro generation (`POST /enrichment/sync`) is session-only, so this is a
-    mock that echoes the current intro back unchanged.
+    Index's intro generation (`POST /enrichment/sync`) is API-key-capable through
+    AuthGuard, but this dashboard has not wired it yet, so this mock echoes the
+    current intro back unchanged.
     """
     current = _text(body.get("intro")) if isinstance(body, dict) else ""
     return {"success": True, "mock": True, "intro": current}

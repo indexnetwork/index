@@ -19,7 +19,7 @@ const logger = log.controller.from('debug');
 /**
  * Debug controller exposing diagnostic endpoints for internal use.
  * All routes are gated by DebugGuard (dev-only or explicit opt-in)
- * and AuthGuard (valid JWT required).
+ * and AuthGuard (valid JWT or API key required).
  *
  * @remarks Read-only diagnostic endpoints query the database directly (known
  * exception for debug-only code). The discovery runner delegates to

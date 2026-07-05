@@ -5,7 +5,7 @@
  * `referenceId`. Today only agent keys populate `referenceId`, and the adapter
  * always sets it equal to `userId`, so a divergence between the two signals a
  * cross-wired or tampered key. Both the MCP auth resolver and
- * `AuthOrApiKeyGuard` resolve principals from these columns; routing them
+ * `AuthGuard` resolve principals from these columns; routing them
  * through this one helper guarantees the same key can never resolve to a
  * different user depending on the codepath.
  */
