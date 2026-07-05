@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 
 import { experimentService } from '../src/services/experiment.service';
-import { AuthOrApiKeyGuard } from '../src/guards/auth.guard';
+import { AuthGuard } from '../src/guards/auth.guard';
 import db from '../src/lib/drizzle/drizzle';
 import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userSocials, users } from '../src/schemas/database.schema';
 
@@ -132,10 +132,10 @@ describe('experimentService.signup', () => {
       );
     expect(scopedAgents.length).toBe(1);
 
-    const firstAuth = await AuthOrApiKeyGuard(new Request('http://localhost/test', {
+    const firstAuth = await AuthGuard(new Request('http://localhost/test', {
       headers: { 'x-api-key': first.apiKey },
     }));
-    const secondAuth = await AuthOrApiKeyGuard(new Request('http://localhost/test', {
+    const secondAuth = await AuthGuard(new Request('http://localhost/test', {
       headers: { 'x-api-key': second.apiKey },
     }));
     expect(firstAuth.id).toBe(first.user.id);

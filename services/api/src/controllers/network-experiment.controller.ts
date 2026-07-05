@@ -1,5 +1,5 @@
 import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
-import { AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/experiment.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
@@ -183,7 +183,7 @@ export class NetworkExperimentController {
    * Used for large files (>500 rows) where client-side parsing is skipped.
    */
   @Post('/:id/members/import/parse')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async parseImportCsv(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -217,7 +217,7 @@ export class NetworkExperimentController {
    * — provisions one and emails the invitation with a connect command.
    */
   @Post('/:id/members/invite')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async inviteMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -266,7 +266,7 @@ export class NetworkExperimentController {
    * own key).
    */
   @Post('/:id/members/:memberId/resend-invite')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async resendInviteToMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -296,7 +296,7 @@ export class NetworkExperimentController {
    * Import members from parsed CSV data. Owner-only, experiment networks only.
    */
   @Post('/:id/members/import')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async importMembers(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -327,7 +327,7 @@ export class NetworkExperimentController {
    * key by email.
    */
   @Post('/:id/rotate-master-key')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async rotateMasterKey(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
@@ -355,7 +355,7 @@ export class NetworkExperimentController {
    * @returns Updated network or validation error
    */
   @Put('/:id/key')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async updateKey(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     let body: { key?: string };
     try {

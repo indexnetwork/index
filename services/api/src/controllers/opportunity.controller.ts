@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
-import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
+import { AuthGuard } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
@@ -99,7 +99,7 @@ export class OpportunityController {
    * GET /opportunities — list opportunities for the authenticated user.
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async listOpportunities(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
@@ -335,7 +335,7 @@ export class OpportunityController {
    * Requires x-api-key (agent polling) or session auth.
    */
   @Post('/:id/connect-token')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async createConnectToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -362,7 +362,7 @@ export class OpportunityController {
    * @returns `{ url: string }` — full short URL pointing at `${BASE_URL}/c/:code`.
    */
   @Post('/:id/connect-link')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async createConnectLink(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
     if (!id) {
@@ -549,7 +549,7 @@ export class NetworkOpportunityController {
    * GET /networks/:networkId/opportunities — list opportunities for a network (owner or member).
    */
   @Get('/:networkId/opportunities')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async listForIndex(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
@@ -590,7 +590,7 @@ export class NetworkOpportunityController {
    * POST /networks/:networkId/opportunities — create a manual opportunity (curator).
    */
   @Post('/:networkId/opportunities')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async createManual(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {

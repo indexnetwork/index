@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AuthGuard, AuthOrApiKeyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -190,7 +190,7 @@ export class AgentController {
   }
 
   @Get('/me')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getMe(req: Request, user: AuthenticatedUser) {
     const agentId = await resolveApiKeyAgentId(req);
     if (!agentId) {
@@ -401,7 +401,7 @@ export class AgentController {
   }
 
   @Post('/:id/negotiations/pickup')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(AuthGuard)
   async pickupNegotiation(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -423,7 +423,7 @@ export class AgentController {
   }
 
   @Post('/:id/negotiations/:negotiationId/respond')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async respondNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const negotiationId = params?.negotiationId;
@@ -469,7 +469,7 @@ export class AgentController {
   }
 
   @Post('/:id/test-messages/pickup')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async pickupTestMessage(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -491,7 +491,7 @@ export class AgentController {
   }
 
   @Post('/:id/test-messages/:messageId/delivered')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async confirmTestMessageDelivered(req: Request, _user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const messageId = params?.messageId;
@@ -517,7 +517,7 @@ export class AgentController {
   }
 
   @Post('/:id/opportunities/pickup')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async pickupOpportunity(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -542,7 +542,7 @@ export class AgentController {
   }
 
   @Get('/:id/opportunities/pending')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(AuthGuard)
   async getPendingOpportunities(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -571,7 +571,7 @@ export class AgentController {
   }
 
   @Get('/:id/opportunities/accepted')
-  @UseGuards(AuthOrApiKeyGuard)
+  @UseGuards(AuthGuard)
   async getAcceptedOpportunities(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -596,7 +596,7 @@ export class AgentController {
   }
 
   @Get('/:id/opportunities/delivery-stats')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async getDeliveryStats(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -624,7 +624,7 @@ export class AgentController {
   }
 
   @Post('/:id/opportunities/:opportunityId/delivered')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async confirmOpportunityDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const opportunityId = params?.opportunityId;

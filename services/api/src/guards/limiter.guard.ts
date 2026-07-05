@@ -60,7 +60,7 @@ const isPrivateOrLoopback = (ip: string) => {
  * header info on a per-Request WeakMap for the response post-processor.
  *
  * @example
- *   @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+ *   @UseGuards(RateLimit('read'), AuthGuard)
  *   async listOpportunities(req, user, params) { ... }
  */
 export function RateLimit(cls: LimiterClass): Guard {
