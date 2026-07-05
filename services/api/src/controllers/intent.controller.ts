@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
-import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -62,7 +62,7 @@ export class IntentController {
    * @returns The created intent
    */
   @Post('/confirm')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async confirm(req: Request, user: AuthenticatedUser) {
     const raw = await req.json().catch(() => ({}));
     const parsed = ConfirmSchema.safeParse(raw);

@@ -110,7 +110,7 @@ export const assertAgentNetworkScope = async (req: Request, networkId: string): 
  * from the route param.
  *
  * @param req - Incoming Request
- * @param user - Already-resolved AuthenticatedUser (from AuthGuard / AuthOrApiKeyGuard)
+ * @param user - Already-resolved AuthenticatedUser (from AuthGuard)
  * @returns `{ user, networkScopeId }` where `networkScopeId` is null for unscoped callers
  */
 export const withAgentScope = async (

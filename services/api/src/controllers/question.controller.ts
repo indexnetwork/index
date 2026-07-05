@@ -4,7 +4,7 @@ import { questionService } from '../services/question.service';
 import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
-import { AuthOrApiKeyGuard } from '../guards/auth.guard';
+import { AuthGuard } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
@@ -66,7 +66,7 @@ export class QuestionController {
    * @returns JSON with `{ questions }` array.
    */
   @Get('')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async list(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
@@ -131,7 +131,7 @@ export class QuestionController {
    * @returns JSON `{ success: true }` on success.
    */
   @Post('/:id/answer')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async answer(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const questionId = params?.id;
     if (!questionId) {
@@ -176,7 +176,7 @@ export class QuestionController {
    * @returns JSON `{ success: true }` on success.
    */
   @Post('/:id/dismiss')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async dismiss(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const questionId = params?.id;
     if (!questionId) {

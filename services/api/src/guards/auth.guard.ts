@@ -27,10 +27,10 @@ async function hashApiKey(apiKey: string): Promise<string> {
 }
 
 /**
- * AuthGuard: Verifies JWT tokens statelessly via the local JWKS endpoint.
- * Expects `Authorization: Bearer <jwt>` header.
+ * Resolve an authenticated user from a Better Auth JWT.
+ * Expects `Authorization: Bearer <jwt>` header or `?token=...`.
  */
-export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
+const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
   const token = authHeader?.startsWith('Bearer ')
     ? authHeader.slice(7)
@@ -55,9 +55,14 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
  * Resolve the `metadata.agentId` of the API key on the request, or null if
  * the request is JWT-authenticated, has no key, or the key has no agent
  * binding. Authorization is intentionally NOT re-checked here — callers
- * must run `AuthOrApiKeyGuard` first.
+ * must run `AuthGuard` first.
  */
 export const resolveApiKeyAgentId = async (req: Request): Promise<string | null> => {
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) return null;
+  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
+  if (queryToken) return null;
+
   const apiKey = req.headers.get('x-api-key');
   if (!apiKey) return null;
 
@@ -80,21 +85,19 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
 };
 
 /**
- * AuthOrApiKeyGuard: Tries JWT first, falls back to API key (`x-api-key` header).
- * API key is SHA-256 hashed and looked up in the `apikeys` table, then the
+ * AuthGuard: tries JWT first, then falls back to API key (`x-api-key` header).
+ * API keys are SHA-256 hashed and looked up in the `apikeys` table, then the
  * owning user is loaded from `users` to build the same AuthenticatedUser shape.
  */
-export const AuthOrApiKeyGuard = async (req: Request): Promise<AuthenticatedUser> => {
-  // Try JWT first
+export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
   const authHeader = req.headers.get('Authorization');
   const url = new URL(req.url, 'http://localhost');
   const queryToken = url.searchParams.get('token');
 
   if (authHeader?.startsWith('Bearer ') || queryToken) {
-    return AuthGuard(req);
+    return resolveJwtUser(req);
   }
 
-  // Fall back to API key
   const apiKey = req.headers.get('x-api-key');
   if (!apiKey) {
     throw new Error('Access token or API key required');

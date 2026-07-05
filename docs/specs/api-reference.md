@@ -39,13 +39,15 @@ Complete reference for all HTTP endpoints exposed by the protocol server. All ro
 
 ### AuthGuard
 
-Most endpoints require the `AuthGuard`, which verifies JWT tokens statelessly via the local JWKS endpoint.
+Most endpoints require the `AuthGuard`, which accepts either a stateless Better Auth JWT or an Index API key.
 
-- **Header**: `Authorization: Bearer <jwt>`
-- **Fallback**: `?token=<jwt>` query parameter
+- **JWT header**: `Authorization: Bearer <jwt>`
+- **JWT fallback**: `?token=<jwt>` query parameter
+- **API-key header**: `x-api-key: <key>`
 - **Errors**:
-  - `401` — `Access token required` (no token provided)
-  - `401` — `Invalid or expired access token` (verification failed)
+  - `401` — `Access token or API key required` (no credential provided)
+  - `401` — `Invalid or expired access token` (JWT verification failed)
+  - `401` — `Invalid API key` (API key lookup or principal resolution failed)
 
 The guard returns an `AuthenticatedUser` object with `id`, `email` (nullable), and `name` fields, which is passed to the handler as the second argument. Individual controllers may return additional 403/404 errors for user-level access checks.
 
@@ -907,7 +909,7 @@ Uses the same `getOpportunitiesForUser` database adapter as the feed graph. Elig
 
 Fetch accepted opportunities where the authenticated user is the counterparty (not the accepter, not an introducer) and no delivery record with `deliveredAtStatus = 'accepted'` exists yet. Used by personal agent accepted-opportunity pollers.
 
-**Auth**: `AuthOrApiKeyGuard` (session or API key).
+**Auth**: `AuthGuard` (session or API key).
 
 **Path params**:
 - `id` — Agent ID.
@@ -949,7 +951,7 @@ Fetch accepted opportunities where the authenticated user is the counterparty (n
 
 Return committed delivery counts for an owned personal agent since a given timestamp, grouped by trigger type.
 
-**Auth**: `AuthOrApiKeyGuard` (session or API key).
+**Auth**: `AuthGuard` (session or API key).
 
 **Path params**:
 - `id` — Agent ID.
@@ -981,7 +983,7 @@ Return committed delivery counts for an owned personal agent since a given times
 
 Atomically reserve and return one pending opportunity for the agent to process. Returns 204 if no opportunities are pending. Also updates the agent's `lastSeenAt` heartbeat.
 
-**Auth**: `AuthOrApiKeyGuard` (session or API key).
+**Auth**: `AuthGuard` (session or API key).
 
 **Path params**:
 - `id` — Agent ID. The authenticated user must own this agent.
@@ -1007,7 +1009,7 @@ Atomically reserve and return one pending opportunity for the agent to process. 
 
 Confirm that the agent has successfully delivered an opportunity. Must be called with the `reservationToken` issued by the preceding `pickup` call.
 
-**Auth**: `AuthOrApiKeyGuard` (session or API key).
+**Auth**: `AuthGuard` (session or API key).
 
 **Path params**:
 - `id` — Agent ID. The authenticated user must own this agent.
@@ -1054,7 +1056,7 @@ Enqueue a test message for the agent. Owner-only. Used to verify that a personal
 
 Atomically reserve and return one pending test message. Returns 204 if no messages are pending. Also updates the agent's `lastSeenAt` heartbeat.
 
-**Auth**: `AuthOrApiKeyGuard` (session or API key).
+**Auth**: `AuthGuard` (session or API key).
 
 **Path params**:
 - `id` — Agent ID. The authenticated user must own this agent.
@@ -1072,7 +1074,7 @@ Atomically reserve and return one pending test message. Returns 204 if no messag
 
 Confirm delivery of a test message. Must be called with the `reservationToken` issued by the preceding `test-messages/pickup` call.
 
-**Auth**: `AuthOrApiKeyGuard` (session or API key).
+**Auth**: `AuthGuard` (session or API key).
 
 **Path params**:
 - `id` — Agent ID.
@@ -1712,7 +1714,7 @@ Soft-delete a network. Owner only.
 
 Rotate the master key on an experiment network. Owner only. The plaintext is returned exactly once; the previous key stops working immediately. Every owner of the network also receives the new key by email.
 
-**Auth**: `AuthOrApiKeyGuard` (session or API key)
+**Auth**: `AuthGuard` (session or API key)
 
 **Path params**:
 - `id` — Network ID
@@ -2004,7 +2006,7 @@ curl -X POST https://protocol.index.network/api/networks/<NETWORK_ID>/signup/loo
 
 Parse a CSV file and validate rows before committing an import. Owner-only, experiment networks only. Intended for large files (> 500 rows) where client-side parsing is skipped.
 
-**Auth**: `AuthOrApiKeyGuard`; caller must own the network.
+**Auth**: `AuthGuard`; caller must own the network.
 
 **Path params**:
 - `id` — Network ID.
@@ -2029,7 +2031,7 @@ Parse a CSV file and validate rows before committing an import. Owner-only, expe
 
 Import validated rows (from `/import/parse`) into the network. Owner-only, experiment networks only. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member grants event/import consent and approves a draft during onboarding. For consent-required experiment networks, public profile enrichment is skipped until consent is recorded.
 
-**Auth**: `AuthOrApiKeyGuard`; caller must own the network.
+**Auth**: `AuthGuard`; caller must own the network.
 
 **Path params**:
 - `id` — Network ID.
@@ -2058,7 +2060,7 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, exper
 
 Invite a single member to an experiment network by email. Owner-only, experiment networks only. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is.
 
-**Auth**: `AuthOrApiKeyGuard`; caller must own the network.
+**Auth**: `AuthGuard`; caller must own the network.
 
 **Path params**:
 - `id` — Network ID (must be an experiment network).
@@ -2113,7 +2115,7 @@ The raw API key is delivered only via the invitation email and is never returned
 
 Resend the invitation email to an existing network member, optionally rotating their API key. Owner-only, experiment networks only. Used when a member did not receive their initial invitation email or requests a refreshed API key.
 
-**Auth**: `AuthOrApiKeyGuard`; caller must own the network.
+**Auth**: `AuthGuard`; caller must own the network.
 
 **Path params**:
 - `id` — Network ID (must be an experiment network).

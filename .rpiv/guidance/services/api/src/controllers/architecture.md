@@ -27,7 +27,7 @@ export class WidgetController {
   constructor(private readonly service = widgetService) {}
 
   @Get('/')
-  @UseGuards(RateLimit('read'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('read'), AuthGuard)
   async list(req: Request) {
     const userId = requireUser(req);
     const result = await this.service.list(userId);
@@ -35,7 +35,7 @@ export class WidgetController {
   }
 
   @Post('/')
-  @UseGuards(RateLimit('write'), AuthOrApiKeyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async create(req: Request) {
     const body = CreateWidgetSchema.parse(await req.json());
     return Response.json({ widget: await this.service.create(body) }, { status: 201 });

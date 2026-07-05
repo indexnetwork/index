@@ -74,7 +74,6 @@ mock.module('../../services/opportunity-delivery.service', () => ({
 // Guards: bypass auth so we can call handlers directly
 mock.module('../../guards/auth.guard', () => ({
   AuthGuard: {},
-  AuthOrApiKeyGuard: {},
   resolveApiKeyAgentId: mock(async () => null),
 }));
 
