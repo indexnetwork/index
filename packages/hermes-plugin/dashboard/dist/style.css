@@ -837,6 +837,17 @@
   margin-right: 0.1rem;
 }
 
+.index-dashboard__detail-live {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.index-dashboard__detail-live-text {
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.76rem;
+}
+
 .index-dashboard__question {
   display: grid;
   gap: 0.75rem;

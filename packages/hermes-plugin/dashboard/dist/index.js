@@ -45,7 +45,7 @@
     return "";
   })();
   const PITCH_IMAGE = ASSET_BASE + "loading-white.webp";
-  const RADAR_IMAGE = ASSET_BASE + "goz-white.webp";
+  const RADAR_IMAGE = ASSET_BASE + "eye-white.webp";
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -751,12 +751,13 @@
           React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
           props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
         ),
-        Array.isArray(props.networks) && props.networks.length > 0
-          ? React.createElement("div", { className: "index-dashboard__item-networks" },
-            React.createElement("span", null, "Networks"),
-            props.networks.map(function (network) {
-              return React.createElement(BadgeText, { key: String(network), variant: "outline" }, network);
-            }),
+        props.live
+          ? React.createElement("div", { className: "index-dashboard__detail-live" },
+            React.createElement("span", { className: "index-dashboard__live" },
+              React.createElement("span", { className: "index-dashboard__live-dot" }),
+              "live",
+            ),
+            React.createElement("span", { className: "index-dashboard__detail-live-text" }, "agent is looking in the background"),
           )
           : null,
       ),
@@ -782,7 +783,7 @@
     return React.createElement("div", { className: "index-dashboard__detail" },
       React.createElement(DetailHead, {
         title: intent.title || "Untitled intent",
-        networks: intent.networks,
+        live: true,
         onBack: props.onBack,
         actions: [
           React.createElement(HeaderActionButton, { key: "pause", title: "Pause", label: "Pause", tone: "text-warning" }, ICON_PAUSE()),
@@ -1968,10 +1969,6 @@
       };
       sw.addEventListener("click", onToggle);
 
-      const live = document.createElement("span");
-      live.className = "index-dashboard__live";
-      live.innerHTML = '<span class="index-dashboard__live-dot"></span>Live';
-
       const refresh = document.createElement("button");
       refresh.type = "button";
       refresh.className = "index-dashboard__header-refresh";
@@ -2007,12 +2004,11 @@
 
       wrap.appendChild(label);
       wrap.appendChild(sw);
-      wrap.appendChild(live);
       wrap.appendChild(refresh);
       wrap.appendChild(messages);
       wrap.appendChild(account);
       container.appendChild(wrap);
-      headerCtlRef.current = { sw: sw, live: live, refresh: refresh, account: account, messages: messages };
+      headerCtlRef.current = { sw: sw, refresh: refresh, account: account, messages: messages };
 
       return function () {
         sw.removeEventListener("click", onToggle);
@@ -2029,7 +2025,6 @@
       if (!ctl) return;
       ctl.sw.setAttribute("aria-checked", autoRefresh ? "true" : "false");
       ctl.sw.classList.toggle("index-dashboard__switch--on", autoRefresh);
-      ctl.live.style.display = autoRefresh ? "inline-flex" : "none";
       ctl.refresh.style.display = autoRefresh ? "none" : "inline-flex";
       ctl.refresh.disabled = loading;
       if (loading) ctl.refresh.setAttribute("data-busy", "true");
