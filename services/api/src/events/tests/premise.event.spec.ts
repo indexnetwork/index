@@ -182,13 +182,12 @@ describe('PremiseQueue — premise_cascade', () => {
     ]);
   });
 
-  it('transitions pending, negotiating, and accepted opportunities to stalled', async () => {
+  it('transitions pending and negotiating opportunities to expired, never stalled', async () => {
     const transitions: Array<[string, string]> = [];
     const deps: PremiseQueueDeps = {
       getUserOpportunities: async () => [
         { id: 'opp-1', status: 'pending' as NonTerminalStatus },
         { id: 'opp-2', status: 'negotiating' as NonTerminalStatus },
-        { id: 'opp-3', status: 'accepted' as NonTerminalStatus },
       ],
       updateOpportunityStatus: async (id, status) => {
         transitions.push([id, status]);
@@ -197,20 +196,19 @@ describe('PremiseQueue — premise_cascade', () => {
     const queue = new PremiseQueue(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-2', userId: 'u-2', event: 'expired' });
     expect(transitions).toEqual([
-      ['opp-1', 'stalled'],
-      ['opp-2', 'stalled'],
-      ['opp-3', 'stalled'],
+      ['opp-1', 'expired'],
+      ['opp-2', 'expired'],
     ]);
   });
 
-  it('handles mixed statuses: early ones expire, in-progress ones stall', async () => {
+  it('handles mixed statuses: every cascade-eligible opportunity expires', async () => {
     const transitions: Array<[string, string]> = [];
     const deps: PremiseQueueDeps = {
       getUserOpportunities: async () => [
         { id: 'opp-a', status: 'draft' as NonTerminalStatus },
         { id: 'opp-b', status: 'pending' as NonTerminalStatus },
         { id: 'opp-c', status: 'latent' as NonTerminalStatus },
-        { id: 'opp-d', status: 'accepted' as NonTerminalStatus },
+        { id: 'opp-d', status: 'negotiating' as NonTerminalStatus },
       ],
       updateOpportunityStatus: async (id, status) => {
         transitions.push([id, status]);
@@ -220,9 +218,9 @@ describe('PremiseQueue — premise_cascade', () => {
     await queue.processJob('premise_cascade', { premiseId: 'p-3', userId: 'u-3', event: 'retracted' });
     expect(transitions).toEqual([
       ['opp-a', 'expired'],
-      ['opp-b', 'stalled'],
+      ['opp-b', 'expired'],
       ['opp-c', 'expired'],
-      ['opp-d', 'stalled'],
+      ['opp-d', 'expired'],
     ]);
   });
 
@@ -238,7 +236,7 @@ describe('PremiseQueue — premise_cascade', () => {
   });
 
   it('calls updateOpportunityStatus once per opportunity', async () => {
-    const updateOpportunityStatus = mock(async (_id: string, _status: 'expired' | 'stalled') => {});
+    const updateOpportunityStatus = mock(async (_id: string, _status: 'expired') => {});
     const deps: PremiseQueueDeps = {
       getUserOpportunities: async () => [
         { id: 'opp-1', status: 'draft' as NonTerminalStatus },
