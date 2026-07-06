@@ -173,7 +173,9 @@ export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWith
 export { persistOpportunities } from "./opportunity/opportunity.persist.js";
 export { presentOpportunity } from "./opportunity/opportunity.presentation.js";
 export type { UserInfo } from "./opportunity/opportunity.presentation.js";
-export { stripUuids, stripIntroducerMentions } from "./opportunity/opportunity.presentation.js";
+export { stripUuids, stripIntroducerMentions, truncateAtBoundary } from "./opportunity/opportunity.presentation.js";
+export { safeFallbackSummary, getSafePresentationOrSkip, SAFE_FALLBACK_MAX_CHARS, DEFAULT_FALLBACK_HEADLINE, DEFAULT_FALLBACK_ACTION, DEFAULT_EMPTY_FALLBACK_TEXT } from "./opportunity/opportunity.safe-presentation.js";
+export type { SafeFallbackOptions, SafePresentation, SafePresentationOptions, SafePresentationSource } from "./opportunity/opportunity.safe-presentation.js";
 export { getOrCreateDeliveryCardBatch, DELIVERY_CARD_CACHE_TTL, type CachedDeliveryCard, type OpportunityWithContext } from "./opportunity/delivery-card.cache.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
