@@ -139,7 +139,14 @@ export async function createChatTools(
 
   const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, sessionAwareEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database, scraper, deps.enricher, sessionAwareEnqueue, premiseGraph).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(
+    database,
+    scraper,
+    deps.enricher,
+    sessionAwareEnqueue,
+    premiseGraph,
+    deps.premiseEvents,
+  ).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();

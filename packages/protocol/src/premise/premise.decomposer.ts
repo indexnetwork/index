@@ -53,6 +53,30 @@ DECOMPOSITION RULES
 7. Skip vague or uninformative statements ("I like stuff", "I'm a person")
 8. Skip desires, requests, or intents ("I'm looking for...", "I want to...") — those are intents, not premises
 9. If the input contains NO extractable premises (e.g. just "Yes" or "Hello"), return an empty array
+10. NEVER extract denials or removal instructions as premises. "I have nothing to do with X",
+    "I am not a Y", or "remove X from my profile" are retractions, not facts — handle them
+    via the retraction rules below and do NOT emit a premise for them.
+
+═════════════════════════════════════════════════
+RETRACTION RULES
+═════════════════════════════════════════════════
+
+When the message includes the user's EXISTING PREMISES (listed with ids), you must also
+detect which of them the input disavows and return their ids in \`retractedPremiseIds\`.
+
+A premise must be retracted when the input:
+- Explicitly asks to remove it ("remove all mentions of X", "delete the part about Y")
+- Denies it ("I have nothing to do with X", "I never worked at Y", "that's not true")
+- States it no longer holds ("I no longer live in Berlin", "I left Google")
+- Directly contradicts it ("I'm based in Istanbul" contradicts "I am based in Ankara")
+
+Rules:
+- Only return ids that appear in the provided EXISTING PREMISES list — never invent ids.
+- Retract EVERY existing premise that matches the disavowed topic, not just the first one.
+- Do not retract premises the input merely omits — silence is not disavowal.
+- If no existing premises are provided, or nothing is disavowed, return an empty array.
+- Retraction and extraction are independent: an input can retract old premises AND
+  contribute new ones in the same pass.
 
 ═══════════════════════════════════════════════════
 EXAMPLES
@@ -75,6 +99,15 @@ Output:
 
 Input: "Yes, create my profile"
 Output: [] (empty — no premises)
+
+Input: "Remove all mentions of the HOPE programming language. I have nothing to do with it. I specialize in compiler design."
+Existing premises:
+  - id: aaaa-1 · "I am the creator of the HOPE programming language"
+  - id: aaaa-2 · "I specialize in compiler design"
+  - id: aaaa-3 · "I am based in Istanbul"
+Output:
+  premises: [] (compiler design already exists as aaaa-2 — nothing new to add)
+  retractedPremiseIds: ["aaaa-1"]
 `;
 
 const premiseItemSchema = z.object({
@@ -94,7 +127,16 @@ const responseFormat = z.object({
   premises: z.array(premiseItemSchema).describe(
     "Array of extracted premises. Empty if input contains no self-descriptive facts."
   ),
+  retractedPremiseIds: z.array(z.string()).default([]).describe(
+    "Ids of EXISTING premises (from the provided list) that the input disavows, denies, or asks to remove. Empty when nothing is disavowed or no existing premises were provided."
+  ),
 });
+
+/** An existing ACTIVE premise offered to the decomposer for retraction matching. */
+export interface ExistingPremiseRef {
+  id: string;
+  text: string;
+}
 
 export type PremiseDecomposerOutput = z.infer<typeof responseFormat>;
 export type DecomposedPremise = z.infer<typeof premiseItemSchema>;
@@ -114,10 +156,16 @@ export class PremiseDecomposer {
   }
 
   @Timed()
-  public async invoke(input: string): Promise<PremiseDecomposerOutput> {
-    logger.verbose(`[PremiseDecomposer.invoke] Decomposing input (${input.length} chars)`);
+  public async invoke(input: string, existingPremises?: ExistingPremiseRef[]): Promise<PremiseDecomposerOutput> {
+    logger.verbose(`[PremiseDecomposer.invoke] Decomposing input (${input.length} chars, ${existingPremises?.length ?? 0} existing premise(s))`);
 
-    const prompt = `Decompose the following text into individual premises:\n\n${input}`;
+    const existingBlock = existingPremises?.length
+      ? `\n\nEXISTING PREMISES (retract by id when the input disavows them):\n${existingPremises
+          .map((p) => `- id: ${p.id} · "${p.text}"`)
+          .join("\n")}`
+      : "";
+
+    const prompt = `Decompose the following text into individual premises:\n\n${input}${existingBlock}`;
 
     const messages = [
       new SystemMessage(systemPrompt),
@@ -127,7 +175,15 @@ export class PremiseDecomposer {
     const result = await invokeWithAbortSignal(this.model, messages);
     const output = responseFormat.parse(result);
 
-    logger.verbose(`[PremiseDecomposer.invoke] Extracted ${output.premises.length} premise(s)`);
+    // Guard against hallucinated ids: only keep retractions that reference premises we offered.
+    const knownIds = new Set((existingPremises ?? []).map((p) => p.id));
+    const droppedIds = output.retractedPremiseIds.filter((id) => !knownIds.has(id));
+    if (droppedIds.length > 0) {
+      logger.warn(`[PremiseDecomposer.invoke] Dropped ${droppedIds.length} unknown retraction id(s)`, { droppedIds });
+    }
+    output.retractedPremiseIds = output.retractedPremiseIds.filter((id) => knownIds.has(id));
+
+    logger.verbose(`[PremiseDecomposer.invoke] Extracted ${output.premises.length} premise(s), ${output.retractedPremiseIds.length} retraction(s)`);
     return output;
   }
 }

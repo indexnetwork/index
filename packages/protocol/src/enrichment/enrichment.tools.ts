@@ -1026,6 +1026,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       "- `action=\"add interests\"`, `details=\"procedural generation, roguelikes\"`\n" +
       "- `action=\"update bio\"`, `details=\"Product designer focused on desktop CRPG interfaces\"`\n" +
       "- `action=\"set location\"`, `details=\"Berlin\"`\n" +
+      "- `action=\"remove all mentions of X\"` — existing profile facts matching X are retracted; the profile text regenerates without them shortly after.\n" +
       "- `socials={ telegram: \"@alice\" }` to silently add a reachable chat handle without regenerating the profile.\n\n" +
       "**When to use:** When the user wants to make specific changes without regenerating the whole profile. For full profile regeneration from social URLs, use create_user_context instead.\n\n" +
       "**Important:** If the user provides a URL to update from, call scrape_url first, then pass the scraped content in `details`.\n\n" +

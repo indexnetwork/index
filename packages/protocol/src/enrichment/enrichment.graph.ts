@@ -88,6 +88,8 @@ export class EnrichmentGraphFactory {
     private enricher?: ProfileEnricher,
     private questionerEnqueue?: QuestionerEnqueueFn,
     private premiseGraph?: CompiledPremiseGraph,
+    /** Lifecycle callbacks fired when write-mode input retracts existing premises (cascade + context regen). */
+    private premiseEvents?: { onRetracted?: (premiseId: string, userId: string) => void },
   ) { }
 
   public createGraph() {
@@ -577,22 +579,69 @@ export class EnrichmentGraphFactory {
         try {
           const _traceEmitter = requestContext.getStore()?.traceEmitter;
 
+          // Offer the user's ACTIVE premises to the decomposer so removal/denial
+          // instructions ("remove all mentions of X", "I have nothing to do with Y")
+          // can be resolved to concrete retractions instead of being silently dropped.
+          // Only when the adapter supports retraction — otherwise skip the lookup.
+          let activePremises: Array<{ id: string; assertion: { text: string } }> = [];
+          if (typeof this.database.updatePremise === 'function') {
+            try {
+              activePremises = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
+            } catch (err) {
+              logger.warn("Failed to load active premises for retraction matching — proceeding without", {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+
           const decomposeStart = Date.now();
           _traceEmitter?.({ type: "agent_start", name: "premise-decomposer" });
-          const result = await premiseDecomposer.invoke(state.input);
+          const result = await premiseDecomposer.invoke(
+            state.input,
+            activePremises.map((p) => ({ id: p.id, text: p.assertion.text })),
+          );
           const decomposeMs = Date.now() - decomposeStart;
+          const retractionIds = result.retractedPremiseIds ?? [];
           agentTimingsAccum.push({ name: "premise.decomposer", durationMs: decomposeMs });
           _traceEmitter?.({
             type: "agent_end",
             name: "premise-decomposer",
             durationMs: decomposeMs,
-            summary: `Decomposed into ${result.premises.length} premise(s)`,
+            summary: `Decomposed into ${result.premises.length} premise(s), ${retractionIds.length} retraction(s)`,
           });
+
+          // Apply retractions FIRST so a premise that is simultaneously disavowed and
+          // re-asserted in corrected form does not dedupe the new create against the
+          // stale active row.
+          let retracted = 0;
+          for (const premiseId of retractionIds) {
+            if (!this.database.updatePremise) break;
+            try {
+              await this.database.updatePremise(premiseId, {
+                status: 'RETRACTED',
+                retractedAt: new Date(),
+              });
+              retracted++;
+              try { this.premiseEvents?.onRetracted?.(premiseId, state.userId); }
+              catch (e) { logger.error("premiseEvents.onRetracted failed", { premiseId, error: e }); }
+            } catch (err) {
+              logger.warn("Premise retraction failed", {
+                premiseId,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          if (retracted > 0) {
+            logger.verbose(`Retracted ${retracted}/${retractionIds.length} premise(s) disavowed by input`, {
+              userId: state.userId,
+            });
+          }
 
           if (result.premises.length === 0) {
             logger.verbose("No premises extracted — nothing to create");
             return {
               agentTimings: agentTimingsAccum,
+              ...(retracted > 0 ? { operationsPerformed: { decomposedPremises: true } } : {}),
             };
           }
 

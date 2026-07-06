@@ -2030,7 +2030,15 @@ export interface SystemDatabase {
 export type EnrichmentGraphDatabase = Pick<
   Database,
   'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser' | 'getUserContext'
->;
+> & {
+  /**
+   * Optional premise retraction support. When present, write-mode input that
+   * disavows existing premises ("remove X", "I have nothing to do with Y")
+   * retracts them during decomposition. Adapters without it (e.g. the scraped
+   * enrichment adapter) skip retraction — scraped content never disavows.
+   */
+  updatePremise?: Database['updatePremise'];
+};
 
 /**
  * Database interface narrowed for Premise Graph operations.
