@@ -70,17 +70,19 @@ export function resolveActionableLinkKind(input: {
   status: string;
   viewerRole: string;
   viewerApproved?: boolean;
+  viewerActedAt?: string | null;
 }): ConnectLinkKind | null {
-  const { status, viewerRole, viewerApproved } = input;
+  const { status, viewerRole, viewerApproved, viewerActedAt } = input;
   const isIntroducer = viewerRole === "introducer";
+  const hasViewerActed = !!viewerActedAt;
   if (status === "accepted") {
     return isIntroducer ? null : "outreach";
   }
   if (status === "pending") {
-    return isIntroducer ? null : "connect";
+    return isIntroducer || hasViewerActed ? null : "connect";
   }
   if (status === "draft" || status === "latent") {
-    if (!isIntroducer) return "send_direct";
+    if (!isIntroducer) return hasViewerActed ? null : "send_direct";
     return viewerApproved === true ? null : "approve_introduction";
   }
   return null;
@@ -146,6 +148,7 @@ export async function attachActionableLinks(
   opts: {
     viewerId: string;
     viewerApproved?: boolean;
+    viewerActedAt?: string | null;
     counterpartUserId: string;
     mintConnectLink: NonNullable<ToolDeps["mintConnectLink"]>;
     frontendUrl: string | undefined;
@@ -166,12 +169,14 @@ export async function attachActionableLinks(
     status: card.status,
     viewerRole: card.viewerRole,
     viewerApproved: opts.viewerApproved,
+    viewerActedAt: opts.viewerActedAt,
   });
   logger.info("Opportunity actionability decision", {
     opportunityId: card.opportunityId,
     status: card.status,
     viewerRole: card.viewerRole,
     viewerApproved: opts.viewerApproved,
+    viewerActedAt: opts.viewerActedAt,
     kind: kind ?? "none",
   });
   if (kind === null) return;
@@ -831,6 +836,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           isGhost: opp.isGhost ?? false,
           score: opp.score,
           status: opp.status,
+          viewerActedAt: opp.viewerActedAt,
         }));
         const displayedCards = allCardData.slice(0, CHAT_DISPLAY_LIMIT);
         const extraFromCap = allCardData.length - displayedCards.length;
@@ -1387,6 +1393,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             }, {
               viewerId: context.userId,
               viewerApproved: source?.viewerApproved,
+              viewerActedAt: source?.viewerActedAt,
               counterpartUserId: source?.userId ?? card.userId,
               mintConnectLink,
               frontendUrl: deps.frontendUrl,
@@ -1987,6 +1994,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                     }, {
                       viewerId: context.userId,
                       viewerApproved,
+                      viewerActedAt: viewerActor?.actedAt ?? null,
                       counterpartUserId,
                       mintConnectLink: deps.mintConnectLink,
                       frontendUrl: deps.frontendUrl,
@@ -2167,6 +2175,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                   }, {
                     viewerId: context.userId,
                     viewerApproved,
+                    viewerActedAt: viewerActor?.actedAt ?? null,
                     counterpartUserId,
                     mintConnectLink: deps.mintConnectLink,
                     frontendUrl: deps.frontendUrl,
