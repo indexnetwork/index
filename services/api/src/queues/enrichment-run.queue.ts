@@ -13,7 +13,6 @@ import { scraperAdapter } from '../adapters/scraper.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
 import { questionerEnqueueIfEnabled } from './questioner.queue';
-import { PremiseEvents } from '../events/premise.event';
 
 export const QUEUE_NAME = 'enrichment-tool-run';
 
@@ -177,10 +176,6 @@ export class EnrichmentRunQueue {
       // profile-gap questions just like the MCP composition root.
       questionerEnqueueIfEnabled(),
       premiseGraph,
-      {
-        onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-        onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
-      },
     ).createGraph();
 
     const rawTools = new Map<string, RawToolDefinition>();

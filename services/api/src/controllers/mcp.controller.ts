@@ -55,7 +55,6 @@ import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
-import { PremiseEvents } from '../events/premise.event';
 
 const logger = log.server.from('mcp');
 
@@ -149,16 +148,6 @@ const protocolDeps = {
   questionerDatabase: questionerAdapter,
   getUserContextText: ensureGlobalUserContext,
   chatQuestions: chatQuestionsHost,
-  // Premise lifecycle events for the CHAT surface. Without these, retract_premise /
-  // create_premise / update_premise from web chat are silent DB writes: no opportunity
-  // cascade and no user_contexts regeneration, so the profile paragraph shown at
-  // session start keeps resurrecting removed facts (the MCP server and ToolService
-  // paths already wire the same callbacks).
-  premiseEvents: {
-    onCreated: (premiseId: string, userId: string) => PremiseEvents.onCreated(premiseId, userId),
-    onUpdated: (premiseId: string, userId: string) => PremiseEvents.onUpdated(premiseId, userId),
-    onRetracted: (premiseId: string, userId: string) => PremiseEvents.onRetracted(premiseId, userId),
-  },
   ...(process.env.QUESTIONER_ENABLED === 'true' && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
       await questionerQueue.addGenerateJob(input);
@@ -190,10 +179,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const qEnqueue = protocolDeps.questionerEnqueue;
   const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph, {
-    onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-    onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
-  }).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -690,11 +676,6 @@ function createMcpServerInstance(): McpServer {
           ...(actor.networkId ? { networkId: actor.networkId } : {}),
         })),
       }));
-    },
-    premiseEvents: {
-      onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-      onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
-      onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
     },
     graphs,
   };

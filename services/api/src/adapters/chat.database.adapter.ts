@@ -1,6 +1,7 @@
 import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
+import { PremiseEvents } from '../events/premise.event';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
@@ -3213,6 +3214,12 @@ export class ChatDatabaseAdapter {
       })
       .returning();
     if (!row) throw new Error('createPremise: no row returned');
+    // Premise lifecycle events fire HERE — at the persistence chokepoint — so every
+    // surface (chat, MCP, ToolService, enrichment graphs, queues) triggers the
+    // opportunity cascade + user_contexts regeneration without per-surface wiring.
+    // The bus defaults to no-ops; main.ts subscribes the queue handlers.
+    try { PremiseEvents.onCreated(row.id, row.userId); }
+    catch (e) { logger.error('[createPremise] PremiseEvents.onCreated failed', { premiseId: row.id, error: e }); }
     return {
       id: row.id,
       userId: row.userId,
@@ -3381,6 +3388,16 @@ export class ChatDatabaseAdapter {
       .where(and(eq(schema.premises.id, premiseId), isNull(schema.premises.deletedAt)))
       .returning();
     if (!row) throw new Error(`updatePremise: premise ${premiseId} not found or soft-deleted`);
+    // Lifecycle events at the persistence chokepoint (see createPremise). Status
+    // transitions map to their dedicated events; content/validity edits map to
+    // onUpdated. Fired for every surface — no caller has to remember to wire them.
+    try {
+      if (updates.status === 'RETRACTED') PremiseEvents.onRetracted(row.id, row.userId);
+      else if (updates.status === 'EXPIRED') PremiseEvents.onExpired(row.id, row.userId);
+      else PremiseEvents.onUpdated(row.id, row.userId);
+    } catch (e) {
+      logger.error('[updatePremise] PremiseEvents emit failed', { premiseId: row.id, error: e });
+    }
     return {
       id: row.id,
       userId: row.userId,

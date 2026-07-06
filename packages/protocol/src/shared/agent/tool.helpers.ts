@@ -274,12 +274,6 @@ export interface ToolContext {
     limit?: number;
     scope?: 'tool' | 'principal';
   }>;
-  /** Optional premise lifecycle event callbacks. Fired by premise tools after successful operations. */
-  premiseEvents?: {
-    onCreated?: (premiseId: string, userId: string) => void;
-    onUpdated?: (premiseId: string, userId: string) => void;
-    onRetracted?: (premiseId: string, userId: string) => void;
-  };
 }
 
 /**
@@ -591,12 +585,6 @@ export interface ToolDeps {
     limit?: number;
     scope?: 'tool' | 'principal';
   }>;
-  /** Optional premise lifecycle event callbacks. Fired by premise tools after successful operations. */
-  premiseEvents?: {
-    onCreated?: (premiseId: string, userId: string) => void;
-    onUpdated?: (premiseId: string, userId: string) => void;
-    onRetracted?: (premiseId: string, userId: string) => void;
-  };
   graphs: {
     profile: CompiledGraph;
     intent: CompiledGraph;

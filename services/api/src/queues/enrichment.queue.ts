@@ -9,7 +9,6 @@ import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { questionerEnqueueIfEnabled } from './questioner.queue';
-import { PremiseEvents } from '../events/premise.event';
 import { canRunPublicEnrichment, getEnrichmentPolicy } from '../lib/privacy/enrichment-policy';
 import type { ProfileEnrichmentPolicy } from '../schemas/database.schema';
 
@@ -328,12 +327,7 @@ export class EnrichmentQueue {
     // Inject the env-gated questioner enqueue so profile regeneration runs
     // (onboarding, premise cascades) generate profile-gap questions instead
     // of silently dropping them (the gap that left prod's questions table empty).
-    // onCreated is intentionally omitted: this queue fires onEnrichmentComplete once
-    // at the end of the run, which regenerates user contexts from the full premise
-    // set. Per-premise onCreated here would enqueue mid-run regens on partial sets.
-    const factory = new EnrichmentGraphFactory(database, scraper, { enrichUserProfile }, questionerEnqueueIfEnabled(), premiseGraph, {
-      onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
-    });
+    const factory = new EnrichmentGraphFactory(database, scraper, { enrichUserProfile }, questionerEnqueueIfEnabled(), premiseGraph);
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }
