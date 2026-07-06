@@ -62,7 +62,8 @@
   }
 
   function BadgeText(props) {
-    return React.createElement(Badge, { variant: props.variant || "outline", className: "index-dashboard__badge" }, props.children);
+    const className = "index-dashboard__badge" + (props.className ? " " + props.className : "");
+    return React.createElement(Badge, { variant: props.variant || "outline", className: className }, props.children);
   }
 
   function formatCount(count) {
@@ -434,7 +435,7 @@
           ),
         ),
         resolved
-          ? React.createElement("span", { className: "index-dashboard__opp-status index-dashboard__opp-status--" + status }, resolved)
+          ? React.createElement(BadgeText, { variant: "outline", className: "index-dashboard__opp-status index-dashboard__opp-status--" + status }, resolved)
           : status ? React.createElement(BadgeText, { variant: "outline" }, String(status).replace(/_/g, " ")) : null,
       ),
       opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,

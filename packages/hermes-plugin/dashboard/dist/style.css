@@ -107,20 +107,24 @@
 
 .index-dashboard__opp-status {
   flex-shrink: 0;
-  font-size: 0.74rem;
-  font-weight: 600;
 }
 
-.index-dashboard__opp-status--accepted {
-  color: #16a34a;
+.index-dashboard__badge.index-dashboard__opp-status--accepted {
+  color: #16a34a !important;
+  border-color: color-mix(in srgb, #16a34a 45%, transparent) !important;
+  background: color-mix(in srgb, #16a34a 12%, transparent) !important;
 }
 
-.index-dashboard__opp-status--rejected {
-  color: var(--color-destructive, #ef4444);
+.index-dashboard__badge.index-dashboard__opp-status--rejected {
+  color: var(--color-destructive, #ef4444) !important;
+  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 45%, transparent) !important;
+  background: color-mix(in srgb, var(--color-destructive, #ef4444) 12%, transparent) !important;
 }
 
-.index-dashboard__opp-status--expired {
-  color: #d97706;
+.index-dashboard__badge.index-dashboard__opp-status--expired {
+  color: #d97706 !important;
+  border-color: color-mix(in srgb, #d97706 45%, transparent) !important;
+  background: color-mix(in srgb, #d97706 12%, transparent) !important;
 }
 
 .index-dashboard__stat {
