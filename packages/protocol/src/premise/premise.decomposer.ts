@@ -79,6 +79,23 @@ Rules:
   contribute new ones in the same pass.
 
 ═══════════════════════════════════════════════════
+BIO REVISION RULES
+═══════════════════════════════════════════════════
+
+When the message includes the user's CURRENT BIO, check whether the input disavows,
+removes, or corrects anything that appears in it.
+
+- If it does, return \`revisedBio\`: the bio rewritten with those facts removed or
+  corrected. Preserve everything the input does not dispute — same tone, similar
+  length, no inventions.
+- If the input explicitly rewrites the bio ("update my bio to X"), return that
+  rewritten bio.
+- NEVER add new facts to the bio — new information becomes premises, not bio edits.
+  Purely additive input ("I also enjoy X") must return revisedBio: null.
+- If the bio is unaffected, or no CURRENT BIO was provided, return null.
+- Never return a revised bio that still mentions a disavowed fact.
+
+═══════════════════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════════════════
 
@@ -105,9 +122,11 @@ Existing premises:
   - id: aaaa-1 · "I am the creator of the HOPE programming language"
   - id: aaaa-2 · "I specialize in compiler design"
   - id: aaaa-3 · "I am based in Istanbul"
+Current bio: "Software engineer in Istanbul. Creator of the HOPE programming language. Specializes in compiler design."
 Output:
   premises: [] (compiler design already exists as aaaa-2 — nothing new to add)
   retractedPremiseIds: ["aaaa-1"]
+  revisedBio: "Software engineer in Istanbul. Specializes in compiler design."
 `;
 
 const premiseItemSchema = z.object({
@@ -129,6 +148,9 @@ const responseFormat = z.object({
   ),
   retractedPremiseIds: z.array(z.string()).default([]).describe(
     "Ids of EXISTING premises (from the provided list) that the input disavows, denies, or asks to remove. Empty when nothing is disavowed or no existing premises were provided."
+  ),
+  revisedBio: z.string().nullable().default(null).describe(
+    "When the input disavows or corrects facts that appear in the provided CURRENT BIO, the bio rewritten without those facts (preserving everything else). null when the bio is unaffected or no bio was provided."
   ),
 });
 
@@ -156,8 +178,8 @@ export class PremiseDecomposer {
   }
 
   @Timed()
-  public async invoke(input: string, existingPremises?: ExistingPremiseRef[]): Promise<PremiseDecomposerOutput> {
-    logger.verbose(`[PremiseDecomposer.invoke] Decomposing input (${input.length} chars, ${existingPremises?.length ?? 0} existing premise(s))`);
+  public async invoke(input: string, existingPremises?: ExistingPremiseRef[], currentBio?: string): Promise<PremiseDecomposerOutput> {
+    logger.verbose(`[PremiseDecomposer.invoke] Decomposing input (${input.length} chars, ${existingPremises?.length ?? 0} existing premise(s), bio: ${currentBio ? 'yes' : 'no'})`);
 
     const existingBlock = existingPremises?.length
       ? `\n\nEXISTING PREMISES (retract by id when the input disavows them):\n${existingPremises
@@ -165,7 +187,11 @@ export class PremiseDecomposer {
           .join("\n")}`
       : "";
 
-    const prompt = `Decompose the following text into individual premises:\n\n${input}${existingBlock}`;
+    const bioBlock = currentBio?.trim()
+      ? `\n\nCURRENT BIO (return revisedBio when the input disavows or corrects anything in it):\n${currentBio.trim()}`
+      : "";
+
+    const prompt = `Decompose the following text into individual premises:\n\n${input}${existingBlock}${bioBlock}`;
 
     const messages = [
       new SystemMessage(systemPrompt),
@@ -183,7 +209,22 @@ export class PremiseDecomposer {
     }
     output.retractedPremiseIds = output.retractedPremiseIds.filter((id) => knownIds.has(id));
 
-    logger.verbose(`[PremiseDecomposer.invoke] Extracted ${output.premises.length} premise(s), ${output.retractedPremiseIds.length} retraction(s)`);
+    // A revised bio is only meaningful when we offered one to revise. Also
+    // normalize structured-output quirks: literal "null", empty strings, and
+    // no-op rewrites all mean "bio unaffected".
+    const normalizedBio = output.revisedBio?.trim();
+    if (
+      !currentBio?.trim() ||
+      !normalizedBio ||
+      normalizedBio.toLowerCase() === 'null' ||
+      normalizedBio === currentBio.trim()
+    ) {
+      output.revisedBio = null;
+    } else {
+      output.revisedBio = normalizedBio;
+    }
+
+    logger.verbose(`[PremiseDecomposer.invoke] Extracted ${output.premises.length} premise(s), ${output.retractedPremiseIds.length} retraction(s), revisedBio: ${output.revisedBio ? 'yes' : 'no'}`);
     return output;
   }
 }

@@ -594,9 +594,15 @@ export class EnrichmentGraphFactory {
 
           const decomposeStart = Date.now();
           _traceEmitter?.({ type: "agent_start", name: "premise-decomposer" });
+          // Offer the stored bio (users.intro) as well: it is a separate identity
+          // field that premises never touch, so removal instructions must also be
+          // able to rewrite it — otherwise disavowed facts survive in the bio and
+          // resurface in every prompt that includes the profile identity.
+          const currentBio = state.profile?.identity?.bio ?? '';
           const result = await premiseDecomposer.invoke(
             state.input,
             activePremises.map((p) => ({ id: p.id, text: p.assertion.text })),
+            currentBio,
           );
           const decomposeMs = Date.now() - decomposeStart;
           const retractionIds = result.retractedPremiseIds ?? [];
@@ -633,11 +639,33 @@ export class EnrichmentGraphFactory {
             });
           }
 
+          // Apply the bio revision (before the no-new-premises early return: a pure
+          // removal instruction extracts zero premises but still rewrites the bio).
+          let bioRevised = false;
+          const revisedBio = result.revisedBio?.trim();
+          if (revisedBio && revisedBio !== currentBio.trim()) {
+            try {
+              await this.database.saveProfile(state.userId, {
+                userId: state.userId,
+                // Empty name/location are skipped by the identity persister — only
+                // the bio is written.
+                identity: { name: '', bio: revisedBio, location: '' },
+                context: '',
+              });
+              bioRevised = true;
+              logger.verbose("Revised stored bio per removal/correction instruction", { userId: state.userId });
+            } catch (err) {
+              logger.warn("Bio revision failed", {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+
           if (result.premises.length === 0) {
             logger.verbose("No premises extracted — nothing to create");
             return {
               agentTimings: agentTimingsAccum,
-              ...(retracted > 0 ? { operationsPerformed: { decomposedPremises: true } } : {}),
+              ...(retracted > 0 || bioRevised ? { operationsPerformed: { decomposedPremises: true } } : {}),
             };
           }
 
