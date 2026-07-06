@@ -13,7 +13,6 @@ describe('UserService.setSocials cascade', () => {
     deps = {
       getPremisesBySource: mock(async () => []),
       retractPremise: mock(async () => {}),
-      emitPremiseRetracted: mock(() => {}),
       enqueueEnrichment: mock(async () => {}),
     };
   });
@@ -39,20 +38,11 @@ describe('UserService.setSocials cascade', () => {
     expect(deps.retractPremise).toHaveBeenCalledWith('premise-2');
   });
 
-  it('emits PremiseRetracted event for each retracted premise', async () => {
-    (deps.getPremisesBySource as ReturnType<typeof mock>).mockResolvedValue([{ id: 'premise-1' }]);
-    const svc = new UserService(mockDb as any, deps);
-    await svc.setSocials('user-1', []);
-
-    expect(deps.emitPremiseRetracted).toHaveBeenCalledWith('premise-1', 'user-1');
-  });
-
   it('enqueues enrichment even when there are no integration premises', async () => {
     const svc = new UserService(mockDb as any, deps);
     await svc.setSocials('user-1', []);
 
     expect(deps.retractPremise).not.toHaveBeenCalled();
-    expect(deps.emitPremiseRetracted).not.toHaveBeenCalled();
     expect(deps.enqueueEnrichment).toHaveBeenCalledWith('user-1');
   });
 
@@ -67,7 +57,6 @@ describe('UserService.setSocials cascade', () => {
     (mockDb as any).setSocials = mock(async () => { callOrder.push('persist'); });
     deps.getPremisesBySource = mock(async () => { callOrder.push('query'); return [{ id: 'p1' }]; });
     deps.retractPremise = mock(async () => { callOrder.push('retract'); });
-    deps.emitPremiseRetracted = mock(() => { callOrder.push('emit'); });
     deps.enqueueEnrichment = mock(async () => { callOrder.push('enqueue'); });
 
     const svc = new UserService(mockDb as any, deps);
@@ -75,6 +64,6 @@ describe('UserService.setSocials cascade', () => {
     // enqueue is fire-and-forget — give it a microtask tick to settle
     await new Promise(r => setTimeout(r, 0));
 
-    expect(callOrder).toEqual(['persist', 'query', 'retract', 'emit', 'enqueue']);
+    expect(callOrder).toEqual(['persist', 'query', 'retract', 'enqueue']);
   });
 });

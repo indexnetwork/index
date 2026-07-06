@@ -5,7 +5,6 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../adapters/database.adapter';
 
-import { PremiseEvents } from '../events/premise.event';
 import { userContextQueue } from './usercontext.queue';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
@@ -243,8 +242,8 @@ export class PremiseQueue {
   }
 
   /**
-   * Find ACTIVE premises past their validUntil date, transition each to EXPIRED,
-   * and emit {@link PremiseEvents.onExpired} for downstream cascade/regen.
+   * Find ACTIVE premises past their validUntil date and transition each to EXPIRED.
+   * The adapter's updatePremise emits onExpired for downstream cascade/regen.
    * @returns Number of premises expired
    */
   async checkExpiredPremises(): Promise<number> {
@@ -261,9 +260,10 @@ export class PremiseQueue {
     const expired = await getExpiredPremises();
     this.logger.verbose(`[ExpiryCheck] Found ${expired.length} expired premises`);
 
-    for (const { id, userId } of expired) {
+    for (const { id } of expired) {
+      // onExpired fires inside the adapter's updatePremise (status EXPIRED) —
+      // emitting here as well would double-enqueue the cascade/regen jobs.
       await expirePremise(id);
-      PremiseEvents.onExpired(id, userId);
     }
 
     this.logger.info(`[ExpiryCheck] Expired ${expired.length} premises`);

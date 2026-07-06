@@ -53,6 +53,47 @@ DECOMPOSITION RULES
 7. Skip vague or uninformative statements ("I like stuff", "I'm a person")
 8. Skip desires, requests, or intents ("I'm looking for...", "I want to...") — those are intents, not premises
 9. If the input contains NO extractable premises (e.g. just "Yes" or "Hello"), return an empty array
+10. NEVER extract denials or removal instructions as premises. "I have nothing to do with X",
+    "I am not a Y", or "remove X from my profile" are retractions, not facts — handle them
+    via the retraction rules below and do NOT emit a premise for them.
+
+═════════════════════════════════════════════════
+RETRACTION RULES
+═════════════════════════════════════════════════
+
+When the message includes the user's EXISTING PREMISES (listed with ids), you must also
+detect which of them the input disavows and return their ids in \`retractedPremiseIds\`.
+
+A premise must be retracted when the input:
+- Explicitly asks to remove it ("remove all mentions of X", "delete the part about Y")
+- Denies it ("I have nothing to do with X", "I never worked at Y", "that's not true")
+- States it no longer holds ("I no longer live in Berlin", "I left Google")
+- Directly contradicts it ("I'm based in Istanbul" contradicts "I am based in Ankara")
+
+Rules:
+- Only return ids that appear in the provided EXISTING PREMISES list — never invent ids.
+- Retract EVERY existing premise that matches the disavowed topic, not just the first one.
+- Do not retract premises the input merely omits — silence is not disavowal.
+- If no existing premises are provided, or nothing is disavowed, return an empty array.
+- Retraction and extraction are independent: an input can retract old premises AND
+  contribute new ones in the same pass.
+
+═══════════════════════════════════════════════════
+BIO REVISION RULES
+═══════════════════════════════════════════════════
+
+When the message includes the user's CURRENT BIO, check whether the input disavows,
+removes, or corrects anything that appears in it.
+
+- If it does, return \`revisedBio\`: the bio rewritten with those facts removed or
+  corrected. Preserve everything the input does not dispute — same tone, similar
+  length, no inventions.
+- If the input explicitly rewrites the bio ("update my bio to X"), return that
+  rewritten bio.
+- NEVER add new facts to the bio — new information becomes premises, not bio edits.
+  Purely additive input ("I also enjoy X") must return revisedBio: null.
+- If the bio is unaffected, or no CURRENT BIO was provided, return null.
+- Never return a revised bio that still mentions a disavowed fact.
 
 ═══════════════════════════════════════════════════
 EXAMPLES
@@ -75,6 +116,17 @@ Output:
 
 Input: "Yes, create my profile"
 Output: [] (empty — no premises)
+
+Input: "Remove all mentions of the HOPE programming language. I have nothing to do with it. I specialize in compiler design."
+Existing premises:
+  - id: aaaa-1 · "I am the creator of the HOPE programming language"
+  - id: aaaa-2 · "I specialize in compiler design"
+  - id: aaaa-3 · "I am based in Istanbul"
+Current bio: "Software engineer in Istanbul. Creator of the HOPE programming language. Specializes in compiler design."
+Output:
+  premises: [] (compiler design already exists as aaaa-2 — nothing new to add)
+  retractedPremiseIds: ["aaaa-1"]
+  revisedBio: "Software engineer in Istanbul. Specializes in compiler design."
 `;
 
 const premiseItemSchema = z.object({
@@ -94,7 +146,19 @@ const responseFormat = z.object({
   premises: z.array(premiseItemSchema).describe(
     "Array of extracted premises. Empty if input contains no self-descriptive facts."
   ),
+  retractedPremiseIds: z.array(z.string()).default([]).describe(
+    "Ids of EXISTING premises (from the provided list) that the input disavows, denies, or asks to remove. Empty when nothing is disavowed or no existing premises were provided."
+  ),
+  revisedBio: z.string().nullable().default(null).describe(
+    "When the input disavows or corrects facts that appear in the provided CURRENT BIO, the bio rewritten without those facts (preserving everything else). null when the bio is unaffected or no bio was provided."
+  ),
 });
+
+/** An existing ACTIVE premise offered to the decomposer for retraction matching. */
+export interface ExistingPremiseRef {
+  id: string;
+  text: string;
+}
 
 export type PremiseDecomposerOutput = z.infer<typeof responseFormat>;
 export type DecomposedPremise = z.infer<typeof premiseItemSchema>;
@@ -114,10 +178,20 @@ export class PremiseDecomposer {
   }
 
   @Timed()
-  public async invoke(input: string): Promise<PremiseDecomposerOutput> {
-    logger.verbose(`[PremiseDecomposer.invoke] Decomposing input (${input.length} chars)`);
+  public async invoke(input: string, existingPremises?: ExistingPremiseRef[], currentBio?: string): Promise<PremiseDecomposerOutput> {
+    logger.verbose(`[PremiseDecomposer.invoke] Decomposing input (${input.length} chars, ${existingPremises?.length ?? 0} existing premise(s), bio: ${currentBio ? 'yes' : 'no'})`);
 
-    const prompt = `Decompose the following text into individual premises:\n\n${input}`;
+    const existingBlock = existingPremises?.length
+      ? `\n\nEXISTING PREMISES (retract by id when the input disavows them):\n${existingPremises
+          .map((p) => `- id: ${p.id} · "${p.text}"`)
+          .join("\n")}`
+      : "";
+
+    const bioBlock = currentBio?.trim()
+      ? `\n\nCURRENT BIO (return revisedBio when the input disavows or corrects anything in it):\n${currentBio.trim()}`
+      : "";
+
+    const prompt = `Decompose the following text into individual premises:\n\n${input}${existingBlock}${bioBlock}`;
 
     const messages = [
       new SystemMessage(systemPrompt),
@@ -127,7 +201,30 @@ export class PremiseDecomposer {
     const result = await invokeWithAbortSignal(this.model, messages);
     const output = responseFormat.parse(result);
 
-    logger.verbose(`[PremiseDecomposer.invoke] Extracted ${output.premises.length} premise(s)`);
+    // Guard against hallucinated ids: only keep retractions that reference premises we offered.
+    const knownIds = new Set((existingPremises ?? []).map((p) => p.id));
+    const droppedIds = output.retractedPremiseIds.filter((id) => !knownIds.has(id));
+    if (droppedIds.length > 0) {
+      logger.warn(`[PremiseDecomposer.invoke] Dropped ${droppedIds.length} unknown retraction id(s)`, { droppedIds });
+    }
+    output.retractedPremiseIds = output.retractedPremiseIds.filter((id) => knownIds.has(id));
+
+    // A revised bio is only meaningful when we offered one to revise. Also
+    // normalize structured-output quirks: literal "null", empty strings, and
+    // no-op rewrites all mean "bio unaffected".
+    const normalizedBio = output.revisedBio?.trim();
+    if (
+      !currentBio?.trim() ||
+      !normalizedBio ||
+      normalizedBio.toLowerCase() === 'null' ||
+      normalizedBio === currentBio.trim()
+    ) {
+      output.revisedBio = null;
+    } else {
+      output.revisedBio = normalizedBio;
+    }
+
+    logger.verbose(`[PremiseDecomposer.invoke] Extracted ${output.premises.length} premise(s), ${output.retractedPremiseIds.length} retraction(s), revisedBio: ${output.revisedBio ? 'yes' : 'no'}`);
     return output;
   }
 }

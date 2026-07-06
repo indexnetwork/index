@@ -19,7 +19,6 @@ import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import db from '../lib/drizzle/drizzle';
 
 import { log } from '../lib/log';
-import { PremiseEvents } from '../events/premise.event';
 
 const logger = log.service.from('tool');
 
@@ -66,11 +65,6 @@ export class ToolService {
       enricher: { enrichUserProfile },
       getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
-      premiseEvents: {
-        onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-        onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
-        onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
-      },
       findPendingQuestions: async (
         userId: string,
         filters?: {

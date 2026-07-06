@@ -212,7 +212,6 @@ export async function createChatTools(
     mintConnectLink: deps.mintConnectLink,
     frontendUrl: deps.frontendUrl,
     apiBaseUrl: deps.apiBaseUrl,
-    ...(deps.premiseEvents && { premiseEvents: deps.premiseEvents }),
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
     ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),

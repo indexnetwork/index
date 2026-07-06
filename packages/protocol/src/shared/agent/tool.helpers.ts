@@ -274,12 +274,6 @@ export interface ToolContext {
     limit?: number;
     scope?: 'tool' | 'principal';
   }>;
-  /** Optional premise lifecycle event callbacks. Fired by premise tools after successful operations. */
-  premiseEvents?: {
-    onCreated?: (premiseId: string, userId: string) => void;
-    onUpdated?: (premiseId: string, userId: string) => void;
-    onRetracted?: (premiseId: string, userId: string) => void;
-  };
 }
 
 /**
@@ -311,7 +305,7 @@ export class ChatContextAccessError extends Error {
 export async function resolveChatContext(params: {
   database: Pick<
     ChatGraphCompositeDatabase,
-    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isIndexOwner" | "isNetworkMember"
+    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isIndexOwner" | "isNetworkMember" | "getUserContext"
   >;
   userId: string;
   networkId?: string;
@@ -322,13 +316,24 @@ export async function resolveChatContext(params: {
 }): Promise<ResolvedToolContext> {
   const { database, userId, networkId, sessionId, contactsEnabled } = params;
 
-  const [user, rawProfile, userNetworks] = await Promise.all([
+  const [user, rawProfile, userNetworks, globalContext] = await Promise.all([
     database.getUser(userId),
     database.getProfile(userId),
     database.getNetworkMemberships(userId),
+    // The premise-derived global user_context paragraph. getProfile deliberately
+    // leaves `context` empty (WS8: narrative lives in user_contexts, not users);
+    // without this read the system prompt's only narrative is the stale onboarding
+    // bio, which resurrects facts the user has since retracted. Best-effort: a
+    // missing row or a minimal test adapter degrades to the empty string.
+    Promise.resolve()
+      .then(() => database.getUserContext?.(userId, null))
+      .catch(() => null),
   ]);
 
   const userProfile: IdentityContext = rawProfile ?? null;
+  if (userProfile && !userProfile.context && globalContext?.text) {
+    userProfile.context = globalContext.text;
+  }
 
   if (!user) {
     throw new ChatContextAccessError(
@@ -591,12 +596,6 @@ export interface ToolDeps {
     limit?: number;
     scope?: 'tool' | 'principal';
   }>;
-  /** Optional premise lifecycle event callbacks. Fired by premise tools after successful operations. */
-  premiseEvents?: {
-    onCreated?: (premiseId: string, userId: string) => void;
-    onUpdated?: (premiseId: string, userId: string) => void;
-    onRetracted?: (premiseId: string, userId: string) => void;
-  };
   graphs: {
     profile: CompiledGraph;
     intent: CompiledGraph;

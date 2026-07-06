@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
+import { PremiseEvents } from '../../events/premise.event';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 
@@ -374,6 +375,40 @@ describe('ChatDatabaseAdapter', () => {
     expect(row?.assignmentMetadata).toEqual(metadata);
 
     await db.delete(premises).where(eq(premises.id, premise.id));
+  });
+
+  it('fires PremiseEvents at the adapter chokepoint for create/update/retract/expire', async () => {
+    const events: Array<{ kind: string; premiseId: string; userId: string }> = [];
+    const saved = { ...PremiseEvents };
+    PremiseEvents.onCreated = (premiseId, userId) => events.push({ kind: 'created', premiseId, userId });
+    PremiseEvents.onUpdated = (premiseId, userId) => events.push({ kind: 'updated', premiseId, userId });
+    PremiseEvents.onRetracted = (premiseId, userId) => events.push({ kind: 'retracted', premiseId, userId });
+    PremiseEvents.onExpired = (premiseId, userId) => events.push({ kind: 'expired', premiseId, userId });
+
+    let premiseId: string | null = null;
+    try {
+      const premise = await adapter.createPremise({
+        userId: fixture.userBId,
+        assertion: { text: TEST_PREFIX + 'lifecycle-event-test', tier: 'assertive' },
+        provenance: { source: 'explicit', confidence: 1, timestamp: new Date().toISOString() },
+        validity: { volatile: false },
+      });
+      premiseId = premise.id;
+
+      await adapter.updatePremise(premise.id, { validity: { volatile: false } });
+      await adapter.updatePremise(premise.id, { status: 'RETRACTED', retractedAt: new Date() });
+      await adapter.updatePremise(premise.id, { status: 'EXPIRED' });
+
+      expect(events).toEqual([
+        { kind: 'created', premiseId: premise.id, userId: fixture.userBId },
+        { kind: 'updated', premiseId: premise.id, userId: fixture.userBId },
+        { kind: 'retracted', premiseId: premise.id, userId: fixture.userBId },
+        { kind: 'expired', premiseId: premise.id, userId: fixture.userBId },
+      ]);
+    } finally {
+      Object.assign(PremiseEvents, saved);
+      if (premiseId) await db.delete(premises).where(eq(premises.id, premiseId));
+    }
   });
 
   it('should return premises matching a specific provenance source', async () => {

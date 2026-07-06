@@ -55,7 +55,6 @@ import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
-import { PremiseEvents } from '../events/premise.event';
 
 const logger = log.server.from('mcp');
 
@@ -677,11 +676,6 @@ function createMcpServerInstance(): McpServer {
           ...(actor.networkId ? { networkId: actor.networkId } : {}),
         })),
       }));
-    },
-    premiseEvents: {
-      onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-      onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
-      onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
     },
     graphs,
   };
