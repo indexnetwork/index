@@ -352,13 +352,14 @@ describe('ProfileGraph - Premise Decomposition', () => {
       };
 
       const onRetracted = mock(() => {});
+      const onCreated = mock(() => {});
       const graph = new EnrichmentGraphFactory(
         mockDatabase,
         mockScraper,
         undefined,
         undefined,
         mockPremiseGraph,
-        { onRetracted },
+        { onCreated, onRetracted },
       ).createGraph();
 
       await graph.invoke({
@@ -377,8 +378,11 @@ describe('ProfileGraph - Premise Decomposition', () => {
       // Lifecycle event fired so cascade + context regen run downstream
       expect(onRetracted).toHaveBeenCalledWith('premise-2', 'test-user-id');
 
-      // The corrected fact is still created
+      // The corrected fact is still created, and its lifecycle event fires so
+      // user_contexts regeneration runs for creations too (chat / enrichment-run
+      // surfaces have no other regen trigger).
       expect(premiseCreateCalls.map((c) => c.assertionText)).toContain('I am based in Istanbul');
+      expect(onCreated).toHaveBeenCalledWith('premise-1', 'test-user-id');
     }, 60_000);
 
     it('should apply retractions even when no new premises are extracted', async () => {

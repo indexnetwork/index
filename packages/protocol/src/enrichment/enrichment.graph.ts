@@ -88,8 +88,16 @@ export class EnrichmentGraphFactory {
     private enricher?: ProfileEnricher,
     private questionerEnqueue?: QuestionerEnqueueFn,
     private premiseGraph?: CompiledPremiseGraph,
-    /** Lifecycle callbacks fired when write-mode input retracts existing premises (cascade + context regen). */
-    private premiseEvents?: { onRetracted?: (premiseId: string, userId: string) => void },
+    /**
+     * Lifecycle callbacks fired when write-mode decomposition creates or retracts
+     * premises, so the host can trigger the opportunity cascade + user_contexts
+     * regeneration. Without onCreated, profile updates from surfaces that bypass
+     * the enrichment queue (chat, enrichment-run) never refresh the context text.
+     */
+    private premiseEvents?: {
+      onCreated?: (premiseId: string, userId: string) => void;
+      onRetracted?: (premiseId: string, userId: string) => void;
+    },
   ) { }
 
   public createGraph() {
@@ -674,6 +682,8 @@ export class EnrichmentGraphFactory {
 
               if (premiseResult.premise) {
                 created++;
+                try { this.premiseEvents?.onCreated?.(premiseResult.premise.id, state.userId); }
+                catch (e) { logger.error("premiseEvents.onCreated failed", { premiseId: premiseResult.premise.id, error: e }); }
               } else if (premiseResult.duplicateOf) {
                 skippedDuplicates++;
               } else if (premiseResult.error) {

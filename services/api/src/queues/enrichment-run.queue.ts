@@ -177,7 +177,10 @@ export class EnrichmentRunQueue {
       // profile-gap questions just like the MCP composition root.
       questionerEnqueueIfEnabled(),
       premiseGraph,
-      { onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId) },
+      {
+        onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
+        onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
+      },
     ).createGraph();
 
     const rawTools = new Map<string, RawToolDefinition>();

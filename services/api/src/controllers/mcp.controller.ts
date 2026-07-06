@@ -149,6 +149,16 @@ const protocolDeps = {
   questionerDatabase: questionerAdapter,
   getUserContextText: ensureGlobalUserContext,
   chatQuestions: chatQuestionsHost,
+  // Premise lifecycle events for the CHAT surface. Without these, retract_premise /
+  // create_premise / update_premise from web chat are silent DB writes: no opportunity
+  // cascade and no user_contexts regeneration, so the profile paragraph shown at
+  // session start keeps resurrecting removed facts (the MCP server and ToolService
+  // paths already wire the same callbacks).
+  premiseEvents: {
+    onCreated: (premiseId: string, userId: string) => PremiseEvents.onCreated(premiseId, userId),
+    onUpdated: (premiseId: string, userId: string) => PremiseEvents.onUpdated(premiseId, userId),
+    onRetracted: (premiseId: string, userId: string) => PremiseEvents.onRetracted(premiseId, userId),
+  },
   ...(process.env.QUESTIONER_ENABLED === 'true' && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
       await questionerQueue.addGenerateJob(input);
@@ -181,6 +191,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
   const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph, {
+    onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
     onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
   }).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
