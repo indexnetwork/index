@@ -3240,7 +3240,7 @@ List pending questions for the authenticated user.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `status` | `pending` \| `answered` \| `dismissed` | `pending` | Only `pending` is currently supported |
-| `mode` | `discovery` \| `intent` \| `profile` \| `negotiation` | — | Filter by generation mode |
+| `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `chat` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
 | `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
@@ -3265,7 +3265,9 @@ Submit an answer for a pending question. Only succeeds if the user is an actor o
 }
 ```
 
-**Response:** `{ success: true }` (200) or `{ error: "Question not found" }` (404)
+**Response:** `{ success: true, resumed: boolean }` (200) or `{ error: "Question not found" }` (404)
+
+`resumed` is `true` when a live chat turn was blocked on this question (the orchestrator's `ask_user_question` tool) and now continues streaming with the answer. Clients should feed the answer back as a new chat message only when `resumed` is `false` and the question's mode is `chat`.
 
 ### POST /api/questions/:id/dismiss
 

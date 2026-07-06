@@ -50,6 +50,8 @@ export type ChatStreamEventType =
   | "question_generator_start"
   | "question_generator_end"
   | "decision_questions"
+  // Blocking mid-turn user question (ask_user_question tool)
+  | "user_question"
   // Steer-or-queue interrupt event
   | "steer_or_queue";
 
@@ -560,6 +562,29 @@ export interface DecisionQuestionsEvent extends ChatStreamEventBase {
 }
 
 /**
+ * One persisted question streamed by the ask_user_question tool.
+ * Carries the DB id so the frontend can answer/dismiss it through the
+ * questions REST endpoints while the turn is still blocked.
+ */
+export interface UserQuestionPayload {
+  id: string;
+  title: string;
+  prompt: string;
+  options: Array<{ label: string; description: string }>;
+  multiSelect: boolean;
+}
+
+/**
+ * User question event — emitted when the orchestrator's ask_user_question
+ * tool persisted chat-mode questions and is now blocking the turn awaiting
+ * the user's inline answer.
+ */
+export interface UserQuestionEvent extends ChatStreamEventBase {
+  type: "user_question";
+  questions: UserQuestionPayload[];
+}
+
+/**
  * Steer-or-queue event — injected into the active SSE stream by the /chat/interrupt
  * endpoint after the classifier runs. The frontend holds the mid-stream message as
  * "pending" until this event arrives, then acts on the decision.
@@ -616,6 +641,7 @@ export type ChatStreamEvent =
   | QuestionGeneratorStartEvent
   | QuestionGeneratorEndEvent
   | DecisionQuestionsEvent
+  | UserQuestionEvent
   | SteerOrQueueEvent;
 
 /**
@@ -1091,6 +1117,13 @@ export function createDecisionQuestionsEvent(
   payload: { questions: Question[] },
 ): DecisionQuestionsEvent {
   return createStreamEvent<DecisionQuestionsEvent>("decision_questions", sessionId, payload);
+}
+
+export function createUserQuestionEvent(
+  sessionId: string,
+  payload: { questions: UserQuestionPayload[] },
+): UserQuestionEvent {
+  return createStreamEvent<UserQuestionEvent>("user_question", sessionId, payload);
 }
 
 /**

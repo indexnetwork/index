@@ -67,6 +67,8 @@ export const QuestionModeSchema = z.enum([
   "intent",
   "enrichment",
   "negotiation",
+  // Orchestrator-initiated mid-conversation questions (ask_user_question tool).
+  "chat",
 ]);
 
 export const QuestionDetectionSchema = z.object({

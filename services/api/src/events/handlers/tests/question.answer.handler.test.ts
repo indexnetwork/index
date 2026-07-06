@@ -6,6 +6,7 @@ function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswe
     createPremiseFromAnswer: mock(async () => {}),
     enqueueIntentRefinement: mock(async () => {}),
     storeNegotiationContext: mock(async () => {}),
+    resolveChatQuestionWait: mock(() => {}),
     ...overrides,
   };
 }
@@ -67,6 +68,22 @@ describe("handleQuestionAnswered", () => {
       selectedOptions: ["Option A"],
       freeText: undefined,
     });
+  });
+
+  it("resolves the chat wait bus for chat mode", async () => {
+    await handleQuestionAnswered(
+      { ...basePayload, mode: "chat", sourceType: "conversation", sourceId: "sess-1" },
+      deps,
+    );
+    expect(deps.resolveChatQuestionWait).toHaveBeenCalledTimes(1);
+    const call = (deps.resolveChatQuestionWait as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toEqual({
+      questionId: "q-1",
+      answer: basePayload.answer,
+    });
+    expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
+    expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
+    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
   });
 
   it("calls storeNegotiationContext for negotiation mode", async () => {

@@ -79,7 +79,7 @@ export class ToolService {
           networkId?: string;
           scopeType?: 'intent';
           scopeId?: string;
-          modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation'>;
+          modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat'>;
           limit?: number;
         },
       ) => {

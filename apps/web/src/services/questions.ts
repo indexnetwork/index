@@ -15,7 +15,7 @@ export interface QuestionPayload {
 }
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -58,6 +58,15 @@ export interface AnswerBody {
   freeText?: string;
 }
 
+export interface AnswerResponse {
+  success: boolean;
+  /**
+   * True when a live chat turn was blocked on this question
+   * (ask_user_question) and resumes streaming with the answer.
+   */
+  resumed?: boolean;
+}
+
 export const createQuestionsService = (
   api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>
 ) => ({
@@ -91,9 +100,10 @@ export const createQuestionsService = (
     return res.questions ?? [];
   },
 
-  /** Submit an answer for a question. */
-  answer: async (questionId: string, body: AnswerBody): Promise<void> => {
-    await api.post(`/questions/${questionId}/answer`, body);
+  /** Submit an answer for a question. Returns whether a live chat turn resumed. */
+  answer: async (questionId: string, body: AnswerBody): Promise<AnswerResponse> => {
+    const res = await api.post<AnswerResponse>(`/questions/${questionId}/answer`, body);
+    return res ?? { success: true };
   },
 
   /** Dismiss a question. */

@@ -4,6 +4,7 @@ import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
 import { apiClient } from "@/lib/api";
 import type { Suggestion } from "@/hooks/useSuggestions";
 import type { Question } from "@/components/DecisionQuestions/types";
+import type { PendingQuestion } from "@/services/questions";
 
 export interface DiscoveryOpportunity {
   candidateId: string;
@@ -178,6 +179,13 @@ interface AIChatContextType {
   pendingQueue: QueuedMessage[];
   cancelQueuedMessage: (id: string) => void;
   submitMidStreamMessage: (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => void;
+  /**
+   * Questions streamed live by the orchestrator's ask_user_question tool
+   * (`user_question` SSE event). The turn is blocked server-side until they
+   * are answered/dismissed or the wait times out. ChatContent merges these
+   * into its inline injected-questions list.
+   */
+  liveQuestions: PendingQuestion[];
 }
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
@@ -292,6 +300,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   /** Per-message timeout IDs so cancelling or resolving one pending message doesn't affect others. */
   const interruptTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
+  /** Live inline questions from the ask_user_question tool (user_question SSE event). */
+  const [liveQuestions, setLiveQuestions] = useState<PendingQuestion[]>([]);
   /** When true, sendMessage will only refetch sessions on X-Session-Id and not set sessionId (used when user navigated away during stream). */
   const skipSessionUpdateForRequestRef = useRef(false);
 
@@ -781,6 +791,47 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     }
                     break;
                   }
+                  case "user_question": {
+                    // The orchestrator persisted chat-mode questions and is now
+                    // blocking the turn on them. Shape them like the REST
+                    // PendingQuestion so ChatContent can reuse InjectedQuestions.
+                    const eventSessionId =
+                      (typeof event.sessionId === "string" && event.sessionId) ||
+                      newSessionId ||
+                      sessionId ||
+                      "";
+                    const incoming: PendingQuestion[] = (event.questions ?? []).map(
+                      (q: { id: string; title: string; prompt: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }) => ({
+                        id: q.id,
+                        detection: {
+                          mode: "chat" as const,
+                          sourceType: "conversation",
+                          sourceId: eventSessionId,
+                          timestamp: new Date().toISOString(),
+                        },
+                        actors: [],
+                        payload: {
+                          title: q.title,
+                          prompt: q.prompt,
+                          options: q.options,
+                          multiSelect: q.multiSelect,
+                        },
+                        status: "pending" as const,
+                        answer: null,
+                        expiresAt: null,
+                        createdAt: new Date().toISOString(),
+                        conversationId: eventSessionId || null,
+                      }),
+                    );
+                    if (incoming.length > 0) {
+                      setLiveQuestions((prev) => {
+                        const byId = new Map(prev.map((q) => [q.id, q]));
+                        for (const q of incoming) byId.set(q.id, q);
+                        return [...byId.values()];
+                      });
+                    }
+                    break;
+                  }
                   case "decision_questions": {
                     const incoming = (event.questions ?? []) as Question[];
                     setMessages((prev) =>
@@ -980,6 +1031,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     }
     setMessages([]);
     setSuggestions([]);
+    setLiveQuestions([]);
     setSessionId(null);
     setSessionTitle(null);
     setSessionScope(null); // Clear session-bound scope so new chat can use UI selection
@@ -997,6 +1049,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     pendingQueueRef.current = [];
     steerPendingRef.current = [];
     setPendingQueue([]);
+    setLiveQuestions([]);
     try {
       const data = await apiClient.post<{
         session: {
@@ -1116,6 +1169,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         pendingQueue,
         cancelQueuedMessage,
         submitMidStreamMessage,
+        liveQuestions,
       }}
     >
       {children}

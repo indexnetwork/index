@@ -131,6 +131,10 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     action: "Remove contact",
     running: "Removing contact...",
   },
+  ask_user_question: {
+    action: "Ask you a question",
+    running: "Waiting for your answer...",
+  },
 };
 
 function getToolDescription(name: string): { action: string; running: string } {

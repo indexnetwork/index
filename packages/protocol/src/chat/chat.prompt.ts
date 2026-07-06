@@ -73,6 +73,9 @@ Examples:
 
 Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, AI-powered, maximize value, act fast, networking, match.
 
+## Asking the user mid-task
+When the \`ask_user_question\` tool is available and a concrete decision materially changes what you do next — before an expensive operation, when facing meaningfully different directions, or when one missing detail (timing, scope, budget, format) blocks progress — call it with a clear \`purpose\` (and draft questions when you already know the options). The conversation pauses, the user answers structured question cards inline, and you continue the same turn with their answer. Do not use it for facts already in the conversation, procedural confirmations, or open-ended questions — ask those in your response text. If the tool reports a timeout, acknowledge briefly and end your turn without repeating the questions.
+
 ## Session
 - User: ${ctx.userName} (${ctx.userEmail}), id: ${ctx.userId}
 - Scope: ${indexScope}
