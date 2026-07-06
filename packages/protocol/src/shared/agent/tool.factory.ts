@@ -31,6 +31,7 @@ import { createAgentTools } from "../../agent/agent.tools.js";
 import { createNegotiationTools } from "../../negotiation/negotiation.tools.js";
 import { createPremiseTools } from "../../premise/premise.tools.js";
 import { createQuestionerTools } from "../../questioner/questioner.tools.js";
+import { createAskUserQuestionTools } from "../../questioner/questioner.ask.tool.js";
 
 // Re-export types for consumers
 export type { ToolContext, ResolvedToolContext, ProtocolDeps } from "./tool.helpers.js";
@@ -211,12 +212,14 @@ export async function createChatTools(
     mintConnectLink: deps.mintConnectLink,
     frontendUrl: deps.frontendUrl,
     apiBaseUrl: deps.apiBaseUrl,
-    ...(deps.premiseEvents && { premiseEvents: deps.premiseEvents }),
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
     ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
     ...(deps.findPendingQuestions && { findPendingQuestions: deps.findPendingQuestions }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
+    ...(deps.chatQuestions && { chatQuestions: deps.chatQuestions }),
+    ...(deps.chatSession && { chatSession: deps.chatSession }),
+    ...(deps.getUserContextText && { getUserContextText: deps.getUserContextText }),
     graphs: {
       profile: profileGraph,
       intent: intentGraph,
@@ -242,6 +245,11 @@ export async function createChatTools(
     : [];
   const premiseTools = createPremiseTools(defineTool, toolDeps);
   const questionerTools = createQuestionerTools(defineTool, toolDeps);
+  // Blocking mid-conversation questions — chat-only (never in the MCP registry),
+  // and only when the host provides the ChatQuestionsHost bridge.
+  const askUserQuestionTools = deps.chatQuestions
+    ? createAskUserQuestionTools(defineTool, toolDeps)
+    : [];
 
   // confirm_opportunity_delivery is an OpenClaw-delivery ledger write and must not be
   // callable from regular chat sessions.
@@ -264,6 +272,7 @@ export async function createChatTools(
     ...negotiationTools,
     ...premiseTools,
     ...questionerTools,
+    ...askUserQuestionTools,
   ];
 }
 

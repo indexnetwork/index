@@ -45,12 +45,24 @@ const mockDecomposeOutput = {
     { text: 'I am a software engineer', tier: 'assertive' as const },
     { text: 'I am based in Berlin', tier: 'assertive' as const },
   ],
+  retractedPremiseIds: [] as string[],
+  revisedBio: null as string | null,
 };
+
+// Mutable holder so individual tests can vary the decomposer output and
+// inspect the args it was invoked with (input + offered existing premises).
+let currentDecomposeOutput: typeof mockDecomposeOutput = mockDecomposeOutput;
+let decomposerInvocations: Array<{ input: string; existingPremises?: Array<{ id: string; text: string }>; currentBio?: string }> = [];
 
 mock.module("../../premise/premise.decomposer.js", () => ({
   PremiseDecomposer: class MockPremiseDecomposer {
-    async invoke(_input: string) {
-      return mockDecomposeOutput;
+    async invoke(input: string, existingPremises?: Array<{ id: string; text: string }>, currentBio?: string) {
+      decomposerInvocations.push({
+        input,
+        ...(existingPremises?.length ? { existingPremises } : {}),
+        ...(currentBio ? { currentBio } : {}),
+      });
+      return currentDecomposeOutput;
     }
   },
 }));
@@ -124,6 +136,8 @@ describe('ProfileGraph - Premise Decomposition', () => {
 
   beforeEach(() => {
     premiseCreateCalls = [];
+    currentDecomposeOutput = mockDecomposeOutput;
+    decomposerInvocations = [];
 
     mockDatabase = {
       getProfile: mock(async () => null),
@@ -145,6 +159,12 @@ describe('ProfileGraph - Premise Decomposition', () => {
       saveProfile: mock(async () => {}),
       softDeleteGhost: mock(async () => true),
       getPremisesForUser: mock(async () => mockActivePremises),
+      updatePremise: mock(async (premiseId: string) => ({
+        ...mockActivePremises[0],
+        id: premiseId,
+        status: 'RETRACTED',
+        retractedAt: new Date(),
+      })),
     } as unknown as EnrichmentGraphDatabase;
 
     mockScraper = {
@@ -308,6 +328,147 @@ describe('ProfileGraph - Premise Decomposition', () => {
       expect(premiseCreateCalls.length).toBe(0);
       expect(mockScraper.scrape).not.toHaveBeenCalled();
     }, 30_000);
+  });
+
+  // ─── Retraction of disavowed premises ───────────────────────────────────
+
+  describe('retraction of disavowed premises', () => {
+    it("should offer the user's ACTIVE premises to the decomposer for retraction matching", async () => {
+      const graph = buildGraph();
+      await graph.invoke({
+        userId: 'test-user-id',
+        operationMode: 'write',
+        input: 'Remove all mentions of Berlin. I am based in Istanbul.',
+        forceUpdate: true,
+      });
+
+      expect(decomposerInvocations.length).toBe(1);
+      expect(decomposerInvocations[0].existingPremises).toEqual([
+        { id: 'premise-1', text: 'I am a software engineer' },
+        { id: 'premise-2', text: 'I am based in Berlin' },
+      ]);
+    }, 60_000);
+
+    it('should retract premises the decomposer flags as disavowed', async () => {
+      currentDecomposeOutput = {
+        reasoning: 'Input disavows the Berlin premise',
+        premises: [{ text: 'I am based in Istanbul', tier: 'assertive' as const }],
+        retractedPremiseIds: ['premise-2'],
+      };
+
+      const graph = buildGraph();
+
+      await graph.invoke({
+        userId: 'test-user-id',
+        operationMode: 'write',
+        input: 'I no longer live in Berlin. I am based in Istanbul.',
+        forceUpdate: true,
+      });
+
+      expect(mockDatabase.updatePremise).toHaveBeenCalledTimes(1);
+      const [premiseId, updates] = (mockDatabase.updatePremise as ReturnType<typeof mock>).mock.calls[0];
+      expect(premiseId).toBe('premise-2');
+      expect(updates.status).toBe('RETRACTED');
+      expect(updates.retractedAt).toBeInstanceOf(Date);
+
+      // The corrected fact is still created. Lifecycle events (cascade + context
+      // regen) fire inside the host DB adapter's createPremise/updatePremise, not
+      // in this graph — so retraction/creation here is sufficient.
+      expect(premiseCreateCalls.map((c) => c.assertionText)).toContain('I am based in Istanbul');
+    }, 60_000);
+
+    it('should apply retractions even when no new premises are extracted', async () => {
+      currentDecomposeOutput = {
+        reasoning: 'Pure removal instruction — nothing new to add',
+        premises: [],
+        retractedPremiseIds: ['premise-1', 'premise-2'],
+      };
+
+      const graph = buildGraph();
+      const result = await graph.invoke({
+        userId: 'test-user-id',
+        operationMode: 'write',
+        input: 'Remove everything about software engineering and Berlin.',
+        forceUpdate: true,
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(mockDatabase.updatePremise).toHaveBeenCalledTimes(2);
+      expect(premiseCreateCalls.length).toBe(0);
+    }, 60_000);
+
+    it('should rewrite the stored bio when the decomposer returns a revision', async () => {
+      // check_state loads the profile (identity.bio = users.intro) when the user
+      // has been enriched; the decompose node offers it for revision.
+      (mockDatabase.getProfile as ReturnType<typeof mock>).mockResolvedValue({
+        userId: 'test-user-id',
+        identity: { name: 'Test User', bio: 'Engineer. Creator of the HOPE language.', location: 'Istanbul' },
+        context: '',
+      });
+      currentDecomposeOutput = {
+        reasoning: 'Bio mentions the disavowed language',
+        premises: [],
+        retractedPremiseIds: ['premise-1'],
+        revisedBio: 'Engineer.',
+      };
+
+      const graph = buildGraph();
+      const result = await graph.invoke({
+        userId: 'test-user-id',
+        operationMode: 'write',
+        input: 'Remove all mentions of the HOPE language.',
+        forceUpdate: true,
+      });
+
+      expect(result.error).toBeUndefined();
+      // Bio offered to the decomposer…
+      expect(decomposerInvocations[0]?.currentBio).toBe('Engineer. Creator of the HOPE language.');
+      // …and the revision persisted via saveProfile (empty name/location are
+      // skipped by the identity persister).
+      expect(mockDatabase.saveProfile).toHaveBeenCalledTimes(1);
+      const [savedUserId, savedProfile] = (mockDatabase.saveProfile as ReturnType<typeof mock>).mock.calls[0];
+      expect(savedUserId).toBe('test-user-id');
+      expect(savedProfile.identity.bio).toBe('Engineer.');
+    }, 60_000);
+
+    it('should not touch the bio when the decomposer returns no revision', async () => {
+      (mockDatabase.getProfile as ReturnType<typeof mock>).mockResolvedValue({
+        userId: 'test-user-id',
+        identity: { name: 'Test User', bio: 'Engineer.', location: 'Istanbul' },
+        context: '',
+      });
+
+      const graph = buildGraph();
+      await graph.invoke({
+        userId: 'test-user-id',
+        operationMode: 'write',
+        input: 'I also enjoy woodworking.',
+        forceUpdate: true,
+      });
+
+      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
+    }, 60_000);
+
+    it('should skip retraction gracefully when the adapter lacks updatePremise', async () => {
+      currentDecomposeOutput = {
+        reasoning: 'Disavowal with no retraction support',
+        premises: [],
+        retractedPremiseIds: ['premise-1'],
+      };
+      delete (mockDatabase as { updatePremise?: unknown }).updatePremise;
+
+      const graph = buildGraph();
+      const result = await graph.invoke({
+        userId: 'test-user-id',
+        operationMode: 'write',
+        input: 'Remove everything about software engineering.',
+        forceUpdate: true,
+      });
+
+      expect(result.error).toBeUndefined();
+      // Without updatePremise the graph must not offer existing premises either
+      expect(decomposerInvocations[0]?.existingPremises).toBeUndefined();
+    }, 60_000);
   });
 
   // ─── Error handling ──────────────────────────────────────────────────────

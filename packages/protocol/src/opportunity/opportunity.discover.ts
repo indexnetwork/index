@@ -17,7 +17,8 @@ import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult, type HomeCardPresentationResult, type HomeCardLLMResult, type HomeCardPresenterInput } from "./opportunity.presenter.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
+import { narratorRemarkFromReasoning } from "./opportunity.presentation.js";
+import { safeFallbackSummary } from "./opportunity.safe-presentation.js";
 import { protocolLogger, withCallLogging } from "../shared/observability/protocol.logger.js";
 import type { ChatSummaryReader } from "../shared/interfaces/chat-summary.interface.js";
 import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
@@ -194,6 +195,8 @@ export interface FormattedDiscoveryCandidate {
   viewerRole?: string;
   /** Whether the viewer (as introducer) has approved the introduction. */
   viewerApproved?: boolean;
+  /** Timestamp set once this viewer has already acted on the opportunity. */
+  viewerActedAt?: string | null;
   /** Full user record for the candidate (needed for socials / Telegram fallback). */
   candidateUser?: UserRecord | null;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
@@ -340,6 +343,7 @@ async function enrichOpportunities(
         candidateUserId,
         viewerRole: viewerActor?.role ?? "party",
         viewerApproved: viewerActor?.approved === true,
+        viewerActedAt: viewerActor?.actedAt ?? null,
         candidateUser,
         profile,
         confidence,
@@ -444,13 +448,14 @@ async function enrichOpportunities(
       }
 
       const isCounterpartGhost = isGhostByUserId.get(item.candidateUserId) ?? false;
-      const personalizedSummary = viewerCentricCardSummary(
-        reasoning,
-        name,
-        MINIMAL_MAIN_TEXT_MAX_CHARS,
+      // Shared sanitization standard — see opportunity.safe-presentation.ts.
+      const personalizedSummary = safeFallbackSummary(reasoning, {
+        counterpartName: name,
         viewerName,
         introducerName,
-      );
+        maxChars: MINIMAL_MAIN_TEXT_MAX_CHARS,
+        emptyText: "A suggested connection.",
+      });
       return {
         headline: viewerIsIntroducer && secondPartyName
           ? `${name} → ${secondPartyName}`
@@ -604,6 +609,7 @@ async function enrichOpportunities(
         status: chatSessionId && !existingOpportunityIds?.has(item.opportunity.id) ? "draft" : item.opportunity.status,
         viewerRole: item.viewerRole,
         viewerApproved: item.viewerApproved,
+        viewerActedAt: item.viewerActedAt,
         candidateUser: item.candidateUser,
         isGhost,
         ...(presentations?.[idx] && { presentation: presentations[idx] }),

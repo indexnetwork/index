@@ -36,6 +36,34 @@ export interface QuestionFilters {
   scopeId?: string;
 }
 
+/**
+ * Resolution outcome for a single awaited chat question.
+ * `timeout` means the wait budget elapsed (or the run was aborted) before the
+ * user responded — the question stays `pending` in the database.
+ */
+export interface ChatQuestionAnswerOutcome {
+  questionId: string;
+  status: "answered" | "dismissed" | "timeout";
+  answer?: QuestionAnswer;
+}
+
+/**
+ * Host bridge for the orchestrator's blocking `ask_user_question` tool.
+ * `persist` synchronously inserts chat-mode question rows; `awaitAnswers`
+ * blocks until every question resolves (answer/dismiss via the questions
+ * REST endpoints) or the wait times out / the run is aborted.
+ *
+ * Implementations live in the backend (in-memory per-question wait bus,
+ * single-instance semantics like the chat steer/queue interrupt emitter).
+ */
+export interface ChatQuestionsHost {
+  persist(batch: PersistableQuestion[]): Promise<PersistedQuestion[]>;
+  awaitAnswers(
+    questionIds: string[],
+    opts?: { timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<ChatQuestionAnswerOutcome[]>;
+}
+
 export interface QuestionerDatabase {
   /** Persist a batch of generated questions (up to 3 per generation).
    *  @returns The IDs of the inserted rows. */

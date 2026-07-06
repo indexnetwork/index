@@ -20,7 +20,9 @@ import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.ad
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import type { AdapterPersistableQuestion } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
+import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
@@ -46,14 +48,13 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, ChatQuestionsHost, PersistableQuestion, PersistedQuestion } from '@indexnetwork/protocol';
 
 import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
-import { PremiseEvents } from '../events/premise.event';
 
 const logger = log.server.from('mcp');
 
@@ -81,6 +82,28 @@ const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferre
 }): Promise<{ url: string }> => {
   const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting, preferredSurface });
   return { url: buildConnectShortUrl(apiBaseUrl, code) };
+};
+
+/**
+ * Host bridge for the orchestrator's blocking ask_user_question tool:
+ * synchronous chat-question persistence plus the in-memory answer wait bus
+ * (resolved by QuestionEvents.onAnswered/onDismissed wiring in main.ts).
+ */
+const chatQuestionsHost: ChatQuestionsHost = {
+  persist: async (batch: PersistableQuestion[]): Promise<PersistedQuestion[]> => {
+    const ids = await questionerAdapter.persist(batch as AdapterPersistableQuestion[]);
+    const now = new Date().toISOString();
+    return ids.map((id, i) => ({
+      id,
+      detection: batch[i].detection,
+      actors: batch[i].actors,
+      payload: batch[i].payload,
+      status: 'pending' as const,
+      answer: null,
+      createdAt: now,
+    }));
+  },
+  awaitAnswers: (questionIds, opts) => awaitChatQuestionAnswers(questionIds, opts),
 };
 
 const protocolDeps = {
@@ -123,6 +146,8 @@ const protocolDeps = {
   frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
   apiBaseUrl,
   questionerDatabase: questionerAdapter,
+  getUserContextText: ensureGlobalUserContext,
+  chatQuestions: chatQuestionsHost,
   ...(process.env.QUESTIONER_ENABLED === 'true' && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
       await questionerQueue.addGenerateJob(input);
@@ -630,7 +655,7 @@ function createMcpServerInstance(): McpServer {
         networkId?: string;
         scopeType?: 'intent';
         scopeId?: string;
-        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation'>;
+        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat'>;
         limit?: number;
       },
     ) => {
@@ -651,11 +676,6 @@ function createMcpServerInstance(): McpServer {
           ...(actor.networkId ? { networkId: actor.networkId } : {}),
         })),
       }));
-    },
-    premiseEvents: {
-      onCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-      onUpdated: (premiseId, userId) => PremiseEvents.onUpdated(premiseId, userId),
-      onRetracted: (premiseId, userId) => PremiseEvents.onRetracted(premiseId, userId),
     },
     graphs,
   };

@@ -4,7 +4,7 @@ import { requestContext } from "../observability/request-context.js";
 
 import type { RawToolDefinition, ResolvedToolContext } from "./tool.helpers.js";
 
-export type ToolTimeoutClass = "fast" | "bounded_slow" | "async_candidate";
+export type ToolTimeoutClass = "fast" | "bounded_slow" | "async_candidate" | "interactive";
 export type ToolRuntimeErrorCode = "TOOL_TIMEOUT" | "TOOL_CANCELLED" | "TOOL_OUTPUT_TOO_LARGE";
 
 export interface ToolTimeoutPolicy {
@@ -27,6 +27,11 @@ export interface ToolInvocationRuntimeInput {
 const FAST_TIMEOUT_MS = 10_000;
 const BOUNDED_SLOW_TIMEOUT_MS = 45_000;
 const ASYNC_CANDIDATE_TIMEOUT_MS = 50_000;
+// Interactive tools deliberately block on human input (ask_user_question).
+// Must exceed the tool's own internal wait budget (CHAT_QUESTION_WAIT_TIMEOUT_MS,
+// default 4 min) so the tool returns a graceful timeout result instead of
+// being killed by the runtime.
+const INTERACTIVE_TIMEOUT_MS = 300_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 
 const FAST_TOOLS = new Set([
@@ -55,6 +60,8 @@ const FAST_TOOLS = new Set([
   "revoke_agent_permission",
   "retract_premise",
 ]);
+
+const INTERACTIVE_TOOLS = new Set(["ask_user_question"]);
 
 const ASYNC_CANDIDATE_TOOLS = new Set([
   // Canonical *_user_context names (IND-371)
@@ -98,14 +105,19 @@ function toolNameOutputEnv(toolName: string): string {
 export function getToolTimeoutPolicy(toolName: string): ToolTimeoutPolicy {
   const classification: ToolTimeoutClass = FAST_TOOLS.has(toolName)
     ? "fast"
-    : ASYNC_CANDIDATE_TOOLS.has(toolName)
-      ? "async_candidate"
-      : "bounded_slow";
+    : INTERACTIVE_TOOLS.has(toolName)
+      ? "interactive"
+      : ASYNC_CANDIDATE_TOOLS.has(toolName)
+        ? "async_candidate"
+        : "bounded_slow";
 
   let classDefault: number;
   switch (classification) {
     case "fast":
       classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_FAST_MS", FAST_TIMEOUT_MS);
+      break;
+    case "interactive":
+      classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_INTERACTIVE_MS", INTERACTIVE_TIMEOUT_MS);
       break;
     case "async_candidate":
       classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS", ASYNC_CANDIDATE_TIMEOUT_MS);

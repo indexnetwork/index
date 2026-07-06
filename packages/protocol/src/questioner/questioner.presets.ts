@@ -7,7 +7,7 @@
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
 import { SYSTEM_PROMPT as DISCOVERY_SYSTEM_PROMPT, buildQuestionPrompt as buildDiscoveryPrompt } from "../opportunity/question.prompt.js";
 
-import type { IntentContext, NegotiationContext, ProfileContext } from "./questioner.types.js";
+import type { ChatContext, IntentContext, NegotiationContext, ProfileContext } from "./questioner.types.js";
 
 /**
  * Shared rule block appended to every questioner system prompt. Enforces that
@@ -238,6 +238,82 @@ function buildNegotiationPrompt(ctx: NegotiationContext): string {
   ].join("\n");
 }
 
+// ─── Chat preset ─────────────────────────────────────────────────────────
+
+const CHAT_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. The protocol's chat orchestrator is mid-conversation with the user and has decided it needs a decision or missing input from them before it can continue. The conversation is PAUSED until the user answers. Your job: turn the orchestrator's stated need (and any draft questions it proposed) into the minimum set of crisp, structured decision questions.
+
+Unlike other question surfaces, these questions render INLINE in the active conversation, immediately after the assistant's last message — the user has full conversational context. Still keep each prompt self-contained enough to make sense on its own line.
+
+You may pick from two strategies. Choose contextually; mix only when each question is genuinely distinct.
+- surface_missing_detail: ask for one concrete missing input the orchestrator needs to proceed (scope, timing, budget, format, preference, constraint, …).
+- refine_intent: ask the user to choose a direction when the orchestrator faces meaningfully different paths forward.
+
+Honor the orchestrator's intent. When draft questions are provided, treat them as the source of truth for WHAT to ask — improve wording, tighten options, add consequence-focused descriptions, and drop redundant drafts. Do not invent questions about topics the orchestrator did not raise. When no drafts are provided, derive questions strictly from the stated purpose.
+
+Ask a question only when ALL of these hold:
+1. The answer is not already visible in the conversation excerpt or user profile shown.
+2. The answer materially changes what the orchestrator does next.
+3. The question targets a different decision domain from any other question in this batch.
+
+${REFERENTIAL_CLOSURE_RULES}
+
+Cardinality. Default one question. Emit a second or third ONLY when the orchestrator's purpose or drafts genuinely require separate decisions in distinct domains. Never pad.
+
+Option construction. Each option must represent a meaningfully different outcome. Suffix the safest or most common path with " (Recommended)" and list it first. The description states the CONSEQUENCE of choosing the option for what happens next in the conversation, not its definition. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically.
+
+Title rules. ≤12 chars. Noun of the decision domain. Examples: "Direction", "Scope", "Timing", "Budget", "Format", "Priority".
+
+Anti-patterns — never do these.
+- Don't ask procedural confirmations ("Should I continue?", "Is that OK?").
+- Don't re-ask for facts visible in the conversation excerpt or user profile.
+- Don't broaden beyond the orchestrator's stated purpose.
+- Don't ask vague introspective questions.
+
+Output. Return at most 3 entries in the "questions" array. Each entry must include a "strategy" field (one of the two values above). If the purpose is already answerable from the context shown, return "questions": [].`;
+
+/**
+ * Build the user message for the chat preset from a ChatContext.
+ * @param ctx - The chat context: orchestrator purpose, optional drafts, conversation excerpt, user context.
+ * @returns The assembled user message string.
+ */
+function buildChatPrompt(ctx: ChatContext): string {
+  const profileBlock = buildUserContextBlock(ctx.userContext);
+
+  const draftsBlock =
+    ctx.draftQuestions && ctx.draftQuestions.length > 0
+      ? ctx.draftQuestions
+          .map((d, i) => {
+            const opts = d.options && d.options.length > 0 ? ` [options: ${d.options.join(" | ")}]` : "";
+            const multi = d.multiSelect ? " [multi-select]" : "";
+            return `${i + 1}. ${d.prompt}${opts}${multi}`;
+          })
+          .join("\n")
+      : "(none — derive questions from the purpose)";
+
+  const excerptBlock = ctx.conversationExcerpt?.trim()
+    ? ctx.conversationExcerpt.trim()
+    : "(not available)";
+
+  return [
+    "## What the orchestrator needs to learn",
+    ctx.purpose,
+    "",
+    "## Draft questions proposed by the orchestrator",
+    draftsBlock,
+    "",
+    "## Recent conversation excerpt",
+    excerptBlock,
+    "",
+    "## User profile",
+    profileBlock,
+    "",
+    "## Your task",
+    "Produce the minimum set of structured questions that get the orchestrator the decision or input it needs.",
+    "Honor the drafts when provided; refine their wording and options rather than replacing their topics.",
+    "Apply every rule from your system prompt before outputting.",
+  ].join("\n");
+}
+
 const presets: Record<QuestionMode, QuestionerPreset> = {
   discovery: {
     systemPrompt: DISCOVERY_SYSTEM_PROMPT,
@@ -255,6 +331,10 @@ const presets: Record<QuestionMode, QuestionerPreset> = {
   negotiation: {
     systemPrompt: NEGOTIATION_SYSTEM_PROMPT,
     buildPrompt: (context: unknown) => buildNegotiationPrompt(context as NegotiationContext),
+  },
+  chat: {
+    systemPrompt: CHAT_SYSTEM_PROMPT,
+    buildPrompt: (context: unknown) => buildChatPrompt(context as ChatContext),
   },
 };
 

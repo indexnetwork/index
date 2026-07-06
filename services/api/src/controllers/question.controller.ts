@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { questionService } from '../services/question.service';
 import type { AdapterQuestionFilters } from '../services/question.service';
 
+import { hasChatQuestionWaiter } from '../lib/chat-question.events';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
@@ -19,7 +20,7 @@ const answerBodySchema = z.object({
 });
 
 const statusQuerySchema = z.enum(['pending', 'answered', 'dismissed']).default('pending');
-const modeQuerySchema = z.enum(['discovery', 'intent', 'enrichment', 'negotiation']);
+const modeQuerySchema = z.enum(['discovery', 'intent', 'enrichment', 'negotiation', 'chat']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -100,7 +101,7 @@ export class QuestionController {
       const modeResult = modeQuerySchema.safeParse(rawMode);
       if (!modeResult.success) {
         return Response.json(
-          { error: 'Invalid mode; use one of: discovery, intent, profile, negotiation' },
+          { error: 'Invalid mode; use one of: discovery, intent, enrichment, negotiation, chat' },
           { status: 400 },
         );
       }
@@ -128,7 +129,9 @@ export class QuestionController {
    * @param req    - Request with JSON body `{ selectedOptions, freeText? }`.
    * @param user   - Authenticated user from AuthGuard.
    * @param params - Route params; `id` is the question ID.
-   * @returns JSON `{ success: true }` on success.
+   * @returns JSON `{ success: true, resumed }` on success — `resumed` is true
+   *   when a live chat turn was blocked on this question (ask_user_question)
+   *   and will now continue streaming with the answer.
    */
   @Post('/:id/answer')
   @UseGuards(RateLimit('write'), AuthGuard)
@@ -153,6 +156,10 @@ export class QuestionController {
       );
     }
 
+    // Snapshot before answering: the waiter unsubscribes once resolved, so
+    // checking afterwards would always report false.
+    const hadWaiter = hasChatQuestionWaiter(questionId);
+
     const updated = await questionService.answer(questionId, user.id, {
       ...parsed.data,
       answeredBy: user.id,
@@ -163,8 +170,8 @@ export class QuestionController {
       return Response.json({ error: 'Question not found' }, { status: 404 });
     }
 
-    logger.info('Question answered', { questionId, userId: user.id });
-    return Response.json({ success: true });
+    logger.info('Question answered', { questionId, userId: user.id, resumed: hadWaiter });
+    return Response.json({ success: true, resumed: hadWaiter });
   }
 
   /**

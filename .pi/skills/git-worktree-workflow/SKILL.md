@@ -1,6 +1,6 @@
 ---
 name: git-worktree-workflow
-description: Create and operate git worktrees in the index monorepo using the project's `bun run worktree:*` helpers instead of raw git. Use whenever you need an isolated branch checkout to make changes (the canonical root must stay on dev and is read-only for the assistant, enforced by the root-dev-guard extension), or when a worktree is missing env files, node_modules, or git hooks, or when a tool/bash call is blocked for touching the canonical root. Covers the dashed-folder / slashed-branch naming convention and why `worktree:setup` is mandatory after creating a worktree.
+description: Create and operate git worktrees in the index monorepo using the project's `bun run worktree:*` helpers instead of raw git. Use whenever you need an isolated branch checkout to make changes (the canonical root must stay on dev and is read-only for the assistant, enforced by the root-dev-guard extension), or when a worktree is missing env files, node_modules, or git hooks, or when a tool/bash call is blocked for touching the canonical root, or when `git commit`/`git rebase` fails with "gpg: signing failed: Inappropriate ioctl for device" in a non-interactive shell. Covers the dashed-folder / slashed-branch naming convention, why `worktree:setup` is mandatory after creating a worktree, and how to disable GPG signing worktree-locally without touching the user's repo-wide signing config.
 ---
 
 # git-worktree-workflow
@@ -104,6 +104,34 @@ cd /tmp && git -C /Users/yanek/Projects/index worktree list
 
 Read-only git queries (status, log, ls-tree) are fine this way; all mutating work
 belongs in a worktree.
+
+## Commit signing (GPG fails without a TTY)
+
+This repo has `commit.gpgsign=true` with a **terminal pinentry** (`/opt/homebrew/bin/pinentry`,
+not pinentry-mac). Agent shells have no TTY, so when the gpg-agent passphrase cache is cold,
+`git commit` fails with `gpg: signing failed: Inappropriate ioctl for device` →
+`fatal: failed to write commit object`. **`git rebase` fails the same way** — every replayed
+commit is re-signed — and can leave a half-finished rebase (`git rebase --abort`, fix signing,
+retry).
+
+Options, in order of preference:
+
+1. **User caches the passphrase** (keeps commits signed): they run in their own terminal
+   `export GPG_TTY=$(tty) && echo ok | gpg --clearsign > /dev/null`, then retry — the agent
+   caches it (~10 min `default-cache-ttl`).
+2. **Single unsigned commit**: `git commit --no-gpg-sign` (ask the user first).
+3. **Unsigned for the whole worktree** (needed for rebases / multi-commit work):
+
+   ```bash
+   git config --worktree commit.gpgsign false   # worktree-scoped only
+   git config --show-origin --get-all commit.gpgsign   # verify: repo config stays true
+   ```
+
+   The `--worktree` flag requires `extensions.worktreeConfig` (this repo has it — the value
+   lands in `.git/worktrees/<name>/config.worktree`). **Never** run plain
+   `git config commit.gpgsign false` as a fallback — that is repo-local and silently disables
+   the user's signing in the canonical root and every other worktree. The setting dies with
+   the worktree on `git worktree remove`, so no cleanup is needed.
 
 ## Finishing up
 

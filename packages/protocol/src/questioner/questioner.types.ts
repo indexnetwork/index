@@ -46,12 +46,34 @@ export interface NegotiationContext {
   userContext?: string;
 }
 
+/**
+ * Chat context — data for orchestrator-initiated mid-conversation questions
+ * (the `ask_user_question` tool). The orchestrator states what it needs to
+ * learn; the QuestionerAgent turns that into polished structured questions,
+ * grounded in the recent conversation and the user's identity context.
+ */
+export interface ChatContext {
+  /** What the orchestrator needs to learn and why (authored by the chat model). */
+  purpose: string;
+  /** Draft questions proposed by the orchestrator. The agent refines these. */
+  draftQuestions?: Array<{
+    prompt: string;
+    options?: string[];
+    multiSelect?: boolean;
+  }>;
+  /** Recent conversation excerpt for grounding (most recent messages last). */
+  conversationExcerpt?: string;
+  /** The user's global user_context paragraph (profile-replacing identity text). */
+  userContext?: string;
+}
+
 /** Discriminated union: mode selects the context shape. */
 export type QuestionerContext =
   | DiscoveryContext
   | IntentContext
   | ProfileContext
-  | NegotiationContext;
+  | NegotiationContext
+  | ChatContext;
 
 /**
  * Payload shape accepted by the questionerEnqueue callback. Covers all

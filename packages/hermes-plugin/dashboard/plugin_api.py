@@ -12,17 +12,23 @@ for the Networks view.
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 try:
     from fastapi import APIRouter, Body
+    from fastapi.responses import StreamingResponse
 except Exception:  # Allows local smoke tests without dashboard dependencies.
+    StreamingResponse = None  # type: ignore
+
     def Body(default=None, **_kwargs):  # type: ignore
         return default
 
@@ -157,6 +163,88 @@ def _fetch_user(user_id: str) -> dict[str, Any]:
     return user if isinstance(user, dict) else {}
 
 
+def _fetch_me() -> dict[str, Any]:
+    """Fetch the authenticated user's account row (email, timezone, notif prefs) over REST."""
+    payload = tools._api_request("GET", "/auth/me")
+    if not isinstance(payload, dict) or payload.get("success") is False:
+        return {}
+    user = payload.get("user")
+    return user if isinstance(user, dict) else {}
+
+
+def _notification_preferences(value: Any) -> dict[str, bool]:
+    prefs = value if isinstance(value, dict) else {}
+    return {
+        "connectionUpdates": bool(prefs.get("connectionUpdates", True)),
+        "weeklyNewsletter": bool(prefs.get("weeklyNewsletter", True)),
+    }
+
+
+_AVATAR_EXTENSIONS = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+
+
+def _decode_data_url(data_url: str) -> tuple[bytes, str, str | None]:
+    """Decode a `data:<mime>;base64,<payload>` URL into (bytes, mime, error)."""
+    if not data_url or not data_url.startswith("data:"):
+        return b"", "", "An image data URL is required."
+    header, _, payload = data_url[len("data:"):].partition(",")
+    if not payload or "base64" not in header:
+        return b"", "", "Only base64-encoded image data URLs are supported."
+    content_type = header.split(";", 1)[0].strip().lower() or "image/png"
+    if content_type not in _AVATAR_EXTENSIONS:
+        return b"", "", "Unsupported image type. Use PNG, JPEG, WebP, or GIF."
+    try:
+        content = base64.b64decode(payload, validate=False)
+    except (ValueError, TypeError) as exc:
+        return b"", "", f"Could not decode image data: {exc}"
+    if not content:
+        return b"", "", "The image data was empty."
+    return content, content_type, None
+
+
+def _avatar_filename(content_type: str) -> str:
+    return f"avatar.{_AVATAR_EXTENSIONS.get(content_type, 'png')}"
+
+
+def _api_multipart(path: str, field: str, filename: str, content: bytes, content_type: str) -> dict[str, Any]:
+    """POST a single-file multipart/form-data body to the Index API with the plugin key."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        return {"success": False, "error": "INDEX_API_KEY is required."}
+
+    boundary = "----IndexHermesBoundary" + base64.urlsafe_b64encode(os.urandom(12)).decode("ascii").rstrip("=")
+    preamble = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n"
+    ).encode("utf-8")
+    body = preamble + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+    headers = {k: v for k, v in tools._headers(api_key).items() if k.lower() != "content-type"}
+    headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+
+    base_url = tools._api_url().rstrip("/")
+    request_path = path if path.startswith("/") else f"/{path}"
+    request = urllib.request.Request(f"{base_url}{request_path}", data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=tools._timeout_seconds()) as response:
+            parsed = tools._parse_api_response(response.read())
+            return parsed if isinstance(parsed, dict) else {"success": True, "data": parsed}
+    except urllib.error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")[:2_000]
+        return {"success": False, "error": f"Avatar upload failed with status {exc.code}.", "status": exc.code, "body": body_text}
+    except urllib.error.URLError as exc:
+        return {"success": False, "error": f"Avatar upload request failed: {exc.reason}"}
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": f"Avatar upload could not be processed: {exc}"}
+
+
 def _profile_socials(user: dict[str, Any]) -> list[dict[str, str]]:
     socials: list[dict[str, str]] = []
     for social in _list(user.get("socials")):
@@ -169,10 +257,10 @@ def _profile_socials(user: dict[str, Any]) -> list[dict[str, str]]:
     return socials
 
 
-# Fields the dashboard surfaces but does not read or persist through the API yet.
-# They are mocked client-visibly so the UI is complete; real persistence requires
-# wiring these now API-key-capable AuthGuard endpoints into the dashboard client.
-_MOCKED_PROFILE_FIELDS = ["email", "timezone", "notificationPreferences", "avatarUpload"]
+# Fields the dashboard reads but does not let the user edit. `email` is sourced
+# read-only from `GET /auth/me` (it is not in the profile update schema); every
+# other profile field is now both readable and persisted through the API.
+_MOCKED_PROFILE_FIELDS = ["email"]
 
 
 def _sanitize_profile_update(body: Any) -> tuple[dict[str, Any] | None, str | None]:
@@ -877,8 +965,8 @@ def profile() -> dict[str, Any]:
 
     Identity (name, bio, location, context) comes from the MCP `read_user_contexts`
     self-read; avatar and socials come from the public `GET /users/:id`. Email,
-    timezone, and notification preferences are not wired through this dashboard
-    client yet, so they are returned as mock defaults (see `_MOCKED_PROFILE_FIELDS`).
+    timezone, and notification preferences are sourced from the now API-key-capable
+    `GET /auth/me` (email stays read-only — see `_MOCKED_PROFILE_FIELDS`).
     """
     user_id = _resolve_user_id()
     if not user_id:
@@ -886,6 +974,7 @@ def profile() -> dict[str, Any]:
 
     contexts = _data(_call_mcp("read_user_contexts")) or {}
     user = _fetch_user(user_id)
+    me = _fetch_me()
 
     name = _text(user.get("name")) or _text(contexts.get("name") if isinstance(contexts, dict) else None)
     intro = _text(user.get("intro")) or _text(contexts.get("bio") if isinstance(contexts, dict) else None)
@@ -900,10 +989,9 @@ def profile() -> dict[str, Any]:
         "avatar": _avatar_url(user.get("avatar")),
         "socials": _profile_socials(user),
         "context": context_text,
-        # Mocked until the dashboard wires the API-key-capable profile endpoints:
-        "email": "",
-        "timezone": "",
-        "notificationPreferences": {"connectionUpdates": True, "weeklyNewsletter": True},
+        "email": _text(me.get("email")),
+        "timezone": _text(me.get("timezone")),
+        "notificationPreferences": _notification_preferences(me.get("notificationPreferences")),
     }
     return {"success": True, "profile": profile_obj, "mockedFields": _MOCKED_PROFILE_FIELDS}
 
@@ -946,25 +1034,259 @@ def public_profile(user_id: str) -> dict[str, Any]:
 
 @router.patch("/profile")
 def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Validate a profile update and acknowledge it.
+    """Persist a profile update via the API-key-capable `PATCH /auth/profile/update`.
 
-    Index's profile-write endpoints (`PATCH /auth/profile/update`, avatar upload)
-    are API-key-capable through AuthGuard, but this dashboard has not wired them
-    yet, so this is a mock acknowledgement — the payload is validated but not persisted.
+    Accepts name, intro, location, timezone, socials[], notificationPreferences, and
+    an optional avatar URL (produced by `POST /profile/avatar`).
     """
     update, validation_error = _sanitize_profile_update(body)
     if validation_error:
         return {"success": False, "error": validation_error}
-    return {"success": True, "mock": True, "applied": update or {}}
+    avatar = _text(body.get("avatar")) if isinstance(body, dict) else ""
+    if avatar:
+        update = dict(update or {})
+        update["avatar"] = avatar
+    if not update:
+        return {"success": True, "applied": {}}
+    payload = tools._api_request("PATCH", "/auth/profile/update", update)
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "applied": update}
+
+
+@router.post("/profile/avatar")
+def upload_avatar(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Upload an avatar image (data URL) to `POST /storage/avatars`, returning its public URL.
+
+    The client sends the picked file as a base64 `dataUrl`; this decodes it and
+    re-forwards it as multipart/form-data (field `avatar`) with the plugin API key.
+    """
+    data_url = _text(body.get("dataUrl")) if isinstance(body, dict) else ""
+    content, content_type, decode_error = _decode_data_url(data_url)
+    if decode_error:
+        return {"success": False, "error": decode_error}
+    filename = _avatar_filename(content_type)
+    payload = _api_multipart("/storage/avatars", "avatar", filename, content, content_type)
+    if payload.get("success") is False:
+        return payload
+    avatar_url = _text(payload.get("avatarUrl"))
+    if not avatar_url:
+        return {"success": False, "error": "Avatar upload did not return a URL.", "response": payload}
+    return {"success": True, "avatarUrl": _avatar_url(avatar_url)}
 
 
 @router.post("/profile/intro")
-def generate_intro(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Acknowledge an AI intro-generation request.
+def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Generate an AI intro via the API-key-capable `POST /enrichment/sync`.
 
-    Index's intro generation (`POST /enrichment/sync`) is API-key-capable through
-    AuthGuard, but this dashboard has not wired it yet, so this mock echoes the
-    current intro back unchanged.
+    The enrichment graph persists the identity bio to `users.intro`; the sync
+    response surfaces it as a flat `intro` field which is echoed back to the client.
     """
-    current = _text(body.get("intro")) if isinstance(body, dict) else ""
-    return {"success": True, "mock": True, "intro": current}
+    payload = tools._api_request("POST", "/enrichment/sync")
+    if payload.get("success") is False:
+        return payload
+    intro = _text(payload.get("intro"))
+    return {"success": True, "intro": intro}
+
+
+@router.patch("/intents/{intent_id}/archive")
+def archive_intent(intent_id: str) -> dict[str, Any]:
+    """Archive one of the caller's intents via `PATCH /intents/:id/archive`."""
+    intent_id = _text(intent_id)
+    if not intent_id:
+        return {"success": False, "error": "An intent id is required."}
+    payload = tools._api_request("PATCH", f"/intents/{quote(intent_id, safe='')}/archive")
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Conversations / realtime DMs
+#
+# All endpoints are participant-gated server-side. The list is normalized to a
+# dashboard-safe counterpart summary; messages are passed through mostly raw so
+# the client normalizes both REST and SSE payloads through one code path.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SSE_READ_TIMEOUT = 60.0
+
+
+def _message_text(parts: Any) -> str:
+    # Message text lives either in a data part (data.message /
+    # data.assessment.reasoning) or in a plain text part. Parts use `kind`
+    # (agent A2A) or `type` (plain) as the discriminator.
+    data_part: dict[str, Any] | None = None
+    text_part: str = ""
+    for part in _list(parts):
+        if not isinstance(part, dict):
+            continue
+        if data_part is None and (part.get("kind") == "data" or part.get("type") == "data"):
+            if isinstance(part.get("data"), dict):
+                data_part = part
+        if not text_part:
+            text = _text(part.get("text"))
+            if text:
+                text_part = text
+    if data_part is not None:
+        data = data_part.get("data") or {}
+        message = _text(data.get("message"))
+        if message:
+            return message
+        assessment = data.get("assessment") if isinstance(data.get("assessment"), dict) else {}
+        reasoning = _text(assessment.get("reasoning"))
+        if reasoning:
+            return reasoning
+    return text_part
+
+
+def _counterpart_participant(conversation: dict[str, Any], current_user_id: str) -> dict[str, Any]:
+    # The caller may appear either as the bare userId (DMs) or as the
+    # `agent:<userId>` participant (negotiation/opportunity threads); skip both
+    # so agent threads don't pick the user's own agent as the counterpart.
+    self_ids = {current_user_id, "agent:" + current_user_id} if current_user_id else set()
+    for participant in _list(conversation.get("participants")):
+        if isinstance(participant, dict) and _text(participant.get("participantId")) not in self_ids:
+            return participant
+    return {}
+
+
+def _is_h2h(conversation: dict[str, Any]) -> bool:
+    # Human-to-human, matching the web app's Messages filter (ChatSidebar): a
+    # conversation with exactly two participants, both of `participantType`
+    # 'user'. Excludes human-to-agent and agent-to-agent (negotiation) threads.
+    participants = [p for p in _list(conversation.get("participants")) if isinstance(p, dict)]
+    return len(participants) == 2 and all(_text(p.get("participantType")) == "user" for p in participants)
+
+
+def _conversation_kind(conversation: dict[str, Any]) -> str:
+    for participant in _list(conversation.get("participants")):
+        if not isinstance(participant, dict):
+            continue
+        if _text(participant.get("participantType")) == "agent" or _text(participant.get("participantId")).startswith("agent:"):
+            return "negotiation"
+    return "dm"
+
+
+def _normalize_conversation(conversation: dict[str, Any], current_user_id: str) -> dict[str, Any]:
+    counterpart = _counterpart_participant(conversation, current_user_id)
+    metadata = conversation.get("metadata") if isinstance(conversation.get("metadata"), dict) else {}
+    # Agent participants expose the human behind them via `ownerName`.
+    counterpart_name = _text(counterpart.get("ownerName")) or _text(counterpart.get("name"))
+    last_message = conversation.get("lastMessage") if isinstance(conversation.get("lastMessage"), dict) else None
+    return {
+        "id": _text(conversation.get("id")),
+        "title": _text(metadata.get("title")) or counterpart_name or "Conversation",
+        "counterpartUserId": _text(counterpart.get("participantId")),
+        "counterpartName": counterpart_name,
+        "avatar": _avatar_url(counterpart.get("avatar")),
+        "kind": _conversation_kind(conversation),
+        "lastMessageAt": _text(conversation.get("lastMessageAt")),
+        "lastMessagePreview": _truncate(_message_text(last_message.get("parts")), 120) if last_message else "",
+    }
+
+
+@router.get("/conversations")
+def list_conversations() -> dict[str, Any]:
+    """List the caller's conversations (participant-gated) as counterpart summaries."""
+    current_user_id = _resolve_user_id()
+    if not current_user_id:
+        return {"success": False, "error": "Could not resolve the current user from the configured API key."}
+    payload = tools._api_request("GET", "/conversations")
+    if payload.get("success") is False:
+        return payload
+    conversations = [
+        _normalize_conversation(row, current_user_id)
+        for row in _list(payload.get("conversations"))
+        if isinstance(row, dict) and _is_h2h(row)
+    ]
+    return {"success": True, "conversations": conversations, "currentUserId": current_user_id}
+
+
+@router.post("/conversations/dm")
+def create_dm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Get or create a direct-message conversation with a peer user."""
+    peer_user_id = _text(body.get("peerUserId")) if isinstance(body, dict) else ""
+    if not peer_user_id:
+        return {"success": False, "error": "peerUserId is required."}
+    payload = tools._api_request("POST", "/conversations/dm", {"peerUserId": peer_user_id})
+    if payload.get("success") is False:
+        return payload
+    conversation = payload.get("conversation") if isinstance(payload.get("conversation"), dict) else {}
+    current_user_id = _resolve_user_id() or ""
+    return {"success": True, "conversation": _normalize_conversation(conversation, current_user_id)}
+
+
+@router.get("/conversations/{conversation_id}/messages")
+def list_messages(conversation_id: str) -> dict[str, Any]:
+    """Return a conversation's messages (raw parts) plus the caller's userId for normalization."""
+    conversation_id = _text(conversation_id)
+    if not conversation_id:
+        return {"success": False, "error": "A conversation id is required."}
+    current_user_id = _resolve_user_id() or ""
+    payload = tools._api_request("GET", f"/conversations/{quote(conversation_id, safe='')}/messages")
+    if payload.get("success") is False:
+        return payload
+    messages = [row for row in _list(payload.get("messages")) if isinstance(row, dict)]
+    return {"success": True, "messages": messages, "currentUserId": current_user_id}
+
+
+@router.post("/conversations/{conversation_id}/messages")
+def send_message(conversation_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Send a text message into a conversation."""
+    conversation_id = _text(conversation_id)
+    if not conversation_id:
+        return {"success": False, "error": "A conversation id is required."}
+    text = _text(body.get("text")) if isinstance(body, dict) else ""
+    if not text:
+        return {"success": False, "error": "Message text is required."}
+    payload = tools._api_request(
+        "POST",
+        f"/conversations/{quote(conversation_id, safe='')}/messages",
+        {"parts": [{"type": "text", "text": text}]},
+    )
+    if payload.get("success") is False:
+        return payload
+    message = payload.get("message") if isinstance(payload.get("message"), dict) else payload
+    return {"success": True, "message": message}
+
+
+def _conversation_stream():
+    """Relay the upstream conversations SSE stream (Redis pub/sub) to the dashboard tab."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        yield b'data: {"type":"error","error":"INDEX_API_KEY is required."}\n\n'
+        return
+    headers = dict(tools._headers(api_key))
+    headers["Accept"] = "text/event-stream"
+    base_url = tools._api_url().rstrip("/")
+    request = urllib.request.Request(f"{base_url}/conversations/stream", headers=headers, method="GET")
+    try:
+        response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001 - surface a stream error frame instead of raising.
+        message = json.dumps({"type": "error", "error": str(exc)})
+        yield f"data: {message}\n\n".encode("utf-8")
+        return
+    try:
+        for line in response:
+            if line:
+                yield line
+    except Exception:  # noqa: BLE001 - client disconnects / read timeouts end the relay.
+        return
+    finally:
+        try:
+            response.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+@router.get("/conversations/stream")
+def conversations_stream():
+    """SSE proxy for realtime conversation events (new messages)."""
+    if StreamingResponse is None:
+        return {"success": False, "error": "Streaming is not available in this environment."}
+    return StreamingResponse(
+        _conversation_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )

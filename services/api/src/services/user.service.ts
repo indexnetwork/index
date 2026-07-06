@@ -2,7 +2,6 @@ import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
-import { PremiseEvents } from '../events/premise.event';
 import { enrichmentQueue } from '../queues/enrichment.queue';
 
 const logger = log.service.from("UserService");
@@ -15,10 +14,8 @@ const logger = log.service.from("UserService");
 export interface UserServiceDeps {
   /** Query premise IDs by provenance source for a user. */
   getPremisesBySource?: (userId: string, source: string) => Promise<Array<{ id: string }>>;
-  /** Retract a single premise (set status RETRACTED + retractedAt). */
+  /** Retract a single premise (set status RETRACTED + retractedAt). Lifecycle events fire in the DB adapter. */
   retractPremise?: (premiseId: string) => Promise<void>;
-  /** Emit the onRetracted lifecycle event for a premise. */
-  emitPremiseRetracted?: (premiseId: string, userId: string) => void;
   /** Enqueue an enrichment job to rebuild premises from updated socials. */
   enqueueEnrichment?: (userId: string) => Promise<void>;
 }
@@ -94,13 +91,11 @@ export class UserService {
             this.deps?.getPremisesBySource ??
             ((uid: string, src: string) => chatDatabaseAdapter.getPremisesBySource(uid, src));
 
+        // Lifecycle events (cascade + context regen) fire inside the adapter's
+        // updatePremise — no explicit emit needed here.
         const retractPremise =
             this.deps?.retractPremise ??
             (async (id: string) => { await chatDatabaseAdapter.updatePremise(id, { status: 'RETRACTED', retractedAt: new Date() }); });
-
-        const emitPremiseRetracted =
-            this.deps?.emitPremiseRetracted ??
-            ((id: string, uid: string) => PremiseEvents.onRetracted(id, uid));
 
         const enqueueEnrichment =
             this.deps?.enqueueEnrichment ??
@@ -115,7 +110,6 @@ export class UserService {
 
         for (const { id } of toRetract) {
             await retractPremise(id);
-            emitPremiseRetracted(id, userId);
         }
 
         // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.

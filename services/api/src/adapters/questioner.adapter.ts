@@ -25,7 +25,7 @@ const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Detection context describing how/where a question was generated. */
 export interface AdapterQuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -87,7 +87,7 @@ export interface AdapterPersistedQuestion {
 
 /** Optional filters for the `findPending` query. */
 export interface AdapterQuestionFilters {
-  mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
+  mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
   sourceType?: string;
   sourceId?: string;
   /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */
@@ -100,7 +100,7 @@ export interface AdapterQuestionFilters {
   /** When true, only return questions with no conversationId (sidebar-only). */
   noConversation?: boolean;
   /** Restrict to questions whose detection mode is in this set. */
-  modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation'>;
+  modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat'>;
   /** Maximum rows to return (applied as a SQL LIMIT). */
   limit?: number;
 }
@@ -266,6 +266,8 @@ export class QuestionerAdapter {
 
   /**
    * Dismiss a question, setting its status to `dismissed`.
+   * Emits `QuestionEvents.onDismissed` after persisting (used to unblock chat
+   * turns awaiting an ask_user_question answer).
    * Only updates the question if the user is listed as an actor.
    *
    * @param questionId - ID of the question to dismiss.
@@ -283,9 +285,20 @@ export class QuestionerAdapter {
           sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
         ),
       )
-      .returning({ id: questions.id });
+      .returning({ id: questions.id, detection: questions.detection });
 
-    return !!updated;
+    if (!updated) return false;
+
+    const detection = updated.detection as AdapterQuestionDetection;
+    QuestionEvents.onDismissed({
+      questionId,
+      userId,
+      mode: detection.mode,
+      sourceType: detection.sourceType,
+      sourceId: detection.sourceId,
+    });
+
+    return true;
   }
 }
 

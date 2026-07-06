@@ -209,7 +209,7 @@ dashboard/dist/style.css
 dashboard/plugin_api.py
 ```
 
-The tab appears as **Index Network** in Hermes and is live with one write-enabled workflow: answering pending Index questions. It shows the authenticated user's pending questions, own intents, actionable opportunities, negotiation activity summary, and joined networks. The dashboard backend reuses `tools.py` for Index authentication, scoped MCP forwarding, API writes, timeouts, and response decoding instead of creating a second Index client.
+The tab appears as **Index Network** in Hermes and is write-enabled for several workflows: answering pending Index questions, accepting/skipping opportunities, self-joining open communities, archiving intents, editing the profile (name/intro/location/socials/timezone/notifications + avatar upload + AI intro), and sending realtime direct messages. It shows the authenticated user's pending questions, own intents, actionable opportunities, negotiation activity summary, joined networks, a profile/settings panel, and a searchable Messages panel with unread markers, agent-thread badges, and a live `/conversations/stream` feed (authoritative realtime consumed via `SDK.authedFetch` streaming, with reconnect + optimistic send, matching the web app). The dashboard backend reuses `tools.py` for Index authentication, scoped MCP forwarding, API writes, timeouts, and response decoding instead of creating a second Index client.
 
 The dashboard never claims pending negotiation turns or submits negotiation responses. Those actions remain explicit Hermes tool/skill flows.
 

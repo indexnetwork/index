@@ -15,7 +15,7 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm/sql';
 import { randomUUID } from 'node:crypto';
 
-import { OpportunityPresenter, canUserSeeOpportunity, classifyOpportunity, gatherPresenterContext, getOrCreateDeliveryCardBatch, isActionableForViewer, type PresenterDatabase } from '@indexnetwork/protocol';
+import { OpportunityPresenter, canUserSeeOpportunity, classifyOpportunity, gatherPresenterContext, getOrCreateDeliveryCardBatch, isActionableForViewer, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary } from '@indexnetwork/protocol';
 
 import type { Cache } from '../adapters/cache.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
@@ -674,12 +674,15 @@ export class OpportunityDeliveryService {
         narratorRemark: presented.narratorRemark,
       };
     } catch {
-      // LLM fallback — follow opportunity.service.ts:getChatContext fallback shape
-      const rawReasoning =
-        (opp.interpretation as { reasoning?: string } | null)?.reasoning ?? '';
+      // LLM fallback — shared sanitization standard (see opportunity.safe-presentation.ts
+      // in protocol); follows opportunity.service.ts:getChatContext fallback shape.
+      const fallbackSummary = safeFallbackSummary(
+        (opp.interpretation as { reasoning?: string } | null)?.reasoning,
+        { emptyText: 'Connection opportunity' },
+      );
       return {
-        headline: rawReasoning.substring(0, 80) || 'Connection opportunity',
-        personalizedSummary: rawReasoning,
+        headline: truncateAtBoundary(fallbackSummary, 80) || 'Connection opportunity',
+        personalizedSummary: fallbackSummary,
         suggestedAction: 'Open Index Network to see the full context and decide.',
         narratorRemark: '',
       };

@@ -11,6 +11,8 @@
  * - profile:   create a premise from the answer → triggers profile regen
  * - intent:    enqueue intent refinement with the new context
  * - negotiation: store answer as context for the next negotiation turn
+ * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
+ *              tool call resumes the paused chat turn with the answer
  */
 
 import { log } from '../../lib/log';
@@ -22,7 +24,7 @@ const logger = log.service.from('QuestionAnswerHandler');
 interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
   sourceType: string;
   sourceId: string;
   answer: {
@@ -60,6 +62,16 @@ export interface QuestionAnswerHandlerDeps {
     selectedOptions: string[];
     freeText?: string;
   }) => Promise<void>;
+
+  /**
+   * Resolve a chat turn blocked on this question (ask_user_question wait bus).
+   * No-op when no turn is waiting — the answer stays on the question row and
+   * the frontend feeds it back into the conversation as a new turn.
+   */
+  resolveChatQuestionWait: (input: {
+    questionId: string;
+    answer: QuestionAnsweredPayload['answer'];
+  }) => void;
 }
 
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
@@ -109,6 +121,10 @@ export async function handleQuestionAnswered(
           selectedOptions: answer.selectedOptions,
           freeText: answer.freeText,
         });
+        break;
+
+      case 'chat':
+        deps.resolveChatQuestionWait({ questionId, answer });
         break;
 
       default:

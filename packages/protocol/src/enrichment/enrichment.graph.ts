@@ -577,22 +577,95 @@ export class EnrichmentGraphFactory {
         try {
           const _traceEmitter = requestContext.getStore()?.traceEmitter;
 
+          // Offer the user's ACTIVE premises to the decomposer so removal/denial
+          // instructions ("remove all mentions of X", "I have nothing to do with Y")
+          // can be resolved to concrete retractions instead of being silently dropped.
+          // Only when the adapter supports retraction — otherwise skip the lookup.
+          let activePremises: Array<{ id: string; assertion: { text: string } }> = [];
+          if (typeof this.database.updatePremise === 'function') {
+            try {
+              activePremises = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
+            } catch (err) {
+              logger.warn("Failed to load active premises for retraction matching — proceeding without", {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+
           const decomposeStart = Date.now();
           _traceEmitter?.({ type: "agent_start", name: "premise-decomposer" });
-          const result = await premiseDecomposer.invoke(state.input);
+          // Offer the stored bio (users.intro) as well: it is a separate identity
+          // field that premises never touch, so removal instructions must also be
+          // able to rewrite it — otherwise disavowed facts survive in the bio and
+          // resurface in every prompt that includes the profile identity.
+          const currentBio = state.profile?.identity?.bio ?? '';
+          const result = await premiseDecomposer.invoke(
+            state.input,
+            activePremises.map((p) => ({ id: p.id, text: p.assertion.text })),
+            currentBio,
+          );
           const decomposeMs = Date.now() - decomposeStart;
+          const retractionIds = result.retractedPremiseIds ?? [];
           agentTimingsAccum.push({ name: "premise.decomposer", durationMs: decomposeMs });
           _traceEmitter?.({
             type: "agent_end",
             name: "premise-decomposer",
             durationMs: decomposeMs,
-            summary: `Decomposed into ${result.premises.length} premise(s)`,
+            summary: `Decomposed into ${result.premises.length} premise(s), ${retractionIds.length} retraction(s)`,
           });
+
+          // Apply retractions FIRST so a premise that is simultaneously disavowed and
+          // re-asserted in corrected form does not dedupe the new create against the
+          // stale active row.
+          let retracted = 0;
+          for (const premiseId of retractionIds) {
+            if (!this.database.updatePremise) break;
+            try {
+              await this.database.updatePremise(premiseId, {
+                status: 'RETRACTED',
+                retractedAt: new Date(),
+              });
+              retracted++;
+            } catch (err) {
+              logger.warn("Premise retraction failed", {
+                premiseId,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          if (retracted > 0) {
+            logger.verbose(`Retracted ${retracted}/${retractionIds.length} premise(s) disavowed by input`, {
+              userId: state.userId,
+            });
+          }
+
+          // Apply the bio revision (before the no-new-premises early return: a pure
+          // removal instruction extracts zero premises but still rewrites the bio).
+          let bioRevised = false;
+          const revisedBio = result.revisedBio?.trim();
+          if (revisedBio && revisedBio !== currentBio.trim()) {
+            try {
+              await this.database.saveProfile(state.userId, {
+                userId: state.userId,
+                // Empty name/location are skipped by the identity persister — only
+                // the bio is written.
+                identity: { name: '', bio: revisedBio, location: '' },
+                context: '',
+              });
+              bioRevised = true;
+              logger.verbose("Revised stored bio per removal/correction instruction", { userId: state.userId });
+            } catch (err) {
+              logger.warn("Bio revision failed", {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
 
           if (result.premises.length === 0) {
             logger.verbose("No premises extracted — nothing to create");
             return {
               agentTimings: agentTimingsAccum,
+              ...(retracted > 0 || bioRevised ? { operationsPerformed: { decomposedPremises: true } } : {}),
             };
           }
 

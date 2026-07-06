@@ -6,7 +6,8 @@ import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { deriveDiscoveryNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { viewerCentricCardSummary, narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
+import { narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
+import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.safe-presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
@@ -70,17 +71,19 @@ export function resolveActionableLinkKind(input: {
   status: string;
   viewerRole: string;
   viewerApproved?: boolean;
+  viewerActedAt?: string | null;
 }): ConnectLinkKind | null {
-  const { status, viewerRole, viewerApproved } = input;
+  const { status, viewerRole, viewerApproved, viewerActedAt } = input;
   const isIntroducer = viewerRole === "introducer";
+  const hasViewerActed = !!viewerActedAt;
   if (status === "accepted") {
     return isIntroducer ? null : "outreach";
   }
   if (status === "pending") {
-    return isIntroducer ? null : "connect";
+    return isIntroducer || hasViewerActed ? null : "connect";
   }
   if (status === "draft" || status === "latent") {
-    if (!isIntroducer) return "send_direct";
+    if (!isIntroducer) return hasViewerActed ? null : "send_direct";
     return viewerApproved === true ? null : "approve_introduction";
   }
   return null;
@@ -146,6 +149,7 @@ export async function attachActionableLinks(
   opts: {
     viewerId: string;
     viewerApproved?: boolean;
+    viewerActedAt?: string | null;
     counterpartUserId: string;
     mintConnectLink: NonNullable<ToolDeps["mintConnectLink"]>;
     frontendUrl: string | undefined;
@@ -166,12 +170,14 @@ export async function attachActionableLinks(
     status: card.status,
     viewerRole: card.viewerRole,
     viewerApproved: opts.viewerApproved,
+    viewerActedAt: opts.viewerActedAt,
   });
   logger.info("Opportunity actionability decision", {
     opportunityId: card.opportunityId,
     status: card.status,
     viewerRole: card.viewerRole,
     viewerApproved: opts.viewerApproved,
+    viewerActedAt: opts.viewerActedAt,
     kind: kind ?? "none",
   });
   if (kind === null) return;
@@ -305,13 +311,14 @@ export function buildMinimalOpportunityCard(
     (a) => a.role === "introducer" && a.userId === viewerId,
   );
   const reasoning = opp.interpretation?.reasoning ?? "";
-  const mainText = viewerCentricCardSummary(
-    reasoning,
+  // Shared sanitization standard — see opportunity.safe-presentation.ts.
+  const mainText = safeFallbackSummary(reasoning, {
     counterpartName,
-    MINIMAL_MAIN_TEXT_MAX_CHARS,
     viewerName,
-    introducerName ?? undefined,
-  );
+    introducerName: introducerName ?? undefined,
+    maxChars: MINIMAL_MAIN_TEXT_MAX_CHARS,
+    emptyText: "A suggested connection.",
+  });
   const score =
     typeof opp.interpretation?.confidence === "number"
       ? opp.interpretation.confidence
@@ -820,7 +827,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           userId: opp.userId,
           name: opp.name,
           avatar: opp.avatar,
-          mainText: opp.homeCardPresentation?.personalizedSummary ?? opp.matchReason ?? "",
+          mainText: getSafePresentationOrSkip(opp, { counterpartName: opp.name })?.summary ?? "",
           cta: opp.homeCardPresentation?.suggestedAction,
           headline: opp.homeCardPresentation?.headline,
           primaryActionLabel: opp.homeCardPresentation?.primaryActionLabel,
@@ -831,6 +838,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           isGhost: opp.isGhost ?? false,
           score: opp.score,
           status: opp.status,
+          viewerActedAt: opp.viewerActedAt,
         }));
         const displayedCards = allCardData.slice(0, CHAT_DISPLAY_LIMIT);
         const extraFromCap = allCardData.length - displayedCards.length;
@@ -999,13 +1007,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             (firstEntity?.profile as { avatar?: string | null } | undefined)
               ?.avatar ??
             null,
-          mainText: viewerCentricCardSummary(
-            reasoning,
+          mainText: safeFallbackSummary(reasoning, {
             counterpartName,
-            MINIMAL_MAIN_TEXT_MAX_CHARS,
-            undefined, // viewerName not available in this context; introducer name passed separately
-            introducerUser?.name ?? undefined,
-          ),
+            // viewerName not available in this context; introducer name passed separately
+            introducerName: introducerUser?.name ?? undefined,
+            maxChars: MINIMAL_MAIN_TEXT_MAX_CHARS,
+            emptyText: "A suggested connection.",
+          }),
           cta: "Start a conversation to connect.",
           headline,
           primaryActionLabel,
@@ -1357,9 +1365,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         name: opp.name,
         avatar: opp.avatar,
         mainText:
-          opp.homeCardPresentation?.personalizedSummary ??
-          opp.matchReason ??
-          "",
+          getSafePresentationOrSkip(opp, { counterpartName: opp.name })?.summary ?? "",
         cta: opp.homeCardPresentation?.suggestedAction,
         headline: opp.homeCardPresentation?.headline,
         primaryActionLabel: opp.homeCardPresentation?.primaryActionLabel,
@@ -1387,6 +1393,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             }, {
               viewerId: context.userId,
               viewerApproved: source?.viewerApproved,
+              viewerActedAt: source?.viewerActedAt,
               counterpartUserId: source?.userId ?? card.userId,
               mintConnectLink,
               frontendUrl: deps.frontendUrl,
@@ -1987,6 +1994,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                     }, {
                       viewerId: context.userId,
                       viewerApproved,
+                      viewerActedAt: viewerActor?.actedAt ?? null,
                       counterpartUserId,
                       mintConnectLink: deps.mintConnectLink,
                       frontendUrl: deps.frontendUrl,
@@ -2167,6 +2175,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                   }, {
                     viewerId: context.userId,
                     viewerApproved,
+                    viewerActedAt: viewerActor?.actedAt ?? null,
                     counterpartUserId,
                     mintConnectLink: deps.mintConnectLink,
                     frontendUrl: deps.frontendUrl,

@@ -5,7 +5,6 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../adapters/database.adapter';
 
-import { PremiseEvents } from '../events/premise.event';
 import { userContextQueue } from './usercontext.queue';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
@@ -40,15 +39,21 @@ export type PremiseJobPayload = PremiseCascadeData | ProfileRegenData;
 // Opportunity status helpers (kept local to avoid importing schema at queue layer)
 // ---------------------------------------------------------------------------
 
-/** Non-terminal statuses that are "in-progress" and should be stalled. */
-const IN_PROGRESS_STATUSES = ['pending', 'negotiating', 'accepted'] as const;
+/**
+ * In-flight statuses (sent or mid-negotiation) that expire when the premise
+ * that motivated them lapses. `accepted` is deliberately excluded: a made
+ * connection outlives its originating premise. `stalled` is reserved for
+ * negotiation outcomes (turn cap / timeout / no consensus) and is never
+ * written by this cascade.
+ */
+const IN_FLIGHT_STATUSES = ['pending', 'negotiating'] as const;
 
 /** Statuses that represent early-stage (not yet sent) opportunities; they expire. */
 const EARLY_STATUSES = ['draft', 'latent'] as const;
 
-export type InProgressStatus = (typeof IN_PROGRESS_STATUSES)[number];
+export type InFlightStatus = (typeof IN_FLIGHT_STATUSES)[number];
 export type EarlyStatus = (typeof EARLY_STATUSES)[number];
-export type NonTerminalStatus = InProgressStatus | EarlyStatus;
+export type NonTerminalStatus = InFlightStatus | EarlyStatus;
 
 // ---------------------------------------------------------------------------
 // Deps interface
@@ -61,15 +66,15 @@ export type NonTerminalStatus = InProgressStatus | EarlyStatus;
  */
 export interface PremiseQueueDeps {
   /**
-   * Retrieve non-terminal opportunities where `userId` is an actor.
-   * Returns a minimal shape: id + current status.
+   * Retrieve cascade-eligible (non-terminal, non-accepted) opportunities
+   * where `userId` is an actor. Returns a minimal shape: id + current status.
    */
   getUserOpportunities?: (userId: string) => Promise<Array<{ id: string; status: NonTerminalStatus }>>;
 
   /**
-   * Transition an opportunity to a new status.
+   * Transition an opportunity to a new status. The cascade only ever expires.
    */
-  updateOpportunityStatus?: (opportunityId: string, status: 'expired' | 'stalled') => Promise<void>;
+  updateOpportunityStatus?: (opportunityId: string, status: 'expired') => Promise<void>;
 
   /**
    * Enqueue user-context regeneration (global + per-network) for the user.
@@ -97,9 +102,11 @@ export interface PremiseQueueDeps {
 /**
  * Premise cascade and profile regeneration queue.
  *
- * `premise_cascade` — when a premise is retracted or expired, transitions
- * non-terminal opportunities owned by the user: draft/latent → expired,
- * pending/negotiating/accepted → stalled.
+ * `premise_cascade` — when a premise is retracted or expired, expires the
+ * opportunities it motivated: draft/latent/pending/negotiating → expired.
+ * `accepted` opportunities are left untouched (the connection already
+ * happened), and `stalled` is never written here — it is strictly a
+ * negotiation outcome (turn cap / timeout / no consensus).
  *
  * `profile_regen` — when any premise lifecycle event fires, regenerates the
  * user's profile from their current active premises via the profile graph's
@@ -235,8 +242,8 @@ export class PremiseQueue {
   }
 
   /**
-   * Find ACTIVE premises past their validUntil date, transition each to EXPIRED,
-   * and emit {@link PremiseEvents.onExpired} for downstream cascade/regen.
+   * Find ACTIVE premises past their validUntil date and transition each to EXPIRED.
+   * The adapter's updatePremise emits onExpired for downstream cascade/regen.
    * @returns Number of premises expired
    */
   async checkExpiredPremises(): Promise<number> {
@@ -253,9 +260,10 @@ export class PremiseQueue {
     const expired = await getExpiredPremises();
     this.logger.verbose(`[ExpiryCheck] Found ${expired.length} expired premises`);
 
-    for (const { id, userId } of expired) {
+    for (const { id } of expired) {
+      // onExpired fires inside the adapter's updatePremise (status EXPIRED) —
+      // emitting here as well would double-enqueue the cascade/regen jobs.
       await expirePremise(id);
-      PremiseEvents.onExpired(id, userId);
     }
 
     this.logger.info(`[ExpiryCheck] Expired ${expired.length} premises`);
@@ -282,19 +290,21 @@ export class PremiseQueue {
   // -------------------------------------------------------------------------
 
   /**
-   * Default production implementation: fetch all non-terminal opportunities for
-   * a user from the database using a single filtered query.
+   * Default production implementation: fetch all cascade-eligible
+   * opportunities for a user from the database using a single filtered query.
+   * `accepted` is intentionally outside the fetch scope — the cascade must
+   * never touch a made connection.
    */
   private async defaultGetUserOpportunities(
     userId: string
   ): Promise<Array<{ id: string; status: NonTerminalStatus }>> {
     const adapter = new OpportunityDatabaseAdapter();
-    const nonTerminalStatuses: NonTerminalStatus[] = [
+    const cascadeStatuses: NonTerminalStatus[] = [
       ...EARLY_STATUSES,
-      ...IN_PROGRESS_STATUSES,
+      ...IN_FLIGHT_STATUSES,
     ];
     const rows = await adapter.getOpportunitiesForUser(userId, {
-      statuses: nonTerminalStatuses,
+      statuses: cascadeStatuses,
     });
     return rows.map((row) => ({ id: row.id, status: row.status as NonTerminalStatus }));
   }
@@ -305,7 +315,7 @@ export class PremiseQueue {
    */
   private async defaultUpdateOpportunityStatus(
     opportunityId: string,
-    status: 'expired' | 'stalled'
+    status: 'expired'
   ): Promise<void> {
     const adapter = new OpportunityDatabaseAdapter();
     await adapter.updateOpportunityStatus(opportunityId, status);
@@ -338,21 +348,17 @@ export class PremiseQueue {
 
     const updateOpportunityStatus =
       this.deps?.updateOpportunityStatus ??
-      ((oppId: string, status: 'expired' | 'stalled') =>
+      ((oppId: string, status: 'expired') =>
         this.defaultUpdateOpportunityStatus(oppId, status));
 
     const opportunities = await getUserOpportunities(userId);
 
-    let expiredCount = 0;
-    let stalledCount = 0;
-
+    // The premise that motivated these opportunities no longer holds, so they
+    // all expire — regardless of how far along they were. `stalled` is never
+    // written here: it is reserved for negotiation outcomes, and `accepted`
+    // rows are outside the fetch scope entirely.
     for (const opp of opportunities) {
-      const newStatus = (EARLY_STATUSES as readonly string[]).includes(opp.status)
-        ? 'expired'
-        : 'stalled';
-      await updateOpportunityStatus(opp.id, newStatus);
-      if (newStatus === 'expired') expiredCount++;
-      else stalledCount++;
+      await updateOpportunityStatus(opp.id, 'expired');
     }
 
     this.logger.info('[PremiseCascade] Cascade complete', {
@@ -360,8 +366,7 @@ export class PremiseQueue {
       userId,
       event,
       total: opportunities.length,
-      expired: expiredCount,
-      stalled: stalledCount,
+      expired: opportunities.length,
     });
   }
 

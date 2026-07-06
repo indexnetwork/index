@@ -61,7 +61,10 @@ const responseFormat = z.object({
   presentation: PresentationSchema,
 });
 
-export type OpportunityPresentationResult = z.infer<typeof PresentationSchema>;
+export type OpportunityPresentationResult = z.infer<typeof PresentationSchema> & {
+  /** True when the LLM call failed and this is fallback-shaped copy built from raw reasoning. */
+  isFallback?: boolean;
+};
 
 /** Input for home-card presenter call; extends PresenterInput with optional mutual intent count. */
 export interface HomeCardPresenterInput extends PresenterInput {
@@ -111,7 +114,15 @@ export const HomeCardLLMSchema = z.object({
 });
 
 /** LLM-generated result from presentHomeCard (callers append button labels from opportunity.constants). */
-export type HomeCardLLMResult = z.infer<typeof HomeCardLLMSchema>;
+export type HomeCardLLMResult = z.infer<typeof HomeCardLLMSchema> & {
+  /**
+   * True when the LLM call failed and this is fallback-shaped copy built from
+   * raw match reasoning. Callers with strict quality requirements (digests,
+   * long-lived caches) should check this before sending/persisting — fallback
+   * output is otherwise indistinguishable from genuine LLM output.
+   */
+  isFallback?: boolean;
+};
 
 /** Full home-card display contract including hardcoded button labels (assembled by callers). */
 export type HomeCardPresentationResult = HomeCardLLMResult & {
@@ -366,6 +377,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
         personalizedSummary: truncateAtBoundary(stripUuids(input.matchReasoning), 300),
         suggestedAction: "Take a look and decide whether to reach out.",
         greeting: "",
+        isFallback: true,
       };
     }
   }
@@ -481,6 +493,7 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
             ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}`
             : "Shared interests",
         greeting: "",
+        isFallback: true,
       };
     }
   }
