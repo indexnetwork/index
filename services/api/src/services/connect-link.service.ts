@@ -9,7 +9,7 @@ const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234
 const CODE_LENGTH = 10;
 const TTL_DAYS = 30;
 
-const TERMINAL_STATUSES = new Set(['expired', 'rejected']);
+const TERMINAL_STATUSES = new Set(['expired', 'rejected', 'stalled']);
 
 function generateCode(): string {
   const bytes = new Uint8Array(CODE_LENGTH);
@@ -206,13 +206,19 @@ function toResolvedLink(row: typeof connectLinks.$inferSelect, opportunityId: st
   };
 }
 
+type LinkOpportunity = {
+  id: string;
+  status: typeof opportunities.$inferSelect.status;
+  actors: Array<{ userId: string; role: string; approved?: boolean; actedAt?: string | null }>;
+};
+
 async function resolveOpportunityForLink(
   opportunityId: string,
   userId: string,
-): Promise<{ id: string; status: typeof opportunities.$inferSelect.status } | null> {
+): Promise<LinkOpportunity | null> {
   const seenIds = new Set<string>();
   let currentId = opportunityId;
-  let current: { id: string; status: typeof opportunities.$inferSelect.status } | null = null;
+  let current: LinkOpportunity | null = null;
 
   for (let depth = 0; depth < 5; depth++) {
     if (seenIds.has(currentId)) break;
@@ -224,7 +230,7 @@ async function resolveOpportunityForLink(
       .where(eq(opportunities.id, currentId))
       .limit(1);
     if (!opp) return current;
-    current = { id: opp.id, status: opp.status };
+    current = { id: opp.id, status: opp.status, actors: opp.actors };
 
     if (opp.status !== 'expired') return current;
 
@@ -245,6 +251,35 @@ async function resolveOpportunityForLink(
   }
 
   return current;
+}
+
+function hasActorActed(actor: { actedAt?: string | null }): boolean {
+  return !!actor.actedAt;
+}
+
+function isLinkUsableForOpportunity(
+  kind: ConnectLinkKind,
+  opp: LinkOpportunity,
+  userId: string,
+): boolean {
+  const viewerActors = opp.actors.filter((actor) => actor.userId === userId);
+  if (viewerActors.length === 0) return false;
+
+  return viewerActors.some((actor) => {
+    const isIntroducer = actor.role === 'introducer';
+    if (kind === 'approve_introduction') {
+      return (opp.status === 'latent' || opp.status === 'draft') && isIntroducer && actor.approved !== true;
+    }
+
+    if (isIntroducer) return false;
+    if (opp.status === 'accepted' && (kind === 'connect' || kind === 'send_direct' || kind === 'outreach')) {
+      return true;
+    }
+    if ((kind === 'connect' || kind === 'send_direct') && ['pending', 'draft', 'latent'].includes(opp.status)) {
+      return !hasActorActed(actor);
+    }
+    return false;
+  });
 }
 
 /**
@@ -269,6 +304,7 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
   if (!opp) return null;
 
   if (TERMINAL_STATUSES.has(opp.status)) return null;
+  if (!isLinkUsableForOpportunity(row.kind as ConnectLinkKind, opp, row.userId)) return null;
 
   const resolvedLink = toResolvedLink(row, opp.id);
   if (row.expiresAt > now) {
@@ -313,6 +349,7 @@ export async function resolveConnectLinkForUser(
   if (!opp) return null;
 
   if (TERMINAL_STATUSES.has(opp.status)) return null;
+  if (!isLinkUsableForOpportunity(row.kind as ConnectLinkKind, opp, userId)) return null;
 
   const resolvedLink = toResolvedLink(row, opp.id);
   if (row.expiresAt > now) {

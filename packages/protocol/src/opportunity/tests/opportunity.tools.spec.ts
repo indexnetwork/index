@@ -278,10 +278,20 @@ describe("resolveActionableLinkKind — actionability matrix", () => {
     expect(resolveActionableLinkKind({ status: "accepted", viewerRole: "introducer" })).toBeNull();
   });
 
-  test("pending + non-introducer → connect", () => {
+  test("pending + non-introducer without actedAt → connect", () => {
     expect(resolveActionableLinkKind({ status: "pending", viewerRole: "party" })).toBe("connect");
     expect(resolveActionableLinkKind({ status: "pending", viewerRole: "patient" })).toBe("connect");
     expect(resolveActionableLinkKind({ status: "pending", viewerRole: "agent" })).toBe("connect");
+  });
+
+  test("pending + non-introducer with actedAt → null", () => {
+    expect(
+      resolveActionableLinkKind({
+        status: "pending",
+        viewerRole: "agent",
+        viewerActedAt: "2026-06-26T16:21:49.649Z",
+      }),
+    ).toBeNull();
   });
 
   test("pending + introducer → null", () => {
@@ -309,9 +319,37 @@ describe("resolveActionableLinkKind — actionability matrix", () => {
     expect(resolveActionableLinkKind({ status: "draft", viewerRole: "agent" })).toBe("send_direct");
   });
 
-  test("terminal / unknown statuses → null", () => {
+  test("draft/latent + non-introducer with actedAt → null (send_direct suppressed)", () => {
+    expect(
+      resolveActionableLinkKind({
+        status: "draft",
+        viewerRole: "party",
+        viewerActedAt: "2026-06-26T16:21:49.649Z",
+      }),
+    ).toBeNull();
+    expect(
+      resolveActionableLinkKind({
+        status: "latent",
+        viewerRole: "agent",
+        viewerActedAt: "2026-06-26T16:21:49.649Z",
+      }),
+    ).toBeNull();
+  });
+
+  test("accepted + non-introducer with actedAt → outreach (acting doesn't kill outreach)", () => {
+    expect(
+      resolveActionableLinkKind({
+        status: "accepted",
+        viewerRole: "party",
+        viewerActedAt: "2026-06-26T16:21:49.649Z",
+      }),
+    ).toBe("outreach");
+  });
+
+  test("terminal / internal / unknown statuses → null", () => {
     expect(resolveActionableLinkKind({ status: "rejected", viewerRole: "party" })).toBeNull();
     expect(resolveActionableLinkKind({ status: "expired", viewerRole: "introducer", viewerApproved: false })).toBeNull();
+    expect(resolveActionableLinkKind({ status: "stalled", viewerRole: "party" })).toBeNull();
   });
 
   test("latent + introducer + unapproved → approve_introduction (connector-flow before approval)", () => {
@@ -452,6 +490,21 @@ describe("attachActionableLinks — mutation and resilience", () => {
     expect(calls.length).toBe(0);
     expect(card.acceptUrl).toBeUndefined();
     expect(card.profileUrl).toBe("https://app.test/u/counterpart-6?link_preview=false");
+  });
+
+  test("pending + already-acted viewer → no mint, profileUrl still attached", async () => {
+    const card = makeCard({ opportunityId: "opp-6b", viewerRole: "agent", status: "pending" });
+    const { mintConnectLink, calls } = makeMintSpy();
+    await attachActionableLinks(card, {
+      viewerId: "user-6b",
+      viewerActedAt: "2026-06-26T16:21:49.649Z",
+      counterpartUserId: "counterpart-6b",
+      mintConnectLink,
+      frontendUrl: "https://app.test",
+    });
+    expect(calls.length).toBe(0);
+    expect(card.acceptUrl).toBeUndefined();
+    expect(card.profileUrl).toBe("https://app.test/u/counterpart-6b?link_preview=false");
   });
 
   test("accepted + introducer → no mint, profileUrl still attached", async () => {

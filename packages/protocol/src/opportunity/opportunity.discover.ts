@@ -194,6 +194,8 @@ export interface FormattedDiscoveryCandidate {
   viewerRole?: string;
   /** Whether the viewer (as introducer) has approved the introduction. */
   viewerApproved?: boolean;
+  /** Timestamp set once this viewer has already acted on the opportunity. */
+  viewerActedAt?: string | null;
   /** Full user record for the candidate (needed for socials / Telegram fallback). */
   candidateUser?: UserRecord | null;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
@@ -340,6 +342,7 @@ async function enrichOpportunities(
         candidateUserId,
         viewerRole: viewerActor?.role ?? "party",
         viewerApproved: viewerActor?.approved === true,
+        viewerActedAt: viewerActor?.actedAt ?? null,
         candidateUser,
         profile,
         confidence,
@@ -604,6 +607,7 @@ async function enrichOpportunities(
         status: chatSessionId && !existingOpportunityIds?.has(item.opportunity.id) ? "draft" : item.opportunity.status,
         viewerRole: item.viewerRole,
         viewerApproved: item.viewerApproved,
+        viewerActedAt: item.viewerActedAt,
         candidateUser: item.candidateUser,
         isGhost,
         ...(presentations?.[idx] && { presentation: presentations[idx] }),
