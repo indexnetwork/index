@@ -499,7 +499,7 @@ export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
 }));
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;

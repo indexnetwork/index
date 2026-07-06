@@ -22,7 +22,7 @@ import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.i
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
 import type { MintConnectLink } from "../interfaces/connect-link.interface.js";
-import type { QuestionerDatabase } from "../interfaces/questioner.interface.js";
+import type { ChatQuestionsHost, QuestionerDatabase } from "../interfaces/questioner.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 import type { QuestionMode } from "../schemas/question.schema.js";
@@ -196,6 +196,18 @@ export interface ToolContext {
   ) => Promise<PendingQuestionSummary[]>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
+  /**
+   * Host bridge for the orchestrator's blocking `ask_user_question` tool
+   * (synchronous chat-question persist + in-stream answer wait). Injected by
+   * the backend composition root; when absent the tool is not registered.
+   */
+  chatQuestions?: ChatQuestionsHost;
+  /**
+   * Resolve a user's global user_context paragraph (profile-replacing identity
+   * text), generating it on demand when absent. Mirrors `ToolDeps.getUserContextText`
+   * so chat-path tool factories can forward it.
+   */
+  getUserContextText?: (userId: string) => Promise<string>;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
   /** Database adapter for negotiation/conversation operations. */
@@ -530,6 +542,12 @@ export interface ToolDeps {
   ) => Promise<PendingQuestionSummary[]>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
+  /**
+   * Host bridge for the orchestrator's blocking `ask_user_question` tool
+   * (synchronous chat-question persist + in-stream answer wait). Injected by
+   * the backend composition root; when absent the tool is not registered.
+   */
+  chatQuestions?: ChatQuestionsHost;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
   negotiationTimeoutQueue?: NegotiationTimeoutQueue;
   /** Agent registry database adapter (optional — absent when host does not support agents). */

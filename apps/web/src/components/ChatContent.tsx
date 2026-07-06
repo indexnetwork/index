@@ -70,6 +70,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     pendingQueue,
     cancelQueuedMessage,
     submitMidStreamMessage,
+    liveQuestions,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
@@ -189,6 +190,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const questionsService = useQuestionsService();
   const [injectedQuestions, setInjectedQuestions] = useState<PendingQuestion[]>([]);
+  /**
+   * Ids of live ask_user_question cards already answered/dismissed locally.
+   * Never reset: question ids are unique UUIDs, so stale entries are harmless.
+   */
+  const [resolvedLiveQuestionIds, setResolvedLiveQuestionIds] = useState<Set<string>>(new Set());
 
   // Fetch conversation-linked questions on session load. In intent-scoped
   // sessions, also include pending questions derived from that selected intent,
@@ -216,26 +222,56 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     return () => { active = false; };
   }, [sessionId, questionsService, chatScope]);
 
+  // Merge live ask_user_question cards (streamed via the user_question SSE
+  // event) into the inline injected-questions list at render time. The
+  // server-side turn is blocked on these until answered/dismissed or the
+  // wait times out. Locally-resolved live cards are filtered out.
+  const mergedInjectedQuestions = useMemo(() => {
+    const byId = new Map(injectedQuestions.map((q) => [q.id, q]));
+    for (const q of liveQuestions) {
+      if (!byId.has(q.id)) byId.set(q.id, q);
+    }
+    return [...byId.values()].filter((q) => !resolvedLiveQuestionIds.has(q.id));
+  }, [injectedQuestions, liveQuestions, resolvedLiveQuestionIds]);
+
   // Group injected questions by messageId
   const injectedByMessageId = useMemo(() => {
     const map = new Map<string | null, PendingQuestion[]>();
-    for (const q of injectedQuestions) {
+    for (const q of mergedInjectedQuestions) {
       const key = q.detection.messageId ?? null;
       const existing = map.get(key) ?? [];
       existing.push(q);
       map.set(key, existing);
     }
     return map;
-  }, [injectedQuestions]);
+  }, [mergedInjectedQuestions]);
 
   const handleInjectedAnswer = useCallback(async (questionId: string, body: AnswerBody) => {
-    await questionsService.answer(questionId, body);
+    const question = mergedInjectedQuestions.find((q) => q.id === questionId);
+    const res = await questionsService.answer(questionId, body);
     setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
-  }, [questionsService]);
+    setResolvedLiveQuestionIds((prev) => new Set([...prev, questionId]));
+    // Chat-mode questions come from the orchestrator's blocking
+    // ask_user_question tool. If no live turn consumed the answer (stream
+    // already ended — e.g. the wait timed out or the page was reloaded),
+    // feed it back as a new turn so the conversation continues.
+    if (
+      question?.detection.mode === 'chat' &&
+      !res.resumed &&
+      !isLoading
+    ) {
+      const parts = [...body.selectedOptions];
+      if (body.freeText?.trim()) parts.push(body.freeText.trim());
+      if (parts.length > 0) {
+        void sendMessage(`Re: "${question.payload.prompt}" — ${parts.join('; ')}`);
+      }
+    }
+  }, [questionsService, mergedInjectedQuestions, isLoading, sendMessage]);
 
   const handleInjectedDismiss = useCallback(async (questionId: string) => {
     await questionsService.dismiss(questionId);
     setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
+    setResolvedLiveQuestionIds((prev) => new Set([...prev, questionId]));
   }, [questionsService]);
 
   // Index filter state (needed before stream-end effect so refreshIndexes is in scope)

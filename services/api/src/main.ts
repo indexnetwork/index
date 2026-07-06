@@ -66,6 +66,7 @@ import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
+import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
@@ -238,6 +239,12 @@ const questionAnswerDeps = {
       await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
     },
   }),
+  resolveChatQuestionWait: ({ questionId, answer }: {
+    questionId: string;
+    answer: { selectedOptions: string[]; freeText?: string; answeredBy: string; answeredAt: string };
+  }) => {
+    emitChatQuestionResolution({ questionId, status: 'answered', answer });
+  },
 };
 
 QuestionEvents.onAnswered = (payload) => {
@@ -246,6 +253,13 @@ QuestionEvents.onAnswered = (payload) => {
       questionId: payload.questionId,
       error: err instanceof Error ? err.message : String(err),
     }));
+};
+
+// Dismissals unblock chat turns waiting on ask_user_question. Other modes
+// have no dismissal reaction.
+QuestionEvents.onDismissed = (payload) => {
+  if (payload.mode !== 'chat') return;
+  emitChatQuestionResolution({ questionId: payload.questionId, status: 'dismissed' });
 };
 
 intentQueue.startWorker();

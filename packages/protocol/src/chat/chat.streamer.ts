@@ -3,7 +3,7 @@ import { BaseCheckpointSaver } from "@langchain/langgraph";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { ChatStreamEvent, DebugMetaDiscoveryQuestions, DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
-import { createAgentEndEvent, createAgentStartEvent, createDebugMetaEvent, createDecisionQuestionsEvent, createErrorEvent, createGraphEndEvent, createPhaseStartEvent, createPhaseEndEvent, createGraphStartEvent, createIterationStartEvent, createLlmStartEvent, createLlmEndEvent, createResponseCompleteEvent, createResponseResetEvent, createHallucinationDetectedEvent, createStatusEvent, createTokenEvent, createToolActivityEvent, createChatSummarizerStartEvent, createChatSummarizerEndEvent, createQuestionGeneratorStartEvent, createQuestionGeneratorEndEvent } from "./chat-streaming.types.js";
+import { createAgentEndEvent, createAgentStartEvent, createDebugMetaEvent, createDecisionQuestionsEvent, createErrorEvent, createGraphEndEvent, createPhaseStartEvent, createPhaseEndEvent, createGraphStartEvent, createIterationStartEvent, createLlmStartEvent, createLlmEndEvent, createResponseCompleteEvent, createResponseResetEvent, createHallucinationDetectedEvent, createStatusEvent, createTokenEvent, createToolActivityEvent, createChatSummarizerStartEvent, createChatSummarizerEndEvent, createQuestionGeneratorStartEvent, createQuestionGeneratorEndEvent, createUserQuestionEvent } from "./chat-streaming.types.js";
 import type { AgentStreamEvent } from "./chat.agent.js";
 
 const logger = protocolLogger("ChatStreamer");
@@ -270,6 +270,16 @@ export class ChatStreamer {
 
           if (event.type === "decision_questions") {
             yield createDecisionQuestionsEvent(sessionId, { questions: event.questions });
+          }
+
+          if (event.type === "user_question") {
+            yield createUserQuestionEvent(sessionId, { questions: event.questions });
+          }
+
+          if (event.type === "status") {
+            // Keep-alive/status line from long-blocking tools (e.g. the
+            // ask_user_question wait loop) so SSE transports do not idle out.
+            yield createStatusEvent(sessionId, event.message);
           }
 
           if (event.type === "chat_summarizer_start") {

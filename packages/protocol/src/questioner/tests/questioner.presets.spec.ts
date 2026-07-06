@@ -29,7 +29,9 @@ const standaloneModeExpectations = [
 ];
 
 // Modes whose prompts must carry the shared referential-closure guardrail.
-const ALL_MODES = ["discovery", "intent", "enrichment", "negotiation"] as const;
+// (chat renders inline in the active conversation, so it is exempt from the
+// standalone-prompt contract above but still carries referential closure.)
+const ALL_MODES = ["discovery", "intent", "enrichment", "negotiation", "chat"] as const;
 
 describe("standalone prompt contract", () => {
   it.each(standaloneModeExpectations)("mode '$mode' requires self-contained generated prompt text", ({ mode, anchors, positiveExample, negativeExample }) => {
@@ -213,6 +215,50 @@ describe("negotiation preset", () => {
     expect(preset.systemPrompt).toContain("For your search for AI infrastructure collaborators in the AI founders community");
     // Must NOT instruct the model to restate the stalled-negotiation mechanics.
     expect(preset.systemPrompt).not.toContain("stalled negotiation context");
+  });
+});
+
+describe("chat preset", () => {
+  it("returns the chat preset with systemPrompt and buildPrompt", () => {
+    const preset = getPreset("chat");
+    expect(typeof preset.systemPrompt).toBe("string");
+    expect(preset.systemPrompt.length).toBeGreaterThan(0);
+    expect(typeof preset.buildPrompt).toBe("function");
+  });
+
+  it("chat buildPrompt includes purpose, drafts, excerpt, and user context", () => {
+    const preset = getPreset("chat");
+    const result = preset.buildPrompt({
+      purpose: "Need the user's timing before running discovery.",
+      draftQuestions: [
+        { prompt: "When do you want to start?", options: ["Now", "Later"], multiSelect: false },
+      ],
+      conversationExcerpt: "User: I want to find collaborators.",
+      userContext: "Alice is a protocol engineer.",
+    });
+    expect(typeof result).toBe("string");
+    expect(result).toContain("Need the user's timing");
+    expect(result).toContain("When do you want to start?");
+    expect(result).toContain("[options: Now | Later]");
+    expect(result).toContain("I want to find collaborators");
+    expect(result).toContain("Alice is a protocol engineer.");
+  });
+
+  it("chat buildPrompt handles missing drafts and excerpt", () => {
+    const preset = getPreset("chat");
+    const result = preset.buildPrompt({
+      purpose: "Need the user's budget range.",
+    });
+    expect(result).toContain("(none — derive questions from the purpose)");
+    expect(result).toContain("(not available)");
+    expect(result).toContain("(no profile data)");
+  });
+
+  it("chat system prompt honors the orchestrator's drafts and bans padding", () => {
+    const preset = getPreset("chat");
+    expect(preset.systemPrompt).toContain("Honor the orchestrator's intent");
+    expect(preset.systemPrompt).toContain("Do not invent questions about topics the orchestrator did not raise");
+    expect(preset.systemPrompt).toContain("Never pad");
   });
 });
 

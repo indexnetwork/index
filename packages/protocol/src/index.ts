@@ -43,7 +43,7 @@ export type { ChatSessionReader, ChatSessionDetail, ChatSessionSummary } from ".
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
 export type { ChatMessageWriter } from "./shared/interfaces/chat-message-writer.interface.js";
 export type { QuestionGeneratorReader } from "./shared/interfaces/question-generator.interface.js";
-export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters } from "./shared/interfaces/questioner.interface.js";
+export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost, ChatQuestionAnswerOutcome } from "./shared/interfaces/questioner.interface.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer, buildFallbackDigest } from "./negotiation/negotiation.summarizer.js";
@@ -149,7 +149,7 @@ export { IndexNegotiator } from "./negotiation/negotiation.agent.js";
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
-export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext } from "./questioner/questioner.types.js";
+export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, ChatContext } from "./questioner/questioner.types.js";
 export { getPreset } from "./questioner/questioner.presets.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
