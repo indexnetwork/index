@@ -7,14 +7,13 @@ import type { Lens } from "../shared/hyde/lens.inferrer.js";
 import type { OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import { Timed } from "../shared/observability/performance.js";
 import { stripUuids } from "./opportunity.presentation.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import { renderOpportunityEvidenceForPrompt } from './opportunity.evidence.js';
 
 const logger = protocolLogger("OpportunityEvaluator");
 
-const model = createModel("opportunityEvaluator");
 
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
@@ -281,10 +280,10 @@ export class OpportunityEvaluator {
   private entityBundleModel: Runnable;
 
   constructor(options?: OpportunityEvaluatorOptionsConstructor) {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("opportunityEvaluator", responseFormat, {
       name: "opportunity_evaluator"
     });
-    this.entityBundleModel = options?.entityBundleModel ?? model.withStructuredOutput(entityBundleResponseFormat, {
+    this.entityBundleModel = options?.entityBundleModel ?? createStructuredModel("opportunityEvaluator", entityBundleResponseFormat, {
       name: "opportunity_evaluator_entity_bundle"
     });
   }

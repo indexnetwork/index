@@ -6,7 +6,6 @@
  * generateCardText.
  */
 
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 
@@ -14,7 +13,7 @@ import type { HomeSectionProposal } from './feed.state.js';
 import { getIconNamesForPrompt, DEFAULT_HOME_SECTION_ICON } from '../../shared/ui/lucide.icon-catalog.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { Timed } from "../../shared/observability/performance.js";
-import { createModel } from "../../shared/agent/model.config.js";
+import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 
 const logger = protocolLogger('HomeCategorizer');
@@ -127,11 +126,10 @@ function reconcileSections(sections: HomeSectionProposal[], maxIndex: number): H
 }
 
 export class HomeCategorizerAgent {
-  private model: ReturnType<ChatOpenAI['withStructuredOutput']>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const llm = createModel("homeCategorizer");
-    this.model = llm.withStructuredOutput(categorizationSchema, { name: 'home_sections' });
+    this.model = createStructuredModel("homeCategorizer", categorizationSchema, { name: 'home_sections' });
   }
 
   /**

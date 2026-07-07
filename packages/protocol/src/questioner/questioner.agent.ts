@@ -7,11 +7,10 @@
  * The LLM model is bound once at construction; the preset (system prompt +
  * builder) is selected per invocation based on `input.mode`.
  */
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { QuestionGeneratorResponseSchema, type Question, type QuestionGenerationResult, type QuestionStrategy, type QuestionWithStrategy } from "../shared/schemas/question.schema.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
@@ -25,7 +24,7 @@ const MAX_SAME_STRATEGY = 2;
 
 export interface QuestionerAgentConfig {
   /** Optional model config override. */
-  modelConfig?: Parameters<typeof createModel>[1];
+  modelConfig?: Parameters<typeof createStructuredModel>[3];
 }
 
 /**
@@ -34,13 +33,12 @@ export interface QuestionerAgentConfig {
  * guardrails (dedup + strategy diversity).
  */
 export class QuestionerAgent {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor(config?: QuestionerAgentConfig) {
-    const llm = createModel("questioner", config?.modelConfig);
-    this.model = llm.withStructuredOutput(QuestionGeneratorResponseSchema, {
+    this.model = createStructuredModel("questioner", QuestionGeneratorResponseSchema, {
       name: "clarifying_questions",
-    });
+    }, config?.modelConfig);
   }
 
   /**

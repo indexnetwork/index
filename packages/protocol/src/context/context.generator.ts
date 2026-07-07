@@ -13,7 +13,7 @@
 
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import { createModel } from "../shared/agent/model.config.js";
+import { createResilientModel } from "../shared/agent/model.config.js";
 import { getAbortSignalConfig, invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../shared/interfaces/embedder.interface.js";
 
@@ -66,7 +66,7 @@ const GLOBAL_INCREMENTAL_SYSTEM_PROMPT = `You maintain a person's global identit
  * Uses LLM synthesis to produce focused context and an embedding vector.
  */
 export class UserContextGenerator {
-  private model = createModel('userContextGenerator');
+  private model = createResilientModel('userContextGenerator');
 
   constructor(private embeddingGenerator: EmbeddingGenerator) {}
 

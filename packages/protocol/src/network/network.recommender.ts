@@ -1,10 +1,9 @@
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
 import { log } from "../shared/observability/log.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 // ─── Response schema ───────────────────────────────────────────────────────────
@@ -73,11 +72,10 @@ OUTPUT RULES:
  * be set — tests that import `createNetworkTools` without a live LLM env are unaffected.
  */
 export class NetworkRecommender {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const model = createModel("networkRecommender");
-    this.model = model.withStructuredOutput(NetworkRecommenderOutputSchema, {
+    this.model = createStructuredModel("networkRecommender", NetworkRecommenderOutputSchema, {
       name: "network_recommender",
     });
   }

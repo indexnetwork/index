@@ -3,7 +3,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("SemanticVerifier");
@@ -18,7 +18,6 @@ const missingSelectionalConstraintSchema = z.enum([
   "concrete_need",
 ]);
 
-const model = createModel("intentVerifier");
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
 // ──────────────────────────────────────────────────────────────
@@ -230,10 +229,10 @@ export type SemanticVerifierOutput = z.infer<typeof responseFormat>;
 // ──────────────────────────────────────────────────────────────
 
 export class SemanticVerifier {
-  private model: any;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("intentVerifier", responseFormat, {
       name: "semantic_verifier"
     });
   }

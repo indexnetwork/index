@@ -2,7 +2,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("PremiseDecomposer");
@@ -168,11 +168,10 @@ export type DecomposedPremise = z.infer<typeof premiseItemSchema>;
  * individual atomic premises suitable for the premise graph.
  */
 export class PremiseDecomposer {
-  private model: ReturnType<ReturnType<typeof createModel>["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const model = createModel("premiseDecomposer");
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("premiseDecomposer", responseFormat, {
       name: "premise_decomposer",
     });
   }

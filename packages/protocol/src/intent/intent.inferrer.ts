@@ -3,7 +3,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ExplicitIntentInferrer");
@@ -135,11 +135,10 @@ export type InferredIntent = z.infer<typeof InferredIntentSchema>;
 // ──────────────────────────────────────────────────────────────
 
 export class ExplicitIntentInferrer {
-  private model: any;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const model = createModel("intentInferrer");
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("intentInferrer", responseFormat, {
       name: "intent_inferrer"
     });
   }

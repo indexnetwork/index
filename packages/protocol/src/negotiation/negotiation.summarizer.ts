@@ -9,10 +9,10 @@
  * dropped the connection at ~3 minutes. Per-negotiation summarization caps
  * the question-generator input at a fixed, predictable size.
  */
-import type { ChatOpenAI } from "@langchain/openai";
+
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { DiscoveryNegotiationDigestSchema, type DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
@@ -53,11 +53,10 @@ function buildUserPrompt(n: DiscoveryNegotiation): string {
 }
 
 export class NegotiationSummarizer {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const llm = createModel("negotiationSummarizer");
-    this.model = llm.withStructuredOutput(DiscoveryNegotiationDigestSchema, {
+    this.model = createStructuredModel("negotiationSummarizer", DiscoveryNegotiationDigestSchema, {
       name: "negotiation_digest",
     });
   }
