@@ -74,6 +74,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/d/[id]/page"),
       },
       {
+        path: "/i/:intentId",
+        lazy: () => import("@/app/i/[intentId]/page"),
+      },
+      {
         path: "/index/:indexId",
         lazy: () => import("@/app/index/[indexId]/page"),
       },
@@ -92,10 +96,6 @@ export const router = createBrowserRouter([
       {
         path: "/agents/:id",
         lazy: () => import("@/app/agents/[id]/page"),
-      },
-      {
-        path: "/library/:tab?",
-        lazy: () => import("@/app/library/page"),
       },
       {
         path: "/networks",

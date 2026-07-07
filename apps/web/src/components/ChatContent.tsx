@@ -13,11 +13,11 @@ import type { PendingQuestion, AnswerBody } from '@/services/questions';
 import { validateFiles } from "@/lib/file-validation";
 import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
 import { DecisionQuestions } from "@/components/DecisionQuestions";
-import InviteMessageModal from "@/components/InviteMessageModal";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/AssistantMessageContent";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
+import IntentList from "@/components/IntentList";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
@@ -25,20 +25,24 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useNetworkFilter } from "@/contexts/IndexFilterContext";
 import { useNetworksState } from "@/contexts/IndexesContext";
-import { useConversation } from "@/contexts/ConversationContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions } from "@/hooks/useSuggestions";
+import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
-import type { HomeViewSection } from "@/services/opportunities";
-import { DynamicIcon, type IconName } from "lucide-react/dynamic";
-
-/**
- * When true, use GET /opportunities/home for dynamic sections; when false, use static/mock data.
- */
-const USE_HOME_API = true;
 
 const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
+
+/** Intent list item shown on the home shelf (from POST /intents/list). */
+interface HomeIntent {
+  id: string;
+  payload: string;
+  summary?: string | null;
+  createdAt: string;
+  sourceType?: 'file' | 'link' | 'integration';
+  networks?: { id: string; title: string }[];
+  status?: string;
+}
 
 
 interface PendingFile {
@@ -73,8 +77,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     liveQuestions,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
-  const { error: showError, success: showSuccess, addNotification } = useNotifications();
-  const { refreshConversations } = useConversation();
+  const { error: showError, addNotification } = useNotifications();
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -118,10 +121,26 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const opportunitiesService = useOpportunities();
 
-  // Track current opportunity statuses (fetched from server to detect changes)
-  const [opportunityStatusMap, setOpportunityStatusMap] = useState<
-    Record<string, string>
-  >({});
+  const intentOpportunityScope = useMemo(
+    () => chatScope?.type === "intent"
+      ? { scopeType: "intent" as const, scopeId: chatScope.id }
+      : undefined,
+    [chatScope],
+  );
+
+  // Opportunity accept/reject/start-chat + ghost invite modal (shared with the intent detail view).
+  const {
+    opportunityStatusMap,
+    setOpportunityStatusMap,
+    opportunityActionLoading,
+    handleOpportunityAction,
+    handleStreamingDraftStartChat,
+    inviteModalElement,
+  } = useOpportunityActions({ scope: intentOpportunityScope });
+
+  // Intents shown on the home shelf.
+  const [homeIntents, setHomeIntents] = useState<HomeIntent[]>([]);
+  const [homeIntentsLoading, setHomeIntentsLoading] = useState(false);
 
   // Stable list of opportunity IDs from assistant messages (avoids effect re-run on every streaming token)
   const opportunityIdsArray = useMemo(() => {
@@ -165,16 +184,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     return () => clearTimeout(timeoutId);
   }, [opportunityIdsKey, opportunitiesService]);
 
-  // Home view from API (when USE_HOME_API)
-  const [homeViewData, setHomeViewData] = useState<{
-    sections: HomeViewSection[];
-    meta: { totalOpportunities: number; totalSections: number };
-  } | null>(null);
-  const [homeViewLoading, setHomeViewLoading] = useState(false);
-  const [, setHomeViewError] = useState<string | null>(null);
-  const [opportunityActionLoading, setOpportunityActionLoading] =
-    useState<Record<string, boolean>>({});
-
   // Intent proposal status tracking
   const [intentProposalStatusMap, setIntentProposalStatusMap] = useState<
     Record<string, "pending" | "created" | "rejected">
@@ -183,10 +192,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // Networks panel join tracking
   const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
-
-  // Invite message modal state
-  const [inviteModal, setInviteModal] = useState<{ userId: string; userName: string; message: string; loading: boolean; opportunityId: string } | null>(null);
-  const inviteModalResolveRef = useRef<((msg: string | null) => void) | null>(null);
 
   const questionsService = useQuestionsService();
   const [injectedQuestions, setInjectedQuestions] = useState<PendingQuestion[]>([]);
@@ -350,12 +355,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const { selectedNetworkIds, setSelectedNetworkIds } = useNetworkFilter();
   const selectedIndexId =
     selectedNetworkIds.length === 1 ? selectedNetworkIds[0] : null;
-  const intentOpportunityScope = useMemo(
-    () => chatScope?.type === "intent"
-      ? { scopeType: "intent" as const, scopeId: chatScope.id }
-      : undefined,
-    [chatScope],
-  );
 
   // Suggestions: from context (done event) when we have messages, else static starters
   const { suggestions } = useSuggestions({
@@ -382,35 +381,39 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setScopeNetworkId(selectedIndexId);
   }, [selectedIndexId, setScopeNetworkId, chatScope?.type]);
 
-  // Fetch home view only on the root/home composer. Empty /d/:sessionId
-  // conversations should render the chat shell, not the discovery home feed.
+  // Fetch the intent list only on the root/home composer. Empty /d/:sessionId
+  // conversations should render the chat shell, not the home shelf.
   useEffect(() => {
-    if (!USE_HOME_API || messages.length > 0 || sessionIdFromUrl) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setHomeViewData(null);
-      return;
-    }
-    setHomeViewLoading(true);
-    setHomeViewError(null);
-    const urlParams = new URLSearchParams(window.location.search);
-    const noCache = urlParams.get('noCache') === '1' || urlParams.get('noCache') === 'true';
-    opportunitiesService
-      .getHomeView({
-        ...(chatScope?.type === "network" ? { networkId: selectedIndexId ?? undefined } : {}),
-        ...(intentOpportunityScope ?? {}),
-        limit: 5,
-        noCache,
-      })
+    if (messages.length > 0 || sessionIdFromUrl) return;
+    let active = true;
+    setHomeIntentsLoading(true);
+    apiClient
+      .post<{ intents?: HomeIntent[] }>("/intents/list", { page: 1, limit: 100 })
       .then((res) => {
-        setHomeViewData(res);
-        setHomeViewLoading(false);
+        if (active) setHomeIntents(res.intents ?? []);
       })
-      .catch((err) => {
-        setHomeViewError(err?.message ?? "Failed to load home view");
-        setHomeViewData(null);
-        setHomeViewLoading(false);
+      .catch(() => {
+        if (active) setHomeIntents([]);
+      })
+      .finally(() => {
+        if (active) setHomeIntentsLoading(false);
       });
-  }, [messages.length, sessionIdFromUrl, selectedIndexId, opportunitiesService, chatScope?.type, intentOpportunityScope]);
+    return () => {
+      active = false;
+    };
+  }, [messages.length, sessionIdFromUrl]);
+
+  const handleArchiveHomeIntent = useCallback(
+    async (intent: HomeIntent) => {
+      setHomeIntents((prev) => prev.filter((i) => i.id !== intent.id));
+      try {
+        await apiClient.patch(`/intents/${intent.id}/archive`);
+      } catch {
+        showError("Failed to archive intent");
+      }
+    },
+    [showError],
+  );
 
   const handleSuggestionClick = useCallback(
     (suggestion: {
@@ -477,148 +480,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       navigate(`/d/${sessionId}`);
     }
   }, [sessionId, sessionIdFromUrl, navigate]);
-
-  // Drop an opportunity from the home view sections, removing now-empty sections.
-  const removeOpportunityFromHomeView = useCallback((opportunityId: string) => {
-    setHomeViewData((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        sections: prev.sections
-          .map((s) => ({ ...s, items: s.items.filter((i) => i.opportunityId !== opportunityId) }))
-          .filter((s) => s.items.length > 0),
-      };
-    });
-  }, []);
-
-  const handleHomeOpportunityAction = useCallback(
-    async (
-      opportunityId: string,
-      action: "accepted" | "rejected",
-      fallbackUserId?: string,
-      viewerRole?: string,
-      counterpartName?: string,
-      isGhost?: boolean,
-    ) => {
-      const isIntroducer = viewerRole === "introducer";
-
-      // Ghost + accepted + non-introducer: show modal immediately, fetch AI message in background
-      if (action === "accepted" && !isIntroducer && isGhost) {
-        const name = counterpartName ?? "them";
-        const displayUserId = fallbackUserId ?? "";
-
-        setInviteModal({ userId: displayUserId, userName: name, message: "", loading: true, opportunityId });
-
-        opportunitiesService.getInviteMessage(opportunityId)
-          .then(({ message }) => {
-            setInviteModal((prev) => prev?.opportunityId === opportunityId ? { ...prev, message, loading: false } : prev);
-          })
-          .catch(() => {
-            setInviteModal((prev) => prev?.opportunityId === opportunityId ? { ...prev, loading: false } : prev);
-          });
-
-        const finalMessage = await new Promise<string | null>((resolve) => {
-          inviteModalResolveRef.current = resolve;
-        });
-
-        if (finalMessage === null) {
-          throw new Error("user_cancelled");
-        }
-
-        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
-        try {
-          const result = await opportunitiesService.updateStatus(opportunityId, "accepted", intentOpportunityScope);
-          setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
-          removeOpportunityFromHomeView(opportunityId);
-          const counterpartUserId = result.counterpartUserId ?? fallbackUserId;
-          if (counterpartUserId) {
-            navigate(`/u/${counterpartUserId}/chat`, { state: { prefill: finalMessage, autoSend: true } });
-          }
-        } catch (error) {
-          showError(error instanceof Error ? error.message : "Failed to update opportunity");
-        } finally {
-          setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
-        }
-        return;
-      }
-
-      // Non-ghost + accepted + non-introducer: atomically accept the opp and
-      // resolve the DM in one round-trip via POST /opportunities/:id/start-chat.
-      if (action === "accepted" && !isIntroducer && !isGhost) {
-        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
-        try {
-          const result = await opportunitiesService.startChat(opportunityId, intentOpportunityScope);
-          setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
-          removeOpportunityFromHomeView(opportunityId);
-          refreshConversations();
-          // Always route to the h2h chat page (`/u/:peer/chat` renders `ChatView`).
-          // `/chat/:id` routes to the A2A NegotiationDetailPage and does not show
-          // the in-chat opportunity context.
-          navigate(`/u/${result.counterpartUserId ?? fallbackUserId ?? ""}/chat`);
-        } catch (error) {
-          showError(error instanceof Error ? error.message : "Failed to start chat");
-        } finally {
-          setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
-        }
-        return;
-      }
-
-      // For rejected or introducer accepted: proceed immediately without modal
-      setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
-      try {
-        const effectiveStatus = isIntroducer && action === "accepted" ? "pending" : action;
-        const result = await opportunitiesService.updateStatus(opportunityId, effectiveStatus, intentOpportunityScope);
-        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: effectiveStatus }));
-
-        if (action === "accepted" && isIntroducer) {
-          showSuccess(
-            "Introduction sent",
-            `${counterpartName || "They"} will be notified and can accept to start the conversation.`,
-          );
-        }
-
-        removeOpportunityFromHomeView(opportunityId);
-
-        // For rejected accepted non-introducer (shouldn't happen but just in case)
-        const counterpartUserId = result.counterpartUserId ?? fallbackUserId;
-        if (action === "accepted" && !isIntroducer && counterpartUserId) {
-          navigate(`/u/${counterpartUserId}/chat`);
-        }
-      } catch (error) {
-        showError(error instanceof Error ? error.message : "Failed to update opportunity");
-      } finally {
-        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
-      }
-    },
-    [opportunitiesService, navigate, showError, showSuccess, refreshConversations, removeOpportunityFromHomeView, intentOpportunityScope],
-  );
-
-  /**
-   * Start Chat handler for an orchestrator-streamed draft card. Uses the
-   * atomic POST /opportunities/:id/start-chat endpoint (Plan B Task 8) to
-   * flip the opp to `accepted` and resolve the pair's conversation in one
-   * round-trip, then navigates to the h2h chat. Falls back to a counterpart-
-   * page route if the conversation ID is missing for any reason.
-   */
-  const handleStreamingDraftStartChat = useCallback(
-    async (opportunityId: string, counterpartUserId: string) => {
-      setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
-      try {
-        const result = await opportunitiesService.startChat(opportunityId, intentOpportunityScope);
-        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
-        refreshConversations();
-        // Always route to the h2h chat page (`/u/:peer/chat`). `/chat/:id`
-        // is the A2A negotiation route and does not render the in-chat
-        // opportunity context.
-        navigate(`/u/${result.counterpartUserId ?? counterpartUserId}/chat`);
-      } catch (error) {
-        showError(error instanceof Error ? error.message : "Failed to start chat");
-      } finally {
-        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
-      }
-    },
-    [opportunitiesService, navigate, showError, refreshConversations, intentOpportunityScope],
-  );
 
   const archiveProposalIntent = useCallback(
     async (proposalId: string, intentId: string) => {
@@ -788,28 +649,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     if (!sessionId || !trimmed || trimmed === displayTitle) return;
     await updateSessionTitle(sessionId, trimmed);
   };
-
-  const inviteModalElement = inviteModal ? (
-    <InviteMessageModal
-      userName={inviteModal.userName}
-      message={inviteModal.message}
-      loading={inviteModal.loading}
-      onMessageChange={(msg) => setInviteModal((prev) => prev ? { ...prev, message: msg } : null)}
-      onConfirm={() => {
-        const resolve = inviteModalResolveRef.current;
-        const msg = inviteModal.message;
-        inviteModalResolveRef.current = null;
-        setInviteModal(null);
-        resolve?.(msg);
-      }}
-      onCancel={() => {
-        const resolve = inviteModalResolveRef.current;
-        inviteModalResolveRef.current = null;
-        setInviteModal(null);
-        resolve?.(null);
-      }}
-    />
-  ) : null;
 
   if (!sessionLoaded) {
     return (
@@ -1063,191 +902,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       );
     };
 
-    // API-driven home view (dynamic sections with Lucide icons)
-    if (USE_HOME_API) {
-      if (
-        homeViewLoading ||
-        (homeViewData && homeViewData.sections.length > 0)
-      ) {
-        return (
-          <>
-          {inviteModalElement}
-          <div className="px-6 lg:px-8 pb-12">
-            <ContentContainer className="text-left">
-              <div className="mt-12 mb-6 flex items-center justify-center gap-2">
-                <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
-                  Find your others
-                </h1>
-                <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
-              </div>
-              <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
-                <form
-                  onSubmit={handleSubmit}
-                  className={cn("flex flex-col bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3 mb-6", selectedFiles.length > 0 && "gap-2")}
-                >
-                  {selectedFiles.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {selectedFiles.map(({ id, file }) => (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 text-gray-800 text-sm font-ibm-plex-mono max-w-50"
-                        >
-                          <span className="truncate" title={file.name}>
-                            {file.name}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removeFile(id)}
-                            className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-800 focus:outline-none"
-                            aria-label={`Remove ${file.name}`}
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className={cn("flex gap-3", isTextareaMultiline ? "items-end" : "items-center")}>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      accept=".csv,.doc,.docx,.epub,.html,.json,.md,.pdf,.ppt,.pptx,.rtf,.tsv,.txt,.xls,.xlsx,.xml"
-                      onChange={handleFileSelect}
-                      className="sr-only"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      disabled={isUploadingFiles}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
-                      title="Attach files"
-                    >
-                      <Paperclip className="h-4 w-4" />
-                    </Button>
-                    <MentionsTextInput
-                      value={input}
-                      onChange={setInput}
-                      placeholder={CHAT_INPUT_PLACEHOLDER}
-                      disabled={isUploadingFiles}
-                      autoFocus
-                      inputRef={inputRef}
-                    />
-                    {renderScopeDropdown()}
-                    {isLoading ? (
-                      <Button
-                        type="button"
-                        size="icon"
-                        onClick={() => stopStream()}
-                        className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] p-0"
-                        title="Stop generating"
-                        aria-label="Stop generating"
-                      >
-                        <Square className="h-4 w-4 fill-current" />
-                      </Button>
-                    ) : (
-                      <Button
-                        type="submit"
-                        size="icon"
-                        disabled={!canSend || isUploadingFiles}
-                        className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
-                      >
-                        <ArrowUp className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </form>
-              </div>
-              {homeViewLoading ? (
-                <div className="animate-pulse">
-                  {[1, 2].map((s) => (
-                    <div key={s} className={s === 1 ? "mt-12" : "mt-6"}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-3.5 h-3.5 bg-gray-200 rounded-sm" />
-                        <div className="h-3 w-32 bg-gray-200 rounded-sm" />
-                      </div>
-                      <div className="space-y-3">
-                        {[1, 2].map((c) => (
-                          <OpportunitySkeleton key={c} />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                homeViewData?.sections.map((section) => (
-                  <div
-                    key={section.id}
-                    className={
-                      section.id === homeViewData.sections[0]?.id
-                        ? "mt-12"
-                        : "mt-6"
-                    }
-                  >
-                    <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono text-left flex items-center gap-2">
-                      <span className="w-3.5 h-3.5 shrink-0 [&_svg]:w-3.5 [&_svg]:h-3.5">
-                        <DynamicIcon name={section.iconName as IconName} />
-                      </span>
-                      {section.title}
-                    </h3>
-                    <div className="space-y-3">
-                      {section.items.map((item) => (
-                        <OpportunityCard
-                          key={item.opportunityId}
-                          card={item}
-                          onPrimaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                            counterpartName,
-                            isGhost,
-                          ) =>
-                            handleHomeOpportunityAction(
-                              oppId,
-                              "accepted",
-                              userId,
-                              viewerRole,
-                              counterpartName,
-                              isGhost,
-                            )
-                          }
-                          onSecondaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                            counterpartName,
-                            isGhost,
-                          ) =>
-                            handleHomeOpportunityAction(
-                              oppId,
-                              "rejected",
-                              userId,
-                              viewerRole,
-                              counterpartName,
-                              isGhost,
-                            )
-                          }
-                          isLoading={
-                            !!opportunityActionLoading[item.opportunityId]
-                          }
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </ContentContainer>
-          </div>
-          </>
-        );
-      }
-    }
-
-    // Empty state — no opportunities to show
+    // Home shelf: composer on top, the user's intent list below.
     return (
-      <div className="px-6 lg:px-8 bg-white pb-12">
+      <div className="px-6 lg:px-8 pb-12">
         <ContentContainer className="text-left">
           <div className="mt-12 mb-6 flex items-center justify-center gap-2">
             <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
@@ -1335,24 +992,14 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               </div>
             </form>
           </div>
-          <div className="py-2"></div>
-          <div className="mt-0 flex flex-col items-center text-center pb-4">
-            <video
-              src="/loading.m4v"
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="mb-8 w-85 h-75 object-contain"
+          <div className="mt-8">
+            <IntentList
+              intents={homeIntents}
+              isLoading={homeIntentsLoading}
+              emptyMessage="No signals yet"
+              onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
+              onArchiveIntent={handleArchiveHomeIntent}
             />
-            <h2 className="text-lg font-bold text-gray-900 font-ibm-plex-mono mb-3">
-              It&apos;s quiet here, but your signal is in motion
-            </h2>
-            <p className="text-sm font-normal text-[#3D3D3D] max-w-sm leading-relaxed font-ibm-plex-mono">
-              I&apos;m watching for the right people. While I look, you can add
-              more about what you&apos;re working on, connect your network, or
-              ask me to research someone specific.
-            </p>
           </div>
         </ContentContainer>
       </div>
@@ -1534,7 +1181,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                               counterpartName,
                               isGhost,
                             ) =>
-                              handleHomeOpportunityAction(
+                              handleOpportunityAction(
                                 oppId,
                                 "accepted",
                                 userId,
@@ -1550,7 +1197,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                               counterpartName,
                               isGhost,
                             ) =>
-                              handleHomeOpportunityAction(
+                              handleOpportunityAction(
                                 oppId,
                                 "rejected",
                                 userId,

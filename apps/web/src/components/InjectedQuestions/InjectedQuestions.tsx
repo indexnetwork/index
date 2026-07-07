@@ -1,6 +1,4 @@
 import { useState, useCallback } from 'react';
-import { CircleHelp } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { OptionRow } from '@/components/DecisionQuestions/OptionRow';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
 
@@ -58,15 +56,8 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
   }, [submitting, onDismiss, questionId]);
 
   return (
-    <div className="max-w-[75%]">
-      <div className="bg-white border border-gray-200 border-l-[3px] border-l-gray-400 rounded-[2px] p-3">
-        <div className="flex items-center gap-1.5 mb-2">
-          <CircleHelp className="w-3.5 h-3.5 text-gray-500" />
-          <span className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">
-            Follow-up
-          </span>
-        </div>
-
+    <div>
+      <div className="bg-white border border-gray-200 rounded-md p-4">
         <p className="text-[13px] font-semibold text-gray-900 mb-1.5">{payload.prompt}</p>
 
         <div className="flex flex-col gap-1.5 mb-3">
@@ -112,20 +103,14 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
           <button
             onClick={handleDismiss}
             disabled={submitting}
-            className={cn(
-              'px-2.5 py-1 text-[12px] border border-gray-300 bg-white text-gray-700 rounded-[2px] cursor-pointer',
-              submitting && 'opacity-60 cursor-not-allowed',
-            )}
+            className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Dismiss
           </button>
           <button
             onClick={handleSubmit}
             disabled={!hasAnswer || submitting}
-            className={cn(
-              'px-2.5 py-1 text-[12px] border-none bg-[#041729] text-white rounded-[2px] cursor-pointer',
-              (!hasAnswer || submitting) && 'opacity-60 cursor-not-allowed',
-            )}
+            className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Submit
           </button>
