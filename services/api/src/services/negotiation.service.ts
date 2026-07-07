@@ -3,6 +3,7 @@ import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/databa
 import { ChatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { NegotiationGraphFactory } from '@indexnetwork/protocol';
 import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/protocol';
+import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 
 const logger = log.service.from('NegotiationService');
 
@@ -37,6 +38,9 @@ export class NegotiationService {
     const graph = new NegotiationGraphFactory(
       conversationDatabaseAdapter as ConstructorParameters<typeof NegotiationGraphFactory>[0],
       noOpDispatcher,
+      undefined,
+      // Stalled negotiations enqueue follow-up questions for the source user.
+      questionerEnqueueIfEnabled(),
     ).createGraph();
 
     logger.info('Starting discovery negotiation', { sourceUserId, candidateUserId });

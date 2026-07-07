@@ -184,6 +184,88 @@ describe("negotiation graph — negotiation_outcome emission", () => {
   }, 30000);
 });
 
+describe("negotiation graph — questioner enqueue on stall", () => {
+  function withUserContext(database: ReturnType<typeof mkStubs>["database"]) {
+    (database as unknown as Record<string, unknown>).getUserContext = async () => ({ text: "user ctx" });
+    return database;
+  }
+
+  it("enqueues a negotiation question when the negotiation hits turn_cap", async () => {
+    const { database, dispatcher } = mkStubs();
+    withUserContext(database);
+    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const orig = IndexNegotiator.prototype.invoke;
+    let call = 0;
+    IndexNegotiator.prototype.invoke = async function () {
+      call++;
+      if (call === 1) return { action: "propose", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+      return { action: "counter", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+    };
+    const enqueued: Array<Record<string, unknown>> = [];
+    const questionerEnqueue = async (input: Record<string, unknown>) => { enqueued.push(input); };
+    try {
+      const graph = new NegotiationGraphFactory(
+        database,
+        dispatcher,
+        undefined,
+        questionerEnqueue as never,
+      ).createGraph();
+      await graph.invoke({
+        sourceUser: { id: "u-src", profile: { name: "Alice", bio: "builder" } },
+        candidateUser: { id: "u-cand", profile: { name: "Bob", bio: "designer" } },
+        indexContext: { networkId: "net-1", prompt: "net prompt" },
+        seedAssessment: { reasoning: "x", valencyRole: "peer" },
+        opportunityId: "opp-stall", maxTurns: 2,
+      } as Partial<typeof NegotiationGraphState.State>);
+
+      expect(enqueued).toHaveLength(1);
+      const job = enqueued[0]!;
+      expect(job.mode).toBe("negotiation");
+      expect(job.userId).toBe("u-src");
+      expect(job.sourceType).toBe("opportunity");
+      expect(job.sourceId).toBe("opp-stall");
+      const context = job.context as Record<string, unknown>;
+      expect(context.outcomeReason).toBe("turn_cap");
+      expect(context.counterpartyHint).toContain("Bob");
+      expect(context.userContext).toBe("user ctx");
+    } finally {
+      IndexNegotiator.prototype.invoke = orig;
+    }
+  }, 30000);
+
+  it("does not enqueue when the negotiation is accepted", async () => {
+    const scripted = [
+      { action: "propose", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "agent", otherUser: "patient" } }, message: "hi" },
+      { action: "accept", assessment: { reasoning: "r2", suggestedRoles: { ownUser: "agent", otherUser: "patient" } } },
+    ];
+    let call = 0;
+    const { database, dispatcher } = mkStubs();
+    withUserContext(database);
+    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const orig = IndexNegotiator.prototype.invoke;
+    IndexNegotiator.prototype.invoke = async function () { return scripted[Math.min(call++, scripted.length - 1)] as never; };
+    const enqueued: Array<Record<string, unknown>> = [];
+    try {
+      const graph = new NegotiationGraphFactory(
+        database,
+        dispatcher,
+        undefined,
+        (async (input: Record<string, unknown>) => { enqueued.push(input); }) as never,
+      ).createGraph();
+      await graph.invoke({
+        sourceUser: { id: "u-src" }, candidateUser: { id: "u-cand" },
+        indexContext: { networkId: "net-1", prompt: "" },
+        seedAssessment: { reasoning: "x", valencyRole: "peer" },
+        opportunityId: "opp-accept", maxTurns: 4,
+      } as Partial<typeof NegotiationGraphState.State>);
+
+      expect(enqueued).toHaveLength(0);
+    } finally {
+      IndexNegotiator.prototype.invoke = orig;
+    }
+  }, 30000);
+});
+
 describe("negotiateCandidates — session wrapper events", () => {
   it("emits negotiation_session_start and _end per candidate with trigger + ids", async () => {
     const fakeGraph = {
