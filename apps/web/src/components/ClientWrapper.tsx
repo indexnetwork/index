@@ -18,7 +18,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     setMobileSidebarOpen(false);
   }, [pathname]);
 
-  const appRoutes = ['/', '/d', '/i', '/u', '/library', '/networks', '/mynetwork', '/chat', '/settings', '/agents', '/agent', '/questions'];
+  const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c', '/l', '/index'];
   const bareRoutes = ['/', '/onboarding', '/oauth/callback', '/found-in-translation', '/blog', '/about', '/pages'];
 

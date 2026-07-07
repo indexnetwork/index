@@ -5,8 +5,6 @@ import { createIntentsService } from '@/services/intents';
 import { createConnectionsService } from '@/services/connections';
 import { createSynthesisService } from '@/services/synthesis';
 import { createDiscoverService } from '@/services/discover';
-import { createFilesService } from '@/services/files';
-import { createLinksService } from '@/services/links';
 import { createAuthService } from '@/services/auth';
 import { createIntegrationsService } from '@/services/integrations';
 import { createAdminService } from '@/services/admin';
@@ -23,8 +21,6 @@ export interface APIContextType {
   connectionsService: ReturnType<typeof createConnectionsService>;
   synthesisService: ReturnType<typeof createSynthesisService>;
   discoverService: ReturnType<typeof createDiscoverService>;
-  filesService: ReturnType<typeof createFilesService>;
-  linksService: ReturnType<typeof createLinksService>;
   authService: ReturnType<typeof createAuthService>;
   integrationsService: ReturnType<typeof createIntegrationsService>;
   adminService: ReturnType<typeof createAdminService>;
@@ -47,8 +43,6 @@ export function APIProvider({ children }: { children: ReactNode }) {
     connectionsService: createConnectionsService(api),
     synthesisService: createSynthesisService(api),
     discoverService: createDiscoverService(api),
-    filesService: createFilesService(api),
-    linksService: createLinksService(api),
     authService: createAuthService(api),
     integrationsService: createIntegrationsService(api),
     adminService: createAdminService(api),
@@ -98,16 +92,6 @@ export function useSynthesis() {
 export function useDiscover() {
   const { discoverService } = useAPI();
   return discoverService;
-}
-
-export function useFiles() {
-  const { filesService } = useAPI();
-  return filesService;
-}
-
-export function useLinks() {
-  const { linksService } = useAPI();
-  return linksService;
 }
 
 export function useAuth() {
