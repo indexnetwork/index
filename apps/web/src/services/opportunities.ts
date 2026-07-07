@@ -37,9 +37,22 @@ export interface GetOpportunitiesOptions {
   offset?: number;
 }
 
+/** Full lifecycle status union (see API OpportunityStatus). */
+export type OpportunityLifecycleStatus =
+  | 'latent'
+  | 'draft'
+  | 'negotiating'
+  | 'pending'
+  | 'stalled'
+  | 'accepted'
+  | 'rejected'
+  | 'expired';
+
 /** Home view card item (from GET /opportunities/home). Presenter-driven display contract. */
 export interface HomeViewCardItem {
   opportunityId: string;
+  /** Lifecycle status of the underlying opportunity (present for client bucketing, e.g. intent radar). */
+  status?: OpportunityLifecycleStatus;
   userId: string;
   name: string;
   avatar: string | null;
@@ -84,6 +97,8 @@ export interface GetHomeViewOptions {
   scopeId?: string;
   limit?: number;
   noCache?: boolean;
+  /** Explicit lifecycle filter — switches the home view into lifecycle mode (intent radar). */
+  statuses?: OpportunityLifecycleStatus[];
 }
 
 export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
@@ -152,6 +167,7 @@ export const createOpportunitiesService = (
     if (options?.networkId) params.set('networkId', options.networkId);
     if (options?.scopeType) params.set('scopeType', options.scopeType);
     if (options?.scopeId) params.set('scopeId', options.scopeId);
+    if (options?.statuses?.length) params.set('statuses', options.statuses.join(','));
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.noCache) params.set('noCache', '1');
     const qs = params.toString();

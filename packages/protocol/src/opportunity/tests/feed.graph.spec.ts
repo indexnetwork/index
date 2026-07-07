@@ -5,7 +5,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { HomeGraphFactory, stripLeadingNarratorName } from '../feed/feed.graph.js';
+import { HomeGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES } from '../feed/feed.graph.js';
 import { selectByComposition, classifyOpportunity, FEED_SOFT_TARGETS } from '../opportunity.utils.js';
 import type { HomeGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
@@ -277,6 +277,65 @@ describe('HomeGraph', () => {
     expect(result.meta.totalOpportunities).toBe(0);
     const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
     expect(totalItems).toBe(0);
+  }, 30000);
+
+  test('explicit statuses (lifecycle view): terminal statuses pass through, acted-pending stays filtered, newest state wins dedup', async () => {
+    const viewerId = 'viewer-1';
+    const now = Date.now();
+    const at = (msAgo: number) => new Date(now - msAgo);
+    const base = (id: string, status: Opportunity['status'], otherId: string, updatedAt: Date, viewerActors: Opportunity['actors']): Opportunity => ({
+      id,
+      detection: { source: 'manual', timestamp: new Date().toISOString() },
+      actors: [...viewerActors, { userId: otherId, role: 'agent', networkId: 'idx-1' }],
+      interpretation: { reasoning: 'Test match.', category: 'connection', confidence: 0.8 },
+      context: { networkId: 'idx-1' },
+      confidence: '0.8',
+      status,
+      createdAt: updatedAt,
+      updatedAt,
+      expiresAt: null,
+    });
+
+    const opps: Opportunity[] = [
+      // Accepted with counterpart X — newest state, must pass through AND claim X in dedup.
+      base('opp-accepted-x', 'accepted', 'user-x', at(1_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1', actedAt: new Date(now - 1_000).toISOString() },
+      ]),
+      // Older pending with the same counterpart X — deduped away by the accepted one.
+      base('opp-pending-x-old', 'pending', 'user-x', at(50_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1' },
+      ]),
+      // Pending the viewer ALREADY acted on (dup unstamped rows from re-detection) — must stay filtered.
+      base('opp-pending-acted', 'pending', 'user-y', at(2_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1', actedAt: new Date(now - 90_000).toISOString() },
+        { userId: viewerId, role: 'patient', networkId: 'idx-1' },
+      ]),
+      // Genuinely actionable pending — must pass.
+      base('opp-pending-live', 'pending', 'user-z', at(3_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1' },
+      ]),
+      // Expired — terminal, must pass through in lifecycle view.
+      base('opp-expired', 'expired', 'user-w', at(4_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1' },
+      ]),
+    ];
+
+    const db = createMockDb(opps);
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({
+      userId: viewerId,
+      limit: 50,
+      statuses: ALL_OPPORTUNITY_STATUSES.filter((s) => s !== 'draft'),
+    });
+
+    expect(result.error).toBeUndefined();
+    const items = result.sections.flatMap((s) => s.items);
+    const ids = items.map((i) => i.opportunityId).sort();
+    expect(ids).toEqual(['opp-accepted-x', 'opp-expired', 'opp-pending-live']);
+    // Cards carry the lifecycle status for client-side bucketing.
+    const statusById = new Map(items.map((i) => [i.opportunityId, i.status]));
+    expect(statusById.get('opp-accepted-x')).toBe('accepted');
+    expect(statusById.get('opp-pending-live')).toBe('pending');
+    expect(statusById.get('opp-expired')).toBe('expired');
   }, 30000);
 
   test('shows latent opportunity for introducer but not pending', async () => {

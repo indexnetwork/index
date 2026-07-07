@@ -40,7 +40,12 @@ export type HomeGraphInvokeInput = {
   scopeId?: string;
   limit?: number;
   noCache?: boolean;
-  /** When set, filter loaded opportunities to these lifecycle statuses. Defaults to `DEFAULT_HOME_STATUSES`. */
+  /**
+   * When set, filter loaded opportunities to these lifecycle statuses. Defaults to `DEFAULT_HOME_STATUSES`.
+   * Explicit statuses switch the graph to "lifecycle view" mode: terminal/internal
+   * statuses pass through (only latent/pending stay gated by viewer actionability),
+   * ordering is newest-first, and feed composition capping is skipped.
+   */
   statuses?: OpportunityStatus[];
 };
 
@@ -210,9 +215,41 @@ export class HomeGraphFactory {
           const visible = raw.filter((opp) =>
             canUserSeeOpportunity(opp.actors, opp.status, state.userId)
           );
-          const visibleForFeed = visible.filter((opp) =>
-            isActionableForViewer(opp.actors, opp.status, state.userId)
-          );
+          // Actionability only gates the live statuses a viewer could act on:
+          // latent/pending cards the viewer cannot act on are noise, but
+          // terminal/internal statuses (accepted, rejected, expired, negotiating,
+          // stalled, draft) are deliberate history — when a caller explicitly
+          // requests them via `statuses`, they must pass through (they are never
+          // actionable by rule 5, so filtering them here would return nothing).
+          // The requested-status membership check is defense-in-depth: rows
+          // outside the requested set are dropped even if the adapter drifts.
+          const requestedStatuses = new Set<OpportunityStatus>(statuses);
+          const visibleForFeed = visible.filter((opp) => {
+            if (!requestedStatuses.has(opp.status)) return false;
+            if (opp.status === 'latent' || opp.status === 'pending') {
+              return isActionableForViewer(opp.actors, opp.status, state.userId);
+            }
+            return true;
+          });
+          const explicitStatuses = (state.statuses?.length ?? 0) > 0;
+          if (explicitStatuses) {
+            // Lifecycle view (e.g. intent radar): newest-first so counterpart
+            // dedup keeps each person's most recent state (an accepted
+            // opportunity supersedes an older pending one), no composition
+            // capping — the caller wants the full pipeline up to `limit`.
+            const newestFirst = [...visibleForFeed].sort(
+              (a, b) => safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt)
+            );
+            const seenIds = new Set<string>();
+            const dedupedByCounterpart = newestFirst.filter((opp) => {
+              const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
+              const hasOverlap = [...counterpartIds].some((id) => seenIds.has(id));
+              if (hasOverlap) return false;
+              for (const id of counterpartIds) seenIds.add(id);
+              return true;
+            });
+            return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
+          }
           const sorted = [...visibleForFeed].sort((a, b) => {
             // Connections before connector-flow so dedup claims counterpart IDs
             // for direct connections first — prevents introducer cards from
@@ -279,7 +316,9 @@ export class HomeGraphFactory {
             const cached = results[i];
             if (cached) {
               const originalIndex = opportunities.indexOf(cacheable[i]);
-              cachedCards.set(cacheable[i].id, { ...cached, _cardIndex: originalIndex });
+              // Stamp the live status: pre-status cache entries lack the field,
+              // and the key already guarantees it matches the current status.
+              cachedCards.set(cacheable[i].id, { ...cached, status: cacheable[i].status, _cardIndex: originalIndex });
             } else {
               uncachedOpportunities.push(cacheable[i]);
             }
@@ -425,6 +464,7 @@ export class HomeGraphFactory {
             const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
             const fallbackCard = (): HomeCardItem => ({
               opportunityId: opportunity.id,
+              status: opportunity.status,
               userId: otherActor?.userId ?? '',
               name: userName,
               avatar: userAvatar,
@@ -487,6 +527,7 @@ export class HomeGraphFactory {
               }
               return {
                 opportunityId: opportunity.id,
+                status: opportunity.status,
                 userId: otherActor?.userId ?? '',
                 name: userName,
                 avatar: userAvatar,

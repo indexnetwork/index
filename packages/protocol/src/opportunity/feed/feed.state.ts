@@ -7,6 +7,8 @@ import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
  */
 export interface HomeCardItem {
   opportunityId: string;
+  /** Lifecycle status of the underlying opportunity at render time (client bucketing, e.g. intent radar). */
+  status?: OpportunityStatus;
   userId: string;
   name: string;
   avatar: string | null;
