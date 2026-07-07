@@ -16,7 +16,9 @@
  */
 
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { sql } from "drizzle-orm";
 
+import db from "../lib/drizzle/drizzle";
 import { log } from "../lib/log";
 
 const logger = log.lib.from("checkpointer.adapter");
@@ -118,4 +120,82 @@ export function resetCheckpointer(): void {
   logger.verbose("[resetCheckpointer] Resetting checkpointer instance");
   checkpointerInstance = null;
   setupPromise = null;
+}
+
+/** Row counts removed by a single {@link pruneStaleCheckpointThreads} batch. */
+export interface CheckpointPruneResult {
+  /** Distinct thread_ids removed in this batch. */
+  threads: number;
+  /** Rows deleted from `checkpoints`. */
+  checkpoints: number;
+  /** Rows deleted from `checkpoint_blobs`. */
+  blobs: number;
+  /** Rows deleted from `checkpoint_writes`. */
+  writes: number;
+}
+
+const EMPTY_PRUNE_RESULT: CheckpointPruneResult = Object.freeze({
+  threads: 0,
+  checkpoints: 0,
+  blobs: 0,
+  writes: 0,
+});
+
+/** postgres.js result lists carry the affected-row count on `.count`. */
+function affectedRows(result: unknown): number {
+  const count = (result as { count?: unknown })?.count;
+  return typeof count === "number" ? count : 0;
+}
+
+/**
+ * Delete one batch of stale LangGraph checkpoint threads.
+ *
+ * A thread is stale when its NEWEST checkpoint is older than `retentionDays`.
+ * Chat threads use a per-run composite thread_id (`sessionId:runId`), so a
+ * thread whose latest checkpoint has aged out can never be resumed again —
+ * conversation continuity is rebuilt from `chat_messages`, not checkpoints.
+ *
+ * Deletes rows from `checkpoints`, `checkpoint_blobs`, and `checkpoint_writes`
+ * inside a single transaction. Call repeatedly (until `threads < batchSize`)
+ * to drain a large backlog incrementally.
+ *
+ * @param opts.retentionDays - Age threshold in whole days (must be >= 1)
+ * @param opts.batchSize - Max threads to delete per call (must be >= 1)
+ * @returns Row counts removed in this batch
+ */
+export async function pruneStaleCheckpointThreads(opts: {
+  retentionDays: number;
+  batchSize: number;
+}): Promise<CheckpointPruneResult> {
+  const retentionDays = Math.max(1, Math.floor(opts.retentionDays));
+  const batchSize = Math.max(1, Math.floor(opts.batchSize));
+
+  const stale = await db.execute<{ thread_id: string }>(sql`
+    SELECT thread_id
+    FROM checkpoints
+    GROUP BY thread_id
+    HAVING max((checkpoint->>'ts')::timestamptz) < now() - make_interval(days => ${retentionDays})
+    LIMIT ${batchSize}
+  `);
+  const threadIds = Array.from(stale, (row) => row.thread_id);
+  if (threadIds.length === 0) {
+    return EMPTY_PRUNE_RESULT;
+  }
+
+  // drizzle expands a JS array in a template into a row constructor `($1, $2)`,
+  // not a PG array — build an explicit IN list instead.
+  const idList = sql.join(threadIds.map((id) => sql`${id}`), sql`, `);
+
+  return db.transaction(async (tx) => {
+    const writes = affectedRows(
+      await tx.execute(sql`DELETE FROM checkpoint_writes WHERE thread_id IN (${idList})`),
+    );
+    const blobs = affectedRows(
+      await tx.execute(sql`DELETE FROM checkpoint_blobs WHERE thread_id IN (${idList})`),
+    );
+    const checkpoints = affectedRows(
+      await tx.execute(sql`DELETE FROM checkpoints WHERE thread_id IN (${idList})`),
+    );
+    return { threads: threadIds.length, checkpoints, blobs, writes };
+  });
 }
