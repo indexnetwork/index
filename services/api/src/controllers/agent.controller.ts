@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AuthGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -174,7 +174,7 @@ export class AgentController {
   }
 
   @Post('')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async create(req: Request, user: AuthenticatedUser) {
     const body = await parseBody(req, createAgentSchema);
     if (body instanceof Response) {
@@ -222,7 +222,7 @@ export class AgentController {
   }
 
   @Patch('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async update(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -243,7 +243,7 @@ export class AgentController {
   }
 
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async remove(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -259,7 +259,7 @@ export class AgentController {
   }
 
   @Post('/:id/transports')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async addTransport(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -286,7 +286,7 @@ export class AgentController {
   }
 
   @Delete('/:id/transports/:transportId')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async removeTransport(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const transportId = params?.transportId;
@@ -303,7 +303,7 @@ export class AgentController {
   }
 
   @Post('/:id/permissions')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async grantPermission(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -330,7 +330,7 @@ export class AgentController {
   }
 
   @Delete('/:id/permissions/:permissionId')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async revokePermission(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const permissionId = params?.permissionId;
@@ -363,7 +363,7 @@ export class AgentController {
   }
 
   @Post('/:id/tokens')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async createToken(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -384,7 +384,7 @@ export class AgentController {
   }
 
   @Delete('/:id/tokens/:tokenId')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async revokeToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const tokenId = params?.tokenId;

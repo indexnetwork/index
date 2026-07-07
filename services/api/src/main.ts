@@ -33,6 +33,7 @@ import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
+import { SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
@@ -600,6 +601,11 @@ const server = Bun.serve({
             // Map agent-scope violations to 403 (network-scoped API keys hitting
             // a network they aren't bound to)
             if (error instanceof ScopeViolationError) {
+              setSpanHttpStatus(403);
+              return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+            }
+            // Session-only endpoints reject API-key credentials outright
+            if (error instanceof SessionRequiredError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
