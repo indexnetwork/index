@@ -37,14 +37,16 @@ function bucketForStatus(status?: string): string {
   return STATUS_BUCKET[status ?? ""] ?? "pending";
 }
 
-/** Icon-only action button in the intent detail header (Pause / Edit / Archive). */
+/** Bordered mono action chip in the intent detail header (Pause / Edit / Archive). */
 function ActionChip({
   icon,
+  label,
   title,
-  tone = "text-gray-400 hover:text-gray-700 hover:bg-gray-100",
+  tone = "border-gray-300 text-gray-600 hover:bg-gray-100",
   onClick,
 }: {
   icon: React.ReactNode;
+  label: string;
   title: string;
   tone?: string;
   onClick?: () => void;
@@ -56,16 +58,17 @@ function ActionChip({
       aria-label={title}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center justify-center rounded p-1.5 leading-none transition-colors [&>svg]:h-4 [&>svg]:w-4",
+        "inline-flex items-center gap-1.5 border px-2 py-1.5 leading-none font-ibm-plex-mono font-bold uppercase tracking-[0.2em] text-[10px] transition-colors [&>svg]:h-3.5 [&>svg]:w-3.5",
         tone,
       )}
     >
       {icon}
+      <span>{label}</span>
     </button>
   );
 }
 
-/** Selectable radar status filter tab: a label with a subtle count badge. */
+/** Selectable radar status pill showing a count + label. */
 function StatPill({
   value,
   label,
@@ -83,20 +86,15 @@ function StatPill({
       aria-pressed={active}
       onClick={onSelect}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+        "flex min-w-[72px] flex-col items-center rounded-md border px-3 py-2 transition-colors",
         active
-          ? "bg-[#041729] text-white"
-          : "text-gray-500 hover:bg-gray-100 hover:text-gray-700",
+          ? "border-[#041729] bg-[#041729] text-white"
+          : "border-gray-200 text-gray-600 hover:bg-gray-50",
       )}
     >
-      <span>{label}</span>
-      <span
-        className={cn(
-          "min-w-[18px] rounded-full px-1 py-px text-center text-[10px] font-semibold tabular-nums",
-          active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500",
-        )}
-      >
-        {value}
+      <strong className="text-base leading-none">{value}</strong>
+      <span className="mt-1 text-[10px] uppercase tracking-wide font-ibm-plex-mono">
+        {label}
       </span>
     </button>
   );
@@ -109,28 +107,30 @@ function Panel({
   description,
   media,
   children,
-  className,
 }: {
   title: string;
   count?: number;
   description?: string;
   media?: React.ReactNode;
   children: React.ReactNode;
-  className?: string;
 }) {
   return (
-    <section className={className}>
-      <div className="mb-4">
-        <h3 className="flex items-center gap-2 text-base font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
-          <span>
+    <section>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-bold text-[#3D3D3D] font-ibm-plex-mono">
             {title}
-            {count !== undefined && ` (${count})`}
-          </span>
-          {media}
-        </h3>
-        {description && (
-          <p className="mt-1.5 text-sm text-gray-500">{description}</p>
-        )}
+            {count !== undefined && (
+              <span className="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                {count}
+              </span>
+            )}
+          </h3>
+          {description && (
+            <p className="mt-1 text-xs text-gray-500">{description}</p>
+          )}
+        </div>
+        {media}
       </div>
       {children}
     </section>
@@ -288,8 +288,8 @@ export default function IntentDetailPage() {
   return (
     <ClientLayout>
       {inviteModalElement}
-      <div className="px-10 lg:px-16 py-6">
-        <ContentContainer size="xwide">
+      <div className="px-6 lg:px-8 py-6">
+        <ContentContainer size="wide">
           <button
             type="button"
             onClick={() => navigate("/")}
@@ -312,33 +312,36 @@ export default function IntentDetailPage() {
             <>
               <div className="mb-6 rounded-lg border border-gray-200 bg-white p-5">
                 <div className="flex items-start justify-between gap-4">
-                  <h1 className="text-base font-bold text-black font-ibm-plex-mono leading-snug">
+                  <h1 className="text-2xl font-bold text-black font-ibm-plex-mono leading-snug">
                     {title}
                   </h1>
-                  <div className="flex shrink-0 items-center gap-0.5">
+                  <div className="flex shrink-0 items-center gap-1.5">
                     <ActionChip
                       icon={<Pause />}
+                      label="Pause"
                       title="Pause"
-                      tone="text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                      tone="border-amber-300 text-amber-600 hover:bg-amber-50"
                     />
                     <ActionChip
                       icon={<Pencil />}
+                      label="Edit"
                       title="Edit"
                       onClick={() => setShowRefine((v) => !v)}
                     />
                     <ActionChip
                       icon={<Trash2 />}
+                      label="Archive"
                       title="Archive"
-                      tone="text-red-400 hover:text-red-500 hover:bg-red-50"
+                      tone="border-red-300 text-red-500 hover:bg-red-50"
                       onClick={handleArchive}
                     />
                   </div>
                 </div>
-                <div className="mt-2.5 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
-                  <span className="inline-flex items-center gap-1.5 rounded border border-green-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-green-600">
-                    <span className="relative flex h-1.5 w-1.5">
+                <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-green-600">
+                    <span className="relative flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
                     </span>
                     live
                   </span>
@@ -371,12 +374,11 @@ export default function IntentDetailPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 <Panel
                   title="Questions"
                   count={questions.length}
                   description="Answer pending follow-ups for this intent."
-                  className="lg:col-span-2"
                 >
                   {questions.length === 0 ? (
                     <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
@@ -394,8 +396,7 @@ export default function IntentDetailPage() {
                 <Panel
                   title="Radar"
                   description="People the network surfaced for this intent."
-                  media={<Radar className="h-4 w-4 text-[#4091BB]/70" />}
-                  className="lg:col-span-3"
+                  media={<Radar className="h-6 w-6 text-[#4091BB]/70" />}
                 >
                   <div className="mb-4 flex flex-wrap gap-2">
                     {RADAR_BUCKETS.map((bucket) => (
