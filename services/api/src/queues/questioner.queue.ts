@@ -151,9 +151,8 @@ export class QuestionerQueue {
     const actorNetworkId = data.scopeType === 'network' && data.scopeId?.trim()
       ? data.scopeId.trim()
       : undefined;
-    const triggeredByIntentId = data.scopeType === 'intent' && data.scopeId?.trim()
-      ? data.scopeId.trim()
-      : undefined;
+    const triggeredByIntentId = data.triggeredByIntentId?.trim()
+      || (data.scopeType === 'intent' && data.scopeId?.trim() ? data.scopeId.trim() : undefined);
 
     const batch: PersistableQuestion[] = result.questions.map((question, i) => ({
       detection: {

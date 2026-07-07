@@ -804,6 +804,7 @@ export async function runDiscoverFromQuery(
           userId: input.userId,
           scopeType: input.scopeType,
           scopeId: input.scopeId,
+          triggerIntentId,
           userContext: input.userId
             ? ((await input.database.getUserContext(input.userId, null))?.text ?? '')
             : '',
@@ -1005,6 +1006,8 @@ interface MaybeBuildQuestionsInput {
   scopeType?: ToolScopeType;
   /** Focused request scope id. When `scopeType === 'network'`, persisted as actor networkId. */
   scopeId?: string;
+  /** Intent that triggered this discovery run. Stamped as `detection.triggeredBy` on generated questions. */
+  triggerIntentId?: string;
   /** The seeker's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
 }
@@ -1131,6 +1134,7 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
         sourceId: args.chatSessionId ?? crypto.randomUUID(),
         context: enqueueInput,
         ...(args.scopeType && args.scopeId ? { scopeType: args.scopeType, scopeId: args.scopeId } : {}),
+        ...(args.triggerIntentId ? { triggeredByIntentId: args.triggerIntentId } : {}),
         conversationId: args.chatSessionId,
       });
       logger.info("Question generation enqueued to QuestionerQueue", {

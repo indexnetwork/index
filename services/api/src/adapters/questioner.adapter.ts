@@ -90,7 +90,12 @@ export interface AdapterQuestionFilters {
   mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
   sourceType?: string;
   sourceId?: string;
-  /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */
+  /**
+   * Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected
+   * intent id. Matches questions triggered by the intent, intent-mode questions about it, and
+   * any question sourced from an opportunity linked to the intent (including negotiation
+   * questions, since those persist with `sourceType: 'opportunity'`).
+   */
   scopeType?: 'intent';
   scopeId?: string;
   /** Restrict to questions whose actor carries this network id. */
@@ -181,8 +186,7 @@ export class QuestionerAdapter {
           AND ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
         )
         OR (
-          ${questions.detection}->>'mode' = 'negotiation'
-          AND ${questions.detection}->>'sourceType' = 'opportunity'
+          ${questions.detection}->>'sourceType' = 'opportunity'
           AND EXISTS (
             SELECT 1
             FROM ${opportunities} scoped_opp
@@ -192,8 +196,7 @@ export class QuestionerAdapter {
                 OR EXISTS (
                   SELECT 1
                   FROM jsonb_array_elements(scoped_opp.actors) AS actor
-                  WHERE actor->>'userId' = ${userId}
-                    AND actor->>'intent' = ${filters.scopeId}
+                  WHERE actor->>'intent' = ${filters.scopeId}
                 )
               )
           )
