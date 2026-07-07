@@ -17,6 +17,7 @@ import importlib.util
 import json
 import os
 import re
+from functools import lru_cache
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -243,6 +244,22 @@ def _api_multipart(path: str, field: str, filename: str, content: bytes, content
         return {"success": False, "error": f"Avatar upload request failed: {exc.reason}"}
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Avatar upload could not be processed: {exc}"}
+
+
+@lru_cache(maxsize=512)
+def _counterpart_socials(user_id: str) -> tuple[tuple[str, str], ...]:
+    """Cached (label, value) social links for a counterpart, for radar cards.
+
+    Socials rarely change, so an lru_cache keeps summary loads cheap instead of
+    re-fetching each counterpart's public row on every refresh.
+    """
+    if not user_id:
+        return ()
+    try:
+        user = _fetch_user(user_id)
+    except Exception:
+        return ()
+    return tuple((s["label"], s["value"]) for s in _profile_socials(user))
 
 
 def _profile_socials(user: dict[str, Any]) -> list[dict[str, str]]:
@@ -489,6 +506,9 @@ def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], curre
     counterpart_id = _counterpart_user_id(opp, current_user_id)
     if counterpart_id:
         item["counterpartUserId"] = counterpart_id
+        socials = _counterpart_socials(counterpart_id)
+        if socials:
+            item["socials"] = [{"label": label, "value": value} for label, value in socials]
     return item
 
 

@@ -46,6 +46,7 @@
   })();
   const PITCH_IMAGE = ASSET_BASE + "loading-white.webp";
   const RADAR_IMAGE = ASSET_BASE + "eye-white.webp";
+  const LOADING_IMAGE = ASSET_BASE + "loading2.png";
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -63,7 +64,22 @@
 
   function BadgeText(props) {
     const className = "index-dashboard__badge" + (props.className ? " " + props.className : "");
-    return React.createElement(Badge, { variant: props.variant || "outline", className: className }, props.children);
+    const badgeProps = { className: className };
+    // The host Badge reads `tone` (not `variant`); forward it when given so
+    // semantic tags (e.g. a green "Running") match Hermes' own cron badges.
+    if (props.tone) badgeProps.tone = props.tone;
+    else badgeProps.variant = props.variant || "outline";
+    return React.createElement(Badge, badgeProps, props.children);
+  }
+
+  // Mirrors Hermes CronPage STATUS_TONE so an intent's "Running" reads like a
+  // scheduled cron job (green success tag).
+  function statusTone(status) {
+    const s = String(status || "").toLowerCase();
+    if (["running", "active", "enabled", "scheduled", "accepted", "connected"].indexOf(s) >= 0) return "success";
+    if (["paused", "pending", "negotiating", "stalled"].indexOf(s) >= 0) return "warning";
+    if (["error", "failed", "completed", "rejected", "declined"].indexOf(s) >= 0) return "destructive";
+    return "outline";
   }
 
   function formatCount(count) {
@@ -90,11 +106,51 @@
     ]);
   }
 
+  function ICON_NETWORK() {
+    return svgIcon("h-4 w-4", [
+      React.createElement("rect", { key: "a", x: 16, y: 16, width: 6, height: 6, rx: 1 }),
+      React.createElement("rect", { key: "b", x: 2, y: 16, width: 6, height: 6, rx: 1 }),
+      React.createElement("rect", { key: "c", x: 9, y: 2, width: 6, height: 6, rx: 1 }),
+      svgPath("M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"),
+      svgPath("M12 12V8"),
+    ]);
+  }
+
   function ICON_PAUSE() {
     return svgIcon("", [
       React.createElement("rect", { key: "a", x: 14, y: 3, width: 5, height: 18, rx: 1 }),
       React.createElement("rect", { key: "b", x: 5, y: 3, width: 5, height: 18, rx: 1 }),
     ]);
+  }
+
+  function ICON_PLAY() {
+    return svgIcon("", [
+      React.createElement("polygon", { key: "a", points: "6 3 20 12 6 21 6 3" }),
+    ]);
+  }
+
+  function ICON_ARROW_LEFT() {
+    return svgIcon("", [
+      svgPath("m12 19-7-7 7-7"),
+      svgPath("M19 12H5"),
+    ]);
+  }
+
+  function brandIcon(d) {
+    return React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg", width: 16, height: 16, viewBox: "0 0 24 24",
+      fill: "currentColor", "aria-hidden": "true",
+    }, React.createElement("path", { d: d }));
+  }
+  function ICON_TWITTER() { return brandIcon("M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.657l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"); }
+  function ICON_LINKEDIN() { return brandIcon("M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"); }
+  function ICON_GITHUB() { return brandIcon("M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"); }
+  function ICON_TELEGRAM() { return brandIcon("M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"); }
+  const SOCIAL_ICONS = { twitter: ICON_TWITTER, linkedin: ICON_LINKEDIN, github: ICON_GITHUB, telegram: ICON_TELEGRAM };
+
+  // The blinking eye, sized to sit inline next to the "Radar" title.
+  function RADAR_EYE() {
+    return React.createElement("img", { className: "index-dashboard__radar-eye", src: RADAR_IMAGE, alt: "", "aria-hidden": "true", loading: "lazy" });
   }
 
   function ICON_PENCIL() {
@@ -124,6 +180,12 @@
     }, props.children, props.label ? React.createElement("span", { className: "text-[10px] uppercase" }, props.label) : null);
   }
 
+  // Wraps an element in a hover tooltip (styled CSS bubble, not native title,
+  // so it renders reliably regardless of how the host Button forwards props).
+  function Tip(key, label, child) {
+    return React.createElement("span", { key: key, className: "index-dashboard__tip", "data-tip": label }, child);
+  }
+
   function parseHash() {
     const raw = (window.location.hash || "").replace(/^#/, "");
     const params = {};
@@ -149,24 +211,24 @@
   }
 
   function Panel(props) {
-    const header = props.cron
-      ? React.createElement(CardHeader, { className: "index-dashboard__card-header" },
-        React.createElement("h2", { className: "font-sans text-[.9375rem] tracking-[0.1875rem] font-bold flex items-center gap-2 text-muted-foreground" },
-          props.icon || null,
-          props.count !== undefined ? props.title + " (" + formatCount(props.count) + ")" : props.title,
-        ),
-      )
-      : React.createElement(CardHeader, { className: "index-dashboard__card-header" },
-        React.createElement("div", { className: "index-dashboard__card-title-row" },
-          React.createElement("div", null,
-            React.createElement(CardTitle, { className: "index-dashboard__card-title" }, props.title),
-            props.description ? React.createElement("p", { className: "index-dashboard__card-description" }, props.description) : null,
+    const titleText = props.count !== undefined
+      ? props.title + " (" + formatCount(props.count) + ")"
+      : props.title;
+    const header = React.createElement(CardHeader, { className: "index-dashboard__card-header" },
+      React.createElement("div", { className: "index-dashboard__card-title-row" },
+        React.createElement("div", null,
+          React.createElement("h2", { className: "index-dashboard__card-title" },
+            props.icon || null,
+            titleText,
+            props.titleAfter || null,
           ),
-          props.media
-            ? React.createElement("img", { className: "index-dashboard__card-title-media", src: props.media, alt: "", "aria-hidden": "true", loading: "lazy" })
-            : (props.count !== undefined ? React.createElement(BadgeText, null, formatCount(props.count)) : null),
+          props.description ? React.createElement("p", { className: "index-dashboard__card-description" }, props.description) : null,
         ),
-      );
+        props.media
+          ? React.createElement("img", { className: "index-dashboard__card-title-media", src: props.media, alt: "", "aria-hidden": "true", loading: "lazy" })
+          : null,
+      ),
+    );
     return React.createElement(Card, { className: props.primary ? "index-dashboard__card index-dashboard__card--primary" : "index-dashboard__card" },
       header,
       React.createElement(CardContent, { className: "index-dashboard__card-content" }, props.children),
@@ -369,40 +431,56 @@
     const resolved = OPP_RESOLVED_LABEL[status];
     const networks = Array.isArray(opportunity.networks) ? opportunity.networks : [];
     const acting = !!props.actingId && props.actingId === opportunity.opportunityId;
-    let actions = null;
+    let actionButtons = null;
     if (props.onAccept && bucketForStatus(status) === "pending") {
-      actions = React.createElement("div", { className: "index-dashboard__opp-actions" },
+      actionButtons = [
         React.createElement(Button, {
-          type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
+          key: "skip", type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { if (props.onSkip) props.onSkip(opportunity.opportunityId); },
         }, "Skip"),
         React.createElement(Button, {
-          type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md",
+          key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onAccept(opportunity.opportunityId); },
         }, acting ? "Working…" : "Start chat"),
-      );
+      ];
     } else if (status === "accepted") {
       if (props.onStartChat && opportunity.counterpartUserId) {
-        actions = React.createElement("div", { className: "index-dashboard__opp-actions" },
-          React.createElement(Button, {
-            type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md",
-            disabled: acting,
-            onClick: function () { props.onStartChat(opportunity); },
-          }, acting ? "Working…" : "Start chat"),
-        );
+        actionButtons = [React.createElement(Button, {
+          key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
+          disabled: acting,
+          onClick: function () { props.onStartChat(opportunity); },
+        }, acting ? "Working…" : "Start chat")];
       } else if (opportunity.chatUrl) {
-        actions = React.createElement("div", { className: "index-dashboard__opp-actions" },
-          React.createElement("a", {
-            className: "index-dashboard__opp-openchat",
-            href: opportunity.chatUrl,
-            target: "_blank",
-            rel: "noopener noreferrer",
-          }, "Open chat ↗"),
-        );
+        actionButtons = [React.createElement("a", {
+          key: "open", className: "index-dashboard__opp-openchat",
+          href: opportunity.chatUrl, target: "_blank", rel: "noopener noreferrer",
+        }, "Open chat ↗")];
       }
     }
+
+    const socialsArr = Array.isArray(opportunity.socials) ? opportunity.socials : [];
+    const socialIcons = socialsArr
+      .filter(function (s) { return s && SOCIAL_ICONS[s.label] && s.value; })
+      .map(function (s) {
+        return React.createElement("a", {
+          key: s.label,
+          className: "index-dashboard__opp-social",
+          href: socialUrl(s.label, s.value),
+          target: "_blank",
+          rel: "noopener noreferrer",
+          title: s.label,
+          "aria-label": s.label,
+          onClick: function (e) { e.stopPropagation(); },
+        }, SOCIAL_ICONS[s.label]());
+      });
+    const footer = (socialIcons.length || actionButtons)
+      ? React.createElement("div", { className: "index-dashboard__opp-actions" },
+        React.createElement("div", { className: "index-dashboard__opp-socials" }, socialIcons),
+        actionButtons ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons) : React.createElement("span", null),
+      )
+      : null;
     const clickable = !!props.onOpenUser && !!opportunity.counterpartUserId;
     const idProps = clickable
       ? {
@@ -435,8 +513,8 @@
           ),
         ),
         resolved
-          ? React.createElement(BadgeText, { variant: "outline", className: "index-dashboard__opp-status index-dashboard__opp-status--" + status }, resolved)
-          : status ? React.createElement(BadgeText, { variant: "outline" }, String(status).replace(/_/g, " ")) : null,
+          ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
+          : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
       ),
       opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,
       networks.length > 0 || (typeof opportunity.score === "number" && opportunity.score > 0)
@@ -454,7 +532,7 @@
             : null,
         )
         : null,
-      actions,
+      footer,
     );
   }
 
@@ -488,7 +566,7 @@
     return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect(intent.id); } },
       React.createElement("div", { className: "index-dashboard__intent-main" },
         React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
-        intent.status ? React.createElement(BadgeText, { variant: intent.status === "running" ? "default" : "outline" }, intent.status) : null,
+        intent.status ? React.createElement(BadgeText, { tone: statusTone(intent.status) }, intent.status) : null,
       ),
       React.createElement("div", { className: "index-dashboard__intent-counts" },
         React.createElement(BadgeText, null, formatCount(intent.opportunityCount) + " opps"),
@@ -632,7 +710,9 @@
         ),
       ),
       isEvent ? React.createElement("span", { className: "index-dashboard__net-event" }, "Event") : null,
-      React.createElement("span", { className: "index-dashboard__net-role index-dashboard__net-role--" + (isOwner ? "owner" : "member") }, isOwner ? "Owner" : "Member"),
+      isOwner
+        ? React.createElement(BadgeText, null, "Owner")
+        : React.createElement(BadgeText, { tone: "secondary" }, "Member"),
     );
   }
 
@@ -709,10 +789,9 @@
     const setOpen = openState[1];
     return React.createElement("section", { className: "index-dashboard__net-card" },
       React.createElement("div", { className: "index-dashboard__net-head" },
-        React.createElement("span", { className: "index-dashboard__net-heading" }, "Networks"),
+        React.createElement("h2", { className: "index-dashboard__net-heading" }, ICON_NETWORK(), "Networks (" + formatCount(networks.count || items.length) + ")"),
         React.createElement("div", { className: "index-dashboard__net-head-actions" },
-          items.length > 0 ? React.createElement(BadgeText, null, formatCount(networks.count || items.length)) : null,
-          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { setOpen(true); } }, ICON_COMPASS(), "Discover"),
+          React.createElement(Button, { size: "sm", outlined: true, className: "uppercase", prefix: ICON_COMPASS(), onClick: function () { setOpen(true); } }, "Discover"),
         ),
       ),
       networks.error
@@ -746,7 +825,7 @@
 
   function DetailHead(props) {
     return React.createElement("div", { className: "index-dashboard__detail-head" },
-      props.onBack ? React.createElement("button", { type: "button", className: "index-dashboard__back", onClick: props.onBack }, "← back") : null,
+      props.onBack ? React.createElement(Button, { type: "button", ghost: true, size: "sm", prefix: ICON_ARROW_LEFT(), onClick: props.onBack }, "Back") : null,
       React.createElement("div", { className: "index-dashboard__detail-card" },
         React.createElement("div", { className: "index-dashboard__detail-title-row" },
           React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
@@ -786,23 +865,35 @@
         title: intent.title || "Untitled intent",
         live: true,
         onBack: props.onBack,
-        actions: [
-          React.createElement(HeaderActionButton, { key: "pause", title: "Pause", label: "Pause", tone: "text-warning" }, ICON_PAUSE()),
-          React.createElement(HeaderActionButton, { key: "edit", title: "Edit" }, ICON_PENCIL()),
-          React.createElement(HeaderActionButton, {
-            key: "archive",
-            title: props.archivingId === intent.id ? "Archiving…" : "Archive",
-            label: "Archive",
-            tone: "text-destructive",
-            onClick: props.archivingId === intent.id ? undefined : function () { if (props.onArchive) props.onArchive(intent.id); },
-          }, ICON_TRASH()),
-        ],
+        actions: (function () {
+          const paused = String(intent.status || "").toLowerCase() === "paused";
+          const archiving = props.archivingId === intent.id;
+          return [
+            Tip("pause", paused ? "Resume" : "Pause", React.createElement(Button, {
+              ghost: true, size: "icon",
+              "aria-label": paused ? "Resume" : "Pause",
+              className: paused ? "text-success" : "text-warning",
+              onClick: props.onPause ? function () { props.onPause(intent.id, paused); } : undefined,
+            }, paused ? ICON_PLAY() : ICON_PAUSE())),
+            Tip("edit", "Edit", React.createElement(Button, {
+              ghost: true, size: "icon",
+              "aria-label": "Edit",
+              onClick: props.onEdit ? function () { props.onEdit(intent.id); } : undefined,
+            }, ICON_PENCIL())),
+            Tip("archive", archiving ? "Archiving…" : "Archive", React.createElement(Button, {
+              ghost: true, destructive: true, size: "icon",
+              "aria-label": "Archive",
+              disabled: archiving,
+              onClick: archiving ? undefined : function () { if (props.onArchive) props.onArchive(intent.id); },
+            }, ICON_TRASH())),
+          ];
+        })(),
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
       React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
         React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
-        React.createElement(Panel, { title: "Radar", media: RADAR_IMAGE, description: "People the network surfaced for this intent." },
+        React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
@@ -826,7 +917,7 @@
         React.createElement(Panel, { primary: true, title: "Questions", count: questionSection.items.length, description: "Onboarding and follow-ups not tied to an intent." },
           React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
         ),
-        React.createElement(Panel, { title: "Radar", media: RADAR_IMAGE, description: "People surfaced outside a specific intent." },
+        React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People surfaced outside a specific intent." },
           React.createElement(RadarStrip, { counts: general.statusCounts || {}, selected: selectedBucket, onSelect: setSelectedBucket }),
           React.createElement(RadarList, { items: visibleOpps, empty: "No general matches here yet.", onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
@@ -1751,6 +1842,9 @@
     const archivingState = useState(null);
     const archivingId = archivingState[0];
     const setArchivingId = archivingState[1];
+    const unreadState = useState(false);
+    const hasUnread = unreadState[0];
+    const setHasUnread = unreadState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
@@ -1778,6 +1872,39 @@
           setLoading(false);
         });
     }
+
+    // Any conversation with a message newer than its stored read marker means
+    // there's an unread message → show the notification dot on the header icon.
+    function refreshUnread() {
+      fetchPluginJSON(API + "/conversations")
+        .then(function (payload) {
+          const convs = (payload && payload.conversations) || [];
+          let readMap = {};
+          try { readMap = JSON.parse(window.localStorage.getItem("index_msg_read") || "{}") || {}; } catch (e) { readMap = {}; }
+          const unread = convs.some(function (c) {
+            return !!c.lastMessageAt && c.lastMessageAt > (readMap[c.id] || "");
+          });
+          setHasUnread(unread);
+        })
+        .catch(function () { /* noop */ });
+    }
+
+    useEffect(function () {
+      refreshUnread();
+      const id = setInterval(refreshUnread, 30000);
+      return function () { clearInterval(id); };
+    }, []);
+
+    // Re-check when the messages panel closes (reading there updates the map).
+    useEffect(function () {
+      if (!messagesOpen) refreshUnread();
+    }, [messagesOpen]);
+
+    useEffect(function () {
+      const ctl = headerCtlRef.current;
+      if (!ctl || !ctl.messages) return;
+      ctl.messages.classList.toggle("index-dashboard__hdr-account--dot", !!hasUnread);
+    }, [hasUnread]);
 
     function submitQuestion(question, selectedOptions, freeText) {
       setSubmittingId(question.id);
@@ -2085,7 +2212,7 @@
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
-          React.createElement(Panel, { cron: true, icon: ICON_TARGET(), title: "Intents", count: intents.length },
+          React.createElement(Panel, { icon: ICON_TARGET(), title: "Intents", count: intents.length },
             React.createElement(IntentList, { intents: intents, general: general, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
@@ -2106,7 +2233,9 @@
         : null,
 
       loading && !summary
-        ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading Index Network data…")
+        ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+          React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE, alt: "Loading", loading: "eager" }),
+        )
         : React.createElement("div", { className: "index-dashboard__body" }, intentsView),
     );
   }
