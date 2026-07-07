@@ -7,7 +7,7 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { Timed } from "../observability/performance.js";
 import { protocolLogger } from '../observability/protocol.logger.js';
-import { createModel } from "../agent/model.config.js";
+import { createStructuredModel } from "../agent/model.config.js";
 import { invokeWithAbortSignal } from "../agent/model-signal.js";
 
 export type HydeTargetCorpus = 'profiles' | 'intents' | 'premises';
@@ -59,8 +59,6 @@ const responseFormat = z.object({
   })).min(1).max(5).describe('Inferred search lenses'),
 });
 
-const model = createModel("lensInferrer");
-
 const logger = protocolLogger("LensInferrer");
 
 /**
@@ -69,7 +67,7 @@ const logger = protocolLogger("LensInferrer");
  * (profiles or intents) for downstream HyDE document generation.
  */
 export class LensInferrer {
-  private model = model.withStructuredOutput(responseFormat, {
+  private model = createStructuredModel("lensInferrer", responseFormat, {
     name: "lens_inferrer",
   });
 

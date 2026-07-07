@@ -1,10 +1,9 @@
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { log } from "../shared/observability/log.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 // ──────────────────────────────────────────────────────────────
@@ -24,7 +23,6 @@ export type IntentIndexerOutput = z.infer<typeof IntentIndexerOutputSchema>;
 
 const logger = log.lib.from("IntentIndexer");
 
-const model = createModel("intentIndexer");
 
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
@@ -79,10 +77,10 @@ type ResponseType = z.infer<typeof responseFormat>;
 // ──────────────────────────────────────────────────────────────
 
 export class IntentIndexer {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("intentIndexer", responseFormat, {
       name: "intent_indexer",
     });
   }

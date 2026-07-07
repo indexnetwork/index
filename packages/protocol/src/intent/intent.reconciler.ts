@@ -3,12 +3,11 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("IntentReconciler");
 
-const model = createModel("intentReconciler");
 
 const CreateActionTypeSchema = z.union([z.literal("create"), z.literal("CREATE")]);
 const UpdateActionTypeSchema = z.union([z.literal("update"), z.literal("UPDATE")]);
@@ -134,10 +133,10 @@ const normalizeActionType = (type: string): "create" | "update" | "expire" => {
 // ──────────────────────────────────────────────────────────────
 
 export class IntentReconciler {
-  private model: any;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("intentReconciler", responseFormat, {
       name: "intent_reconciler"
     });
   }

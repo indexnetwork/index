@@ -2,7 +2,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("PremiseAnalyzer");
@@ -91,11 +91,10 @@ export type PremiseAnalyzerOutput = z.infer<typeof responseFormat>;
  * Classifies a premise using adapted Speech Act Theory and scores felicity conditions.
  */
 export class PremiseAnalyzer {
-  private model: ReturnType<ReturnType<typeof createModel>["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const model = createModel("premiseAnalyzer");
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("premiseAnalyzer", responseFormat, {
       name: "premise_analyzer"
     });
   }

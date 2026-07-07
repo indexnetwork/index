@@ -1,9 +1,8 @@
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { log } from "../shared/observability/log.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createResilientModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = log.lib.from("ChatInterruptClassifier");
@@ -32,10 +31,10 @@ export interface ClassifyInterruptInput {
  * Uses a low-temperature, minimal-token model for sub-1 s latency.
  */
 export class ChatInterruptClassifier {
-  private model: ChatOpenAI;
+  private model: ReturnType<typeof createResilientModel>;
 
   constructor() {
-    this.model = createModel("interruptClassifier");
+    this.model = createResilientModel("interruptClassifier");
   }
 
   /**

@@ -1,4 +1,4 @@
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment } from "./negotiation.state.js";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
@@ -99,7 +99,7 @@ export class IndexNegotiator {
    */
   async invoke(input: NegotiationAgentInput): Promise<NegotiationTurn> {
     const schema = input.isFinalTurn ? FinalNegotiationTurnSchema : SystemNegotiationTurnSchema;
-    const model = createModel("negotiator").withStructuredOutput(schema, { name: "index_negotiator" });
+    const model = createStructuredModel("negotiator", schema, { name: "index_negotiator" });
 
     const userName = input.ownUser.profile.name ?? "your user";
     const role = input.seedAssessment.valencyRole || "peer";

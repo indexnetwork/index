@@ -7,11 +7,10 @@
  * The model is instructed to drop entries in the previous digest that newer
  * messages override, keeping the digest bounded as the session grows.
  */
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { ChatContextDigestSchema, type ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
@@ -46,11 +45,10 @@ export interface ChatSummarizerInput {
 
 /** Pure LLM summarizer; no DB, no events. */
 export class ChatSummarizer {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const llm = createModel("chatContextSummarizer");
-    this.model = llm.withStructuredOutput(ChatContextDigestSchema, {
+    this.model = createStructuredModel("chatContextSummarizer", ChatContextDigestSchema, {
       name: "chat_context_digest",
     });
   }

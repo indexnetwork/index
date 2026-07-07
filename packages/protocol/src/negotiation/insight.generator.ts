@@ -6,13 +6,12 @@
  * opportunity trends, and interesting signals from recent activity.
  */
 
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { log } from "../shared/observability/log.js";
 import { Timed } from "../shared/observability/performance.js";
 
-import { createModel } from "../shared/agent/model.config.js";
+import { createResilientModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = log.lib.from("NegotiationInsightsGenerator");
@@ -48,10 +47,10 @@ export interface NegotiationDigest {
  * @remarks Lightweight single-call agent; no DB access, no side effects.
  */
 export class NegotiationInsightsGenerator {
-  private model: ChatOpenAI;
+  private model: ReturnType<typeof createResilientModel>;
 
   constructor() {
-    this.model = createModel("negotiationInsights");
+    this.model = createResilientModel("negotiationInsights");
   }
 
   /**
