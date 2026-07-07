@@ -54,6 +54,8 @@ import { discoveryRunQueue } from './queues/opportunity/discovery-run.queue';
 import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
+import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
+import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
@@ -271,6 +273,7 @@ discoveryRunQueue.startWorker();
 enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
+checkpointRetentionCron.start();
 notificationQueue.startWorker();
 enrichmentQueue.startWorker();
 hydeQueue.startCrons();
@@ -304,6 +307,15 @@ const GLOBAL_PREFIX = '/api';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
+
+// Warm up the PostgresSaver checkpointer at boot so the first chat request
+// doesn't pay the table-setup round trip and misconfiguration surfaces at
+// startup instead of mid-stream. Non-fatal: chat degrades to no checkpointer.
+getCheckpointer().catch((err) => {
+  logger.warn('Checkpointer warm-up failed; chat will run without persistence', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+});
 
 // ── Telegram bot startup ────────────────────────────────────────────────────
 if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {

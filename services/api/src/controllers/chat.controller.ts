@@ -347,8 +347,6 @@ export class ChatController {
           let decisionQuestions: import("@indexnetwork/protocol").Question[] | undefined;
 
           // Use context-aware streaming to load previous messages
-          // checkpointer is PostgresSaver from the local install; the package expects
-          // BaseCheckpointSaver from the root install — structurally identical at runtime.
 
           for await (const event of factory.streamChatEventsWithContext(
             {
@@ -360,8 +358,7 @@ export class ChatController {
               prefillMessages: body.prefillMessages,
               runId,
             },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            checkpointer as any,
+            checkpointer,
             streamAbortController.signal,
           )) {
             if (streamInterruptedBySteer) break;
