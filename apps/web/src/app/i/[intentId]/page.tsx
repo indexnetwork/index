@@ -9,7 +9,7 @@ import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuesti
 import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
-import type { HomeViewCardItem } from "@/services/opportunities";
+import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { AnswerBody, PendingQuestion } from "@/services/questions";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,21 @@ const RADAR_BUCKETS: Array<{ key: string; label: string }> = [
 function bucketForStatus(status?: string): string {
   return STATUS_BUCKET[status ?? ""] ?? "pending";
 }
+
+/**
+ * Lifecycle statuses the radar fetches: the full pipeline except chat-only
+ * drafts. This switches the home view into lifecycle mode (terminal statuses
+ * pass through; latent/pending stay gated by viewer actionability).
+ */
+const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
+  "latent",
+  "pending",
+  "negotiating",
+  "stalled",
+  "accepted",
+  "rejected",
+  "expired",
+];
 
 /** Icon-only action button in the intent detail header (Pause / Edit / Archive). */
 function ActionChip({
@@ -179,7 +194,11 @@ export default function IntentDetailPage() {
     if (!intentId) return;
     setOpportunitiesLoading(true);
     try {
-      const res = await opportunitiesService.getHomeView({ scopeType: "intent", scopeId: intentId });
+      const res = await opportunitiesService.getHomeView({
+        scopeType: "intent",
+        scopeId: intentId,
+        statuses: RADAR_STATUSES,
+      });
       setOpportunities(res.sections.flatMap((s) => s.items));
     } catch {
       setOpportunities([]);
@@ -260,7 +279,9 @@ export default function IntentDetailPage() {
   );
 
   const bucketOf = useCallback(
-    (item: HomeViewCardItem) => bucketForStatus(opportunityStatusMap[item.opportunityId]),
+    // Local actions (accept/reject in this session) override the fetched status.
+    (item: HomeViewCardItem) =>
+      bucketForStatus(opportunityStatusMap[item.opportunityId] ?? item.status),
     [opportunityStatusMap],
   );
 

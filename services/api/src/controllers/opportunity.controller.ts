@@ -32,6 +32,8 @@ const discoverBodySchema = z.object({
 });
 
 const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
+/** Full lifecycle enum for the home view's explicit `statuses` filter (e.g. the intent radar). */
+const homeStatusSchema = z.enum(['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -173,11 +175,24 @@ export class OpportunityController {
     const scope = parseIntentScopeFromUrl(url);
     if (scope instanceof Response) return scope;
 
+    // Optional explicit lifecycle filter (comma-separated). Switches the home
+    // graph into lifecycle-view mode (see HomeGraphInvokeInput.statuses).
+    const statusesParam = url.searchParams.get('statuses');
+    let statuses: z.infer<typeof homeStatusSchema>[] | undefined;
+    if (statusesParam) {
+      const parsed = z.array(homeStatusSchema).nonempty().safeParse(statusesParam.split(',').map((s) => s.trim()).filter(Boolean));
+      if (!parsed.success) {
+        return Response.json({ error: `Invalid statuses; allowed: ${homeStatusSchema.options.join(', ')}` }, { status: 400 });
+      }
+      statuses = [...new Set(parsed.data)];
+    }
+
     const result = await opportunityService.getHomeView(user.id, {
       networkId,
       ...scope,
       limit: limitParam ? parseInt(limitParam, 10) : undefined,
       noCache,
+      statuses,
     });
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: 500 });

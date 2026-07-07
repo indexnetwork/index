@@ -174,6 +174,7 @@ describe('opportunity.utils', () => {
   //   (2) latent, introducer !approved     → introducer only
   //   (3) latent, introducer approved      → all non-introducer actors
   //   (4) pending, any introducer config   → non-introducer actors who have not acted
+  //       (acting is per-user: any viewer actor row with actedAt means acted)
   //   (5) terminal / stalled / draft / negotiating → never actionable
 
   describe('isActionableForViewer', () => {
@@ -234,6 +235,28 @@ describe('opportunity.utils', () => {
           expect(isActionableForViewer(actors('introducer', false), status, VIEWER)).toBe(false);
           expect(isActionableForViewer(actors('introducer', true), status, VIEWER)).toBe(false);
         }
+      });
+    });
+
+    describe('duplicate viewer actor rows (re-detection)', () => {
+      it('pending stays non-actionable when any viewer row has actedAt, even with unstamped duplicates', () => {
+        // Re-detection appends duplicate viewer rows without actedAt; the
+        // viewer already accepted — the opportunity must NOT resurface.
+        expect(isActionableForViewer([
+          { userId: VIEWER, role: 'patient', actedAt: '2026-06-04T21:11:14.697Z' },
+          { userId: VIEWER, role: 'agent', actedAt: '2026-06-04T21:11:14.697Z' },
+          { userId: OTHER, role: 'patient' },
+          { userId: VIEWER, role: 'patient' }, // duplicate row from re-detection, no actedAt
+          { userId: VIEWER, role: 'patient' },
+        ], 'pending', VIEWER)).toBe(false);
+      });
+
+      it('pending remains actionable when no viewer row has actedAt', () => {
+        expect(isActionableForViewer([
+          { userId: VIEWER, role: 'patient' },
+          { userId: VIEWER, role: 'peer' },
+          { userId: OTHER, role: 'agent' },
+        ], 'pending', VIEWER)).toBe(true);
       });
     });
 
