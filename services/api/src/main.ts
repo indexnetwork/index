@@ -63,7 +63,7 @@ import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { integrationSyncQueue } from './queues/integration.queue';
-import { questionerQueue } from './queues/questioner.queue';
+import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
@@ -111,6 +111,10 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
   backgroundAgentDispatcher,
   negotiationTimeoutQueue,
+  // Stalled/capped/timeout negotiations enqueue follow-up questions for the
+  // source user (mode='negotiation', sourceType='opportunity') so the intent
+  // page can surface what would unblock the next attempt.
+  questionerEnqueueIfEnabled(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
