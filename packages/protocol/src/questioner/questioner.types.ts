@@ -101,6 +101,13 @@ export interface QuestionerInput {
   scopeType?: ToolScopeType;
   /** Scoped question id. When scopeType is `network`, this is the actor networkId. */
   scopeId?: string;
+  /**
+   * Intent that triggered the run that generated these questions. Persisted as
+   * `detection.triggeredBy` so intent-scoped surfaces (e.g. the intent page)
+   * can find them. Independent of `scopeType`/`scopeId`, which may carry a
+   * network scope at the same time.
+   */
+  triggeredByIntentId?: string;
   /** Conversation ID — set when the question originates from a chat session. Persisted on the question row for frontend filtering. */
   conversationId?: string;
   /** Assistant message ID — set when we know which message triggered the question. Stored in detection.messageId for inline anchoring. */
