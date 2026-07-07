@@ -52,6 +52,47 @@ const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
 };
 
 /**
+ * Thrown when a session-only endpoint is hit with an API key (or any
+ * non-JWT credential). Mapped to HTTP 403 in main.ts.
+ */
+export class SessionRequiredError extends Error {
+  constructor(message = 'This endpoint requires a session token; API keys are not accepted') {
+    super(message);
+    this.name = 'SessionRequiredError';
+  }
+}
+
+/**
+ * SessionOnlyGuard: accepts ONLY a Better Auth session JWT (`Authorization:
+ * Bearer` header or `?token=`), never an API key.
+ *
+ * Use for endpoints where a leaked agent API key must not be able to act:
+ * account deletion and agent-management writes (create/update/delete agents,
+ * tokens, permissions, transports). Re-walling those keeps leaked-key blast
+ * radius at "act as the user in the product" — a key must never be able to
+ * mint successor credentials (which would survive rotation of the leaked
+ * key) or destroy the account. See IND-384.
+ */
+export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser> => {
+  const authHeader = req.headers.get('Authorization');
+  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
+
+  if (authHeader?.startsWith('Bearer ') || queryToken) {
+    return resolveJwtUser(req);
+  }
+
+  if (req.headers.get('x-api-key')) {
+    logger.warn('API key rejected on session-only endpoint', {
+      path: new URL(req.url, 'http://localhost').pathname,
+      ua: req.headers.get('user-agent') ?? 'unknown',
+    });
+    throw new SessionRequiredError();
+  }
+
+  throw new Error('Access token required');
+};
+
+/**
  * Resolve the `metadata.agentId` of the API key on the request, or null if
  * the request is JWT-authenticated, has no key, or the key has no agent
  * binding. Authorization is intentionally NOT re-checked here — callers

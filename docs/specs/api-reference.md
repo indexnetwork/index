@@ -51,6 +51,22 @@ Most endpoints require the `AuthGuard`, which accepts either a stateless Better 
 
 The guard returns an `AuthenticatedUser` object with `id`, `email` (nullable), and `name` fields, which is passed to the handler as the second argument. Individual controllers may return additional 403/404 errors for user-level access checks.
 
+### SessionOnlyGuard
+
+A small set of endpoints accept **only a session JWT**, never an API key. These are the operations where a leaked agent API key must not be able to act: deleting the account, and creating or modifying agents, their tokens, permissions, and transports (a key that can mint successor credentials defeats rotation of the leaked key).
+
+- **JWT header / `?token=`**: same as `AuthGuard`
+- **API key**: rejected — `403` — `This endpoint requires a session token; API keys are not accepted`
+- **No credential**: `401` — `Access token required`
+
+Session-only endpoints:
+
+- `DELETE /api/auth/account`
+- `POST /api/agents`, `PATCH /api/agents/:id`, `DELETE /api/agents/:id`
+- `POST /api/agents/:id/tokens`, `DELETE /api/agents/:id/tokens/:tokenId`
+- `POST /api/agents/:id/permissions`, `DELETE /api/agents/:id/permissions/:permissionId`
+- `POST /api/agents/:id/transports`, `DELETE /api/agents/:id/transports/:transportId`
+
 ### DebugGuard
 
 Debug endpoints additionally require the `DebugGuard`, which gates access based on environment:
@@ -304,7 +320,7 @@ Updates the authenticated user's profile fields and/or notification preferences.
 
 Soft-deletes the authenticated user's account.
 
-**Auth**: AuthGuard
+**Auth**: SessionOnlyGuard (API keys rejected with 403)
 
 **Response**:
 ```json
@@ -578,7 +594,7 @@ Get a shared chat session (read-only, public access).
 
 **Controller prefix**: `/agents`
 
-All agent routes use `AuthGuard`.
+Agent **read** routes and the agent-poller endpoints (negotiations pickup/respond, test messages, opportunity pickup/delivery) use `AuthGuard` (JWT or API key). Agent **management writes** — create/update/delete agent, tokens, permissions, transports — use `SessionOnlyGuard`: API keys get 403, so a leaked key cannot mint successor credentials or reshape its own permissions.
 
 ### GET /api/agents
 
