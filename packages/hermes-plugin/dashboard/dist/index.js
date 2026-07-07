@@ -1795,6 +1795,55 @@
     );
   }
 
+  // DEBUG: seed fixture questions so the Questions panel renders without waiting
+  // on the backend question generator. Only fills intents / General that have no
+  // real questions; real questions are never overwritten. Answer/Skip still POST
+  // to the backend (fixture ids will 404) — this is UI-render debugging only.
+  // Remove this function and its call in the /summary handler before merging.
+  function injectDebugQuestions(payload) {
+    if (!payload) return;
+    function fixtures(scopeId) {
+      return [
+        {
+          id: "debug-question-" + scopeId + "-scope",
+          prompt: "Which angle do you most want feedback on?",
+          multiSelect: false,
+          options: [
+            { label: "Technical architecture", description: "Protocol, data model, tradeoffs." },
+            { label: "Design / UX", description: "Flows, surfaces, ergonomics." },
+            { label: "Go-to-market", description: "Positioning and early users." },
+          ],
+        },
+        {
+          id: "debug-question-" + scopeId + "-audience",
+          prompt: "Who would you most want in these discussions? (pick any)",
+          multiSelect: true,
+          options: [
+            { label: "Protocol designers", description: "People shaping the underlying spec." },
+            { label: "Applied researchers", description: "Deep technical counterparts." },
+            { label: "Product / design", description: "Turning primitives into UX." },
+          ],
+        },
+      ];
+    }
+    const intents = Array.isArray(payload.intents) ? payload.intents : [];
+    intents.forEach(function (intent) {
+      if (!intent) return;
+      const existing = Array.isArray(intent.questions) ? intent.questions : [];
+      if (existing.length === 0) {
+        intent.questions = fixtures(intent.id || "intent");
+        intent.questionCount = intent.questions.length;
+      }
+    });
+    if (payload.general) {
+      const generalQuestions = Array.isArray(payload.general.questions) ? payload.general.questions : [];
+      if (generalQuestions.length === 0) {
+        payload.general.questions = fixtures("general");
+        payload.general.questionCount = payload.general.questions.length;
+      }
+    }
+  }
+
   function IndexNetworkDashboard() {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -1863,6 +1912,7 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
           }
+          injectDebugQuestions(payload); // DEBUG: remove before merging
           setSummary(payload);
         })
         .catch(function (err) {
