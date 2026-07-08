@@ -432,6 +432,19 @@ export class HomeGraphFactory {
               const profileName = profile?.identity?.name?.trim();
               if (profileName) userName = profileName;
             }
+            // Unresolvable display counterpart (deleted user: no users row, no
+            // profile fallback). Drop the card entirely instead of rendering an
+            // "Unknown" placeholder: such cards are unusable, excluded from the
+            // presenter cache (see cachePresenterResults), and would otherwise
+            // trigger a fresh presenter LLM call on every request — a permanent
+            // cache miss that keeps the whole feed slow (~9s per load).
+            if (userName === 'Unknown' || !userName?.trim()) {
+              logger.verbose('[HomeGraph:generateCardText] dropping card with unresolvable counterpart', {
+                opportunityId: opportunity.id,
+                otherActorUserId: otherActor?.userId,
+              });
+              return null;
+            }
             const userAvatar = otherUser?.avatar ?? null;
             // Shared sanitization standard (UUID strip, viewer-centric rewrite,
             // boundary truncation) — raw reasoning must never render verbatim.
@@ -549,7 +562,7 @@ export class HomeGraphFactory {
             }
           })
         );
-        cards.push(...chunkCards);
+        cards.push(...chunkCards.filter((c): c is HomeCardItem => c !== null));
       }
       logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
       return {
