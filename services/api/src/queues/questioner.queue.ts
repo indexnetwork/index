@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { QuestionerAgent } from '@indexnetwork/protocol';
+import { QuestionerAgent, isQuestionerEnabled } from '@indexnetwork/protocol';
 import type { QuestionerInput, QuestionerEnqueueFn, PersistableQuestion, QuestionGenerationResult } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -203,7 +203,7 @@ export const questionerQueue = new QuestionerQueue();
  * a process restart ordering hazard.
  */
 export function questionerEnqueueIfEnabled(): QuestionerEnqueueFn | undefined {
-  if (process.env.QUESTIONER_ENABLED !== 'true') return undefined;
+  if (!isQuestionerEnabled()) return undefined;
   return async (input) => {
     await questionerQueue.addGenerateJob(input);
   };

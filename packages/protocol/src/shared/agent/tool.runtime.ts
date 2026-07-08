@@ -28,7 +28,7 @@ const FAST_TIMEOUT_MS = 10_000;
 const BOUNDED_SLOW_TIMEOUT_MS = 45_000;
 const ASYNC_CANDIDATE_TIMEOUT_MS = 50_000;
 // Interactive tools deliberately block on human input (ask_user_question).
-// Must exceed the tool's own internal wait budget (CHAT_QUESTION_WAIT_TIMEOUT_MS,
+// Must exceed the tool's own internal wait budget (QUESTIONER_CHAT_WAIT_TIMEOUT_MS,
 // default 4 min) so the tool returns a graceful timeout result instead of
 // being killed by the runtime.
 const INTERACTIVE_TIMEOUT_MS = 300_000;
