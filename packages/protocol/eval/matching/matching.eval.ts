@@ -19,7 +19,7 @@
  *   bun run eval:matching -- --rolling-baseline 14 # compare against a 14-day window
  *   bun run eval:matching -- --alpha 0.01      # stricter regression significance threshold
  *
- * Requires OPENROUTER_API_KEY (loaded via --env-file=.env.test in the package script).
+ * Requires OPENROUTER_API_KEY (loaded via --env-file=../../.env.test in the package script).
  * Exits non-zero when a regression vs the committed baseline is detected.
  */
 import path from "path";

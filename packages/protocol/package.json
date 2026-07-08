@@ -22,10 +22,10 @@
     "test": "bun test",
     "test:isolated": "bun scripts/test.ts",
     "prepublishOnly": "bun run build",
-    "eval:matching": "bun --env-file=.env.test ./eval/matching/matching.eval.ts",
-    "eval:premise": "bun --env-file=.env.test ./eval/premise/premise.eval.ts",
-    "eval:profile": "bun --env-file=.env.test ./eval/profile/profile.eval.ts",
-    "eval:opportunity": "bun --env-file=.env.test ./eval/opportunity/opportunity.eval.ts"
+    "eval:matching": "bun --env-file=../../.env.test ./eval/matching/matching.eval.ts",
+    "eval:premise": "bun --env-file=../../.env.test ./eval/premise/premise.eval.ts",
+    "eval:profile": "bun --env-file=../../.env.test ./eval/profile/profile.eval.ts",
+    "eval:opportunity": "bun --env-file=../../.env.test ./eval/opportunity/opportunity.eval.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.17",

@@ -1,4 +1,5 @@
 import { config } from 'dotenv';
+import path from 'node:path';
 import { z } from 'zod';
 
 const environment = process.env.NODE_ENV;
@@ -8,7 +9,10 @@ const dotenvPathByEnvironment: Record<string, string> = {
   production: '.env.production',
   test: '.env.test',
 };
-const dotenvPath = (environment && dotenvPathByEnvironment[environment]) || '.env';
+// Runtime env files live at the repo root (see root .env.example). Resolve
+// relative to this file so the path works regardless of cwd.
+const repoRoot = path.resolve(import.meta.dir, '../../..');
+const dotenvPath = path.join(repoRoot, (environment && dotenvPathByEnvironment[environment]) || '.env');
 
 config({ path: dotenvPath });
 

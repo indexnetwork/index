@@ -28,6 +28,10 @@ node_modules/
 # ===================
 docker-compose.yml
 env.docker
+
+# Runtime env files live at the repo root; only the canonical example is committed.
+.env*
+!.env.example
 postgres/
 
 # ===================

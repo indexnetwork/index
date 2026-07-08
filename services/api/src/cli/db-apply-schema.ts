@@ -9,7 +9,7 @@ import path from 'path';
 import fs from 'fs';
 
 const envFile = `.env.development`;
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
 import postgres from 'postgres';
 

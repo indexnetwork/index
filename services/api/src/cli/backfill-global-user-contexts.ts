@@ -42,7 +42,7 @@ const isEntrypoint = import.meta.main;
 if (isEntrypoint) {
   // Safe default: development unless NODE_ENV is *explicitly* production.
   const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
-  dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+  dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 }
 
 export type CandidateRow = {

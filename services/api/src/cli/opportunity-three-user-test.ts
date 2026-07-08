@@ -19,7 +19,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { inArray } from 'drizzle-orm/sql';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.development') });
+dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', '.env.development') });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';

@@ -27,7 +27,7 @@ import path from 'path';
 import { and, eq, isNull, sql } from 'drizzle-orm/sql';
 
 const envFile = `.env.development`;
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { ensurePersonalNetwork } from '../adapters/database.adapter';
