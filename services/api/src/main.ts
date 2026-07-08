@@ -73,14 +73,12 @@ import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
-import { QuestionerAdapter } from './adapters/questioner.adapter';
-import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
 import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
@@ -219,34 +217,12 @@ const profileAnswerPremiseGraph = new PremiseGraphFactory(
   embedderAdapter,
 ).createGraph();
 
-const answerQuestionerAdapter = new QuestionerAdapter(db);
-// Intent graph for answer-driven refinements — same update path as the chat
-// update_intent tool. The graph owns merge, verification, sanitization,
-// re-embedding, persistence, and HyDE regeneration.
-const answerIntentGraph = new IntentGraphFactory(chatDatabaseAdapter, embedderAdapter, intentQueue).createGraph();
-
 const questionAnswerDeps = {
   createPremiseFromAnswer: createPremiseFromAnswerFactory({
     runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
     emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
   }),
   enqueueIntentRefinement: enqueueIntentRefinementFactory({
-    getQuestionPrompt: async (questionId) => {
-      const question = await answerQuestionerAdapter.getById(questionId);
-      return question?.payload.prompt ?? null;
-    },
-    getUserProfile: async (userId) => {
-      const profile = await chatDatabaseAdapter.getProfile(userId);
-      return profile ? JSON.stringify(profile) : '';
-    },
-    runIntentUpdate: async ({ userId, userProfile, inputContent, targetIntentIds }) => {
-      const result = await answerIntentGraph.invoke(
-        { userId, userProfile, operationMode: 'update' as const, inputContent, targetIntentIds },
-        { recursionLimit: 100 },
-      );
-      const executionResults = (result as { executionResults?: Array<{ success: boolean }> }).executionResults;
-      return { applied: !!executionResults?.some((r) => r.success) };
-    },
     getIntent: async (intentId) => {
       const intent = await chatDatabaseAdapter.getIntent(intentId);
       if (!intent) return null;
@@ -256,6 +232,12 @@ const questionAnswerDeps = {
         description: intent.payload,
         status: (intent.status ?? 'ACTIVE').toLowerCase(),
       };
+    },
+    updateIntentDescription: async (intentId, newDescription) => {
+      await chatDatabaseAdapter.updateIntent(intentId, { payload: newDescription });
+    },
+    enqueueHydeRegeneration: async (data) => {
+      await intentQueue.addGenerateHydeJob(data);
     },
   }),
   storeNegotiationContext: storeNegotiationContextFactory({
@@ -311,7 +293,7 @@ emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 integrationSyncQueue.startWorker();
-if (process.env.QUESTIONER_ENABLED === 'true') {
+if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
 premiseQueue.startWorker();
