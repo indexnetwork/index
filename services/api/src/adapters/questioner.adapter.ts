@@ -227,6 +227,22 @@ export class QuestionerAdapter {
   }
 
   /**
+   * Fetch a single question by id.
+   *
+   * @param questionId - ID of the question to fetch.
+   * @returns The question row, or null when not found.
+   */
+  async getById(questionId: string): Promise<AdapterPersistedQuestion | null> {
+    const [row] = await this.db
+      .select()
+      .from(questions)
+      .where(eq(questions.id, questionId))
+      .limit(1);
+
+    return row ? toPersistedQuestion(row) : null;
+  }
+
+  /**
    * Record an answer for a question, setting its status to `answered`.
    * Emits `QuestionEvents.onAnswered` after persisting the answer.
    * Only updates the question if the user is listed as an actor.

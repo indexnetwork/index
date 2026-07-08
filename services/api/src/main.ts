@@ -73,6 +73,9 @@ import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
+import { QuestionerAdapter } from './adapters/questioner.adapter';
+import { IntentRefinerService } from './services/intent-refiner.service';
+import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
 import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
@@ -205,12 +208,20 @@ const profileAnswerPremiseGraph = new PremiseGraphFactory(
   embedderAdapter,
 ).createGraph();
 
+const answerQuestionerAdapter = new QuestionerAdapter(db);
+const intentRefinerService = new IntentRefinerService();
+
 const questionAnswerDeps = {
   createPremiseFromAnswer: createPremiseFromAnswerFactory({
     runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
     emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
   }),
   enqueueIntentRefinement: enqueueIntentRefinementFactory({
+    getQuestionPrompt: async (questionId) => {
+      const question = await answerQuestionerAdapter.getById(questionId);
+      return question?.payload.prompt ?? null;
+    },
+    refineDescription: async (input) => intentRefinerService.refine(input),
     getIntent: async (intentId) => {
       const intent = await chatDatabaseAdapter.getIntent(intentId);
       if (!intent) return null;

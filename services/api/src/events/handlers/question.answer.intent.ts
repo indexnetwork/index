@@ -1,9 +1,14 @@
 /**
  * Intent-mode answer handler: refines an intent with the user's answer.
  *
- * Appends the answer as a refinement addendum to the intent's description,
- * then enqueues a HyDE regeneration job so the intent gets re-embedded
- * and re-indexed with the new context.
+ * Rewrites the intent's description via an LLM so the answer is incorporated
+ * naturally (no mechanical "[Refined: ...]" markers — IND-393), then enqueues
+ * a HyDE regeneration job so the intent gets re-embedded and re-indexed with
+ * the new context.
+ *
+ * When the LLM rewrite fails (timeout, malformed output, guardrail rejection)
+ * the handler falls back to appending the raw answer text as a plain
+ * paragraph — still marker-free — so the refinement context is never lost.
  */
 
 import { log } from '../../lib/log';
@@ -17,19 +22,36 @@ export interface IntentRefinementDeps {
     description: string;
     status: string;
   } | null>;
+  /** Fetch the clarifying question's prompt text for LLM context. Null when unavailable. */
+  getQuestionPrompt: (questionId: string) => Promise<string | null>;
+  /**
+   * LLM rewrite of the description incorporating the answer naturally.
+   * Returns null on any failure — the handler then falls back to a plain append.
+   */
+  refineDescription: (input: {
+    currentDescription: string;
+    question?: string;
+    selectedOptions: string[];
+    freeText?: string;
+  }) => Promise<string | null>;
   updateIntentDescription: (intentId: string, newDescription: string) => Promise<void>;
   enqueueHydeRegeneration: (data: { intentId: string; userId: string }) => Promise<void>;
 }
 
 /**
- * Build a refinement addendum from the answer.
- * Format: "[Refined: <options>. <freeText>]"
+ * Fallback when the LLM rewrite fails: append the answer as a plain paragraph
+ * (no "[Refined: ...]" wrapper) so the context still lands in the description
+ * and the HyDE re-embedding sees it.
  */
-function buildRefinementAddendum(selectedOptions: string[], freeText?: string): string {
+function buildFallbackDescription(
+  currentDescription: string,
+  selectedOptions: string[],
+  freeText?: string,
+): string {
   const parts = selectedOptions.join('; ');
   const trimmed = freeText?.trim();
   const addendum = parts && trimmed ? `${parts}. ${trimmed}` : (trimmed || parts);
-  return `\n\n[Refined: ${addendum}]`;
+  return `${currentDescription}\n\n${addendum}`;
 }
 
 export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
@@ -76,15 +98,32 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
       return;
     }
 
-    const addendum = buildRefinementAddendum(input.selectedOptions, input.freeText);
-    const newDescription = intent.description + addendum;
+    const questionPrompt = await deps.getQuestionPrompt(input.questionId);
+
+    const refined = await deps.refineDescription({
+      currentDescription: intent.description,
+      question: questionPrompt ?? undefined,
+      selectedOptions: input.selectedOptions,
+      freeText: input.freeText,
+    });
+
+    const newDescription = refined
+      ?? buildFallbackDescription(intent.description, input.selectedOptions, input.freeText);
+
+    if (!refined) {
+      logger.warn('LLM refinement unavailable — falling back to plain append', {
+        intentId: input.intentId,
+        questionId: input.questionId,
+      });
+    }
 
     await deps.updateIntentDescription(input.intentId, newDescription);
 
     logger.verbose('Intent description updated with answer refinement', {
       intentId: input.intentId,
       questionId: input.questionId,
-      addendumLength: addendum.length,
+      refinedByLlm: !!refined,
+      descriptionLength: newDescription.length,
     });
 
     await deps.enqueueHydeRegeneration({
