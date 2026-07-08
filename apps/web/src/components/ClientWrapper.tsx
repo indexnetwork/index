@@ -66,7 +66,11 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
       <ConversationProvider>
       <NetworkFilterProvider>
           <div className="backdrop relative min-h-screen bg-[#FDFDFD]">
-            <style jsx>{`
+            {/* Plain style tag: styled-jsx is a Next.js feature and no longer
+                transforms after the react-router/Vite migration — `<style jsx>`
+                leaked `jsx={true}` onto the DOM element (React non-boolean
+                attribute error). The selector is already class-scoped. */}
+            <style>{`
               .backdrop:after {
                 content: "";
                 position: fixed;
