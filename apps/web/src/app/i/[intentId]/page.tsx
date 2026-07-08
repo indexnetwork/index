@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ChevronLeft, Loader2, Pause, Pencil, Radar, Trash2 } from "lucide-react";
+import { ChevronLeft, Loader2, Pause, Pencil, Trash2 } from "lucide-react";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
@@ -124,15 +124,17 @@ function Panel({
   description,
   media,
   children,
+  className,
 }: {
   title: string;
   count?: number;
   description?: string;
   media?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <section>
+    <section className={className}>
       <div className="mb-4">
         <h3 className="flex items-center gap-2 text-base font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
           <span>
@@ -307,8 +309,8 @@ export default function IntentDetailPage() {
   return (
     <ClientLayout>
       {inviteModalElement}
-      <div className="px-6 lg:px-8 py-6">
-        <ContentContainer size="wide">
+      <div className="px-10 lg:px-16 py-6">
+        <ContentContainer size="xwide">
           <button
             type="button"
             onClick={() => navigate("/")}
@@ -390,11 +392,12 @@ export default function IntentDetailPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
                 <Panel
                   title="Questions"
                   count={questions.length}
                   description="Answer pending follow-ups for this intent."
+                  className="lg:col-span-2"
                 >
                   {questions.length === 0 ? (
                     <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
@@ -412,7 +415,16 @@ export default function IntentDetailPage() {
                 <Panel
                   title="Radar"
                   description="People the network surfaced for this intent."
-                  media={<Radar className="h-4 w-4 text-[#4091BB]/70" />}
+                  media={
+                    <img
+                      src="/eye.webp"
+                      alt=""
+                      aria-hidden="true"
+                      loading="lazy"
+                      className="h-6 w-auto object-contain"
+                    />
+                  }
+                  className="lg:col-span-3"
                 >
                   <div className="mb-4 flex flex-wrap gap-2">
                     {RADAR_BUCKETS.map((bucket) => (
