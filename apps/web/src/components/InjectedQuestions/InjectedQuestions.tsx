@@ -56,65 +56,71 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
   }, [submitting, onDismiss, questionId]);
 
   return (
-    <div>
-      <div className="bg-white border border-gray-200 rounded-md p-4">
-        <p className="text-[13px] font-semibold text-gray-900 mb-1.5">{payload.prompt}</p>
+    <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <p className="text-[15px] font-semibold leading-snug text-gray-900">
+        {payload.prompt}
+      </p>
+      {payload.multiSelect && (
+        <p className="mt-1 text-xs text-gray-400">Select all that apply.</p>
+      )}
 
-        <div className="flex flex-col gap-1.5 mb-3">
-          {payload.options.map((opt) => (
-            <OptionRow
-              key={opt.label}
-              name={questionId}
-              value={opt.label}
-              type={payload.multiSelect ? 'checkbox' : 'radio'}
-              label={opt.label}
-              description={opt.description}
-              checked={selectedLabels.includes(opt.label)}
-              disabled={submitting}
-              onChange={(checked) => toggleSelection(opt.label, checked)}
-            />
-          ))}
+      <div className="mt-4 flex flex-col gap-2">
+        {payload.options.map((opt) => (
           <OptionRow
+            key={opt.label}
             name={questionId}
-            value={OTHER_VALUE}
+            value={opt.label}
             type={payload.multiSelect ? 'checkbox' : 'radio'}
-            label="Other (specify)"
-            description="Type your own answer."
-            checked={otherSelected}
+            label={opt.label}
+            description={opt.description}
+            checked={selectedLabels.includes(opt.label)}
             disabled={submitting}
-            onChange={(checked) => {
-              setOtherSelected(checked);
-              if (checked) setSelectedLabels([]);
-            }}
+            onChange={(checked) => toggleSelection(opt.label, checked)}
           />
-          {otherSelected && (
-            <input
-              type="text"
-              placeholder="Specify..."
-              value={otherText}
-              disabled={submitting}
-              onChange={(e) => setOtherText(e.target.value)}
-              className="text-[13px] text-gray-700 bg-white border border-gray-200 rounded-[2px] px-3 py-2 focus:outline-none focus:border-gray-700"
-            />
-          )}
-        </div>
-
-        <div className="flex gap-2 justify-end">
-          <button
-            onClick={handleDismiss}
+        ))}
+        <OptionRow
+          name={questionId}
+          value={OTHER_VALUE}
+          type={payload.multiSelect ? 'checkbox' : 'radio'}
+          label="Other (specify)"
+          description="Something else"
+          checked={otherSelected}
+          disabled={submitting}
+          onChange={(checked) => {
+            setOtherSelected(checked);
+            if (checked) setSelectedLabels([]);
+          }}
+        />
+        {otherSelected && (
+          <input
+            type="text"
+            placeholder="Type your answer..."
+            value={otherText}
             disabled={submitting}
-            className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            Dismiss
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!hasAnswer || submitting}
-            className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            Submit
-          </button>
-        </div>
+            autoFocus
+            onChange={(e) => setOtherText(e.target.value)}
+            className="mt-0.5 text-sm text-gray-800 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5 placeholder:text-gray-400 focus:outline-none focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10"
+          />
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-end gap-1.5 border-t border-gray-100 pt-4">
+        <button
+          type="button"
+          onClick={handleDismiss}
+          disabled={submitting}
+          className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          Dismiss
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!hasAnswer || submitting}
+          className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {submitting ? 'Saving...' : 'Submit'}
+        </button>
       </div>
     </div>
   );
