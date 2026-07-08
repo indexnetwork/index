@@ -361,6 +361,8 @@ Railway dev deployments run `db:migrate` against the `dev` branch of the Protoco
 
 ### Required Environment Variables
 
+Runtime env files live at the **repo root** (`.env.development`, `.env.test`, … — gitignored); the root `.env.example` is the canonical reference. Validation happens at API boot in `services/api/src/startup.env.ts` (hard-fail on invalid, deployment warnings for commonly forgotten vars); `services/api/tests/env-example-drift.spec.ts` keeps example and schema in sync; `bun scripts/audit-railway-env.ts` diffs a Railway service against the schema.
+
 ```bash
 DATABASE_URL=postgresql://username:password@localhost:5432/protocol_db
 OPENROUTER_API_KEY=your-openrouter-api-key
@@ -368,11 +370,11 @@ PORT=3001
 NODE_ENV=development
 ```
 
-### Optional (see `services/api/.env.example` for full list)
+### Optional (see the root `.env.example` for full list)
 
 `REDIS_URL`, `RESEND_API_KEY`, `UNSTRUCTURED_API_URL`, `COMPOSIO_API_KEY`, `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`, `SENTRY_DSN`, `PARALLELS_API_KEY`, `APP_URL`
 
-Web app: see `apps/web/.env.example`. **Auth origin (`invalid_origin`)**: ensure app origin is in Better Auth `trustedOrigins` when developing locally.
+Web app: `VITE_`-prefixed vars, documented in the root `.env.example` (section 16). **Auth origin (`invalid_origin`)**: ensure app origin is in Better Auth `trustedOrigins` when developing locally.
 
 ## Testing
 

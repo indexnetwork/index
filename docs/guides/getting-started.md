@@ -82,16 +82,19 @@ index/
 
 ## Environment setup
 
-Copy the example environment files for both workspaces:
+All runtime env files live at the **repo root** and are gitignored; the root
+`.env.example` is the single canonical reference for every variable (API, web,
+and protocol evals). Which file is loaded follows `NODE_ENV`:
+`.env.development` (default for dev), `.env.test` (tests/evals),
+`.env.production`, with `.env` as the fallback when `NODE_ENV` is unset.
 
 ```bash
-cp services/api/.env.example services/api/.env
-cp apps/web/.env.example apps/web/.env
+cp .env.example .env.development
 ```
 
-### API service environment variables (services/api/.env)
+### API service environment variables
 
-Open `services/api/.env` and fill in the required values:
+Open `.env.development` and fill in the required values:
 
 **Required:**
 
@@ -170,9 +173,9 @@ TRUSTED_ORIGINS=http://localhost:3000
 # LOG_LEVEL=debug
 ```
 
-See `services/api/.env.example` for the full list with inline comments.
+See the root `.env.example` for the full list with inline comments.
 
-### Web app environment variables (apps/web/.env)
+### Web app environment variables (VITE_ prefix)
 
 The web app needs no configuration for local development. The Vite dev server proxies `/api/*` requests to the API service on port 3001 automatically.
 
@@ -336,7 +339,7 @@ bun run worktree:dev feat-my-feature
 bun run worktree:list
 ```
 
-The `worktree:setup` script symlinks `.env*` files from the main working tree (so you do not need to copy them) and installs `node_modules` in each workspace.
+The `worktree:setup` script symlinks the root `.env*` files from the main working tree into the worktree root (so you do not need to copy them) and installs `node_modules` in each workspace.
 
 ### Conventional commits
 
@@ -384,7 +387,7 @@ Write the PR description as a changelog with categories: New Features, Bug Fixes
 
 ### "invalid_origin" auth error
 
-The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in `services/api/.env`:
+The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in the root `.env.development`:
 
 ```bash
 TRUSTED_ORIGINS=http://localhost:3000
@@ -408,7 +411,7 @@ On some managed PostgreSQL services, pgvector may need to be enabled through the
 If you see `ECONNREFUSED` errors related to Redis:
 
 1. Verify Redis is running: `redis-cli ping` should return `PONG`.
-2. If Redis is on a non-default host/port, set `REDIS_URL` in `services/api/.env`.
+2. If Redis is on a non-default host/port, set `REDIS_URL` in the root `.env.development`.
 3. The API service will start without Redis, but job queues and caching will not function.
 
 ### Migrations out of sync
@@ -438,7 +441,7 @@ lsof -i :3001
 kill -9 <PID>
 ```
 
-Or change the backend port via the `PORT` variable in `services/api/.env`.
+Or change the backend port via the `PORT` variable in the root `.env.development`.
 
 ### Web proxy not reaching API service
 
