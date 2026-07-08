@@ -5,9 +5,10 @@ export function ContentContainer({
 }: { 
   children: React.ReactNode;
   className?: string;
-  size?: "default" | "wide";
+  size?: "default" | "wide" | "xwide";
 }) {
-  const maxWidth = size === "wide" ? "max-w-4xl" : "max-w-3xl";
+  const maxWidth =
+    size === "xwide" ? "max-w-6xl" : size === "wide" ? "max-w-4xl" : "max-w-3xl";
   return (
     <div className={`${maxWidth} mx-auto ${className}`.trim()}>
       {children}
