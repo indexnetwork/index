@@ -32,7 +32,7 @@ export function OptionRow({
   return (
     <label
       className={cn(
-        'group flex items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors cursor-pointer',
+        'group relative flex items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors cursor-pointer',
         checked
           ? 'border-[#041729] bg-[#041729]/[0.035]'
           : 'border-[#E8E8E8] hover:border-gray-300 hover:bg-gray-50',
@@ -46,7 +46,13 @@ export function OptionRow({
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        className="sr-only"
+        // Invisible but coextensive with the row — NOT sr-only. A clipped 1px
+        // sr-only input has a degenerate rect, so focusing it on click made the
+        // browser "reveal" it by scrolling ancestor containers, including the
+        // overflow-hidden app shell (which users cannot scroll back) — the
+        // whole page appeared to go blank. Filling the row keeps the focus
+        // target where the user already is, so focus-scroll is a no-op.
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
       />
       <span
         aria-hidden
