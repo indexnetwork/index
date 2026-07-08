@@ -95,9 +95,10 @@ const envSchema = z.object({
   CONTACT_DEDUP_STRATEGY: z.enum(['conservative', 'balanced', 'aggressive', 'off']).optional(),
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
-  ENABLE_DISCOVERY_QUESTIONS: optionalBoolean,
-  DISCOVERY_QUESTIONS_INPUT_MODE: z.string().optional(),
-  DISCOVERY_QUESTIONS_TIMEOUT_MS: optionalInt,
+  QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
+  QUESTIONER_DISCOVERY_INPUT_MODE: z.string().optional(),
+  QUESTIONER_DISCOVERY_TIMEOUT_MS: optionalInt,
+  QUESTIONER_CHAT_WAIT_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
   NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
   NEGOTIATION_MAX_TURNS_AMBIENT: optionalInt,
@@ -109,6 +110,7 @@ const envSchema = z.object({
   MCP_TOOL_TIMEOUT_FAST_MS: optionalInt,
   MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS: optionalInt,
   MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS: optionalInt,
+  MCP_TOOL_TIMEOUT_INTERACTIVE_MS: optionalInt,
   MCP_TOOL_MAX_OUTPUT_BYTES: optionalInt,
 
   // 10. Rate limiting
@@ -138,6 +140,10 @@ const envSchema = z.object({
   LOG_FILTER: z.string().optional(),
   ENABLE_DEBUG_API: optionalBoolean,
   ADMIN_QUEUES_PORT: optionalInt,
+
+  // 12b. LangGraph checkpoint retention
+  CHECKPOINT_RETENTION_DAYS: z.string().optional(), // whole days, or 0/off/none to disable pruning
+  CHECKPOINT_PRUNE_BATCH_SIZE: optionalInt,
 
   // 13. Platform-provided metadata
   RAILWAY_ENVIRONMENT: z.string().optional(),
@@ -203,9 +209,24 @@ function collectEnvWarnings(): string[] {
   if (hasValue('TELEGRAM_BOT_TOKEN') && !hasValue('TELEGRAM_BOT_USERNAME')) {
     warnings.push('TELEGRAM_BOT_USERNAME: set the bot username so Telegram integration links can be generated.');
   }
-  const discoveryQuestionsInputMode = process.env.DISCOVERY_QUESTIONS_INPUT_MODE?.trim();
+  const discoveryQuestionsInputMode = process.env.QUESTIONER_DISCOVERY_INPUT_MODE?.trim();
   if (discoveryQuestionsInputMode && !['transcripts', 'insights'].includes(discoveryQuestionsInputMode)) {
-    warnings.push('DISCOVERY_QUESTIONS_INPUT_MODE: expected "transcripts" or "insights"; current value will fall back to transcript mode.');
+    warnings.push('QUESTIONER_DISCOVERY_INPUT_MODE: expected "transcripts" or "insights"; current value will fall back to transcript mode.');
+  }
+
+  // Question-related env vars were consolidated under the QUESTIONER_ prefix
+  // (clean cutover — old names are ignored). Warn loudly when a stale name is
+  // still set so operators notice the silent behavior change.
+  const renamedQuestionVars: Array<[oldName: string, newName: string]> = [
+    ['ENABLE_DISCOVERY_QUESTIONS', 'QUESTIONER_DISCOVERY_ENABLED'],
+    ['DISCOVERY_QUESTIONS_INPUT_MODE', 'QUESTIONER_DISCOVERY_INPUT_MODE'],
+    ['DISCOVERY_QUESTIONS_TIMEOUT_MS', 'QUESTIONER_DISCOVERY_TIMEOUT_MS'],
+    ['CHAT_QUESTION_WAIT_TIMEOUT_MS', 'QUESTIONER_CHAT_WAIT_TIMEOUT_MS'],
+  ];
+  for (const [oldName, newName] of renamedQuestionVars) {
+    if (hasValue(oldName)) {
+      warnings.push(`${oldName}: renamed to ${newName} — the old name is ignored; update the environment.`);
+    }
   }
 
   return warnings;
