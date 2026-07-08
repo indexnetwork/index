@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ChevronLeft, Loader2, Pause, Pencil, Trash2 } from "lucide-react";
 
@@ -192,20 +192,44 @@ export default function IntentDetailPage() {
     inviteModalElement,
   } = useOpportunityActions({ scope });
 
+  /** Monotonic load id — guards against out-of-order responses when a reload
+   * (e.g. after refine) starts while a previous two-phase load is in flight. */
+  const loadSeqRef = useRef(0);
+
   const loadOpportunities = useCallback(async () => {
     if (!intentId) return;
+    const seq = ++loadSeqRef.current;
     setOpportunitiesLoading(true);
+    const baseOptions = {
+      scopeType: "intent" as const,
+      scopeId: intentId,
+      statuses: RADAR_STATUSES,
+    };
+    // Phase 1 (fast, LLM-free): identity + status for every card. Paints the
+    // status pills and the connection cards immediately; cards missing from
+    // the presenter cache arrive with presentationPending and shimmer their
+    // body until phase 2 replaces them.
     try {
-      const res = await opportunitiesService.getHomeView({
-        scopeType: "intent",
-        scopeId: intentId,
-        statuses: RADAR_STATUSES,
+      const fast = await opportunitiesService.getHomeView({
+        ...baseOptions,
+        presentation: "skeleton",
       });
+      if (seq !== loadSeqRef.current) return;
+      setOpportunities(fast.sections.flatMap((s) => s.items));
+      setOpportunitiesLoading(false);
+    } catch {
+      // Skeleton phase is best-effort — fall through to the full fetch.
+    }
+    // Phase 2 (full): presenter text for cache misses; replaces the whole list.
+    try {
+      const res = await opportunitiesService.getHomeView(baseOptions);
+      if (seq !== loadSeqRef.current) return;
       setOpportunities(res.sections.flatMap((s) => s.items));
     } catch {
+      if (seq !== loadSeqRef.current) return;
       setOpportunities([]);
     } finally {
-      setOpportunitiesLoading(false);
+      if (seq === loadSeqRef.current) setOpportunitiesLoading(false);
     }
   }, [intentId, opportunitiesService]);
 

@@ -48,6 +48,13 @@ export type HomeGraphInvokeInput = {
   limit?: number;
   noCache?: boolean;
   /**
+   * 'skeleton' returns immediately without LLM work: cached cards complete,
+   * uncached cards with identity fields only + `presentationPending: true`,
+   * single flat section (no categorizer). Meant as the fast first phase of a
+   * two-phase fetch — follow up with a full request to fill in the text.
+   */
+  presentation?: 'full' | 'skeleton';
+  /**
    * When set, filter loaded opportunities to these lifecycle statuses. Defaults to `DEFAULT_HOME_STATUSES`.
    * Explicit statuses switch the graph to "lifecycle view" mode: terminal/internal
    * statuses pass through (only latent/pending stay gated by viewer actionability),
@@ -481,6 +488,29 @@ export class HomeGraphFactory {
             }
 
             const isCounterpartGhost = otherUser?.isGhost ?? false;
+            // Skeleton presentation: return an identity-only card without the
+            // presenter LLM or negotiation-context load. Name resolution and
+            // the unresolvable-counterpart drop above still apply, so the card
+            // set matches what the follow-up full request will return.
+            if (state.presentation === 'skeleton') {
+              return {
+                opportunityId: opportunity.id,
+                status: opportunity.status,
+                userId: otherActor?.userId ?? '',
+                name: userName,
+                avatar: userAvatar,
+                mainText: '',
+                cta: '',
+                primaryActionLabel: getPrimaryActionLabel(viewerRole),
+                secondaryActionLabel: SECONDARY_ACTION_LABEL,
+                mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
+                viewerRole,
+                isGhost: isCounterpartGhost,
+                ...(secondPartyData ? { secondParty: secondPartyData } : {}),
+                presentationPending: true,
+                _cardIndex: cardIndex,
+              } satisfies HomeCardItem;
+            }
             const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
             const fallbackCard = (): HomeCardItem => ({
               opportunityId: opportunity.id,
@@ -594,6 +624,9 @@ export class HomeGraphFactory {
               const status = statusById.get(card.opportunityId);
               // Skip persisting negotiating cards — see read-side note.
               if (!status || status === 'negotiating') return Promise.resolve();
+              // Never cache skeleton cards — they carry no presenter text and
+              // would otherwise be served as "complete" for the full TTL.
+              if (card.presentationPending) return Promise.resolve();
               // Skip caching cards with unresolved names — transient DB failures
               // would persist "Unknown" placeholders for the full TTL.
               if (!card.name || card.name === 'Unknown') return Promise.resolve();
@@ -635,6 +668,25 @@ export class HomeGraphFactory {
       return timed("HomeGraph.checkCategorizerCache", async () => {
         if (state.cards.length === 0) {
           return { categoryCacheHit: false };
+        }
+
+        // Skeleton runs never categorize (some cards have no text to categorize
+        // and the response must stay LLM-free): emit flat sections and mark the
+        // categorizer as "hit" so the generate node and the cache write are both
+        // skipped. Chunked by MAX_ITEMS_PER_SECTION because normalizeAndSort
+        // caps every section — one giant section would silently drop cards that
+        // the follow-up full request (multiple sections) does return.
+        if (state.presentation === 'skeleton') {
+          const sectionProposals: HomeSectionProposal[] = [];
+          for (let start = 0; start < state.cards.length; start += MAX_ITEMS_PER_SECTION) {
+            sectionProposals.push({
+              id: `all-${sectionProposals.length + 1}`,
+              title: 'All matches',
+              iconName: DEFAULT_HOME_SECTION_ICON,
+              itemIndices: state.cards.slice(start, start + MAX_ITEMS_PER_SECTION).map((_, i) => start + i),
+            });
+          }
+          return { sectionProposals, categoryCacheHit: true };
         }
 
         if (state.noCache) {

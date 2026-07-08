@@ -916,3 +916,81 @@ describe('home.graph introducer card name format', () => {
     expect(allNames).toContain('Yanki Ekin Yuksel');
   }, 30_000);
 });
+
+describe('HomeGraph skeleton presentation', () => {
+  test('uncached cards come back identity-only, flagged presentationPending, in one flat section, and are never cached', async () => {
+    const viewerId = 'viewer-1';
+    const opp = minimalOpportunityAgentViewer(viewerId, 'other-1');
+    const db = createMockDb([opp]);
+    const cache = createMockCache();
+    const factory = new HomeGraphFactory(db, cache);
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
+
+    expect(result.error).toBeUndefined();
+    expect(result.sections.length).toBe(1);
+    expect(result.sections[0].items.length).toBe(1);
+
+    const item = result.sections[0].items[0];
+    expect(item.presentationPending).toBe(true);
+    // Identity fields are real…
+    expect(item.name).toBe('User other-1');
+    expect(item.userId).toBe('other-1');
+    expect(item.status).toBe('pending');
+    expect(item.primaryActionLabel).toBeTruthy();
+    // …but presenter text is absent (no LLM ran).
+    expect(item.mainText).toBe('');
+    expect(item.cta).toBe('');
+
+    // Skeleton cards must not poison the presenter cache: the follow-up full
+    // request has to see a miss and generate real text.
+    const cached = await cache.get(`home:card:${opp.id}:pending:${viewerId}`);
+    expect(cached).toBeNull();
+  });
+
+  test('presenter-cache hits are served complete (no pending flag) even in skeleton mode', async () => {
+    const viewerId = 'viewer-1';
+    const opp = minimalOpportunityAgentViewer(viewerId, 'other-1');
+    const db = createMockDb([opp]);
+    const cache = createMockCache();
+    await cache.set(`home:card:${opp.id}:pending:${viewerId}`, {
+      opportunityId: opp.id,
+      userId: 'other-1',
+      name: 'User other-1',
+      avatar: null,
+      mainText: 'Cached summary.',
+      cta: 'Say hi.',
+      primaryActionLabel: 'Connect',
+      secondaryActionLabel: 'Skip',
+      mutualIntentsLabel: 'Shared interests',
+      _cardIndex: 0,
+    });
+    const factory = new HomeGraphFactory(db, cache);
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
+
+    expect(result.error).toBeUndefined();
+    const item = result.sections[0].items[0];
+    expect(item.presentationPending).toBeUndefined();
+    expect(item.mainText).toBe('Cached summary.');
+  });
+
+  test('skeleton mode still drops cards with unresolvable counterparts', async () => {
+    const viewerId = 'viewer-1';
+    const opp = minimalOpportunityAgentViewer(viewerId, 'ghost-user');
+    const db = createMockDb([opp]);
+    // Counterpart has no users row and no profile identity name.
+    db.getUser = (id: string) =>
+      Promise.resolve(id === viewerId ? { id, name: 'Viewer', email: '', avatar: null } : null);
+    const factory = new HomeGraphFactory(db, createMockCache());
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
+
+    expect(result.error).toBeUndefined();
+    const items = result.sections.flatMap((s) => s.items);
+    expect(items.length).toBe(0);
+  });
+});
