@@ -79,11 +79,11 @@ function getStatusMessage(status?: string): string | null {
 function getCardWrapperClass(status?: string): string {
   switch (status) {
     case "rejected":
-      return "bg-red-50/60 border border-red-200";
+      return "border border-red-200";
     case "expired":
-      return "bg-amber-50/80 border border-amber-200";
+      return "border border-amber-200";
     default:
-      return "bg-[#F8F8F8]";
+      return "border border-gray-200";
   }
 }
 

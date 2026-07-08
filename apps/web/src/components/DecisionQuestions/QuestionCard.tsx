@@ -62,7 +62,7 @@ export function QuestionCard({
       </span>
       <p className="text-[14px] text-[#3D3D3D] leading-relaxed">{question.prompt}</p>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         {question.options.map((opt) => (
           <OptionRow
             key={opt.label}
@@ -82,7 +82,7 @@ export function QuestionCard({
           value={OTHER_VALUE}
           type={question.multiSelect ? 'checkbox' : 'radio'}
           label="Other (specify)"
-          description="Type your own answer."
+          description="Something else"
           checked={otherSelected}
           disabled={disabled}
           onChange={(checked) => {
@@ -98,14 +98,15 @@ export function QuestionCard({
         {otherSelected && (
           <input
             type="text"
-            placeholder="Specify..."
+            placeholder="Type your answer..."
             value={otherText}
             disabled={disabled}
+            autoFocus
             onChange={(e) => {
               setOtherText(e.target.value);
               onAnswerChange({ kind: 'other', text: e.target.value });
             }}
-            className="text-[14px] text-[#3D3D3D] bg-white border border-[#E8E8E8] rounded-md px-3 py-2 focus:outline-none focus:border-[#3D3D3D]"
+            className="mt-0.5 text-sm text-gray-800 bg-white border border-gray-200 rounded-lg px-3.5 py-2.5 placeholder:text-gray-400 focus:outline-none focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10"
           />
         )}
       </div>
