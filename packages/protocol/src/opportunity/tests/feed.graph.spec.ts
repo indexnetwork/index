@@ -147,6 +147,45 @@ describe('HomeGraph', () => {
     expect(firstItem?.narratorChip?.name).toBe('Index');
   }, 70000);
 
+  test('drops card when counterpart user is deleted (no users row, no profile)', async () => {
+    const viewerId = 'viewer-1';
+    const orphanId = 'deleted-user';
+    const keptId = 'other-1';
+    const orphanOpp = minimalOpportunityAgentViewer(viewerId, orphanId, 'opp-orphan');
+    const keptOpp = minimalOpportunityAgentViewer(viewerId, keptId, 'opp-kept');
+    const db = createMockDb([orphanOpp, keptOpp]);
+    // Simulate a deleted counterpart: users row gone, profile gone.
+    db.getUser = (id: string) =>
+      id === orphanId
+        ? Promise.resolve(null)
+        : Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null });
+    const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    const items = result.sections.flatMap((s) => s.items);
+    expect(items.map((i) => i.opportunityId)).toEqual(['opp-kept']);
+    expect(items.some((i) => i.name === 'Unknown')).toBe(false);
+  }, 30000);
+
+  test('keeps card when users row is missing but profile identity name resolves', async () => {
+    const viewerId = 'viewer-1';
+    const ghostId = 'profile-only-user';
+    const opp = minimalOpportunityAgentViewer(viewerId, ghostId, 'opp-profile-only');
+    const db = createMockDb([opp]);
+    db.getUser = () => Promise.resolve(null);
+    db.getProfile = () => Promise.resolve({ identity: { name: 'Profile Name' } });
+    const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    const items = result.sections.flatMap((s) => s.items);
+    expect(items.map((i) => i.opportunityId)).toEqual(['opp-profile-only']);
+    expect(items[0]?.name).toBe('Profile Name');
+  }, 30000);
+
   test('actor-dedupes multiple opportunities between same actors to one card', async () => {
     const viewerId = 'viewer-1';
     const otherId = 'other-1';
