@@ -75,6 +75,12 @@ export interface HomeViewCardItem {
     avatar?: string | null;
     userId?: string;
   };
+  /**
+   * True when this card came from a skeleton-presentation fetch: identity
+   * fields are real but mainText/cta are empty (presenter LLM skipped).
+   * Render a shimmer body and wait for the full fetch to replace the card.
+   */
+  presentationPending?: boolean;
 }
 
 /** Home view section (dynamic title, icon, items). */
@@ -99,6 +105,8 @@ export interface GetHomeViewOptions {
   noCache?: boolean;
   /** Explicit lifecycle filter — switches the home view into lifecycle mode (intent radar). */
   statuses?: OpportunityLifecycleStatus[];
+  /** 'skeleton' = fast LLM-free response; uncached cards flagged presentationPending. */
+  presentation?: 'skeleton';
 }
 
 export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
@@ -170,6 +178,7 @@ export const createOpportunitiesService = (
     if (options?.statuses?.length) params.set('statuses', options.statuses.join(','));
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.noCache) params.set('noCache', '1');
+    if (options?.presentation) params.set('presentation', options.presentation);
     const qs = params.toString();
     const url = qs ? `/opportunities/home?${qs}` : '/opportunities/home';
 

@@ -50,6 +50,12 @@ export interface OpportunityCardData {
     avatar?: string | null;
     userId?: string;
   };
+  /**
+   * True for cards from a skeleton-presentation fetch: identity fields are
+   * real but mainText/cta are empty. The body renders a shimmer until a full
+   * fetch replaces the card.
+   */
+  presentationPending?: boolean;
 }
 
 /** Status values that allow user actions (accept/reject). Matches DB opportunity_status enum. */
@@ -434,21 +440,29 @@ export default function OpportunityCard({
         )}
       </div>
 
-      {/* Main Text (Personalized Summary) */}
-      <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            a: ({ href, children }) => (
-              <a href={href} target="_blank" rel="noopener noreferrer">
-                {children}
-              </a>
-            ),
-          }}
-        >
-          {card.mainText}
-        </ReactMarkdown>
-      </div>
+      {/* Main Text (Personalized Summary) — shimmer while the presenter text is still being generated */}
+      {card.presentationPending ? (
+        <div className="space-y-2 animate-pulse" aria-hidden="true">
+          <div className="h-4 w-full bg-gray-100 rounded-sm" />
+          <div className="h-4 w-[85%] bg-gray-100 rounded-sm" />
+          <div className="h-4 w-[55%] bg-gray-100 rounded-sm" />
+        </div>
+      ) : (
+        <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  {children}
+                </a>
+              ),
+            }}
+          >
+            {card.mainText}
+          </ReactMarkdown>
+        </div>
+      )}
 
       {/* Narrator Chip — only shown for human-introduced opportunities */}
       {/* TODO: remove name !== "Index" filter after cached Index chips have expired */}

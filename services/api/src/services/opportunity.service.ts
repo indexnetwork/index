@@ -233,7 +233,7 @@ export class OpportunityService {
    */
   async getHomeView(
     userId: string,
-    options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[] }
+    options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
   ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
     logger.verbose('[OpportunityService] Getting home view', { userId, options });
     if (!this.homeGraph) {
@@ -248,6 +248,7 @@ export class OpportunityService {
         limit: options?.limit ?? 50,
         noCache: options?.noCache,
         statuses: options?.statuses,
+        presentation: options?.presentation,
       };
       const result = await this.homeGraph.invoke(homeInput);
       if (result.error) {
@@ -262,7 +263,10 @@ export class OpportunityService {
       // Fire-and-forget maintenance: health-scored check replaces empty-feed-only trigger.
       // Intent scope is a feed narrowing, not a maintenance target, so it does not suppress
       // the existing unscoped maintenance trigger. Network scope retains current behavior.
-      if (this.maintenanceGraph && !options?.networkId) {
+      // Skeleton requests are the fast first phase of a two-phase fetch; the
+      // full request that follows immediately will trigger maintenance, so
+      // firing here would just double it.
+      if (this.maintenanceGraph && !options?.networkId && options?.presentation !== 'skeleton') {
         meta.maintenanceTriggered = true;
         logger.info('[OpportunityService] Triggering maintenance via health scoring', { userId, source: 'home-view' });
         this.maintenanceGraph.invoke({ userId }).catch((err) =>

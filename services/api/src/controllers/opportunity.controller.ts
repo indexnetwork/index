@@ -187,12 +187,21 @@ export class OpportunityController {
       statuses = [...new Set(parsed.data)];
     }
 
+    // Optional fast mode: skip presenter LLM + categorizer for cache misses and
+    // return identity-only cards flagged presentationPending (two-phase fetch).
+    const presentationParam = url.searchParams.get('presentation');
+    if (presentationParam && presentationParam !== 'skeleton' && presentationParam !== 'full') {
+      return Response.json({ error: "Invalid presentation; allowed: 'skeleton', 'full'" }, { status: 400 });
+    }
+    const presentation = presentationParam === 'skeleton' ? 'skeleton' as const : undefined;
+
     const result = await opportunityService.getHomeView(user.id, {
       networkId,
       ...scope,
       limit: limitParam ? parseInt(limitParam, 10) : undefined,
       noCache,
       statuses,
+      presentation,
     });
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: 500 });
