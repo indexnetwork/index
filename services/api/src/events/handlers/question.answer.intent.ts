@@ -1,14 +1,17 @@
 /**
  * Intent-mode answer handler: refines an intent with the user's answer.
  *
- * Rewrites the intent's description via an LLM so the answer is incorporated
- * naturally (no mechanical "[Refined: ...]" markers — IND-393), then enqueues
- * a HyDE regeneration job so the intent gets re-embedded and re-indexed with
- * the new context.
+ * Composes the answer into an update statement and runs it through the
+ * intent graph in `update` mode — the exact same path the chat
+ * `update_intent` tool uses (IND-393). The graph's reconciler merges the
+ * new information into the existing description naturally (preserving
+ * details, no mechanical "[Refined: ...]" markers), and the execution node
+ * handles verification, payload sanitization, re-embedding, persistence,
+ * and HyDE regeneration.
  *
- * When the LLM rewrite fails (timeout, malformed output, guardrail rejection)
- * the handler falls back to appending the raw answer text as a plain
- * paragraph — still marker-free — so the refinement context is never lost.
+ * When the graph does not apply an update (e.g. the answer fails semantic
+ * verification as too vague), the intent is left untouched — the answer
+ * remains stored on the question row.
  */
 
 import { log } from '../../lib/log';
@@ -22,36 +25,42 @@ export interface IntentRefinementDeps {
     description: string;
     status: string;
   } | null>;
-  /** Fetch the clarifying question's prompt text for LLM context. Null when unavailable. */
+  /** Fetch the clarifying question's prompt text for update context. Null when unavailable. */
   getQuestionPrompt: (questionId: string) => Promise<string | null>;
+  /** Fetch the user's profile as a JSON string ('' when absent). */
+  getUserProfile: (userId: string) => Promise<string>;
   /**
-   * LLM rewrite of the description incorporating the answer naturally.
-   * Returns null on any failure — the handler then falls back to a plain append.
+   * Run the intent graph in `update` mode (same path as the chat
+   * `update_intent` tool). Returns whether an update action was applied.
    */
-  refineDescription: (input: {
-    currentDescription: string;
-    question?: string;
-    selectedOptions: string[];
-    freeText?: string;
-  }) => Promise<string | null>;
-  updateIntentDescription: (intentId: string, newDescription: string) => Promise<void>;
-  enqueueHydeRegeneration: (data: { intentId: string; userId: string }) => Promise<void>;
+  runIntentUpdate: (input: {
+    userId: string;
+    userProfile: string;
+    inputContent: string;
+    targetIntentIds: string[];
+  }) => Promise<{ applied: boolean }>;
 }
 
 /**
- * Fallback when the LLM rewrite fails: append the answer as a plain paragraph
- * (no "[Refined: ...]" wrapper) so the context still lands in the description
- * and the HyDE re-embedding sees it.
+ * Compose the answer into a first-person update statement the intent
+ * graph's inferrer/reconciler can process, referencing the target intent
+ * so reconciliation matches it.
  */
-function buildFallbackDescription(
-  currentDescription: string,
+function buildUpdateContent(
+  description: string,
+  question: string | null,
   selectedOptions: string[],
   freeText?: string,
 ): string {
   const parts = selectedOptions.join('; ');
   const trimmed = freeText?.trim();
-  const addendum = parts && trimmed ? `${parts}. ${trimmed}` : (trimmed || parts);
-  return `${currentDescription}\n\n${addendum}`;
+  const answer = parts && trimmed ? `${parts}. ${trimmed}` : (trimmed || parts);
+
+  const questionPart = question
+    ? `When asked "${question}", I answered: ${answer}`
+    : `Additional detail: ${answer}`;
+
+  return `Refine my existing intent "${description}". ${questionPart}`;
 }
 
 export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
@@ -98,40 +107,37 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
       return;
     }
 
-    const questionPrompt = await deps.getQuestionPrompt(input.questionId);
+    const [questionPrompt, userProfile] = await Promise.all([
+      deps.getQuestionPrompt(input.questionId),
+      deps.getUserProfile(input.userId),
+    ]);
 
-    const refined = await deps.refineDescription({
-      currentDescription: intent.description,
-      question: questionPrompt ?? undefined,
-      selectedOptions: input.selectedOptions,
-      freeText: input.freeText,
+    const inputContent = buildUpdateContent(
+      intent.description,
+      questionPrompt,
+      input.selectedOptions,
+      input.freeText,
+    );
+
+    const { applied } = await deps.runIntentUpdate({
+      userId: input.userId,
+      userProfile,
+      inputContent,
+      targetIntentIds: [input.intentId],
     });
 
-    const newDescription = refined
-      ?? buildFallbackDescription(intent.description, input.selectedOptions, input.freeText);
-
-    if (!refined) {
-      logger.warn('LLM refinement unavailable — falling back to plain append', {
+    if (!applied) {
+      // By design: e.g. the answer failed semantic verification as too
+      // vague. The intent stays untouched; the answer remains on the
+      // question row.
+      logger.warn('Intent graph did not apply the refinement update', {
         intentId: input.intentId,
         questionId: input.questionId,
       });
+      return;
     }
 
-    await deps.updateIntentDescription(input.intentId, newDescription);
-
-    logger.verbose('Intent description updated with answer refinement', {
-      intentId: input.intentId,
-      questionId: input.questionId,
-      refinedByLlm: !!refined,
-      descriptionLength: newDescription.length,
-    });
-
-    await deps.enqueueHydeRegeneration({
-      intentId: input.intentId,
-      userId: input.userId,
-    });
-
-    logger.info('Intent refinement enqueued', {
+    logger.info('Intent refined via intent graph', {
       intentId: input.intentId,
       userId: input.userId,
       questionId: input.questionId,

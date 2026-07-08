@@ -135,8 +135,6 @@ export type { SuggestionGeneratorInput } from "./chat/chat.suggester.js";
 export { generateInviteMessage } from "./contact/contact.inviter.js";
 export type { InviteInput, InviteOutput } from "./contact/contact.inviter.js";
 export { IntentIndexer } from "./intent/intent.indexer.js";
-export { IntentRefiner } from "./intent/intent.refiner.js";
-export type { IntentRefinerInput } from "./intent/intent.refiner.js";
 export type { IntentIndexerOutput } from "./intent/intent.indexer.js";
 export { PremiseAnalyzer } from "./premise/premise.analyzer.js";
 export type { PremiseAnalyzerOutput } from "./premise/premise.analyzer.js";

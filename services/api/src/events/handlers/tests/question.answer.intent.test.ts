@@ -10,17 +10,14 @@ function makeDeps(overrides?: Partial<IntentRefinementDeps>): IntentRefinementDe
       status: "active",
     })),
     getQuestionPrompt: mock(async () => "What kind of developer are you looking for?"),
-    refineDescription: mock(async () =>
-      "Looking for a senior React developer with a frontend focus who knows TypeScript well",
-    ),
-    updateIntentDescription: mock(async () => {}),
-    enqueueHydeRegeneration: mock(async () => {}),
+    getUserProfile: mock(async () => '{"identity":"Founder"}'),
+    runIntentUpdate: mock(async () => ({ applied: true })),
     ...overrides,
   };
 }
 
 describe("enqueueIntentRefinementFactory", () => {
-  it("rewrites the intent description via the LLM refiner and re-enqueues", async () => {
+  it("runs the intent graph in update mode with composed answer context", async () => {
     const deps = makeDeps();
     const fn = enqueueIntentRefinementFactory(deps);
 
@@ -32,57 +29,21 @@ describe("enqueueIntentRefinementFactory", () => {
       freeText: "Must know TypeScript well",
     });
 
-    // The refiner receives full context: current description, question, answer.
-    expect(deps.refineDescription).toHaveBeenCalledTimes(1);
-    const refineCall = (deps.refineDescription as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(refineCall.currentDescription).toBe("Looking for a React developer");
-    expect(refineCall.question).toBe("What kind of developer are you looking for?");
-    expect(refineCall.selectedOptions).toEqual(["Frontend focus", "Senior level"]);
-    expect(refineCall.freeText).toBe("Must know TypeScript well");
-
-    expect(deps.updateIntentDescription).toHaveBeenCalledTimes(1);
-    const updateCall = (deps.updateIntentDescription as ReturnType<typeof mock>).mock.calls[0];
-    expect(updateCall[0]).toBe("int-1"); // intentId
-    // The stored description is the LLM rewrite — no mechanical markers.
-    const newDesc: string = updateCall[1];
-    expect(newDesc).toBe(
-      "Looking for a senior React developer with a frontend focus who knows TypeScript well",
-    );
-    expect(newDesc).not.toContain("[Refined:");
-
-    expect(deps.enqueueHydeRegeneration).toHaveBeenCalledTimes(1);
-    const hydeCall = (deps.enqueueHydeRegeneration as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(hydeCall.intentId).toBe("int-1");
-    expect(hydeCall.userId).toBe("u-1");
+    expect(deps.runIntentUpdate).toHaveBeenCalledTimes(1);
+    const call = (deps.runIntentUpdate as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.userId).toBe("u-1");
+    expect(call.userProfile).toBe('{"identity":"Founder"}');
+    expect(call.targetIntentIds).toEqual(["int-1"]);
+    // Composed content carries the current description, question, and answer.
+    expect(call.inputContent).toContain("Looking for a React developer");
+    expect(call.inputContent).toContain("What kind of developer are you looking for?");
+    expect(call.inputContent).toContain("Frontend focus; Senior level");
+    expect(call.inputContent).toContain("Must know TypeScript well");
+    // Never the old mechanical marker.
+    expect(call.inputContent).not.toContain("[Refined:");
   });
 
-  it("falls back to a marker-free plain append when the LLM refiner fails", async () => {
-    const deps = makeDeps({ refineDescription: mock(async () => null) });
-    const fn = enqueueIntentRefinementFactory(deps);
-
-    await fn({
-      userId: "u-1",
-      intentId: "int-1",
-      questionId: "q-1",
-      selectedOptions: ["Frontend focus", "Senior level"],
-      freeText: "Must know TypeScript well",
-    });
-
-    expect(deps.updateIntentDescription).toHaveBeenCalledTimes(1);
-    const newDesc: string = (deps.updateIntentDescription as ReturnType<typeof mock>).mock.calls[0][1];
-    // Original preserved + answer content appended...
-    expect(newDesc).toContain("Looking for a React developer");
-    expect(newDesc).toContain("Frontend focus");
-    expect(newDesc).toContain("Senior level");
-    expect(newDesc).toContain("Must know TypeScript well");
-    // ...but never with a mechanical marker.
-    expect(newDesc).not.toContain("[Refined:");
-
-    // The pipeline still re-embeds.
-    expect(deps.enqueueHydeRegeneration).toHaveBeenCalledTimes(1);
-  });
-
-  it("passes question as undefined when the prompt is unavailable", async () => {
+  it("composes content without question framing when the prompt is unavailable", async () => {
     const deps = makeDeps({ getQuestionPrompt: mock(async () => null) });
     const fn = enqueueIntentRefinementFactory(deps);
 
@@ -90,12 +51,26 @@ describe("enqueueIntentRefinementFactory", () => {
       userId: "u-1",
       intentId: "int-1",
       questionId: "q-404",
+      selectedOptions: ["Remote only"],
+    });
+
+    const call = (deps.runIntentUpdate as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.inputContent).toContain("Remote only");
+    expect(call.inputContent).not.toContain("When asked");
+  });
+
+  it("does not throw when the graph does not apply the update (vague answer)", async () => {
+    const deps = makeDeps({ runIntentUpdate: mock(async () => ({ applied: false })) });
+    const fn = enqueueIntentRefinementFactory(deps);
+
+    await fn({
+      userId: "u-1",
+      intentId: "int-1",
+      questionId: "q-1",
       selectedOptions: ["A"],
     });
 
-    const refineCall = (deps.refineDescription as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(refineCall.question).toBeUndefined();
-    expect(deps.updateIntentDescription).toHaveBeenCalledTimes(1);
+    expect(deps.runIntentUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("skips if intent not found", async () => {
@@ -109,9 +84,7 @@ describe("enqueueIntentRefinementFactory", () => {
       selectedOptions: ["A"],
     });
 
-    expect(deps.refineDescription).not.toHaveBeenCalled();
-    expect(deps.updateIntentDescription).not.toHaveBeenCalled();
-    expect(deps.enqueueHydeRegeneration).not.toHaveBeenCalled();
+    expect(deps.runIntentUpdate).not.toHaveBeenCalled();
   });
 
   it("skips if intent belongs to a different user", async () => {
@@ -132,8 +105,7 @@ describe("enqueueIntentRefinementFactory", () => {
       selectedOptions: ["A"],
     });
 
-    expect(deps.refineDescription).not.toHaveBeenCalled();
-    expect(deps.updateIntentDescription).not.toHaveBeenCalled();
+    expect(deps.runIntentUpdate).not.toHaveBeenCalled();
   });
 
   it("skips if intent is not active", async () => {
@@ -154,12 +126,11 @@ describe("enqueueIntentRefinementFactory", () => {
       selectedOptions: ["A"],
     });
 
-    expect(deps.refineDescription).not.toHaveBeenCalled();
-    expect(deps.updateIntentDescription).not.toHaveBeenCalled();
+    expect(deps.runIntentUpdate).not.toHaveBeenCalled();
   });
 
-  it("handles free-text-only answers (empty selectedOptions) in the fallback path", async () => {
-    const deps = makeDeps({ refineDescription: mock(async () => null) });
+  it("handles free-text-only answers (empty selectedOptions)", async () => {
+    const deps = makeDeps();
     const fn = enqueueIntentRefinementFactory(deps);
 
     await fn({
@@ -170,12 +141,10 @@ describe("enqueueIntentRefinementFactory", () => {
       freeText: "Must be available for in-person meetings",
     });
 
-    const updateCall = (deps.updateIntentDescription as ReturnType<typeof mock>).mock.calls[0];
-    const newDesc: string = updateCall[1];
-    expect(newDesc).toContain("Must be available for in-person meetings");
-    expect(newDesc).not.toContain("[Refined:");
-    // No stray leading separator from the empty options list.
-    expect(newDesc).not.toContain("\n\n. ");
+    const call = (deps.runIntentUpdate as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.inputContent).toContain("Must be available for in-person meetings");
+    // No stray separator from the empty options list.
+    expect(call.inputContent).not.toContain(": . ");
   });
 
   it("skips refinement when answer has no content", async () => {
@@ -190,8 +159,7 @@ describe("enqueueIntentRefinementFactory", () => {
       freeText: "   ",
     });
 
-    expect(deps.refineDescription).not.toHaveBeenCalled();
-    expect(deps.updateIntentDescription).not.toHaveBeenCalled();
-    expect(deps.enqueueHydeRegeneration).not.toHaveBeenCalled();
+    expect(deps.getQuestionPrompt).not.toHaveBeenCalled();
+    expect(deps.runIntentUpdate).not.toHaveBeenCalled();
   });
 });
