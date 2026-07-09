@@ -3,6 +3,11 @@
  * intent detail page (/i/:intentId) has something to render. Not for commit.
  */
 import postgres from 'postgres';
+import dotenv from 'dotenv';
+import path from 'node:path';
+
+// Runtime env files live at the repo root (see root .env.example).
+dotenv.config({ path: path.resolve(import.meta.dir, '../../..', '.env.development') });
 
 const INTENT_ID = '73bc09da-0bc1-4326-bd69-e83f20ecfbdf';
 
