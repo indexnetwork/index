@@ -80,7 +80,7 @@ export class IntegrationSyncQueue {
     });
 
     const processor = async (job: Job<IntegrationSyncPayload>) => {
-      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
 
@@ -97,7 +97,7 @@ export class IntegrationSyncQueue {
         await this.handleTick();
         break;
       default:
-        this.queueLogger.warn(`Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 

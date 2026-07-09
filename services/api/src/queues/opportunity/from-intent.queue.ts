@@ -76,7 +76,7 @@ export class FromIntentQueue {
         await this.handleDiscover(data);
         break;
       default:
-        this.queueLogger.warn(`Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -123,7 +123,7 @@ export class FromIntentQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<FromIntentJobData>) => {
-      this.queueLogger.info(`Processing job ${job.id}`);
+      this.queueLogger.info('Processing job', { jobId: job.id });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<FromIntentJobData>(QUEUE_NAME, processor);

@@ -16,8 +16,6 @@ export interface NegotiationTaskMeta {
 
 /** Per-worker log strings — the only textual difference between the two timeout workers. */
 export interface TimeoutFallbackLabels {
-  /** Bracketed job tag, e.g. `[NegotiationTimeoutJob]`. */
-  job: string;
   /** "...running AI fallback" line. */
   fallback: string;
   /** "Negotiation finalized after <x>" line. */
@@ -104,7 +102,7 @@ export async function runTimeoutFallback(params: {
   const activeUserId = isSource ? meta.sourceUserId! : meta.candidateUserId!;
   const otherUserId = isSource ? meta.candidateUserId! : meta.sourceUserId!;
 
-  logger.info(`${labels.job} ${labels.fallback}`, {
+  logger.info(labels.fallback, {
     negotiationId,
     ...fallbackLogExtra,
     activeUserId,
@@ -167,7 +165,7 @@ export async function runTimeoutFallback(params: {
         : aiTurn.action === 'reject' ? 'rejected'
         : 'stalled';
       await database.updateOpportunityStatus(opportunityId, nextStatus).catch((err: unknown) => {
-        logger.error(`${labels.job} ${labels.statusUpdateFailed}`, {
+        logger.error(labels.statusUpdateFailed, {
           opportunityId,
           nextStatus,
           error: err,
@@ -175,7 +173,7 @@ export async function runTimeoutFallback(params: {
       });
     }
 
-    logger.info(`${labels.job} ${labels.finalized}`, {
+    logger.info(labels.finalized, {
       negotiationId,
       outcome: outcomeStr,
       turnCount: newTurnCount,
@@ -187,7 +185,7 @@ export async function runTimeoutFallback(params: {
   await database.updateTaskState(taskId, 'waiting_for_agent');
   await rearm(newTurnCount);
 
-  logger.info(`${labels.job} AI agent countered, armed timeout for next speaker`, {
+  logger.info('AI agent countered, armed timeout for next speaker', {
     negotiationId,
     action: aiTurn.action,
     turnCount: newTurnCount,

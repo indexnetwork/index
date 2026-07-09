@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 
 import { log } from '../log';
 
-const logger = log.lib.from("lib/email/transport.helper.ts");
+const logger = log.lib.from("email/transport.helper");
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 export const executeSendEmail = async (options: {

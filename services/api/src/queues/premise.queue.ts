@@ -212,7 +212,7 @@ export class PremiseQueue {
         await this.handleProfileRegen(data as ProfileRegenData);
         break;
       default:
-        this.queueLogger.warn(`Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -226,7 +226,7 @@ export class PremiseQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<PremiseJobPayload>) => {
-      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<PremiseJobPayload>(QUEUE_NAME, processor);
@@ -261,7 +261,7 @@ export class PremiseQueue {
       ((id: string) => this.defaultExpirePremise(id));
 
     const expired = await getExpiredPremises();
-    this.expiryLogger.verbose(`Found ${expired.length} expired premises`);
+    this.expiryLogger.verbose('Found expired premises', { count: expired.length });
 
     for (const { id } of expired) {
       // onExpired fires inside the adapter's updatePremise (status EXPIRED) —
@@ -269,7 +269,7 @@ export class PremiseQueue {
       await expirePremise(id);
     }
 
-    this.expiryLogger.info(`Expired ${expired.length} premises`);
+    this.expiryLogger.info('Expired premises', { count: expired.length });
     return expired.length;
   }
 

@@ -73,14 +73,14 @@ export class MyQueue {
         await this.handleAnalyze(data);
         break;
       default:
-        this.queueLogger.warn(`Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<MyJobData>) => {
-      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<MyJobData>(QUEUE_NAME, processor);

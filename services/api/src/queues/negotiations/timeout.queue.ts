@@ -114,7 +114,7 @@ export class NegotiationTimeoutQueue {
         await this.handleTimeout(data);
         break;
       default:
-        this.queueLogger.warn(`Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -125,7 +125,7 @@ export class NegotiationTimeoutQueue {
     if (this.worker) return;
 
     const processor = async (job: Job<NegotiationTimeoutJobData>) => {
-      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
 
@@ -189,7 +189,6 @@ export class NegotiationTimeoutQueue {
       database,
       logger: this.logger,
       labels: {
-        job: '[NegotiationTimeoutJob]',
         fallback: 'External agent timed out, running AI fallback',
         finalized: 'Negotiation finalized after timeout',
         statusUpdateFailed: 'Failed to update opportunity status on timeout finalization',

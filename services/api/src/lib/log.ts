@@ -346,13 +346,19 @@ function addFrom<T extends LogContext>(context: T): LoggerWithSource & { from: (
 
 const base = createLogger(undefined, undefined);
 
-/** Logger with optional context (emoji + color). Use .from('filename.ts') for consistent source in every line. */
+/** Logger with optional context (emoji + color). Use .from(source) for a consistent source label in every line — see the per-layer conventions on the pre-bound loggers below. */
 export const log = {
   ...base,
   withContext(context: LogContext, source?: string) {
     return source ? createLogger(context, source) : addFrom(context);
   },
-  /** Pre-bound logger. Pass path relative to src/ (e.g. "controllers/chat.controller.ts"). Non-blessed paths get [DEPRECATED] in output. */
+  /**
+   * Pre-bound loggers. Source label conventions per layer:
+   * controllers = lowercase feature ('chat'); services = PascalCase class name ('IntentService');
+   * queues = 'XxxJob'/'XxxQueue'; adapters = '<name>.adapter'; guards = '<name>.guard';
+   * lib = module name without lib/ prefix or extension ('email/transport.helper');
+   * protocol components = PascalCase with optional ':SubScope' ('OpportunityGraph:Prep').
+   */
   controller: addFrom('controller'),
   service: addFrom('service'),
   agent: addFrom('agent'),

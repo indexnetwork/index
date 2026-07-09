@@ -20,7 +20,7 @@ import { enrichmentQueue } from '../queues/enrichment.queue';
 // eslint-disable-next-line boundaries/dependencies
 import { networkInvitationService } from './network-invitation.service';
 
-const logger = log.service.from('experiment');
+const logger = log.service.from('ExperimentService');
 
 /**
  * Thrown by {@link ExperimentService.lookupSignup} when the (network, email)

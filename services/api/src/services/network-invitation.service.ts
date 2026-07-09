@@ -10,7 +10,7 @@ import { networkInvitationTemplate } from '../lib/email/templates/network-invita
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildConnectCommand } from '../lib/openclaw/connect-command';
 
-const logger = log.service.from('network-invitation');
+const logger = log.service.from('NetworkInvitationService');
 
 export interface InviteParams {
   networkId: string;

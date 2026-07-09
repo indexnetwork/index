@@ -7,7 +7,7 @@ import { apikeys, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 
-const logger = log.server.from('auth-guard');
+const logger = log.server.from('auth.guard');
 
 export interface AuthenticatedUser {
   id: string;

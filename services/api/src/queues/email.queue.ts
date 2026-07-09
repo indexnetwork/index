@@ -61,9 +61,9 @@ export class EmailQueue {
       priority: options?.priority,
       jobId: options?.jobId,
     });
-    this.queueLogger.debug(`Job added with ID: ${job.id}`, {
+    this.queueLogger.debug('Job added', {
+      jobId: job.id,
       priority: options?.priority,
-      jobId: options?.jobId,
     });
     return job;
   }
@@ -79,7 +79,7 @@ export class EmailQueue {
         await this.handleSendEmail(data);
         break;
       default:
-        this.queueLogger.warn(`Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -89,7 +89,7 @@ export class EmailQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<EmailJobData>) => {
-      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<EmailJobData>(QUEUE_NAME, processor, {

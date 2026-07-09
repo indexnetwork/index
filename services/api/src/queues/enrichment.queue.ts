@@ -159,7 +159,7 @@ export class EnrichmentQueue {
         await this.handleEnrichUser(data);
         break;
       default:
-        this.queueLogger.warn(`Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -170,7 +170,9 @@ export class EnrichmentQueue {
     if (this.worker) return;
     const processor = async (job: Job<EnrichmentJobPayload>) => {
       const { userId, networkId, reason } = job.data as EnsureProfileHydeData;
-      this.queueLogger.info(`Processing job ${job.id} (${job.name})`, {
+      this.queueLogger.info('Processing job', {
+        jobId: job.id,
+        jobName: job.name,
         userId,
         networkId,
         reason,
