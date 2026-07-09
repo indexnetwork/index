@@ -12,6 +12,9 @@ import { ContentContainer } from "@/components/layout";
 import InviteMessageModal from "@/components/InviteMessageModal";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { getPublicUserProfile } from "@/services/users";
+import { log } from "@/lib/logger";
+
+const logger = log.page.from("u/[id]");
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -37,7 +40,7 @@ export default function UserProfilePage() {
     try {
       return await usersService.triggerDiscoveryNegotiation(targetId);
     } catch (err) {
-      console.error('Failed to trigger negotiation:', err);
+      logger.error('Failed to trigger negotiation', { error: err });
     } finally {
       setIsTriggering(false);
     }
@@ -59,14 +62,14 @@ export default function UserProfilePage() {
             const networks = await indexesService.getSharedIndexes(id!);
             setSharedNetworks(networks);
           } catch (err) {
-            console.error('Failed to fetch shared networks:', err);
+            logger.error('Failed to fetch shared networks', { error: err });
             setSharedNetworks([]);
           }
         } else {
           setSharedNetworks([]);
         }
       } catch (err) {
-        console.error('Failed to fetch profile:', err);
+        logger.error('Failed to fetch profile', { error: err });
         setError('User not found');
       } finally {
         setIsLoading(false);

@@ -24,7 +24,7 @@ export class LinkService {
    * @returns Array of link records
    */
   async listLinks(userId: string): Promise<LinkRow[]> {
-    logger.verbose('[LinkService] Listing links', { userId });
+    logger.verbose('Listing links', { userId });
     
     return this.db.listLinks(userId);
   }
@@ -37,7 +37,7 @@ export class LinkService {
    * @returns The created link record
    */
   async createLink(userId: string, url: string): Promise<LinkRow> {
-    logger.verbose('[LinkService] Creating link', { userId, url });
+    logger.verbose('Creating link', { userId, url });
     
     return this.db.createLink(userId, url);
   }
@@ -50,7 +50,7 @@ export class LinkService {
    * @returns True if deleted, false if not found or unauthorized
    */
   async deleteLink(linkId: string, userId: string): Promise<boolean> {
-    logger.verbose('[LinkService] Deleting link', { linkId, userId });
+    logger.verbose('Deleting link', { linkId, userId });
     
     return this.db.deleteLink(linkId, userId);
   }
@@ -68,7 +68,7 @@ export class LinkService {
     lastSyncAt: Date | null;
     lastStatus: string | null;
   } | null> {
-    logger.verbose('[LinkService] Getting link content', { linkId, userId });
+    logger.verbose('Getting link content', { linkId, userId });
     
     return this.db.getLinkContent(linkId, userId);
   }

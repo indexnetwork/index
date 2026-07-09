@@ -95,7 +95,7 @@ export class NegotiationClaimTimeoutQueue {
       removeOnFail: { age: 7 * 24 * 3600 },
     });
 
-    this.logger.info('[NegotiationClaimTimeoutJob] Claim timeout enqueued', {
+    this.logger.info('Claim timeout enqueued', {
       negotiationId,
       turnNumber,
       agentId,
@@ -118,11 +118,11 @@ export class NegotiationClaimTimeoutQueue {
         const state = await job.getState();
         if (state === 'delayed' || state === 'waiting') {
           await job.remove();
-          this.logger.info('[NegotiationClaimTimeoutJob] Claim timeout cancelled', { negotiationId, jobId });
+          this.logger.info('Claim timeout cancelled', { negotiationId, jobId });
         }
       }
     } catch (err) {
-      this.logger.warn('[NegotiationClaimTimeoutJob] Failed to cancel claim timeout', {
+      this.logger.warn('Failed to cancel claim timeout', {
         negotiationId,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -141,7 +141,7 @@ export class NegotiationClaimTimeoutQueue {
         await this.handleClaimTimeout(data);
         break;
       default:
-        this.queueLogger.warn(`[NegotiationClaimTimeoutProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -152,7 +152,7 @@ export class NegotiationClaimTimeoutQueue {
     if (this.worker) return;
 
     const processor = async (job: Job<NegotiationClaimTimeoutJobData>) => {
-      this.queueLogger.info(`[NegotiationClaimTimeoutProcessor] Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
 
@@ -194,7 +194,7 @@ export class NegotiationClaimTimeoutQueue {
       .returning();
 
     if (!task) {
-      this.logger.info('[NegotiationClaimTimeoutJob] Task no longer claimed, skipping (stale job)', {
+      this.logger.info('Task no longer claimed, skipping (stale job)', {
         negotiationId,
       });
       return;
@@ -205,7 +205,7 @@ export class NegotiationClaimTimeoutQueue {
 
     // Check if turnNumber still matches (response may have come in between)
     if (currentTurnCount !== turnNumber) {
-      this.logger.info('[NegotiationClaimTimeoutJob] Turn count mismatch, skipping (stale job)', {
+      this.logger.info('Turn count mismatch, skipping (stale job)', {
         negotiationId,
         expectedTurn: turnNumber,
         actualTurn: currentTurnCount,
@@ -215,7 +215,7 @@ export class NegotiationClaimTimeoutQueue {
 
     const meta = task.metadata as NegotiationTaskMeta | null;
     if (meta?.type !== 'negotiation') {
-      this.logger.warn('[NegotiationClaimTimeoutJob] Task is not a negotiation, skipping', { negotiationId });
+      this.logger.warn('Task is not a negotiation, skipping', { negotiationId });
       return;
     }
 
@@ -223,7 +223,6 @@ export class NegotiationClaimTimeoutQueue {
       database,
       logger: this.logger,
       labels: {
-        job: '[NegotiationClaimTimeoutJob]',
         fallback: 'Claimed agent timed out, running AI fallback',
         finalized: 'Negotiation finalized after claim timeout',
         statusUpdateFailed: 'Failed to update opportunity status on claim-timeout finalization',

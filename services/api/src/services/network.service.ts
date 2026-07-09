@@ -30,7 +30,7 @@ export class NetworkService {
    * Get all networks that a user is a member of, including their personal network.
    */
   async getNetworksForUser(userId: string) {
-    logger.verbose('[NetworkService] Getting networks for user', { userId });
+    logger.verbose('Getting networks for user', { userId });
     return this.adapter.getNetworksForUser(userId);
   }
 
@@ -43,7 +43,7 @@ export class NetworkService {
     const validatedProfileEnrichment = data.profileEnrichment !== undefined
       ? ProfileEnrichmentPolicySchema.parse(data.profileEnrichment)
       : undefined;
-    logger.verbose('[NetworkService] Creating index', { userId, title: data.title, type: networkType });
+    logger.verbose('Creating index', { userId, title: data.title, type: networkType });
     const index = await this.adapter.createNetwork({
       ...data,
       type: networkType,
@@ -68,7 +68,7 @@ export class NetworkService {
    * @returns The created network detail and the plaintext master key
    */
   async createExperimentNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null }): Promise<{ network: unknown; masterKey: string }> {
-    logger.verbose('[NetworkService] Creating experiment network', { userId, title: data.title });
+    logger.verbose('Creating experiment network', { userId, title: data.title });
 
     // Generate master key
     const { key: masterKey, hash: masterKeyHash } = await generateMasterKey();
@@ -105,7 +105,7 @@ export class NetworkService {
    * Get a public network by ID (no auth required). Returns null if not public.
    */
   async getPublicNetworkById(networkId: string) {
-    logger.verbose('[NetworkService] Getting public network by id', { networkId });
+    logger.verbose('Getting public network by id', { networkId });
     return this.adapter.getPublicIndexDetail(networkId);
   }
 
@@ -114,7 +114,7 @@ export class NetworkService {
    * Only members of the index can view it.
    */
   async getNetworkById(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Getting index by id', { networkId });
+    logger.verbose('Getting index by id', { networkId });
     return this.adapter.getNetworkDetail(networkId, userId);
   }
 
@@ -124,7 +124,7 @@ export class NetworkService {
    * @throws Error if attempting to change join policy on an experiment network.
    */
   async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
-    logger.verbose('[NetworkService] Updating index', { networkId, userId });
+    logger.verbose('Updating index', { networkId, userId });
     if (await this.adapter.isPersonalNetwork(networkId)) {
       // Personal networks can't be renamed/deleted/repurposed (see assertNotPersonal),
       // but the owner may set or clear a discovery prompt to curate what auto-assigns
@@ -173,7 +173,7 @@ export class NetworkService {
     const validatedProfileEnrichment = data.profileEnrichment !== undefined
       ? ProfileEnrichmentPolicySchema.parse(data.profileEnrichment)
       : undefined;
-    logger.verbose('[NetworkService] Updating permissions', { networkId, userId });
+    logger.verbose('Updating permissions', { networkId, userId });
     return this.adapter.updateIndexSettings(networkId, userId, {
       ...data,
       contextInjection: validatedContextInjection,
@@ -191,7 +191,7 @@ export class NetworkService {
    */
   async regenerateInvitationLink(networkId: string, userId: string) {
     await this.assertNotPersonal(networkId);
-    logger.verbose('[NetworkService] Regenerating invitation link', { networkId, userId });
+    logger.verbose('Regenerating invitation link', { networkId, userId });
     return this.adapter.regenerateInvitationLink(networkId, userId);
   }
 
@@ -208,7 +208,7 @@ export class NetworkService {
    * @throws Error if the index is a personal network.
    */
   async addMember(networkId: string, userId: string, requestingUserId: string, role: 'owner' | 'member' = 'member') {
-    logger.verbose('[NetworkService] Adding member', { networkId, userId, role });
+    logger.verbose('Adding member', { networkId, userId, role });
     await this.assertNotPersonal(networkId);
     return this.adapter.addMemberForOwner(networkId, userId, requestingUserId, role);
   }
@@ -218,7 +218,7 @@ export class NetworkService {
    * @throws Error if the index is personal, member not found, or last owner.
    */
   async updateMemberRole(networkId: string, targetUserId: string, requestingUserId: string, role: 'owner' | 'member') {
-    logger.verbose('[NetworkService] Updating member role', { networkId, targetUserId, role });
+    logger.verbose('Updating member role', { networkId, targetUserId, role });
     await this.assertNotPersonal(networkId);
     return this.adapter.updateMemberRole(networkId, targetUserId, requestingUserId, role);
   }
@@ -228,7 +228,7 @@ export class NetworkService {
    * @throws Error if the index is a personal network.
    */
   async removeMember(networkId: string, memberId: string, userId: string) {
-    logger.verbose('[NetworkService] Removing member', { networkId, memberId, userId });
+    logger.verbose('Removing member', { networkId, memberId, userId });
     await this.assertNotPersonal(networkId);
     return this.adapter.removeMemberForOwner(networkId, memberId, userId);
   }
@@ -238,7 +238,7 @@ export class NetworkService {
    * @throws Error if the index is a personal network.
    */
   async deleteNetwork(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Deleting index', { networkId, userId });
+    logger.verbose('Deleting index', { networkId, userId });
     await this.assertNotPersonal(networkId);
 
     // Check if this is an experiment network
@@ -262,7 +262,7 @@ export class NetworkService {
    * Get members of an index. Only owners can call this.
    */
   async getMembersForOwner(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Getting members for owner', { networkId, userId });
+    logger.verbose('Getting members for owner', { networkId, userId });
     const raw = await this.adapter.getNetworkMembersForOwner(networkId, userId);
     return raw.map(m => ({
       id: m.userId,
@@ -281,7 +281,7 @@ export class NetworkService {
    * Used for mentionable users / @mentions.
    */
   async getMembersFromMyNetworks(userId: string) {
-    logger.verbose('[NetworkService] Getting members from user indexes', { userId });
+    logger.verbose('Getting members from user indexes', { userId });
     const raw = await this.adapter.getMembersFromUserIndexes(userId);
     return raw.map(m => ({
       id: m.userId,
@@ -297,7 +297,7 @@ export class NetworkService {
    * @returns Shared non-personal networks with member counts.
    */
   async getSharedNetworks(currentUserId: string, targetUserId: string) {
-    logger.verbose('[NetworkService] Getting shared networks', { currentUserId, targetUserId });
+    logger.verbose('Getting shared networks', { currentUserId, targetUserId });
     return this.adapter.getSharedNetworks(currentUserId, targetUserId);
   }
 
@@ -305,7 +305,7 @@ export class NetworkService {
    * Get public networks that the user has not joined (for discovery).
    */
   async getPublicNetworks(userId: string) {
-    logger.verbose('[NetworkService] Getting public networks for user', { userId });
+    logger.verbose('Getting public networks for user', { userId });
     return this.adapter.getPublicIndexesNotJoined(userId);
   }
 
@@ -315,7 +315,7 @@ export class NetworkService {
    * @returns The index with owner info and member count, or null if not found
    */
   async getNetworkByShareCode(code: string) {
-    logger.verbose('[NetworkService] Getting index by share code');
+    logger.verbose('Getting index by share code');
     return this.adapter.getNetworkByShareCode(code);
   }
 
@@ -327,7 +327,7 @@ export class NetworkService {
    * @throws Error if the invitation code is invalid or the index is not found
    */
   async acceptInvitation(code: string, userId: string) {
-    logger.verbose('[NetworkService] Accepting invitation', { userId });
+    logger.verbose('Accepting invitation', { userId });
     return this.adapter.acceptIndexInvitation(code, userId);
   }
 
@@ -335,7 +335,7 @@ export class NetworkService {
    * Join a public network.
    */
   async joinPublicNetwork(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Joining public network', { networkId, userId });
+    logger.verbose('Joining public network', { networkId, userId });
     await this.adapter.joinPublicNetwork(networkId, userId);
     return this.adapter.getNetworkDetail(networkId, userId);
   }
@@ -345,7 +345,7 @@ export class NetworkService {
    * @throws Error if the index is a personal network.
    */
   async leaveNetwork(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Leaving index', { networkId, userId });
+    logger.verbose('Leaving index', { networkId, userId });
     await this.assertNotPersonal(networkId);
     await this.adapter.leaveNetwork(networkId, userId);
   }
@@ -354,7 +354,7 @@ export class NetworkService {
    * Get current user's member settings (permissions and ownership status).
    */
   async getMemberSettings(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Getting member settings', { networkId, userId });
+    logger.verbose('Getting member settings', { networkId, userId });
     const settings = await this.adapter.getMemberSettings(networkId, userId);
     if (!settings) {
       throw new Error('Not a member of this network');
@@ -366,7 +366,7 @@ export class NetworkService {
    * Get current user's intents in an index. Members only.
    */
   async getMyIntentsInNetwork(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Getting my intents in index', { networkId, userId });
+    logger.verbose('Getting my intents in index', { networkId, userId });
     const intents = await this.adapter.getNetworkIntentsForMember(networkId, userId);
     return intents.filter((i) => i.userId === userId);
   }
@@ -380,7 +380,7 @@ export class NetworkService {
    * consistent with the premise count beside them. See EDG-53.
    */
   async getNetworkOverview(networkId: string, userId: string) {
-    logger.verbose('[NetworkService] Getting network overview', { networkId, userId });
+    logger.verbose('Getting network overview', { networkId, userId });
     const isMember = await this.adapter.isNetworkMember(networkId, userId);
     if (!isMember) {
       throw new Error('Access denied: Not a member of this network');
@@ -403,7 +403,7 @@ export class NetworkService {
    * @returns The network UUID, or null if not found
    */
   async resolveIndexId(idOrKey: string): Promise<string | null> {
-    logger.verbose('[NetworkService] Resolving network ID or key', { idOrKey });
+    logger.verbose('Resolving network ID or key', { idOrKey });
     return this.adapter.resolveIndexId(idOrKey);
   }
 
@@ -500,7 +500,7 @@ export class NetworkService {
    * @throws Error('Owner-only operation') when the caller is not an owner.
    */
   async rotateExperimentMasterKey(networkId: string, userId: string): Promise<{ masterKey: string }> {
-    logger.verbose('[NetworkService] Rotating experiment master key', { networkId, userId });
+    logger.verbose('Rotating experiment master key', { networkId, userId });
 
     const [network] = await db
       .select({
@@ -547,7 +547,7 @@ export class NetworkService {
 
     // Dispatch emails fire-and-forget — rotation has already committed.
     this.dispatchRotationEmails(network.id, network.title, userId, key, owners)
-      .catch((err) => logger.error('[NetworkService] Rotation email dispatch failed', { networkId, error: err }));
+      .catch((err) => logger.error('Rotation email dispatch failed', { networkId, error: err }));
 
     return { masterKey: key };
   }
@@ -593,7 +593,7 @@ export class NetworkService {
           text: rendered.text,
         });
       } catch (err) {
-        logger.error('[NetworkService] Rotation email failed for owner', { to: o.email, error: err });
+        logger.error('Rotation email failed for owner', { to: o.email, error: err });
       }
     }));
   }

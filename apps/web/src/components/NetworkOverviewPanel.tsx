@@ -11,6 +11,9 @@ import { useAIChat } from '@/contexts/AIChatContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('NetworkOverviewPanel');
 
 interface NetworkOverviewPanelProps {
   index: Network;
@@ -61,7 +64,7 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
         setPremises(overview.premises);
         setUserContext(overview.userContext);
       } catch (err) {
-        console.error('Error loading network overview:', err);
+        logger.error('Error loading network overview', { error: err });
       } finally {
         setIntentsLoading(false);
       }
@@ -90,7 +93,7 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
       setShowLeaveConfirmation(false);
       onLeft?.();
     } catch (err) {
-      console.error('Error leaving network:', err);
+      logger.error('Error leaving network', { error: err });
       error('Failed to leave network');
     } finally {
       setIsLeaving(false);

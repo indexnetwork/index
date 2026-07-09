@@ -13,6 +13,9 @@ import { useOpportunities } from '@/contexts/APIContext';
 import type { ChatContextOpportunity } from '@/services/opportunities';
 import { buildChatTimeline } from './timeline';
 import OpportunityDivider from './OpportunityDivider';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('ChatView');
 
 interface ChatViewProps {
   userId: string;
@@ -83,7 +86,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        console.error('[ChatView] Failed to load chat context:', err);
+        logger.error('Failed to load chat context', { error: err });
       });
     return () => {
       controller.abort();
@@ -116,7 +119,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
         const cid = initialGroupId ?? conv.id;
         if (cid && !conversationId) setConversationId(cid);
       } catch (err) {
-        console.error('[ChatView] DM init error:', err);
+        logger.error('DM init error', { error: err });
       } finally {
         if (mounted) setContextLoading(false);
       }
@@ -162,7 +165,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
         }
       } catch (err) {
         hasAutoSentRef.current = false;
-        console.error('[ChatView] Auto-send error:', err);
+        logger.error('Auto-send error', { error: err });
       } finally {
         setSending(false);
       }
@@ -189,7 +192,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
       }
       inputRef.current?.focus();
     } catch (err) {
-      console.error('[ChatView] Send error:', err);
+      logger.error('Send error', { error: err });
       setMessageText(text);
     } finally {
       setSending(false);

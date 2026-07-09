@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 
 import { log } from '../log';
 
-const logger = log.lib.from("lib/email/transport.helper.ts");
+const logger = log.lib.from("email/transport.helper");
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 export const executeSendEmail = async (options: {
@@ -13,7 +13,7 @@ export const executeSendEmail = async (options: {
   headers?: Record<string, string>;
 }) => {
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
-    logger.warn('[EmailTransport] RESEND_API_KEY not configured or disabled - email not sent');
+    logger.warn('RESEND_API_KEY not configured or disabled - email not sent');
     return { data: null, skipped: true, reason: 'resend_not_configured' };
   }
 
@@ -23,7 +23,7 @@ export const executeSendEmail = async (options: {
   if (!isProduction) {
     const testAddress = process.env.TESTING_EMAIL_ADDRESS;
     if (!testAddress) {
-      logger.debug('[EmailTransport] Non-production and no TESTING_EMAIL_ADDRESS - skipping');
+      logger.debug('Non-production and no TESTING_EMAIL_ADDRESS - skipping');
       return { data: null, skipped: true, reason: 'no_test_recipient' };
     }
     recipient = testAddress;
@@ -59,7 +59,7 @@ ${options.html}
     }
   }
 
-  logger.verbose('[EmailTransport] Sending email', {
+  logger.verbose('Sending email', {
     recipient: String(recipient),
     originalTo: String(options.to),
     production: isProduction,
@@ -77,7 +77,7 @@ ${options.html}
     });
 
     if (result.error) {
-      logger.error('[EmailTransport] Resend API returned error', {
+      logger.error('Resend API returned error', {
         errorName: result.error.name,
         errorMessage: result.error.message,
         recipient: String(recipient),
@@ -86,13 +86,13 @@ ${options.html}
       throw new Error(`Resend error: ${result.error.message}`);
     }
 
-    logger.info('[EmailTransport] Email sent successfully', {
+    logger.info('Email sent successfully', {
       messageId: result.data?.id,
       recipient: String(recipient),
     });
     return result;
   } catch (error) {
-    logger.error('[EmailTransport] Failed to send email via Resend API', {
+    logger.error('Failed to send email via Resend API', {
       error: error instanceof Error ? error.message : String(error),
       recipient: String(recipient),
       subject: options.subject,

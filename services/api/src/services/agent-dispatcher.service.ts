@@ -5,7 +5,7 @@ import type { AgentWithRelations } from '../adapters/agent.database.adapter';
 
 import { log } from '../lib/log';
 
-const logger = log.service.from('AgentDispatcherImpl');
+const logger = log.service.from('AgentDispatcher');
 
 /** How recently a personal agent must have polled to be considered live. */
 const FRESHNESS_THRESHOLD_MS = 90_000;

@@ -2,6 +2,9 @@ import { useState } from "react";
 import { RotateCcw } from "lucide-react";
 import IntentProposalCard, { type IntentProposalData } from "@/components/chat/IntentProposalCard";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { log } from "@/lib/logger";
+
+const logger = log.page.from("dev/intent-proposal");
 
 const MOCK_CARD: IntentProposalData = {
   proposalId: "test-proposal-123",
@@ -19,7 +22,7 @@ export default function IntentProposalTestPage() {
     networkId?: string
   ) => {
     await new Promise((r) => setTimeout(r, 800));
-    console.log("Approve:", { proposalId, description, networkId });
+    logger.debug("Approve", { proposalId, description, networkId });
     addNotification({
       type: "intent_broadcast",
       title: "Broadcasting Signal",
@@ -27,19 +30,19 @@ export default function IntentProposalTestPage() {
       duration: 10000,
       onAction: async () => {
         await new Promise((r) => setTimeout(r, 400));
-        console.log("Undo from notification:", proposalId);
+        logger.debug("Undo from notification", { proposalId });
       },
     });
   };
 
   const handleReject = async (proposalId: string) => {
     await new Promise((r) => setTimeout(r, 400));
-    console.log("Reject:", proposalId);
+    logger.debug("Reject", { proposalId });
   };
 
   const handleUndo = async (proposalId: string) => {
     await new Promise((r) => setTimeout(r, 400));
-    console.log("Undo:", proposalId);
+    logger.debug("Undo", { proposalId });
   };
 
   return (

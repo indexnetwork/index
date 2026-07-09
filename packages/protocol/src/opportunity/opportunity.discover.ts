@@ -33,6 +33,8 @@ import { buildDiscoveryQuestionInput } from "./discovery-question.helper.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("OpportunityDiscover");
+const discoverFromQueryLog = protocolLogger("OpportunityDiscover:runDiscoverFromQuery");
+const enrichLog = protocolLogger("OpportunityDiscover:enrichOpportunities");
 
 /**
  * Per-negotiation summarizer budget. The summarizer fires one LLM call per
@@ -409,7 +411,7 @@ async function enrichOpportunities(
         avatarByUserId.set(r.id, r.user.avatar);
       }
     }
-    logger.verbose("[enrichOpportunities] Retried name lookup for candidates with missing names", {
+    enrichLog.verbose("Retried name lookup for candidates with missing names", {
       attempted: missingNameIds.length,
       resolved: retried.filter((r) => r.profile?.identity?.name ?? r.user?.name).length,
     });
@@ -864,7 +866,7 @@ export async function runDiscoverFromQuery(
         }),
       );
       if (existingConnections.length > 0) {
-        logger.verbose("[runDiscoverFromQuery] Skipped duplicates; existing connections", {
+        discoverFromQueryLog.verbose("Skipped duplicates; existing connections", {
           count: existingConnections.length,
           userIds: existingConnections.map((c) => c.userId),
         });
@@ -884,7 +886,7 @@ export async function runDiscoverFromQuery(
         );
         const validExistingOpps = existingOpps.filter((o): o is Opportunity => o != null);
         if (validExistingOpps.length > 0) {
-          logger.verbose("[runDiscoverFromQuery] Including existing opportunities as cards", {
+          discoverFromQueryLog.verbose("Including existing opportunities as cards", {
             count: validExistingOpps.length,
             ids: validExistingOpps.map((o) => o.id),
           });
@@ -898,7 +900,7 @@ export async function runDiscoverFromQuery(
       // may set status to pending/latent when merging with related opportunities, so filtering to
       // "draft" would incorrectly drop them.
       if (chatSessionId && (result.opportunities?.length ?? 0) > 0) {
-        logger.verbose("[runDiscoverFromQuery] Chat session opportunities from graph", {
+        discoverFromQueryLog.verbose("Chat session opportunities from graph", {
           count: opportunities.length,
           statuses: opportunities.map((o) => o.status),
         });

@@ -66,7 +66,7 @@ export class IntentService {
     userProfile: string,
     content?: string
   ): Promise<Record<string, unknown>> {
-    logger.verbose('[IntentService] Processing intent', { userId });
+    logger.verbose('Processing intent', { userId });
 
     const graph = this.factory.createGraph();
     const result = await graph.invoke(
@@ -98,7 +98,7 @@ export class IntentService {
     const limit = Math.min(100, Math.max(1, options.limit || 20));
     const archived = options.archived ?? false;
 
-    logger.verbose('[IntentService] Listing intents', { userId, page, limit, archived });
+    logger.verbose('Listing intents', { userId, page, limit, archived });
 
     const { rows, total } = await this.adapter.listIntents(userId, {
       page,
@@ -143,7 +143,7 @@ export class IntentService {
    * @returns Intent record or null if not found or unauthorized
    */
   async getById(intentId: string, userId: string) {
-    logger.verbose('[IntentService] Getting intent by ID', { intentId, userId });
+    logger.verbose('Getting intent by ID', { intentId, userId });
 
     return this.adapter.getIntentById(intentId, userId);
   }
@@ -162,7 +162,7 @@ export class IntentService {
    * @returns The created or existing intent record (at least { id }).
    */
   async createFromProposal(userId: string, description: string, proposalId: string, networkId?: string) {
-    logger.verbose('[IntentService] Creating intent from proposal', { userId, proposalId });
+    logger.verbose('Creating intent from proposal', { userId, proposalId });
 
     const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
     if (existing) {
@@ -171,7 +171,7 @@ export class IntentService {
 
     const embedding = await this.generateEmbeddingOrZero(
       description,
-      '[IntentService] Embedding generation failed (intent will be created with zero vector)',
+      'Embedding generation failed (intent will be created with zero vector)',
       { userId, proposalId },
     );
 
@@ -187,7 +187,7 @@ export class IntentService {
       try {
         await this.adapter.assignIntentToNetwork(created.id, networkId);
       } catch (err) {
-        logger.warn('[IntentService] Failed to associate intent with index', {
+        logger.warn('Failed to associate intent with index', {
           intentId: created.id,
           networkId,
           error: err,
@@ -202,7 +202,7 @@ export class IntentService {
         ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
       });
     } catch (err) {
-      logger.warn('[IntentService] Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
+      logger.warn('Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
     }
 
     IntentEvents.onCreated(created.id, userId);
@@ -220,11 +220,11 @@ export class IntentService {
    * @returns The created intent record
    */
   async createIntentForSeed(userId: string, description: string): Promise<{ id: string }> {
-    logger.verbose('[IntentService] Creating intent for seed', { userId });
+    logger.verbose('Creating intent for seed', { userId });
 
     const embedding = await this.generateEmbeddingOrZero(
       description,
-      '[IntentService] Embedding failed (intent created with zero vector)',
+      'Embedding failed (intent created with zero vector)',
       { userId },
     );
 
@@ -243,7 +243,7 @@ export class IntentService {
         { skipOpportunity: true }
       );
     } catch (err) {
-      logger.warn('[IntentService] HyDE sync failed for seed intent', {
+      logger.warn('HyDE sync failed for seed intent', {
         intentId: created.id,
         userId,
         error: err,
@@ -288,7 +288,7 @@ export class IntentService {
    * @returns Result with success flag and optional error
    */
   async archive(intentId: string, userId: string) {
-    logger.verbose('[IntentService] Archiving intent', { intentId, userId });
+    logger.verbose('Archiving intent', { intentId, userId });
 
     // Verify ownership
     const owned = await this.adapter.isOwnedByUser(intentId, userId);
@@ -302,22 +302,22 @@ export class IntentService {
     try {
       await this.adapter.deleteIntentIndexAssociations(intentId);
     } catch (err) {
-      logger.error('[IntentService] Failed to delete intent-network associations', { intentId, error: err });
+      logger.error('Failed to delete intent-network associations', { intentId, error: err });
     }
 
     try {
       const expiredCount = await this.adapter.expireOpportunitiesByIntentActor(intentId);
       if (expiredCount > 0) {
-        logger.verbose('[IntentService] Expired opportunities referencing intent', { intentId, expiredCount });
+        logger.verbose('Expired opportunities referencing intent', { intentId, expiredCount });
       }
     } catch (err) {
-      logger.error('[IntentService] Failed to expire opportunities', { intentId, error: err });
+      logger.error('Failed to expire opportunities', { intentId, error: err });
     }
 
     try {
       await intentQueue.addDeleteHydeJob({ intentId });
     } catch (err) {
-      logger.error('[IntentService] Failed to enqueue HyDE deletion', { intentId, error: err });
+      logger.error('Failed to enqueue HyDE deletion', { intentId, error: err });
     }
 
     IntentEvents.onArchived(intentId, userId);

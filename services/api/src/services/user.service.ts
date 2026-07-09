@@ -36,7 +36,7 @@ export class UserService {
     private readonly deps?: UserServiceDeps,
   ) {}
     async findById(userId: string) {
-        logger.verbose('[UserService] Finding user by ID', { userId });
+        logger.verbose('Finding user by ID', { userId });
         return this.db.findById(userId);
     }
 
@@ -65,7 +65,7 @@ export class UserService {
     }
 
     async update(userId: string, data: Partial<User>) {
-        logger.verbose('[UserService] Updating user', { userId, fields: Object.keys(data) });
+        logger.verbose('Updating user', { userId, fields: Object.keys(data) });
         return this.db.update(userId, data);
     }
 
@@ -74,7 +74,7 @@ export class UserService {
     }
 
     async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
-        logger.verbose('[UserService] Setting socials', { userId, count: socials.length });
+        logger.verbose('Setting socials', { userId, count: socials.length });
         await this.db.setSocials(userId, socials);
         await this.retractIntegrationPremises(userId);
     }
@@ -103,7 +103,7 @@ export class UserService {
 
         const toRetract = await getPremisesBySource(userId, 'integration');
 
-        logger.verbose('[UserService] Retracting integration premises before re-enrich', {
+        logger.verbose('Retracting integration premises before re-enrich', {
             userId,
             count: toRetract.length,
         });
@@ -114,7 +114,7 @@ export class UserService {
 
         // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
         enqueueEnrichment(userId).catch(err =>
-            logger.error('[UserService] Failed to enqueue re-enrichment after social update', {
+            logger.error('Failed to enqueue re-enrichment after social update', {
                 userId,
                 error: err,
             }),
@@ -122,7 +122,7 @@ export class UserService {
     }
 
     async softDelete(userId: string) {
-        logger.verbose('[UserService] Soft deleting user', { userId });
+        logger.verbose('Soft deleting user', { userId });
         await this.db.deleteUserSessions(userId);
         await this.db.softDelete(userId);
         return true;
@@ -155,7 +155,7 @@ export class UserService {
      * @returns User record or null
      */
     async findByIdOrKey(idOrKey: string) {
-        logger.verbose('[UserService] Finding user by ID or key', { idOrKey });
+        logger.verbose('Finding user by ID or key', { idOrKey });
         return this.db.findByIdOrKey(idOrKey);
     }
 

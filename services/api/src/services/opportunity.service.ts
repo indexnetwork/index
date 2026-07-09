@@ -15,6 +15,8 @@ import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 
 const logger = log.service.from("OpportunityService");
+const startChatLogger = log.service.from("OpportunityService.startChat");
+const updateStatusLogger = log.service.from("OpportunityService.updateOpportunityStatus");
 
 /**
  * Lifecycle statuses surfaced in the default opportunity list (when no explicit
@@ -223,7 +225,7 @@ export class OpportunityService {
       );
       return cards.get(opportunityId)?.greeting ?? '';
     } catch (err) {
-      logger.warn('[OpportunityService] getGreetingForCard failed', { opportunityId, error: err });
+      logger.warn('getGreetingForCard failed', { opportunityId, error: err });
       return '';
     }
   }
@@ -235,7 +237,7 @@ export class OpportunityService {
     userId: string,
     options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[] }
   ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
-    logger.verbose('[OpportunityService] Getting home view', { userId, options });
+    logger.verbose('Getting home view', { userId, options });
     if (!this.homeGraph) {
       return { error: 'Home view not available' };
     }
@@ -264,15 +266,15 @@ export class OpportunityService {
       // the existing unscoped maintenance trigger. Network scope retains current behavior.
       if (this.maintenanceGraph && !options?.networkId) {
         meta.maintenanceTriggered = true;
-        logger.info('[OpportunityService] Triggering maintenance via health scoring', { userId, source: 'home-view' });
+        logger.info('Triggering maintenance via health scoring', { userId, source: 'home-view' });
         this.maintenanceGraph.invoke({ userId }).catch((err) =>
-          logger.warn('[OpportunityService] Maintenance graph failed', { userId, error: err })
+          logger.warn('Maintenance graph failed', { userId, error: err })
         );
       }
 
       return { sections, meta };
     } catch (e) {
-      logger.error('[OpportunityService] getHomeView failed', { userId, error: e });
+      logger.error('getHomeView failed', { userId, error: e });
       return { error: 'Failed to load home view' };
     }
   }
@@ -313,7 +315,7 @@ export class OpportunityService {
       offset?: number;
     }
   ) {
-    logger.verbose('[OpportunityService] Getting opportunities for user', { userId, options });
+    logger.verbose('Getting opportunities for user', { userId, options });
 
     // No explicit status filter ⇒ show only live statuses, hiding terminal-stale
     // expired/rejected from the default list (IND-254). An explicit `status` or
@@ -381,7 +383,7 @@ export class OpportunityService {
 
         const visibilityError = this.assertOpportunityVisible(candidate, viewerId);
         if (visibilityError) {
-          logger.warn('[OpportunityService] Enriched replacement hidden from viewer', {
+          logger.warn('Enriched replacement hidden from viewer', {
             originalOpportunityId: original.id,
             replacementOpportunityId: candidate.id,
             viewerId,
@@ -412,7 +414,7 @@ export class OpportunityService {
    * @returns Opportunity with presentation data or null
    */
   async getOpportunityWithPresentation(opportunityId: string, viewerId: string) {
-    logger.verbose('[OpportunityService] Getting opportunity', { opportunityId, viewerId });
+    logger.verbose('Getting opportunity', { opportunityId, viewerId });
 
     let opp = await this.db.getOpportunity(opportunityId);
     if (!opp) {
@@ -500,7 +502,7 @@ export class OpportunityService {
     userId: string,
     options?: IntentScopeOptions,
   ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
-    logger.verbose('[OpportunityService] Updating opportunity status', {
+    logger.verbose('Updating opportunity status', {
       opportunityId,
       status,
       userId,
@@ -535,7 +537,7 @@ export class OpportunityService {
       try {
         await this.db.getOrCreateDM(userId, counterpart.userId);
       } catch (err) {
-        logger.error('[OpportunityService.updateOpportunityStatus] getOrCreateDM failed; status left untouched', {
+        updateStatusLogger.error('getOrCreateDM failed; status left untouched', {
           opportunityId,
           userId,
           counterpartUserId: counterpart.userId,
@@ -566,7 +568,7 @@ export class OpportunityService {
 
     if (options?.scopeType !== 'intent') {
       await this.db.acceptSiblingOpportunities(userId, counterpartUserId, opportunityId).catch((err) => {
-        logger.error('[OpportunityService.updateOpportunityStatus] acceptSiblingOpportunities failed (non-blocking)', {
+        updateStatusLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
           opportunityId,
           userId,
           counterpartUserId,
@@ -578,7 +580,7 @@ export class OpportunityService {
     // Accepter explicitly acted — restore if previously removed.
     // Counterpart: add them to the accepter but honour any prior opt-out on their side.
     await this.db.upsertContactMembership(userId, counterpartUserId, { restore: true }).catch((err) => {
-      logger.error('[OpportunityService.updateOpportunityStatus] upsertContactMembership failed (non-blocking)', {
+      updateStatusLogger.error('upsertContactMembership failed (non-blocking)', {
         opportunityId,
         userId,
         counterpartUserId,
@@ -586,7 +588,7 @@ export class OpportunityService {
       });
     });
     await this.db.upsertContactMembership(counterpartUserId, userId, { restore: false }).catch((err) => {
-      logger.error('[OpportunityService.updateOpportunityStatus] upsertContactMembership (counterpart) failed (non-blocking)', {
+      updateStatusLogger.error('upsertContactMembership (counterpart) failed (non-blocking)', {
         opportunityId,
         userId,
         counterpartUserId,
@@ -642,7 +644,7 @@ export class OpportunityService {
     // Transition to pending (triggers negotiation)
     const statusResult = await this.updateOpportunityStatus(opportunityId, 'pending', userId);
     if (statusResult && 'error' in statusResult) {
-      logger.error('[OpportunityService.approveIntroduction] status transition failed', {
+      logger.error('Status transition failed during introduction approval', {
         opportunityId,
         userId,
         error: statusResult.error,
@@ -714,13 +716,13 @@ export class OpportunityService {
       try {
         conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
       } catch (err) {
-        logger.error('[OpportunityService.startChat] getOrCreateDM failed for accepted opp', {
+        startChatLogger.error('getOrCreateDM failed for accepted opp', {
           opportunityId, userId, counterpartUserId: counterpart.userId, error: err,
         });
         return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
       }
       await this.db.unhideConversation(userId, conversation.id).catch((err) => {
-        logger.error('[OpportunityService.startChat] unhideConversation failed (non-blocking)', {
+        startChatLogger.error('unhideConversation failed (non-blocking)', {
           conversationId: conversation.id, userId, error: err,
         });
       });
@@ -757,7 +759,7 @@ export class OpportunityService {
     try {
       conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
     } catch (err) {
-      logger.error('[OpportunityService.startChat] getOrCreateDM failed; opp left untouched', {
+      startChatLogger.error('getOrCreateDM failed; opp left untouched', {
         opportunityId,
         userId,
         counterpartUserId: counterpart.userId,
@@ -770,7 +772,7 @@ export class OpportunityService {
     // user previously hid it. This must happen before returning — the frontend
     // immediately calls refreshConversations() and expects to see the DM.
     await this.db.unhideConversation(userId, conversation.id).catch((err) => {
-      logger.error('[OpportunityService.startChat] unhideConversation failed (non-blocking)', {
+      startChatLogger.error('unhideConversation failed (non-blocking)', {
         conversationId: conversation.id,
         userId,
         error: err,
@@ -788,7 +790,7 @@ export class OpportunityService {
     // resolved; these keep the home feed and contacts view in sync.
     if (options?.scopeType !== 'intent') {
       await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
-        logger.error('[OpportunityService.startChat] acceptSiblingOpportunities failed (non-blocking)', {
+        startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
           opportunityId,
           userId,
           counterpartUserId: counterpart.userId,
@@ -797,7 +799,7 @@ export class OpportunityService {
       });
     }
     await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true }).catch((err) => {
-      logger.error('[OpportunityService.startChat] upsertContactMembership failed (non-blocking)', {
+      startChatLogger.error('upsertContactMembership failed (non-blocking)', {
         opportunityId,
         userId,
         counterpartUserId: counterpart.userId,
@@ -805,7 +807,7 @@ export class OpportunityService {
       });
     });
     await this.db.upsertContactMembership(counterpart.userId, userId, { restore: false }).catch((err) => {
-      logger.error('[OpportunityService.startChat] upsertContactMembership (counterpart) failed (non-blocking)', {
+      startChatLogger.error('upsertContactMembership (counterpart) failed (non-blocking)', {
         opportunityId,
         userId,
         counterpartUserId: counterpart.userId,
@@ -829,7 +831,7 @@ export class OpportunityService {
    * @returns Discovery results
    */
   async discoverOpportunities(userId: string, query: string, limit: number = 5) {
-    logger.verbose('[OpportunityService] Discovering opportunities', { userId, query, limit });
+    logger.verbose('Discovering opportunities', { userId, query, limit });
 
     if (!this.graph) {
       return { error: 'Discovery not available; graph dependencies not configured', status: 503 };
@@ -874,7 +876,7 @@ export class OpportunityService {
       offset?: number;
     }
   ) {
-    logger.verbose('[OpportunityService] Getting opportunities for index', { networkId, userId, options });
+    logger.verbose('Getting opportunities for index', { networkId, userId, options });
 
     const isOwner = await this.db.isIndexOwner(networkId, userId);
     const isMember = await this.db.isNetworkMember(networkId, userId);
@@ -912,7 +914,7 @@ export class OpportunityService {
       confidence?: number;
     }
   ) {
-    logger.verbose('[OpportunityService] Creating manual opportunity', { networkId, creatorId });
+    logger.verbose('Creating manual opportunity', { networkId, creatorId });
 
     // Check permission
     const permission = await this.checkCreatePermission(creatorId, data.parties, networkId);
@@ -973,7 +975,7 @@ export class OpportunityService {
       if (!created?.length) {
         const message =
           errors?.length ? (errors[0].error instanceof Error ? errors[0].error.message : String(errors[0].error)) : 'Failed to persist opportunity';
-        logger.warn('[OpportunityService] createManualOpportunity persistence failed', { errors, creatorId, networkId });
+        logger.warn('createManualOpportunity persistence failed', { errors, creatorId, networkId });
         return { error: message, status: 500 };
       }
 
@@ -984,7 +986,7 @@ export class OpportunityService {
       return created[0];
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to persist opportunity';
-      logger.warn('[OpportunityService] createManualOpportunity persistence failed', { error: err, creatorId, networkId });
+      logger.warn('createManualOpportunity persistence failed', { error: err, creatorId, networkId });
       return { error: message, status: 500 };
     }
   }
@@ -998,7 +1000,7 @@ export class OpportunityService {
    * @returns Opportunity cards and peer info for chat context
    */
   async getChatContext(userId: string, peerUserId: string) {
-    logger.verbose('[OpportunityService] Getting chat context', { userId, peerUserId });
+    logger.verbose('Getting chat context', { userId, peerUserId });
 
     const [allRows, peerUser] = await Promise.all([
       this.db.findOpportunitiesByActors([userId, peerUserId], { includeIntroducers: true, statuses: ['accepted'] }),
@@ -1019,7 +1021,7 @@ export class OpportunityService {
       const cacheKeys = rows.map((opp) => `chat:card:${opp.id}:${userId}`);
       cachedResults = await this.cache.mget<ChatCardCached>(cacheKeys);
     } catch (e) {
-      logger.warn('[OpportunityService] getChatContext cache read failed, skipping', { error: e });
+      logger.warn('getChatContext cache read failed, skipping', { error: e });
       cachedResults = rows.map(() => null);
     }
 
@@ -1057,7 +1059,7 @@ export class OpportunityService {
           }
           return card;
         } catch (err) {
-          logger.warn('[OpportunityService] getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });
+          logger.warn('getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });
           const introducerActor = opp.actors.find((a) => a.role === 'introducer');
           const introducerName = introducerActor ? opp.detection?.createdByName ?? null : null;
           // Shared sanitization standard — see opportunity.safe-presentation.ts in protocol.
@@ -1153,12 +1155,12 @@ export class OpportunityService {
    */
   triggerMaintenance(userId: string, source: string): void {
     if (!this.maintenanceGraph) {
-      logger.warn('[OpportunityService] Maintenance graph not available', { userId, source });
+      logger.warn('Maintenance graph not available', { userId, source });
       return;
     }
-    logger.info('[OpportunityService] Triggering maintenance', { userId, source });
+    logger.info('Triggering maintenance', { userId, source });
     this.maintenanceGraph.invoke({ userId }).catch((err) =>
-      logger.warn('[OpportunityService] Maintenance graph failed', { userId, source, error: err })
+      logger.warn('Maintenance graph failed', { userId, source, error: err })
     );
   }
 
@@ -1243,7 +1245,7 @@ export class OpportunityService {
       const dm = await this.db.getOrCreateDM(viewerUserId, counterpart.userId);
       return dm.id;
     } catch (err) {
-      logger.error('[OpportunityService.getConversationIdForOpp] getOrCreateDM failed', {
+      logger.error('getOrCreateDM failed while resolving conversation for opportunity', {
         opportunityId, viewerUserId, counterpartUserId: counterpart.userId, error: err,
       });
       return null;

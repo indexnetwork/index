@@ -118,7 +118,12 @@ export class MaintenanceGraphFactory {
           freshnessWindowMs: FRESHNESS_WINDOW_MS,
         });
 
-        logger.verbose(`[MaintenanceGraph] Feed health scored — userId=${state.userId} score=${healthResult.score} shouldMaintain=${healthResult.shouldMaintain} connectorFlowCount=${connectorFlowCount}`);
+        logger.verbose('Feed health scored', {
+          userId: state.userId,
+          score: healthResult.score,
+          shouldMaintain: healthResult.shouldMaintain,
+          connectorFlowCount,
+        });
 
         return { healthResult, connectorFlowCount };
       } catch (e) {
@@ -151,7 +156,7 @@ export class MaintenanceGraphFactory {
         for (const r of results) {
           if (r.status === 'rejected') {
             const errMsg = r.reason instanceof Error ? r.reason.message : String(r.reason);
-            logger.error(`[MaintenanceGraph] Rediscovery job enqueue failed: ${errMsg}`);
+            logger.error('Rediscovery job enqueue failed', { error: errMsg });
           }
         }
         const enqueued = results.filter((r) => r.status === 'fulfilled').length;
@@ -180,7 +185,11 @@ export class MaintenanceGraphFactory {
       try {
         const connectorFlowTarget = FEED_SOFT_TARGETS.connectorFlow;
         if (!shouldRunIntroducerDiscovery(state.connectorFlowCount, connectorFlowTarget)) {
-          logger.verbose(`[MaintenanceGraph] Introducer discovery skipped — connector-flow target met — userId=${state.userId} connectorFlowCount=${state.connectorFlowCount} connectorFlowTarget=${connectorFlowTarget}`);
+          logger.verbose('Introducer discovery skipped — connector-flow target met', {
+            userId: state.userId,
+            connectorFlowCount: state.connectorFlowCount,
+            connectorFlowTarget,
+          });
           return {};
         }
 
@@ -191,7 +200,12 @@ export class MaintenanceGraphFactory {
           state.userId,
         );
 
-        logger.info(`[MaintenanceGraph] Introducer discovery complete — userId=${state.userId} contactsEvaluated=${result.contactsEvaluated} jobsEnqueued=${result.jobsEnqueued}${result.skippedReason ? ` skippedReason=${result.skippedReason}` : ''}`);
+        logger.info('Introducer discovery complete', {
+          userId: state.userId,
+          contactsEvaluated: result.contactsEvaluated,
+          jobsEnqueued: result.jobsEnqueued,
+          skippedReason: result.skippedReason,
+        });
 
         return { introducerDiscoveryJobsEnqueued: result.jobsEnqueued };
       } catch (e) {
@@ -202,7 +216,15 @@ export class MaintenanceGraphFactory {
     };
 
     const logMaintenanceNode = async (state: typeof MaintenanceGraphState.State) => {
-      logger.info(`[MaintenanceGraph] Maintenance complete — userId=${state.userId} score=${state.healthResult?.score} shouldMaintain=${state.healthResult?.shouldMaintain} rediscoveryJobs=${state.rediscoveryJobsEnqueued} introducerDiscoveryJobs=${state.introducerDiscoveryJobsEnqueued} activeIntents=${state.activeIntents.length} connectorFlowCount=${state.connectorFlowCount}`);
+      logger.info('Maintenance complete', {
+        userId: state.userId,
+        score: state.healthResult?.score,
+        shouldMaintain: state.healthResult?.shouldMaintain,
+        rediscoveryJobs: state.rediscoveryJobsEnqueued,
+        introducerDiscoveryJobs: state.introducerDiscoveryJobsEnqueued,
+        activeIntents: state.activeIntents.length,
+        connectorFlowCount: state.connectorFlowCount,
+      });
       return {};
     };
 

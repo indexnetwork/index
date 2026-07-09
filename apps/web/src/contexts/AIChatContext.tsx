@@ -5,6 +5,9 @@ import { apiClient } from "@/lib/api";
 import type { Suggestion } from "@/hooks/useSuggestions";
 import type { Question } from "@/components/DecisionQuestions/types";
 import type { PendingQuestion } from "@/services/questions";
+import { log } from "@/lib/logger";
+
+const logger = log.context.from("AIChatContext");
 
 export interface DiscoveryOpportunity {
   candidateId: string;
@@ -925,7 +928,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     break;
                 }
               } catch (e) {
-                console.error("Failed to parse SSE event:", e);
+                logger.error("Failed to parse SSE event", { error: e });
               }
             }
           }
@@ -933,7 +936,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           const isSteerAbort = abortControllerRef.current?.signal.reason === 'steer';
-          console.log(isSteerAbort ? "Chat stream interrupted by steer" : "Chat stream aborted");
+          logger.debug(isSteerAbort ? "Chat stream interrupted by steer" : "Chat stream aborted");
           const stoppedAt = Date.now();
           setMessages((prev) =>
             prev.map((msg) =>
@@ -949,7 +952,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
             ),
           );
         } else {
-          console.error("Chat error:", error);
+          logger.error("Chat error", { error });
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMessageId
@@ -1120,7 +1123,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         })),
       );
     } catch (err) {
-      console.error("Load session error:", err);
+      logger.error("Load session error", { error: err });
     }
   }, []);
 
@@ -1137,7 +1140,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         refetchSessions();
         return true;
       } catch (err) {
-        console.error("Update session title error:", err);
+        logger.error("Update session title error", { error: err });
         return false;
       }
     },

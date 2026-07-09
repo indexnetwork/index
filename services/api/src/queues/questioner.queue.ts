@@ -102,7 +102,7 @@ export class QuestionerQueue {
         await this.handleGenerateQuestions(data);
         break;
       default:
-        this.queueLogger.warn(`[QuestionerProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -113,7 +113,7 @@ export class QuestionerQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<QuestionerJobData>) => {
-      this.queueLogger.info(`[QuestionerProcessor] Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<QuestionerJobData>(QUEUE_NAME, processor);
@@ -131,7 +131,7 @@ export class QuestionerQueue {
   }
 
   private async handleGenerateQuestions(data: QuestionerJobData): Promise<void> {
-    this.logger.info('[QuestionerJob] Starting question generation', {
+    this.logger.info('Starting question generation', {
       mode: data.mode,
       userId: data.userId,
       sourceType: data.sourceType,
@@ -141,7 +141,7 @@ export class QuestionerQueue {
     const result: QuestionGenerationResult | null = await this.getAgent().invoke(data);
 
     if (!result) {
-      this.logger.info('[QuestionerJob] Agent returned null, skipping persist', {
+      this.logger.info('Agent returned null, skipping persist', {
         mode: data.mode,
         sourceId: data.sourceId,
       });
@@ -172,7 +172,7 @@ export class QuestionerQueue {
 
     const ids = await this.adapter.persist(batch);
 
-    this.logger.info('[QuestionerJob] Persisted questions', {
+    this.logger.info('Persisted questions', {
       mode: data.mode,
       sourceId: data.sourceId,
       count: batch.length,

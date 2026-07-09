@@ -20,7 +20,7 @@ import db from '../lib/drizzle/drizzle';
 
 import { log } from '../lib/log';
 
-const logger = log.service.from('tool');
+const logger = log.service.from('ToolService');
 
 const questionerAdapter = new QuestionerAdapter(db);
 

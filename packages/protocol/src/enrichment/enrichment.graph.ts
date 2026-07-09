@@ -634,7 +634,9 @@ export class EnrichmentGraphFactory {
             }
           }
           if (retracted > 0) {
-            logger.verbose(`Retracted ${retracted}/${retractionIds.length} premise(s) disavowed by input`, {
+            logger.verbose('Retracted premises disavowed by input', {
+              retracted,
+              requested: retractionIds.length,
               userId: state.userId,
             });
           }
@@ -669,7 +671,8 @@ export class EnrichmentGraphFactory {
             };
           }
 
-          logger.verbose(`Creating ${result.premises.length} premise(s) via premise graph`, {
+          logger.verbose('Creating premises via premise graph', {
+            count: result.premises.length,
             userId: state.userId,
           });
 
@@ -714,7 +717,10 @@ export class EnrichmentGraphFactory {
             }
           }
 
-          logger.verbose(`Created ${created}/${result.premises.length} premise(s) (${skippedDuplicates} skipped as near-duplicates)`, {
+          logger.verbose('Created premises', {
+            created,
+            requested: result.premises.length,
+            skippedDuplicates,
             userId: state.userId,
           });
 

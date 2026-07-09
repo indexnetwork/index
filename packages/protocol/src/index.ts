@@ -31,6 +31,8 @@ export {
 } from "./shared/agent/tool.scope.js";
 export type { ToolScopeEnvelope, ToolScopeType, ScopeMembership, DeriveNetworkScopeInput } from "./shared/agent/tool.scope.js";
 export { requestContext } from "./shared/observability/request-context.js";
+export { setLoggerFactory } from "./shared/observability/log.js";
+export type { LoggerWithSource as ProtocolLoggerWithSource } from "./shared/observability/log.js";
 export { setTimingWrapper } from "./shared/observability/performance.js";
 export { ToolRuntimeError, getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } from "./shared/agent/tool.runtime.js";
 export type { ToolRuntimeErrorCode, ToolTimeoutClass, ToolTimeoutPolicy } from "./shared/agent/tool.runtime.js";

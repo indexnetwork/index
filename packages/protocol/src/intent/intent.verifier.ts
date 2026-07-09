@@ -7,6 +7,7 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("SemanticVerifier");
+const invokeLog = protocolLogger("SemanticVerifier:invoke");
 
 const referentialBreadthSchema = z.enum(["narrow", "moderate", "broad"]);
 const missingSelectionalConstraintSchema = z.enum([
@@ -244,7 +245,7 @@ export class SemanticVerifier {
    */
   @Timed()
   public async invoke(content: string, context: string) {
-    logger.verbose(`[SemanticVerifier.invoke] Verifying: "${content.substring(0, 30)}..."`);
+    invokeLog.verbose('Verifying content', { preview: content.substring(0, 30) });
 
     const prompt = `
       # User Profile (Context)
@@ -265,10 +266,10 @@ export class SemanticVerifier {
       const result = await invokeWithAbortSignal(this.model, messages);
       const output = responseFormat.parse(result);
 
-      logger.verbose(`[SemanticVerifier.invoke] Verdict: ${output.classification} Entropy: ${output.semantic_entropy}`);
+      invokeLog.verbose('Verdict computed', { classification: output.classification, semanticEntropy: output.semantic_entropy });
       return output;
     } catch (error) {
-      logger.error("[SemanticVerifier] Error during invocation", { error });
+      logger.error("Error during invocation", { error });
       throw error;
     }
   }

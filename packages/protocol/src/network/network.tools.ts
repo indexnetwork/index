@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { requestContext } from "../shared/observability/request-context.js";
+import { log } from "../shared/observability/log.js";
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
@@ -10,6 +11,8 @@ import { NetworkRecommender } from "./network.recommender.js";
 // Lazy singleton — only instantiated on first onboarding ranking call so that
 // importing this module does not require OPENROUTER_API_KEY at load time.
 let recommender: NetworkRecommender | undefined;
+
+const logger = log.protocol.from("ChatTools:Network");
 
 export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs, userDb, systemDb } = deps;
@@ -105,7 +108,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
               return await recommender.invoke(input);
             } catch (err) {
               // e.g. missing OPENROUTER_API_KEY — degrade gracefully, omit orderedNetworkIds
-              console.warn("[read_networks] NetworkRecommender unavailable, skipping ranking:", err);
+              logger.warn("read_networks: NetworkRecommender unavailable, skipping ranking", { error: err });
               return null;
             }
           });
@@ -115,7 +118,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
           }).catch((err: unknown) => {
             // Catches errors from a custom deps.networkRanker (the default fallback
             // handles its own errors internally). Degrade gracefully: omit orderedNetworkIds.
-            console.warn("[read_networks] networkRanker threw, skipping ranking:", err);
+            logger.warn("read_networks: networkRanker threw, skipping ranking", { error: err });
             deps.reportToolError?.(err, { operation: "network-ranking", toolName: "read_networks", userId: context.userId });
             return null;
           });

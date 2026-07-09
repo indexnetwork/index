@@ -104,6 +104,50 @@ export default tseslint.config(
     },
   },
 
+  // ── Protocol runtime: route logs through shared/observability/log ────
+  // (log.ts itself carries inline eslint-disable comments for its console
+  // sink — the default implementation used when no host logger is wired.)
+  {
+    files: ["packages/protocol/src/**/*.ts"],
+    ignores: [
+      "packages/protocol/src/**/*.spec.ts",
+      "packages/protocol/src/**/*.test.ts",
+      "packages/protocol/src/**/tests/**",
+    ],
+    rules: {
+      "no-console": "error",
+    },
+  },
+
+  // ── Web runtime: route logs through lib/logger (labelled + truncated) ─
+  // (lib/logger.ts itself carries a file-level eslint-disable — it is the
+  // console sink.)
+  {
+    files: ["apps/web/src/**/*.{ts,tsx}"],
+    ignores: [
+      "apps/web/src/**/*.spec.{ts,tsx}",
+      "apps/web/src/**/*.test.{ts,tsx}",
+      "apps/web/src/test/**",
+    ],
+    rules: {
+      "no-console": "error",
+    },
+  },
+
+  // ── CLI surfaces: stdout (console.log) is the product; warnings and
+  // errors go to stderr (console.warn/error). Only debug/info/trace are
+  // banned so diagnostics never drift onto pipeable stdout. ─────────────
+  {
+    files: [
+      "packages/cli/src/**/*.ts",
+      "packages/cli/scripts/**/*.ts",
+      "services/api/src/cli/**/*.ts",
+    ],
+    rules: {
+      "no-console": ["error", { allow: ["log", "warn", "error"] }],
+    },
+  },
+
   // ── Web app: React-specific rules ──────────────────────────────────
   {
     files: ["apps/web/src/**/*.{ts,tsx}"],

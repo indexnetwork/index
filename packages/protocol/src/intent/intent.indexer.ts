@@ -22,6 +22,7 @@ export const IntentIndexerOutputSchema = z.object({
 export type IntentIndexerOutput = z.infer<typeof IntentIndexerOutputSchema>;
 
 const logger = log.lib.from("IntentIndexer");
+const invokeLog = log.lib.from("IntentIndexer:invoke");
 
 
 // ──────────────────────────────────────────────────────────────
@@ -115,7 +116,7 @@ export class IntentIndexer {
     sourceName?: string | null,
     networkContext?: string | null
   ): Promise<IntentIndexerOutput | null> {
-    logger.verbose("[IntentIndexer.invoke] Evaluating intent");
+    invokeLog.verbose("Evaluating intent");
 
     const contextParts: string[] = [];
     if (sourceName) contextParts.push(`Source: ${sourceName}`);
@@ -142,13 +143,13 @@ export class IntentIndexer {
       const result = await invokeWithAbortSignal(this.model, messages);
       const output = responseFormat.parse(result) as IntentIndexerOutput;
 
-      logger.verbose("[IntentIndexer.invoke] Evaluation complete", {
+      invokeLog.verbose("Evaluation complete", {
         indexScore: output.indexScore,
         memberScore: output.memberScore,
       });
       return output;
     } catch (error) {
-      logger.error("[IntentIndexer] Error during execution", { error });
+      logger.error("Error during execution", { error });
       return null;
     }
   }

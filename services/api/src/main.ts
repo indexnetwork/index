@@ -37,7 +37,7 @@ import { SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
-import { log } from './lib/log';
+import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
@@ -80,12 +80,20 @@ import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setTimingWrapper } from '@indexnetwork/protocol';
+import { IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
 import { agentService } from './services/agent.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
+
+// Wire the protocol library's logging into the rich API logger (context colors,
+// emoji, LOG_FILTER/LOG_LEVEL, Sentry, embedding redaction + payload truncation).
+// Protocol loggers are late-bound, so this upgrades loggers created at import time too.
+setLoggerFactory(
+  (context, source) => log.withContext(context as Parameters<typeof log.withContext>[0], source),
+  sanitizeForLog,
+);
 
 // Wire ChatGraphFactory into chat service at startup
 chatSessionService.setFactory(chatFactory);

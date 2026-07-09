@@ -6,6 +6,7 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("PremiseIndexer");
+const invokeLog = protocolLogger("PremiseIndexer:invoke");
 
 const systemPrompt = `
 You are a Premise Evaluator for a social networking protocol.
@@ -64,7 +65,7 @@ export class PremiseIndexer {
     memberPrompt?: string;
     networkContext?: string;
   }): Promise<PremiseIndexerOutput> {
-    logger.verbose(`[PremiseIndexer.invoke] Scoring premise against index`);
+    invokeLog.verbose(`Scoring premise against index`);
 
     const prompt = [
       "# Premise",

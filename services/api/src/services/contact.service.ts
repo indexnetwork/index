@@ -154,7 +154,7 @@ export class ContactService {
     // Enqueue enrichment for new ghosts
     if (isNew && isGhost) {
       await enrichmentQueue.addEnrichUserJob({ userId: user.id });
-      logger.info('[ContactService] Enrichment job enqueued for new ghost', { userId: user.id });
+      logger.info('Enrichment job enqueued for new ghost', { userId: user.id });
     }
 
     return { userId: user.id, isNew, isGhost };
@@ -190,7 +190,7 @@ export class ContactService {
       if (seenEmails.has(email)) { skipped++; continue; }
       const name = contact.name?.trim() || '';
       if (!isHumanContact(email, name)) {
-        logger.debug('[ContactService] Skipped non-human contact', { domain: email.split('@')[1] });
+        logger.debug('Skipped non-human contact', { domain: email.split('@')[1] });
         skipped++;
         continue;
       }
@@ -247,7 +247,7 @@ export class ContactService {
   ): Promise<ImportResult> {
     if (!isContactsEnabled()) throw new ContactsDisabledError();
 
-    logger.info('[ContactService] Importing contacts', { ownerId, count: contacts.length });
+    logger.info('Importing contacts', { ownerId, count: contacts.length });
 
     const resolved = await this.resolveUsers(ownerId, contacts);
 
@@ -261,7 +261,7 @@ export class ContactService {
     const nameSkipped = dedupResult.removed.length;
 
     if (dedupResult.removed.length > 0) {
-      logger.info('[ContactService] Dedup removed contacts', {
+      logger.info('Dedup removed contacts', {
         ownerId,
         removed: dedupResult.removed.map(r => ({
           email: r.email,
@@ -281,7 +281,7 @@ export class ContactService {
       .map(d => d.userId);
     if (newGhostIdsToEnrich.length > 0) {
       await enrichmentQueue.addEnrichUserJobBulk(newGhostIdsToEnrich.map(id => ({ userId: id })));
-      logger.info('[ContactService] Enrichment jobs enqueued for new ghosts', { count: newGhostIdsToEnrich.length });
+      logger.info('Enrichment jobs enqueued for new ghosts', { count: newGhostIdsToEnrich.length });
     }
 
     const newCount = dedupResult.kept.filter(d => d.isNew).length;
@@ -293,7 +293,7 @@ export class ContactService {
       details: dedupResult.kept,
     };
 
-    logger.info('[ContactService] Import completed', {
+    logger.info('Import completed', {
       ownerId,
       imported: result.imported,
       skipped: result.skipped,
@@ -341,7 +341,7 @@ export class ContactService {
    * @param contactUserId - The contact user ID to remove
    */
   async removeContact(ownerId: string, contactUserId: string): Promise<void> {
-    logger.info('[ContactService] Removing contact', { ownerId, contactUserId });
+    logger.info('Removing contact', { ownerId, contactUserId });
     await this.db.hardDeleteContactMembership(ownerId, contactUserId);
   }
 }

@@ -5,6 +5,9 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers, useOpportunities } from "@/contexts/APIContext";
 import { User } from "@/lib/types";
 import ChatView from "@/components/chat/ChatView";
+import { log } from "@/lib/logger";
+
+const logger = log.page.from("u/[id]/chat");
 
 export default function ChatPage() {
   const { id } = useParams();
@@ -46,7 +49,7 @@ export default function ChatPage() {
         const profile = await usersService.getUserProfile(id!);
         setProfileData(profile);
       } catch (err) {
-        console.error('Failed to fetch profile:', err);
+        logger.error('Failed to fetch profile', { error: err });
         setError('User not found');
       } finally {
         setIsLoading(false);
@@ -61,7 +64,7 @@ export default function ChatPage() {
     try {
       await opportunitiesService.updateStatus(pendingOpportunityId, "accepted");
     } catch (err) {
-      console.error('[ChatPage] Failed to accept opportunity after message sent:', err);
+      logger.error('Failed to accept opportunity after message sent', { error: err });
     }
   };
 

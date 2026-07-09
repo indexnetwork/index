@@ -4,7 +4,7 @@ import type { DefineTool, ToolDeps } from '../shared/agent/tool.helpers.js';
 import { error, success } from '../shared/agent/tool.helpers.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
-const logger = protocolLogger('AgentTools');
+const logger = protocolLogger('ChatTools:Agent');
 
 const AGENT_ACTIONS = [
   'manage:profile',

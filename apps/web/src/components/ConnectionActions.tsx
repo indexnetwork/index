@@ -3,6 +3,9 @@ import { useNavigate } from "react-router";
 import { X, Check, RotateCcw } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import InviteMessageModal from "@/components/InviteMessageModal";
+import { log } from "@/lib/logger";
+
+const logger = log.ui.from("ConnectionActions");
 
 export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
 
@@ -73,7 +76,7 @@ export default function ConnectionActions({
           break;
       }
     } catch (err) {
-      console.error('Connection action failed:', err);
+      logger.error('Connection action failed', { error: err });
       error("Action failed", "Please try again later.");
     } finally {
       setIsLoading(false);

@@ -103,10 +103,10 @@ export class NegotiationInsightsGenerator {
 
       if (!text) return null;
 
-      logger.verbose("[NegotiationInsightsGenerator.invoke] Insights generated", { length: text.length });
+      logger.verbose("Insights generated", { length: text.length });
       return text;
     } catch (error) {
-      logger.warn("[NegotiationInsightsGenerator.invoke] Failed to generate insights", {
+      logger.warn("Failed to generate insights", {
         error: error instanceof Error ? error.message : String(error),
       });
       return null;

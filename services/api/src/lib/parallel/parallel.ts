@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 
 import { log } from '../log';
-const logger = log.lib.from("lib/parallel/parallel.ts");
+const logger = log.lib.from("parallel");
 
 const PARALLEL_API_URL = 'https://api.parallel.ai/v1beta/search';
 const PARALLELS_API_KEY = process.env.PARALLELS_API_KEY || '';

@@ -3,6 +3,9 @@ import { Loader2, MessageSquare } from "lucide-react";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useSaveBarVisible } from "@/contexts/SaveBarContext";
 import { getJwtToken } from "@/lib/auth-client";
+import { log } from "@/lib/logger";
+
+const logger = log.ui.from("FeedbackWidget");
 
 export default function FeedbackWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -60,7 +63,7 @@ export default function FeedbackWidget() {
       setFeedback("");
       setIsOpen(false);
     } catch (error) {
-      console.error("Error submitting feedback:", error);
+      logger.error("Error submitting feedback", { error });
     } finally {
       setIsSubmitting(false);
     }

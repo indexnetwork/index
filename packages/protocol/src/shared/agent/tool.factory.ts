@@ -99,7 +99,8 @@ export async function createChatTools(
   }) {
     return tool(
       async (query: z.infer<T>) => {
-        logger.info(`Tool: ${opts.name}`, {
+        logger.info('Tool invoked', {
+          toolName: opts.name,
           context: { userId: resolvedContext.userId, scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId },
           query: redactSensitiveFields(query),
         });
@@ -111,7 +112,8 @@ export async function createChatTools(
             query,
           });
         } catch (err) {
-          logger.error(`${opts.name} failed`, {
+          logger.error('Tool failed', {
+            toolName: opts.name,
             error: err instanceof Error ? err.message : String(err),
           });
           const runtimeResult = toolRuntimeErrorToResult(err);

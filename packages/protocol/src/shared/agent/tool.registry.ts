@@ -43,7 +43,8 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
       description: opts.description,
       schema: opts.querySchema,
       handler: async (input: { context: ResolvedToolContext; query: unknown }) => {
-        logger.verbose(`Tool: ${opts.name}`, {
+        logger.verbose('Tool invoked', {
+          toolName: opts.name,
           context: { userId: input.context.userId, scopeType: input.context.scopeType, scopeId: input.context.scopeId },
           query: redactSensitiveFields(input.query),
         });
@@ -54,7 +55,8 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
           if (abortSignal?.aborted) {
             throw err;
           }
-          logger.error(`${opts.name} failed`, {
+          logger.error('Tool failed', {
+            toolName: opts.name,
             error: err instanceof Error ? err.message : String(err),
           });
           return error(`Failed to execute ${opts.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -104,7 +106,7 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
   for (const [oldName, canonicalName] of DEPRECATED_TOOL_ALIASES) {
     const canonical = registry.get(canonicalName);
     if (!canonical) {
-      logger.warn(`Cannot register deprecated alias ${oldName}: canonical ${canonicalName} not found`);
+      logger.warn('Cannot register deprecated alias: canonical tool not found', { alias: oldName, canonicalName });
       continue;
     }
     registry.set(oldName, {
@@ -114,6 +116,6 @@ export function createToolRegistry(deps: ToolDeps): ToolRegistry {
     });
   }
 
-  logger.verbose(`Tool registry created with ${registry.size} tools`);
+  logger.verbose('Tool registry created', { toolCount: registry.size });
   return registry;
 }

@@ -224,7 +224,8 @@ export class ExplicitIntentInferrer {
       const result = await invokeWithAbortSignal(this.model, messages);
       const output = responseFormat.parse(result);
 
-      logger.verbose(`invoke: found ${output.intents.length} intents`, {
+      logger.verbose('invoke: found intents', {
+        count: output.intents.length,
         operationMode,
         allowedFallback: allowProfileFallback,
         usedFallback: !content && allowProfileFallback,

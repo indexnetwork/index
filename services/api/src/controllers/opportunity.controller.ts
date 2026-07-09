@@ -154,7 +154,7 @@ export class OpportunityController {
       return Response.json(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('[getChatContext] Error', { userId: user.id, error: message });
+      logger.error('getChatContext failed', { userId: user.id, error: message });
       return Response.json({ error: 'Internal server error' }, { status: 500 });
     }
   }

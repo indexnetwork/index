@@ -15,6 +15,12 @@ import { timed } from "../shared/observability/performance.js";
 import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
 
 const logger = protocolLogger("PremiseGraphFactory");
+const queryLog = protocolLogger("PremiseGraph:query");
+const analyzeLog = protocolLogger("PremiseGraph:analyze");
+const embedLog = protocolLogger("PremiseGraph:embed");
+const persistLog = protocolLogger("PremiseGraph:persist");
+const indexLog = protocolLogger("PremiseGraph:index");
+const dedupeLog = protocolLogger("PremiseGraph:dedupe");
 
 /**
  * Minimum cosine similarity (0-1) at which a freshly-decomposed premise is treated
@@ -63,7 +69,7 @@ export class PremiseGraphFactory {
 
     const queryNode = async (state: typeof PremiseGraphState.State) => {
       return timed("PremiseGraph.query", async () => {
-        logger.verbose(`[PremiseGraph.query] Fetching premises for user ${state.userId}`);
+        queryLog.verbose('Fetching premises for user', { userId: state.userId });
         const premises = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
         return {
           readResult: {
@@ -80,7 +86,7 @@ export class PremiseGraphFactory {
           return { error: "assertionText is required for create/update mode" };
         }
 
-        logger.verbose(`[PremiseGraph.analyze] Analyzing: "${state.assertionText.substring(0, 50)}..."`);
+        analyzeLog.verbose('Analyzing assertion text', { preview: state.assertionText.substring(0, 50) });
 
         const start = Date.now();
         const result = await analyzer.invoke(state.assertionText);
@@ -109,7 +115,7 @@ export class PremiseGraphFactory {
           return { error: "assertionText is required for embedding" };
         }
 
-        logger.verbose(`[PremiseGraph.embed] Generating embedding for premise`);
+        embedLog.verbose(`Generating embedding for premise`);
 
         // Embedder.generate returns number[] | number[][], cast for single string input
         const embedding = await this.embedder.generate(state.assertionText, undefined, getAbortSignalConfig()) as number[];
@@ -138,9 +144,11 @@ export class PremiseGraphFactory {
         });
 
         if (match) {
-          logger.verbose(
-            `[PremiseGraph.dedupe] Skipping near-duplicate (similarity=${match.similarity.toFixed(3)} >= ${DEDUP_SIMILARITY_THRESHOLD}) of premise ${match.premiseId}`,
-          );
+          dedupeLog.verbose('Skipping near-duplicate premise', {
+            similarity: Number(match.similarity.toFixed(3)),
+            threshold: DEDUP_SIMILARITY_THRESHOLD,
+            premiseId: match.premiseId,
+          });
           return { duplicateOf: match };
         }
         return {};
@@ -156,7 +164,7 @@ export class PremiseGraphFactory {
         }
 
         if (state.operationMode === 'update' && state.targetPremiseId) {
-          logger.verbose(`[PremiseGraph.persist] Updating premise ${state.targetPremiseId}`);
+          persistLog.verbose('Updating premise', { premiseId: state.targetPremiseId });
 
           const updated = await this.database.updatePremise(state.targetPremiseId, {
             assertion: {
@@ -174,7 +182,7 @@ export class PremiseGraphFactory {
           return { premise: updated };
         }
 
-        logger.verbose(`[PremiseGraph.persist] Creating new premise for user ${state.userId}`);
+        persistLog.verbose('Creating new premise for user', { userId: state.userId });
 
         // Provenance confidence: prefer an explicit caller-supplied value; otherwise
         // derive it from the analyzer's felicity scores (how authoritative, sincere,
@@ -209,7 +217,7 @@ export class PremiseGraphFactory {
       return timed("PremiseGraph.index", async () => {
         if (!state.premise) return {};
 
-        logger.verbose(`[PremiseGraph.index] Scoring premise against user networks`);
+        indexLog.verbose(`Scoring premise against user networks`);
 
         const assignmentMemberships = await this.database.getAssignmentNetworkMembershipsForUser(state.userId);
         const requestScope = state.scopeType && state.scopeId
@@ -272,11 +280,11 @@ export class PremiseGraphFactory {
               assignments.push({ networkId, relevancyScore: decision.finalScore });
             }
           } catch (err) {
-            logger.verbose(`[PremiseGraph.index] Failed to score network ${networkId}, skipping: ${err}`);
+            indexLog.verbose('Failed to score network, skipping', { networkId, error: err });
           }
         }
 
-        logger.verbose(`[PremiseGraph.index] Assigned to ${assignments.length} networks`);
+        indexLog.verbose('Assigned to networks', { count: assignments.length });
 
         return { networkAssignments: assignments, agentTimings };
       });

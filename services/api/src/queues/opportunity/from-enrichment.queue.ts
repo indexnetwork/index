@@ -76,14 +76,14 @@ export class FromEnrichmentQueue {
         await this.handleDiscover(data);
         break;
       default:
-        this.queueLogger.warn(`[FromEnrichmentQueueProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
   private async handleDiscover(data: FromEnrichmentJobData): Promise<void> {
     const { userId, networkId } = data;
 
-    this.logger.info('[FromEnrichment] Starting profile-based discovery', { userId, networkId });
+    this.logger.info('Starting profile-based discovery', { userId, networkId });
 
     const invokeOpts: FromEnrichmentGraphInvokeOptions = {
       userId: userId as Id<'users'>,
@@ -107,7 +107,7 @@ export class FromEnrichmentQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<FromEnrichmentJobData>) => {
-      this.queueLogger.info(`[FromEnrichmentProcessor] Processing job ${job.id}`);
+      this.queueLogger.info('Processing job', { jobId: job.id });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<FromEnrichmentJobData>(QUEUE_NAME, processor);

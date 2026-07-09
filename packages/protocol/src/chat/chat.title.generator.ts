@@ -53,10 +53,10 @@ export class ChatTitleGenerator {
 
       const text = typeof response.content === "string" ? response.content : String(response.content ?? "").trim();
       const title = text.slice(0, 80).trim() || "New chat";
-      logger.verbose("[ChatTitleGenerator.invoke] Title generated", { titleLength: title.length });
+      logger.verbose("Title generated", { titleLength: title.length });
       return title;
     } catch (error) {
-      logger.warn("[ChatTitleGenerator.invoke] Failed to generate title", {
+      logger.warn("Failed to generate title", {
         error: error instanceof Error ? error.message : String(error),
       });
       return "New chat";

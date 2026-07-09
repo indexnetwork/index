@@ -77,7 +77,7 @@ export class SuggestionGenerator {
       ]);
       const parsed = suggestionsSchema.safeParse(result);
       if (!parsed.success) {
-        logger.warn("[SuggestionGenerator] Parse failed", { error: parsed.error.message });
+        logger.warn("Parse failed", { error: parsed.error.message });
         return [];
       }
       const out: ChatSuggestion[] = parsed.data.suggestions.map((s) => ({
@@ -86,10 +86,10 @@ export class SuggestionGenerator {
         ...(s.type === "direct" && s.followupText != null && { followupText: s.followupText }),
         ...(s.type === "prompt" && s.prefill != null && { prefill: s.prefill }),
       }));
-      logger.verbose("[SuggestionGenerator] Generated", { count: out.length });
+      logger.verbose("Generated", { count: out.length });
       return out;
     } catch (error) {
-      logger.warn("[SuggestionGenerator] Failed", {
+      logger.warn("Failed", {
         error: error instanceof Error ? error.message : String(error),
       });
       return [];

@@ -66,6 +66,8 @@ export class EnrichmentQueue {
   readonly queue = QueueFactory.createQueue<EnrichmentJobPayload>(QUEUE_NAME);
 
   private readonly logger = log.job.from('EnrichmentJob');
+  private readonly profileHydeLogger = log.job.from('EnrichmentJob:ProfileHyde');
+  private readonly enrichUserLogger = log.job.from('EnrichmentJob:EnrichUser');
   private readonly queueLogger = log.queue.from('EnrichmentQueue');
   private readonly deps: EnrichmentQueueDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<EnrichmentJobPayload>> | null = null;
@@ -157,7 +159,7 @@ export class EnrichmentQueue {
         await this.handleEnrichUser(data);
         break;
       default:
-        this.queueLogger.warn(`[EnrichmentProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -168,7 +170,9 @@ export class EnrichmentQueue {
     if (this.worker) return;
     const processor = async (job: Job<EnrichmentJobPayload>) => {
       const { userId, networkId, reason } = job.data as EnsureProfileHydeData;
-      this.queueLogger.info(`[EnrichmentProcessor] Processing job ${job.id} (${job.name})`, {
+      this.queueLogger.info('Processing job', {
+        jobId: job.id,
+        jobName: job.name,
         userId,
         networkId,
         reason,
@@ -198,7 +202,7 @@ export class EnrichmentQueue {
     const { userId } = data;
     const privacy = await this.resolvePrivacyDecision('ensure_profile_hyde', data);
     if (!privacy.allowed) {
-      this.queueLogger.info('[ProfileHyde] Skipped by profile enrichment policy', {
+      this.profileHydeLogger.info('Skipped by profile enrichment policy', {
         userId,
         networkId: data.networkId,
         reason: data.reason,
@@ -213,9 +217,9 @@ export class EnrichmentQueue {
     }
     try {
       await this.invokeProfileGraph(userId, 'write');
-      this.logger.verbose('[ProfileHyde] Ensured profile HyDE for user', { userId, networkId: data.networkId, reason: data.reason });
+      this.profileHydeLogger.verbose('Ensured profile HyDE for user', { userId, networkId: data.networkId, reason: data.reason });
     } catch (err) {
-      this.logger.error('[ProfileHyde] Failed to ensure profile HyDE', { userId, networkId: data.networkId, reason: data.reason, error: err });
+      this.profileHydeLogger.error('Failed to ensure profile HyDE', { userId, networkId: data.networkId, reason: data.reason, error: err });
       throw err;
     }
   }
@@ -224,7 +228,7 @@ export class EnrichmentQueue {
     const { userId } = data;
     const privacy = await this.resolvePrivacyDecision('enrich.user', data);
     if (!privacy.allowed) {
-      this.queueLogger.info('[EnrichUser] Skipped by profile enrichment policy', {
+      this.enrichUserLogger.info('Skipped by profile enrichment policy', {
         userId,
         networkId: data.networkId,
         reason: data.reason,
@@ -240,10 +244,10 @@ export class EnrichmentQueue {
     }
     try {
       await this.invokeProfileGraph(userId, 'generate');
-      this.queueLogger.info('[EnrichUser] Profile enrichment completed', { userId, networkId: data.networkId, reason: data.reason });
+      this.enrichUserLogger.info('Profile enrichment completed', { userId, networkId: data.networkId, reason: data.reason });
       this.fireEnrichmentComplete(userId);
     } catch (err) {
-      this.queueLogger.error('[EnrichUser] Failed to enrich user', {
+      this.enrichUserLogger.error('Failed to enrich user', {
         userId,
         networkId: data.networkId,
         reason: data.reason,
@@ -308,7 +312,7 @@ export class EnrichmentQueue {
     try {
       this.onEnrichmentComplete?.(userId);
     } catch (err) {
-      this.queueLogger.error('[EnrichUser] onEnrichmentComplete callback failed', {
+      this.enrichUserLogger.error('onEnrichmentComplete callback failed', {
         userId,
         error: err instanceof Error ? err.message : String(err),
       });

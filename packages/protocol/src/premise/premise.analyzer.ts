@@ -6,6 +6,7 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("PremiseAnalyzer");
+const invokeLog = protocolLogger("PremiseAnalyzer:invoke");
 
 const systemPrompt = `
 You are the Premise Analyzer for the Index Network — an intent-driven discovery protocol.
@@ -101,7 +102,7 @@ export class PremiseAnalyzer {
 
   @Timed()
   public async invoke(premiseText: string, profileContext?: string): Promise<PremiseAnalyzerOutput> {
-    logger.verbose(`[PremiseAnalyzer.invoke] Analyzing: "${premiseText.substring(0, 50)}..."`);
+    invokeLog.verbose('Analyzing premise text', { preview: premiseText.substring(0, 50) });
 
     const contextBlock = profileContext
       ? `\n# Speaker Profile (Context)\n${profileContext}\n`
@@ -121,7 +122,7 @@ Classify this premise and score its felicity conditions.`;
     const result = await invokeWithAbortSignal(this.model, messages);
     const output = responseFormat.parse(result);
 
-    logger.verbose(`[PremiseAnalyzer.invoke] Result: ${output.speechActType} entropy=${output.semanticEntropy}`);
+    invokeLog.verbose('Analysis result', { speechActType: output.speechActType, semanticEntropy: output.semanticEntropy });
     return output;
   }
 }

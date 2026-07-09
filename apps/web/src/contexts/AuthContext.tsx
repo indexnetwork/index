@@ -5,6 +5,9 @@ import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
 import AuthModal from '@/components/AuthModal';
+import { log } from '@/lib/logger';
+
+const logger = log.context.from('AuthContext');
 
 type AuthContextType = {
   isReady: boolean;
@@ -72,14 +75,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setUser(updatedUser);
             })
             .catch(err => {
-              console.error('Failed to update timezone:', err);
+              logger.error('Failed to update timezone', { error: err });
             });
         }
       } else {
         throw new Error('No user data received');
       }
     } catch (error) {
-      console.error('Failed to fetch user:', error);
+      logger.error('Failed to fetch user', { error });
 
       // The browser can retain a Better Auth session/JWT for a user that no
       // longer exists in the currently selected dev database. Treat auth/user
@@ -88,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error instanceof APIError && (error.status === 401 || error.status === 404)) {
         clearJwtToken();
         await authClient.signOut().catch(signOutError => {
-          console.error('Failed to clear stale auth session:', signOutError);
+          logger.error('Failed to clear stale auth session', { error: signOutError });
         });
         setUser(null);
         setUserFetchAttempted(false);

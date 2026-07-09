@@ -73,14 +73,14 @@ export class MyQueue {
         await this.handleAnalyze(data);
         break;
       default:
-        this.queueLogger.warn(`[MyProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<MyJobData>) => {
-      this.queueLogger.info(`[MyProcessor] Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<MyJobData>(QUEUE_NAME, processor);
@@ -91,7 +91,7 @@ export class MyQueue {
     const db = this.deps?.database ?? this.getDefaultDb();
     // Orchestrate only: call service, protocol graph, or adapter—no business logic.
     // await myService.process(data.entityId);  or  await someGraph.invoke(...);
-    this.logger.info('[MyJob] Processed', { entityId: data.entityId });
+    this.logger.info('Processed', { entityId: data.entityId });
   }
 
   private async handleAnalyze(data: MyJobData): Promise<void> {

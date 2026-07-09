@@ -60,6 +60,24 @@ import type { OpportunityEvidence } from '../shared/schemas/network-assignment.s
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
 
 const logger = protocolLogger('OpportunityGraph');
+const prepLog = protocolLogger('OpportunityGraph:Prep');
+const scopeLog = protocolLogger('OpportunityGraph:Scope');
+const resolveLog = protocolLogger('OpportunityGraph:Resolve');
+const discoveryLog = protocolLogger('OpportunityGraph:Discovery');
+const evaluationLog = protocolLogger('OpportunityGraph:Evaluation');
+const negotiateLog = protocolLogger('OpportunityGraph:Negotiate');
+const rankingLog = protocolLogger('OpportunityGraph:Ranking');
+const introValidationLog = protocolLogger('OpportunityGraph:IntroValidation');
+const introEvaluationLog = protocolLogger('OpportunityGraph:IntroEvaluation');
+const persistLog = protocolLogger('OpportunityGraph:Persist');
+const persistPathLog = protocolLogger('OpportunityGraph:Persist:PathSelect');
+const persistDedupLog = protocolLogger('OpportunityGraph:Persist:Dedup');
+const readLog = protocolLogger('OpportunityGraph:Read');
+const updateLog = protocolLogger('OpportunityGraph:Update');
+const deleteLog = protocolLogger('OpportunityGraph:Delete');
+const sendLog = protocolLogger('OpportunityGraph:Send');
+const negotiateExistingLog = protocolLogger('OpportunityGraph:NegotiateExisting');
+const routingLog = protocolLogger('OpportunityGraph:Routing');
 
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
 const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -248,8 +266,8 @@ export class OpportunityGraphFactory {
       async (state: typeof OpportunityGraphState.State) =>
       timed("OpportunityGraph.prep", async () =>
         withCallLogging(
-          logger,
-          '[Graph:Prep] prepNode',
+          prepLog,
+          'prepNode',
           {
             userId: state.userId,
             hasSearchQuery: !!state.searchQuery,
@@ -261,7 +279,7 @@ export class OpportunityGraphFactory {
             const memberships = await this.database.getNetworkMemberships(state.userId);
             const userNetworkIds = memberships.map(m => m.networkId) as Id<'networks'>[];
             if (userNetworkIds.length === 0) {
-              logger.verbose('[Graph:Prep] User has no network memberships - cannot find opportunities');
+              prepLog.verbose('User has no network memberships - cannot find opportunities');
               return {
                 userNetworks: [] as Id<'networks'>[],
                 sourceProfile: null,
@@ -318,7 +336,7 @@ export class OpportunityGraphFactory {
           { context: { userId: state.userId }, logOutput: true }
         ).catch((error) => {
           const errMsg = error instanceof Error ? error.message : String(error);
-          logger.error('[Graph:Prep] Failed', { error });
+          prepLog.error('Failed', { error });
           return {
             error: 'Failed to prepare opportunity search. Please try again.',
             trace: [{
@@ -348,7 +366,7 @@ export class OpportunityGraphFactory {
       "opportunity-scope",
       async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.scope", async () => {
-        logger.verbose('[Graph:Scope] Determining search scope', {
+        scopeLog.verbose('Determining search scope', {
           requestedIndexId: state.networkId,
           userNetworksCount: state.userNetworks.length,
         });
@@ -361,7 +379,7 @@ export class OpportunityGraphFactory {
             const isInScope = state.userNetworks.includes(state.networkId);
             const isOwner = !isInScope && await this.database.isIndexOwner(state.networkId, state.userId);
             if (!isInScope && !isOwner) {
-              logger.warn('[Graph:Scope] User not member of requested network', {
+              scopeLog.warn('User not member of requested network', {
                 networkId: state.networkId,
               });
               return {
@@ -376,7 +394,7 @@ export class OpportunityGraphFactory {
             // reaches networks outside the agent's bound scope.
             const allowed = new Set(state.indexScope);
             targetIndexIds = state.userNetworks.filter((n) => allowed.has(n));
-            logger.verbose('[Graph:Scope] Applied indexScope intersection', {
+            scopeLog.verbose('Applied indexScope intersection', {
               indexScopeCount: state.indexScope.length,
               userNetworksCount: state.userNetworks.length,
               targetCount: targetIndexIds.length,
@@ -399,7 +417,7 @@ export class OpportunityGraphFactory {
             })
           );
 
-          logger.verbose('[Graph:Scope] Scope determined', {
+          scopeLog.verbose('Scope determined', {
             targetIndexesCount: targetNetworks.length,
             indexes: targetNetworks.map(i => i.title),
           });
@@ -417,7 +435,7 @@ export class OpportunityGraphFactory {
                 }
               }
             } catch (err) {
-              logger.warn('[Graph:Scope] Failed to load intent index scores', { triggerIntentId: state.triggerIntentId, error: err });
+              scopeLog.warn('Failed to load intent index scores', { triggerIntentId: state.triggerIntentId, error: err });
             }
           } else if (state.searchQuery?.trim()) {
             // Chat path: score query against target indexes in parallel
@@ -471,7 +489,7 @@ export class OpportunityGraphFactory {
                 };
               }
             } catch (err) {
-              logger.warn('[Graph:Scope] Failed to score query against indexes', { error: err });
+              scopeLog.warn('Failed to score query against indexes', { error: err });
             }
           }
 
@@ -487,7 +505,7 @@ export class OpportunityGraphFactory {
           };
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error);
-          logger.error('[Graph:Scope] Failed', { error });
+          scopeLog.error('Failed', { error });
           return {
             targetNetworks: [],
             error: 'Failed to determine search scope.',
@@ -517,7 +535,7 @@ export class OpportunityGraphFactory {
       "opportunity-resolve",
       async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.resolve", async () => {
-        logger.verbose('[Graph:Resolve] Resolving intent and network membership', {
+        resolveLog.verbose('Resolving intent and network membership', {
           triggerIntentId: state.triggerIntentId,
           hasSearchQuery: !!state.searchQuery,
           indexedIntentsCount: state.indexedIntents.length,
@@ -554,7 +572,7 @@ export class OpportunityGraphFactory {
                 discoverySource,
               };
             }
-            logger.warn('[Graph:Resolve] No intent matched search query; leaving resolvedIntentId unset', {
+            resolveLog.warn('No intent matched search query; leaving resolvedIntentId unset', {
               searchQuery: state.searchQuery,
               indexedIntentsCount: state.indexedIntents.length,
             });
@@ -567,7 +585,7 @@ export class OpportunityGraphFactory {
           };
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          logger.error('[Graph:Resolve] Failed', {
+          resolveLog.error('Failed', {
             triggerIntentId: state.triggerIntentId,
             searchQuery: state.searchQuery,
             error: err,
@@ -609,7 +627,7 @@ export class OpportunityGraphFactory {
         const filterByTarget = (candidates: CandidateMatch[]): CandidateMatch[] => {
           if (!state.targetUserId) return candidates;
           const filtered = candidates.filter(c => c.candidateUserId === state.targetUserId);
-          logger.verbose('[Graph:Discovery] targetUserId filter applied', {
+          discoveryLog.verbose('targetUserId filter applied', {
             targetUserId: state.targetUserId,
             before: candidates.length,
             after: filtered.length,
@@ -622,7 +640,7 @@ export class OpportunityGraphFactory {
         // Shared variable to capture HyDE output (lenses + documents) for trace entries
         let discoveryHydeOutput: { lenses: Array<{ label: string; corpus: string }>; hydeDocuments: Record<string, { hydeText?: string }> } | undefined;
 
-        logger.verbose('[Graph:Discovery] Starting semantic search', {
+        discoveryLog.verbose('Starting semantic search', {
           targetIndexesCount: state.targetNetworks.length,
           discoverySource: state.discoverySource,
           searchQueryPreview: state.searchQuery?.trim().slice(0, 60) ?? '(none)',
@@ -630,7 +648,7 @@ export class OpportunityGraphFactory {
 
         try {
           if (state.targetNetworks.length === 0) {
-            logger.warn('[Graph:Discovery] No target indexes for search');
+            discoveryLog.warn('No target indexes for search');
             return { candidates: [] };
           }
 
@@ -639,7 +657,7 @@ export class OpportunityGraphFactory {
           // and construct candidates directly from shared networks.
           if (state.targetUserId) {
             if (state.targetUserId === discoveryUserId) {
-              logger.warn('[Graph:Discovery] Direct-connection target matches discoverer; skipping self-match', {
+              discoveryLog.warn('Direct-connection target matches discoverer; skipping self-match', {
                 targetUserId: state.targetUserId,
               });
               return {
@@ -651,7 +669,7 @@ export class OpportunityGraphFactory {
                 }],
               };
             }
-            logger.verbose('[Graph:Discovery] Direct-connection mode — bypassing vector search', {
+            discoveryLog.verbose('Direct-connection mode — bypassing vector search', {
               targetUserId: state.targetUserId,
             });
             const targetMemberships = await this.database.getNetworkMemberships(state.targetUserId);
@@ -661,7 +679,7 @@ export class OpportunityGraphFactory {
               .map(ti => ti.networkId);
 
             if (sharedIndexIds.length === 0) {
-              logger.warn('[Graph:Discovery] Target user shares no indexes with discoverer', {
+              discoveryLog.warn('Target user shares no indexes with discoverer', {
                 targetUserId: state.targetUserId,
                 discovererIndexes: state.targetNetworks.map(ti => ti.networkId),
               });
@@ -712,7 +730,7 @@ export class OpportunityGraphFactory {
               }));
             }
 
-            logger.verbose('[Graph:Discovery] Direct candidates constructed', {
+            discoveryLog.verbose('Direct candidates constructed', {
               count: directCandidates.length,
               sharedIndexes: sharedIndexIds.length,
               targetIntents: targetIntents.length,
@@ -743,11 +761,11 @@ export class OpportunityGraphFactory {
           if (state.discoverySource === 'context') {
             // Context discovery: HyDE (when search query exists) + premise-to-premise.
             if (state.searchQuery?.trim()) {
-              logger.verbose('[Graph:Discovery] Context source with searchQuery → running query HyDE + premise paths', {
+              discoveryLog.verbose('Context source with searchQuery → running query HyDE + premise paths', {
                 searchQuery: state.searchQuery.trim().substring(0, 80),
               });
               const queryCandidates = await runQueryHydeDiscovery();
-              logger.verbose('[Graph:Discovery] Query HyDE path complete', { candidatesFound: queryCandidates.length });
+              discoveryLog.verbose('Query HyDE path complete', { candidatesFound: queryCandidates.length });
 
               // Build trace entries for this path
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
@@ -845,7 +863,7 @@ export class OpportunityGraphFactory {
           async function runQueryHydeDiscovery(): Promise<CandidateMatch[]> {
             const searchText = state.searchQuery?.trim() ?? '';
             if (!searchText) return [];
-            logger.verbose('[Graph:Discovery] runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80) });
+            discoveryLog.verbose('runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80) });
             const discovererContext = buildDiscovererContext(state.sourceProfile, state.indexedIntents);
             discoveryLensInput = {
               profileContext: discovererContext,
@@ -864,7 +882,7 @@ export class OpportunityGraphFactory {
               hydeDocuments: (hydeResult.hydeDocuments ?? {}) as Record<string, { hydeText?: string }>,
             };
             const embeddingKeys = hydeEmbeddings ? Object.keys(hydeEmbeddings) : [];
-            logger.verbose('[Graph:Discovery] HyDE generator result', {
+            discoveryLog.verbose('HyDE generator result', {
               lensCount: embeddingKeys.length,
               lenses: embeddingKeys,
             });
@@ -915,7 +933,7 @@ export class OpportunityGraphFactory {
             );
             const intentCount = all.filter((c) => c.candidateIntentId).length;
             const premiseCount = all.filter((c) => c.candidatePremiseId).length;
-            logger.verbose('[Graph:Discovery] searchWithHydeEmbeddings raw results', {
+            discoveryLog.verbose('searchWithHydeEmbeddings raw results', {
               total: all.length,
               fromIntent: intentCount,
               fromPremise: premiseCount,
@@ -944,7 +962,7 @@ export class OpportunityGraphFactory {
 
             const sourceLimit = getSourcePremiseDiscoveryLimit();
             if (sourceLimit === 0) {
-              logger.verbose('[Graph:Discovery] runPremiseDiscovery disabled by DISCOVERY_SOURCE_PREMISE_LIMIT=0');
+              discoveryLog.verbose('runPremiseDiscovery disabled by DISCOVERY_SOURCE_PREMISE_LIMIT=0');
               return [];
             }
 
@@ -961,7 +979,7 @@ export class OpportunityGraphFactory {
 
             if (sourcePremises.length === 0) return [];
 
-            logger.verbose('[Graph:Discovery] runPremiseDiscovery start', {
+            discoveryLog.verbose('runPremiseDiscovery start', {
               premiseCount: sourcePremises.length,
               sourceLimit,
               targetNetworks: targetNetworkIds.length,
@@ -1010,7 +1028,7 @@ export class OpportunityGraphFactory {
               }
             }
             const deduped = Array.from(byKey.values());
-            logger.verbose('[Graph:Discovery] runPremiseDiscovery complete', {
+            discoveryLog.verbose('runPremiseDiscovery complete', {
               sourcePremiseCount: sourcePremises.length,
               rawCount: premiseCandidates.length,
               dedupedCount: deduped.length,
@@ -1032,7 +1050,7 @@ export class OpportunityGraphFactory {
             const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
             if (targetNetworkIds.length === 0) return [];
 
-            logger.verbose('[Graph:Discovery] runContextToIntentDiscovery start', {
+            discoveryLog.verbose('runContextToIntentDiscovery start', {
               contextCount: state.sourceContexts.length,
               targetNetworks: targetNetworkIds.length,
             });
@@ -1105,7 +1123,7 @@ export class OpportunityGraphFactory {
               }
             }
             const deduped = Array.from(byKey.values());
-            logger.verbose('[Graph:Discovery] runContextToIntentDiscovery complete', {
+            discoveryLog.verbose('runContextToIntentDiscovery complete', {
               rawCount: contextCandidates.length,
               dedupedCount: deduped.length,
             });
@@ -1155,7 +1173,7 @@ export class OpportunityGraphFactory {
             : state.indexedIntents[0];
           const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
           if (!searchText) {
-            logger.warn('[Graph:Discovery] No search text available for intent path');
+            discoveryLog.warn('No search text available for intent path');
             const [premiseCands, contextCands] = await Promise.all([
               runPremiseDiscovery(),
               runContextToIntentDiscovery(),
@@ -1251,7 +1269,7 @@ export class OpportunityGraphFactory {
             }
           }
           const candidates = Array.from(byUserAndIndex.values());
-          logger.verbose('[Graph:Discovery] Intent-path discovery complete', { candidatesFound: candidates.length });
+          discoveryLog.verbose('Intent-path discovery complete', { candidatesFound: candidates.length });
           const usedLenses = Object.keys(hydeEmbeddings);
 
           // Build trace with individual candidate similarity scores
@@ -1350,7 +1368,7 @@ export class OpportunityGraphFactory {
           };
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error);
-          logger.error('[Graph:Discovery] Failed', { error });
+          discoveryLog.error('Failed', { error });
           return {
             candidates: [],
             error: 'Failed to search for candidates.',
@@ -1378,12 +1396,12 @@ export class OpportunityGraphFactory {
     const evaluationNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.evaluation", async () => {
         const startTime = Date.now();
-        logger.verbose('[Graph:Evaluation] Starting evaluation', {
+        evaluationLog.verbose('Starting evaluation', {
           candidatesCount: state.candidates.length,
         });
 
         if (state.candidates.length === 0) {
-          logger.verbose('[Graph:Evaluation] No candidates to evaluate');
+          evaluationLog.verbose('No candidates to evaluate');
           return { evaluatedOpportunities: [], agentTimings: [] };
         }
 
@@ -1414,7 +1432,7 @@ export class OpportunityGraphFactory {
         dedupedCandidates.sort((a, b) => b.similarity - a.similarity);
 
         if (dedupedCandidates.length < sortedCandidates.length) {
-          logger.info("[Graph:Evaluation] Deduped candidates by userId", {
+          evaluationLog.info("Deduped candidates by userId", {
             before: sortedCandidates.length,
             after: dedupedCandidates.length,
             removed: sortedCandidates.length - dedupedCandidates.length,
@@ -1434,8 +1452,8 @@ export class OpportunityGraphFactory {
           isQueryDriven && queryRemaining.length === 0 ? [] : remaining;
 
         if (isQueryDriven && remaining.length > 0 && queryRemaining.length === 0) {
-          logger.info(
-            "[Graph:Evaluation] Early termination: no query-sourced candidates remain",
+          evaluationLog.info(
+            "Early termination: no query-sourced candidates remain",
             {
               droppedCandidates: remaining.length,
             },
@@ -1443,7 +1461,7 @@ export class OpportunityGraphFactory {
         }
 
         if (effectiveRemaining.length > 0) {
-          logger.verbose('[Graph:Evaluation] Batched candidates for evaluation', {
+          evaluationLog.verbose('Batched candidates for evaluation', {
             evaluating: batchToEvaluate.length,
             remaining: effectiveRemaining.length,
             total: sortedCandidates.length,
@@ -1551,7 +1569,7 @@ export class OpportunityGraphFactory {
 
           if (runParallel) {
             // Experimental: one LLM call per candidate, all fired in parallel
-            logger.verbose('[Graph:Evaluation] Running parallel evaluation', { candidates: candidateEntities.length });
+            evaluationLog.verbose('Running parallel evaluation', { candidates: candidateEntities.length });
             const parallelResults = await Promise.all(
               candidateEntities.map((candidateEntity) => {
                 const input: EvaluatorInput = {
@@ -1579,7 +1597,7 @@ export class OpportunityGraphFactory {
                     const _errMsg = err instanceof Error ? err.message : String(err);
                     agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
                     _traceEmitter?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `${_candidateName}: error — ${_errMsg}` });
-                    logger.warn('[Graph:Evaluation] Parallel eval failed for candidate', {
+                    evaluationLog.warn('Parallel eval failed for candidate', {
                       candidateUserId: candidateEntity.userId,
                       error: err,
                     });
@@ -1652,7 +1670,7 @@ export class OpportunityGraphFactory {
               if (nonViewerActors.length <= 1) {
                 pairwiseOpportunities.push(op);
               } else {
-                logger.warn('[Graph:Evaluation] Splitting multi-actor opportunity; LLM returned bundled actors instead of one-per-candidate', {
+                evaluationLog.warn('Splitting multi-actor opportunity; LLM returned bundled actors instead of one-per-candidate', {
                   actorCount: nonViewerActors.length,
                   userIds: nonViewerActors.map(a => a.userId),
                 });
@@ -1724,7 +1742,7 @@ export class OpportunityGraphFactory {
           }));
 
           const passed = evaluatedOpportunities.filter((o) => o.score >= minScore);
-          logger.verbose('[Graph:Evaluation] Evaluation complete', {
+          evaluationLog.verbose('Evaluation complete', {
             evaluatedCount: evaluatedOpportunities.length,
             passed: passed.length,
           });
@@ -1820,7 +1838,7 @@ export class OpportunityGraphFactory {
           };
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error);
-          logger.error('[Graph:Evaluation] Failed', { error });
+          evaluationLog.error('Failed', { error });
           return {
             evaluatedOpportunities: [],
             error: 'Failed to evaluate candidates.',
@@ -1880,7 +1898,7 @@ export class OpportunityGraphFactory {
 
         // Build candidates from persisted opportunities. Each opportunity carries its DB id
         // so the negotiation graph's finalize node can update its status from the outcome.
-        logger.verbose('[Graph:Negotiate] Building candidates from opportunities', {
+        negotiateLog.verbose('Building candidates from opportunities', {
           opportunityCount: state.opportunities.length,
           discoveryUserId,
         });
@@ -1891,7 +1909,7 @@ export class OpportunityGraphFactory {
             const introducerActors = (opp.actors as OpportunityActor[])
               .filter(a => a.role === 'introducer');
             if (introducerActors.length > 0 && !introducerActors.every(a => a.approved === true)) {
-              logger.verbose('[Graph:Negotiate] Skipping opportunity: introducer not approved', {
+              negotiateLog.verbose('Skipping opportunity: introducer not approved', {
                 opportunityId: opp.id,
                 introducerCount: introducerActors.length,
                 approvedCount: introducerActors.filter(a => a.approved === true).length,
@@ -1902,7 +1920,7 @@ export class OpportunityGraphFactory {
             const candidateActor = (opp.actors as Array<{ userId: string; role?: string; networkId?: string; intentId?: string }>)
               .find(a => a.userId !== discoveryUserId);
             if (!candidateActor) {
-              logger.verbose('[Graph:Negotiate] Skipping opportunity: no candidateActor found', {
+              negotiateLog.verbose('Skipping opportunity: no candidateActor found', {
                 opportunityId: opp.id,
                 discoveryUserId,
                 actors: (opp.actors as OpportunityActor[])?.map(a => ({ userId: a.userId, role: a.role })) ?? [],
@@ -1913,7 +1931,7 @@ export class OpportunityGraphFactory {
           })
           .filter((e): e is NonNullable<typeof e> => e !== null);
 
-        logger.verbose('[Graph:Negotiate] Candidate filtering complete', {
+        negotiateLog.verbose('Candidate filtering complete', {
           inputOpportunities: state.opportunities.length,
           outputCandidates: candidateEntries.length,
         });
@@ -2080,7 +2098,7 @@ export class OpportunityGraphFactory {
           const updated = await this.database
             .updateOpportunityStatus(candidate.opportunityId, 'draft')
             .catch((err) => {
-              logger.warn('[Graph:Negotiate] failed to flip opp to draft; suppressing draft-ready event', {
+              negotiateLog.warn('failed to flip opp to draft; suppressing draft-ready event', {
                 opportunityId: candidate.opportunityId,
                 error: err,
               });
@@ -2151,9 +2169,9 @@ export class OpportunityGraphFactory {
           if (raced === NEGOTIATE_TIMER_SENTINEL) {
             // Floating promise is intentional — see comment above.
             void negotiationWork.catch((err) => {
-              logger.warn('[Graph:Negotiate] background negotiation failed after timer fired', { error: err });
+              negotiateLog.warn('background negotiation failed after timer fired', { error: err });
             });
-            logger.warn('[Graph:Negotiate] timed out — returning partial results to caller', {
+            negotiateLog.warn('timed out — returning partial results to caller', {
               discoveryUserId,
               candidateCount: candidates.length,
               negotiateTimeoutMs: budgetMs,
@@ -2235,7 +2253,7 @@ export class OpportunityGraphFactory {
           discoverySummary,
         };
       } catch (err) {
-        logger.error("[Graph:Negotiate] Negotiation stage failed", { error: err });
+        negotiateLog.error("Negotiation stage failed", { error: err });
         traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
         return {
           trace: [{
@@ -2257,7 +2275,7 @@ export class OpportunityGraphFactory {
       "opportunity-ranking",
       async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.ranking", async () => {
-        logger.verbose('[Graph:Ranking] Starting ranking', {
+        rankingLog.verbose('Starting ranking', {
           evaluatedCount: state.evaluatedOpportunities.length,
         });
 
@@ -2279,7 +2297,7 @@ export class OpportunityGraphFactory {
             return true;
           });
 
-          logger.verbose('[Graph:Ranking] Ranking complete', {
+          rankingLog.verbose('Ranking complete', {
             sorted: sorted.length,
             afterLimit: ranked.length,
             afterDedup: deduplicated.length,
@@ -2287,7 +2305,7 @@ export class OpportunityGraphFactory {
           return { evaluatedOpportunities: deduplicated };
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error);
-          logger.error('[Graph:Ranking] Failed', { error });
+          rankingLog.error('Failed', { error });
           return {
             evaluatedOpportunities: [],
             error: 'Failed to rank opportunities.',
@@ -2314,7 +2332,7 @@ export class OpportunityGraphFactory {
      */
     const introValidationNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.introValidation", async () => {
-        logger.verbose('[Graph:IntroValidation] Starting', {
+        introValidationLog.verbose('Starting', {
           userId: state.userId,
           networkId: state.networkId,
           entitiesCount: state.introductionEntities?.length ?? 0,
@@ -2367,11 +2385,11 @@ export class OpportunityGraphFactory {
             return { error: 'An opportunity already exists between these people.' };
           }
 
-          logger.verbose('[Graph:IntroValidation] Validation passed');
+          introValidationLog.verbose('Validation passed');
           return {};
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          logger.error('[Graph:IntroValidation] Failed', {
+          introValidationLog.error('Failed', {
             userId: state.userId,
             networkId: state.networkId,
             error: err,
@@ -2416,7 +2434,7 @@ export class OpportunityGraphFactory {
      */
     const introEvaluationNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.introEvaluation", async () => {
-        logger.verbose('[Graph:IntroEvaluation] Starting', { userId: state.userId });
+        introEvaluationLog.verbose('Starting', { userId: state.userId });
 
         if (state.error) {
           return { evaluatedOpportunities: [], agentTimings: [] };
@@ -2481,7 +2499,7 @@ export class OpportunityGraphFactory {
             _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introErrDuration, summary: `error — ${errMsg}` });
             agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introErrDuration });
           }
-          logger.warn('[Graph:IntroEvaluation] Evaluator or getUser failed, using fallback', { error: evalErr });
+          introEvaluationLog.warn('Evaluator or getUser failed, using fallback', { error: evalErr });
           const fallback = buildIntroFallback(entities, state, primaryNetworkId, introducerName);
           reasoning = fallback.reasoning;
           score = fallback.score;
@@ -2524,14 +2542,14 @@ export class OpportunityGraphFactory {
       return timed("OpportunityGraph.persist", async () => {
         const startTime = Date.now();
         const initialStatus = resolveInitialStatus(state.trigger, state.options.initialStatus);
-        logger.verbose('[Graph:Persist] Starting persistence (dedup-v2)', {
+        persistLog.verbose('Starting persistence (dedup-v2)', {
           opportunitiesToCreate: state.evaluatedOpportunities.length,
           trigger: state.trigger,
           initialStatus,
         });
 
         if (state.evaluatedOpportunities.length === 0) {
-          logger.verbose('[Graph:Persist] No opportunities to persist');
+          persistLog.verbose('No opportunities to persist');
           return { opportunities: [] };
         }
 
@@ -2579,7 +2597,7 @@ export class OpportunityGraphFactory {
                 const accepted = await this.database
                   .findOpportunitiesByActors([dedupUserId, counterpartyUserId], { includeIntroducers: true, statuses: ['accepted'] })
                   .catch((err: unknown) => {
-                    logger.warn('[Graph:Persist] findOpportunitiesByActors (sibling-accept) failed', {
+                    persistLog.warn('findOpportunitiesByActors (sibling-accept) failed', {
                       userId: dedupUserId,
                       counterpartyUserId,
                       error: err,
@@ -2597,7 +2615,7 @@ export class OpportunityGraphFactory {
             let actors: OpportunityActor[];
             let data: CreateOpportunityData;
 
-            logger.verbose('[Graph:Persist:PathSelect]', {
+            persistPathLog.verbose('Selecting persistence path', {
               isIntroduction: !!state.introductionContext,
               stateUserId: state.userId,
               stateIndexId: state.networkId,
@@ -2606,7 +2624,7 @@ export class OpportunityGraphFactory {
 
             if (state.introductionContext) {
               if (indexIdForActors === undefined) {
-                logger.warn('[Graph:Persist] Introduction path missing networkId; skipping opportunity', {
+                persistLog.warn('Introduction path missing networkId; skipping opportunity', {
                   userId: state.userId,
                   actorsCount: evaluated.actors.length,
                 });
@@ -2655,7 +2673,7 @@ export class OpportunityGraphFactory {
               };
             } else if (state.onBehalfOfUserId) {
               if (indexIdForActors === undefined) {
-                logger.warn('[Graph:Persist] Introducer discovery path missing networkId; skipping opportunity', {
+                persistLog.warn('Introducer discovery path missing networkId; skipping opportunity', {
                   userId: state.userId,
                   actorsCount: evaluated.actors.length,
                 });
@@ -2701,7 +2719,7 @@ export class OpportunityGraphFactory {
                     // initialStatus, because introductions are always chat-initiated, not background-discovered.
                     const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
                     if (reactivated) {
-                      logger.verbose('[Graph:Persist] Reactivated opportunity (introduction path)', {
+                      persistLog.verbose('Reactivated opportunity (introduction path)', {
                         opportunityId: existing.id,
                         candidateUserId,
                         previousStatus: existing.status,
@@ -2723,7 +2741,7 @@ export class OpportunityGraphFactory {
                         existingOpportunityId: existing.id as Id<'opportunities'>,
                         existingStatus: existing.status,
                       });
-                      logger.verbose('[Graph:Persist] Skipping negotiating opportunity with active task (introduction path)', {
+                      persistLog.verbose('Skipping negotiating opportunity with active task (introduction path)', {
                         opportunityId: existing.id,
                         candidateUserId,
                         taskState: priorTask.state,
@@ -2733,7 +2751,7 @@ export class OpportunityGraphFactory {
                   }
                   const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
                   if (reactivated) {
-                    logger.info('[Graph:Persist] Resuming orphaned negotiating opportunity (introduction path)', {
+                    persistLog.info('Resuming orphaned negotiating opportunity (introduction path)', {
                       opportunityId: existing.id,
                       candidateUserId,
                       priorTaskState: priorTask?.state,
@@ -2745,7 +2763,7 @@ export class OpportunityGraphFactory {
                   // Upgrade latent to draft for introduction path
                   const upgraded = await this.database.updateOpportunityStatus(existing.id, 'draft');
                   if (upgraded) {
-                    logger.verbose('[Graph:Persist] Upgraded latent opportunity to draft (introduction path)', {
+                    persistLog.verbose('Upgraded latent opportunity to draft (introduction path)', {
                       opportunityId: existing.id,
                       candidateUserId,
                     });
@@ -2760,7 +2778,7 @@ export class OpportunityGraphFactory {
                     existingOpportunityId: existing.id as Id<'opportunities'>,
                     existingStatus: existing.status,
                   });
-                  logger.verbose('[Graph:Persist] Skipping recent duplicate (introduction path)', {
+                  persistLog.verbose('Skipping recent duplicate (introduction path)', {
                     candidateUserId,
                     existingStatus: existing.status,
                     existingOpportunityId: existing.id,
@@ -2768,7 +2786,7 @@ export class OpportunityGraphFactory {
                   continue;
                 }
                 // Else: existing opportunity is old enough, allow new opportunity creation
-                logger.verbose('[Graph:Persist] Allowing new opportunity; existing is outside dedup window (introduction path)', {
+                persistLog.verbose('Allowing new opportunity; existing is outside dedup window (introduction path)', {
                   candidateUserId,
                   existingStatus: existing.status,
                   existingOpportunityId: existing.id,
@@ -2835,7 +2853,7 @@ export class OpportunityGraphFactory {
                   if (counterpartIdx >= 0) {
                     actors[counterpartIdx] = { ...actors[counterpartIdx], role: 'agent' };
                   }
-                  logger.verbose('[Graph:Persist] Swapped discoverer from agent to patient for lifecycle visibility', {
+                  persistLog.verbose('Swapped discoverer from agent to patient for lifecycle visibility', {
                     discovererId: state.userId,
                   });
                 }
@@ -2844,7 +2862,7 @@ export class OpportunityGraphFactory {
               // Index-agnostic dedup: find ANY existing opportunity between these users,
               // regardless of which index it was created in or whether a focused network scope is set.
               const candidateUserId = evaluated.actors.find((a) => a.userId !== state.userId)?.userId;
-              logger.verbose('[Graph:Persist:Dedup] Checking overlapping opportunities', {
+              persistDedupLog.verbose('Checking overlapping opportunities', {
                 stateUserId: state.userId,
                 candidateUserId: candidateUserId ?? 'NONE',
                 evaluatedActors: evaluated.actors.map(a => ({ userId: a.userId, role: a.role })),
@@ -2855,7 +2873,7 @@ export class OpportunityGraphFactory {
                     { excludeStatuses: DEDUP_SKIP_STATUSES },
                   )
                 : [];
-              logger.verbose('[Graph:Persist:Dedup] findOpportunitiesByActors result', {
+              persistDedupLog.verbose('findOpportunitiesByActors result', {
                 count: overlapping.length,
                 results: overlapping.map(o => ({ id: o.id, status: o.status, actors: o.actors?.map((a: OpportunityActor) => ({ userId: a.userId, role: a.role })) })),
               });
@@ -2871,7 +2889,7 @@ export class OpportunityGraphFactory {
                   // is still in-flight for this pair, so we resume it rather than create a parallel one.
                   const reactivated = await this.database.updateOpportunityStatus(existing.id, initialStatus);
                   if (reactivated) {
-                    logger.verbose('[Graph:Persist] Reactivated opportunity', {
+                    persistLog.verbose('Reactivated opportunity', {
                       opportunityId: existing.id,
                       candidateUserId,
                       previousStatus: existing.status,
@@ -2895,7 +2913,7 @@ export class OpportunityGraphFactory {
                         existingOpportunityId: existing.id as Id<'opportunities'>,
                         existingStatus: existing.status,
                       });
-                      logger.verbose('[Graph:Persist] Skipping negotiating opportunity with active task', {
+                      persistLog.verbose('Skipping negotiating opportunity with active task', {
                         opportunityId: existing.id,
                         candidateUserId,
                         taskState: priorTask.state,
@@ -2906,7 +2924,7 @@ export class OpportunityGraphFactory {
                   // Task is stale or missing — reactivate the orphaned negotiating opportunity
                   const reactivated = await this.database.updateOpportunityStatus(existing.id, initialStatus);
                   if (reactivated) {
-                    logger.info('[Graph:Persist] Resuming orphaned negotiating opportunity', {
+                    persistLog.info('Resuming orphaned negotiating opportunity', {
                       opportunityId: existing.id,
                       candidateUserId,
                       priorTaskState: priorTask?.state,
@@ -2918,7 +2936,7 @@ export class OpportunityGraphFactory {
                   // Upgrade latent (background-discovered) to the higher-priority status (e.g. pending)
                   const upgraded = await this.database.updateOpportunityStatus(existing.id, initialStatus);
                   if (upgraded) {
-                    logger.verbose('[Graph:Persist] Upgraded latent opportunity to higher-priority status', {
+                    persistLog.verbose('Upgraded latent opportunity to higher-priority status', {
                       opportunityId: existing.id,
                       candidateUserId,
                       previousStatus: 'latent',
@@ -2936,7 +2954,7 @@ export class OpportunityGraphFactory {
                     existingOpportunityId: existing.id as Id<'opportunities'>,
                     existingStatus: existing.status,
                   });
-                  logger.verbose('[Graph:Persist] Skipping recent duplicate; opportunity created within dedup window', {
+                  persistLog.verbose('Skipping recent duplicate; opportunity created within dedup window', {
                     candidateUserId,
                     existingStatus: existing.status,
                     existingOpportunityId: existing.id,
@@ -2945,7 +2963,7 @@ export class OpportunityGraphFactory {
                   continue;
                 }
                 // Else: existing opportunity is old enough (outside the 30-day dedup window), allow new opportunity creation
-                logger.verbose('[Graph:Persist] Allowing new opportunity; existing is outside dedup window', {
+                persistLog.verbose('Allowing new opportunity; existing is outside dedup window', {
                   candidateUserId,
                   existingStatus: existing.status,
                   existingOpportunityId: existing.id,
@@ -2990,7 +3008,7 @@ export class OpportunityGraphFactory {
             try {
               validateOpportunityActors(data.actors);
             } catch (err) {
-              logger.warn('[Graph:Persist] Skipping opportunity with invalid actors', {
+              persistLog.warn('Skipping opportunity with invalid actors', {
                 error: err instanceof Error ? err.message : String(err),
                 opportunityReasoning: evaluated.reasoning?.slice(0, 80),
               });
@@ -3008,7 +3026,7 @@ export class OpportunityGraphFactory {
 
           const allOpportunities = [...reactivatedOpportunities, ...createdList];
 
-          logger.verbose('[Graph:Persist] Persistence complete', {
+          persistLog.verbose('Persistence complete', {
             created: createdList.length,
             reactivated: reactivatedOpportunities.length,
             existingBetweenActorsCount: existingBetweenActors.length,
@@ -3033,7 +3051,7 @@ export class OpportunityGraphFactory {
           };
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error);
-          logger.error('[Graph:Persist] Failed', { error });
+          persistLog.error('Failed', { error });
           return {
             opportunities: [],
             existingBetweenActors: [],
@@ -3065,7 +3083,7 @@ export class OpportunityGraphFactory {
      */
     const readNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.read", async () => {
-        logger.verbose('[Graph:Read] Listing opportunities', {
+        readLog.verbose('Listing opportunities', {
           userId: state.userId,
           networkId: state.networkId,
         });
@@ -3182,7 +3200,7 @@ export class OpportunityGraphFactory {
             },
           };
         } catch (err) {
-          logger.error('[Graph:Read] Failed', { error: err });
+          readLog.error('Failed', { error: err });
           return {
             readResult: { count: 0, opportunities: [], message: 'Failed to list opportunities.' },
           };
@@ -3199,7 +3217,7 @@ export class OpportunityGraphFactory {
      */
     const updateNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.update", async () => {
-        logger.verbose('[Graph:Update] Updating opportunity status', {
+        updateLog.verbose('Updating opportunity status', {
           userId: state.userId,
           opportunityId: state.opportunityId,
           newStatus: state.newStatus,
@@ -3269,7 +3287,7 @@ export class OpportunityGraphFactory {
             },
           };
         } catch (err) {
-          logger.error('[Graph:Update] Failed', { error: err });
+          updateLog.error('Failed', { error: err });
           return { mutationResult: { success: false, error: 'Failed to update opportunity.' } };
         }
       });
@@ -3280,7 +3298,7 @@ export class OpportunityGraphFactory {
      */
     const deleteNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.delete", async () => {
-        logger.verbose('[Graph:Delete] Expiring opportunity', {
+        deleteLog.verbose('Expiring opportunity', {
           userId: state.userId,
           opportunityId: state.opportunityId,
         });
@@ -3309,7 +3327,7 @@ export class OpportunityGraphFactory {
             },
           };
         } catch (err) {
-          logger.error('[Graph:Delete] Failed', { error: err });
+          deleteLog.error('Failed', { error: err });
           return { mutationResult: { success: false, error: 'Failed to delete opportunity.' } };
         }
       });
@@ -3320,7 +3338,7 @@ export class OpportunityGraphFactory {
      */
     const sendNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.send", async () => {
-        logger.verbose('[Graph:Send] Sending opportunity', {
+        sendLog.verbose('Sending opportunity', {
           userId: state.userId,
           opportunityId: state.opportunityId,
         });
@@ -3391,7 +3409,7 @@ export class OpportunityGraphFactory {
             },
           };
         } catch (err) {
-          logger.error('[Graph:Send] Failed', { error: err });
+          sendLog.error('Failed', { error: err });
           return { mutationResult: { success: false, error: 'Failed to send opportunity.' } };
         }
       });
@@ -3404,7 +3422,7 @@ export class OpportunityGraphFactory {
     const negotiateExistingNode = async (state: typeof OpportunityGraphState.State) => {
       if (!state.opportunityId) return {};
       if (!this.negotiationGraph) {
-        logger.warn('[Graph:NegotiateExisting] No negotiationGraph wired; skipping', {
+        negotiateExistingLog.warn('No negotiationGraph wired; skipping', {
           opportunityId: state.opportunityId,
         });
         return {};
@@ -3413,7 +3431,7 @@ export class OpportunityGraphFactory {
       try {
         const opp = await this.database.getOpportunity(state.opportunityId as string);
         if (!opp) {
-          logger.warn('[Graph:NegotiateExisting] Opportunity not found', { opportunityId: state.opportunityId });
+          negotiateExistingLog.warn('Opportunity not found', { opportunityId: state.opportunityId });
           return {};
         }
 
@@ -3424,14 +3442,14 @@ export class OpportunityGraphFactory {
         const sourceActor = nonIntroducerActors.find(a => a.role === 'patient' || a.role === 'party')
           ?? nonIntroducerActors[0];
         if (!sourceActor) {
-          logger.warn('[Graph:NegotiateExisting] No source actor found', { opportunityId: state.opportunityId });
+          negotiateExistingLog.warn('No source actor found', { opportunityId: state.opportunityId });
           return {};
         }
 
         // Find the candidateActor: non-introducer that is NOT the sourceActor
         const candidateActor = nonIntroducerActors.find(a => a.userId !== sourceActor.userId);
         if (!candidateActor) {
-          logger.warn('[Graph:NegotiateExisting] No candidate actor found', { opportunityId: state.opportunityId });
+          negotiateExistingLog.warn('No candidate actor found', { opportunityId: state.opportunityId });
           return {};
         }
 
@@ -3507,17 +3525,17 @@ export class OpportunityGraphFactory {
         if (acceptedResults.length > 0 && this.queueNotification) {
           for (const actor of nonIntroducerActors) {
             await this.queueNotification(opp.id, actor.userId, 'high').catch((err) => {
-              logger.warn('[Graph:NegotiateExisting] Failed to queue notification', { actorId: actor.userId, error: err });
+              negotiateExistingLog.warn('Failed to queue notification', { actorId: actor.userId, error: err });
             });
           }
         }
 
-        logger.info('[Graph:NegotiateExisting] Negotiation complete', {
+        negotiateExistingLog.info('Negotiation complete', {
           opportunityId: opp.id,
           accepted: acceptedResults.length > 0,
         });
       } catch (err) {
-        logger.error('[Graph:NegotiateExisting] Failed', { opportunityId: state.opportunityId, error: err });
+        negotiateExistingLog.error('Failed', { opportunityId: state.opportunityId, error: err });
         return { error: `Failed to load opportunity: ${err instanceof Error ? err.message : String(err)}` };
       }
 
@@ -3593,17 +3611,17 @@ export class OpportunityGraphFactory {
      */
     const shouldContinueAfterPrep = (state: typeof OpportunityGraphState.State): string => {
       if (state.error) {
-        logger.verbose('[Graph:Routing] Error in prep - ending early');
+        routingLog.verbose('Error in prep - ending early');
         return END;
       }
       // Continuation mode: skip scope/resolve/discovery, go straight to evaluation
       if (state.operationMode === 'continue_discovery') {
-        logger.verbose('[Graph:Routing] Continue discovery → skipping to evaluation', {
+        routingLog.verbose('Continue discovery → skipping to evaluation', {
           candidatesLoaded: state.candidates.length,
         });
         return 'evaluation';
       }
-      logger.verbose('[Graph:Routing] Continuing to scope');
+      routingLog.verbose('Continuing to scope');
       return 'scope';
     };
 
@@ -3612,10 +3630,10 @@ export class OpportunityGraphFactory {
      */
     const shouldContinueAfterScope = (state: typeof OpportunityGraphState.State): string => {
       if (state.error || state.targetNetworks.length === 0) {
-        logger.verbose('[Graph:Routing] No target indexes - ending early');
+        routingLog.verbose('No target indexes - ending early');
         return END;
       }
-      logger.verbose('[Graph:Routing] Continuing to resolve');
+      routingLog.verbose('Continuing to resolve');
       return 'resolve';
     };
 
@@ -3624,7 +3642,7 @@ export class OpportunityGraphFactory {
      */
     const shouldContinueAfterDiscovery = (state: typeof OpportunityGraphState.State): string => {
       if (state.createIntentSuggested) {
-        logger.verbose('[Graph:Routing] Create-intent suggested - ending for tool signal');
+        routingLog.verbose('Create-intent suggested - ending for tool signal');
         return END;
       }
       return 'evaluation';
@@ -3635,7 +3653,7 @@ export class OpportunityGraphFactory {
      */
     const routeAfterIntroValidation = (state: typeof OpportunityGraphState.State): string => {
       if (state.error) {
-        logger.verbose('[Graph:Routing] Intro validation error - ending early');
+        routingLog.verbose('Intro validation error - ending early');
         return END;
       }
       return 'intro_evaluation';

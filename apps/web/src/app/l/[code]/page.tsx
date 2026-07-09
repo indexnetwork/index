@@ -11,6 +11,9 @@ import { Lock, Users, Loader2 } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { log } from '@/lib/logger';
+
+const logger = log.page.from('l/[code]');
 
 type PageStep = 'loading' | 'auth-required' | 'onboarding-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
 
@@ -88,7 +91,7 @@ export default function InvitationPage() {
             setState(prev => ({ ...prev, user: response.user || null, step: 'ready-to-join' }));
           }
         } catch (err) {
-          console.error('Failed to fetch user:', err);
+          logger.error('Failed to fetch user', { error: err });
           setState(prev => ({
             ...prev,
             step: 'error',
@@ -96,7 +99,7 @@ export default function InvitationPage() {
           }));
         }
       } catch (err) {
-        console.error('Failed to load network:', err);
+        logger.error('Failed to load network', { error: err });
         setState(prev => ({
           ...prev,
           step: 'error',
@@ -136,7 +139,7 @@ export default function InvitationPage() {
         navigate(`/`);
       }
     } catch (err) {
-      console.error('Failed to accept invitation:', err);
+      logger.error('Failed to accept invitation', { error: err });
       notifyError((err as Error)?.message || 'Failed to accept invitation');
       setState(prev => ({
         ...prev,

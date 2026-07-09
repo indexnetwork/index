@@ -64,7 +64,7 @@ export class NegotiationRunExistingQueue {
         await this.handleNegotiate(data);
         break;
       default:
-        this.queueLogger.warn(`[RunExistingQueueProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
@@ -72,11 +72,11 @@ export class NegotiationRunExistingQueue {
     const { opportunityId, userId } = data;
 
     if (!opportunityId) {
-      this.logger.warn('[RunExisting] Missing opportunityId, skipping', { userId });
+      this.logger.warn('Missing opportunityId, skipping', { userId });
       return;
     }
 
-    this.logger.info('[RunExisting] Starting negotiation', { opportunityId, userId });
+    this.logger.info('Starting negotiation', { opportunityId, userId });
 
     if (this.deps?.invokeOpportunityGraph) {
       await this.deps.invokeOpportunityGraph({
@@ -85,7 +85,7 @@ export class NegotiationRunExistingQueue {
         opportunityId,
         options: {},
       });
-      this.logger.info('[RunExisting] Negotiation complete', { opportunityId, userId });
+      this.logger.info('Negotiation complete', { opportunityId, userId });
       return;
     }
 
@@ -112,9 +112,9 @@ export class NegotiationRunExistingQueue {
         opportunityId,
         options: {},
       });
-      this.logger.info('[RunExisting] Negotiation complete', { opportunityId, userId });
+      this.logger.info('Negotiation complete', { opportunityId, userId });
     } catch (err) {
-      this.logger.error('[RunExisting] Graph failed', { opportunityId, userId, error: err });
+      this.logger.error('Graph failed', { opportunityId, userId, error: err });
       throw err;
     }
   }
@@ -122,7 +122,7 @@ export class NegotiationRunExistingQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<RunExistingJobData>) => {
-      this.queueLogger.info(`[RunExistingProcessor] Processing job ${job.id}`);
+      this.queueLogger.info('Processing job', { jobId: job.id });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<RunExistingJobData>(QUEUE_NAME, processor);

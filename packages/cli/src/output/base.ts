@@ -46,9 +46,9 @@ export function info(message: string): void {
   console.log(`${CYAN}${message}${RESET}`);
 }
 
-/** Print a warning message. */
+/** Print a warning message to stderr (keeps piped stdout output clean, e.g. --json). */
 export function warn(message: string): void {
-  console.log(`${YELLOW}${message}${RESET}`);
+  console.warn(`${YELLOW}${message}${RESET}`);
 }
 
 /** Print a dim/secondary message. */

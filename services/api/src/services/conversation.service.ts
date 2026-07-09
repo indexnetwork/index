@@ -136,7 +136,7 @@ export class ConversationService {
         await pubClient.publish(`conversations:user:${p.participantId}`, event);
       }
     } catch (err) {
-      logger.error('[sendMessage] Failed to publish SSE event', {
+      logger.error('Failed to publish SSE event', {
         conversationId,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -147,7 +147,7 @@ export class ConversationService {
       try {
         await this.sendGhostInviteIfNeeded(conversationId, senderId, parts, participants);
       } catch (err) {
-        logger.error('[sendMessage] Ghost invite email failed', {
+        logger.error('Ghost invite email failed', {
           conversationId,
           error: err instanceof Error ? err.message : String(err),
         });
@@ -252,7 +252,7 @@ export class ConversationService {
         ghostInviteSent: true,
       });
 
-      logger.info('[sendMessage] Ghost invite email queued', {
+      logger.info('Ghost invite email queued', {
         conversationId,
         recipientId: recipient.id,
       });
@@ -276,7 +276,7 @@ export class ConversationService {
           if (!cancelled) handler(data);
         });
         sub.subscribe(channel).catch((err) => {
-          logger.error('[subscribe] Redis subscribe failed', {
+          logger.error('Redis subscribe failed', {
             userId,
             error: err instanceof Error ? err.message : String(err),
           });
