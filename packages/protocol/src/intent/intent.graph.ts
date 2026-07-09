@@ -223,7 +223,7 @@ export class IntentGraphFactory {
           return { verifiedIntents: [], agentTimings: [] };
         }
 
-        logger.verbose(`Verifying ${intents.length} intents in parallel...`);
+        logger.verbose('Verifying intents in parallel', { count: intents.length });
 
         const agentTimingsAccum: DebugMetaAgent[] = [];
 
@@ -268,12 +268,13 @@ export class IntentGraphFactory {
               // Filter Logic: Must be a Commissive, Directive, or Declaration
               const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
               if (!VALID_TYPES.includes(verdict.classification)) {
-                logger.warn(`Dropping intent: "${description}" (Type: ${verdict.classification})`);
+                logger.warn('Dropping intent', { description, classification: verdict.classification });
                 return null;
               }
 
               if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
-                logger.warn(`Dropping vague intent after verification: "${description}"`, {
+                logger.warn('Dropping vague intent after verification', {
+                  description,
                   entropy: verdict.semantic_entropy,
                   clarity: verdict.felicity_scores.clarity,
                 });
@@ -281,7 +282,8 @@ export class IntentGraphFactory {
               }
 
               if (state.operationMode !== 'propose' && verdict.referential_breadth === 'broad') {
-                logger.warn(`Dropping broad attributive intent before persistence: "${description}"`, {
+                logger.warn('Dropping broad attributive intent before persistence', {
+                  description,
                   referentialBreadth: verdict.referential_breadth,
                   missingSelectionalConstraints: verdict.missing_selectional_constraints,
                   warning: getSpecificityWarning(verdict),
@@ -304,7 +306,7 @@ export class IntentGraphFactory {
                 score
               };
             } catch (e) {
-              logger.error(`Error verifying intent: ${intent.description}`, { error: e });
+              logger.error('Error verifying intent', { description: intent.description, error: e });
               return null;
             }
           })
@@ -511,7 +513,7 @@ export class IntentGraphFactory {
           return { executionResults: [] };
         }
 
-        logger.verbose(`Executing ${actions.length} actions...`);
+        logger.verbose('Executing actions', { count: actions.length });
         const results: ExecutionResult[] = [];
         const scopeEnvelope = state.scopeType && state.scopeId
           ? { scopeType: state.scopeType, scopeId: state.scopeId }
@@ -564,7 +566,7 @@ export class IntentGraphFactory {
               });
 
               results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
-              logger.verbose(`Created intent: ${created.id}`);
+              logger.verbose('Created intent', { intentId: created.id });
 
               this.intentQueue?.addGenerateHydeJob({
                 intentId: created.id,
@@ -628,7 +630,7 @@ export class IntentGraphFactory {
                 payload: sanitizedPayload,
                 error: updated ? undefined : 'Intent not found'
               });
-              logger.verbose(`Updated intent: ${updateAction.id}`);
+              logger.verbose('Updated intent', { intentId: updateAction.id });
               if (updated) {
                 this.intentQueue?.addGenerateHydeJob({
                   intentId: updateAction.id,
@@ -648,7 +650,7 @@ export class IntentGraphFactory {
                 intentId: expireAction.id,
                 error: result.error
               });
-              logger.verbose(`Archived intent: ${expireAction.id}`);
+              logger.verbose('Archived intent', { intentId: expireAction.id });
               if (result.success) {
                 this.intentQueue?.addDeleteHydeJob({ intentId: expireAction.id }).catch((err) =>
                   logger.error('Failed to enqueue intent HyDE delete job', { intentId: expireAction.id, error: err })
@@ -656,7 +658,7 @@ export class IntentGraphFactory {
               }
             }
           } catch (error) {
-            logger.error(`Failed to execute ${action.type}:`, { error });
+            logger.error('Failed to execute action', { actionType: action.type, error });
             results.push({
               actionType,
               success: false,

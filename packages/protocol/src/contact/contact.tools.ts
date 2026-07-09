@@ -3,7 +3,7 @@ import type { DefineTool, ToolDeps } from '../shared/agent/tool.helpers.js';
 import { success, error } from '../shared/agent/tool.helpers.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
-const logger = protocolLogger('ContactTools');
+const logger = protocolLogger('ChatTools:Contact');
 
 /**
  * Creates contact management tools for the chat agent.

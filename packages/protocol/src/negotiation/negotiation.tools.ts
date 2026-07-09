@@ -8,7 +8,7 @@ import type { NegotiationTurnPayload } from '../shared/interfaces/agent-dispatch
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { focusedNetworkId } from '../shared/agent/tool.scope.js';
 
-const logger = protocolLogger('NegotiationTools');
+const logger = protocolLogger('ChatTools:Negotiation');
 
 /**
  * Default park-window budget for ambient (background) negotiations. When a personal

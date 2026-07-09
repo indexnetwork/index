@@ -245,7 +245,7 @@ export class SemanticVerifier {
    */
   @Timed()
   public async invoke(content: string, context: string) {
-    invokeLog.verbose(`Verifying: "${content.substring(0, 30)}..."`);
+    invokeLog.verbose('Verifying content', { preview: content.substring(0, 30) });
 
     const prompt = `
       # User Profile (Context)
@@ -266,7 +266,7 @@ export class SemanticVerifier {
       const result = await invokeWithAbortSignal(this.model, messages);
       const output = responseFormat.parse(result);
 
-      invokeLog.verbose(`Verdict: ${output.classification} Entropy: ${output.semantic_entropy}`);
+      invokeLog.verbose('Verdict computed', { classification: output.classification, semanticEntropy: output.semantic_entropy });
       return output;
     } catch (error) {
       logger.error("Error during invocation", { error });

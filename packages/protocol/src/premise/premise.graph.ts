@@ -69,7 +69,7 @@ export class PremiseGraphFactory {
 
     const queryNode = async (state: typeof PremiseGraphState.State) => {
       return timed("PremiseGraph.query", async () => {
-        queryLog.verbose(`Fetching premises for user ${state.userId}`);
+        queryLog.verbose('Fetching premises for user', { userId: state.userId });
         const premises = await this.database.getPremisesForUser(state.userId, 'ACTIVE');
         return {
           readResult: {
@@ -86,7 +86,7 @@ export class PremiseGraphFactory {
           return { error: "assertionText is required for create/update mode" };
         }
 
-        analyzeLog.verbose(`Analyzing: "${state.assertionText.substring(0, 50)}..."`);
+        analyzeLog.verbose('Analyzing assertion text', { preview: state.assertionText.substring(0, 50) });
 
         const start = Date.now();
         const result = await analyzer.invoke(state.assertionText);
@@ -164,7 +164,7 @@ export class PremiseGraphFactory {
         }
 
         if (state.operationMode === 'update' && state.targetPremiseId) {
-          persistLog.verbose(`Updating premise ${state.targetPremiseId}`);
+          persistLog.verbose('Updating premise', { premiseId: state.targetPremiseId });
 
           const updated = await this.database.updatePremise(state.targetPremiseId, {
             assertion: {
@@ -182,7 +182,7 @@ export class PremiseGraphFactory {
           return { premise: updated };
         }
 
-        persistLog.verbose(`Creating new premise for user ${state.userId}`);
+        persistLog.verbose('Creating new premise for user', { userId: state.userId });
 
         // Provenance confidence: prefer an explicit caller-supplied value; otherwise
         // derive it from the analyzer's felicity scores (how authoritative, sincere,
@@ -280,11 +280,11 @@ export class PremiseGraphFactory {
               assignments.push({ networkId, relevancyScore: decision.finalScore });
             }
           } catch (err) {
-            indexLog.verbose(`Failed to score network ${networkId}, skipping: ${err}`);
+            indexLog.verbose('Failed to score network, skipping', { networkId, error: err });
           }
         }
 
-        indexLog.verbose(`Assigned to ${assignments.length} networks`);
+        indexLog.verbose('Assigned to networks', { count: assignments.length });
 
         return { networkAssignments: assignments, agentTimings };
       });

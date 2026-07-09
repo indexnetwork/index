@@ -91,7 +91,7 @@ export function getCachedMcpToolMetadata(deps: ToolDeps): readonly McpToolRegist
   });
 
   mcpToolMetadataCache.set(cacheKey, metadata);
-  logger.verbose(`MCP tool metadata cached with ${metadata.length} tools`, { cacheKey });
+  logger.verbose('MCP tool metadata cached', { toolCount: metadata.length, cacheKey });
   return metadata;
 }
 
@@ -579,7 +579,8 @@ export function createMcpServer(
                 toolName,
               });
             } catch (rlErr) {
-              logger.warn(`MCP rate limiter threw for "${toolName}" — failing open`, {
+              logger.warn('MCP rate limiter threw — failing open', {
+                toolName,
                 error: rlErr instanceof Error ? rlErr.message : String(rlErr),
               });
             }
@@ -755,7 +756,7 @@ export function createMcpServer(
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          logger.error(`MCP tool "${toolName}" failed`, { error: message });
+          logger.error('MCP tool failed', { toolName, error: message });
           if (shouldReportMcpToolError(err)) {
             reportDeps.reportToolError?.(err, {
               subsystem: 'mcp',
@@ -783,6 +784,6 @@ export function createMcpServer(
     );
   }
 
-  logger.verbose(`MCP server created with ${toolMetadata.length} tools`);
+  logger.verbose('MCP server created', { toolCount: toolMetadata.length });
   return server;
 }

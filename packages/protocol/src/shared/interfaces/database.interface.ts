@@ -699,7 +699,7 @@ export interface Database {
    * // After graph outputs EXPIRE action
    * const result = await db.archiveIntent(action.id);
    * if (!result.success) {
-   *   console.error(`Failed to archive: ${result.error}`);
+   *   console.error('Failed to archive intent', { error: result.error });
    * }
    * ```
    */

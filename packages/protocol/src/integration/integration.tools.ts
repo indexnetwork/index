@@ -4,7 +4,7 @@ import { success, error } from '../shared/agent/tool.helpers.js';
 import { requestContext } from "../shared/observability/request-context.js";
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
-const logger = protocolLogger('IntegrationTools');
+const logger = protocolLogger('ChatTools:Integration');
 
 /**
  * Creates integration tools for the chat agent.

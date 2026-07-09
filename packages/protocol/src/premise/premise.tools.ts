@@ -52,7 +52,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         ? { scopeType: context.scopeType, scopeId: context.scopeId }
         : {};
 
-      createPremiseLog.verbose(`Creating premise for user ${context.userId}: "${query.text.substring(0, 60)}..."`);
+      createPremiseLog.verbose('Creating premise for user', { userId: context.userId, preview: query.text.substring(0, 60) });
 
       const result = await invokeWithAbortSignal(premiseGraph, {
         userId: context.userId,
@@ -114,7 +114,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid userId format.");
       }
 
-      readPremisesLog.verbose(`Fetching premises for user ${targetUserId}`);
+      readPremisesLog.verbose('Fetching premises for user', { userId: targetUserId });
 
       // Query DB directly (bypassing graph) to support status filtering.
       // The graph's query node hardcodes ACTIVE status, so includeRetracted
@@ -175,7 +175,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Cannot update a retracted premise. Retracted premises are immutable.");
       }
 
-      updatePremiseLog.verbose(`Updating premise ${query.premiseId} for user ${context.userId}`);
+      updatePremiseLog.verbose('Updating premise for user', { premiseId: query.premiseId, userId: context.userId });
 
       // When text is unchanged, skip the graph (avoids unnecessary LLM
       // re-analysis and non-deterministic re-embedding). Only route through
@@ -275,7 +275,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Premise is already retracted.");
       }
 
-      retractPremiseLog.verbose(`Retracting premise ${query.premiseId} for user ${context.userId}`);
+      retractPremiseLog.verbose('Retracting premise for user', { premiseId: query.premiseId, userId: context.userId });
 
       await database.updatePremise(query.premiseId, {
         status: "RETRACTED",

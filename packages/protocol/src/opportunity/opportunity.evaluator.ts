@@ -306,7 +306,7 @@ export class OpportunityEvaluator {
   ): Promise<Opportunity[]> {
     const minScore = options.minScore || 70;
 
-    invokeLog.verbose(`Analyzing ${candidates.length} candidates...`);
+    invokeLog.verbose('Analyzing candidates', { count: candidates.length });
 
     if (candidates.length === 0) {
       logger.verbose('No candidates provided.');
@@ -381,7 +381,7 @@ export class OpportunityEvaluator {
       return mappedOpportunities;
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      logger.warn(`Analysis failed for candidate ${candidateUserId}`, { message });
+      logger.warn('Analysis failed for candidate', { candidateUserId, message });
       throw e;
     }
   }

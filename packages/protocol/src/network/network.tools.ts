@@ -12,7 +12,7 @@ import { NetworkRecommender } from "./network.recommender.js";
 // importing this module does not require OPENROUTER_API_KEY at load time.
 let recommender: NetworkRecommender | undefined;
 
-const logger = log.protocol.from("network.tools");
+const logger = log.protocol.from("ChatTools:Network");
 
 export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs, userDb, systemDb } = deps;

@@ -125,7 +125,7 @@ const normalizeActionType = (type: string): "create" | "update" | "expire" => {
   if (normalized === "create" || normalized === "update" || normalized === "expire") {
     return normalized;
   }
-  logger.warn(`normalizeActionType: unexpected action type "${type}", defaulting to "create"`);
+  logger.warn('normalizeActionType: unexpected action type, defaulting to "create"', { type });
   return "create";
 };
 
@@ -177,7 +177,7 @@ export class IntentReconciler {
         type: normalizeActionType(action.type),
       })) as NormalizedIntentAction[];
 
-      invokeLog.verbose(`Decision: ${normalizedActions.length} actions.`);
+      invokeLog.verbose('Decision computed', { actionCount: normalizedActions.length });
       return { actions: normalizedActions };
     } catch (error) {
       logger.error("Error during invocation", { error });
