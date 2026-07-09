@@ -145,7 +145,7 @@ function productionRedis(): RedisReader {
 }
 
 function appUrl(): string {
-  return process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
+  return process.env.WEB_APP_URL || 'https://index.network';
 }
 
 const EXPIRED_TOKEN_MSG = () => `This link has expired. Please reconnect at ${appUrl()}.`;

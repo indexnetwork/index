@@ -153,10 +153,9 @@ bun install
 3. **Set up environment variables**
 
 ```bash
-cp services/api/.env.example services/api/.env
-cp apps/web/.env.example apps/web/.env
+cp .env.example .env.development
 
-# Edit services/api/.env: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
+# Edit .env.development: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
 ```
 
 4. **Initialize the database**

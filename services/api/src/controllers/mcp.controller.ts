@@ -50,7 +50,7 @@ import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, ChatQuestionsHost, PersistableQuestion, PersistedQuestion } from '@indexnetwork/protocol';
 
-import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
+import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
@@ -143,7 +143,7 @@ const protocolDeps = {
   },
   mintConnectToken: signConnectToken,
   mintConnectLink,
-  frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
+  frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
   questionerDatabase: questionerAdapter,
   getUserContextText: ensureGlobalUserContext,
@@ -221,7 +221,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const JWKS = createRemoteJWKSet(
-  new URL('/api/auth/jwks', BASE_URL),
+  new URL('/api/auth/jwks', API_URL),
 );
 
 function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
@@ -454,7 +454,7 @@ const authResolver: McpAuthResolver = {
       if (isJwt) {
         // JWT path
         try {
-          const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
+          const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
           if (typeof payload.id === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface });
           if (typeof payload.sub === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
           throw new Error('JWT payload missing user ID');
@@ -469,7 +469,7 @@ const authResolver: McpAuthResolver = {
       } else {
         // Opaque token path
         try {
-          const res = await fetch(`${BASE_URL}/api/auth/mcp/get-session`, {
+          const res = await fetch(`${API_URL}/api/auth/mcp/get-session`, {
             headers: { Authorization: `Bearer ${input.bearerToken}` },
             signal: AbortSignal.timeout(5000),
           });
@@ -490,7 +490,7 @@ const authResolver: McpAuthResolver = {
       let sessionUserId: string | undefined;
 
       try {
-        const sessionRes = await fetch(`${BASE_URL}/api/auth/get-session`, {
+        const sessionRes = await fetch(`${API_URL}/api/auth/get-session`, {
           headers: { 'x-api-key': input.apiKey },
           signal: AbortSignal.timeout(5000),
         });
@@ -882,7 +882,7 @@ export async function mcpHandler(
         status: 401,
         headers: {
           'Content-Type': 'application/json',
-          'WWW-Authenticate': `Bearer resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+          'WWW-Authenticate': `Bearer resource_metadata="${API_URL}/.well-known/oauth-protected-resource"`,
           ...corsHeaders,
         },
       },
@@ -950,7 +950,7 @@ export async function mcpHandler(
           status: 401,
           headers: {
             'Content-Type': 'application/json',
-            'WWW-Authenticate': `Bearer resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+            'WWW-Authenticate': `Bearer resource_metadata="${API_URL}/.well-known/oauth-protected-resource"`,
             ...corsHeaders,
           },
         },

@@ -227,7 +227,7 @@ export class ConversationService {
       const { ghostInviteTemplate } = await import('../lib/email/templates');
       const { emailQueue } = await import('../queues/email.queue');
 
-      const appUrl = process.env.APP_URL || 'https://index.network';
+      const appUrl = process.env.WEB_APP_URL || 'https://index.network';
       const replyUrl = `${appUrl}/onboarding?ref=invite&alpha=true`;
       const notifSettings = await this.db.getOrCreateNotificationSettings(recipient.id);
       const unsubscribeUrl = `${appUrl}/api/unsubscribe/${notifSettings.unsubscribeToken}`;

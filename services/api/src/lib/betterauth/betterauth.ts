@@ -7,13 +7,12 @@ import { resolveClassConfig } from "../limiter/config";
 
 const logger = log.server.from("betterauth");
 
-export const BASE_URL =
-  process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+export const API_URL =
+  process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
 
-export const JWT_AUDIENCE = BASE_URL;
+export const JWT_AUDIENCE = API_URL;
 
-export const APP_URL =
-  process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
+export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
 
 /** Contract for the auth database adapter injected into createAuth. */
 export interface AuthDbContract {
@@ -71,7 +70,7 @@ export function createAuth(deps: AuthDeps) {
   const authWriteRule = { window: authWrite.windowSec, max: authWrite.perMinute };
 
   return betterAuth({
-    baseURL: BASE_URL,
+    baseURL: API_URL,
     database: authDb.createDrizzleAdapter(),
     databaseHooks: {
       session: {
@@ -161,7 +160,7 @@ export function createAuth(deps: AuthDeps) {
       bearer(),
       jwt({
         jwt: {
-          issuer: BASE_URL,
+          issuer: API_URL,
           audience: JWT_AUDIENCE,
           expirationTime: "1h",
           definePayload: ({ user }) => ({
@@ -179,7 +178,7 @@ export function createAuth(deps: AuthDeps) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,
       mcp({
-        loginPage: `${APP_URL}/login`,
+        loginPage: `${WEB_APP_URL}/login`,
         // No consentPage needed: the mcp() plugin skips consent automatically when the
         // authorization request does not include prompt=consent, which Claude Code never
         // sends. The flow goes: /mcp/authorize → session check → code → callback.

@@ -248,7 +248,7 @@ export class DiscoveryRunQueue {
       enricher: {} as ToolDeps['enricher'],
       negotiationDatabase: {} as ToolDeps['negotiationDatabase'],
       mintConnectLink,
-      frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
+      frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
       apiBaseUrl,
       ...(questionerEnqueue && { questionerEnqueue }),
       graphs: {

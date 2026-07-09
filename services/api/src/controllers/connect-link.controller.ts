@@ -20,7 +20,7 @@ const EXPIRED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Un
 </div></body></html>`;
 
 function getFrontendUrl(): string {
-  return (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+  return (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
 }
 
 function jsonError(message: string, status: number): Response {

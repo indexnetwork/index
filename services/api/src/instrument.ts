@@ -1,13 +1,20 @@
 import * as Sentry from '@sentry/bun';
 import { config } from 'dotenv';
+import path from 'node:path';
 
 const environment = process.env.NODE_ENV;
 const dotenvPathByEnv: Record<string, string> = {
   development: '.env.development',
-  production: '.env.production',
   test: '.env.test',
 };
-const dotenvPath = (environment && dotenvPathByEnv[environment]) ?? '.env';
+// Runtime env files live at the repo root (see root .env.example). Resolve
+// relative to this file (src/ and dist/ are both two levels below the
+// services/api package, four below the repo root) so the path works
+// regardless of cwd — dev, worktrees, Railway (`cd services/api`), and CLIs.
+// No bare `.env` fallback: development is the default when NODE_ENV is unset;
+// deployments use platform-injected variables, never files.
+const repoRoot = path.resolve(import.meta.dir, '../../..');
+const dotenvPath = path.join(repoRoot, (environment && dotenvPathByEnv[environment]) ?? '.env.development');
 
 config({ path: dotenvPath });
 

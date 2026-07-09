@@ -58,7 +58,7 @@ export class ComposioIntegrationAdapter implements IntegrationAdapter {
   async createSession(userId: string, options?: IntegrationSessionOptions): Promise<IntegrationSession> {
     const composio = getComposioClient();
 
-    const baseUrl = process.env.FRONTEND_URL;
+    const baseUrl = process.env.WEB_APP_URL;
     const callbackUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/oauth/callback` : undefined;
     const authConfigs = await getAuthConfigMap();
 

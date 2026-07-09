@@ -8,7 +8,7 @@ export interface PageMeta {
   type?: string;
 }
 
-export const ORIGIN = process.env.APP_URL || "https://index.network";
+export const ORIGIN = process.env.WEB_APP_URL || "https://index.network";
 const DEFAULT_IMAGE = `${ORIGIN}/link-preview.png`;
 
 const MARKETING: Record<string, PageMeta> = {

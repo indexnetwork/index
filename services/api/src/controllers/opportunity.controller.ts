@@ -359,7 +359,7 @@ export class OpportunityController {
    * Body (optional): `{ kind?: 'connect' | 'approve_introduction' | 'outreach' }`.
    * Defaults to `'connect'` when omitted or unrecognized.
    *
-   * @returns `{ url: string }` — full short URL pointing at `${BASE_URL}/c/:code`.
+   * @returns `{ url: string }` — full short URL pointing at `${API_URL}/c/:code`.
    */
   @Post('/:id/connect-link')
   @UseGuards(RateLimit('write'), AuthGuard)
@@ -397,7 +397,7 @@ export class OpportunityController {
     });
 
     // Public origin for short links — the protocol host only (never the
-    // frontend APP_URL), shared with the MCP-minted path via this helper.
+    // web WEB_APP_URL), shared with the MCP-minted path via this helper.
     const apiBaseUrl = resolveProtocolBaseUrl();
 
     return Response.json({ url: `${apiBaseUrl}/c/${code}` });
@@ -445,7 +445,7 @@ export class OpportunityController {
 
     // Look up counterpart's Telegram handle
     const telegramHandle = await opportunityService.getCounterpartTelegramHandle(counterpartId);
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+    const frontendUrl = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
 
     let redirectUrl: string;
     if (telegramHandle) {

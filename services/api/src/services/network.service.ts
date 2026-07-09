@@ -574,7 +574,7 @@ export class NetworkService {
 
     const actor = owners.find((o) => o.userId === actorUserId);
     const actorDisplay = actor?.name || actor?.email || 'an owner';
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+    const frontendUrl = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
     const integrationsUrl = `${frontendUrl}/networks/${networkId}/integrations`;
 
     const rendered = networkMasterKeyRotatedTemplate({

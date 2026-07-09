@@ -1,13 +1,15 @@
 /**
  * Bun test preload script — runs before any test module is evaluated.
  *
- * All test files load `.env.test` with `override: true`. Ensure your
- * `.env.test` has a valid DATABASE_URL (copy from `.env.development`
- * if it points at a stale branch).
+ * Loads the repo-root `.env.test` (see root .env.example). Ensure it has a
+ * valid DATABASE_URL (copy from the root `.env.development` if it points at a
+ * stale branch). Legacy per-spec `config({ path: '.env.test' })` calls are
+ * harmless no-ops now that no `.env.test` exists in the package directory.
  */
 import { config } from 'dotenv';
+import path from 'node:path';
 
-config({ path: '.env.test', override: true });
+config({ path: path.resolve(import.meta.dir, '../../../.env.test'), override: true });
 
 // The contacts/ghost-user feature is disabled-when-unset in production. Default
 // it ON for the test suite so existing contact specs exercise the happy path;
