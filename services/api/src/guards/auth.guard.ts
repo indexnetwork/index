@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm/sql';
 import db from '../lib/drizzle/drizzle';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { apikeys, users } from '../schemas/database.schema';
-import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
+import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 
 const logger = log.server.from('auth-guard');
@@ -16,7 +16,7 @@ export interface AuthenticatedUser {
 }
 
 const JWKS = createRemoteJWKSet(
-  new URL('/api/auth/jwks', BASE_URL)
+  new URL('/api/auth/jwks', API_URL)
 );
 
 /** SHA-256 hash a raw API key into the base64url form stored in `apikeys.key`. */
@@ -40,7 +40,7 @@ const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
     throw new Error('Access token required');
   }
   try {
-    const { payload } = await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
+    const { payload } = await jwtVerify(token, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
     return {
       id: payload.id as string,
       email: (payload.email as string) ?? null,

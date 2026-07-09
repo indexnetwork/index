@@ -36,8 +36,8 @@ export interface NotificationQueueDeps {
   database?: NotificationQueueDatabase;
 }
 
-const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://index.network';
+const API_URL = process.env.API_URL || 'https://protocol.index.network';
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
 const DIGEST_LIST_PREFIX = 'digest:opportunities:';
 const DIGEST_DEDUPE_PREFIX = 'digest:dedupe:';
 const EMAIL_OPPORTUNITY_DEDUPE_PREFIX = 'email:opportunity:dedupe:';
@@ -188,7 +188,7 @@ export class NotificationQueue {
     // Telegram delivery (independent of priority tier)
     const telegramPrefs = await this.database.getTelegramPrefs(recipientId);
     if (telegramPrefs?.notifications.opportunityAccepted) {
-      const appUrl = process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
+      const appUrl = process.env.WEB_APP_URL || 'https://index.network';
       emitTelegramNotification({
         userId: recipientId,
         message: `New connection: ${summary}`,
@@ -226,10 +226,10 @@ export class NotificationQueue {
       return;
     }
 
-    const opportunityUrl = `${FRONTEND_URL}/opportunities/${opportunityId}`;
+    const opportunityUrl = `${WEB_APP_URL}/opportunities/${opportunityId}`;
     let unsubscribeUrl: string | undefined;
     if (recipient.unsubscribeToken) {
-      unsubscribeUrl = `${BASE_URL}/api/notifications/unsubscribe?token=${recipient.unsubscribeToken}&type=connectionUpdates`;
+      unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${recipient.unsubscribeToken}&type=connectionUpdates`;
     }
 
     const redis = getRedisClient();

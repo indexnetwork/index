@@ -6,13 +6,14 @@ const environment = process.env.NODE_ENV;
 
 const dotenvPathByEnvironment: Record<string, string> = {
   development: '.env.development',
-  production: '.env.production',
   test: '.env.test',
 };
 // Runtime env files live at the repo root (see root .env.example). Resolve
-// relative to this file so the path works regardless of cwd.
+// relative to this file so the path works regardless of cwd. No bare `.env`
+// fallback: development is the default when NODE_ENV is unset; deployments
+// use platform-injected variables, never files.
 const repoRoot = path.resolve(import.meta.dir, '../../..');
-const dotenvPath = path.join(repoRoot, (environment && dotenvPathByEnvironment[environment]) || '.env');
+const dotenvPath = path.join(repoRoot, (environment && dotenvPathByEnvironment[environment]) || '.env.development');
 
 config({ path: dotenvPath });
 
@@ -39,10 +40,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   PORT: z.string().regex(/^\d+$/).default('3001'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  BASE_URL: optionalUrl,
-  API_BASE_URL: optionalUrl,
-  APP_URL: optionalUrl,
-  FRONTEND_URL: optionalUrl,
+  API_URL: optionalUrl,
+  WEB_APP_URL: optionalUrl,
 
   // 2. Authentication
   BETTER_AUTH_SECRET: requiredUnlessTest,
@@ -56,6 +55,8 @@ const envSchema = z.object({
   OPENROUTER_BASE_URL: optionalUrl,
   OPENROUTER_REQUEST_TIMEOUT_MS: optionalInt,
   OPENROUTER_MAX_RETRIES: optionalInt,
+  OPENROUTER_FALLBACK_MODEL: z.string().optional(),
+  OPENROUTER_RUNNABLE_MAX_ATTEMPTS: optionalInt,
   CHAT_MODEL: z.string().optional(),
   CHAT_REASONING_EFFORT: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
   EMBEDDING_MODEL: z.string().optional(),
@@ -95,6 +96,8 @@ const envSchema = z.object({
   CONTACT_DEDUP_STRATEGY: z.enum(['conservative', 'balanced', 'aggressive', 'off']).optional(),
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
+  DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
+  PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
   QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
   QUESTIONER_DISCOVERY_INPUT_MODE: z.string().optional(),
   QUESTIONER_DISCOVERY_TIMEOUT_MS: optionalInt,
@@ -128,9 +131,6 @@ const envSchema = z.object({
   TELEGRAM_WEBHOOK_URL: optionalUrl,
 
   // 12. Observability
-  LANGFUSE_PUBLIC_KEY: z.string().optional(),
-  LANGFUSE_SECRET_KEY: z.string().optional(),
-  LANGFUSE_BASE_URL: optionalUrl,
   SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().optional(),
   SENTRY_RELEASE: z.string().optional(),
@@ -191,9 +191,9 @@ function collectEnvWarnings(): string[] {
     }
   };
 
-  warnMissingAny(['BASE_URL', 'API_BASE_URL', 'APP_URL'], 'set the deployed API origin so MCP configs, connect links, and webhooks do not fall back to defaults.');
+  warnMissing('API_URL', 'set the deployed API origin so MCP configs, connect links, and webhooks do not fall back to defaults.');
   warnMissing('CONNECT_JWT_SECRET', 'connect redirect tokens will use the local development fallback unless NODE_ENV=production, where startup fails.');
-  warnMissingAny(['FRONTEND_URL', 'APP_URL'], 'set the deployed frontend origin for auth, notifications, and integration callbacks.');
+  warnMissing('WEB_APP_URL', 'set the deployed web app origin for auth, notifications, and integration callbacks.');
   warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise queues/cache/limiter may target localhost or in-memory fallbacks.');
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');
   warnMissing('S3_REGION', 'set the S3 region, often "auto" for Railway buckets.');
@@ -204,7 +204,6 @@ function collectEnvWarnings(): string[] {
   warnMissing('PARALLELS_API_KEY', 'web crawling/profile extraction for links is disabled.');
 
   warnPartial(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], 'set both values or Google OAuth will not work.');
-  warnPartial(['LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY'], 'set both values or Langfuse tracing will not work.');
   warnPartial(['TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET'], 'set both values or Telegram webhook registration will be skipped/rejected.');
   if (hasValue('TELEGRAM_BOT_TOKEN') && !hasValue('TELEGRAM_BOT_USERNAME')) {
     warnings.push('TELEGRAM_BOT_USERNAME: set the bot username so Telegram integration links can be generated.');
@@ -224,6 +223,21 @@ function collectEnvWarnings(): string[] {
     ['CHAT_QUESTION_WAIT_TIMEOUT_MS', 'QUESTIONER_CHAT_WAIT_TIMEOUT_MS'],
   ];
   for (const [oldName, newName] of renamedQuestionVars) {
+    if (hasValue(oldName)) {
+      warnings.push(`${oldName}: renamed to ${newName} — the old name is ignored; update the environment.`);
+    }
+  }
+
+  // URL env vars were renamed for clarity (clean cutover — old names are
+  // ignored): API_URL is the deployed API origin, WEB_APP_URL the deployed
+  // web app origin. The old ambiguous names warn loudly when still set.
+  const renamedUrlVars: Array<[oldName: string, newName: string]> = [
+    ['BASE_URL', 'API_URL'],
+    ['API_BASE_URL', 'API_URL'],
+    ['FRONTEND_URL', 'WEB_APP_URL'],
+    ['APP_URL', 'WEB_APP_URL'],
+  ];
+  for (const [oldName, newName] of renamedUrlVars) {
     if (hasValue(oldName)) {
       warnings.push(`${oldName}: renamed to ${newName} — the old name is ignored; update the environment.`);
     }

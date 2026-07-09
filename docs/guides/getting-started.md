@@ -82,11 +82,13 @@ index/
 
 ## Environment setup
 
-All runtime env files live at the **repo root** and are gitignored; the root
-`.env.example` is the single canonical reference for every variable (API, web,
-and protocol evals). Which file is loaded follows `NODE_ENV`:
-`.env.development` (default for dev), `.env.test` (tests/evals),
-`.env.production`, with `.env` as the fallback when `NODE_ENV` is unset.
+Exactly two runtime env files exist, both at the **repo root** and gitignored;
+the root `.env.example` is the single canonical reference for every variable
+(API, web, and protocol evals). `.env.development` is used for local
+development (and whenever `NODE_ENV` is unset); `.env.test` is used when
+`NODE_ENV=test` (API tests, protocol tests/evals). There is deliberately no
+bare `.env` and no `.env.production` — deployments use platform-injected
+variables, never files.
 
 ```bash
 cp .env.example .env.development
