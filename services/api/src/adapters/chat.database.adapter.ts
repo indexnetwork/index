@@ -3219,7 +3219,7 @@ export class ChatDatabaseAdapter {
     // opportunity cascade + user_contexts regeneration without per-surface wiring.
     // The bus defaults to no-ops; main.ts subscribes the queue handlers.
     try { PremiseEvents.onCreated(row.id, row.userId); }
-    catch (e) { logger.error('[createPremise] PremiseEvents.onCreated failed', { premiseId: row.id, error: e }); }
+    catch (e) { logger.error('PremiseEvents.onCreated failed after premise create', { premiseId: row.id, error: e }); }
     return {
       id: row.id,
       userId: row.userId,
@@ -3396,7 +3396,7 @@ export class ChatDatabaseAdapter {
       else if (updates.status === 'EXPIRED') PremiseEvents.onExpired(row.id, row.userId);
       else PremiseEvents.onUpdated(row.id, row.userId);
     } catch (e) {
-      logger.error('[updatePremise] PremiseEvents emit failed', { premiseId: row.id, error: e });
+      logger.error('PremiseEvents emit failed after premise update', { premiseId: row.id, error: e });
     }
     return {
       id: row.id,

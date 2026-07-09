@@ -42,6 +42,7 @@ import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
+const discoverOpportunitiesLog = protocolLogger("ChatTools:Opportunity:discover_opportunities");
 
 /**
  * Pure status × role → ConnectLinkKind matrix.
@@ -1349,7 +1350,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           }
           // 'pending' / 'latent' / unknown — not expected post-IND-287. Treat as
           // negotiating (count only) and log so we can spot wiring regressions.
-          logger.warn('[discover_opportunities] unexpected refreshed status — counting as negotiating', {
+          discoverOpportunitiesLog.warn('unexpected refreshed status — counting as negotiating', {
             opportunityId: card.opportunityId,
             refreshedStatus,
           });

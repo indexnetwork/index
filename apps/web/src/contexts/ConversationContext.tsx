@@ -3,6 +3,9 @@ import { apiClient } from '@/lib/api';
 import { getJwtToken } from '@/lib/auth-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import type { ConversationSummary, ConversationMessage } from '@/services/conversation';
+import { log } from '@/lib/logger';
+
+const logger = log.context.from('ConversationContext');
 
 const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
 const SSE_URL = `${PROTOCOL_BASE}/api/conversations/stream`;
@@ -45,7 +48,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       const data = await apiClient.get<{ conversations: ConversationSummary[] }>('/conversations');
       setConversations(data.conversations);
     } catch (err) {
-      console.error('[ConversationContext] Failed to fetch conversations:', err);
+      logger.error('Failed to fetch conversations', { error: err });
     }
   }, []);
   useEffect(() => { refreshConversationsRef.current = refreshConversations; }, [refreshConversations]);
@@ -55,7 +58,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       const data = await apiClient.get<{ conversations: ConversationSummary[] }>('/conversations/negotiations');
       setNegotiations(data.conversations);
     } catch (err) {
-      console.error('[ConversationContext] Failed to fetch negotiations:', err);
+      logger.error('Failed to fetch negotiations', { error: err });
     }
   }, []);
 
@@ -83,13 +86,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         return next;
       });
     } catch (err) {
-      console.error('[ConversationContext] Failed to load messages:', err);
+      logger.error('Failed to load messages', { error: err });
     }
   }, []);
 
   const sendMessage = useCallback(async (conversationId: string, parts: unknown[]): Promise<ConversationMessage | null> => {
     if (!user?.id) {
-      console.error('[ConversationContext] Cannot send message: user not authenticated');
+      logger.error('Cannot send message: user not authenticated');
       return null;
     }
     // Optimistic update
@@ -142,7 +145,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       });
       return data.message;
     } catch (err) {
-      console.error('[ConversationContext] Failed to send message:', err);
+      logger.error('Failed to send message', { error: err });
       // Roll back optimistic update (messages + conversation sidebar)
       setMessages((prev) => {
         const next = new Map(prev);
@@ -172,7 +175,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         return next;
       });
     } catch (err) {
-      console.error('[ConversationContext] Failed to hide conversation:', err);
+      logger.error('Failed to hide conversation', { error: err });
     }
   }, []);
 
@@ -267,11 +270,11 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
           const delay = Math.min(5000 * Math.pow(2, retryCountRef.current - 1), 60000);
           retryTimeoutRef.current = setTimeout(() => { connectSSERef.current(); }, delay);
         } else {
-          console.error('[ConversationContext] SSE max retries reached, giving up');
+          logger.error('SSE max retries reached, giving up');
         }
       };
     } catch (err) {
-      console.error('[ConversationContext] SSE connection failed:', err);
+      logger.error('SSE connection failed', { error: err });
       retryCountRef.current += 1;
       if (retryCountRef.current <= 10) {
         const delay = Math.min(5000 * Math.pow(2, retryCountRef.current - 1), 60000);

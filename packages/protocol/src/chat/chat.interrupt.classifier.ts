@@ -61,7 +61,7 @@ export class ChatInterruptClassifier {
       // Default to steer on any ambiguity or unexpected output
       return "steer";
     } catch (error) {
-      logger.warn("[ChatInterruptClassifier.classify] Classification failed, defaulting to steer", {
+      logger.warn("Classification failed, defaulting to steer", {
         error: error instanceof Error ? error.message : String(error),
       });
       return "steer";

@@ -76,7 +76,7 @@ export class FromIntroducerQueue {
         await this.handleDiscover(data);
         break;
       default:
-        this.queueLogger.warn(`[FromIntroducerQueueProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`Unknown job name: ${name}`);
     }
   }
 
@@ -86,14 +86,14 @@ export class FromIntroducerQueue {
     // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
     const contactIntents = await this.database.getActiveIntents(contactUserId);
     if (contactIntents.length === 0) {
-      this.logger.warn('[FromIntroducer] Contact has no active intents, skipping', { contactUserId, userId });
+      this.logger.warn('Contact has no active intents, skipping', { contactUserId, userId });
       return;
     }
 
     if (networkIds && networkIds.length > 1) {
-      this.logger.warn('[FromIntroducer] Multiple networkIds provided, only first used', { userId, contactUserId, networkIds });
+      this.logger.warn('Multiple networkIds provided, only first used', { userId, contactUserId, networkIds });
     }
-    this.logger.info('[FromIntroducer] Starting discovery', { userId, contactUserId, networkIds });
+    this.logger.info('Starting discovery', { userId, contactUserId, networkIds });
 
     const invokeOpts: FromIntroducerGraphInvokeOptions = {
       userId: userId as Id<'users'>,
@@ -118,7 +118,7 @@ export class FromIntroducerQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<FromIntroducerJobData>) => {
-      this.queueLogger.info(`[FromIntroducerProcessor] Processing job ${job.id}`);
+      this.queueLogger.info(`Processing job ${job.id}`);
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<FromIntroducerJobData>(QUEUE_NAME, processor);

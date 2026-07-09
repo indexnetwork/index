@@ -67,14 +67,14 @@ export class EnrichmentRunQueue {
         await this.handleRun(data.runId);
         break;
       default:
-        this.queueLogger.warn(`[EnrichmentRunProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`Unknown job name: ${name}`);
     }
   }
 
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<EnrichmentRunJobData>) => {
-      this.queueLogger.info(`[EnrichmentRunProcessor] Processing job ${job.id}`);
+      this.queueLogger.info(`Processing job ${job.id}`);
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<EnrichmentRunJobData>(QUEUE_NAME, processor);
@@ -104,7 +104,7 @@ export class EnrichmentRunQueue {
             abortController.abort(new Error('Profile run cancelled'));
           }
         })
-        .catch((err) => this.logger.warn('[EnrichmentRun] cancel poll failed', {
+        .catch((err) => this.logger.warn('Cancel poll failed', {
           runId,
           error: err instanceof Error ? err.message : String(err),
         }));
@@ -118,7 +118,7 @@ export class EnrichmentRunQueue {
         return;
       }
       await enrichmentRunAdapter.markSucceeded(runId, result);
-      this.logger.info('[EnrichmentRun] Completed', { runId, userId: run.userId, operation: run.operation });
+      this.logger.info('Completed', { runId, userId: run.userId, operation: run.operation });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (abortController.signal.aborted || await enrichmentRunAdapter.isCancelRequested(runId)) {
@@ -126,7 +126,7 @@ export class EnrichmentRunQueue {
         return;
       }
       await enrichmentRunAdapter.markFailed(runId, message);
-      this.logger.error('[EnrichmentRun] Failed', { runId, userId: run.userId, operation: run.operation, error: message });
+      this.logger.error('Failed', { runId, userId: run.userId, operation: run.operation, error: message });
       captureAppException(err, {
         subsystem: 'protocol',
         operation: 'enrichment-run.queue',

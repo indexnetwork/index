@@ -7,6 +7,7 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("IntentReconciler");
+const invokeLog = protocolLogger("IntentReconciler:invoke");
 
 
 const CreateActionTypeSchema = z.union([z.literal("create"), z.literal("CREATE")]);
@@ -148,7 +149,7 @@ export class IntentReconciler {
    */
   @Timed()
   public async invoke(inferredIntentsFormatted: string, activeIntentsContext: string) {
-    logger.verbose(`[IntentReconciler.invoke] Reconciling intents...`);
+    invokeLog.verbose(`Reconciling intents...`);
 
     const prompt = `
       # Active Intents
@@ -176,10 +177,10 @@ export class IntentReconciler {
         type: normalizeActionType(action.type),
       })) as NormalizedIntentAction[];
 
-      logger.verbose(`[IntentReconciler.invoke] Decision: ${normalizedActions.length} actions.`);
+      invokeLog.verbose(`Decision: ${normalizedActions.length} actions.`);
       return { actions: normalizedActions };
     } catch (error) {
-      logger.error("[IntentReconciler] Error during invocation", { error });
+      logger.error("Error during invocation", { error });
       return { actions: [] };
     }
   }

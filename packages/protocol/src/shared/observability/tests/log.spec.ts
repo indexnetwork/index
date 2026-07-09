@@ -63,7 +63,7 @@ describe("default logger", () => {
 });
 
 describe("setLoggerFactory()", () => {
-  it("overrides the logger — subsequent .from() calls use the new factory", () => {
+  it("overrides the logger — the factory is resolved (lazily) with context and source on first emit", () => {
     const calls: Array<{ context: string; source: string }> = [];
     setLoggerFactory((context, source) => {
       calls.push({ context, source });
@@ -76,12 +76,34 @@ describe("setLoggerFactory()", () => {
       };
     });
 
-    log.protocol.from("MyAgent");
-    log.agent.from("AnotherAgent");
-
+    const a = log.protocol.from("MyAgent");
+    const b = log.agent.from("AnotherAgent");
+    // Late-bound: the factory has not run yet at .from() time…
+    expect(calls).toHaveLength(0);
+    // …it runs on first emit, with the right context/source, and is cached.
+    a.info("x");
+    b.info("y");
+    a.info("z");
     expect(calls).toHaveLength(2);
     expect(calls[0]).toEqual({ context: "protocol", source: "MyAgent" });
     expect(calls[1]).toEqual({ context: "agent", source: "AnotherAgent" });
+  });
+
+  it("upgrades loggers created BEFORE setLoggerFactory (late binding)", () => {
+    // Simulates a module-level `const logger = log.lib.from(...)` executed at
+    // import time, before the host application wires its logger at startup.
+    const early = log.protocol.from("EarlyModule");
+    const seen: string[] = [];
+    setLoggerFactory((_context, source) => ({
+      verbose: () => {},
+      debug: () => {},
+      info: (msg) => seen.push(`${source}: ${msg}`),
+      warn: () => {},
+      error: () => {},
+    }));
+
+    early.info("after wiring");
+    expect(seen).toEqual(["EarlyModule: after wiring"]);
   });
 
   it("the custom logger's methods are called when logging", () => {
@@ -102,10 +124,24 @@ describe("setLoggerFactory()", () => {
 });
 
 describe("sanitizeForLog()", () => {
-  it("returns the value as-is with the default (no sanitize function set)", () => {
-    const obj = { name: "Alice", embedding: [0.1, 0.2] };
-    const result = sanitizeForLog(obj);
-    expect(result).toBe(obj);
+  it("redacts number arrays and truncates big payloads with the default (no sanitize function set)", () => {
+    const obj = {
+      name: "Alice",
+      embedding: [0.1, 0.2],
+      blob: "x".repeat(5000),
+      items: Array.from({ length: 100 }, (_, i) => i.toString()),
+    };
+    const result = sanitizeForLog(obj) as Record<string, unknown>;
+    expect(result.name).toBe("Alice");
+    expect(result.embedding).toBe("[redacted: 2 values]");
+    expect(result.blob).toContain("[truncated 3000 chars]");
+    expect((result.blob as string).length).toBeLessThan(2100);
+    const items = result.items as unknown[];
+    expect(items.length).toBe(26); // 25 items + truncation marker
+    expect(items[25]).toContain("truncated 75 more items");
+    // primitives pass through untouched
+    expect(sanitizeForLog(42)).toBe(42);
+    expect(sanitizeForLog("short")).toBe("short");
   });
 
   it("delegates to the injected sanitize function after setLoggerFactory(factory, sanitize)", () => {

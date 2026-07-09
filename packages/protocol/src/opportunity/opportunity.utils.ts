@@ -10,6 +10,8 @@ import type { HydeTargetCorpus } from '../shared/hyde/lens.inferrer.js';
 import { log } from '../shared/observability/log.js';
 
 const logger = log.graph.from('SelectByComposition');
+const dedupeByPersonLog = log.graph.from('DeduplicateByPerson');
+const digestCandidatesLog = log.graph.from('SelectDigestCandidates');
 
 /** Actor roles in the opportunity model (agent / patient / peer). */
 export type OpportunityActorRole = 'agent' | 'patient' | 'peer';
@@ -285,7 +287,19 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
   selected['connector-flow'].sort(sortByOriginal);
   selected.expired.sort(sortByOriginal);
 
-  logger.info(`[selectByComposition] input=${opportunities.length} buckets: connection=${buckets.connection.length} connector-flow=${buckets['connector-flow'].length} expired=${buckets.expired.length} → selected: connection=${selected.connection.length} connector-flow=${selected['connector-flow'].length} expired=${selected.expired.length}`);
+  logger.info('Selected opportunities by composition', {
+    input: opportunities.length,
+    buckets: {
+      connection: buckets.connection.length,
+      connectorFlow: buckets['connector-flow'].length,
+      expired: buckets.expired.length,
+    },
+    selected: {
+      connection: selected.connection.length,
+      connectorFlow: selected['connector-flow'].length,
+      expired: selected.expired.length,
+    },
+  });
 
   return [
     ...selected.connection,
@@ -344,9 +358,10 @@ export function deduplicateByPerson<T extends {
 
   const result = all.map((entry) => entry.opp);
   if (result.length < opportunities.length) {
-    logger.info(
-      `[deduplicateByPerson] deduped ${opportunities.length} → ${result.length} opportunities`,
-    );
+    dedupeByPersonLog.info('Deduped opportunities by person', {
+      input: opportunities.length,
+      output: result.length,
+    });
   }
   return result;
 }
@@ -420,9 +435,10 @@ export function selectDigestCandidates<T extends {
     return !counterpart || !acceptedCounterpartIds.has(counterpart.userId);
   });
   if (afterAccepted.length < candidates.length) {
-    logger.info(
-      `[selectDigestCandidates] accepted-counterpart suppression dropped ${candidates.length - afterAccepted.length} of ${candidates.length} candidates`,
-    );
+    digestCandidatesLog.info('Accepted-counterpart suppression dropped candidates', {
+      dropped: candidates.length - afterAccepted.length,
+      total: candidates.length,
+    });
   }
 
   // Rule 2: delivery-ledger dedup keyed (opportunityId, deliveredAtStatus).
@@ -439,9 +455,9 @@ export function selectDigestCandidates<T extends {
   const fresh = afterAccepted.filter((opp) => !lastDeliveredByKey.has(`${opp.id}:${opp.status}`));
   if (fresh.length > 0) {
     if (fresh.length < afterAccepted.length) {
-      logger.info(
-        `[selectDigestCandidates] ledger dedup dropped ${afterAccepted.length - fresh.length} already-shown candidates`,
-      );
+      digestCandidatesLog.info('Ledger dedup dropped already-shown candidates', {
+        dropped: afterAccepted.length - fresh.length,
+      });
     }
     return { pool: fresh, redeliveryIds: new Set<string>() };
   }
@@ -457,9 +473,9 @@ export function selectDigestCandidates<T extends {
     .sort((a, b) => a.at.getTime() - b.at.getTime());
 
   if (cooled.length > 0) {
-    logger.info(
-      `[selectDigestCandidates] no fresh candidates — re-showing ${cooled.length} past-cooldown candidate(s)`,
-    );
+    digestCandidatesLog.info('No fresh candidates — re-showing past-cooldown candidates', {
+      count: cooled.length,
+    });
   }
   return {
     pool: cooled.map((entry) => entry.opp),

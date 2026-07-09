@@ -277,7 +277,7 @@ export async function enrichOrCreate(
           }
         }
       } catch (e) {
-        logger.warn('[Enricher] Embedding check failed; intent-matched opportunities already captured', { error: e });
+        logger.warn('Embedding check failed; intent-matched opportunities already captured', { error: e });
         // Phase 1 matches are preserved; remaining opps without shared intents are not related
       }
     }
@@ -309,7 +309,7 @@ export async function enrichOrCreate(
 
   const resolvedStatus = resolveEnrichedStatus(related.map((o) => o.status), newData.status);
 
-  logger.verbose('[Enricher] Enriched opportunity', {
+  logger.verbose('Enriched opportunity', {
     enrichedFrom,
     actorCount: mergedActors.length,
   });

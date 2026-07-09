@@ -87,7 +87,7 @@ export class QueueFactory {
    * @returns Configured BullMQ Queue instance.
    */
   static createQueue<T = any>(name: string, options?: Omit<QueueOptions, 'connection'>): Queue<T> {
-    logger.info(`[QueueFactory] Initializing Queue: ${name}`);
+    logger.info(`Initializing Queue: ${name}`);
     return new Queue<T>(name, {
       connection: SHARED_REDIS_OPTS,
       defaultJobOptions: DEFAULT_JOB_OPTS,
@@ -107,7 +107,7 @@ export class QueueFactory {
    * @returns Configured BullMQ Worker instance.
    */
   static createWorker<T = any>(name: string, processor: Processor<T>, options?: Omit<WorkerOptions, 'connection'>): Worker<T> {
-    logger.info(`[QueueFactory] Initializing Worker: ${name}`);
+    logger.info(`Initializing Worker: ${name}`);
     const tracedProcessor: Processor<T> = (job, token) => traceAppOperation(
       {
         name: `queue ${name} ${job.name}`,

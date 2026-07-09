@@ -11,6 +11,9 @@ import { Users, Loader2, Globe } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { log } from '@/lib/logger';
+
+const logger = log.page.from('index/[indexId]');
 
 type PageStep = 'loading' | 'auth-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
 
@@ -83,7 +86,7 @@ export default function PublicJoinPage() {
 
               await refreshIndexes();
             } catch (err) {
-              console.error('Failed to join network:', err);
+              logger.error('Failed to join network', { error: err });
               setState(prev => ({
                 ...prev,
                 step: 'error',
@@ -96,7 +99,7 @@ export default function PublicJoinPage() {
             navigate('/');
           }
         } catch (err) {
-          console.error('Failed to fetch user:', err);
+          logger.error('Failed to fetch user', { error: err });
           setState(prev => ({
             ...prev,
             step: 'error',
@@ -104,7 +107,7 @@ export default function PublicJoinPage() {
           }));
         }
       } catch (err) {
-        console.error('Failed to load network:', err);
+        logger.error('Failed to load network', { error: err });
         setState(prev => ({
           ...prev,
           step: 'error',
@@ -143,7 +146,7 @@ export default function PublicJoinPage() {
         navigate(`/`);
       }
     } catch (err) {
-      console.error('Failed to join network:', err);
+      logger.error('Failed to join network', { error: err });
       notifyError((err as Error)?.message || 'Failed to join network');
       setState(prev => ({
         ...prev,

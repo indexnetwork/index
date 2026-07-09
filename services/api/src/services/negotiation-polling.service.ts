@@ -183,7 +183,7 @@ export class NegotiationPollingService {
       .limit(1);
 
     if (existingClaim) {
-      logger.info('[NegotiationPollingService] Returning existing claimed turn', {
+      logger.info('Returning existing claimed turn', {
         agentId,
         taskId: existingClaim.id,
       });
@@ -239,7 +239,7 @@ export class NegotiationPollingService {
 
     if (!claimed) {
       // Another agent won the race
-      logger.info('[NegotiationPollingService] Lost race to claim task', {
+      logger.info('Lost race to claim task', {
         agentId,
         taskId: pendingTask.id,
       });
@@ -264,7 +264,7 @@ export class NegotiationPollingService {
     const remainingMs = computeRemainingBudgetMs(pendingTask.updatedAt, AMBIENT_PARK_WINDOW_MS);
     await negotiationClaimTimeoutQueue.enqueueTimeout(claimed.id, turnNumber, agentId, remainingMs);
 
-    logger.info('[NegotiationPollingService] Turn claimed', {
+    logger.info('Turn claimed', {
       agentId,
       userId,
       taskId: claimed.id,
@@ -401,7 +401,7 @@ export class NegotiationPollingService {
           : input.action === 'reject' ? 'rejected'
           : 'stalled';
         await new ChatDatabaseAdapter().updateOpportunityStatus(meta.opportunityId, nextStatus).catch((err) => {
-          logger.error('[NegotiationPollingService] Failed to update opportunity status on finalization', {
+          logger.error('Failed to update opportunity status on finalization', {
             opportunityId: meta.opportunityId,
             nextStatus,
             error: err,
@@ -409,7 +409,7 @@ export class NegotiationPollingService {
         });
       }
 
-      logger.info('[NegotiationPollingService] Negotiation finalized', {
+      logger.info('Negotiation finalized', {
         negotiationId,
         outcome: outcomeStr,
         turnCount: newTurnCount,
@@ -420,7 +420,7 @@ export class NegotiationPollingService {
 
       await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
 
-      logger.info('[NegotiationPollingService] Turn submitted, waiting for next agent', {
+      logger.info('Turn submitted, waiting for next agent', {
         negotiationId,
         action: input.action,
         turnCount: newTurnCount,

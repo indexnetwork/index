@@ -11,6 +11,10 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 
 const logger = protocolLogger("NegotiationGraph");
+const initLog = protocolLogger("NegotiationGraph:Init");
+const turnLog = protocolLogger("NegotiationGraph:Turn");
+const finalizeLog = protocolLogger("NegotiationGraph:Finalize");
+const negotiateCandidatesLog = protocolLogger("NegotiationGraph:negotiateCandidates");
 
 /** Extracts the ordered NegotiationTurn list from A2A message data parts. */
 function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
@@ -61,7 +65,7 @@ export class NegotiationGraphFactory {
         }
 
         if (isLocked) {
-          logger.info('[Graph:Init] Conversation locked by active task, returning busy', {
+          initLog.info('Conversation locked by active task, returning busy', {
             conversationId: conversation.id,
             opportunityId: state.opportunityId,
           });
@@ -106,14 +110,14 @@ export class NegotiationGraphFactory {
 
         if (state.opportunityId) {
           await database.updateOpportunityStatus(state.opportunityId, 'negotiating').catch((err) => {
-            logger.error('[Graph:Init] Failed to set opportunity status to negotiating', { opportunityId: state.opportunityId, error: err });
+            initLog.error('Failed to set opportunity status to negotiating', { opportunityId: state.opportunityId, error: err });
           });
         }
 
         // Load user answers collected by the questioner between sessions
         const userAnswers = (isContinuation && state.opportunityId)
           ? await database.getOpportunityUserAnswers(state.opportunityId).catch((err) => {
-              logger.error('[Graph:Init] Failed to load user answers', { opportunityId: state.opportunityId, error: err });
+              initLog.error('Failed to load user answers', { opportunityId: state.opportunityId, error: err });
               return [];
             })
           : [];
@@ -226,7 +230,7 @@ export class NegotiationGraphFactory {
 
         // First turn must be "propose" (unless continuing a prior conversation)
         if (state.turnCount === 0 && !state.isContinuation && turn.action !== "propose") {
-          logger.warn("[Graph:Turn] Agent returned unexpected action on turn 0, forcing to propose", { action: turn.action });
+          turnLog.warn("Agent returned unexpected action on turn 0, forcing to propose", { action: turn.action });
           turn.action = "propose";
         }
 
@@ -270,7 +274,7 @@ export class NegotiationGraphFactory {
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        logger.error("[Graph:Turn] Agent invocation failed", { error: errMsg, stack: err instanceof Error ? err.stack : undefined, turnCount: state.turnCount });
+        turnLog.error("Agent invocation failed", { error: errMsg, stack: err instanceof Error ? err.stack : undefined, turnCount: state.turnCount });
         traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `error: ${errMsg}` });
         return {
           lastTurn: {
@@ -349,7 +353,7 @@ export class NegotiationGraphFactory {
           metadata: { hasOpportunity, turnCount: state.turnCount },
         });
 
-        logger.info('[Graph:Finalize] Session complete', {
+        finalizeLog.info('Session complete', {
           conversationId: state.conversationId,
           taskId: state.taskId,
           isContinuation: state.isContinuation,
@@ -366,11 +370,11 @@ export class NegotiationGraphFactory {
               ? 'rejected'
               : 'stalled';
           await database.updateOpportunityStatus(state.opportunityId, nextStatus).catch((err) => {
-            logger.error("[Graph:Finalize] Failed to update opportunity status", { opportunityId: state.opportunityId, nextStatus, error: err });
+            finalizeLog.error("Failed to update opportunity status", { opportunityId: state.opportunityId, nextStatus, error: err });
           });
         }
       } catch (err) {
-        logger.error("[Graph:Finalize] Failed to persist outcome", { error: err });
+        finalizeLog.error("Failed to persist outcome", { error: err });
       }
 
       if (state.opportunityId) {
@@ -427,7 +431,7 @@ export class NegotiationGraphFactory {
             userContext,
           },
         }).catch((err) =>
-          logger.error('[Graph:Finalize] Failed to enqueue negotiation question generation', {
+          finalizeLog.error('Failed to enqueue negotiation question generation', {
             opportunityId: state.opportunityId,
             error: err,
           })
@@ -620,7 +624,7 @@ export async function negotiateCandidates(
             // Hook failures must not sink the candidate result — the aggregate
             // return is still useful, and the orchestrator branch logs its own
             // failures inline.
-            logger.error("[negotiateCandidates] onCandidateResolved hook threw", {
+            negotiateCandidatesLog.error("onCandidateResolved hook threw", {
               candidateUserId: candidate.userId,
               error: hookErr,
             });
@@ -639,7 +643,7 @@ export async function negotiateCandidates(
             durationMs: Date.now() - start,
           });
         }
-        logger.error("[negotiateCandidates] Negotiation failed", { candidateUserId: candidate.userId, error: err });
+        negotiateCandidatesLog.error("Negotiation failed", { candidateUserId: candidate.userId, error: err });
         if (onCandidateResolved) {
           try {
             await onCandidateResolved({

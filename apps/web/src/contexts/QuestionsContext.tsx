@@ -2,6 +2,9 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { useQuestionsService } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
+import { log } from '@/lib/logger';
+
+const logger = log.context.from('QuestionsContext');
 
 interface QuestionsContextType {
   /** All pending questions for the current user. */
@@ -34,7 +37,7 @@ export function QuestionsProvider({ children }: { children: ReactNode }) {
       const pending = await questionsService.getPending({ noConversation: true });
       setQuestions(pending);
     } catch (err) {
-      console.error('Failed to fetch pending questions:', err);
+      logger.error('Failed to fetch pending questions', { error: err });
     }
   }, [questionsService, user?.id]);
 

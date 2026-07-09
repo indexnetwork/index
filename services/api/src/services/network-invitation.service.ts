@@ -102,7 +102,7 @@ class NetworkInvitationService {
         });
         return { user, apiKey: token.key, created, alreadyMember };
       }
-      logger.info('[NetworkInvitation] Skipping provisioning; scoped agent already exists', {
+      logger.info('Skipping provisioning; scoped agent already exists', {
         userId: user.id,
         networkId: params.networkId,
       });
@@ -142,7 +142,7 @@ class NetworkInvitationService {
         apiKey: result.apiKey,
         connectCommand,
       });
-      logger.info('[NetworkInvitation] Provisioned scoped agent + invited', {
+      logger.info('Provisioned scoped agent + invited', {
         userId: result.user.id,
         networkId: params.networkId,
       });
@@ -203,13 +203,13 @@ class NetworkInvitationService {
         text: rendered.text,
       })) as { skipped?: boolean; reason?: string };
       if (result.skipped) {
-        logger.info('[NetworkInvitation] Email send skipped', {
+        logger.info('Email send skipped', {
           to: params.to,
           reason: result.reason,
         });
       }
     } catch (err) {
-      logger.error('[NetworkInvitation] Failed to send invitation email', { to: params.to, error: err });
+      logger.error('Failed to send invitation email', { to: params.to, error: err });
       // Fail-soft: provisioning succeeded; organizer can re-issue the invitation.
     }
   }
@@ -337,7 +337,7 @@ class NetworkInvitationService {
       isResend: true,
     });
 
-    logger.info('[NetworkInvitation] Resent invite', {
+    logger.info('Resent invite', {
       userId: memberId,
       networkId,
       rotated,

@@ -6,6 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { validateFiles } from '@/lib/file-validation';
 import NetworkAvatar from '@/components/IndexAvatar';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('CreateIndexModal');
 
 interface CreateNetworkModalProps {
   open: boolean;
@@ -112,7 +115,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
       resetForm();
       onOpenChange(false);
     } catch (error) {
-      console.error('Error creating index:', error);
+      logger.error('Error creating index', { error });
     } finally {
       setIsSubmitting(false);
     }

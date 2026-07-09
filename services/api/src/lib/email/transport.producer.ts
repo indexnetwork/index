@@ -35,7 +35,7 @@ export const sendEmail = async (options: {
 
       // If job is still waiting/active, the timeout was hit or worker didn't process it
       if (jobState === 'waiting' || jobState === 'active' || jobState === 'delayed') {
-        logger.error(`[EmailTransport] Email job ${job.id} timed out or not processed`, { jobState });
+        logger.error(`Email job ${job.id} timed out or not processed`, { jobState });
       } else if (jobState === 'completed') {
         // Job actually completed, QueueEvents missed the event - return the stored result
         return returnValue;
@@ -48,7 +48,7 @@ export const sendEmail = async (options: {
   } catch (error) {
     // Handle timeout or other errors
     const jobState = await job.getState().catch(() => 'unknown');
-    logger.error(`[EmailTransport] Email job ${job.id} error while waiting`, {
+    logger.error(`Email job ${job.id} error while waiting`, {
       error: error instanceof Error ? error.message : String(error),
       jobState,
     });

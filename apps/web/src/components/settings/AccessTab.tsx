@@ -17,6 +17,9 @@ import CsvPreviewModal from '@/components/modals/CsvPreviewModal';
 import UserAvatar from '@/components/UserAvatar';
 import GhostBadge from '@/components/GhostBadge';
 import { useNavigate } from 'react-router';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('AccessTab');
 
 type ProfileEnrichmentPolicy = 'auto' | 'consent_required' | 'disabled';
 
@@ -110,7 +113,7 @@ export default function AccessTab({
       const response = await networkService.getMembers(networkId, {});
       setMembers(response.members);
     } catch (err) {
-      console.error('Error loading members:', err);
+      logger.error('Error loading members', { error: err });
     } finally {
       setIsMembersLoading(false);
     }
@@ -132,7 +135,7 @@ export default function AccessTab({
       setSuggestedUsers(users.map(u => ({ ...u, permissions: [] })));
       setSearchHasQueried(true);
     } catch (err) {
-      console.error('Error searching users:', err);
+      logger.error('Error searching users', { error: err });
       setSuggestedUsers([]);
     } finally {
       setSearchIsLoading(false);
@@ -169,7 +172,7 @@ export default function AccessTab({
         setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
       }
     } catch (err) {
-      console.error('Error updating permissions:', err);
+      logger.error('Error updating permissions', { error: err });
       error('Failed to update permissions');
     }
   };
@@ -182,7 +185,7 @@ export default function AccessTab({
       onUpdated(updatedNetwork);
       success('Automatic member enrichment policy updated');
     } catch (err) {
-      console.error('Error updating profile enrichment policy:', err);
+      logger.error('Error updating profile enrichment policy', { error: err });
       error('Failed to update profile enrichment policy');
     } finally {
       setIsUpdatingProfilePolicy(false);
@@ -217,7 +220,7 @@ export default function AccessTab({
       setShowSuggestions(false);
       setSearchHasQueried(false);
     } catch (err) {
-      console.error('Error adding member:', err);
+      logger.error('Error adding member', { error: err });
     }
   };
 
@@ -230,7 +233,7 @@ export default function AccessTab({
       }
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (err) {
-      console.error('Error removing member:', err);
+      logger.error('Error removing member', { error: err });
     }
   };
 
@@ -241,7 +244,7 @@ export default function AccessTab({
       setMembers(prev => prev.map(m => m.id === memberId ? { ...m, permissions: updated.permissions } : m));
       success(`Role updated to ${newRole}`);
     } catch (err) {
-      console.error('Error updating member role:', err);
+      logger.error('Error updating member role', { error: err });
       error(err instanceof Error ? err.message : 'Failed to update role');
     }
   };
@@ -258,7 +261,7 @@ export default function AccessTab({
       await loadMembers();
       success('Contact added');
     } catch (err) {
-      console.error('Error adding contact:', err);
+      logger.error('Error adding contact', { error: err });
       error('Failed to add contact');
     } finally {
       setIsAddingMember(false);
@@ -282,7 +285,7 @@ export default function AccessTab({
           : 'Member added';
       success(toast);
     } catch (err) {
-      console.error('Error inviting member:', err);
+      logger.error('Error inviting member', { error: err });
       error('Failed to invite member');
     } finally {
       setIsAddingMember(false);
@@ -297,7 +300,7 @@ export default function AccessTab({
       success(`Invitation resent to ${result.email}${result.rotated ? ' (key rotated)' : ''}`);
       setResendTarget(null);
     } catch (err) {
-      console.error('Resend invite failed', err);
+      logger.error('Resend invite failed', { error: err });
       error('Failed to resend invitation');
     } finally {
       setIsResendInFlight(false);

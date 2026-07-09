@@ -72,7 +72,7 @@ export async function selectContactsForDiscovery(
 ): Promise<ContactWithIntents[]> {
   const personalIndexId = await database.getPersonalIndexId(userId);
   if (!personalIndexId) {
-    logger.verbose(`[IntroducerDiscovery] No personal network found — userId=${userId}`);
+    logger.verbose('No personal network found', { userId });
     return [];
   }
 
@@ -82,7 +82,7 @@ export async function selectContactsForDiscovery(
     limit,
   );
 
-  logger.verbose(`[IntroducerDiscovery] Selected contacts for discovery — userId=${userId} totalContacts=${contacts.length} limit=${limit}`);
+  logger.verbose('Selected contacts for discovery', { userId, totalContacts: contacts.length, limit });
 
   return contacts;
 }
@@ -149,7 +149,7 @@ export async function runIntroducerDiscovery(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (/duplicate|already exists|job.*id/i.test(message)) {
-          logger.verbose(`[IntroducerDiscovery] Job skipped (duplicate) — userId=${userId} contactUserId=${contact.userId} error=${message}`);
+          logger.verbose('Job skipped (duplicate)', { userId, contactUserId: contact.userId, error: message });
           return false;
         }
         throw err;
@@ -160,12 +160,12 @@ export async function runIntroducerDiscovery(
   for (const r of results) {
     if (r.status === 'rejected') {
       const errMsg = r.reason instanceof Error ? r.reason.message : String(r.reason);
-      logger.error(`[IntroducerDiscovery] Job enqueue failed: ${errMsg}`);
+      logger.error('Job enqueue failed', { error: errMsg });
     }
   }
   const jobsEnqueued = results.filter((r) => r.status === 'fulfilled' && r.value).length;
 
-  logger.info(`[IntroducerDiscovery] Discovery cycle complete — userId=${userId} contactsEvaluated=${contacts.length} jobsEnqueued=${jobsEnqueued}`);
+  logger.info('Discovery cycle complete', { userId, contactsEvaluated: contacts.length, jobsEnqueued });
 
   return { contactsEvaluated: contacts.length, jobsEnqueued };
 }

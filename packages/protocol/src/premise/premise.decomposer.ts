@@ -6,6 +6,7 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("PremiseDecomposer");
+const invokeLog = protocolLogger("PremiseDecomposer:invoke");
 
 const systemPrompt = `
 You are the Premise Decomposer for the Index Network — an intent-driven discovery protocol.
@@ -178,7 +179,7 @@ export class PremiseDecomposer {
 
   @Timed()
   public async invoke(input: string, existingPremises?: ExistingPremiseRef[], currentBio?: string): Promise<PremiseDecomposerOutput> {
-    logger.verbose(`[PremiseDecomposer.invoke] Decomposing input (${input.length} chars, ${existingPremises?.length ?? 0} existing premise(s), bio: ${currentBio ? 'yes' : 'no'})`);
+    invokeLog.verbose(`Decomposing input (${input.length} chars, ${existingPremises?.length ?? 0} existing premise(s), bio: ${currentBio ? 'yes' : 'no'})`);
 
     const existingBlock = existingPremises?.length
       ? `\n\nEXISTING PREMISES (retract by id when the input disavows them):\n${existingPremises
@@ -204,7 +205,7 @@ export class PremiseDecomposer {
     const knownIds = new Set((existingPremises ?? []).map((p) => p.id));
     const droppedIds = output.retractedPremiseIds.filter((id) => !knownIds.has(id));
     if (droppedIds.length > 0) {
-      logger.warn(`[PremiseDecomposer.invoke] Dropped ${droppedIds.length} unknown retraction id(s)`, { droppedIds });
+      invokeLog.warn(`Dropped ${droppedIds.length} unknown retraction id(s)`, { droppedIds });
     }
     output.retractedPremiseIds = output.retractedPremiseIds.filter((id) => knownIds.has(id));
 
@@ -223,7 +224,7 @@ export class PremiseDecomposer {
       output.revisedBio = normalizedBio;
     }
 
-    logger.verbose(`[PremiseDecomposer.invoke] Extracted ${output.premises.length} premise(s), ${output.retractedPremiseIds.length} retraction(s), revisedBio: ${output.revisedBio ? 'yes' : 'no'}`);
+    invokeLog.verbose(`Extracted ${output.premises.length} premise(s), ${output.retractedPremiseIds.length} retraction(s), revisedBio: ${output.revisedBio ? 'yes' : 'no'}`);
     return output;
   }
 }

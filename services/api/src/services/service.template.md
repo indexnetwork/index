@@ -158,7 +158,7 @@ export class MyService {
    * @returns [Return description]
    */
   async getById(id: string) {
-    logger.info('[MyService] Getting item', { id });
+    logger.info('Getting item', { id });
     
     // Use adapter method - NO direct database access
     return this.db.getById(id);
@@ -169,12 +169,12 @@ export class MyService {
    */
   async createItem(data: { name: string; userId: string }) {
     try {
-      logger.info('[MyService] Creating item', { userId: data.userId });
+      logger.info('Creating item', { userId: data.userId });
 
       // Use adapter method
       return this.db.createItem(data);
     } catch (error) {
-      logger.error('[MyService] Failed to create item', { error, data });
+      logger.error('Failed to create item', { error, data });
       throw error; // Or handle gracefully depending on requirement
     }
   }
@@ -264,8 +264,8 @@ export class EnrichmentService {
 
 ### 2. Logging
 - Use standard logger: \`import { log } from '../lib/log';\`.
-- Structure logs with the service name prefix: \`[MyService] ...\`.
-- Log important state changes and errors.
+- Create a module logger: \`const logger = log.service.from('MyService');\` — the source label is rendered automatically, so never bake \`[MyService]\`-style prefixes into message text.
+- Log important state changes and errors with plain human-readable messages.
 - Pass metadata objects as the second argument to \`log.info/error\`.
 
 ### 3. Dependencies

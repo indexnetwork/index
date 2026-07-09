@@ -37,7 +37,7 @@ export class EnrichmentService {
    *   sourced from `users.intro` (the canonical identity bio home).
    */
   async syncProfile(userId: string): Promise<Record<string, unknown>> {
-    logger.verbose('[EnrichmentService] Syncing profile', { userId });
+    logger.verbose('Syncing profile', { userId });
 
     const graph = this.factory.createGraph();
     const result = await graph.invoke({ userId });
@@ -72,13 +72,13 @@ export class EnrichmentService {
         const result = await graph.invoke({ userId, operationMode: 'write' });
         if (result.error) {
           embedFailures++;
-          logger.warn('[EnrichmentService] Embed failed', { name, error: result.error });
+          logger.warn('Embed failed', { name, error: result.error });
         } else {
           embedded++;
         }
       } catch (err: unknown) {
         embedFailures++;
-        logger.warn('[EnrichmentService] Embed error', {
+        logger.warn('Embed error', {
           name,
           error: err instanceof Error ? err.message : String(err),
         });

@@ -64,16 +64,16 @@ import { log } from '../../lib/log';
 async function processMyJob(job: Job<MyJobPayload>) {
   const { userId, action } = job.data;
   
-  log.info(`[MyWorker] Processing job ${job.id} for user ${userId}`);
+  log.info(`Processing job ${job.id}`, { userId });
 
   try {
     // Perform task logic here
     await performAction(userId, action);
     
-    log.info(`[MyWorker] Job ${job.id} completed`);
+    log.info(`Job ${job.id} completed`);
     return { success: true };
   } catch (error) {
-    log.error(`[MyWorker] Job ${job.id} failed`, { error });
+    log.error(`Job ${job.id} failed`, { error });
     throw error; // Throwing allows BullMQ to handle retries
   }
 }

@@ -16,6 +16,9 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
 import MasterKeyDialog from '@/components/MasterKeyDialog';
 import { useQuestions } from '@/contexts/QuestionsContext';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('Sidebar');
 
 
 interface ChatSession {
@@ -84,7 +87,7 @@ export default function Sidebar() {
         success('Index created successfully');
       }
     } catch (err) {
-      console.error('Error creating index:', err);
+      logger.error('Error creating index', { error: err });
       error('Failed to create network');
     }
   }, [indexesService, addIndex, success, error]);
@@ -131,7 +134,7 @@ export default function Sidebar() {
 
       navigate('/chat');
     } catch (err) {
-      console.error('Failed to fetch most recent chat:', err);
+      logger.error('Failed to fetch most recent chat', { error: err });
     } finally {
       setNavigatingToChat(false);
     }
@@ -149,7 +152,7 @@ export default function Sidebar() {
         const data = await apiClient.get<{ sessions: ChatSession[] }>('/chat/sessions');
         setChatSessions(data.sessions.slice(0, 10));
       } catch (error) {
-        console.error('Failed to fetch chat sessions:', error);
+        logger.error('Failed to fetch chat sessions', { error });
       } finally {
         if (isInitialLoad) setLoadingSessions(false);
       }

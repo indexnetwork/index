@@ -31,6 +31,8 @@ export type PresenterDatabase = Pick<
 >;
 
 const logger = protocolLogger("OpportunityPresenter");
+const presentLog = protocolLogger("OpportunityPresenter:present");
+const presentHomeCardLog = protocolLogger("OpportunityPresenter:presentHomeCard");
 const LLM_TIMEOUT_MS = 20_000;
 
 
@@ -361,8 +363,8 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
-      logger.warn(
-        "[OpportunityPresenter.present] LLM failed, returning fallback",
+      presentLog.warn(
+        "LLM failed, returning fallback",
         {
           event: "presenter_fallback",
           presenter: "opportunity",
@@ -462,8 +464,8 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
-      logger.warn(
-        "[OpportunityPresenter.presentHomeCard] LLM failed, returning fallback",
+      presentHomeCardLog.warn(
+        "LLM failed, returning fallback",
         {
           event: "presenter_fallback",
           presenter: "home_card",

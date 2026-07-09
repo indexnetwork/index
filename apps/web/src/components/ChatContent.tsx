@@ -32,6 +32,9 @@ import { useSuggestions } from "@/hooks/useSuggestions";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import type { HomeViewSection } from "@/services/opportunities";
 import { DynamicIcon, type IconName } from "lucide-react/dynamic";
+import { log } from "@/lib/logger";
+
+const logger = log.ui.from("ChatContent");
 
 /**
  * When true, use GET /opportunities/home for dynamic sections; when false, use static/mock data.
@@ -733,7 +736,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         attachmentNames.push(...selectedFiles.map(({ file }) => file.name));
         setSelectedFiles([]);
       } catch (err) {
-        console.error("[AI Chat] Upload failed:", err);
+        logger.error("Upload failed", { error: err });
         showError(err instanceof Error ? err.message : "Failed to upload file(s)");
         setIsUploadingFiles(false);
         inputRef.current?.focus();

@@ -69,7 +69,7 @@ export interface ExperimentSignupResult {
 class ExperimentService {
   async signup(networkId: string, payload: SignupPayload): Promise<ExperimentSignupResult> {
     const normalizedEmail = payload.email.toLowerCase().trim();
-    logger.verbose('[ExperimentService] Signup attempt', { networkId, email: normalizedEmail });
+    logger.verbose('Signup attempt', { networkId, email: normalizedEmail });
 
     const result = await networkInvitationService.ensureMembership({
       networkId,
@@ -102,10 +102,10 @@ class ExperimentService {
     try {
       await enrichmentQueue.addEnrichUserJob({ userId: result.user.id, networkId, reason: 'experiment_signup' });
     } catch (err) {
-      logger.warn('[ExperimentService] Failed to enqueue profile enrichment (non-fatal)', { error: err });
+      logger.warn('Failed to enqueue profile enrichment (non-fatal)', { error: err });
     }
 
-    logger.info('[ExperimentService] Signup complete', {
+    logger.info('Signup complete', {
       userId: result.user.id,
       networkId,
       created: result.created,
@@ -188,7 +188,7 @@ class ExperimentService {
         });
         imported++;
       } catch (err) {
-        logger.warn('[ExperimentService] Import row failed', { email: row.email, error: err });
+        logger.warn('Import row failed', { email: row.email, error: err });
         skipped++;
       }
     }
@@ -200,9 +200,9 @@ class ExperimentService {
     if (importedUserIds.length > 0) {
       try {
         await enrichmentQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id, networkId, reason: 'experiment_import' })));
-        logger.info('[ExperimentService] Enqueued profile enrichment', { count: importedUserIds.length });
+        logger.info('Enqueued profile enrichment', { count: importedUserIds.length });
       } catch (err) {
-        logger.warn('[ExperimentService] Failed to enqueue profile enrichment (non-fatal)', { error: err });
+        logger.warn('Failed to enqueue profile enrichment (non-fatal)', { error: err });
       }
     }
 
@@ -210,7 +210,7 @@ class ExperimentService {
       ? await this.dispatchOwnerCredentialsEmail(networkId, credentials)
       : 0;
 
-    logger.info('[ExperimentService] Import complete', { networkId, imported, skipped, ownersNotified });
+    logger.info('Import complete', { networkId, imported, skipped, ownersNotified });
     return { imported, skipped, ownersNotified };
   }
 
@@ -231,7 +231,7 @@ class ExperimentService {
       .where(eq(schema.networks.id, networkId))
       .limit(1);
     if (!network) {
-      logger.warn('[ExperimentService] Owner email skipped: network not found', { networkId });
+      logger.warn('Owner email skipped: network not found', { networkId });
       return 0;
     }
 
@@ -247,7 +247,7 @@ class ExperimentService {
 
     const recipients = owners.map(o => o.email).filter(Boolean);
     if (recipients.length === 0) {
-      logger.warn('[ExperimentService] Owner email skipped: no owners with email', { networkId });
+      logger.warn('Owner email skipped: no owners with email', { networkId });
       return 0;
     }
 
@@ -265,7 +265,7 @@ class ExperimentService {
       });
       return recipients.length;
     } catch (err) {
-      logger.error('[ExperimentService] Owner credentials email failed', {
+      logger.error('Owner credentials email failed', {
         networkId,
         recipients: recipients.length,
         error: err,

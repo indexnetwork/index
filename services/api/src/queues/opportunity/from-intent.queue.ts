@@ -76,7 +76,7 @@ export class FromIntentQueue {
         await this.handleDiscover(data);
         break;
       default:
-        this.queueLogger.warn(`[FromIntentQueueProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`Unknown job name: ${name}`);
     }
   }
 
@@ -86,19 +86,19 @@ export class FromIntentQueue {
     // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
     const intent = await this.database.getIntentForIndexing(intentId);
     if (!intent) {
-      this.logger.warn('[FromIntent] Intent not found, skipping', { intentId });
+      this.logger.warn('Intent not found, skipping', { intentId });
       return;
     }
 
     if (networkIds && networkIds.length === 0) {
-      this.logger.warn('[FromIntent] Empty scoped networkIds provided, skipping fail-closed', { intentId, userId });
+      this.logger.warn('Empty scoped networkIds provided, skipping fail-closed', { intentId, userId });
       return;
     }
 
     if (networkIds && networkIds.length > 1) {
-      this.logger.warn('[FromIntent] Multiple networkIds provided, only first used', { intentId, networkIds });
+      this.logger.warn('Multiple networkIds provided, only first used', { intentId, networkIds });
     }
-    this.logger.info('[FromIntent] Starting discovery', { intentId, userId, networkIds });
+    this.logger.info('Starting discovery', { intentId, userId, networkIds });
 
     const invokeOpts: FromIntentGraphInvokeOptions = {
       userId: userId as Id<'users'>,
@@ -123,7 +123,7 @@ export class FromIntentQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<FromIntentJobData>) => {
-      this.queueLogger.info(`[FromIntentProcessor] Processing job ${job.id}`);
+      this.queueLogger.info(`Processing job ${job.id}`);
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<FromIntentJobData>(QUEUE_NAME, processor);

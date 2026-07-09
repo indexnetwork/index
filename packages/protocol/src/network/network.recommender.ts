@@ -35,6 +35,7 @@ export interface NetworkRecommenderInput {
 // ─── Logger ───────────────────────────────────────────────────────────────────
 
 const logger = log.lib.from("NetworkRecommender");
+const invokeLog = log.lib.from("NetworkRecommender:invoke");
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ export class NetworkRecommender {
   public async invoke(input: NetworkRecommenderInput): Promise<NetworkRecommenderOutput | null> {
     if (input.networks.length === 0) return null;
 
-    logger.verbose("[NetworkRecommender.invoke] Ranking communities", {
+    invokeLog.verbose("Ranking communities", {
       networkCount: input.networks.length,
     });
 
@@ -111,15 +112,15 @@ export class NetworkRecommender {
       const result = await invokeWithAbortSignal(this.model, messages);
       const parsed = NetworkRecommenderOutputSchema.safeParse(result);
       if (!parsed.success) {
-        logger.error("[NetworkRecommender] Schema validation failed", { error: parsed.error });
+        logger.error("Schema validation failed", { error: parsed.error });
         return null;
       }
-      logger.verbose("[NetworkRecommender.invoke] Ranking complete", {
+      invokeLog.verbose("Ranking complete", {
         top: parsed.data.rankedNetworkIds[0],
       });
       return parsed.data;
     } catch (error) {
-      logger.error("[NetworkRecommender] Error during execution", { error });
+      logger.error("Error during execution", { error });
       return null;
     }
   }

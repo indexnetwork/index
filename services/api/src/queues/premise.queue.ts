@@ -121,6 +121,9 @@ export class PremiseQueue {
   readonly queue = QueueFactory.createQueue<PremiseJobPayload>(QUEUE_NAME);
 
   private readonly logger = log.job.from('PremiseJob');
+  private readonly expiryLogger = log.job.from('PremiseJob:ExpiryCheck');
+  private readonly cascadeLogger = log.job.from('PremiseJob:Cascade');
+  private readonly profileRegenLogger = log.job.from('PremiseJob:ProfileRegen');
   private readonly queueLogger = log.queue.from('PremiseQueue');
   private readonly deps: PremiseQueueDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<PremiseJobPayload>> | null = null;
@@ -209,7 +212,7 @@ export class PremiseQueue {
         await this.handleProfileRegen(data as ProfileRegenData);
         break;
       default:
-        this.queueLogger.warn(`[PremiseProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`Unknown job name: ${name}`);
     }
   }
 
@@ -223,7 +226,7 @@ export class PremiseQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<PremiseJobPayload>) => {
-      this.queueLogger.info(`[PremiseProcessor] Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<PremiseJobPayload>(QUEUE_NAME, processor);
@@ -236,9 +239,9 @@ export class PremiseQueue {
     if (this.cronTask) return; // idempotent
     this.cronTask = cron.schedule('0 * * * *', () => {
       this.checkExpiredPremises()
-        .catch((err) => this.logger.error('[ExpiryCheck] Cron failed', { error: err }));
+        .catch((err) => this.expiryLogger.error('Cron failed', { error: err }));
     });
-    this.queueLogger.info('📅 [PremiseJob] Expiry check scheduled (every hour)');
+    this.queueLogger.info('📅 Expiry check scheduled (every hour)');
   }
 
   /**
@@ -247,7 +250,7 @@ export class PremiseQueue {
    * @returns Number of premises expired
    */
   async checkExpiredPremises(): Promise<number> {
-    this.logger.verbose('[ExpiryCheck] Starting expired premise check');
+    this.expiryLogger.verbose('Starting expired premise check');
 
     const getExpiredPremises =
       this.deps?.getExpiredPremises ??
@@ -258,7 +261,7 @@ export class PremiseQueue {
       ((id: string) => this.defaultExpirePremise(id));
 
     const expired = await getExpiredPremises();
-    this.logger.verbose(`[ExpiryCheck] Found ${expired.length} expired premises`);
+    this.expiryLogger.verbose(`Found ${expired.length} expired premises`);
 
     for (const { id } of expired) {
       // onExpired fires inside the adapter's updatePremise (status EXPIRED) —
@@ -266,7 +269,7 @@ export class PremiseQueue {
       await expirePremise(id);
     }
 
-    this.logger.info(`[ExpiryCheck] Expired ${expired.length} premises`);
+    this.expiryLogger.info(`Expired ${expired.length} premises`);
     return expired.length;
   }
 
@@ -340,7 +343,7 @@ export class PremiseQueue {
 
   private async handlePremiseCascade(data: PremiseCascadeData): Promise<void> {
     const { premiseId, userId, event } = data;
-    this.logger.info('[PremiseCascade] Starting cascade', { premiseId, userId, event });
+    this.cascadeLogger.info('Starting cascade', { premiseId, userId, event });
 
     const getUserOpportunities =
       this.deps?.getUserOpportunities ??
@@ -361,7 +364,7 @@ export class PremiseQueue {
       await updateOpportunityStatus(opp.id, 'expired');
     }
 
-    this.logger.info('[PremiseCascade] Cascade complete', {
+    this.cascadeLogger.info('Cascade complete', {
       premiseId,
       userId,
       event,
@@ -372,7 +375,7 @@ export class PremiseQueue {
 
   private async handleProfileRegen(data: ProfileRegenData): Promise<void> {
     const { userId, trigger } = data;
-    this.logger.info('[ProfileRegen] Starting profile regeneration', { userId, trigger });
+    this.profileRegenLogger.info('Starting profile regeneration', { userId, trigger });
 
     const enqueueContextRegen =
       this.deps?.enqueueContextRegen ??
@@ -384,7 +387,7 @@ export class PremiseQueue {
     // Log completion only after the enqueue settles so a failed/retried job is not
     // preceded by a misleading "complete" line.
     await enqueueContextRegen(userId);
-    this.logger.info('[ProfileRegen] Profile regeneration complete', { userId, trigger });
+    this.profileRegenLogger.info('Profile regeneration complete', { userId, trigger });
   }
 
   /**

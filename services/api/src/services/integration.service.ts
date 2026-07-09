@@ -129,7 +129,7 @@ export class IntegrationService {
     const nameSkipped = dedupResult.removed.length;
 
     if (dedupResult.removed.length > 0) {
-      logger.info('[IntegrationService] Dedup removed contacts', {
+      logger.info('Dedup removed contacts', {
         networkId,
         removed: dedupResult.removed.map(r => ({
           email: r.email,
@@ -148,7 +148,7 @@ export class IntegrationService {
       .map(d => d.userId);
     if (newGhostIdsToEnrich.length > 0) {
       await enrichmentQueue.addEnrichUserJobBulk(newGhostIdsToEnrich.map(id => ({ userId: id, networkId, reason: `integration_${toolkit}_import` })));
-      logger.info('[IntegrationService] Enrichment jobs enqueued for new ghosts', { count: newGhostIdsToEnrich.length });
+      logger.info('Enrichment jobs enqueued for new ghosts', { count: newGhostIdsToEnrich.length });
     }
 
     const newCount = dedupResult.kept.filter(d => d.isNew).length;

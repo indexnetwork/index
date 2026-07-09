@@ -29,6 +29,13 @@ import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
 
 const logger = protocolLogger('HomeGraph');
+const checkCategorizerCacheLog = protocolLogger('HomeGraph:checkCategorizerCache');
+const cacheCategorizerResultsLog = protocolLogger('HomeGraph:cacheCategorizerResults');
+const checkPresenterCacheLog = protocolLogger('HomeGraph:checkPresenterCache');
+const cachePresenterResultsLog = protocolLogger('HomeGraph:cachePresenterResults');
+const categorizeDynamicallyLog = protocolLogger('HomeGraph:categorizeDynamically');
+const normalizeAndSortLog = protocolLogger('HomeGraph:normalizeAndSort');
+const generateCardTextLog = protocolLogger('HomeGraph:generateCardText');
 
 /** Database must satisfy both HomeGraphDatabase and presenter context (getProfile, getActiveIntents, getNetwork, getUser). */
 type HomeGraphDb = HomeGraphDatabase;
@@ -252,7 +259,7 @@ export class HomeGraphFactory {
         }
 
         if (state.noCache) {
-          logger.verbose('[HomeGraph:checkPresenterCache] noCache=true, skipping cache');
+          checkPresenterCacheLog.verbose('noCache=true, skipping cache');
           return { cachedCards: new Map(), uncachedOpportunities: opportunities };
         }
 
@@ -285,7 +292,7 @@ export class HomeGraphFactory {
             }
           }
 
-          logger.verbose('[HomeGraph:checkPresenterCache]', {
+          checkPresenterCacheLog.verbose('', {
             total: opportunities.length,
             cacheHits: cachedCards.size,
             cacheMisses: uncachedOpportunities.length,
@@ -293,7 +300,7 @@ export class HomeGraphFactory {
 
           return { cachedCards, uncachedOpportunities };
         } catch (e) {
-          logger.warn('[HomeGraph:checkPresenterCache] cache unavailable, skipping', { error: e });
+          checkPresenterCacheLog.warn('cache unavailable, skipping', { error: e });
           return { cachedCards: new Map(), uncachedOpportunities: opportunities };
         }
       });
@@ -303,7 +310,7 @@ export class HomeGraphFactory {
       if (state.uncachedOpportunities.length > 0) {
         return 'generate';
       }
-      logger.verbose('[HomeGraph] All presenter results cached, skipping generation');
+      logger.verbose('All presenter results cached, skipping generation');
       return 'skip';
     };
 
@@ -312,9 +319,9 @@ export class HomeGraphFactory {
       const opportunities = state.uncachedOpportunities.length > 0
         ? state.uncachedOpportunities
         : state.opportunities;
-      logger.verbose('[HomeGraph:generateCardText] entry', { opportunitiesLength: opportunities.length, userId: state.userId });
+      generateCardTextLog.verbose('entry', { opportunitiesLength: opportunities.length, userId: state.userId });
       if (opportunities.length === 0) {
-        logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: 0, totalSections: 0 });
+        generateCardTextLog.verbose('exit', { totalOpportunities: 0, totalSections: 0 });
         return { cards: [], agentTimings: [], meta: { totalOpportunities: 0, totalSections: 0 } };
       }
       const db = this.database as PresenterDatabase & HomeGraphDb;
@@ -387,7 +394,7 @@ export class HomeGraphFactory {
             // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
             if ((userName === 'Unknown' || !userName?.trim()) && otherActor?.userId && db.getProfile) {
               const profile = await db.getProfile(otherActor.userId).catch((err) => {
-                logger.debug('[HomeGraph] getProfile fallback failed', { otherActorUserId: otherActor.userId, error: err });
+                logger.debug('getProfile fallback failed', { otherActorUserId: otherActor.userId, error: err });
                 return null;
               });
               const profileName = profile?.identity?.name?.trim();
@@ -510,7 +517,7 @@ export class HomeGraphFactory {
         );
         cards.push(...chunkCards);
       }
-      logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
+      generateCardTextLog.verbose('exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
       return {
         cards,
         agentTimings: agentTimingsAccum,
@@ -544,7 +551,7 @@ export class HomeGraphFactory {
             })
           );
         } catch (e) {
-          logger.warn('[HomeGraph:cachePresenterResults] cache write failed, continuing', { error: e });
+          cachePresenterResultsLog.warn('cache write failed, continuing', { error: e });
         }
 
         // Merge cached cards into full card list
@@ -558,7 +565,7 @@ export class HomeGraphFactory {
         // Re-sort by _cardIndex to maintain original ordering
         allCards.sort((a, b) => a._cardIndex - b._cardIndex);
 
-        logger.verbose('[HomeGraph:cachePresenterResults]', {
+        cachePresenterResultsLog.verbose('', {
           newlyCached: newCards.length,
           totalCards: allCards.length,
         });
@@ -577,7 +584,7 @@ export class HomeGraphFactory {
         }
 
         if (state.noCache) {
-          logger.verbose('[HomeGraph:checkCategorizerCache] noCache=true, skipping cache');
+          checkCategorizerCacheLog.verbose('noCache=true, skipping cache');
           return { categoryCacheHit: false };
         }
 
@@ -586,13 +593,13 @@ export class HomeGraphFactory {
 
           const cached = await this.cache.get<HomeSectionProposal[]>(key);
           if (cached) {
-            logger.verbose('[HomeGraph:checkCategorizerCache] cache hit');
+            checkCategorizerCacheLog.verbose('cache hit');
             return { sectionProposals: cached, categoryCacheHit: true };
           }
 
-          logger.verbose('[HomeGraph:checkCategorizerCache] cache miss');
+          checkCategorizerCacheLog.verbose('cache miss');
         } catch (e) {
-          logger.warn('[HomeGraph:checkCategorizerCache] cache unavailable, skipping', { error: e });
+          checkCategorizerCacheLog.warn('cache unavailable, skipping', { error: e });
         }
         return { categoryCacheHit: false };
       });
@@ -600,7 +607,7 @@ export class HomeGraphFactory {
 
     const shouldCategorize = (state: typeof HomeGraphState.State): string => {
       if (state.categoryCacheHit) {
-        logger.verbose('[HomeGraph] Categorizer results cached, skipping');
+        logger.verbose('Categorizer results cached, skipping');
         return 'skip';
       }
       return 'categorize';
@@ -608,9 +615,9 @@ export class HomeGraphFactory {
 
     const categorizeDynamicallyNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.categorizeDynamically", async () => {
-        logger.verbose('[HomeGraph:categorizeDynamically] entry', { cardsLength: state.cards.length });
+        categorizeDynamicallyLog.verbose('entry', { cardsLength: state.cards.length });
         if (state.cards.length === 0) {
-          logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: 0 });
+          categorizeDynamicallyLog.verbose('exit', { sectionProposalsCount: 0 });
           return { sectionProposals: [], agentTimings: [] };
         }
         const agentTimingsAccum: DebugMetaAgent[] = [];
@@ -633,7 +640,7 @@ export class HomeGraphFactory {
           ...s,
           itemIndices: s.itemIndices.filter((i) => i >= 0 && i < state.cards.length),
         }));
-        logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: proposals.length });
+        categorizeDynamicallyLog.verbose('exit', { sectionProposalsCount: proposals.length });
         return { sectionProposals: proposals, agentTimings: agentTimingsAccum };
       });
     };
@@ -649,11 +656,11 @@ export class HomeGraphFactory {
 
           await this.cache.set(key, state.sectionProposals, { ttl: HOME_CACHE_TTL });
 
-          logger.verbose('[HomeGraph:cacheCategorizerResults] cached', {
+          cacheCategorizerResultsLog.verbose('cached', {
             sectionCount: state.sectionProposals.length,
           });
         } catch (e) {
-          logger.warn('[HomeGraph:cacheCategorizerResults] cache write failed, continuing', { error: e });
+          cacheCategorizerResultsLog.warn('cache write failed, continuing', { error: e });
         }
 
         return {};
@@ -664,9 +671,9 @@ export class HomeGraphFactory {
       return timed("HomeGraph.normalizeAndSort", async () => {
         const cards = state.cards;
         const proposals = state.sectionProposals;
-        logger.verbose('[HomeGraph:normalizeAndSort] entry', { cardsLength: cards.length, proposalsLength: proposals.length });
+        normalizeAndSortLog.verbose('entry', { cardsLength: cards.length, proposalsLength: proposals.length });
         if (cards.length === 0) {
-          logger.verbose('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: 0, totalSections: 0 });
+          normalizeAndSortLog.verbose('exit', { totalOpportunities: 0, totalSections: 0 });
           return { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } };
         }
         const usedIndices = new Set<number>();
@@ -705,7 +712,7 @@ export class HomeGraphFactory {
           totalOpportunities: state.opportunities.length,
           totalSections: sections.length,
         };
-        logger.verbose('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
+        normalizeAndSortLog.verbose('exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
         return { sections, meta };
       });
     };

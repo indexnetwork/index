@@ -37,6 +37,8 @@ export interface HydeQueueDeps {
  */
 export class HydeQueue {
   private readonly logger = log.job.from('HydeJob');
+  private readonly cleanupLogger = log.job.from('HydeJob:Cleanup');
+  private readonly refreshLogger = log.job.from('HydeJob:Refresh');
   private readonly database: HydeQueueDatabase | ChatDatabaseAdapter;
 
   /**
@@ -53,9 +55,9 @@ export class HydeQueue {
    */
   async cleanupExpiredHyde(): Promise<number> {
     const db = this.database;
-    this.logger.verbose('[HydeJob:Cleanup] Starting expired HyDE cleanup');
+    this.cleanupLogger.verbose('Starting expired HyDE cleanup');
     const deletedCount = await db.deleteExpiredHydeDocuments();
-    this.logger.info(`[HydeJob:Cleanup] Deleted ${deletedCount} expired HyDE documents`);
+    this.cleanupLogger.info(`Deleted ${deletedCount} expired HyDE documents`);
     return deletedCount;
   }
 
@@ -65,10 +67,10 @@ export class HydeQueue {
    */
   async refreshStaleHyde(): Promise<number> {
     const db = this.database;
-    this.logger.verbose('[HydeJob:Refresh] Starting stale HyDE refresh');
+    this.refreshLogger.verbose('Starting stale HyDE refresh');
     const staleThreshold = new Date(Date.now() - STALE_HYDE_DAYS_MS);
     const staleDocuments = await db.getStaleHydeDocuments(staleThreshold);
-    this.logger.verbose(`[HydeJob:Refresh] Found ${staleDocuments.length} stale HyDE documents`);
+    this.refreshLogger.verbose(`Found ${staleDocuments.length} stale HyDE documents`);
 
     const embedder = new EmbedderAdapter();
     const cache = new RedisCacheAdapter();
@@ -97,7 +99,7 @@ export class HydeQueue {
         });
         refreshedCount++;
       } catch (error) {
-        this.logger.error('[HydeJob:Refresh] Failed to refresh HyDE', {
+        this.refreshLogger.error('Failed to refresh HyDE', {
           sourceId: doc.sourceId,
           strategy: doc.strategy,
           error: error instanceof Error ? error.message : String(error),
@@ -105,7 +107,7 @@ export class HydeQueue {
       }
     }
 
-    this.logger.info(`[HydeJob:Refresh] Refreshed ${refreshedCount} HyDE documents`);
+    this.refreshLogger.info(`Refreshed ${refreshedCount} HyDE documents`);
     return refreshedCount;
   }
 
@@ -115,17 +117,17 @@ export class HydeQueue {
   startCrons(): void {
     cron.schedule('0 3 * * *', () => {
       this.cleanupExpiredHyde().catch((err) =>
-        this.logger.error('[HydeJob:Cleanup] Cron failed', { error: err })
+        this.cleanupLogger.error('Cron failed', { error: err })
       );
     });
-    this.logger.info('📅 [HydeJob] Cleanup scheduled (daily at 03:00)');
+    this.logger.info('📅 Cleanup scheduled (daily at 03:00)');
 
     cron.schedule('0 4 * * 0', () => {
       this.refreshStaleHyde().catch((err) =>
-        this.logger.error('[HydeJob:Refresh] Cron failed', { error: err })
+        this.refreshLogger.error('Cron failed', { error: err })
       );
     });
-    this.logger.info('📅 [HydeJob] Refresh scheduled (weekly Sunday at 04:00)');
+    this.logger.info('📅 Refresh scheduled (weekly Sunday at 04:00)');
   }
 }
 

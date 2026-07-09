@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNetworkService } from '@/services/networks';
+import { log } from '@/lib/logger';
+
+const logger = log.hook.from('useMentionableUsers');
 
 export interface MentionableUser {
   id: string;
@@ -62,7 +65,7 @@ export function useMentionableUsers({
       cacheRef.current = userMap;
       setUsers(Array.from(userMap.values()));
     } catch (error) {
-      console.error('Failed to fetch mentionable users:', error);
+      logger.error('Failed to fetch mentionable users', { error });
       setUsers([]);
     } finally {
       setIsLoading(false);

@@ -116,7 +116,7 @@ export class NotificationQueue {
         await this.processOpportunityNotification(data as NotificationJobData);
         break;
       default:
-        this.queueLogger.warn(`[NotificationProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`Unknown job name: ${name}`);
     }
   }
 
@@ -126,7 +126,7 @@ export class NotificationQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<NotificationJobData>) => {
-      this.queueLogger.info(`[NotificationProcessor] Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<NotificationJobData>(QUEUE_NAME, processor);
@@ -144,7 +144,7 @@ export class NotificationQueue {
     const { opportunityId, recipientId, priority } = data;
     const db = this.database;
 
-    this.logger.verbose('[NotificationJob] Processing opportunity notification', {
+    this.logger.verbose('Processing opportunity notification', {
       opportunityId,
       recipientId,
       priority,
@@ -152,7 +152,7 @@ export class NotificationQueue {
 
     const opportunity = await db.getOpportunity(opportunityId);
     if (!opportunity) {
-      this.logger.warn('[NotificationJob] Opportunity not found, skipping', { opportunityId });
+      this.logger.warn('Opportunity not found, skipping', { opportunityId });
       return;
     }
 
@@ -165,7 +165,7 @@ export class NotificationQueue {
     switch (priority) {
       case 'immediate': {
         emitOpportunityNotification({ opportunityId, recipientId });
-        this.logger.info('[NotificationJob] Emitted opportunity notification (WebSocket)', {
+        this.logger.info('Emitted opportunity notification (WebSocket)', {
           opportunityId,
           recipientId,
         });
@@ -180,7 +180,7 @@ export class NotificationQueue {
         break;
       }
       default: {
-        this.logger.warn('[NotificationJob] Unknown priority, treating as low', { priority });
+        this.logger.warn('Unknown priority, treating as low', { priority });
         await this.addToDigest(recipientId, opportunityId);
       }
     }
@@ -194,7 +194,7 @@ export class NotificationQueue {
         message: `New connection: ${summary}`,
         inlineButtons: [{ text: 'View opportunity', url: `${appUrl}/opportunities/${opportunityId}` }],
       });
-      this.logger.info('[NotificationJob] Emitted Telegram opportunity notification', {
+      this.logger.info('Emitted Telegram opportunity notification', {
         opportunityId,
         recipientId,
       });
@@ -208,19 +208,19 @@ export class NotificationQueue {
   ): Promise<void> {
     const recipient = await userService.getUserForNewsletter(recipientId);
     if (!recipient?.email) {
-      this.logger.warn('[NotificationJob] Recipient not found or no email, skipping email', {
+      this.logger.warn('Recipient not found or no email, skipping email', {
         recipientId,
       });
       return;
     }
     if (!recipient.onboarding?.completedAt) {
-      this.logger.verbose('[NotificationJob] Recipient has not completed onboarding, skipping email', {
+      this.logger.verbose('Recipient has not completed onboarding, skipping email', {
         recipientId,
       });
       return;
     }
     if (recipient.prefs?.connectionUpdates === false) {
-      this.logger.verbose('[NotificationJob] Recipient has connection/opportunity updates disabled', {
+      this.logger.verbose('Recipient has connection/opportunity updates disabled', {
         recipientId,
       });
       return;
@@ -236,7 +236,7 @@ export class NotificationQueue {
     const emailDedupeKey = `${EMAIL_OPPORTUNITY_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
     const setResult = await redis.set(emailDedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
     if (setResult !== 'OK') {
-      this.logger.verbose('[NotificationJob] Skipped duplicate opportunity email (dedupe key already set)', {
+      this.logger.verbose('Skipped duplicate opportunity email (dedupe key already set)', {
         recipientId,
         opportunityId,
       });
@@ -265,7 +265,7 @@ export class NotificationQueue {
       },
       { jobId: `opportunity-email-${recipientId}-${opportunityId}` }
     );
-    this.logger.info('[NotificationJob] Enqueued high-priority opportunity email', {
+    this.logger.info('Enqueued high-priority opportunity email', {
       recipientId,
       opportunityId,
     });
@@ -277,7 +277,7 @@ export class NotificationQueue {
       const dedupeKey = `${DIGEST_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
       const setResult = await redis.set(dedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
       if (setResult !== 'OK') {
-        this.logger.verbose('[NotificationJob] Skipped duplicate digest entry (dedupe key already set)', {
+        this.logger.verbose('Skipped duplicate digest entry (dedupe key already set)', {
           recipientId,
           opportunityId,
         });
@@ -286,12 +286,12 @@ export class NotificationQueue {
       const listKey = `${DIGEST_LIST_PREFIX}${recipientId}`;
       await redis.rpush(listKey, opportunityId);
       await redis.expire(listKey, DIGEST_TTL_SEC);
-      this.logger.verbose('[NotificationJob] Added opportunity to weekly digest list', {
+      this.logger.verbose('Added opportunity to weekly digest list', {
         recipientId,
         opportunityId,
       });
     } catch (err) {
-      this.logger.error('[NotificationJob] Failed to add to digest list', {
+      this.logger.error('Failed to add to digest list', {
         recipientId,
         opportunityId,
         error: err instanceof Error ? err.message : String(err),

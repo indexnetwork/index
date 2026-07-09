@@ -114,6 +114,9 @@ export class IntentQueue implements IntentGraphQueue {
   }
 
   private readonly logger = log.job.from('IntentJob');
+  private readonly hydeLogger = log.job.from('IntentJob:Hyde');
+  private readonly assignLogger = log.job.from('IntentJob:Assign');
+  private readonly reconcileLogger = log.job.from('IntentJob:Reconcile');
   private readonly queueLogger = log.queue.from('IntentQueue');
   private readonly database: IntentQueueDatabase | ChatDatabaseAdapter;
   private readonly graphDb: HydeGraphDatabase;
@@ -178,7 +181,7 @@ export class IntentQueue implements IntentGraphQueue {
         await this.handleDeleteHyde(data as IntentDeleteData);
         break;
       default:
-        this.queueLogger.warn(`[IntentProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`Unknown job name: ${name}`);
     }
   }
 
@@ -219,11 +222,11 @@ export class IntentQueue implements IntentGraphQueue {
     await Promise.all(
       intents.map((i) =>
         this.addReconcileJob({ intentId: i.id, userId, scopeType: 'network', scopeId: networkId }).catch((err) =>
-          this.logger.warn('[IntentReconcile] enqueue failed', { intentId: i.id, networkId, userId, error: err }),
+          this.reconcileLogger.warn('Enqueue failed', { intentId: i.id, networkId, userId, error: err }),
         ),
       ),
     );
-    this.logger.info('[IntentReconcile] Enqueued network reconcile for member', { userId, networkId, intentCount: intents.length });
+    this.reconcileLogger.info('Enqueued network reconcile for member', { userId, networkId, intentCount: intents.length });
     return intents.length;
   }
 
@@ -249,7 +252,7 @@ export class IntentQueue implements IntentGraphQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<IntentJobPayload>) => {
-      this.queueLogger.info(`[IntentProcessor] Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<IntentJobPayload>(QUEUE_NAME, processor);
@@ -272,13 +275,13 @@ export class IntentQueue implements IntentGraphQueue {
     const db = this.deps?.database ?? this.database;
     const intent = await db.getIntentForIndexing(intentId);
     if (!intent) {
-      this.logger.warn('[IntentHyde] Intent not found, skipping', { intentId });
+      this.hydeLogger.warn('Intent not found, skipping', { intentId });
       return;
     }
-    this.logger.info('[IntentHyde] Starting HyDE generation', { intentId, userId });
-    this.logger.debug('[IntentHyde] Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
+    this.hydeLogger.info('Starting HyDE generation', { intentId, userId });
+    this.hydeLogger.debug('Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
     const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, scope);
-    this.logger.info('[IntentHyde] Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
+    this.hydeLogger.info('Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
 
     // Fetch discoverer global context + active intents for HyDE context (best-effort).
     // The global user_context paragraph replaces the old identity/narrative/attributes
@@ -306,7 +309,7 @@ export class IntentQueue implements IntentGraphQueue {
         profileContext = lines.join('\n');
       }
     } catch (ctxErr) {
-      this.logger.warn('[IntentHyde] Failed to fetch discoverer context for HyDE, proceeding without', { intentId, userId, error: ctxErr });
+      this.hydeLogger.warn('Failed to fetch discoverer context for HyDE, proceeding without', { intentId, userId, error: ctxErr });
     }
 
     if (this.deps?.invokeHyde) {
@@ -331,7 +334,7 @@ export class IntentQueue implements IntentGraphQueue {
         profileContext,
       });
     }
-    this.logger.info('[IntentHyde] HyDE generation complete, enqueuing opportunity discovery', { intentId, userId });
+    this.hydeLogger.info('HyDE generation complete, enqueuing opportunity discovery', { intentId, userId });
     const addJob =
       overrides?.addOpportunityJob ??
       this.deps?.addOpportunityJob ??
@@ -343,7 +346,7 @@ export class IntentQueue implements IntentGraphQueue {
         const assignmentMemberships = await this.getAssignmentMemberships(userId);
         return deriveIntentDiscoveryNetworkIds(assignmentMemberships, scope);
       } catch (err) {
-        this.logger.warn('[IntentHyde] Failed to resolve assignment memberships for discovery scope, falling back to focused scope', { intentId, userId, error: err });
+        this.hydeLogger.warn('Failed to resolve assignment memberships for discovery scope, falling back to focused scope', { intentId, userId, error: err });
         return scope.scopeType && scope.scopeId ? { networkIds: [scope.scopeId] } : {};
       }
     })();
@@ -352,7 +355,7 @@ export class IntentQueue implements IntentGraphQueue {
       userId,
       ...discoveryScope,
     }).catch((err: unknown) =>
-      this.logger.error('[IntentHyde] Failed to enqueue opportunity discovery', { intentId, error: err })
+      this.hydeLogger.error('Failed to enqueue opportunity discovery', { intentId, error: err })
     );
   }
 
@@ -382,7 +385,7 @@ export class IntentQueue implements IntentGraphQueue {
     const db = this.deps?.database ?? this.database;
     const intent = await db.getIntentForIndexing(intentId);
     if (!intent) {
-      this.logger.warn('[IntentAssign] Intent not found, skipping', { intentId });
+      this.assignLogger.warn('Intent not found, skipping', { intentId });
       return { assignedNetworkIds: [], evaluatedCount: 0 };
     }
 
@@ -392,7 +395,7 @@ export class IntentQueue implements IntentGraphQueue {
       const assignmentMemberships = await this.getAssignmentMemberships(userId);
       const userIndexIds = resolveAssignmentNetworkScope({ memberships: assignmentMemberships, ...scope });
       evaluatedCount = userIndexIds.length;
-      this.logger.info('[IntentAssign] User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
+      this.assignLogger.info('User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
 
       // Instantiate once per run so the same withStructuredOutput binding is
       // reused across all network evaluations in the Promise.all below (the
@@ -415,7 +418,7 @@ export class IntentQueue implements IntentGraphQueue {
         userIndexIds.map(async (networkId) => {
           const ctx = await db.getNetworkAssignmentContext(networkId, userId);
           if (!ctx) {
-            this.logger.warn('[IntentAssign] Assignment context missing for network, skipping fail-closed', { intentId, userId, networkId });
+            this.assignLogger.warn('Assignment context missing for network, skipping fail-closed', { intentId, userId, networkId });
             return null;
           }
           const indexPrompt = ctx.indexPrompt ?? null;
@@ -426,7 +429,7 @@ export class IntentQueue implements IntentGraphQueue {
             try {
               result = await evaluateIntentAssignment({ intent: intent.payload, indexPrompt, memberPrompt, sourceName });
             } catch (err) {
-              this.logger.warn('[IntentAssign] IntentIndexer failed for network', { intentId, networkId, error: err });
+              this.assignLogger.warn('IntentIndexer failed for network', { intentId, networkId, error: err });
             }
           }
 
@@ -454,18 +457,18 @@ export class IntentQueue implements IntentGraphQueue {
           await db.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
           assignedNetworkIds.push(networkId);
         } catch (assignErr) {
-          this.logger.debug('[IntentAssign] Assign intent to network skipped', { intentId, networkId, error: assignErr });
+          this.assignLogger.debug('Assign intent to network skipped', { intentId, networkId, error: assignErr });
         }
       }
     } catch (err) {
-      this.logger.warn('[IntentAssign] Failed to assign intent to user networks', { intentId, userId, error: err });
+      this.assignLogger.warn('Failed to assign intent to user networks', { intentId, userId, error: err });
     }
 
     if (assignedNetworkIds.length === 0) {
       // Explicit orphan signal: an intent registered to no network is invisible
       // in every network UI. Surface it so it can be alerted on or swept rather
       // than silently lost.
-      this.logger.warn('[IntentAssign] Intent assigned to NO networks', { intentId, userId, scopeType: scope.scopeType, scopeId: scope.scopeId, evaluatedCount });
+      this.assignLogger.warn('Intent assigned to NO networks', { intentId, userId, scopeType: scope.scopeType, scopeId: scope.scopeId, evaluatedCount });
     }
     return { assignedNetworkIds, evaluatedCount };
   }
@@ -485,7 +488,7 @@ export class IntentQueue implements IntentGraphQueue {
     const { intentId } = data;
     const db = this.deps?.database ?? this.database;
     await db.deleteHydeDocumentsForSource('intent', intentId);
-    this.logger.verbose('[IntentHyde] Deleted HyDE documents for intent', { intentId });
+    this.hydeLogger.verbose('Deleted HyDE documents for intent', { intentId });
   }
 }
 

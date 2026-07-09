@@ -120,7 +120,7 @@ export class UserContextQueue {
         await this.handleRegenerate(data);
         break;
       default:
-        this.queueLogger.warn(`[UserContextProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn(`Unknown job name: ${name}`);
     }
   }
 
@@ -128,7 +128,7 @@ export class UserContextQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<UserContextJobData>) => {
-      this.queueLogger.info(`[UserContextProcessor] Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info(`Processing job ${job.id} (${job.name})`);
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<UserContextJobData>(QUEUE_NAME, processor);

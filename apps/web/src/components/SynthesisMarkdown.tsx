@@ -6,6 +6,9 @@ import { useNavigate } from 'react-router';
 import { useIntents } from '@/contexts/APIContext';
 import { useDiscoveryFilter } from '@/contexts/DiscoveryFilterContext';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('SynthesisMarkdown');
 
 interface SynthesisMarkdownProps {
   content: string;
@@ -110,7 +113,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
         // Navigate directly to intent route
         navigate(`/i/${currentLink.intentId}`);
       } catch (err) {
-        console.error('Failed to navigate to intent:', err);
+        logger.error('Failed to navigate to intent', { error: err });
         error('Failed to load intent');
       }
     }
@@ -128,7 +131,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
           onArchive();
         }
       } catch (err) {
-        console.error('Failed to archive intent:', err);
+        logger.error('Failed to archive intent', { error: err });
         error('Failed to archive intent');
       }
     }
