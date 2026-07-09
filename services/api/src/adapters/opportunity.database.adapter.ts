@@ -1,4 +1,4 @@
-import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, sql, toOpportunityRow, traceAppOperation } from './database.shared';
+import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, opportunityVisibilityGuard, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 
 export class OpportunityDatabaseAdapter {
   async getProfile(userId: string): Promise<UserIdentity | null> {
@@ -74,26 +74,9 @@ export class OpportunityDatabaseAdapter {
     userId: string,
     options?: { status?: string; statuses?: string[]; networkId?: string; scopeType?: 'intent'; scopeId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
-    // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
-    const visibilityGuard = sql`(
-      ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb
-      OR ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'peer' }])}::jsonb
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'patient' }])}::jsonb
-        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-      )
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'agent' }])}::jsonb
-        AND (
-          ${opportunities.status} IN ('accepted', 'rejected', 'expired')
-          OR (${opportunities.status} NOT IN ('latent', 'draft') AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-        )
-      )
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'party' }])}::jsonb
-        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-      )
-    )`;
+    // Role-based visibility: who can see depends on actor role and status (and
+    // whether introducer exists). Shared with the intent-list count enrichment.
+    const visibilityGuard = opportunityVisibilityGuard(userId);
     const conditions = [visibilityGuard];
     // Draft visibility: when explicit statuses are requested, the caller decides;
     // otherwise exclude drafts unless a conversationId scopes them to one session.

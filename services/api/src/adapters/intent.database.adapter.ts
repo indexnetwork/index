@@ -1,4 +1,12 @@
-import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentListRow, UpdateIntentInput, UserIdentity, activeOwnIntentsWhere, and, buildProfileFromUser, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
+import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentListRow, UpdateIntentInput, UserIdentity, activeOwnIntentsWhere, and, buildProfileFromUser, count, db, desc, eq, inArray, isNull, logger, ne, opportunityVisibilityGuard, ownIntentsListWhere, sql } from './database.shared';
+
+/**
+ * Opportunity statuses that count toward an intent's "opportunities" pill —
+ * only the ones awaiting the user (the detail radar's "Awaiting you" bucket:
+ * latent + pending). In-progress negotiations and terminal
+ * accepted/rejected/expired are excluded, and chat-only drafts never count.
+ */
+const WAITING_OPPORTUNITY_STATUSES: (typeof schema.opportunities.$inferSelect.status)[] = ['latent', 'pending'];
 
 
 export class IntentDatabaseAdapter {
@@ -238,7 +246,8 @@ export class IntentDatabaseAdapter {
     ]);
 
     const withNetworks = await this.attachIntentNetworks(rows);
-    return { rows: withNetworks, total: Number(totalResult[0]?.count ?? 0) };
+    const withCounts = await this.attachIntentCounts(withNetworks, userId);
+    return { rows: withCounts, total: Number(totalResult[0]?.count ?? 0) };
   }
 
   /**
@@ -274,6 +283,119 @@ export class IntentDatabaseAdapter {
       byIntent.set(m.intentId, list);
     }
     return rows.map(r => ({ ...r, networks: byIntent.get(r.id) ?? [] }));
+  }
+
+  /**
+   * Attach per-intent opportunity and pending-question counts for the viewing
+   * user to a page of list rows. Both are resolved from JSONB linkages in two
+   * batched queries (opportunities + questions), then grouped in memory:
+   *
+   * - Opportunities: any non-draft opportunity where the user is an actor and
+   *   the opportunity is linked to the intent via `detection.triggeredBy` or the
+   *   user's own actor `intent`. Counted once per intent.
+   * - Questions: pending, unexpired questions the user is an actor on that are
+   *   tied to the intent directly (`triggeredBy`, intent- or discovery-mode
+   *   source) or through an opportunity linked to that intent.
+   *
+   * @param rows - The paginated intent rows to enrich.
+   * @param userId - The viewing user (for actor/visibility scoping).
+   * @returns The same rows, each with `opportunityCount` and `questionCount`.
+   */
+  private async attachIntentCounts(
+    rows: IntentListRow[],
+    userId: string,
+  ): Promise<IntentListRow[]> {
+    if (rows.length === 0) return rows;
+    const intentIdSet = new Set(rows.map(r => r.id));
+
+    // One query for the visible, non-draft opportunities (same role/status
+    // visibility guard the intent detail radar uses). We fetch the full set so
+    // opportunity-sourced questions can still resolve their intent linkage
+    // below, but only the waiting ones (latent + pending) count toward the pill.
+    const waitingStatuses = new Set<string>(WAITING_OPPORTUNITY_STATUSES);
+    const oppRows = await db
+      .select({
+        id: schema.opportunities.id,
+        actors: schema.opportunities.actors,
+        detection: schema.opportunities.detection,
+        status: schema.opportunities.status,
+      })
+      .from(schema.opportunities)
+      .where(and(
+        opportunityVisibilityGuard(userId),
+        ne(schema.opportunities.status, 'draft'),
+      ));
+
+    /** Resolve which of the listed intents an opportunity belongs to for this user. */
+    const intentsForOpp = (
+      actors: { userId?: string; intent?: string }[] | null,
+      detection: { triggeredBy?: string } | null,
+    ): string[] => {
+      const ids = new Set<string>();
+      const triggeredBy = detection?.triggeredBy;
+      if (triggeredBy && intentIdSet.has(triggeredBy)) ids.add(triggeredBy);
+      for (const a of actors ?? []) {
+        if (a.userId === userId && a.intent && intentIdSet.has(a.intent)) ids.add(a.intent);
+      }
+      return [...ids];
+    };
+
+    const oppIntentMap = new Map<string, string[]>();
+    const opportunityCounts = new Map<string, number>();
+    for (const o of oppRows) {
+      const linkedIntents = intentsForOpp(
+        o.actors as { userId?: string; intent?: string }[] | null,
+        o.detection as { triggeredBy?: string } | null,
+      );
+      oppIntentMap.set(o.id, linkedIntents);
+      if (!waitingStatuses.has(o.status)) continue;
+      for (const intentId of linkedIntents) {
+        opportunityCounts.set(intentId, (opportunityCounts.get(intentId) ?? 0) + 1);
+      }
+    }
+
+    // One query for the user's pending, unexpired questions.
+    const questionRows = await db
+      .select({
+        id: schema.questions.id,
+        detection: schema.questions.detection,
+      })
+      .from(schema.questions)
+      .where(and(
+        eq(schema.questions.status, 'pending'),
+        sql`${schema.questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        sql`(${schema.questions.expiresAt} IS NULL OR ${schema.questions.expiresAt} > NOW())`,
+      ));
+
+    const questionCounts = new Map<string, number>();
+    for (const q of questionRows) {
+      const d = (q.detection ?? {}) as {
+        triggeredBy?: string;
+        mode?: string;
+        sourceType?: string;
+        sourceId?: string;
+      };
+      const ids = new Set<string>();
+      if (d.triggeredBy && intentIdSet.has(d.triggeredBy)) ids.add(d.triggeredBy);
+      if (d.mode === 'intent' && d.sourceType === 'intent' && d.sourceId && intentIdSet.has(d.sourceId)) {
+        ids.add(d.sourceId);
+      }
+      if (d.mode === 'discovery' && d.sourceType === 'discovery' && d.triggeredBy && intentIdSet.has(d.triggeredBy)) {
+        ids.add(d.triggeredBy);
+      }
+      if (d.sourceType === 'opportunity' && d.sourceId) {
+        for (const intentId of oppIntentMap.get(d.sourceId) ?? []) ids.add(intentId);
+      }
+      for (const intentId of ids) {
+        questionCounts.set(intentId, (questionCounts.get(intentId) ?? 0) + 1);
+      }
+    }
+
+    return rows.map(r => ({
+      ...r,
+      opportunityCount: opportunityCounts.get(r.id) ?? 0,
+      questionCount: questionCounts.get(r.id) ?? 0,
+    }));
   }
 
   async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {

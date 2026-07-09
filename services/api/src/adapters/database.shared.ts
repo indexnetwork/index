@@ -167,6 +167,19 @@ export interface IntentListRow {
    * the UI surface orphaned intents instead of hiding the assignment outcome.
    */
   networks: { id: string; title: string }[];
+  /**
+   * Number of opportunities awaiting the viewing user for this intent — the
+   * detail radar's "Awaiting you" bucket (latent + pending), matched via
+   * `detection.triggeredBy` or the user's actor `intent`. Undefined when the
+   * caller did not request counts.
+   */
+  opportunityCount?: number;
+  /**
+   * Number of pending (unexpired) questions tied to this intent for the viewing
+   * user — direct intent/discovery questions plus negotiation questions from
+   * opportunities linked to the intent. Undefined when counts weren't requested.
+   */
+  questionCount?: number;
 }
 // UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
 // locally to honor the adapter layering rule of not importing protocol interfaces).
@@ -187,7 +200,37 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, links, sessions, userSocials, userContexts } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, questions, userNotificationSettings, files, links, sessions, userSocials, userContexts } = schema;
+
+/**
+ * SQL predicate for whether `userId` may see an opportunity, keyed on their
+ * actor role and the opportunity's status (and whether an introducer exists).
+ * This is the single source of truth for opportunity visibility — shared by
+ * `getOpportunitiesForUser` (the canonical list read) and the intent-list count
+ * enrichment so per-intent "opportunities" counts match what the user actually
+ * sees on the intent detail radar.
+ */
+export function opportunityVisibilityGuard(userId: string) {
+  return sql`(
+    ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb
+    OR ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'peer' }])}::jsonb
+    OR (
+      ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'patient' }])}::jsonb
+      AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+    )
+    OR (
+      ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'agent' }])}::jsonb
+      AND (
+        ${opportunities.status} IN ('accepted', 'rejected', 'expired')
+        OR (${opportunities.status} NOT IN ('latent', 'draft') AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+      )
+    )
+    OR (
+      ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'party' }])}::jsonb
+      AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+    )
+  )`;
+}
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),

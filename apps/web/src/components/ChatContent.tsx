@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useNavigate } from "react-router";
-import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users, MessageSquare } from "lucide-react";
+import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users, MessageSquare, Radar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
@@ -42,6 +42,8 @@ interface HomeIntent {
   sourceType?: 'file' | 'link' | 'integration';
   networks?: { id: string; title: string }[];
   status?: string;
+  opportunityCount?: number;
+  questionCount?: number;
 }
 
 
@@ -902,20 +904,17 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       );
     };
 
-    // Home shelf: composer on top, the user's intent list below.
+    // Home shelf — a calm single-column discovery console: the composer leads,
+    // directly above the Signals it produces. Uses the intent detail view's
+    // exact container width + outer padding so the app shell stays consistent
+    // across the two screens.
     return (
-      <div className="px-6 lg:px-8 pb-12">
-        <ContentContainer className="text-left">
-          <div className="mt-12 mb-6 flex items-center justify-center gap-2">
-            <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
-              Find your others
-            </h1>
-            <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
-          </div>
-          <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
+      <div className="px-10 lg:px-16 py-6 pb-16">
+        <ContentContainer size="xwide" className="text-left">
+          <div className="space-y-8">
             <form
               onSubmit={handleSubmit}
-              className={cn("flex flex-col bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3", selectedFiles.length > 0 && "gap-2")}
+              className={cn("flex flex-col w-full max-w-3xl mx-auto bg-[#FCFCFC] border border-[#E9E9E9] rounded-3xl px-4 py-3 shadow-[0_1px_2px_rgba(4,23,41,0.04)] transition-shadow focus-within:border-[#4091BB]/40 focus-within:shadow-[0_2px_8px_rgba(64,145,187,0.10)]", selectedFiles.length > 0 && "gap-2")}
             >
               {selectedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -991,15 +990,28 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 )}
               </div>
             </form>
-          </div>
-          <div className="mt-8">
-            <IntentList
-              intents={homeIntents}
-              isLoading={homeIntentsLoading}
-              emptyMessage="No signals yet"
-              onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
-              onArchiveIntent={handleArchiveHomeIntent}
-            />
+
+              {/* Signals the composer produces */}
+              <section className="w-full max-w-3xl mx-auto">
+                <h2 className="mb-4 flex items-center gap-2 text-sm font-bold tracking-[0.15em] text-[#3D3D3D] font-ibm-plex-mono uppercase">
+                  <Radar className="h-4 w-4 text-gray-400" />
+                  <span>Signals</span>
+                  {homeIntents.length > 0 && (
+                    <span className="text-gray-400 normal-case">({homeIntents.length})</span>
+                  )}
+                  <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" />
+                </h2>
+                <IntentList
+                  intents={homeIntents}
+                  isLoading={homeIntentsLoading}
+                  emptyMessage="No signals yet"
+                  showSource={false}
+                  showNetworks={false}
+                  showCounts
+                  onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
+                  onArchiveIntent={handleArchiveHomeIntent}
+                />
+              </section>
           </div>
         </ContentContainer>
       </div>

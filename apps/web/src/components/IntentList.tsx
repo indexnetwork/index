@@ -50,6 +50,10 @@ interface BaseIntent {
    * enum is vestigial today, so this is forward-looking. See EDG-53.
    */
   status?: string;
+  /** Non-draft opportunities surfaced for this intent (shown when `showCounts`). */
+  opportunityCount?: number;
+  /** Pending questions tied to this intent (shown when `showCounts`). */
+  questionCount?: number;
 }
 
 /**
@@ -129,6 +133,12 @@ interface IntentListProps<T extends BaseIntent> {
   selectedIntentIds?: Set<string>;
   removingIntentIds?: Set<string>;
   className?: string;
+  /** Show the source-type chip (e.g. "Discovery_form"). Default true. */
+  showSource?: boolean;
+  /** Show the network membership chips. Default true. */
+  showNetworks?: boolean;
+  /** Show per-intent opportunity + pending-question count pills. Default false. */
+  showCounts?: boolean;
 }
 
 export default function IntentList<T extends BaseIntent>({
@@ -143,6 +153,9 @@ export default function IntentList<T extends BaseIntent>({
   selectedIntentIds = new Set(),
   removingIntentIds = new Set(),
   className = '',
+  showSource = true,
+  showNetworks = true,
+  showCounts = false,
 }: IntentListProps<T>) {
   // Sort intents by creation date (newest first) without grouping
   const sortedIntents = useMemo(() => {
@@ -228,7 +241,7 @@ export default function IntentList<T extends BaseIntent>({
                   )}
 
                   {/* Source Badge */}
-                  {intent.sourceType && (
+                  {showSource && intent.sourceType && (
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
                       {getSourceIcon(intent.sourceType)}
                       <span className="capitalize">{intent.sourceType}</span>
@@ -242,9 +255,27 @@ export default function IntentList<T extends BaseIntent>({
                     </span>
                   )}
 
+                  {/* Opportunity + pending-question counts */}
+                  {showCounts && (
+                    <>
+                      <span className="flex items-center gap-1 text-xs text-[#3D3D3D] font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#F4F4F4] border border-gray-200">
+                        <span className="font-semibold tabular-nums">{intent.opportunityCount ?? 0}</span>
+                        {(intent.opportunityCount ?? 0) === 1 ? 'opp' : 'opps'}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-[#3D3D3D] font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#F4F4F4] border border-gray-200">
+                        <span className="font-semibold tabular-nums">{intent.questionCount ?? 0}</span>
+                        {(intent.questionCount ?? 0) === 1 ? 'question' : 'questions'}
+                      </span>
+                    </>
+                  )}
+
                   {/* Network membership: chips, or pending/orphaned badge */}
-                  <NetworkMembership networks={intent.networks} createdAt={intent.createdAt} />
-                  <StatusBadge status={intent.status} />
+                  {showNetworks && (
+                    <>
+                      <NetworkMembership networks={intent.networks} createdAt={intent.createdAt} />
+                      <StatusBadge status={intent.status} />
+                    </>
+                  )}
                 </div>
               </div>
 
