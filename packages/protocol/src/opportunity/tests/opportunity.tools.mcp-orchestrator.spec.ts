@@ -90,7 +90,20 @@ describe('discover_opportunities — orchestrator trigger routing', () => {
 });
 
 describe('discover_opportunities — enableQuestions gating', () => {
-  const prevFlag = process.env.ENABLE_DISCOVERY_QUESTIONS;
+  const prevMaster = process.env.QUESTIONER_ENABLED;
+  const prevDiscovery = process.env.QUESTIONER_DISCOVERY_ENABLED;
+
+  const restoreFlags = () => {
+    if (prevMaster === undefined) delete process.env.QUESTIONER_ENABLED;
+    else process.env.QUESTIONER_ENABLED = prevMaster;
+    if (prevDiscovery === undefined) delete process.env.QUESTIONER_DISCOVERY_ENABLED;
+    else process.env.QUESTIONER_DISCOVERY_ENABLED = prevDiscovery;
+  };
+
+  const enableBoth = () => {
+    process.env.QUESTIONER_ENABLED = 'true';
+    process.env.QUESTIONER_DISCOVERY_ENABLED = 'true';
+  };
 
   beforeEach(() => {
     discoverCalls = [];
@@ -98,44 +111,57 @@ describe('discover_opportunities — enableQuestions gating', () => {
 
   // Restore the env between tests so a failing/skipped test in this block
   // cannot leak state into siblings or the rest of the file.
-  afterEach(() => {
-    if (prevFlag === undefined) delete process.env.ENABLE_DISCOVERY_QUESTIONS;
-    else process.env.ENABLE_DISCOVERY_QUESTIONS = prevFlag;
-  });
+  afterEach(restoreFlags);
 
   // Belt-and-suspenders: also restore after the whole describe in case
   // a future test forgets afterEach for any reason.
-  afterAll(() => {
-    if (prevFlag === undefined) delete process.env.ENABLE_DISCOVERY_QUESTIONS;
-    else process.env.ENABLE_DISCOVERY_QUESTIONS = prevFlag;
-  });
+  afterAll(restoreFlags);
 
-  test('MCP context with flag on → enableQuestions=true', async () => {
-    process.env.ENABLE_DISCOVERY_QUESTIONS = 'true';
+  test('MCP context with both flags on → enableQuestions=true', async () => {
+    enableBoth();
     const tool = captureDiscoverTool(makeDeps());
     await tool.handler({ context: makeContext({ isMcp: true }), query: {} });
 
     expect(discoverCalls[0].enableQuestions).toBe(true);
   });
 
-  test('MCP context with flag off → enableQuestions=false', async () => {
-    delete process.env.ENABLE_DISCOVERY_QUESTIONS;
+  test('MCP context with flags off → enableQuestions=false', async () => {
+    delete process.env.QUESTIONER_ENABLED;
+    delete process.env.QUESTIONER_DISCOVERY_ENABLED;
     const tool = captureDiscoverTool(makeDeps());
     await tool.handler({ context: makeContext({ isMcp: true }), query: {} });
 
     expect(discoverCalls[0].enableQuestions).toBe(false);
   });
 
-  test('Chat context with flag on → enableQuestions=true', async () => {
-    process.env.ENABLE_DISCOVERY_QUESTIONS = 'true';
+  test('Discovery flag on without master flag → enableQuestions=false (hierarchy)', async () => {
+    delete process.env.QUESTIONER_ENABLED;
+    process.env.QUESTIONER_DISCOVERY_ENABLED = 'true';
+    const tool = captureDiscoverTool(makeDeps());
+    await tool.handler({ context: makeContext({ isMcp: true }), query: {} });
+
+    expect(discoverCalls[0].enableQuestions).toBe(false);
+  });
+
+  test('Master flag on without discovery flag → enableQuestions=false', async () => {
+    process.env.QUESTIONER_ENABLED = 'true';
+    delete process.env.QUESTIONER_DISCOVERY_ENABLED;
+    const tool = captureDiscoverTool(makeDeps());
+    await tool.handler({ context: makeContext({ isMcp: true }), query: {} });
+
+    expect(discoverCalls[0].enableQuestions).toBe(false);
+  });
+
+  test('Chat context with both flags on → enableQuestions=true', async () => {
+    enableBoth();
     const tool = captureDiscoverTool(makeDeps());
     await tool.handler({ context: makeContext({ sessionId: 'session-abc' }), query: {} });
 
     expect(discoverCalls[0].enableQuestions).toBe(true);
   });
 
-  test('Ambient context (no MCP, no session) with flag on → enableQuestions=false', async () => {
-    process.env.ENABLE_DISCOVERY_QUESTIONS = 'true';
+  test('Ambient context (no MCP, no session) with both flags on → enableQuestions=false', async () => {
+    enableBoth();
     const tool = captureDiscoverTool(makeDeps());
     await tool.handler({ context: makeContext({}), query: {} });
 

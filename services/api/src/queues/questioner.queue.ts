@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { QuestionerAgent } from '@indexnetwork/protocol';
+import { QuestionerAgent, isQuestionerEnabled } from '@indexnetwork/protocol';
 import type { QuestionerInput, QuestionerEnqueueFn, PersistableQuestion, QuestionGenerationResult } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -151,9 +151,8 @@ export class QuestionerQueue {
     const actorNetworkId = data.scopeType === 'network' && data.scopeId?.trim()
       ? data.scopeId.trim()
       : undefined;
-    const triggeredByIntentId = data.scopeType === 'intent' && data.scopeId?.trim()
-      ? data.scopeId.trim()
-      : undefined;
+    const triggeredByIntentId = data.triggeredByIntentId?.trim()
+      || (data.scopeType === 'intent' && data.scopeId?.trim() ? data.scopeId.trim() : undefined);
 
     const batch: PersistableQuestion[] = result.questions.map((question, i) => ({
       detection: {
@@ -204,7 +203,7 @@ export const questionerQueue = new QuestionerQueue();
  * a process restart ordering hazard.
  */
 export function questionerEnqueueIfEnabled(): QuestionerEnqueueFn | undefined {
-  if (process.env.QUESTIONER_ENABLED !== 'true') return undefined;
+  if (!isQuestionerEnabled()) return undefined;
   return async (input) => {
     await questionerQueue.addGenerateJob(input);
   };

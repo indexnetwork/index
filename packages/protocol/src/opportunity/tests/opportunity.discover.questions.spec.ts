@@ -48,9 +48,18 @@ function makeFakeDatabase(): DiscoverInput["database"] {
   } as unknown as DiscoverInput["database"];
 }
 
-const originalFlag = process.env.ENABLE_DISCOVERY_QUESTIONS;
-beforeEach(() => { process.env.ENABLE_DISCOVERY_QUESTIONS = "true"; });
-afterEach(() => { process.env.ENABLE_DISCOVERY_QUESTIONS = originalFlag; });
+const originalMaster = process.env.QUESTIONER_ENABLED;
+const originalDiscovery = process.env.QUESTIONER_DISCOVERY_ENABLED;
+beforeEach(() => {
+  process.env.QUESTIONER_ENABLED = "true";
+  process.env.QUESTIONER_DISCOVERY_ENABLED = "true";
+});
+afterEach(() => {
+  if (originalMaster === undefined) delete process.env.QUESTIONER_ENABLED;
+  else process.env.QUESTIONER_ENABLED = originalMaster;
+  if (originalDiscovery === undefined) delete process.env.QUESTIONER_DISCOVERY_ENABLED;
+  else process.env.QUESTIONER_DISCOVERY_ENABLED = originalDiscovery;
+});
 
 describe("runDiscoverFromQuery — decision-question integration", () => {
   it("returns questions when trigger=orchestrator and the generator yields a result", async () => {
@@ -173,14 +182,14 @@ describe("runDiscoverFromQuery — decision-question integration", () => {
     expect(result.discoveryQuestionsDebug?.finalCount).toBe(0);
   });
 
-  // Wiring test for DISCOVERY_QUESTIONS_TIMEOUT_MS. Verifies the deadline is
+  // Wiring test for QUESTIONER_DISCOVERY_TIMEOUT_MS. Verifies the deadline is
   // actually allocated AT THE DISCOVER LAYER and that `{ signal }` is forwarded
   // to the generator. A leaf-class unit test on QuestionGenerator alone would
   // not catch a regression where the `{ signal: questionsSignal }` arg is
   // dropped at this call site.
-  it("forwards a deadline-bound AbortSignal to the generator (DISCOVERY_QUESTIONS_TIMEOUT_MS wiring)", async () => {
-    const previous = process.env.DISCOVERY_QUESTIONS_TIMEOUT_MS;
-    process.env.DISCOVERY_QUESTIONS_TIMEOUT_MS = "100";
+  it("forwards a deadline-bound AbortSignal to the generator (QUESTIONER_DISCOVERY_TIMEOUT_MS wiring)", async () => {
+    const previous = process.env.QUESTIONER_DISCOVERY_TIMEOUT_MS;
+    process.env.QUESTIONER_DISCOVERY_TIMEOUT_MS = "100";
     try {
       let receivedSignal: AbortSignal | undefined;
       const questionGenerator: QuestionGeneratorReader = {
@@ -220,8 +229,8 @@ describe("runDiscoverFromQuery — decision-question integration", () => {
       });
       expect(receivedSignal!.aborted).toBe(true);
     } finally {
-      if (previous === undefined) delete process.env.DISCOVERY_QUESTIONS_TIMEOUT_MS;
-      else process.env.DISCOVERY_QUESTIONS_TIMEOUT_MS = previous;
+      if (previous === undefined) delete process.env.QUESTIONER_DISCOVERY_TIMEOUT_MS;
+      else process.env.QUESTIONER_DISCOVERY_TIMEOUT_MS = previous;
     }
   });
 

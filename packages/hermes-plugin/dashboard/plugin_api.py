@@ -525,17 +525,19 @@ def _is_actionable_for_viewer(opp: dict[str, Any], current_user_id: str | None) 
     introducer = next((actor for actor in actors if _text(actor.get("role")) == "introducer"), None)
     has_introducer = introducer is not None
     introducer_approved = bool(introducer and introducer.get("approved") is True)
+    # Acting is per-user, not per-actor-row: re-detection can append duplicate
+    # viewer rows without actedAt after the viewer already accepted/rejected.
+    viewer_acted = any(_text(actor.get("actedAt")) for actor in viewer_actors)
 
     for actor in viewer_actors:
         role = _text(actor.get("role"))
-        acted_at = _text(actor.get("actedAt"))
         if role == "introducer":
             if status == "latent" and not introducer_approved:
                 return True
             continue
         if status == "latent" and (not has_introducer or introducer_approved):
             return True
-        if status == "pending" and not acted_at:
+        if status == "pending" and not viewer_acted:
             return True
     return False
 

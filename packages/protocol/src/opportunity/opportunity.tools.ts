@@ -9,6 +9,7 @@ import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LA
 import { narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.safe-presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
+import { isDiscoveryQuestionsEnabled } from "../questioner/questioner.env.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 
@@ -1189,7 +1190,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ...(context.scopeType && context.scopeId ? { scopeType: context.scopeType, scopeId: context.scopeId } : {}),
         ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
         // Decision questions add an LLM call after the negotiation phase.
-        // Capped at DISCOVERY_QUESTIONS_TIMEOUT_MS (12 s default,
+        // Capped at QUESTIONER_DISCOVERY_TIMEOUT_MS (12 s default,
         // env-overridable; see opportunity.discover.ts). Aborted calls return
         // no questions but the rest of the discovery payload still ships.
         // For chat sessions, questions are rendered by the frontend via
@@ -1197,10 +1198,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         // elicitation/create flow (Slice 5) — the MCP tool handler awaits the
         // elicitations before returning the tool result. The per-negotiation
         // summarizer is similarly capped at NEGOTIATION_SUMMARY_TIMEOUT_MS
-        // (5 s default per negotiation). Master switch remains
-        // ENABLE_DISCOVERY_QUESTIONS.
+        // (5 s default per negotiation). Gated by QUESTIONER_DISCOVERY_ENABLED
+        // (hierarchical: requires QUESTIONER_ENABLED too).
         enableQuestions:
-          process.env.ENABLE_DISCOVERY_QUESTIONS === "true" &&
+          isDiscoveryQuestionsEnabled() &&
           (!!context.sessionId || !!context.isMcp),
       });
 

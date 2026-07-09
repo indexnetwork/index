@@ -14,6 +14,7 @@ import type { Cache } from "../shared/interfaces/cache.interface.js";
 import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
 import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
+import { discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs } from "../questioner/questioner.env.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult, type HomeCardPresentationResult, type HomeCardLLMResult, type HomeCardPresenterInput } from "./opportunity.presenter.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
@@ -45,18 +46,6 @@ const enrichLog = protocolLogger("OpportunityDiscover:enrichOpportunities");
  * generation still has structured input.
  */
 const NEGOTIATION_SUMMARY_TIMEOUT_MS_DEFAULT = 5_000;
-/**
- * Question-generator budget. Sized against Railway's ~60 s edge timeout:
- * the discovery + evaluation + negotiate phases consume ~50 s on the slow
- * path, leaving ~10 s of headroom for the tail. 12 s is the larger end of
- * "fits"; the question step usually completes in 4-8 s, so most legitimate
- * calls finish well inside. Aborted calls return `null` (no questions);
- * the rest of the discovery payload still ships.
- *
- * Documented at opportunity.tools.ts:912-921 as historically uncapped —
- * this is the cap.
- */
-const DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT = 12_000;
 
 /**
  * Parse a positive integer env var, clamped to the safe-integer range so a
@@ -146,7 +135,7 @@ export interface DiscoverInput {
   /**
    * Master switch for decision-question generation. When false, this code path
    * is skipped entirely regardless of trigger. The composition root passes
-   * `process.env.ENABLE_DISCOVERY_QUESTIONS === "true"`.
+   * `isDiscoveryQuestionsEnabled()` (QUESTIONER_ENABLED + QUESTIONER_DISCOVERY_ENABLED).
    */
   enableQuestions?: boolean;
   /**
@@ -804,6 +793,7 @@ export async function runDiscoverFromQuery(
           userId: input.userId,
           scopeType: input.scopeType,
           scopeId: input.scopeId,
+          triggerIntentId,
           userContext: input.userId
             ? ((await input.database.getUserContext(input.userId, null))?.text ?? '')
             : '',
@@ -1005,6 +995,8 @@ interface MaybeBuildQuestionsInput {
   scopeType?: ToolScopeType;
   /** Focused request scope id. When `scopeType === 'network'`, persisted as actor networkId. */
   scopeId?: string;
+  /** Intent that triggered this discovery run. Stamped as `detection.triggeredBy` on generated questions. */
+  triggerIntentId?: string;
   /** The seeker's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
 }
@@ -1074,8 +1066,8 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
   // Hardcoded — `insights` mode is planned for a later slice. Warn if the env
   // var is set so operators aren't surprised when reporting still says
   // "transcripts".
-  if (process.env.DISCOVERY_QUESTIONS_INPUT_MODE === "insights") {
-    logger.warn("DISCOVERY_QUESTIONS_INPUT_MODE=insights is not yet implemented; falling back to transcripts");
+  if (discoveryQuestionsInputMode() === "insights") {
+    logger.warn("QUESTIONER_DISCOVERY_INPUT_MODE=insights is not yet implemented; falling back to transcripts");
   }
   const inputMode: "transcripts" | "insights" = "transcripts";
 
@@ -1131,6 +1123,7 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
         sourceId: args.chatSessionId ?? crypto.randomUUID(),
         context: enqueueInput,
         ...(args.scopeType && args.scopeId ? { scopeType: args.scopeType, scopeId: args.scopeId } : {}),
+        ...(args.triggerIntentId ? { triggeredByIntentId: args.triggerIntentId } : {}),
         conversationId: args.chatSessionId,
       });
       logger.info("Question generation enqueued to QuestionerQueue", {
@@ -1168,10 +1161,7 @@ async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
 
   const questionGenerator = args.questionGenerator;
   const generatorStart = Date.now();
-  const questionsTimeoutMs = parsePositiveIntEnv(
-    "DISCOVERY_QUESTIONS_TIMEOUT_MS",
-    DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT,
-  );
+  const questionsTimeoutMs = discoveryQuestionsTimeoutMs();
   const questionsSignal = combineWithDeadline(
     requestContext.getStore()?.abortSignal,
     questionsTimeoutMs,

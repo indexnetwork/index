@@ -14,6 +14,7 @@ import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, Op
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
+import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import db from '../lib/drizzle/drizzle';
@@ -240,6 +241,9 @@ export class ToolService {
     const negotiationGraph = new NegotiationGraphFactory(
       conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
       noOpDispatcher,
+      undefined,
+      // Stalled negotiations enqueue follow-up questions for the source user.
+      questionerEnqueueIfEnabled(),
     ).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(
       database,

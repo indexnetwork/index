@@ -217,7 +217,7 @@ export class DiscoveryRunQueue {
 
     // Env-gated questioner enqueue: queued/async discovery runs generate
     // discovery-mode questions exactly like synchronous MCP discover calls
-    // (the tool computes enableQuestions from ENABLE_DISCOVERY_QUESTIONS +
+    // (the tool computes enableQuestions from QUESTIONER_ENABLED + QUESTIONER_DISCOVERY_ENABLED +
     // context.isMcp, which is true here).
     const questionerEnqueue = questionerEnqueueIfEnabled();
 

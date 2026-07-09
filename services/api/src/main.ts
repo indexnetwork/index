@@ -63,7 +63,7 @@ import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { integrationSyncQueue } from './queues/integration.queue';
-import { questionerQueue } from './queues/questioner.queue';
+import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
@@ -80,7 +80,7 @@ import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper } from '@indexnetwork/protocol';
+import { IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
@@ -119,6 +119,10 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
   backgroundAgentDispatcher,
   negotiationTimeoutQueue,
+  // Stalled/capped/timeout negotiations enqueue follow-up questions for the
+  // source user (mode='negotiation', sourceType='opportunity') so the intent
+  // page can surface what would unblock the next attempt.
+  questionerEnqueueIfEnabled(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -307,7 +311,7 @@ emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 integrationSyncQueue.startWorker();
-if (process.env.QUESTIONER_ENABLED === 'true') {
+if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
 premiseQueue.startWorker();

@@ -7,6 +7,8 @@ import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
  */
 export interface HomeCardItem {
   opportunityId: string;
+  /** Lifecycle status of the underlying opportunity at render time (client bucketing, e.g. intent radar). */
+  status?: OpportunityStatus;
   userId: string;
   name: string;
   avatar: string | null;
@@ -26,6 +28,13 @@ export interface HomeCardItem {
   isGhost?: boolean;
   /** Second party in introducer arrow layout. Present when viewerRole is 'introducer'. */
   secondParty?: { name: string; avatar?: string | null; userId?: string };
+  /**
+   * True when this card was produced by a skeleton-presentation run: identity
+   * fields (name/avatar/status) are real but mainText/cta are empty because the
+   * presenter LLM was skipped. Clients render a shimmer body and re-fetch the
+   * full view. Skeleton cards are never written to the presenter cache.
+   */
+  presentationPending?: boolean;
   /** For section assignment from LLM */
   _cardIndex: number;
 }
@@ -85,6 +94,17 @@ export const HomeGraphState = Annotation.Root({
   noCache: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
+  }),
+
+  /**
+   * Presentation depth. 'full' (default) runs the presenter LLM and categorizer.
+   * 'skeleton' skips both for cache misses: uncached cards come back with
+   * resolved identity (name/avatar/status) and `presentationPending: true`,
+   * cached cards come back complete, and all cards land in one flat section.
+   */
+  presentation: Annotation<'full' | 'skeleton'>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 'full',
   }),
 
   /** Optional status filter. When undefined, the graph uses `DEFAULT_HOME_STATUSES`. */
