@@ -1,32 +1,8 @@
 import { useMemo } from 'react';
-import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Network, AlertTriangle } from 'lucide-react';
+import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Handshake, CircleHelp } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { DebugCopyButton } from './DebugCopyButton';
-
-/**
- * Grace window after creation during which an intent with zero network
- * memberships is shown as "Evaluating…" rather than "Not in any network".
- * Network assignment runs async (HyDE queue) shortly after creation, so a
- * freshly-created intent legitimately has no memberships for a short while.
- */
-const NETWORK_EVAL_GRACE_MS = 10 * 60 * 1000;
-
-interface IntentNetwork {
-  id: string;
-  title: string;
-}
-
-/**
- * Whether an intent is still within the post-creation grace window, during
- * which zero memberships reads as "evaluating" rather than "orphaned".
- * A plain (non-component) function so the render-time clock read stays out of
- * component bodies — mirrors `NegotiationHistory.timeAgo`.
- */
-function isWithinEvalGrace(createdAt: string): boolean {
-  const ageMs = Date.now() - new Date(createdAt).getTime();
-  return Number.isFinite(ageMs) && ageMs < NETWORK_EVAL_GRACE_MS;
-}
 
 interface BaseIntent {
   id: string;
@@ -39,68 +15,21 @@ interface BaseIntent {
   sourceValue?: string | null;
   sourceMeta?: string | null;
   /**
-   * Networks this intent is registered to. `undefined` means the caller did
-   * not supply membership data (membership UI is suppressed); an empty array
-   * means the intent is registered to no networks (pending or orphaned).
+   * Count of `pending` opportunities anchored on this intent, awaiting the user.
+   * Shown next to the date. Undefined/0 renders nothing.
    */
-  networks?: IntentNetwork[];
+  waitingOpportunityCount?: number;
+  /**
+   * Count of pending intent-scoped questions awaiting the user. Rendered as a
+   * notification badge on the row. Undefined/0 renders nothing.
+   */
+  pendingQuestionCount?: number;
   /**
    * Lifecycle status (ACTIVE|PAUSED|FULFILLED|EXPIRED). A badge renders only for
    * non-default (non-ACTIVE) values; undefined or ACTIVE renders nothing — the
    * enum is vestigial today, so this is forward-looking. See EDG-53.
    */
   status?: string;
-}
-
-/**
- * Renders an intent's network membership as chips, or a pending/orphaned badge
- * when it belongs to none. Returns null when membership data wasn't provided,
- * so callers that don't fetch memberships render nothing extra.
- */
-function NetworkMembership({ networks, createdAt }: { networks?: IntentNetwork[]; createdAt: string }) {
-  if (networks === undefined) return null;
-
-  if (networks.length > 0) {
-    const shown = networks.slice(0, 2);
-    const extra = networks.length - shown.length;
-    return (
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {shown.map((n) => (
-          <span
-            key={n.id}
-            className="flex items-center gap-1 text-xs text-blue-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100"
-          >
-            <Network className="w-3 h-3 shrink-0" />
-            <span className="max-w-[140px] truncate">{n.title}</span>
-          </span>
-        ))}
-        {extra > 0 && (
-          <span className="text-xs text-blue-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100">
-            +{extra}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  if (isWithinEvalGrace(createdAt)) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
-        <span className="h-2.5 w-2.5 border border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-        Evaluating…
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className="flex items-center gap-1 text-xs text-amber-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200"
-      title="This intent isn't registered to any network yet. It will be re-evaluated when you join a matching network."
-    >
-      <AlertTriangle className="w-3 h-3 shrink-0" />
-      Not in any network
-    </span>
-  );
 }
 
 /**
@@ -219,11 +148,22 @@ export default function IntentList<T extends BaseIntent>({
                 </p>
                 
                 <div className="flex items-center gap-3 mt-2.5">
-                  {/* Date Badge */}
+                  {/* Date Badge + waiting-opportunity count */}
                   {createdLabel && (
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono">
                       <Calendar className="w-3 h-3" />
                       <span>{createdLabel}</span>
+                    </div>
+                  )}
+
+                  {/* Opportunities waiting — next to the date */}
+                  {(intent.waitingOpportunityCount ?? 0) > 0 && (
+                    <div
+                      className="flex items-center gap-1.5 text-xs text-emerald-700 font-ibm-plex-mono"
+                      title={`${intent.waitingOpportunityCount} ${intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'} waiting`}
+                    >
+                      <Handshake className="w-3 h-3" />
+                      <span>{intent.waitingOpportunityCount} waiting</span>
                     </div>
                   )}
 
@@ -242,8 +182,17 @@ export default function IntentList<T extends BaseIntent>({
                     </span>
                   )}
 
-                  {/* Network membership: chips, or pending/orphaned badge */}
-                  <NetworkMembership networks={intent.networks} createdAt={intent.createdAt} />
+                  {/* Pending-question notification */}
+                  {(intent.pendingQuestionCount ?? 0) > 0 && (
+                    <span
+                      className="flex items-center gap-1 text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#041729] text-white"
+                      title={`${intent.pendingQuestionCount} pending ${intent.pendingQuestionCount === 1 ? 'question' : 'questions'}`}
+                    >
+                      <CircleHelp className="w-3 h-3" />
+                      {intent.pendingQuestionCount}
+                    </span>
+                  )}
+
                   <StatusBadge status={intent.status} />
                 </div>
               </div>

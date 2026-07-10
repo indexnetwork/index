@@ -18,7 +18,8 @@ interface HomeIntent {
   summary?: string | null;
   createdAt: string;
   sourceType?: "file" | "link" | "integration";
-  networks?: { id: string; title: string }[];
+  waitingOpportunityCount?: number;
+  pendingQuestionCount?: number;
   status?: string;
 }
 
