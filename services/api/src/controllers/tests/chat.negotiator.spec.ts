@@ -225,8 +225,10 @@ describe("Negotiator chat persona (IND-402)", () => {
     // The negotiator persona (not the orchestrator default) drove the run.
     expect(capturedPersonas.length).toBe(1);
     expect(capturedPersonas[0].id).toBe("negotiator");
+    // P4.5 (IND-413): discovery-coupled callback stays off; hallucination
+    // recovery is on now that create_intent makes proposal blocks legitimate.
     expect(capturedPersonas[0].loopBehaviors.createIntentCallback).toBe(false);
-    expect(capturedPersonas[0].loopBehaviors.hallucinationRecovery).toBe(false);
+    expect(capturedPersonas[0].loopBehaviors.hallucinationRecovery).toBe(true);
 
     expect(capturedStreamInputs.length).toBe(1);
     expect(capturedStreamInputs[0].sessionId).toBe(negotiatorSessionId);

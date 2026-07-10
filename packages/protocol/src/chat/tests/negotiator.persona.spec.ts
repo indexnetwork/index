@@ -2,10 +2,14 @@
  * P4.1 negotiator persona — client-scoped persona unit tests.
  *
  * The negotiator persona is a pure addition on the P4.0 persona seam:
- * advocate prompt bound to the personal agent row identity, client-scoped
- * tool allowlist, and every orchestrator loop behavior OFF. These tests pin
- * down the persona config shape, the prompt's identity/grounding content,
- * and the tool-scoping rule (no discovery / network / write-the-world tools).
+ * advocate prompt bound to the personal agent row identity and a
+ * client-scoped tool allowlist. P4.5 (IND-413) expanded the allowlist —
+ * signals, profile/premise writes, network joins, contacts — and enabled
+ * hallucinationRecovery (create_intent makes ```intent_proposal blocks
+ * legitimate). Direct discovery, network administration, onboarding
+ * plumbing, and agent management stay excluded. These tests pin down the
+ * persona config shape, the prompt's identity/grounding content, and the
+ * tool-scoping rule.
  *
  * No LLM calls, no DB, no module mocks.
  */
@@ -53,10 +57,14 @@ describe("createNegotiatorPersona", () => {
     expect(persona.id).not.toBe(ORCHESTRATOR_PERSONA_ID);
   });
 
-  it("has every orchestrator loop behavior OFF", () => {
+  it("keeps the discovery-coupled loop behavior OFF and hallucination recovery ON (P4.5)", () => {
     const persona = createNegotiatorPersona(AGENT_OPTS);
+    // createIntentCallback only fires off discover_opportunities results —
+    // discovery is retired for this persona, so it must stay off.
     expect(persona.loopBehaviors.createIntentCallback).toBe(false);
-    expect(persona.loopBehaviors.hallucinationRecovery).toBe(false);
+    // With create_intent in the toolset, ```intent_proposal blocks are
+    // legitimate output — unbacked ones must be detected and stripped.
+    expect(persona.loopBehaviors.hallucinationRecovery).toBe(true);
   });
 
   it("builds its prompt from the negotiator prompt module", () => {
@@ -82,11 +90,11 @@ describe("buildNegotiatorSystemContent", () => {
 
   it("is not the orchestrator identity", () => {
     expect(prompt).not.toContain("You are Index.");
-    // No orchestrator-only capabilities in the tool table.
+    // Retired/excluded capabilities never appear in the tool table.
     expect(prompt).not.toContain("discover_opportunities");
-    expect(prompt).not.toContain("create_intent");
-    expect(prompt).not.toContain("read_networks");
-    expect(prompt).not.toContain("import_gmail_contacts");
+    expect(prompt).not.toContain("create_network ");
+    expect(prompt).not.toContain("complete_onboarding");
+    expect(prompt).not.toContain("register_agent");
   });
 
   it("includes the preloaded client context", () => {
@@ -121,7 +129,10 @@ const ORCHESTRATOR_REGISTRY_NAMES = [
   "read_user_contexts",
   "create_user_context",
   "update_user_context",
+  "preview_user_context",
+  "confirm_user_context",
   "complete_onboarding",
+  "record_onboarding_privacy_consent",
   // intents
   "read_intents",
   "create_intent",
@@ -138,18 +149,21 @@ const ORCHESTRATOR_REGISTRY_NAMES = [
   "delete_network",
   "read_network_memberships",
   "create_network_membership",
+  "delete_network_membership",
   // opportunities / discovery
   "discover_opportunities",
   "list_opportunities",
   "update_opportunity",
   "get_discovery_run",
   "cancel_discovery_run",
+  "confirm_opportunity_delivery",
   // utilities / integrations / contacts / agents
   "scrape_url",
   "read_docs",
   "import_gmail_contacts",
   "import_contacts",
   "list_contacts",
+  "search_contacts",
   "add_contact",
   "remove_contact",
   "register_agent",
@@ -180,17 +194,52 @@ describe("filterNegotiatorTools", () => {
     expect(new Set(filteredNames)).toEqual(new Set(NEGOTIATOR_TOOL_NAMES));
   });
 
-  it("drops every discovery and network-facing tool", () => {
-    for (const banned of [
-      "discover_opportunities",
-      "read_networks",
-      "create_network",
-      "create_network_membership",
+  it("keeps the P4.5 capability groups (signals, knowledge writes, joins, contacts)", () => {
+    for (const allowed of [
       "create_intent",
-      "update_opportunity",
+      "update_intent",
+      "delete_intent",
+      "search_intents",
+      "create_user_context",
+      "update_user_context",
+      "create_premise",
+      "retract_premise",
+      "read_networks",
+      "create_network_membership",
+      "delete_network_membership",
+      "list_contacts",
+      "import_contacts",
       "import_gmail_contacts",
-      "register_agent",
+      "update_opportunity",
       "scrape_url",
+    ]) {
+      expect(filteredNames).toContain(allowed);
+    }
+  });
+
+  it("drops every retired/excluded tool", () => {
+    for (const banned of [
+      // discovery is retired — matching is signal-based
+      "discover_opportunities",
+      "get_discovery_run",
+      "cancel_discovery_run",
+      // network administration stays a human/UI act
+      "create_network",
+      "update_network",
+      "delete_network",
+      // onboarding plumbing
+      "complete_onboarding",
+      "record_onboarding_privacy_consent",
+      // agent management
+      "register_agent",
+      "update_agent",
+      "delete_agent",
+      "grant_agent_permission",
+      "revoke_agent_permission",
+      // never chat-callable
+      "confirm_opportunity_delivery",
+      "read_docs",
+      "ask_user_question",
     ]) {
       expect(filteredNames).not.toContain(banned);
     }
@@ -200,10 +249,12 @@ describe("filterNegotiatorTools", () => {
     expect(filterNegotiatorTools(filtered)).toEqual(filtered);
   });
 
-  it("the allowlist itself contains no discovery/network tool names", () => {
+  it("the allowlist itself contains no retired or admin tool names", () => {
     const names = new Set<string>(NEGOTIATOR_TOOL_NAMES);
     expect(names.has("discover_opportunities")).toBe(false);
-    expect(names.has("read_networks")).toBe(false);
-    expect(names.has("create_intent")).toBe(false);
+    expect(names.has("create_network")).toBe(false);
+    expect(names.has("delete_network")).toBe(false);
+    expect(names.has("complete_onboarding")).toBe(false);
+    expect(names.has("register_agent")).toBe(false);
   });
 });
