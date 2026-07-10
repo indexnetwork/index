@@ -251,12 +251,13 @@ export class ChatSessionService {
    *
    * @param userId - The user's UUID
    * @param limit - Maximum number of sessions to return (default: 10)
+   * @param persona - Optional persona filter (e.g. 'orchestrator'). Omit for all.
    * @returns List of sessions
    */
-  async getUserSessions(userId: string, limit = 10) {
-    logger.verbose('Getting user sessions', { userId, limit });
+  async getUserSessions(userId: string, limit = 10, persona?: string) {
+    logger.verbose('Getting user sessions', { userId, limit, persona });
 
-    return this.db.getUserChatSessions(userId, limit);
+    return this.db.getUserChatSessions(userId, limit, persona);
   }
 
   /**

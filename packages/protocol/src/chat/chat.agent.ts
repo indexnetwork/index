@@ -1,9 +1,10 @@
 import type { ChatOpenAI } from "@langchain/openai";
 import { AIMessage, BaseMessage, SystemMessage, ToolMessage, AIMessageChunk } from "@langchain/core/messages";
-import { createChatTools, type ToolContext, type ResolvedToolContext } from "../shared/agent/tool.factory.js";
+import type { ChatTools, ToolContext, ResolvedToolContext } from "../shared/agent/tool.factory.js";
 import { resolveChatContext } from "../shared/agent/tool.helpers.js";
 import { scopeFromNetworkId } from "../shared/agent/tool.scope.js";
-import { ITERATION_NUDGE, buildSystemContent } from "./chat.prompt.js";
+import { ITERATION_NUDGE } from "./chat.prompt.js";
+import { ORCHESTRATOR_PERSONA, type ChatPersonaConfig } from "./chat.persona.js";
 import { extractRecentToolCalls, type IterationContext } from "./chat.prompt.modules.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { createModel, type ModelConfig } from "../shared/agent/model.config.js";
@@ -221,7 +222,7 @@ export interface AgentIterationResult {
  */
 export class ChatAgent {
   private model: ChatOpenAI;
-  private tools: Awaited<ReturnType<typeof createChatTools>>;
+  private tools: ChatTools;
   private toolsByName: Map<string, any>;
 
   /**
@@ -229,7 +230,8 @@ export class ChatAgent {
    */
   private constructor(
     private resolvedContext: ResolvedToolContext,
-    tools: Awaited<ReturnType<typeof createChatTools>>,
+    private persona: ChatPersonaConfig,
+    tools: ChatTools,
     modelConfig?: ModelConfig,
   ) {
     this.model = createModel("chat", modelConfig);
@@ -261,8 +263,15 @@ export class ChatAgent {
   /**
    * Async factory: creates a ChatAgent with resolved user/index context.
    * Resolves user/network identity from DB during tool initialization.
+   *
+   * @param context - Tool context (database, userId, scope, deps)
+   * @param persona - Persona config (prompt builder, toolset, loop behaviors).
+   *                  Defaults to the orchestrator persona.
    */
-  static async create(context: ToolContext): Promise<ChatAgent> {
+  static async create(
+    context: ToolContext,
+    persona: ChatPersonaConfig = ORCHESTRATOR_PERSONA,
+  ): Promise<ChatAgent> {
     const { networkId: legacyNetworkId } = context;
     const explicitScope = context.scopeType && context.scopeId
       ? { scopeType: context.scopeType, scopeId: context.scopeId }
@@ -279,8 +288,8 @@ export class ChatAgent {
       resolved.scopeType = explicitScope.scopeType;
       resolved.scopeId = explicitScope.scopeId;
     }
-    const tools = await createChatTools(context, resolved);
-    return new ChatAgent(resolved, tools, context.modelConfig);
+    const tools = await persona.createTools(context, resolved);
+    return new ChatAgent(resolved, persona, tools, context.modelConfig);
   }
 
   /**
@@ -300,7 +309,7 @@ export class ChatAgent {
       currentMessage: ChatAgent.getCurrentUserMessage(messages),
       ctx: this.resolvedContext,
     };
-    const systemContent = buildSystemContent(this.resolvedContext, iterCtx);
+    const systemContent = this.persona.buildSystemContent(this.resolvedContext, iterCtx);
 
     const fullMessages: BaseMessage[] = [
       new SystemMessage(systemContent),
@@ -421,7 +430,7 @@ export class ChatAgent {
           let resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
 
-          if (tc.name === "discover_opportunities") {
+          if (tc.name === "discover_opportunities" && this.persona.loopBehaviors.createIntentCallback) {
             const newResult = await this.handleCreateIntentCallback(resultStr, tc.args);
             if (newResult !== null) {
               resultStr = newResult;
@@ -659,8 +668,8 @@ export class ChatAgent {
   }> {
     let normalized = resultStr;
 
-    // Run create_intent callback for discover_opportunities results
-    if (toolName === "discover_opportunities") {
+    // Run create_intent callback for discover_opportunities results (orchestrator behavior)
+    if (toolName === "discover_opportunities" && this.persona.loopBehaviors.createIntentCallback) {
       const callbackResult = await this.handleCreateIntentCallback(normalized, toolArgs);
       if (callbackResult !== null) {
         normalized = callbackResult;
@@ -886,7 +895,7 @@ export class ChatAgent {
         currentMessage: ChatAgent.getCurrentUserMessage(messages),
         ctx: this.resolvedContext,
       };
-      const systemContent = buildSystemContent(this.resolvedContext, iterCtx);
+      const systemContent = this.persona.buildSystemContent(this.resolvedContext, iterCtx);
       const fullMessages: BaseMessage[] = [
         new SystemMessage(systemContent),
         ...messages,
@@ -1120,7 +1129,11 @@ export class ChatAgent {
       // directly instead of calling the corresponding tool. These blocks
       // lack valid proposalIds / data and won't work in the frontend.
       // Auto-invoke the correct tool directly instead of re-asking the LLM.
-      const hallucinatedBlock = this.detectHallucinatedBlock(iterationText, toolsDebug, iterCtx.currentMessage);
+      // Persona-gated: only personas with hallucinationRecovery enabled (orchestrator)
+      // run detection/auto-invoke — other personas never trigger this branch.
+      const hallucinatedBlock = this.persona.loopBehaviors.hallucinationRecovery
+        ? this.detectHallucinatedBlock(iterationText, toolsDebug, iterCtx.currentMessage)
+        : null;
       const priorAutoInvokes = hallucinatedBlock ? (hallucinationAutoInvokeCounts.get(hallucinatedBlock.type) ?? 0) : 0;
       if (hallucinatedBlock && priorAutoInvokes < 2 && iterationCount < HARD_ITERATION_LIMIT - 1) {
         hallucinationAutoInvokeCounts.set(hallucinatedBlock.type, priorAutoInvokes + 1);
@@ -1297,8 +1310,11 @@ export class ChatAgent {
 
       // ── Final response already streamed ─────────────────────────────
       // Defense-in-depth: strip any code blocks that require tool backing
-      // but slipped through without a successful tool call.
-      const sanitizedText = this.stripUnbackedBlocks(iterationText, toolsDebug);
+      // but slipped through without a successful tool call (persona-gated,
+      // same flag as detection since both police tool-backed block types).
+      const sanitizedText = this.persona.loopBehaviors.hallucinationRecovery
+        ? this.stripUnbackedBlocks(iterationText, toolsDebug)
+        : iterationText;
       if (sanitizedText !== iterationText) {
         logger.warn("Streaming: stripped unbacked code blocks from final response", {
           originalLength: iterationText.length,

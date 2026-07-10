@@ -38,7 +38,7 @@ export class ConversationDatabaseAdapter {
       }
     });
 
-    return { id, dmPair: null, lastMessageAt: null, createdAt: now, updatedAt: now };
+    return { id, dmPair: null, persona: 'orchestrator', lastMessageAt: null, createdAt: now, updatedAt: now };
   }
 
   /**
@@ -352,7 +352,7 @@ export class ConversationDatabaseAdapter {
       }
     });
 
-    return { id, dmPair, lastMessageAt: null, createdAt: now, updatedAt: now };
+    return { id, dmPair, persona: 'orchestrator', lastMessageAt: null, createdAt: now, updatedAt: now };
   }
 
   /**
@@ -1089,7 +1089,7 @@ export class ConversationDatabaseAdapter {
    * Helper: convert a conversations row + metadata into a backward-compatible ChatSession.
    */
   private _toChatSession(
-    conv: { id: string; createdAt: Date; updatedAt: Date },
+    conv: { id: string; createdAt: Date; updatedAt: Date; persona: string },
     userId: string,
     meta: ChatConversationMeta | null,
   ): ChatSession {
@@ -1102,6 +1102,7 @@ export class ConversationDatabaseAdapter {
       id: conv.id,
       userId,
       title: meta?.title ?? null,
+      persona: conv.persona,
       networkId: legacyNetworkId,
       scopeType,
       scopeId: scopeType ? scopeId : null,
@@ -1125,6 +1126,7 @@ export class ConversationDatabaseAdapter {
     await db.transaction(async (tx) => {
       await tx.insert(schema.conversations).values({
         id: data.id,
+        ...(data.persona ? { persona: data.persona } : {}),
         createdAt: now,
         updatedAt: now,
       });
@@ -1203,7 +1205,7 @@ export class ConversationDatabaseAdapter {
    * Get all chat sessions for a user, ordered by most recent.
    * Queries conversation_participants to find conversations with system-agent.
    */
-  async getUserChatSessions(userId: string, limit: number): Promise<ChatSession[]> {
+  async getUserChatSessions(userId: string, limit: number, persona?: string): Promise<ChatSession[]> {
     // Subquery: conversation IDs that include the system agent (i.e. chat sessions, not DMs)
     const chatSessionIds = db
       .select({ conversationId: schema.conversationParticipants.conversationId })
@@ -1218,6 +1220,7 @@ export class ConversationDatabaseAdapter {
     const rows = await db
       .select({
         id: schema.conversations.id,
+        persona: schema.conversations.persona,
         createdAt: schema.conversations.createdAt,
         updatedAt: schema.conversations.updatedAt,
       })
@@ -1232,6 +1235,7 @@ export class ConversationDatabaseAdapter {
           eq(schema.conversationParticipants.participantType, 'user'),
           isNull(schema.conversationParticipants.hiddenAt),
           inArray(schema.conversations.id, chatSessionIds),
+          ...(persona ? [eq(schema.conversations.persona, persona)] : []),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))

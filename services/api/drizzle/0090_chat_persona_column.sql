@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "persona" text DEFAULT 'orchestrator' NOT NULL;

@@ -195,7 +195,20 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10);
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, undefined);
+  });
+
+  it("passes the persona filter through to the adapter", async () => {
+    const sessions = [makeSession()];
+    const db = createMockDb({
+      getUserChatSessions: mock(() => Promise.resolve(sessions)),
+    });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    const result = await svc.getUserSessions(USER_ID, 10, "orchestrator");
+
+    expect(result).toEqual(sessions);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator");
   });
 });
 
