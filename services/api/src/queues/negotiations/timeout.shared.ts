@@ -1,5 +1,5 @@
-import { IndexNegotiator } from '@indexnetwork/protocol';
-import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationGraphDatabase } from '@indexnetwork/protocol';
+import { IndexNegotiator, isRejectLikeAction, isTerminalAction, readProtocolVersion, resolveSeat } from '@indexnetwork/protocol';
+import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationGraphDatabase, NegotiationProtocolVersion } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 
@@ -9,6 +9,10 @@ type TimeoutLogger = ReturnType<typeof log.job.from>;
 export interface NegotiationTaskMeta {
   sourceUserId?: string;
   candidateUserId?: string;
+  /** Rigid initiator seat, stamped at discovery time (v2 client-advocate). */
+  initiatorUserId?: string;
+  /** Negotiation protocol version; absent on pre-v2 tasks (treated as v1). */
+  protocolVersion?: string;
   type?: string;
   maxTurns?: number;
   opportunityId?: string;
@@ -37,7 +41,8 @@ export function buildNegotiationOutcome(
   currentSpeaker: string,
 ): NegotiationOutcome {
   const hasOpportunity = lastAction === 'accept';
-  const atCap = lastAction === 'counter';
+  // Non-terminal last action at finalization means the turn cap was hit.
+  const atCap = !isTerminalAction(lastAction);
 
   let agreedRoles: NegotiationOutcome['agreedRoles'] = [];
   if (hasOpportunity && history.length >= 2) {
@@ -82,7 +87,7 @@ export async function runTimeoutFallback(params: {
   taskId: string;
   conversationId: string;
   meta: NegotiationTaskMeta;
-  messages: Array<{ parts: unknown[] }>;
+  messages: Array<{ parts: unknown[]; senderId?: string }>;
   currentTurnCount: number;
   seedReasoning: string;
   maxTurns: number;
@@ -96,11 +101,24 @@ export async function runTimeoutFallback(params: {
     meta, messages, currentTurnCount, seedReasoning, maxTurns, fallbackLogExtra, rearm,
   } = params;
 
-  // Determine whose turn it is
-  const currentSpeaker = currentTurnCount % 2 === 0 ? 'source' : 'candidate';
+  // Determine whose turn it is from the last message's sender — not parity,
+  // which misattributes the parked seat across continuation sessions (a
+  // continuation can start with either side speaking first).
+  const lastSenderId = messages.length > 0 ? messages[messages.length - 1].senderId : undefined;
+  const currentSpeaker = lastSenderId
+    ? (lastSenderId === `agent:${meta.sourceUserId}` ? 'candidate' : 'source')
+    : (currentTurnCount % 2 === 0 ? 'source' : 'candidate');
   const isSource = currentSpeaker === 'source';
   const activeUserId = isSource ? meta.sourceUserId! : meta.candidateUserId!;
   const otherUserId = isSource ? meta.candidateUserId! : meta.sourceUserId!;
+
+  // Seat + version for the parked seat (v2 client-advocate): the system agent
+  // taking over this turn must use the seat-scoped schema — an initiator-seat
+  // fallback can never accept on the user's behalf. v1 tasks keep the legacy
+  // schema and the legacy non-final behavior (no isFinalTurn forcing).
+  const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
+  const seat = resolveSeat(activeUserId, meta);
+  const isFinalTurn = protocolVersion === 'v2' && (currentTurnCount + 1) >= maxTurns;
 
   logger.info(labels.fallback, {
     negotiationId,
@@ -128,6 +146,9 @@ export async function runTimeoutFallback(params: {
     seedAssessment,
     history,
     isDiscoverer: isSource,
+    seat,
+    protocolVersion,
+    ...(isFinalTurn && { isFinalTurn }),
   });
 
   // Persist the AI turn
@@ -141,8 +162,8 @@ export async function runTimeoutFallback(params: {
 
   const newTurnCount = currentTurnCount + 1;
 
-  // Evaluate: accept/reject → finalize; counter at max → finalize; counter under max → continue
-  if (aiTurn.action === 'accept' || aiTurn.action === 'reject' || newTurnCount >= maxTurns) {
+  // Evaluate: terminal action → finalize; counter at max → finalize; counter under max → continue
+  if (isTerminalAction(aiTurn.action) || newTurnCount >= maxTurns) {
     const fullHistory = [...history, aiTurn];
     const nextSpeaker = currentSpeaker === 'source' ? 'candidate' : 'source';
     const outcome = buildNegotiationOutcome(fullHistory, newTurnCount, aiTurn.action, meta.sourceUserId!, meta.candidateUserId!, nextSpeaker);
@@ -156,13 +177,13 @@ export async function runTimeoutFallback(params: {
     });
 
     const outcomeStr = aiTurn.action === 'accept' ? 'accepted'
-      : aiTurn.action === 'reject' ? 'rejected'
+      : isRejectLikeAction(aiTurn.action) ? 'rejected'
       : 'turn_cap';
 
     const opportunityId = meta.opportunityId;
     if (opportunityId) {
       const nextStatus = aiTurn.action === 'accept' ? 'pending'
-        : aiTurn.action === 'reject' ? 'rejected'
+        : isRejectLikeAction(aiTurn.action) ? 'rejected'
         : 'stalled';
       await database.updateOpportunityStatus(opportunityId, nextStatus).catch((err: unknown) => {
         logger.error(labels.statusUpdateFailed, {

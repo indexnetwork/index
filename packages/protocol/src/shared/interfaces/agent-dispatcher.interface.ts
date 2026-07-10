@@ -21,6 +21,12 @@ export interface NegotiationTurnPayload {
   isDiscoverer: boolean;
   /** The explicit search query that triggered this discovery (if any). Takes priority over background intents. */
   discoveryQuery?: string;
+  /** The acting user's seat under the v2 client-advocate protocol (`initiator` | `counterparty`). */
+  seat?: string;
+  /** Negotiation protocol version for this task (`v1` | `v2`). */
+  protocolVersion?: string;
+  /** Actions the acting seat may submit on this turn (seat + version + final-turn scoped). */
+  allowedActions?: string[];
 }
 
 /** Result of a dispatch attempt. */

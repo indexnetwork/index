@@ -7,8 +7,30 @@ import { z } from "zod";
 
 // ─── Zod schemas (available for runtime validation) ───────────────────────────
 
+/**
+ * Union of every negotiation turn action across protocol versions.
+ *
+ * v1 vocabulary: `propose | accept | reject | counter | question`.
+ * v2 (client-advocate seat rules) renames `propose`→`outreach` and splits
+ * `reject` into `withdraw` (initiator seat) / `decline` (counterparty seat).
+ * Which subset is valid for a given turn depends on the task's
+ * `protocolVersion` and the acting user's seat — see
+ * `negotiation/negotiation.protocol.ts` for the seat-scoped schemas.
+ */
+export const NEGOTIATION_ACTIONS = [
+  "propose", "accept", "reject", "counter", "question",
+  "outreach", "withdraw", "decline",
+] as const;
+export type NegotiationAction = (typeof NEGOTIATION_ACTIONS)[number];
+
+/** Negotiation seat under the v2 client-advocate protocol. */
+export type NegotiationSeat = "initiator" | "counterparty";
+
+/** Negotiation protocol version stamped on task metadata. */
+export type NegotiationProtocolVersion = "v1" | "v2";
+
 export const NegotiationTurnSchema = z.object({
-  action: z.enum(["propose", "accept", "reject", "counter", "question"]),
+  action: z.enum(NEGOTIATION_ACTIONS),
   assessment: z.object({
     reasoning: z.string(),
     suggestedRoles: z.object({

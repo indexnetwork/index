@@ -89,7 +89,7 @@ export default function ChatSidebar() {
       const lastAction = dataPart?.data?.action;
       const negotiationStatus: NegotiationStatus = lastAction === 'accept'
         ? 'accepted'
-        : lastAction === 'reject'
+        : (lastAction === 'reject' || lastAction === 'withdraw' || lastAction === 'decline')
           ? 'rejected'
           : lastAction
             ? 'in_progress'

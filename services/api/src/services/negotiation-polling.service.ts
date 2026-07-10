@@ -7,8 +7,8 @@ import { conversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/da
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeout.queue';
 import { log } from '../lib/log';
-import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '@indexnetwork/protocol';
-import { AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
+import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
 
 const logger = log.service.from('NegotiationPollingService');
 
@@ -37,6 +37,17 @@ export class UnauthorizedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'UnauthorizedError';
+  }
+}
+
+/**
+ * Thrown when a submitted negotiation action is outside the caller's seat
+ * vocabulary for the task's protocol version. Maps to HTTP 400.
+ */
+export class SeatViolationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SeatViolationError';
   }
 }
 
@@ -82,6 +93,15 @@ export interface PickupResult {
     counterpartyAction: string;
   };
   /**
+   * The claiming user's seat under the task's negotiation protocol version
+   * (v2 client-advocate: `initiator` never accepts; only `counterparty` can).
+   */
+  seat: NegotiationSeat;
+  /** Negotiation protocol version stamped on the task (`v1` for pre-v2 tasks). */
+  protocolVersion: NegotiationProtocolVersion;
+  /** Actions the claiming seat may submit on this turn. */
+  allowedActions: NegotiationAction[];
+  /**
    * Full negotiation context, mirroring what the in-process system agent
    * receives as its `NegotiationAgentInput`. `ownUser`/`otherUser` are
    * projected to the claiming user's perspective. Populated on turns parked
@@ -99,7 +119,7 @@ export interface PickupResult {
 }
 
 export interface RespondInput {
-  action: 'propose' | 'accept' | 'reject' | 'counter' | 'question';
+  action: NegotiationAction;
   message?: string | null;
   assessment: {
     reasoning: string;
@@ -129,6 +149,10 @@ interface NegotiationTaskMetadata {
   type: 'negotiation';
   sourceUserId: string;
   candidateUserId: string;
+  /** Rigid initiator seat, stamped at discovery time (v2 client-advocate). */
+  initiatorUserId?: string;
+  /** Negotiation protocol version; absent on pre-v2 tasks (treated as v1). */
+  protocolVersion?: string;
   maxTurns?: number;
   opportunityId?: string;
   turnContext?: PersistedTurnContext;
@@ -300,7 +324,28 @@ export class NegotiationPollingService {
   ): Promise<{ success: true }> {
     await this.assertAgentOwnership(agentId, userId);
 
-    // 1. Atomically transition out of 'claimed' to 'working' with CAS on
+    // 1. Seat + version validation (v2 client-advocate protocol) — BEFORE the
+    //    CAS transition, so a rejected action leaves the claim intact and the
+    //    agent can retry with a valid one. The action must be within the
+    //    caller's seat vocabulary; seat attribution keys on
+    //    metadata.initiatorUserId — never on turn parity, which misattributes
+    //    seats when a continuation starts with the counterparty speaking first.
+    //    v1 tasks are grandfathered: the legacy vocabulary stays valid.
+    const preflight = await conversationDatabaseAdapter.getTask(negotiationId);
+    if (!preflight) {
+      throw new NotFoundError(`Negotiation ${negotiationId} not found`);
+    }
+    const preflightMeta = preflight.metadata as NegotiationTaskMetadata | null;
+    if (preflightMeta?.type !== 'negotiation') {
+      throw new NotFoundError(`Task ${negotiationId} is not a negotiation`);
+    }
+    const protocolVersion = (readProtocolVersion(preflightMeta) ?? 'v1') as NegotiationProtocolVersion;
+    const seat = resolveSeat(userId, preflightMeta);
+    if (!allowedActionsFor(protocolVersion, seat).includes(input.action)) {
+      throw new SeatViolationError(seatViolationMessage(input.action, seat, protocolVersion));
+    }
+
+    // 2. Atomically transition out of 'claimed' to 'working' with CAS on
     //    claimedByAgentId. This prevents the claim-timeout worker and respond
     //    from both observing 'claimed' and both appending a turn.
     const now = new Date();
@@ -338,19 +383,18 @@ export class NegotiationPollingService {
       throw new NotFoundError(`Task ${negotiationId} is not a negotiation`);
     }
 
-    // 2. Cancel 6h claim timeout (the CAS already fenced it off, but remove the
+    // 3. Cancel 6h claim timeout (the CAS already fenced it off, but remove the
     //    delayed job so it doesn't wake up and short-circuit on state mismatch).
     await negotiationClaimTimeoutQueue.cancelTimeout(negotiationId);
 
-    // 3. Determine current speaker
+    // 4. The caller IS the current speaker (they claimed the turn) — attribute
+    //    the message to them directly rather than deriving from turn parity.
     const messages = await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId);
     const currentTurnCount = messages.length;
-    const currentSpeaker: 'source' | 'candidate' = currentTurnCount % 2 === 0 ? 'source' : 'candidate';
-    const senderId = currentSpeaker === 'source'
-      ? `agent:${meta.sourceUserId}`
-      : `agent:${meta.candidateUserId}`;
+    const currentSpeaker: 'source' | 'candidate' = meta.sourceUserId === userId ? 'source' : 'candidate';
+    const senderId = `agent:${userId}`;
 
-    // 4. Persist the turn as a message
+    // 5. Persist the turn as a message
     const turn: NegotiationTurn = {
       action: input.action,
       message: input.message ?? null,
@@ -368,8 +412,9 @@ export class NegotiationPollingService {
     const newTurnCount = currentTurnCount + 1;
     const maxTurns = meta.maxTurns ?? DEFAULT_MAX_TURNS;
 
-    // 5. Evaluate: accept/reject/maxTurns -> finalize, else -> waiting_for_agent + re-arm timeout
-    if (input.action === 'accept' || input.action === 'reject' || newTurnCount >= maxTurns) {
+    // 6. Evaluate: terminal action (accept/reject/withdraw/decline) or maxTurns
+    //    -> finalize, else -> waiting_for_agent + re-arm timeout
+    if (isTerminalAction(input.action) || newTurnCount >= maxTurns) {
       // Parse full history for outcome building
       const history = this.parseHistory(messages);
       const fullHistory = [...history, turn];
@@ -393,12 +438,12 @@ export class NegotiationPollingService {
       });
 
       const outcomeStr = input.action === 'accept' ? 'accepted'
-        : input.action === 'reject' ? 'rejected'
+        : isRejectLikeAction(input.action) ? 'rejected'
         : 'turn_cap';
 
       if (meta.opportunityId) {
         const nextStatus = input.action === 'accept' ? 'pending'
-          : input.action === 'reject' ? 'rejected'
+          : isRejectLikeAction(input.action) ? 'rejected'
           : 'stalled';
         await new ChatDatabaseAdapter().updateOpportunityStatus(meta.opportunityId, nextStatus).catch((err) => {
           logger.error('Failed to update opportunity status on finalization', {
@@ -505,7 +550,11 @@ export class NegotiationPollingService {
         (p) => p.kind === 'data',
       );
       const turnData = dp?.data;
-      const speaker: 'source' | 'candidate' = idx % 2 === 0 ? 'source' : 'candidate';
+      // Speaker from senderId, not parity — continuations can start with
+      // either side speaking first.
+      const speaker: 'source' | 'candidate' = m.senderId
+        ? (m.senderId === `agent:${meta.sourceUserId}` ? 'source' : 'candidate')
+        : (idx % 2 === 0 ? 'source' : 'candidate');
       return {
         turnNumber: idx,
         agent: speaker,
@@ -541,6 +590,11 @@ export class NegotiationPollingService {
       };
     }
 
+    // Announce the claiming user's seat + allowed actions (v2 client-advocate
+    // protocol) so agents don't have to guess the valid vocabulary.
+    const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
+    const seat = resolveSeat(userId, meta);
+
     return {
       negotiationId: task.id,
       taskId: task.id,
@@ -551,6 +605,9 @@ export class NegotiationPollingService {
         history,
         counterpartyAction,
       },
+      seat,
+      protocolVersion,
+      allowedActions: [...allowedActionsFor(protocolVersion, seat)],
       context,
     };
   }
@@ -591,7 +648,8 @@ export class NegotiationPollingService {
     currentSpeaker: string,
   ): { hasOpportunity: boolean; agreedRoles: Array<{ userId: string; role: string }>; reasoning: string; turnCount: number; reason?: string } {
     const hasOpportunity = lastAction === 'accept';
-    const atCap = lastAction === 'counter';
+    // Non-terminal last action at finalization means the turn cap was hit.
+    const atCap = !isTerminalAction(lastAction);
 
     let agreedRoles: Array<{ userId: string; role: string }> = [];
     if (hasOpportunity && history.length >= 2) {

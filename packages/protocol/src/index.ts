@@ -214,7 +214,28 @@ export type { ElicitResultLike, ElicitInputFn, DispatchElicitationsParams } from
 // @experimental — internal graph-state shapes; may change in a minor release.
 
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./shared/schemas/negotiation-state.schema.js";
+export { NEGOTIATION_ACTIONS } from "./shared/schemas/negotiation-state.schema.js";
+export type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "./shared/schemas/negotiation-state.schema.js";
 export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";
+
+// ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
+
+export {
+  InitiatorTurnSchema,
+  CounterpartyTurnSchema,
+  FinalInitiatorTurnSchema,
+  FinalCounterpartyTurnSchema,
+  allowedActionsFor,
+  turnSchemaFor,
+  isTerminalAction,
+  isRejectLikeAction,
+  fallbackActionFor,
+  rejectActionFor,
+  readProtocolVersion,
+  configuredProtocolVersion,
+  resolveSeat,
+  seatViolationMessage,
+} from "./negotiation/negotiation.protocol.js";
 
 // ─── Streamers ────────────────────────────────────────────────────────────────
 

@@ -16,7 +16,7 @@ export type NegotiationRole = "agent" | "patient" | "peer";
 
 /** One turn within a negotiation. */
 export interface DiscoveryTurn {
-  action: "propose" | "accept" | "reject" | "counter" | "question";
+  action: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline";
   reasoning: string;
   suggestedRoles: { ownUser: NegotiationRole; otherUser: NegotiationRole };
 }

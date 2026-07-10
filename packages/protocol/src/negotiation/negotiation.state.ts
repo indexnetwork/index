@@ -1,10 +1,15 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
+import { NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
-/** Zod schema for a single negotiation turn (DataPart payload in A2A message). */
+/**
+ * Zod schema for a single negotiation turn (DataPart payload in A2A message).
+ * Accepts the full v1+v2 action union — which subset is valid for a given turn
+ * is enforced by the seat-scoped schemas in `negotiation.protocol.ts`.
+ */
 export const NegotiationTurnSchema = z.object({
-  action: z.enum(["propose", "accept", "reject", "counter", "question"]),
+  action: z.enum(NEGOTIATION_ACTIONS),
   assessment: z.object({
     reasoning: z.string(),
     suggestedRoles: z.object({
@@ -15,7 +20,7 @@ export const NegotiationTurnSchema = z.object({
   message: z.string().nullable().optional(),
 });
 
-/** Restricted turn schema for the system agent (no question action). */
+/** Restricted v1 turn schema for the system agent (no question action). */
 export const SystemNegotiationTurnSchema = z.object({
   action: z.enum(["propose", "accept", "reject", "counter"]),
   assessment: z.object({
@@ -28,7 +33,7 @@ export const SystemNegotiationTurnSchema = z.object({
   message: z.string().nullable().optional(),
 });
 
-/** Turn schema for system agent's final allowed turn (must decide). */
+/** v1 turn schema for system agent's final allowed turn (must decide). */
 export const FinalNegotiationTurnSchema = z.object({
   action: z.enum(["accept", "reject"]),
   assessment: z.object({
@@ -141,6 +146,17 @@ export const NegotiationGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
+  /**
+   * Negotiation protocol version for this session's task. Resolved by the
+   * init node: inherited from the prior task on the conversation when one
+   * exists (never re-stamped — a v1 conversation stays v1 mid-flight), else
+   * stamped from `NEGOTIATION_PROTOCOL_VERSION` for genuinely fresh runs.
+   */
+  protocolVersion: Annotation<NegotiationProtocolVersion>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => "v1" as const,
+  }),
+
   /** Whether this run is continuing a prior conversation with the same pair. */
   isContinuation: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
