@@ -2137,6 +2137,11 @@ export class OpportunityGraphFactory {
             indexContextOverrides: indexContextMap,
             timeoutMs,
             trigger: state.trigger === 'orchestrator' ? 'orchestrator' : 'ambient',
+            // v2 initiator stamp: every fresh-discovery origin resolves to the
+            // discovery user — querying user (chat/tool), intent owner
+            // (from-intent), enriched user (from-enrichment/discovery-run), or
+            // represented user (from-introducer, via onBehalfOfUserId).
+            initiatorUserId: discoveryUserId,
             onCandidateResolved },
         );
 
@@ -3510,6 +3515,10 @@ export class OpportunityGraphFactory {
           if (prompt) indexContextMap.set(candidate.networkId, prompt);
         }
 
+        // Deliberately no `initiatorUserId` here: re-entries inherit the stamp
+        // from the prior task's metadata inside the negotiation init node
+        // (continuations never re-derive the seat). The role heuristic above
+        // remains only as the fallback for pre-stamp tasks.
         const acceptedResults = await negotiateCandidates(
           this.negotiationGraph, sourceUser, [candidate],
           { networkId: '', prompt: '' },

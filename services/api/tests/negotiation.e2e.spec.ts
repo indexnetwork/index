@@ -49,5 +49,11 @@ describe("Negotiation E2E", () => {
     expect(result.conversationId).toBeTruthy();
     expect(result.taskId).toBeTruthy();
     expect(result.messages.length).toBeGreaterThanOrEqual(2);
+
+    // IND-396: every new negotiation task carries the initiator seat stamp.
+    const task = await conversationDatabaseAdapter.getTask(result.taskId);
+    const metadata = (task?.metadata ?? {}) as Record<string, unknown>;
+    expect(metadata.initiatorUserId).toBe("e2e-source");
+    expect(metadata.sourceUserId).toBe("e2e-source");
   }, 120_000);
 });

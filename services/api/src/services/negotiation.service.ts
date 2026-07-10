@@ -51,6 +51,10 @@ export class NegotiationService {
       indexContext: { networkId: '', prompt: '' },
       seedAssessment: { reasoning: 'Discovery negotiation', valencyRole: 'peer' },
       maxTurns: 4,
+      // v2 initiator stamp: explicit user-triggered negotiation — the viewer
+      // who requested it holds the initiating seat. This path has no
+      // opportunityId, so the stamp must ride the invoke input directly.
+      initiatorUserId: sourceUserId,
     });
 
     logger.info('Discovery negotiation completed', {
