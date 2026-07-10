@@ -50,10 +50,12 @@ const mockQuestion: PendingQuestionSummary = {
 
 function makeDeps(overrides?: {
   findPendingQuestions?: ((userId: string, filters?: CapturedFilters) => Promise<PendingQuestionSummary[]>) | undefined;
+  answerPendingQuestion?: ((userId: string, questionId: string, answer: { selectedOptions: string[]; freeText?: string }) => Promise<boolean>) | undefined;
   reportToolError?: (error: unknown, report: Record<string, unknown>) => void;
 }) {
   return {
     findPendingQuestions: overrides?.findPendingQuestions,
+    answerPendingQuestion: overrides?.answerPendingQuestion,
     reportToolError: overrides?.reportToolError,
   } as never;
 }
@@ -199,6 +201,126 @@ describe("createQuestionerTools", () => {
       expect(reports).toHaveLength(1);
       expect(reports[0].toolName).toBe("read_pending_questions");
       expect(reports[0].operation).toBe("read-pending-questions");
+    });
+  });
+
+  describe("answer_pending_question (P4.3/IND-404)", () => {
+    type AnswerCall = { userId: string; questionId: string; answer: { selectedOptions: string[]; freeText?: string } };
+
+    function makeAnswerDeps(opts?: {
+      pending?: PendingQuestionSummary[];
+      answered?: boolean;
+      reportToolError?: (error: unknown, report: Record<string, unknown>) => void;
+    }) {
+      const calls: AnswerCall[] = [];
+      const capturedFilters: CapturedFilters[] = [];
+      const deps = makeDeps({
+        findPendingQuestions: async (_userId, filters) => {
+          capturedFilters.push(filters);
+          return opts?.pending ?? [mockQuestion];
+        },
+        answerPendingQuestion: async (uid, questionId, answer) => {
+          calls.push({ userId: uid, questionId, answer });
+          return opts?.answered ?? true;
+        },
+        reportToolError: opts?.reportToolError,
+      });
+      return { deps, calls, capturedFilters };
+    }
+
+    it("records the client's explicit answer through the pipeline", async () => {
+      const { defineTool, call } = makeDefineTool();
+      const { deps, calls } = makeAnswerDeps();
+      createQuestionerTools(defineTool as never, deps);
+      const result = await call("answer_pending_question", {
+        questionId: "q-0001",
+        selectedOptions: ["Co-building"],
+        freeText: "ideally something climate-adjacent",
+      }) as { success: boolean; data: { answered: boolean; question: { id: string } } };
+      expect(result.success).toBe(true);
+      expect(result.data.answered).toBe(true);
+      expect(result.data.question.id).toBe("q-0001");
+      expect(calls).toEqual([{
+        userId,
+        questionId: "q-0001",
+        answer: { selectedOptions: ["Co-building"], freeText: "ideally something climate-adjacent" },
+      }]);
+    });
+
+    it("rejects an empty answer (never answers on the client's behalf)", async () => {
+      const { defineTool, call } = makeDefineTool();
+      const { deps, calls } = makeAnswerDeps();
+      createQuestionerTools(defineTool as never, deps);
+      const result = await call("answer_pending_question", {
+        questionId: "q-0001",
+        selectedOptions: ["  "],
+      }) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("No answer provided");
+      expect(calls).toHaveLength(0);
+    });
+
+    it("refuses network-scoped agents", async () => {
+      const { defineTool, call } = makeDefineTool();
+      const { deps, calls } = makeAnswerDeps();
+      createQuestionerTools(defineTool as never, deps);
+      const scoped = makeContext({ networkId: 'net-0001', scopeType: 'network', scopeId: 'net-0001', indexName: 'Edge Esmeralda' });
+      const result = await call("answer_pending_question", { questionId: "q-0001", freeText: "hi" }, scoped) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("network-scoped");
+      expect(calls).toHaveLength(0);
+    });
+
+    it("clamps the visibility check to the pinned intent in intent-scoped sessions", async () => {
+      const { defineTool, call } = makeDefineTool();
+      const { deps, capturedFilters } = makeAnswerDeps();
+      createQuestionerTools(defineTool as never, deps);
+      const scoped = makeContext({ scopeType: 'intent', scopeId: 'intent-42' });
+      const result = await call("answer_pending_question", { questionId: "q-0001", freeText: "answer" }, scoped) as { success: boolean };
+      expect(result.success).toBe(true);
+      expect(capturedFilters[0]).toEqual({ scopeType: 'intent', scopeId: 'intent-42' });
+    });
+
+    it("errors when the question is not among the client's pending questions", async () => {
+      const { defineTool, call } = makeDefineTool();
+      const { deps, calls } = makeAnswerDeps({ pending: [] });
+      createQuestionerTools(defineTool as never, deps);
+      const result = await call("answer_pending_question", { questionId: "q-gone", freeText: "answer" }) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("not found among the client's pending questions");
+      expect(calls).toHaveLength(0);
+    });
+
+    it("surfaces the already-answered race as an error, not a success", async () => {
+      const { defineTool, call } = makeDefineTool();
+      const { deps } = makeAnswerDeps({ answered: false });
+      createQuestionerTools(defineTool as never, deps);
+      const result = await call("answer_pending_question", { questionId: "q-0001", freeText: "answer" }) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("already answered or dismissed");
+    });
+
+    it("returns an error when the answer dep is absent", async () => {
+      const { defineTool, call } = makeDefineTool();
+      createQuestionerTools(defineTool as never, makeDeps({ findPendingQuestions: async () => [mockQuestion] }));
+      const result = await call("answer_pending_question", { questionId: "q-0001", freeText: "answer" }) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("not available");
+    });
+
+    it("reports and surfaces an error when the pipeline throws", async () => {
+      const { defineTool, call } = makeDefineTool();
+      const reports: Array<Record<string, unknown>> = [];
+      createQuestionerTools(defineTool as never, makeDeps({
+        findPendingQuestions: async () => [mockQuestion],
+        answerPendingQuestion: async () => { throw new Error("db down"); },
+        reportToolError: (_err, report) => { reports.push(report); },
+      }));
+      const result = await call("answer_pending_question", { questionId: "q-0001", freeText: "answer" }) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to record the answer");
+      expect(reports).toHaveLength(1);
+      expect(reports[0].toolName).toBe("answer_pending_question");
     });
   });
 });

@@ -34,8 +34,9 @@ function stripInternalActors(question: PendingQuestionSummary): Omit<PendingQues
  * block mirroring the network-tools convention.
  *
  * @param defineTool - Tool factory provided by the composition root.
- * @param deps       - Shared tool dependencies; `findPendingQuestions` is optional
- *                     and the tool fails gracefully when absent.
+ * @param deps       - Shared tool dependencies; `findPendingQuestions` and
+ *                     `answerPendingQuestion` are optional and the tools fail
+ *                     gracefully when absent.
  */
 export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
   const readPendingQuestions = defineTool({
@@ -127,5 +128,88 @@ export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readPendingQuestions] as const;
+  const answerPendingQuestion = defineTool({
+    name: "answer_pending_question",
+    description:
+      "Records the client's explicit answer to one of their pending questions (from " +
+      "read_pending_questions) through the standard answer pipeline — the same one the " +
+      "question cards in the app use. Downstream effects (signal refinement, negotiation " +
+      "context, profile enrichment) fire exactly as if the client answered the card.\n\n" +
+      "**Use ONLY with an answer the client explicitly gave in this conversation.** Never " +
+      "infer, summarize, or invent an answer on their behalf. Pass the client's chosen " +
+      "option labels in `selectedOptions` and/or their own words in `freeText`.\n\n" +
+      "**Returns:** `answered: true` on success. If the question was already answered, " +
+      "dismissed, or expired, the tool reports that — tell the client instead of retrying.",
+    querySchema: z.object({
+      questionId: z.string().min(1).describe("Id of the pending question being answered (from read_pending_questions)."),
+      selectedOptions: z
+        .array(z.string().min(1))
+        .max(10)
+        .optional()
+        .describe("Option labels the client explicitly chose, when the question has options."),
+      freeText: z
+        .string()
+        .max(2000)
+        .optional()
+        .describe("The client's answer in their own words, for free-form answers or an 'other' option."),
+    }),
+    handler: async ({ context, query }) => {
+      if (!deps.answerPendingQuestion || !deps.findPendingQuestions) {
+        return error("Question answering is not available.");
+      }
+
+      // Client-surface action: network-scoped agent keys act inside one
+      // community and must not settle the user's global question inbox
+      // (same leak class as the SELF_OWNED_MODES clamp above).
+      if (focusedNetworkId(context)) {
+        return error("Answering questions is not available for network-scoped agents.");
+      }
+
+      const selectedOptions = (query.selectedOptions ?? []).map((option) => option.trim()).filter(Boolean);
+      const freeText = query.freeText?.trim();
+      if (selectedOptions.length === 0 && !freeText) {
+        return error(
+          "No answer provided. Pass the client's explicit answer via selectedOptions and/or freeText — never answer on their behalf.",
+        );
+      }
+
+      const scopedIntentId = focusedIntentId(context);
+      try {
+        // Visibility check under the same clamps as read_pending_questions:
+        // an intent-pinned session may only answer questions it can list.
+        const pending = await deps.findPendingQuestions(context.userId, {
+          ...(scopedIntentId ? { scopeType: 'intent' as const, scopeId: scopedIntentId } : {}),
+        });
+        const target = pending.find((q) => q.id === query.questionId);
+        if (!target) {
+          return error(
+            "Question not found among the client's pending questions — it may already be answered or dismissed. Re-check with read_pending_questions.",
+          );
+        }
+
+        const answered = await deps.answerPendingQuestion(context.userId, query.questionId, {
+          selectedOptions,
+          ...(freeText ? { freeText } : {}),
+        });
+        if (!answered) {
+          return error("The question was already answered or dismissed — nothing was recorded.");
+        }
+
+        return success({
+          answered: true,
+          question: { id: target.id, title: target.title, prompt: target.prompt },
+          recordedAnswer: { selectedOptions, ...(freeText ? { freeText } : {}) },
+        });
+      } catch (err) {
+        deps.reportToolError?.(err, {
+          operation: "answer-pending-question",
+          toolName: "answer_pending_question",
+          userId: context.userId,
+        });
+        return error("Failed to record the answer.");
+      }
+    },
+  });
+
+  return [readPendingQuestions, answerPendingQuestion] as const;
 }

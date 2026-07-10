@@ -194,6 +194,18 @@ export interface ToolContext {
       limit?: number;
     },
   ) => Promise<PendingQuestionSummary[]>;
+  /**
+   * Record the client's explicit answer to a pending question through the
+   * host's question-answer pipeline (atomic pending→answered flip + answered
+   * events). Returns false when the question is not pending for this user
+   * (already answered/dismissed, expired, or not theirs). Injected by the
+   * composition root — absent when question delivery is disabled.
+   */
+  answerPendingQuestion?: (
+    userId: string,
+    questionId: string,
+    answer: { selectedOptions: string[]; freeText?: string },
+  ) => Promise<boolean>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /**
@@ -545,6 +557,17 @@ export interface ToolDeps {
       limit?: number;
     },
   ) => Promise<PendingQuestionSummary[]>;
+  /**
+   * Record the client's explicit answer to a pending question through the
+   * host's question-answer pipeline (atomic pending→answered flip + answered
+   * events). Returns false when the question is not pending for this user.
+   * Injected by the composition root — absent when question delivery is disabled.
+   */
+  answerPendingQuestion?: (
+    userId: string,
+    questionId: string,
+    answer: { selectedOptions: string[]; freeText?: string },
+  ) => Promise<boolean>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /**

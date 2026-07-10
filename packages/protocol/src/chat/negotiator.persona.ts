@@ -46,8 +46,11 @@ export const NEGOTIATOR_TOOL_NAMES = [
   "update_opportunity",
   // Pending questions — the system's open questions for the client. Added for
   // intent-pinned sessions (P4.2/IND-403); the tool clamps itself to the
-  // focused intent scope when one is set.
+  // focused intent scope when one is set. answer_pending_question (P4.3/IND-404)
+  // records the client's explicit answers through the same pipeline the
+  // question cards use.
   "read_pending_questions",
+  "answer_pending_question",
   // Signals — the input surface of signal-based discovery (P4.5)
   "read_intents",
   "create_intent",

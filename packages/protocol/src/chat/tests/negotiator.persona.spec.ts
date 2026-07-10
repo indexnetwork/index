@@ -158,6 +158,27 @@ describe("buildNegotiatorSystemContent — pinned signal (intent scope)", () => 
   });
 });
 
+// ─── Question inbox (P4.3 / IND-404) ─────────────────────────────────────────
+
+describe("buildNegotiatorSystemContent — client question inbox (DM)", () => {
+  it("renders the inbox section for the unscoped DM", () => {
+    const prompt = buildNegotiatorSystemContent(makeCtx(), AGENT_OPTS);
+    expect(prompt).toContain("## Client question inbox");
+    expect(prompt).toContain("answer_pending_question");
+    // Explicit-answer contract: never record inferred answers.
+    expect(prompt).toContain("never an answer you inferred");
+  });
+
+  it("does not render the inbox section in intent-pinned sessions (pin guidance replaces it)", () => {
+    const scopedCtx = makeCtx({ scopeType: "intent", scopeId: "intent-42" } as Partial<ResolvedToolContext>);
+    const prompt = buildNegotiatorSystemContent(scopedCtx, AGENT_OPTS);
+    expect(prompt).not.toContain("## Client question inbox");
+    expect(prompt).toContain("## Pinned signal");
+    // The pin section still teaches conversational answering.
+    expect(prompt).toContain("answer_pending_question");
+  });
+});
+
 // ─── Tool scoping ────────────────────────────────────────────────────────────
 
 /** Representative orchestrator registry (superset of the negotiator allowlist). */
@@ -219,6 +240,7 @@ const ORCHESTRATOR_REGISTRY_NAMES = [
   "update_premise",
   "retract_premise",
   "read_pending_questions",
+  "answer_pending_question",
   "ask_user_question",
 ];
 
@@ -234,6 +256,7 @@ describe("filterNegotiatorTools", () => {
   it("keeps the P4.5 capability groups (signals, knowledge writes, joins, contacts)", () => {
     for (const allowed of [
       "read_pending_questions",
+      "answer_pending_question",
       "create_intent",
       "update_intent",
       "delete_intent",

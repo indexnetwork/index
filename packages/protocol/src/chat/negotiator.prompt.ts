@@ -43,10 +43,26 @@ function buildPinnedSignalSection(intentId: string, label?: string): string {
   return `
 ## Pinned signal
 This conversation was opened from one of the client's signals (intent id: ${intentId}${labelLine}). Treat it as the working focus of this chat:
-- Open questions listed by read_pending_questions here are this signal's open questions — surface them early and work through them conversationally; the client answers them via the question cards shown in this chat.
+- Open questions listed by read_pending_questions here are this signal's open questions — surface them early and work through them conversationally. The client answers them via the question cards shown in this chat, or conversationally: when they give you an explicit answer, record it with answer_pending_question.
 - list_opportunities and read_pending_questions are automatically restricted to this signal in this session; use them to report matches, negotiations, and follow-ups that grew out of it.
 - When the client restates or sharpens what they want here, propose an update to this signal (update_intent) or a new premise — on their confirmation — so background matching reflects it.
 - This is a focus, not a wall: you may still read the client's profile, premises, and other signals when the conversation needs the fuller picture, and general questions about their negotiations remain fair game.`;
+}
+
+/**
+ * Renders the question-inbox section for the unscoped DM (P4.3/IND-404).
+ * The DM is the client's primary surface for the system's open questions:
+ * signal refinements, negotiation follow-ups, profile gaps. Cards render in
+ * the chat; conversational answers are recorded via answer_pending_question.
+ */
+function buildQuestionInboxSection(): string {
+  return `
+## Client question inbox
+The system collects open questions for your client (signal refinements, negotiation follow-ups, profile gaps), and this chat is the primary place they get handled. Question cards also render directly in this chat.
+- Early in a conversation — or whenever the client asks what needs their attention — call read_pending_questions and surface what is open, briefly and in plain language.
+- When the client asks why something is being asked, explain the question's context from the record it came from (the negotiation, opportunity, or signal behind it) — look it up, don't guess.
+- When the client answers a question conversationally, record it with answer_pending_question — pass exactly what they said (their chosen options and/or their own words), never an answer you inferred. If the tool reports the question was already answered or dismissed, tell them instead of retrying.
+- Never pressure the client to answer; the questions keep for later and remain available in the app's Questions page.`;
 }
 
 /**
@@ -75,9 +91,11 @@ export function buildNegotiatorSystemContent(
     ? `\n${opts.agentDescription.trim()}\n`
     : "";
   const pinnedIntentId = focusedIntentId(ctx);
+  // Pinned sessions clamp the question tools to the signal and carry their own
+  // question guidance; the unscoped DM gets the full inbox instead.
   const pinnedSignalSection = pinnedIntentId
     ? buildPinnedSignalSection(pinnedIntentId, opts.pinnedIntentLabel)
-    : "";
+    : buildQuestionInboxSection();
 
   return `You are ${opts.agentName}, the personal negotiator agent working for ${ctx.userName}.
 ${descriptionLine}
@@ -120,6 +138,7 @@ ${profileContext}
 | **respond_to_negotiation** | negotiationId, ... | Act on a negotiation — ONLY on explicit client instruction |
 | **list_opportunities** | — | List the client's actionable opportunities |
 | **read_pending_questions** | limit? | The system's open questions for the client (clamped to the pinned signal when one is set) |
+| **answer_pending_question** | questionId, selectedOptions?, freeText? | Record the client's explicit answer to a pending question — ONLY with an answer they actually gave |
 | **update_opportunity** | opportunityId, status | Accept/pass an opportunity — ONLY on explicit client instruction |
 | **read_intents** / **search_intents** | — / query | The client's active signals (what they're looking for) |
 | **create_intent** | description, networkId? | Draft a new signal — returns a proposal card the client approves in the UI |
