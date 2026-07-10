@@ -6,6 +6,7 @@ import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
 import { enrichmentService } from '../services/enrichment.service';
+import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
@@ -84,6 +85,11 @@ export class AuthController {
       user: {
         ...userFields,
         notificationPreferences,
+      },
+      // Feature flags the web app reads off the session bootstrap (no separate
+      // config channel). negotiatorChat gates the sidebar negotiator entry (P4.4).
+      features: {
+        negotiatorChat: isNegotiatorChatEnabled(),
       },
     });
   }

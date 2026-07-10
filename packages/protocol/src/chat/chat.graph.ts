@@ -69,6 +69,26 @@ export class ChatGraphFactory {
   }
 
   /**
+   * Returns a sibling factory sharing all dependencies but driven by a
+   * different persona. Used to derive per-session persona factories (e.g. the
+   * negotiator, whose identity comes from the user's personal agent row) from
+   * the composition-root orchestrator factory without re-wiring deps.
+   *
+   * @param persona - The persona config for the derived factory
+   * @returns A new ChatGraphFactory with identical deps and the given persona
+   */
+  public withPersona(persona: ChatPersonaConfig): ChatGraphFactory {
+    return new ChatGraphFactory(
+      this.database,
+      this.embedder,
+      this.scraper,
+      this.chatSession,
+      this.protocolDeps,
+      persona,
+    );
+  }
+
+  /**
    * Creates and compiles the Chat Graph without persistence.
    * @returns Compiled StateGraph ready for invocation
    */

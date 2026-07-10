@@ -115,6 +115,14 @@ export {
   type ChatPersonaConfig,
   type ChatPersonaLoopBehaviors,
 } from "./chat/chat.persona.js";
+export {
+  NEGOTIATOR_PERSONA_ID,
+  NEGOTIATOR_TOOL_NAMES,
+  createNegotiatorPersona,
+  createNegotiatorTools,
+  filterNegotiatorTools,
+} from "./chat/negotiator.persona.js";
+export { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./chat/negotiator.prompt.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";

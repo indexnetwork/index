@@ -1,5 +1,20 @@
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, opportunities, or, sql } from './database.shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 
+/**
+ * Persona value for the user's negotiator DM session (P4.1 / IND-402).
+ * Mirrors `NEGOTIATOR_PERSONA_ID` in @indexnetwork/protocol; kept as a local
+ * literal so the data layer does not import the protocol package.
+ */
+const NEGOTIATOR_PERSONA = 'negotiator';
+
+/**
+ * Stable-session registry key for the negotiator DM in `chat_session_scopes`.
+ * The table's `(user_id, scope_type, scope_id)` unique index is what makes
+ * get-or-create race-safe. `scope_type='persona'` is deliberately outside the
+ * `ChatScopeType` ('network' | 'intent') envelope: `_normalizeScopeType`
+ * ignores it, so the negotiator session presents as an unscoped chat session.
+ */
+const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } as const;
 
 export class ConversationDatabaseAdapter {
   /**
@@ -1205,7 +1220,12 @@ export class ConversationDatabaseAdapter {
    * Get all chat sessions for a user, ordered by most recent.
    * Queries conversation_participants to find conversations with system-agent.
    */
-  async getUserChatSessions(userId: string, limit: number, persona?: string): Promise<ChatSession[]> {
+  async getUserChatSessions(
+    userId: string,
+    limit: number,
+    persona?: string,
+    excludePersona?: string,
+  ): Promise<ChatSession[]> {
     // Subquery: conversation IDs that include the system agent (i.e. chat sessions, not DMs)
     const chatSessionIds = db
       .select({ conversationId: schema.conversationParticipants.conversationId })
@@ -1236,6 +1256,7 @@ export class ConversationDatabaseAdapter {
           isNull(schema.conversationParticipants.hiddenAt),
           inArray(schema.conversations.id, chatSessionIds),
           ...(persona ? [eq(schema.conversations.persona, persona)] : []),
+          ...(excludePersona ? [ne(schema.conversations.persona, excludePersona)] : []),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1299,6 +1320,9 @@ export class ConversationDatabaseAdapter {
             gt(schema.conversations.lastMessageAt, schema.conversationParticipants.hiddenAt),
           ),
           inArray(schema.conversations.id, chatSessionIds),
+          // The negotiator DM is a private persona surface — keep it out of
+          // generic chat-history summaries (MCP listSessions, chat summary).
+          ne(schema.conversations.persona, NEGOTIATOR_PERSONA),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1437,6 +1461,66 @@ export class ConversationDatabaseAdapter {
       createdAt: conv.createdAt,
       messages,
     };
+  }
+
+  /**
+   * Find the user's stable negotiator DM session, if provisioned.
+   */
+  async getNegotiatorChatSession(userId: string): Promise<ChatSession | null> {
+    const [row] = await db
+      .select({ conversationId: schema.chatSessionScopes.conversationId })
+      .from(schema.chatSessionScopes)
+      .where(
+        and(
+          eq(schema.chatSessionScopes.userId, userId),
+          eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_SCOPE.scopeType),
+          eq(schema.chatSessionScopes.scopeId, NEGOTIATOR_SCOPE.scopeId),
+        ),
+      )
+      .limit(1);
+    return row ? this.getChatSession(row.conversationId) : null;
+  }
+
+  /**
+   * Create the user's stable negotiator DM session (one per user).
+   *
+   * Same transaction shape as {@link createChatSession} (conversation +
+   * user/system-agent participants + title metadata) plus the
+   * `chat_session_scopes` registry row whose unique index guarantees at most
+   * one negotiator session per user — concurrent creates lose with a 23505
+   * unique violation the caller resolves by re-reading.
+   */
+  async createNegotiatorChatSession(data: { id: string; userId: string; title?: string }): Promise<void> {
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.conversations).values({
+        id: data.id,
+        persona: NEGOTIATOR_PERSONA,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
+        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
+      ]);
+
+      if (data.title) {
+        await tx.insert(schema.conversationMetadata).values({
+          conversationId: data.id,
+          metadata: { title: data.title } satisfies ChatConversationMeta,
+        });
+      }
+
+      await tx.insert(schema.chatSessionScopes).values({
+        conversationId: data.id,
+        userId: data.userId,
+        scopeType: NEGOTIATOR_SCOPE.scopeType,
+        scopeId: NEGOTIATOR_SCOPE.scopeId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
   }
 
   /**

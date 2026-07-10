@@ -79,6 +79,18 @@ export class AgentService {
     });
   }
 
+  /**
+   * Resolve the user's personal negotiator agent row (`type='personal'`),
+   * provisioning it when missing — `ensureNegotiatorAgent` is idempotent.
+   * Returns null for ghost or missing users, which callers treat as
+   * "negotiator not available" (404-equivalent).
+   */
+  async getNegotiatorAgent(userId: string): Promise<AgentRow | null> {
+    const agentId = await this.db.ensureNegotiatorAgent(userId);
+    if (!agentId) return null;
+    return this.db.getAgent(agentId);
+  }
+
   async getById(agentId: string, userId: string): Promise<AgentWithRelations> {
     const agent = await this.db.getAgentWithRelations(agentId);
     if (!agent) {

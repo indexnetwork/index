@@ -1,7 +1,7 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatScopeType } from '../adapters/database.shared';
-import { ChatGraphFactory, ChatTitleGenerator } from '@indexnetwork/protocol';
+import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { HumanMessage } from '@langchain/core/messages';
@@ -222,6 +222,36 @@ export class ChatSessionService {
     }
   }
 
+  /**
+   * Resolve or create the user's stable negotiator DM session (P4.1).
+   * Idempotent: repeat calls return the same session. Race-safe via the
+   * chat_session_scopes unique index (concurrent creates re-read on 23505).
+   *
+   * @param userId - The client user
+   * @param title - Session title used on first creation (the negotiator agent's name)
+   */
+  async resolveNegotiatorSession(
+    userId: string,
+    title?: string,
+  ): Promise<{ session: NonNullable<Awaited<ReturnType<ChatSessionService['getSession']>>>; created: boolean } | { error: string; status: 500 }> {
+    const existing = await this.db.getNegotiatorChatSession(userId);
+    if (existing) return { session: existing, created: false };
+
+    try {
+      const id = crypto.randomUUID();
+      await this.db.createNegotiatorChatSession({ id, userId, title });
+      const session = await this.getSession(id, userId);
+      if (!session) return { error: 'Failed to create negotiator session', status: 500 as const };
+      return { session, created: true };
+    } catch (err) {
+      if (this.isUniqueViolation(err)) {
+        const raced = await this.db.getNegotiatorChatSession(userId);
+        if (raced) return { session: raced, created: false };
+      }
+      throw err;
+    }
+  }
+
   private isUniqueViolation(err: unknown): boolean {
     return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === '23505';
   }
@@ -257,7 +287,10 @@ export class ChatSessionService {
   async getUserSessions(userId: string, limit = 10, persona?: string) {
     logger.verbose('Getting user sessions', { userId, limit, persona });
 
-    return this.db.getUserChatSessions(userId, limit, persona);
+    // The negotiator DM is a pinned surface, not history: without an explicit
+    // persona filter it is excluded from the recent-sessions listing.
+    const excludePersona = persona ? undefined : NEGOTIATOR_PERSONA_ID;
+    return this.db.getUserChatSessions(userId, limit, persona, excludePersona);
   }
 
   /**
@@ -434,6 +467,22 @@ export class ChatSessionService {
    */
   getGraphFactory(): ChatGraphFactory {
     return this.factory;
+  }
+
+  /**
+   * Derive a negotiator-persona graph factory bound to the client's personal
+   * negotiator agent identity. Shares all dependencies with the orchestrator
+   * factory; only prompt/toolset/loop behaviors differ.
+   *
+   * @param agent - Identity from the user's `type='personal'` agent row
+   */
+  getNegotiatorGraphFactory(agent: { name: string; description?: string | null }): ChatGraphFactory {
+    return this.factory.withPersona(
+      createNegotiatorPersona({
+        agentName: agent.name,
+        ...(agent.description?.trim() ? { agentDescription: agent.description } : {}),
+      }),
+    );
   }
 
   /**
