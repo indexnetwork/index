@@ -15,6 +15,12 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     return api.post<PaginatedResponse<Intent>>('/intents/list', requestBody);
   },
 
+  // Create a signal directly from a single free-text description (New Signal page).
+  // Returns the new intent id so the caller can open the signal detail page.
+  createIntent: async (description: string): Promise<{ intentId: string }> => {
+    return api.post<{ intentId: string }>('/intents', { description });
+  },
+
   // Get single intent by ID
   getIntent: async (id: string): Promise<Intent> => {
     const response = await api.get<APIResponse<Intent>>(`/intents/${id}`);
