@@ -183,28 +183,29 @@ export default function IntentList<T extends BaseIntent>({
                     </span>
                   )}
 
-                  {/* Pending-question notification — always shown (important
-                      signal); muted at zero, highlighted when there are any */}
-                  <span
-                    className={cn(
-                      'flex items-center gap-1 text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full',
-                      (intent.pendingQuestionCount ?? 0) > 0
-                        ? 'bg-[#041729] text-white'
-                        : 'bg-gray-100 text-gray-400 border border-gray-200',
-                    )}
-                    title={`${intent.pendingQuestionCount ?? 0} pending ${(intent.pendingQuestionCount ?? 0) === 1 ? 'question' : 'questions'}`}
-                  >
-                    <CircleHelp className="w-3 h-3" />
-                    {intent.pendingQuestionCount ?? 0}
-                  </span>
-
                   <StatusBadge status={intent.status} />
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+              {/* Right side: pending-question notification (always shown —
+                  important signal; muted at zero, highlighted when any) + hover actions */}
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className={cn(
+                    'flex items-center gap-1 text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full',
+                    (intent.pendingQuestionCount ?? 0) > 0
+                      ? 'bg-[#041729] text-white'
+                      : 'bg-gray-100 text-gray-400 border border-gray-200',
+                  )}
+                  title={`${intent.pendingQuestionCount ?? 0} pending ${(intent.pendingQuestionCount ?? 0) === 1 ? 'question' : 'questions'}`}
+                >
+                  <CircleHelp className="w-3 h-3" />
+                  {intent.pendingQuestionCount ?? 0}
+                </span>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                   <DebugCopyButton fetchPath={`/debug/intents/${intent.id}`} />
                 </div>
                 {onOpenIntentSource && canOpenSource && (
@@ -243,6 +244,7 @@ export default function IntentList<T extends BaseIntent>({
                     )}
                   </button>
                 )}
+                </div>
               </div>
             </div>
           </div>
