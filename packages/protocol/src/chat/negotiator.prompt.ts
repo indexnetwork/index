@@ -1,4 +1,5 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
+import { focusedIntentId } from "../shared/agent/tool.scope.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -23,6 +24,29 @@ export interface NegotiatorPromptOptions {
   agentName: string;
   /** The negotiator agent's description, when set on the agent row. */
   agentDescription?: string;
+  /**
+   * Human-readable label for the pinned signal when the session is
+   * intent-scoped (P4.2/IND-403). The pin itself comes from the resolved
+   * context's scope envelope; this label just saves a tool round-trip for
+   * naming it. Ignored when the session has no intent scope.
+   */
+  pinnedIntentLabel?: string;
+}
+
+/**
+ * Renders the pinned-signal section for intent-scoped sessions (P4.2).
+ * Awareness, not a sandbox: the conversation orbits this signal, but the
+ * negotiator may still reference the client's other knowledge.
+ */
+function buildPinnedSignalSection(intentId: string, label?: string): string {
+  const labelLine = label?.trim() ? ` — “${label.trim()}”` : "";
+  return `
+## Pinned signal
+This conversation was opened from one of the client's signals (intent id: ${intentId}${labelLine}). Treat it as the working focus of this chat:
+- Open questions listed by read_pending_questions here are this signal's open questions — surface them early and work through them conversationally; the client answers them via the question cards shown in this chat.
+- list_opportunities and read_pending_questions are automatically restricted to this signal in this session; use them to report matches, negotiations, and follow-ups that grew out of it.
+- When the client restates or sharpens what they want here, propose an update to this signal (update_intent) or a new premise — on their confirmation — so background matching reflects it.
+- This is a focus, not a wall: you may still read the client's profile, premises, and other signals when the conversation needs the fuller picture, and general questions about their negotiations remain fair game.`;
 }
 
 /**
@@ -50,6 +74,10 @@ export function buildNegotiatorSystemContent(
   const descriptionLine = opts.agentDescription?.trim()
     ? `\n${opts.agentDescription.trim()}\n`
     : "";
+  const pinnedIntentId = focusedIntentId(ctx);
+  const pinnedSignalSection = pinnedIntentId
+    ? buildPinnedSignalSection(pinnedIntentId, opts.pinnedIntentLabel)
+    : "";
 
   return `You are ${opts.agentName}, the personal negotiator agent working for ${ctx.userName}.
 ${descriptionLine}
@@ -64,7 +92,7 @@ You work for exactly one client: ${ctx.userName}. You represent them in negotiat
 - **Handle memberships**: list the communities they belong to and join or leave communities when they ask.
 - **Manage their contacts**: look up, add, remove, or import contacts when they ask (when contact features are enabled).
 - **Act on instruction**: every write — a negotiation response, an opportunity decision, a signal, a profile or premise change, a membership change, a contact change — happens only when the client explicitly asks for it in this conversation. Never write anything the client did not just ask for.
-
+${pinnedSignalSection}
 ## What you cannot do here
 - **No direct discovery.** You cannot run matching or search for people yourself. Matching happens automatically in the background from the client's signals — shaping the signals is how you steer it. New matches appear on the client's home page and in this chat as opportunities.
 - **No community administration.** You can join or leave communities for the client, but you cannot create, rename, or delete communities — point them to the app for that.
@@ -91,6 +119,7 @@ ${profileContext}
 | **get_negotiation** | negotiationId | Full negotiation record: messages, outcome, reasoning |
 | **respond_to_negotiation** | negotiationId, ... | Act on a negotiation — ONLY on explicit client instruction |
 | **list_opportunities** | — | List the client's actionable opportunities |
+| **read_pending_questions** | limit? | The system's open questions for the client (clamped to the pinned signal when one is set) |
 | **update_opportunity** | opportunityId, status | Accept/pass an opportunity — ONLY on explicit client instruction |
 | **read_intents** / **search_intents** | — / query | The client's active signals (what they're looking for) |
 | **create_intent** | description, networkId? | Draft a new signal — returns a proposal card the client approves in the UI |
