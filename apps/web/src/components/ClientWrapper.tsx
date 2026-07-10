@@ -1,9 +1,10 @@
-import { PropsWithChildren, Suspense, useEffect, useMemo, useState } from 'react';
+import { PropsWithChildren, Suspense, useMemo } from 'react';
 import { Link } from 'react-router';
 import { useLocation } from 'react-router';
 import Header from "@/components/Header";
-import Sidebar from "@/components/Sidebar";
+import TopBar from "@/components/TopBar";
 import ChatSidebar from "@/components/ChatSidebar";
+import AgentSessionsPanel from "@/components/AgentSessionsPanel";
 import { NetworkFilterProvider } from "@/contexts/IndexFilterContext";
 import { NetworksProvider } from "@/contexts/IndexesContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
@@ -11,12 +12,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { isAuthenticated } = useAuthContext();
-
-  useEffect(() => {
-    setMobileSidebarOpen(false);
-  }, [pathname]);
 
   const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c', '/l', '/index'];
@@ -43,8 +39,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     );
   }, [pathname]);
 
-  const showSidebar = isAppRoute && !isPublicRoute && !isBareRoute;
-  const showHeader = !showSidebar && !isBareRoute;
+  const showAppShell = isAppRoute && !isPublicRoute && !isBareRoute;
+  const showHeader = !showAppShell && !isBareRoute;
 
   const isLandingOrBlog = useMemo(() =>
     (pathname === '/' && !isAuthenticated) ||
@@ -55,6 +51,12 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   const isMessagesView = useMemo(() =>
     pathname === '/chat' || pathname?.startsWith('/chat/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
+  [pathname]);
+
+  // Agent chat routes get the conversation-history aside (relocated from the
+  // retired sidebar). Covers the agent landing and specific /d/:sessionId chats.
+  const isAgentView = useMemo(() =>
+    pathname === '/agent' || pathname?.startsWith('/agent/') || pathname?.startsWith('/d/'),
   [pathname]);
 
   if (isBareRoute) {
@@ -85,55 +87,29 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               }
             `}</style>
 
-            {showSidebar ? (
-              // App layout with sidebar - full height flex
-              <div className="flex h-screen overflow-hidden">
-                {/* Sidebar - fixed width, full height, no scroll */}
-                <aside 
-                  id="app-sidebar"
-                  className={`
-                    fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200
-                    transform transition-transform duration-200 ease-in-out
-                    lg:translate-x-0 lg:relative lg:z-auto
-                    ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-                  `}
-                >
-                  <Sidebar />
-                </aside>
+            {showAppShell ? (
+              // App layout: top bar over an optional secondary aside + content
+              <div className="flex flex-col h-screen overflow-hidden">
+                <TopBar />
+                <div className="flex flex-1 min-h-0 overflow-hidden">
+                  {/* Secondary aside: DM list on messages, conversation history on agent */}
+                  {isMessagesView && (
+                    <aside className="hidden lg:block w-80 bg-white border-r border-gray-200 flex-shrink-0">
+                      <ChatSidebar />
+                    </aside>
+                  )}
+                  {isAgentView && !isMessagesView && (
+                    <aside className="hidden lg:block w-72 bg-white border-r border-gray-200 flex-shrink-0">
+                      <AgentSessionsPanel />
+                    </aside>
+                  )}
 
-                {/* Secondary sidebar for chat - only on messages view */}
-                {isMessagesView && (
-                  <aside
-                    className="hidden lg:block w-80 bg-white border-r border-gray-200 flex-shrink-0"
-                  >
-                    <ChatSidebar />
-                  </aside>
-                )}
-
-                {/* Mobile overlay */}
-                {mobileSidebarOpen && (
-                  <div 
-                    className="fixed inset-0 bg-black/20 z-40 lg:hidden"
-                    onClick={() => setMobileSidebarOpen(false)}
-                  />
-                )}
-
-                {/* Main content area - takes remaining width, scrollable */}
-                <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
-                  {/* Mobile hamburger - opens the sidebar on all app routes */}
-                  <button
-                    onClick={() => setMobileSidebarOpen(true)}
-                    className="lg:hidden absolute top-3 left-3 z-30 p-2 rounded-md bg-white/80 backdrop-blur-sm shadow-sm hover:bg-gray-100 text-gray-700"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 6h18M3 12h18M3 18h18" />
-                    </svg>
-                  </button>
-                  
-                  {/* Scrollable content area */}
-                  <main className="flex-1 overflow-y-auto flex flex-col">
-                    {children}
-                  </main>
+                  {/* Main content area - takes remaining width, scrollable */}
+                  <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+                    <main className="flex-1 overflow-y-auto flex flex-col">
+                      {children}
+                    </main>
+                  </div>
                 </div>
               </div>
             ) : (
