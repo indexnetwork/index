@@ -1,20 +1,19 @@
 import { useState, useRef, KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
-import { ChevronLeft, ArrowUp, Loader2 } from "lucide-react";
+import { ChevronRight, CornerDownLeft, Loader2 } from "lucide-react";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
+import { Button } from "@/components/ui/button";
 import { useIntents } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { cn } from "@/lib/utils";
 import { log } from "@/lib/logger";
 
 const logger = log.ui.from("NewSignal");
 
 /**
  * Static example prompts shown under "OR PICK ONE". Clicking one fills the
- * input; the user can edit before sending. Intentionally fixed (no backend) —
- * agent-generated suggestions are out of scope for this page.
+ * input; the user can edit before sending. Intentionally fixed (no backend).
  */
 const EXAMPLE_PROMPTS = [
   "want to meet cool ai people in nyc",
@@ -26,8 +25,7 @@ const EXAMPLE_PROMPTS = [
 /**
  * New Signal page. One sentence describing who the user wants to meet becomes a
  * signal (intent); on send it is created directly (POST /intents) and the user
- * lands on the signal detail page. Single step — the agent handles refinement
- * afterward via intent-centric questions on the detail page.
+ * lands on the signal detail page.
  */
 function NewSignalPage() {
   const navigate = useNavigate();
@@ -67,33 +65,39 @@ function NewSignalPage() {
 
   return (
     <ClientLayout>
-      <div className="px-6 lg:px-8 py-6 pb-24 flex-1">
-        <ContentContainer>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="mb-4 inline-flex items-center gap-1 text-sm text-gray-600 hover:text-black transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Back
-          </button>
-
-          {/* Prompt card — mirrors the signal detail card */}
-          <div className="mb-6 rounded-lg border border-gray-200 bg-white p-5">
-            <div className="flex items-center gap-2.5 mb-1.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#041729] text-white text-xs font-bold font-ibm-plex-mono">
-                h
-              </div>
-              <h1 className="text-base font-bold text-black font-ibm-plex-mono leading-snug">
-                who are you trying to meet right now?
-              </h1>
+      <div className="px-6 lg:px-8 py-10 pb-24 flex-1">
+        <ContentContainer size="wide">
+          {/* Heading */}
+          <div className="flex items-center gap-3 mb-8">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#041729] text-white text-sm font-bold font-ibm-plex-mono">
+              h
             </div>
-            <p className="text-sm text-gray-500 mb-4">
-              one sentence is enough — the agent handles the rest.
-            </p>
+            <h1 className="text-2xl font-bold text-black font-ibm-plex-mono">
+              who are you trying to meet right now?
+            </h1>
+          </div>
 
-            {/* Composer — matches the app's message input */}
-            <div className="flex items-center gap-2 bg-[#FCFCFC] border border-[#E9E9E9] rounded-full pl-4 pr-1.5 py-1.5">
+          {/* Examples */}
+          <p className="mb-3 text-xs font-bold tracking-[0.2em] text-gray-400 font-ibm-plex-mono uppercase">
+            Or pick one
+          </p>
+          <div className="space-y-3 mb-8">
+            {EXAMPLE_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => pickExample(prompt)}
+                className="w-full text-left px-5 py-4 rounded-lg border border-gray-200 bg-white text-[15px] text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
+          {/* Input row: chevron + underline input, send button on the right */}
+          <div className="flex items-end gap-3">
+            <div className="flex flex-1 items-center gap-2 border-b border-gray-300 pb-2 focus-within:border-[#041729] transition-colors">
+              <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
               <input
                 ref={inputRef}
                 type="text"
@@ -102,39 +106,20 @@ function NewSignalPage() {
                 onChange={(e) => setValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={submitting}
-                placeholder="meet cool AI people in NYC · find a co-founder…"
-                className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
+                placeholder="meet cool AI people in NYC · get feedback on a new idea…"
+                className="flex-1 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
               />
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!canSend}
-                className={cn(
-                  "shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] transition-colors",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
-                )}
-                aria-label="Create signal"
-              >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-              </button>
             </div>
-          </div>
-
-          {/* Examples */}
-          <p className="mb-2 text-xs font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono uppercase">
-            Or pick one
-          </p>
-          <div className="space-y-2">
-            {EXAMPLE_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => pickExample(prompt)}
-                className="w-full text-left px-4 py-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all"
-              >
-                {prompt}
-              </button>
-            ))}
+            <Button type="button" onClick={handleSend} disabled={!canSend} className="shrink-0 gap-1.5">
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  send
+                  <CornerDownLeft className="h-4 w-4" />
+                </>
+              )}
+            </Button>
           </div>
         </ContentContainer>
       </div>
