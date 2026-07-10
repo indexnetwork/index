@@ -6,6 +6,8 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import OpportunityCard from "@/components/chat/OpportunityCardInChat";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
+import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
@@ -164,6 +166,7 @@ export default function IntentDetailPage() {
   const opportunitiesService = useOpportunities();
   const questionsService = useQuestionsService();
   const { error: showError } = useNotifications();
+  const { features } = useAuthContext();
 
   const [intent, setIntent] = useState<
     Awaited<ReturnType<typeof intentsService.getIntent>> | null
@@ -176,6 +179,11 @@ export default function IntentDetailPage() {
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState("pending");
+  // Backend-surfaced flag (features on /auth/me): when on, the static
+  // questions block becomes the negotiator chat window (P4.2/IND-403).
+  // `chatUnavailable` is the runtime fallback if the bootstrap fails.
+  const [chatUnavailable, setChatUnavailable] = useState(false);
+  const negotiatorChatEnabled = features?.negotiatorChat === true && !chatUnavailable;
 
   const scope = useMemo(
     () =>
@@ -417,24 +425,47 @@ export default function IntentDetailPage() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
-                <Panel
-                  title="Questions"
-                  count={questions.length}
-                  description="Answer pending follow-ups for this intent."
-                  className="lg:col-span-2"
-                >
-                  {questions.length === 0 ? (
-                    <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
-                      No pending questions right now.
-                    </div>
-                  ) : (
-                    <InjectedQuestions
+                {negotiatorChatEnabled && intentId ? (
+                  <Panel
+                    title="Personal Agent"
+                    count={questions.length}
+                    description="Chat with your negotiator about this signal."
+                    className="lg:col-span-2"
+                  >
+                    <IntentNegotiatorChat
+                      key={intentId}
+                      intentId={intentId}
                       questions={questions}
-                      onAnswer={handleAnswer}
-                      onDismiss={handleDismiss}
+                      onAnswerQuestion={handleAnswer}
+                      onDismissQuestion={handleDismiss}
+                      opportunityStatusMap={opportunityStatusMap}
+                      opportunityActionLoading={opportunityActionLoading}
+                      onOpportunityAction={(id, action, userId, role, name) =>
+                        handleOpportunityAction(id, action, userId, role, name)
+                      }
+                      onUnavailable={() => setChatUnavailable(true)}
                     />
-                  )}
-                </Panel>
+                  </Panel>
+                ) : (
+                  <Panel
+                    title="Questions"
+                    count={questions.length}
+                    description="Answer pending follow-ups for this intent."
+                    className="lg:col-span-2"
+                  >
+                    {questions.length === 0 ? (
+                      <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
+                        No pending questions right now.
+                      </div>
+                    ) : (
+                      <InjectedQuestions
+                        questions={questions}
+                        onAnswer={handleAnswer}
+                        onDismiss={handleDismiss}
+                      />
+                    )}
+                  </Panel>
+                )}
 
                 <Panel
                   title="Radar"

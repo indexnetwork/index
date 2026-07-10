@@ -25,6 +25,8 @@ interface ChatSession {
   id: string;
   title: string | null;
   networkId: string | null;
+  /** Canonical scope; intent-pinned negotiator sessions carry 'intent' (IND-403). */
+  scopeType?: 'network' | 'intent' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -156,7 +158,9 @@ export default function Sidebar() {
       .get<{ sessions: ChatSession[] }>('/chat/sessions?persona=negotiator')
       .then((data) => {
         if (!active) return;
-        const session = data.sessions?.[0];
+        // The pinned entry is the unscoped DM — intent-pinned negotiator
+        // sessions (IND-403) also carry persona=negotiator but have a scope.
+        const session = data.sessions?.find((s) => !s.scopeType);
         if (session) setNegotiatorSession({ id: session.id, title: session.title });
       })
       .catch((error) => {

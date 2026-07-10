@@ -252,6 +252,56 @@ export class ChatSessionService {
     }
   }
 
+  /**
+   * Resolve or create the user's negotiator session pinned to one of their
+   * intents (P4.2/IND-403). One session per (user, intent, negotiator
+   * persona): keyed in `chat_session_scopes` as ('negotiator-intent',
+   * intentId), so it never collides with the orchestrator's ('intent',
+   * intentId) session for the same intent. Race-safe via the unique index
+   * (concurrent creates re-read on 23505).
+   *
+   * @param userId - The client user (must own the intent)
+   * @param intentId - The intent to pin
+   * @returns The session plus the validated intent title (for prompt pinning)
+   */
+  async resolveNegotiatorIntentSession(
+    userId: string,
+    intentId: string,
+  ): Promise<
+    | { session: NonNullable<Awaited<ReturnType<ChatSessionService['getSession']>>>; created: boolean; intentTitle: string }
+    | { error: string; status: 400 | 403 | 404 | 500 }
+  > {
+    const normalizedIntentId = intentId.trim();
+    if (!normalizedIntentId) {
+      return { error: 'intentId is required', status: 400 as const };
+    }
+
+    const validation = await this.validateIntentScope(userId, normalizedIntentId);
+    if (!validation.ok) return validation;
+
+    const existing = await this.db.getNegotiatorIntentChatSession(userId, normalizedIntentId);
+    if (existing) return { session: existing, created: false, intentTitle: validation.title };
+
+    try {
+      const id = crypto.randomUUID();
+      await this.db.createNegotiatorIntentChatSession({
+        id,
+        userId,
+        intentId: normalizedIntentId,
+        title: validation.title,
+      });
+      const session = await this.getSession(id, userId);
+      if (!session) return { error: 'Failed to create negotiator session', status: 500 as const };
+      return { session, created: true, intentTitle: validation.title };
+    } catch (err) {
+      if (this.isUniqueViolation(err)) {
+        const raced = await this.db.getNegotiatorIntentChatSession(userId, normalizedIntentId);
+        if (raced) return { session: raced, created: false, intentTitle: validation.title };
+      }
+      throw err;
+    }
+  }
+
   private isUniqueViolation(err: unknown): boolean {
     return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === '23505';
   }
@@ -475,12 +525,19 @@ export class ChatSessionService {
    * factory; only prompt/toolset/loop behaviors differ.
    *
    * @param agent - Identity from the user's `type='personal'` agent row
+   * @param pinnedIntent - Optional pinned-signal label for intent-scoped
+   *                       sessions (P4.2); rendered in the prompt's pinned
+   *                       signal section
    */
-  getNegotiatorGraphFactory(agent: { name: string; description?: string | null }): ChatGraphFactory {
+  getNegotiatorGraphFactory(
+    agent: { name: string; description?: string | null },
+    pinnedIntent?: { label?: string },
+  ): ChatGraphFactory {
     return this.factory.withPersona(
       createNegotiatorPersona({
         agentName: agent.name,
         ...(agent.description?.trim() ? { agentDescription: agent.description } : {}),
+        ...(pinnedIntent?.label?.trim() ? { pinnedIntentLabel: pinnedIntent.label.trim() } : {}),
       }),
     );
   }

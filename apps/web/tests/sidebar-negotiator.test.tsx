@@ -197,6 +197,29 @@ describe('Sidebar pinned Personal Agent entry', () => {
     expect(mocks.apiClient.post).not.toHaveBeenCalled();
   });
 
+  test('pinned entry resolves the unscoped DM, skipping intent-pinned negotiator sessions (IND-403)', async () => {
+    mocks.authState.features = { negotiatorChat: true };
+    mockSessions({
+      negotiator: [
+        // Most-recent first: an intent-pinned negotiator session must NOT
+        // become the pinned sidebar entry.
+        { id: 'pinned-intent-1', title: 'Find a co-founder', scopeType: 'intent', networkId: null, createdAt: '', updatedAt: '' },
+        { id: 'neg-dm-1', title: "Alice's Negotiator", scopeType: null, networkId: null, createdAt: '', updatedAt: '' },
+      ],
+    });
+
+    renderSidebar();
+
+    const entry = await screen.findByText("Alice's Negotiator");
+    expect(screen.queryByText('Find a co-founder')).toBeNull();
+    fireEvent.click(entry);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/d/neg-dm-1')
+    );
+    expect(mocks.apiClient.post).not.toHaveBeenCalled();
+  });
+
   test('negotiator session never renders in the history list', async () => {
     mocks.authState.features = { negotiatorChat: true };
     mockSessions({

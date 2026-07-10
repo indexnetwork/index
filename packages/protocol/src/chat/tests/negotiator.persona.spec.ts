@@ -121,6 +121,43 @@ describe("buildNegotiatorSystemContent", () => {
   });
 });
 
+// ─── Intent pin (P4.2 / IND-403) ─────────────────────────────────────────────
+
+describe("buildNegotiatorSystemContent — pinned signal (intent scope)", () => {
+  const scopedCtx = makeCtx({ scopeType: "intent", scopeId: "intent-42" } as Partial<ResolvedToolContext>);
+
+  it("renders the pinned-signal section when the session is intent-scoped", () => {
+    const prompt = buildNegotiatorSystemContent(scopedCtx, AGENT_OPTS);
+    expect(prompt).toContain("## Pinned signal");
+    expect(prompt).toContain("intent id: intent-42");
+    // Awareness, not a sandbox — the prompt must say the focus is not a wall.
+    expect(prompt).toContain("This is a focus, not a wall");
+  });
+
+  it("includes the human-readable label when provided", () => {
+    const prompt = buildNegotiatorSystemContent(scopedCtx, {
+      ...AGENT_OPTS,
+      pinnedIntentLabel: "Technical co-founder in Berlin",
+    });
+    expect(prompt).toContain("intent id: intent-42");
+    expect(prompt).toContain("Technical co-founder in Berlin");
+  });
+
+  it("omits the section entirely for the unscoped DM", () => {
+    const prompt = buildNegotiatorSystemContent(makeCtx(), AGENT_OPTS);
+    expect(prompt).not.toContain("## Pinned signal");
+    // A stray label without an intent scope must not leak into the prompt.
+    const withLabel = buildNegotiatorSystemContent(makeCtx(), { ...AGENT_OPTS, pinnedIntentLabel: "Stray" });
+    expect(withLabel).not.toContain("Stray");
+  });
+
+  it("ignores network scope (no pinned-signal section)", () => {
+    const networkCtx = makeCtx({ scopeType: "network", scopeId: "net-1" } as Partial<ResolvedToolContext>);
+    const prompt = buildNegotiatorSystemContent(networkCtx, AGENT_OPTS);
+    expect(prompt).not.toContain("## Pinned signal");
+  });
+});
+
 // ─── Tool scoping ────────────────────────────────────────────────────────────
 
 /** Representative orchestrator registry (superset of the negotiator allowlist). */
@@ -196,6 +233,7 @@ describe("filterNegotiatorTools", () => {
 
   it("keeps the P4.5 capability groups (signals, knowledge writes, joins, contacts)", () => {
     for (const allowed of [
+      "read_pending_questions",
       "create_intent",
       "update_intent",
       "delete_intent",

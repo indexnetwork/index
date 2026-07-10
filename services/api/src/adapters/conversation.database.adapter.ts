@@ -16,6 +16,18 @@ const NEGOTIATOR_PERSONA = 'negotiator';
  */
 const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } as const;
 
+/**
+ * Registry scope_type for intent-pinned negotiator sessions (P4.2/IND-403).
+ * Keying the `chat_session_scopes` unique index as ('negotiator-intent',
+ * intentId) makes the negotiator's per-intent session distinct from the
+ * orchestrator's ('intent', intentId) session for the same user — persona is
+ * part of the key without a migration. Like 'persona', this value never
+ * appears in the `ChatScopeType` envelope: conversation_metadata still says
+ * scopeType 'intent' so scope-driven behavior (graph seeding, session load)
+ * is identical to any intent-scoped session.
+ */
+const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
+
 export class ConversationDatabaseAdapter {
   /**
    * Retrieve a single user_context row (global when networkId is null), or null.
@@ -1517,6 +1529,77 @@ export class ConversationDatabaseAdapter {
         userId: data.userId,
         scopeType: NEGOTIATOR_SCOPE.scopeType,
         scopeId: NEGOTIATOR_SCOPE.scopeId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+  }
+
+  /**
+   * Find the user's negotiator session pinned to a specific intent, if any
+   * (P4.2/IND-403).
+   */
+  async getNegotiatorIntentChatSession(userId: string, intentId: string): Promise<ChatSession | null> {
+    const normalizedIntentId = intentId.trim();
+    if (!normalizedIntentId) return null;
+    const [row] = await db
+      .select({ conversationId: schema.chatSessionScopes.conversationId })
+      .from(schema.chatSessionScopes)
+      .where(
+        and(
+          eq(schema.chatSessionScopes.userId, userId),
+          eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_INTENT_SCOPE_TYPE),
+          eq(schema.chatSessionScopes.scopeId, normalizedIntentId),
+        ),
+      )
+      .limit(1);
+    return row ? this.getChatSession(row.conversationId) : null;
+  }
+
+  /**
+   * Create a negotiator session pinned to one of the user's intents
+   * (one per user+intent, P4.2/IND-403).
+   *
+   * Same transaction shape as {@link createNegotiatorChatSession}, but the
+   * registry row is keyed ('negotiator-intent', intentId) and the
+   * conversation metadata carries the canonical intent scope so the session
+   * behaves like any intent-scoped chat (graph seeding, scope echo on load)
+   * while staying a distinct conversation from the orchestrator's session
+   * for the same intent.
+   */
+  async createNegotiatorIntentChatSession(data: {
+    id: string;
+    userId: string;
+    intentId: string;
+    title?: string;
+  }): Promise<void> {
+    const now = new Date();
+    const intentId = data.intentId.trim();
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.conversations).values({
+        id: data.id,
+        persona: NEGOTIATOR_PERSONA,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
+        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
+      ]);
+
+      const meta: ChatConversationMeta = { scopeType: 'intent', scopeId: intentId };
+      if (data.title) meta.title = data.title;
+      await tx.insert(schema.conversationMetadata).values({
+        conversationId: data.id,
+        metadata: meta,
+      });
+
+      await tx.insert(schema.chatSessionScopes).values({
+        conversationId: data.id,
+        userId: data.userId,
+        scopeType: NEGOTIATOR_INTENT_SCOPE_TYPE,
+        scopeId: intentId,
         createdAt: now,
         updatedAt: now,
       });
