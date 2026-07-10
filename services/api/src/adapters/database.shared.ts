@@ -336,6 +336,8 @@ export interface ChatSession {
   id: string;
   userId: string;
   title: string | null;
+  /** Chat persona driving this session's agent loop (e.g. 'orchestrator'). */
+  persona: string;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId: string | null;
   /** Canonical focused scope for this orchestrator chat, when persisted. */
@@ -396,6 +398,8 @@ export interface CreateSessionInput {
   id: string;
   userId: string;
   title?: string;
+  /** Chat persona for this session. Omit for the default ('orchestrator'). */
+  persona?: string;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId?: string;
   scopeType?: ChatScopeType;

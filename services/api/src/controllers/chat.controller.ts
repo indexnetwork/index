@@ -565,7 +565,14 @@ export class ChatController {
   @Get("/sessions")
   @UseGuards(RateLimit('read'), AuthGuard)
   async getSessions(req: Request, user: AuthenticatedUser) {
-    const sessions = await chatSessionService.getUserSessions(user.id);
+    // Optional persona filter (e.g. ?persona=orchestrator). Omitted → all sessions,
+    // which is today's behavior (every existing session is 'orchestrator').
+    const personaParam = new URL(req.url).searchParams.get("persona")?.trim();
+    const sessions = await chatSessionService.getUserSessions(
+      user.id,
+      undefined,
+      personaParam || undefined,
+    );
     return Response.json({ sessions });
   }
 

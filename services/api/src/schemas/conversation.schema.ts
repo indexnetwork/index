@@ -33,6 +33,13 @@ export const taskStateEnum = pgEnum('task_state', [
 export const conversations = pgTable('conversations', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   dmPair: text('dm_pair'),
+  /**
+   * Chat persona driving this conversation's agent loop (H2A sessions only;
+   * ignored for H2H DMs and A2A negotiation conversations). Plain text —
+   * deliberately not a pg enum so future personas need no enum migration.
+   * Default 'orchestrator' covers all pre-persona rows backfill-free.
+   */
+  persona: text('persona').notNull().default('orchestrator'),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

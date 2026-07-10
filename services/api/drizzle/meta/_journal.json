@@ -631,6 +631,13 @@
       "when": 1783670500073,
       "tag": "0089_negotiator_agent_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1783679004538,
+      "tag": "0090_chat_persona_column",
+      "breakpoints": true
     }
   ]
 }

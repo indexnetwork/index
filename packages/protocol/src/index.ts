@@ -109,6 +109,12 @@ export type { EvidenceCandidateInput } from "./opportunity/opportunity.evidence.
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
 export { ChatGraphFactory } from "./chat/chat.graph.js";
+export {
+  ORCHESTRATOR_PERSONA,
+  ORCHESTRATOR_PERSONA_ID,
+  type ChatPersonaConfig,
+  type ChatPersonaLoopBehaviors,
+} from "./chat/chat.persona.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";
