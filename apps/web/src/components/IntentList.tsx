@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Calendar, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Handshake, CircleHelp } from 'lucide-react';
+import { Calendar, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Handshake } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -187,15 +187,13 @@ export default function IntentList<T extends BaseIntent>({
               <div className="flex items-center gap-2 shrink-0">
                 <span
                   className={cn(
-                    'flex items-center gap-1 text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full',
+                    'text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full whitespace-nowrap',
                     (intent.pendingQuestionCount ?? 0) > 0
                       ? 'bg-[#041729] text-white'
                       : 'bg-gray-100 text-gray-400 border border-gray-200',
                   )}
-                  title={`${intent.pendingQuestionCount ?? 0} pending ${(intent.pendingQuestionCount ?? 0) === 1 ? 'question' : 'questions'}`}
                 >
-                  <CircleHelp className="w-3 h-3" />
-                  {intent.pendingQuestionCount ?? 0}
+                  {intent.pendingQuestionCount ?? 0} {(intent.pendingQuestionCount ?? 0) === 1 ? 'question' : 'questions'}
                 </span>
 
                 {/* Open source (link-sourced signals only) */}
