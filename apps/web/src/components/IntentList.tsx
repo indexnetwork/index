@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
-import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Handshake, CircleHelp } from 'lucide-react';
+import { Calendar, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Handshake, CircleHelp } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { DebugCopyButton } from './DebugCopyButton';
 
 interface BaseIntent {
   id: string;
@@ -64,13 +63,10 @@ export default function IntentList<T extends BaseIntent>({
   intents,
   isLoading = false,
   emptyMessage = 'No intents yet',
-  onArchiveIntent,
-  onRemoveIntent,
   onOpenIntentSource,
   onIntentClick,
   newIntentIds = new Set(),
   selectedIntentIds = new Set(),
-  removingIntentIds = new Set(),
   className = '',
 }: IntentListProps<T>) {
   // Sort intents by creation date (newest first) without grouping
@@ -117,7 +113,6 @@ export default function IntentList<T extends BaseIntent>({
         const isFresh = newIntentIds.has(intent.id);
         const isSelectedSource = selectedIntentIds.has(intent.id);
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
-        const isRemoving = removingIntentIds.has(intent.id);
         
         return (
           <div 
@@ -203,11 +198,7 @@ export default function IntentList<T extends BaseIntent>({
                   {intent.pendingQuestionCount ?? 0}
                 </span>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                  <DebugCopyButton fetchPath={`/debug/intents/${intent.id}`} />
-                </div>
+                {/* Open source (link-sourced signals only) */}
                 {onOpenIntentSource && canOpenSource && (
                   <button
                     onClick={(e) => {
@@ -215,36 +206,12 @@ export default function IntentList<T extends BaseIntent>({
                       e.stopPropagation();
                       onOpenIntentSource(intent);
                     }}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 transition-colors"
+                    className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all"
                     title="Open Source"
                   >
                     <ExternalLink className="w-4 h-4" />
                   </button>
                 )}
-                
-                {(onArchiveIntent || onRemoveIntent) && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (onRemoveIntent) {
-                        onRemoveIntent(intent);
-                      } else if (onArchiveIntent) {
-                        onArchiveIntent(intent);
-                      }
-                    }}
-                    disabled={isRemoving}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                    title={onRemoveIntent ? "Remove" : "Archive"}
-                  >
-                    {isRemoving ? (
-                      <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
-                  </button>
-                )}
-                </div>
               </div>
             </div>
           </div>
