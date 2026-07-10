@@ -31,7 +31,7 @@ export interface FromIntentDeps {
   database?: FromIntentDatabase;
   invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
 }
 
 export class FromIntentQueue {

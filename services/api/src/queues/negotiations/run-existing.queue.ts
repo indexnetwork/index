@@ -24,7 +24,7 @@ export interface RunExistingGraphInvokeOptions {
 
 export interface RunExistingDeps {
   negotiationGraph?: NegotiationGraphLike;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   invokeOpportunityGraph?: (opts: RunExistingGraphInvokeOptions) => Promise<void>;
 }
 

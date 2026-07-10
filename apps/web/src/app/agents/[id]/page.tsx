@@ -184,7 +184,7 @@ function NotificationsSection({
   onChange: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>) => void;
   disabled: boolean;
 }) {
-  if (agent.type !== "personal") return null;
+  if (agent.type !== "external") return null;
 
   return (
     <div className="p-4 rounded-md border border-gray-100 bg-white">
@@ -996,7 +996,7 @@ export default function AgentDetailPage() {
   }
 
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
-  const canSendTestMessage = agent.type === "personal";
+  const canSendTestMessage = agent.type === "external";
 
   return (
     <ClientLayout>

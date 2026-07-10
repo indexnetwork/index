@@ -209,7 +209,7 @@ export class OpportunityGraphFactory {
      * agent (long timeout) or fall back to the system agent immediately
      * (short timeout). Without it, the chat path always uses a short timeout.
      */
-    private agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>,
+    private agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>,
     /**
      * Callback to enqueue a negotiate_existing job for an opportunity.
      * When provided, negotiate_existing mode uses this to queue follow-up
@@ -2013,15 +2013,15 @@ export class OpportunityGraphFactory {
         //     system `Index Negotiator` kicks in without stalling the chat.
         // Check the personal agent per unique candidate network so cross-network
         // chat runs don't get a single authorized agent deciding the timeout for
-        // every candidate. Only use the long (polling) timeout when a personal
-        // agent is authorized on ALL candidate networks; otherwise fall back to
-        // the short timeout so chats don't stall on a network where only the
-        // system negotiator is allowed.
-        const hasPersonalAgent = isChatPath && this.agentDispatcher
+        // every candidate. Only use the long (polling) timeout when an external
+        // (poller) agent is authorized on ALL candidate networks; otherwise fall
+        // back to the short timeout so chats don't stall on a network where only
+        // the system negotiator is allowed.
+        const hasExternalAgent = isChatPath && this.agentDispatcher
           ? (uniqueIndexIds.length > 0
               ? (await Promise.all(
                   uniqueIndexIds.map((networkId) =>
-                    this.agentDispatcher!.hasPersonalAgent(
+                    this.agentDispatcher!.hasExternalAgent(
                       discoveryUserId,
                       { action: 'manage:negotiations', scopeType: 'network', scopeId: networkId },
                     ).catch(() => false),
@@ -2034,7 +2034,7 @@ export class OpportunityGraphFactory {
         // budget. Ambient keeps its heartbeat-aware long/short split.
         const ORCHESTRATOR_PARK_WINDOW_MS = 60_000;
         const isOrchestrator = state.trigger === 'orchestrator';
-        const useLongTimeout = !isChatPath || hasPersonalAgent;
+        const useLongTimeout = !isChatPath || hasExternalAgent;
         const timeoutMs = isOrchestrator
           ? ORCHESTRATOR_PARK_WINDOW_MS
           : useLongTimeout ? AMBIENT_PARK_WINDOW_MS : 30_000;
@@ -2045,7 +2045,7 @@ export class OpportunityGraphFactory {
           isChatPath,
           isOrchestrator,
           hasDispatcher: !!this.agentDispatcher,
-          hasPersonalAgent,
+          hasExternalAgent,
           useLongTimeout,
           timeoutMs,
           candidateCount: candidates.length,

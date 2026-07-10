@@ -36,7 +36,7 @@ function createMockDatabase(overrides: Partial<Record<string, unknown>> = {}) {
 function createMockDispatcher() {
   return {
     dispatch: async () => ({ handled: false as const, reason: "no_agent" as const }),
-    hasPersonalAgent: async () => false,
+    hasExternalAgent: async () => false,
   } as unknown as AgentDispatcher;
 }
 
@@ -232,7 +232,7 @@ describe("Negotiation continuation telemetry", () => {
   it("waiting_for_agent outcome includes isContinuation field", async () => {
     const db = createMockDatabase();
     const dispatcher = {
-      hasPersonalAgent: async () => true,
+      hasExternalAgent: async () => true,
       dispatch: async () => ({ handled: false, reason: "waiting" as const }),
     } as unknown as AgentDispatcher;
 

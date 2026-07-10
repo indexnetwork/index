@@ -16,7 +16,7 @@ describe('AgentTestMessageService', () => {
     await db.delete(agentTestMessages);
     const [user] = await db.insert(users).values({ email: `test-${randomUUID()}@example.com`, name: 'Test User' }).returning();
     userId = user.id;
-    const [agent] = await db.insert(agents).values({ ownerId: userId, name: 'test-agent', type: 'personal' }).returning();
+    const [agent] = await db.insert(agents).values({ ownerId: userId, name: 'test-agent', type: 'external' }).returning();
     agentId = agent.id;
   });
 

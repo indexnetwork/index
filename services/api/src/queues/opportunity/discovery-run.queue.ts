@@ -25,7 +25,7 @@ export interface DiscoveryRunJobData {
 
 export interface DiscoveryRunQueueDeps {
   negotiationGraph?: NegotiationGraphLike;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
 }
 
 const apiBaseUrl = resolveProtocolBaseUrl();

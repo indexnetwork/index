@@ -55,7 +55,7 @@ beforeAll(async () => {
 
   const [agent] = await db
     .insert(agents)
-    .values({ ownerId: userId, name: 'e2e-test-agent', type: 'personal' })
+    .values({ ownerId: userId, name: 'e2e-test-agent', type: 'external' })
     .returning();
   agentId = agent.id;
 

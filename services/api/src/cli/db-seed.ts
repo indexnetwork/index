@@ -428,7 +428,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         ownerId: user.id,
         name: `${persona.name}'s Agent`,
         description: `Personal agent for ${persona.name}`,
-        type: 'personal',
+        type: 'external',
         status: 'active',
         metadata: {},
       }).onConflictDoNothing();

@@ -23,7 +23,7 @@ export interface FromEnrichmentGraphInvokeOptions {
 export interface FromEnrichmentDeps {
   invokeOpportunityGraph?: (opts: FromEnrichmentGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
 }
 
 /**

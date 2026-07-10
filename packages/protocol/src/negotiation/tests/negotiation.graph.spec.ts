@@ -22,7 +22,7 @@ function mkStubs() {
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0];
 
   const dispatcher = {
-    hasPersonalAgent: async () => false,
+    hasExternalAgent: async () => false,
     dispatch: async () => ({ handled: false, reason: "no-agent" }),
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[1];
 
@@ -163,7 +163,7 @@ describe("negotiation graph — negotiation_outcome emission", () => {
   it("emits outcome='waiting_for_agent' when dispatcher parks the turn", async () => {
     const { database } = mkStubs();
     const dispatcher = {
-      hasPersonalAgent: async () => true,
+      hasExternalAgent: async () => true,
       dispatch: async () => ({ handled: false, reason: "waiting" as const }),
     } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[1];
     const graph = new NegotiationGraphFactory(database, dispatcher).createGraph();

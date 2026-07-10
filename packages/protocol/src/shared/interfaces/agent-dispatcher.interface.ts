@@ -31,11 +31,11 @@ export type AgentDispatchResult =
 
 /**
  * Dispatches a negotiation turn to the appropriate agent.
- * Tries personal agents first (via transports), falls back to system agent.
+ * Tries external (poller) agents first, falls back to system agent.
  */
 export interface AgentDispatcher {
   /**
-   * Attempt to dispatch a negotiation turn to a personal agent.
+   * Attempt to dispatch a negotiation turn to an external (poller) agent.
    * @param userId - The user whose agent should handle this turn
    * @param scope - Permission scope for agent resolution
    * @param payload - Turn context (users, history, seed assessment)
@@ -50,10 +50,11 @@ export interface AgentDispatcher {
   ): Promise<AgentDispatchResult>;
 
   /**
-   * Check whether a user has an authorized personal agent for the given scope.
-   * Used at init to determine scenario-based turn caps.
+   * Check whether a user has an authorized external (poller) agent for the given
+   * scope. Used at init to determine scenario-based turn caps. Type-only by design
+   * (no heartbeat freshness) — see IND-410.
    */
-  hasPersonalAgent(
+  hasExternalAgent(
     userId: string,
     scope: { action: string; scopeType: string; scopeId?: string },
   ): Promise<boolean>;

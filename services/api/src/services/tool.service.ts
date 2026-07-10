@@ -236,7 +236,7 @@ export class ToolService {
     // External agent yield is handled via the ProtocolDeps flow in tool.factory.ts and mcp.controller.ts.
     const noOpDispatcher: AgentDispatcher = {
       dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
-      hasPersonalAgent: async () => false,
+      hasExternalAgent: async () => false,
     };
     const negotiationGraph = new NegotiationGraphFactory(
       conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],

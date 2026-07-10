@@ -31,7 +31,7 @@ export interface FromIntroducerDeps {
   database?: FromIntroducerDatabase;
   invokeOpportunityGraph?: (opts: FromIntroducerGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
 }
 
 export class FromIntroducerQueue {

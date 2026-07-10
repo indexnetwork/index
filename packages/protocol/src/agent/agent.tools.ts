@@ -96,7 +96,7 @@ export function createAgentTools(defineTool: DefineTool, deps: ToolDeps) {
           ownerId: context.userId,
           name,
           description: query.description?.trim() || undefined,
-          type: 'personal',
+          type: 'external',
         });
 
         try {

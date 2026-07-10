@@ -8,7 +8,7 @@ export interface AgentRecord {
   ownerId: string;
   name: string;
   description: string | null;
-  type: 'personal' | 'system';
+  type: 'personal' | 'external' | 'system';
   status: 'active' | 'inactive';
   metadata: Record<string, unknown>;
   createdAt: Date;
@@ -44,7 +44,8 @@ export interface CreateAgentInput {
   ownerId: string;
   name: string;
   description?: string;
-  type?: 'personal' | 'system';
+  /** Required: personal rows are auto-provisioned negotiators; tool/registration paths create 'external'. */
+  type: 'personal' | 'external' | 'system';
   metadata?: Record<string, unknown>;
 }
 

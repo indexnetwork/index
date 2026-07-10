@@ -10,7 +10,7 @@ function makeAgent(overrides: Partial<AgentWithRelations> = {}): AgentWithRelati
     ownerId: 'user-1',
     name: 'Test Agent',
     description: null,
-    type: 'personal',
+    type: 'external',
     status: 'active',
     metadata: {},
     transports: [],
@@ -51,7 +51,7 @@ describe('AgentDispatcherImpl.dispatch', () => {
     );
   });
 
-  it('returns no_agent when no personal agents exist', async () => {
+  it('returns no_agent when no external agents exist', async () => {
     agents = [];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(res).toEqual({ handled: false, reason: 'no_agent' });
@@ -64,34 +64,34 @@ describe('AgentDispatcherImpl.dispatch', () => {
     expect(res).toEqual({ handled: false, reason: 'no_agent' });
   });
 
-  it('returns waiting and enqueues timeout when personal agent exists (long timeout)', async () => {
+  it('returns waiting and enqueues timeout when external agent exists (long timeout)', async () => {
     agents = [makeAgent({ lastSeenAt: new Date() })];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: 'n-1' });
     expect(timeoutEnqueued).toBe(true);
   });
 
-  it('returns timeout when personal agent exists but is stale', async () => {
+  it('returns timeout when external agent exists but is stale', async () => {
     agents = [makeAgent()];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 30_000 });
     expect(res).toEqual({ handled: false, reason: 'timeout' });
     expect(timeoutEnqueued).toBe(false);
   });
 
-  it('does not require transports — any fresh personal agent triggers waiting', async () => {
+  it('does not require transports — any fresh external agent triggers waiting', async () => {
     agents = [makeAgent({ transports: [], lastSeenAt: new Date() })];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: 'n-1' });
   });
 });
 
-describe('AgentDispatcherImpl.hasPersonalAgent', () => {
-  it('returns true when a personal agent is authorized', async () => {
+describe('AgentDispatcherImpl.hasExternalAgent', () => {
+  it('returns true when a external agent is authorized', async () => {
     const dispatcher = new AgentDispatcherImpl(
       { findAuthorizedAgents: async () => [makeAgent()] },
       undefined,
     );
-    const result = await dispatcher.hasPersonalAgent('user-1', scope);
+    const result = await dispatcher.hasExternalAgent('user-1', scope);
     expect(result).toBe(true);
   });
 
@@ -100,7 +100,7 @@ describe('AgentDispatcherImpl.hasPersonalAgent', () => {
       { findAuthorizedAgents: async () => [makeAgent({ type: 'system' })] },
       undefined,
     );
-    const result = await dispatcher.hasPersonalAgent('user-1', scope);
+    const result = await dispatcher.hasExternalAgent('user-1', scope);
     expect(result).toBe(false);
   });
 
@@ -109,7 +109,7 @@ describe('AgentDispatcherImpl.hasPersonalAgent', () => {
       { findAuthorizedAgents: async () => [] },
       undefined,
     );
-    const result = await dispatcher.hasPersonalAgent('user-1', scope);
+    const result = await dispatcher.hasExternalAgent('user-1', scope);
     expect(result).toBe(false);
   });
 });

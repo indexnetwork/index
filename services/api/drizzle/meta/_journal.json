@@ -617,6 +617,20 @@
       "when": 1782566344414,
       "tag": "0087_add_chat_session_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1783670481479,
+      "tag": "0088_jazzy_havok",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1783670500073,
+      "tag": "0089_negotiator_agent_rows",
+      "breakpoints": true
     }
   ]
 }
