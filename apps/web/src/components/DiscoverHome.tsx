@@ -17,7 +17,7 @@ interface HomeIntent {
   payload: string;
   summary?: string | null;
   createdAt: string;
-  sourceType?: "file" | "link" | "integration";
+  sourceType?: "file" | "link" | "integration" | "discovery_form" | "enrichment";
   waitingOpportunityCount?: number;
   pendingQuestionCount?: number;
   status?: string;

@@ -9,7 +9,7 @@ interface BaseIntent {
   payload: string;
   summary?: string | null;
   createdAt: string;
-  sourceType?: 'file' | 'link' | 'integration';
+  sourceType?: 'file' | 'link' | 'integration' | 'discovery_form' | 'enrichment';
   sourceId?: string;
   sourceName?: string;
   sourceValue?: string | null;
@@ -167,8 +167,9 @@ export default function IntentList<T extends BaseIntent>({
                     </div>
                   )}
 
-                  {/* Source Badge */}
-                  {intent.sourceType && (
+                  {/* Source Badge — external origins only (a user's own
+                      directly-created signals carry no meaningful source tag) */}
+                  {intent.sourceType && ['file', 'link', 'integration'].includes(intent.sourceType) && (
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
                       {getSourceIcon(intent.sourceType)}
                       <span className="capitalize">{intent.sourceType}</span>
@@ -182,16 +183,20 @@ export default function IntentList<T extends BaseIntent>({
                     </span>
                   )}
 
-                  {/* Pending-question notification */}
-                  {(intent.pendingQuestionCount ?? 0) > 0 && (
-                    <span
-                      className="flex items-center gap-1 text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#041729] text-white"
-                      title={`${intent.pendingQuestionCount} pending ${intent.pendingQuestionCount === 1 ? 'question' : 'questions'}`}
-                    >
-                      <CircleHelp className="w-3 h-3" />
-                      {intent.pendingQuestionCount}
-                    </span>
-                  )}
+                  {/* Pending-question notification — always shown (important
+                      signal); muted at zero, highlighted when there are any */}
+                  <span
+                    className={cn(
+                      'flex items-center gap-1 text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full',
+                      (intent.pendingQuestionCount ?? 0) > 0
+                        ? 'bg-[#041729] text-white'
+                        : 'bg-gray-100 text-gray-400 border border-gray-200',
+                    )}
+                    title={`${intent.pendingQuestionCount ?? 0} pending ${(intent.pendingQuestionCount ?? 0) === 1 ? 'question' : 'questions'}`}
+                  >
+                    <CircleHelp className="w-3 h-3" />
+                    {intent.pendingQuestionCount ?? 0}
+                  </span>
 
                   <StatusBadge status={intent.status} />
                 </div>
