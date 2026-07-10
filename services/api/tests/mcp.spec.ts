@@ -239,7 +239,7 @@ describe('MCP Server Factory', () => {
           ownerId: 'test-user-id',
           name: 'Agent',
           description: null,
-          type: 'personal',
+          type: 'external',
           status: 'active',
           metadata: {},
           createdAt: new Date('2026-04-08T00:00:00.000Z'),

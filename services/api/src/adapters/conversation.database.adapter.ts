@@ -189,11 +189,11 @@ export class ConversationDatabaseAdapter {
         .where(
           and(
             inArray(schema.tasks.conversationId, ids),
-            eq(schema.agents.type, 'personal'),
+            eq(schema.agents.type, 'external'),
           ),
         )
         // Deterministic ordering so that if a conversation ever has claims
-        // from multiple personal agents for the same owner, the displayed
+        // from multiple external (poller) agents for the same owner, the displayed
         // agent name is stable across requests. Most recent claim wins.
         .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id));
       for (const r of claimRows) {

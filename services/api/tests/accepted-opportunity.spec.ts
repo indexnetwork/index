@@ -56,7 +56,7 @@ async function seedUser(name = 'Test User'): Promise<string> {
 async function seedAgent(userId: string): Promise<string> {
   const [agent] = await db
     .insert(agents)
-    .values({ ownerId: userId, name: 'test-agent', type: 'personal' })
+    .values({ ownerId: userId, name: 'test-agent', type: 'external' })
     .returning({ id: agents.id });
   return agent.id;
 }

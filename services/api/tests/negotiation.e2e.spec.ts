@@ -11,7 +11,7 @@ import { conversationDatabaseAdapter } from "../src/adapters/database.adapter";
 
 const noopDispatcher = {
   dispatch: async () => ({ handled: false as const, reason: "no_agent" as const }),
-  hasPersonalAgent: async () => false,
+  hasExternalAgent: async () => false,
 };
 
 describe("Negotiation E2E", () => {

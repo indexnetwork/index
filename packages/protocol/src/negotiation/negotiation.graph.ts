@@ -87,8 +87,8 @@ export class NegotiationGraphFactory {
         // Determine scenario-based maxTurns
         const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
         const [sourceHasAgent, candidateHasAgent] = await Promise.all([
-          dispatcher.hasPersonalAgent(state.sourceUser.id, scope),
-          dispatcher.hasPersonalAgent(state.candidateUser.id, scope),
+          dispatcher.hasExternalAgent(state.sourceUser.id, scope),
+          dispatcher.hasExternalAgent(state.candidateUser.id, scope),
         ]);
 
         const ambientMax = Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;

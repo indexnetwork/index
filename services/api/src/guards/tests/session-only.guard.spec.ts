@@ -21,7 +21,7 @@ describe('session-only.guard', () => {
     userId = u.id;
 
     const agent = await agentDatabaseAdapter.createAgent({
-      ownerId: userId, name: 'Session Only Agent', type: 'personal',
+      ownerId: userId, name: 'Session Only Agent', type: 'external',
     });
     await agentDatabaseAdapter.grantPermission({
       agentId: agent.id, userId, scope: 'global',

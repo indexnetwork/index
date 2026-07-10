@@ -48,7 +48,7 @@ function createDeps() {
   } as unknown as NegotiationGraphDatabase;
   const dispatcher = {
     dispatch: mock(async () => ({ handled: false as const, reason: "no_agent" as const })),
-    hasPersonalAgent: mock(async () => false),
+    hasExternalAgent: mock(async () => false),
   } satisfies Partial<AgentDispatcher> as unknown as AgentDispatcher;
   return { database, dispatcher, updateOpportunityStatus };
 }

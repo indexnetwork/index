@@ -59,7 +59,7 @@ async function seedUser(): Promise<string> {
 async function seedAgent(userId: string, notifyOnOpportunity = true): Promise<string> {
   const [agent] = await db
     .insert(agents)
-    .values({ ownerId: userId, name: 'test-agent', type: 'personal', notifyOnOpportunity })
+    .values({ ownerId: userId, name: 'test-agent', type: 'external', notifyOnOpportunity })
     .returning({ id: agents.id });
   return agent.id;
 }

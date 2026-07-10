@@ -30,10 +30,10 @@ export class NegotiationService {
     ]);
 
     // No-op dispatcher: NegotiationService triggers synchronous discovery negotiations
-    // without routing turns to personal agents.
+    // without routing turns to external poller agents.
     const noOpDispatcher: AgentDispatcher = {
       dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
-      hasPersonalAgent: async () => false,
+      hasExternalAgent: async () => false,
     };
     const graph = new NegotiationGraphFactory(
       conversationDatabaseAdapter as ConstructorParameters<typeof NegotiationGraphFactory>[0],

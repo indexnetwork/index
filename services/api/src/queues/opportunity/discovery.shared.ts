@@ -13,7 +13,7 @@ export type OpportunityGraphDb = OpportunityGraphDatabase & HydeGraphDatabase;
 /** Runtime deps shared by every opportunity-discovery queue worker. */
 export interface OpportunityDiscoveryDeps {
   negotiationGraph?: NegotiationGraphLike;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
 }
 
 type DiscoveryLogger = ReturnType<typeof log.job.from>;

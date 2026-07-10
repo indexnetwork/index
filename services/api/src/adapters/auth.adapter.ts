@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
+import { agentDatabaseAdapter } from './agent.database.adapter';
 import { ensurePersonalNetwork } from './database.adapter';
 
 /**
@@ -97,6 +98,16 @@ export class AuthDatabaseAdapter {
    */
   async ensurePersonalNetwork(userId: string): Promise<string> {
     return ensurePersonalNetwork(userId);
+  }
+
+  /**
+   * Ensures the user has a personal negotiator agent row.
+   * Idempotent — safe to call on every sign-in; skips ghost users.
+   * @param userId - The authenticated user
+   * @returns The negotiator agent ID, or null for ghosts/missing users
+   */
+  async ensureNegotiatorAgent(userId: string): Promise<string | null> {
+    return agentDatabaseAdapter.ensureNegotiatorAgent(userId);
   }
 
   /**

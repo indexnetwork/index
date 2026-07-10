@@ -36,7 +36,7 @@ describe('agent-scope.guard', () => {
     unrelatedNetworkId = n2.id;
 
     const scopedAgent = await agentDatabaseAdapter.createAgent({
-      ownerId: userId, name: 'Scoped Agent', type: 'personal',
+      ownerId: userId, name: 'Scoped Agent', type: 'external',
     });
     scopedAgentId = scopedAgent.id;
     await agentDatabaseAdapter.grantPermission({
@@ -46,7 +46,7 @@ describe('agent-scope.guard', () => {
     scopedKey = (await agentTokenAdapter.create(userId, { name: 'scoped', agentId: scopedAgent.id })).key;
 
     const globalAgent = await agentDatabaseAdapter.createAgent({
-      ownerId: userId, name: 'Global Agent', type: 'personal',
+      ownerId: userId, name: 'Global Agent', type: 'external',
     });
     globalAgentId = globalAgent.id;
     await agentDatabaseAdapter.grantPermission({

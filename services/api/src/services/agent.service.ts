@@ -55,11 +55,13 @@ export class AgentService {
       throw new Error('Agent name is required');
     }
 
+    // User-registered agents are external poller runtimes — delegates of the
+    // user's personal negotiator, authenticated via API key (IND-410).
     const agent = await this.db.createAgent({
       ownerId,
       name: cleanName,
       description: description?.trim() || undefined,
-      type: 'personal',
+      type: 'external',
     });
 
     const permission = await this.db.grantPermission({
@@ -69,7 +71,7 @@ export class AgentService {
       actions: [...PERSONAL_AGENT_DEFAULT_ACTIONS],
     });
 
-    logger.info('Created personal agent with default permissions', { agentId: agent.id, ownerId });
+    logger.info('Created external agent with default permissions', { agentId: agent.id, ownerId });
     return this.sanitizeAgent({
       ...agent,
       transports: [],

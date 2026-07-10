@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm/sql';
+import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm/sql';
 
 
 import db from '../lib/drizzle/drizzle';
@@ -7,7 +7,13 @@ import { log } from '../lib/log';
 
 const logger = log.lib.from('agent.database.adapter');
 
-export type AgentType = 'personal' | 'system';
+/**
+ * Agent type semantics (IND-410):
+ * - `personal`: the user's own negotiator — one active row per user, auto-provisioned.
+ * - `external`: a registered third-party poller runtime (delegate of the negotiator).
+ * - `system`: seeded builtin agents.
+ */
+export type AgentType = 'personal' | 'external' | 'system';
 export type AgentStatus = 'active' | 'inactive';
 export type TransportChannel = 'mcp';
 export type PermissionScope = 'global' | 'node' | 'network';
@@ -66,7 +72,8 @@ export interface CreateAgentInput {
   ownerId: string;
   name: string;
   description?: string | null;
-  type?: AgentType;
+  /** Required: an accidental default-typed create would collide with the one-personal-per-owner unique index. */
+  type: AgentType;
   status?: AgentStatus;
   metadata?: Record<string, unknown>;
 }
@@ -114,6 +121,7 @@ export interface AgentRegistryStore {
   findAuthorizedAgents(userId: string, action: string, scope?: AgentScope): Promise<AgentWithRelations[]>;
   getSystemAgentIds(): AgentSystemIds;
   touchLastSeen(agentId: string): Promise<void>;
+  ensureNegotiatorAgent(userId: string): Promise<string | null>;
 }
 
 export const SYSTEM_AGENT_IDS: AgentSystemIds = {
@@ -136,7 +144,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         ownerId: input.ownerId,
         name: input.name,
         description: input.description ?? null,
-        type: input.type ?? 'personal',
+        type: input.type,
         status: input.status ?? 'active',
         metadata: input.metadata ?? {},
       })
@@ -223,11 +231,19 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   }
 
   async listAgentsForUser(userId: string): Promise<AgentWithRelations[]> {
+    // Personal negotiator rows are excluded: they carry no API key or transports and
+    // get their own surfaces (sidebar chat, memory panel) — not the agents page.
     const [ownedRows, permittedRows] = await Promise.all([
       db
         .select({ id: schema.agents.id })
         .from(schema.agents)
-        .where(and(eq(schema.agents.ownerId, userId), isNull(schema.agents.deletedAt))),
+        .where(
+          and(
+            eq(schema.agents.ownerId, userId),
+            isNull(schema.agents.deletedAt),
+            ne(schema.agents.type, 'personal'),
+          ),
+        ),
       db
         .select({ agentId: schema.agentPermissions.agentId })
         .from(schema.agentPermissions)
@@ -243,7 +259,13 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       db
         .select()
         .from(schema.agents)
-        .where(and(inArray(schema.agents.id, agentIds), isNull(schema.agents.deletedAt))),
+        .where(
+          and(
+            inArray(schema.agents.id, agentIds),
+            isNull(schema.agents.deletedAt),
+            ne(schema.agents.type, 'personal'),
+          ),
+        ),
       db
         .select()
         .from(schema.agentTransports)
@@ -455,7 +477,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       return [];
     }
 
-    const [agentRows, transportRows, allPermissionRows, credentialedPersonalAgentIds] = await Promise.all([
+    const [agentRows, transportRows, allPermissionRows, credentialedExternalAgentIds] = await Promise.all([
       db
         .select()
         .from(schema.agents)
@@ -480,22 +502,22 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         .select()
         .from(schema.agentPermissions)
         .where(inArray(schema.agentPermissions.agentId, agentIds)),
-      this.findPersonalAgentIdsWithValidCredentials(agentIds),
+      this.findExternalAgentIdsWithValidCredentials(agentIds),
     ]);
 
-    // Polling model: personal agents authenticate to /agents/:id/pickup with their API
-    // key and do not require a DB-registered transport row. A personal agent is only
-    // dispatch-eligible if it has at least one enabled, unexpired API key — otherwise
-    // parking a turn for pickup would strand it until the 24h timeout. System agents
-    // are always eligible; they execute in-process and never poll.
+    // Polling model: external (poller) agents authenticate to /agents/:id/pickup with
+    // their API key and do not require a DB-registered transport row. An external agent
+    // is only dispatch-eligible if it has at least one enabled, unexpired API key —
+    // otherwise parking a turn for pickup would strand it until the 24h timeout. System
+    // agents are always eligible; they execute in-process and never poll.
     const dispatchableAgentRows = agentRows.filter((row) => {
-      if (row.type !== 'personal') return true;
-      return credentialedPersonalAgentIds.has(row.id);
+      if (row.type !== 'external') return true;
+      return credentialedExternalAgentIds.has(row.id);
     });
     return this.mapAgentsWithRelations(dispatchableAgentRows, transportRows, allPermissionRows);
   }
 
-  private async findPersonalAgentIdsWithValidCredentials(agentIds: string[]): Promise<Set<string>> {
+  private async findExternalAgentIdsWithValidCredentials(agentIds: string[]): Promise<Set<string>> {
     if (agentIds.length === 0) {
       return new Set();
     }
@@ -517,6 +539,69 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   getSystemAgentIds(): AgentSystemIds {
     return SYSTEM_AGENT_IDS;
+  }
+
+  /**
+   * Ensure the user has a personal negotiator agent row (one per user).
+   * Idempotent — safe to call on every sign-in; follows the ensurePersonalNetwork
+   * setup-side-effect pattern. Ghost users are skipped: they never signed up and
+   * must not get negotiator rows (a later real sign-in de-ghosts and provisions).
+   *
+   * @param userId - The user to provision a negotiator for
+   * @returns The negotiator agent id, or null when the user is missing or a ghost
+   */
+  async ensureNegotiatorAgent(userId: string): Promise<string | null> {
+    const findExisting = () =>
+      db
+        .select({ id: schema.agents.id })
+        .from(schema.agents)
+        .where(
+          and(
+            eq(schema.agents.ownerId, userId),
+            eq(schema.agents.type, 'personal'),
+            isNull(schema.agents.deletedAt),
+          ),
+        )
+        .limit(1);
+
+    // Fast path: already provisioned.
+    const [existing] = await findExisting();
+    if (existing) {
+      return existing.id;
+    }
+
+    const [user] = await db
+      .select({ name: schema.users.name, isGhost: schema.users.isGhost })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+
+    if (!user || user.isGhost) {
+      return null;
+    }
+
+    const firstName = (user.name ?? '').trim().split(/\s+/)[0] ?? '';
+    const name = firstName ? `${firstName}'s Negotiator` : 'Your Negotiator';
+
+    await db
+      .insert(schema.agents)
+      .values({
+        ownerId: userId,
+        name,
+        description: 'Negotiates on your behalf across the network.',
+        type: 'personal',
+        status: 'active',
+        metadata: {},
+      })
+      .onConflictDoNothing();
+
+    // Re-query rather than trusting RETURNING — a concurrent sign-in may have won
+    // the insert race (onConflictDoNothing returns no row in that case).
+    const [row] = await findExisting();
+    if (row) {
+      logger.info('Ensured negotiator agent', { userId, agentId: row.id });
+    }
+    return row?.id ?? null;
   }
 
   /**
@@ -574,7 +659,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           return right.createdAt.getTime() - left.createdAt.getTime();
         }
 
-        return left.type === 'personal' ? -1 : 1;
+        return left.type === 'external' ? -1 : 1;
       });
   }
 

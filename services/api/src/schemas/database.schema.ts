@@ -10,7 +10,7 @@ export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
-export const agentTypeEnum = pgEnum('agent_type', ['personal', 'system']);
+export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
@@ -673,7 +673,7 @@ export const agents = pgTable('agents', {
   ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   description: text('description'),
-  type: agentTypeEnum('type').notNull().default('personal'),
+  type: agentTypeEnum('type').notNull(),
   status: agentStatusEnum('status').notNull().default('active'),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -688,6 +688,11 @@ export const agents = pgTable('agents', {
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
   lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
+  // One active personal negotiator row per owner. External (poller) and system
+  // rows are unconstrained.
+  uniquePersonalPerOwner: uniqueIndex('uniq_agents_personal_per_owner')
+    .on(table.ownerId)
+    .where(sql`${table.type} = 'personal' AND ${table.deletedAt} IS NULL`),
 }));
 
 export const agentTransports = pgTable('agent_transports', {
