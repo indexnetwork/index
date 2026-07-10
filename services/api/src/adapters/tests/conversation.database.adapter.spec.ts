@@ -80,6 +80,32 @@ describe('ConversationDatabaseAdapter', () => {
     }, 10000);
   });
 
+  describe('getLatestNegotiationTaskForConversation', () => {
+    it('returns the negotiation task, ignoring non-negotiation tasks, and null for fresh conversations', async () => {
+      const conv = await adapter.createConversation([
+        { participantId: 'agent:init-a', participantType: 'agent' as const },
+        { participantId: 'agent:init-b', participantType: 'agent' as const },
+      ]);
+      createdIds.push(conv.id);
+
+      expect(await adapter.getLatestNegotiationTaskForConversation(conv.id)).toBeNull();
+
+      // Non-negotiation task must not match.
+      await adapter.createTask(conv.id, { type: 'chat' });
+      expect(await adapter.getLatestNegotiationTaskForConversation(conv.id)).toBeNull();
+
+      const negotiationTask = await adapter.createTask(conv.id, {
+        type: 'negotiation',
+        sourceUserId: 'init-a',
+        initiatorUserId: 'init-a',
+      });
+
+      const found = await adapter.getLatestNegotiationTaskForConversation(conv.id);
+      expect(found?.id).toBe(negotiationTask.id);
+      expect(found?.metadata?.initiatorUserId).toBe('init-a');
+    }, 10000);
+  });
+
   describe('artifacts', () => {
     it('creates artifact linked to task', async () => {
       const task = await adapter.createTask(createdIds[0]);

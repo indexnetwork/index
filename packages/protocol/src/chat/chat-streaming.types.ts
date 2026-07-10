@@ -484,6 +484,8 @@ export interface NegotiationSessionStartEvent extends ChatStreamEventBase {
   negotiationConversationId: string;
   sourceUserId: string;
   candidateUserId: string;
+  /** The user holding the initiating seat for this match (v2 stamp). */
+  initiatorUserId?: string;
   candidateName?: string;
   trigger: "orchestrator" | "ambient";
   startedAt: number;

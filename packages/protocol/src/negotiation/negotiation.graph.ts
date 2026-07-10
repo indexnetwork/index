@@ -52,17 +52,14 @@ export class NegotiationGraphFactory {
         // --- Lock gate: check for an active task on this conversation ---
         const priorMessages = await database.getMessagesForConversation(conversation.id);
 
-        let isLocked = false;
-        if (state.opportunityId) {
-          const priorTask = await database.getNegotiationTaskForOpportunity(state.opportunityId);
-          if (priorTask) {
-            const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
-            const isFresh = (Date.now() - new Date(priorTask.updatedAt).getTime()) < 5 * 60 * 1000;
-            if (activeStates.includes(priorTask.state) && isFresh) {
-              isLocked = true;
-            }
-          }
-        }
+        const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
+        const isActiveAndFresh = (t: { state: string; updatedAt: Date }) =>
+          activeStates.includes(t.state) && (Date.now() - new Date(t.updatedAt).getTime()) < 5 * 60 * 1000;
+
+        const priorTask = state.opportunityId
+          ? await database.getNegotiationTaskForOpportunity(state.opportunityId)
+          : null;
+        const isLocked = !!priorTask && isActiveAndFresh(priorTask);
 
         if (isLocked) {
           initLog.info('Conversation locked by active task, returning busy', {
@@ -97,9 +94,40 @@ export class NegotiationGraphFactory {
           maxTurns = (sourceHasAgent && candidateHasAgent) ? 0 : ambientMax;
         }
 
+        // --- Initiator seat resolution (v2: rigid per match, stamped at discovery) ---
+        // 1. Continuations inherit from the prior task for the same opportunity —
+        //    never re-derive, so the seat cannot flip between sessions.
+        // 2. Conversation-scoped tie-break: if another negotiation on this DM is
+        //    active and fresh (symmetric concurrent start under a different
+        //    opportunityId — the opportunity-scoped lock above cannot see it),
+        //    the first created task keeps the seat; this run inherits its stamp.
+        // 3. Otherwise: explicit stamp from the caller, falling back to the
+        //    session's sourceUser (pre-stamp heuristic behavior, unchanged).
+        const readInitiator = (metadata: Record<string, unknown> | null | undefined): string | null => {
+          const v = metadata?.initiatorUserId;
+          return typeof v === 'string' && v.length > 0 ? v : null;
+        };
+        let initiatorUserId = readInitiator(priorTask?.metadata) ?? state.initiatorUserId ?? state.sourceUser.id;
+        if (!readInitiator(priorTask?.metadata)) {
+          const convTask = await database.getLatestNegotiationTaskForConversation?.(conversation.id)
+            .catch(() => null);
+          if (convTask && convTask.id !== priorTask?.id && isActiveAndFresh(convTask)) {
+            const convInitiator = readInitiator(convTask.metadata);
+            if (convInitiator) {
+              initLog.info('Conversation-scoped tie-break: inheriting initiator seat from concurrent task', {
+                conversationId: conversation.id,
+                winningTaskId: convTask.id,
+                initiatorUserId: convInitiator,
+              });
+              initiatorUserId = convInitiator;
+            }
+          }
+        }
+
         const task = await database.createTask(conversation.id, {
           type: 'negotiation',
           sourceUserId: state.sourceUser.id,
+          initiatorUserId,
           candidateUserId: state.candidateUser.id,
           networkId: state.indexContext.networkId,
           ...(state.opportunityId && { opportunityId: state.opportunityId }),
@@ -138,6 +166,7 @@ export class NegotiationGraphFactory {
           turnCount: 0,
           maxTurns,
           isContinuation,
+          initiatorUserId,
           priorTurnCount: priorTurns.length,
           ...(userAnswers.length > 0 && { userAnswers }),
           ...(seedMessages.length > 0 && { messages: seedMessages }),
@@ -518,9 +547,15 @@ export async function negotiateCandidates(
     timeoutMs?: number;
     onCandidateResolved?: OnNegotiationResolved;
     trigger?: "orchestrator" | "ambient";
+    /**
+     * Initiator seat for every candidate session in this fan-out (v2 stamp).
+     * Passed through to the negotiation graph, which may still override it by
+     * inheriting from a prior task on the same opportunity/conversation.
+     */
+    initiatorUserId?: string;
   },
 ): Promise<NegotiationResult[]> {
-  const { maxTurns, traceEmitter, indexContextOverrides, timeoutMs, onCandidateResolved, trigger } = opts ?? {};
+  const { maxTurns, traceEmitter, indexContextOverrides, timeoutMs, onCandidateResolved, trigger, initiatorUserId } = opts ?? {};
 
   // Local helper to emit events whose shape is wider than the declared
   // `TraceEmitter` union (mirrors the cast used in chat.agent at the relay sink
@@ -539,6 +574,7 @@ export async function negotiateCandidates(
           negotiationConversationId: "", // filled in on session_end
           sourceUserId: sourceUser.id,
           candidateUserId: candidate.userId,
+          initiatorUserId: initiatorUserId ?? sourceUser.id,
           ...(candidateName && { candidateName }),
           trigger: trigger ?? "ambient",
           startedAt: start,
@@ -561,6 +597,7 @@ export async function negotiateCandidates(
           },
           ...(candidate.discoveryQuery && { discoveryQuery: candidate.discoveryQuery }),
           ...(candidate.opportunityId && { opportunityId: candidate.opportunityId }),
+          ...(initiatorUserId && { initiatorUserId }),
           ...(maxTurns !== undefined && { maxTurns }),
           ...(timeoutMs !== undefined && { timeoutMs }),
         });

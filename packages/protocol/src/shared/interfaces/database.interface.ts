@@ -2244,6 +2244,24 @@ export interface NegotiationQueries {
   } | null>;
 
   /**
+   * Returns the most-recently-created task whose metadata carries
+   * `type: 'negotiation'` on the given conversation, regardless of
+   * opportunityId or direction. Used by the init node's conversation-scoped
+   * tie-break: symmetric concurrent starts carry different opportunityIds, so
+   * the opportunity-scoped lookup above cannot see the competing task.
+   * Optional so existing fakes/wireups remain valid; when absent the
+   * tie-break is skipped (pre-stamp behavior).
+   */
+  getLatestNegotiationTaskForConversation?(conversationId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null>;
+
+  /**
    * Returns user answers collected by the questioner system for a given
    * opportunity. Reads `metadata.userAnswers` from the opportunities table.
    * Used by the negotiation graph to inject between-session context into

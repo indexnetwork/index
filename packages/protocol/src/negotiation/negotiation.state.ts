@@ -82,6 +82,13 @@ export interface NegotiationGraphLike {
     opportunityId?: string;
     maxTurns?: number;
     timeoutMs?: number;
+    /**
+     * The user who holds the initiating seat for this match (v2 client-advocate
+     * protocol). Stamped into task metadata by the init node. When omitted, the
+     * init node resolves it: inherit from the prior task for the same
+     * opportunity → conversation-scoped tie-break → fall back to sourceUser.id.
+     */
+    initiatorUserId?: string;
   }): Promise<{
     outcome: NegotiationOutcome | null;
     messages?: NegotiationMessage[];
@@ -117,6 +124,16 @@ export const NegotiationGraphState = Annotation.Root({
   seedAssessment: Annotation<SeedAssessment>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({ reasoning: "", valencyRole: "" }),
+  }),
+
+  /**
+   * Explicit initiator seat for this match (purely additive metadata — no seat
+   * rules attach to it yet). Resolution when unset happens in the init node;
+   * the resolved value is written back to state and into task metadata.
+   */
+  initiatorUserId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
 
   /** The explicit search query that triggered discovery (if any). */
