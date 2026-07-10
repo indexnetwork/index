@@ -96,6 +96,19 @@ export class ToolService {
           })),
         }));
       },
+      // P4.3/IND-404: conversational answers from the negotiator chat ride the
+      // exact pipeline the question cards use — atomic pending→answered flip in
+      // the adapter, then QuestionEvents.onAnswered mode dispatch.
+      answerPendingQuestion: async (
+        userId: string,
+        questionId: string,
+        answer: { selectedOptions: string[]; freeText?: string },
+      ) => questionerAdapter.answer(questionId, userId, {
+        selectedOptions: answer.selectedOptions,
+        ...(answer.freeText ? { freeText: answer.freeText } : {}),
+        answeredBy: userId,
+        answeredAt: new Date().toISOString(),
+      }),
       graphs,
     };
   }

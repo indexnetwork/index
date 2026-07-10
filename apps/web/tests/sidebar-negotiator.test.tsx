@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
       user: null as Record<string, unknown> | null,
       features: null as Record<string, unknown> | null,
     },
+    questionsState: { count: 0 },
   };
 });
 
@@ -90,7 +91,7 @@ vi.mock('@/contexts/NotificationContext', () => ({
 }));
 
 vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({ count: 0 }),
+  useQuestions: () => ({ count: mocks.questionsState.count }),
 }));
 
 vi.mock('@/components/modals/CreateIndexModal', () => ({
@@ -146,6 +147,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
     vi.clearAllMocks();
     mocks.authState.user = aliceUser;
     mocks.authState.features = null;
+    mocks.questionsState.count = 0;
     mockSessions({});
   });
 
@@ -218,6 +220,37 @@ describe('Sidebar pinned Personal Agent entry', () => {
       expect(screen.getByTestId('location')).toHaveTextContent('/d/neg-dm-1')
     );
     expect(mocks.apiClient.post).not.toHaveBeenCalled();
+  });
+
+  test('pending-question badge renders on the entry when the inbox has open questions (IND-404)', async () => {
+    mocks.authState.features = { negotiatorChat: true };
+    mocks.questionsState.count = 3;
+    mockSessions({
+      negotiator: [{ id: 'neg-session-1', title: "Alice's Negotiator", networkId: null, createdAt: '', updatedAt: '' }],
+    });
+
+    renderSidebar();
+
+    await screen.findByText("Alice's Negotiator");
+    expect(screen.getByTestId('negotiator-question-badge')).toHaveTextContent('3');
+  });
+
+  test('badge caps at 99+ and disappears at zero (IND-404)', async () => {
+    mocks.authState.features = { negotiatorChat: true };
+    mocks.questionsState.count = 120;
+    mockSessions({
+      negotiator: [{ id: 'neg-session-1', title: "Alice's Negotiator", networkId: null, createdAt: '', updatedAt: '' }],
+    });
+
+    const { unmount } = renderSidebar();
+    await screen.findByText("Alice's Negotiator");
+    expect(screen.getByTestId('negotiator-question-badge')).toHaveTextContent('99+');
+    unmount();
+
+    mocks.questionsState.count = 0;
+    renderSidebar();
+    await screen.findByText("Alice's Negotiator");
+    expect(screen.queryByTestId('negotiator-question-badge')).toBeNull();
   });
 
   test('negotiator session never renders in the history list', async () => {

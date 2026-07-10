@@ -151,6 +151,8 @@ interface AIChatContextType {
   messages: ChatMessage[];
   sessionId: string | null;
   sessionTitle: string | null;
+  /** Persona driving the loaded session's agent loop (e.g. 'negotiator'). Null until a session is loaded. */
+  sessionPersona: string | null;
   setSessionId: (id: string | null) => void;
   /** The network bound to the current session (persisted). Null if no network scope. */
   sessionNetworkId: string | null;
@@ -294,6 +296,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
+  const [sessionPersona, setSessionPersona] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { refetchSessions } = useAIChatSessions();
@@ -1037,6 +1040,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setLiveQuestions([]);
     setSessionId(null);
     setSessionTitle(null);
+    setSessionPersona(null);
     setSessionScope(null); // Clear session-bound scope so new chat can use UI selection
     setSessionNetworkId(null); // Clear session-bound network so new chat can use UI selection
     if (abortStream && abortControllerRef.current) {
@@ -1058,6 +1062,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         session: {
           id: string;
           title?: string | null;
+          persona?: string | null;
           networkId?: string | null;
           scopeType?: "network" | "intent" | null;
           scopeId?: string | null;
@@ -1087,6 +1092,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       }>("/chat/session", { sessionId: id });
       setSessionId(data.session.id);
       setSessionTitle(data.session.title?.trim() ?? null);
+      setSessionPersona(data.session.persona ?? null);
       setSuggestions([]); // Session load does not return suggestions; next response will
       // Load the session's bound scope - this is the persisted scope for this conversation.
       const loadedScope: ChatScope = data.session.scopeType && data.session.scopeId
@@ -1155,6 +1161,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         messages,
         sessionId,
         sessionTitle,
+        sessionPersona,
         setSessionId,
         sessionNetworkId,
         chatScope,
