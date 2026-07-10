@@ -185,7 +185,7 @@ describe("ChatSessionService.getSession", () => {
 // ─── getUserSessions ──────────────────────────────────────────────────────────
 
 describe("ChatSessionService.getUserSessions", () => {
-  it("delegates to db and returns sessions", async () => {
+  it("delegates to db and returns sessions, excluding the negotiator DM by default", async () => {
     const sessions = [makeSession(), makeSession({ id: "session-002" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
@@ -195,7 +195,7 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10);
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, undefined);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, undefined, "negotiator");
   });
 
   it("passes the persona filter through to the adapter", async () => {
@@ -208,7 +208,7 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10, "orchestrator");
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator");
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator", undefined);
   });
 });
 

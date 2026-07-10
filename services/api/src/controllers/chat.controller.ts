@@ -7,7 +7,9 @@ import { log } from "../lib/log";
 import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
 import { chatSessionService } from "../services/chat.service";
 import { fileService } from "../services/file.service";
-import { SuggestionGenerator, ChatInterruptClassifier } from '@indexnetwork/protocol';
+import { agentService } from "../services/agent.service";
+import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
+import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
@@ -74,6 +76,8 @@ const streamBodySchema = z.object({
   scopeId: z.string().nullish(),
   /** The recipient user ID for DM-style chats (used for ghost invite emails). */
   recipientUserId: z.string().nullish(),
+  /** Chat persona. 'negotiator' bootstraps/streams the user's negotiator DM (P4.1). */
+  persona: z.enum(['negotiator']).nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -99,6 +103,15 @@ const interruptBodySchema = z.object({
   messageId: z.string().uuid(),
   traceSnapshot: z.array(z.string()).max(20).default([]),
 });
+
+/**
+ * Resolve the caller's personal negotiator agent row (provisioning it when
+ * missing — idempotent). Returns null for ghost or missing users, which
+ * callers treat as 404.
+ */
+async function resolveNegotiatorAgent(userId: string) {
+  return agentService.getNegotiatorAgent(userId);
+}
 
 let interruptClassifierInstance: ChatInterruptClassifier | null = null;
 function getInterruptClassifier(): ChatInterruptClassifier {
@@ -230,12 +243,37 @@ export class ChatController {
       return undefined;
     };
 
+    // Negotiator persona routing (P4.1): flag-gated, never scoped. Checked
+    // before scope validation — both rejections are cheap and unambiguous.
+    const requestedPersona = body.persona ?? undefined;
+    if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
+      if (!isNegotiatorChatEnabled()) {
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      if (requestedScope) {
+        return Response.json({ error: "Negotiator chat cannot be scoped" }, { status: 400 });
+      }
+    }
+
     const requestScopeError = await validateScope(requestedScope);
     if (requestScopeError) return requestScopeError;
 
     let currentSessionId = body.sessionId;
     let effectiveScope = requestedScope;
-    if (!currentSessionId) {
+    let sessionPersona: string = "orchestrator";
+    let negotiatorAgent: Awaited<ReturnType<typeof resolveNegotiatorAgent>> = null;
+    if (!currentSessionId && requestedPersona === NEGOTIATOR_PERSONA_ID) {
+      negotiatorAgent = await resolveNegotiatorAgent(user.id);
+      if (!negotiatorAgent) {
+        return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
+      }
+      const resolved = await chatSessionService.resolveNegotiatorSession(user.id, negotiatorAgent.name);
+      if ('error' in resolved) {
+        return Response.json({ error: resolved.error }, { status: resolved.status });
+      }
+      currentSessionId = resolved.session.id;
+      sessionPersona = NEGOTIATOR_PERSONA_ID;
+    } else if (!currentSessionId) {
       const initialTitle = body.prefillMessages?.length
         ? "Set Up Your Social Agent"
         : undefined;
@@ -261,6 +299,17 @@ export class ChatController {
       if (!loadedSession) {
         return Response.json({ error: "Session not found" }, { status: 404 });
       }
+      sessionPersona = loadedSession.persona ?? "orchestrator";
+      if (sessionPersona === NEGOTIATOR_PERSONA_ID) {
+        if (!isNegotiatorChatEnabled()) {
+          return Response.json({ error: "Not found" }, { status: 404 });
+        }
+        if (requestedScope) {
+          return Response.json({ error: "Negotiator chat cannot be scoped" }, { status: 400 });
+        }
+      } else if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
+        return Response.json({ error: "Session persona mismatch" }, { status: 409 });
+      }
       const persistedScope = sessionScope(loadedSession);
       if (requestedScope && persistedScope && !sameScope(requestedScope, persistedScope)) {
         return Response.json({ error: "Session is already scoped differently" }, { status: 409 });
@@ -275,9 +324,18 @@ export class ChatController {
     const effectiveScopeError = await validateScope(effectiveScope);
     if (effectiveScopeError) return effectiveScopeError;
 
+    if (sessionPersona === NEGOTIATOR_PERSONA_ID && !negotiatorAgent) {
+      negotiatorAgent = await resolveNegotiatorAgent(user.id);
+      if (!negotiatorAgent) {
+        return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
+      }
+    }
+
     // Capture for closure
     const sessionId = currentSessionId;
-    const factory = chatSessionService.getGraphFactory();
+    const factory = sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
+      ? chatSessionService.getNegotiatorGraphFactory(negotiatorAgent)
+      : chatSessionService.getGraphFactory();
     const useCheckpointer = body.useCheckpointer ?? true;
     const runId = crypto.randomUUID();
     const streamAbortController = new AbortController();
@@ -565,8 +623,8 @@ export class ChatController {
   @Get("/sessions")
   @UseGuards(RateLimit('read'), AuthGuard)
   async getSessions(req: Request, user: AuthenticatedUser) {
-    // Optional persona filter (e.g. ?persona=orchestrator). Omitted → all sessions,
-    // which is today's behavior (every existing session is 'orchestrator').
+    // Optional persona filter (e.g. ?persona=orchestrator). Omitted → all
+    // sessions except the negotiator DM, which is a pinned surface, not history.
     const personaParam = new URL(req.url).searchParams.get("persona")?.trim();
     const sessions = await chatSessionService.getUserSessions(
       user.id,
@@ -574,6 +632,40 @@ export class ChatController {
       personaParam || undefined,
     );
     return Response.json({ sessions });
+  }
+
+  /**
+   * Get-or-create the user's stable negotiator DM session (P4.1).
+   * Idempotent: repeat calls return the same session — one persistent DM per
+   * user, keyed by the chat_session_scopes unique index. Gated by
+   * NEGOTIATOR_CHAT_ENABLED (404 when off, as if the route does not exist).
+   *
+   * @param _req - The HTTP request object (no body)
+   * @param user - The authenticated user from AuthGuard
+   * @returns JSON with the session, whether it was created, and the negotiator agent identity
+   */
+  @Post("/negotiator/session")
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async negotiatorSession(_req: Request, user: AuthenticatedUser) {
+    if (!isNegotiatorChatEnabled()) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+
+    const agent = await resolveNegotiatorAgent(user.id);
+    if (!agent) {
+      return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
+    }
+
+    const result = await chatSessionService.resolveNegotiatorSession(user.id, agent.name);
+    if ('error' in result) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
+
+    return Response.json({
+      session: result.session,
+      created: result.created,
+      agent: { id: agent.id, name: agent.name, description: agent.description },
+    });
   }
 
   /**
