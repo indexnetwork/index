@@ -9,11 +9,21 @@ import { log } from '@/lib/logger';
 
 const logger = log.context.from('AuthContext');
 
+/**
+ * Server-driven feature flags returned alongside the user on GET /auth/me
+ * (sibling of `user`, not part of it). `negotiatorChat` gates the pinned
+ * Personal Agent entry in the sidebar (IND-411).
+ */
+export type UserFeatures = {
+  negotiatorChat?: boolean;
+};
+
 type AuthContextType = {
   isReady: boolean;
   isLoading: boolean;
   isAuthenticated: boolean;
   user: User | null;
+  features: UserFeatures | null;
   userLoading: boolean;
   error: string | null;
   refetchUser: () => Promise<void>;
@@ -29,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [features, setFeatures] = useState<UserFeatures | null>(null);
   const [userLoading, setUserLoading] = useState(false);
   const [userFetchAttempted, setUserFetchAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,9 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserFetchAttempted(true);
     setError(null);
     try {
-      const response = await api.get<APIResponse<User>>('/auth/me');
+      const response = await api.get<APIResponse<User> & { features?: UserFeatures }>('/auth/me');
       if (response.user) {
         setUser(response.user);
+        setFeatures(response.features ?? null);
 
         const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (browserTimezone && response.user.timezone !== browserTimezone) {
@@ -94,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           logger.error('Failed to clear stale auth session', { error: signOutError });
         });
         setUser(null);
+        setFeatures(null);
         setUserFetchAttempted(false);
         setError(null);
         return;
@@ -101,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setError('Failed to load user data. Please try refreshing the page.');
       setUser(null);
+      setFeatures(null);
     } finally {
       setUserLoading(false);
     }
@@ -111,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fetchUser();
     } else if (!authenticated) {
       setUser(null);
+      setFeatures(null);
       setUserLoading(false);
       setUserFetchAttempted(false);
       setError(null);
@@ -173,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: authenticated,
         user,
+        features,
         userLoading,
         error,
         refetchUser: fetchUser,

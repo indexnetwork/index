@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, History, Network, Bot, CircleHelp } from 'lucide-react';
+import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, History, Network, Bot, BotMessageSquare, CircleHelp } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -32,7 +32,7 @@ interface ChatSession {
 export default function Sidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, signOut } = useAuthContext();
+  const { user, features, signOut } = useAuthContext();
   useConversation();
   const totalUnreadCount = 0; // Unread tracking out of scope for now
   const { sessionsVersion } = useAIChatSessions();
@@ -53,17 +53,24 @@ export default function Sidebar() {
   const userDropdownRef = useRef<HTMLDivElement>(null);
   const { count: pendingQuestionsCount } = useQuestions();
 
+  // Pinned negotiator DM (IND-411). Flag-gated: the entry renders only when
+  // the backend reports the negotiator chat feature enabled on /auth/me.
+  const negotiatorEnabled = features?.negotiatorChat === true;
+  const [negotiatorSession, setNegotiatorSession] = useState<{ id: string; title: string | null } | null>(null);
+  const [openingNegotiator, setOpeningNegotiator] = useState(false);
+
+  // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
+  const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
+
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isNetworksView = pathname?.startsWith('/networks');
-  const isHistoryView = pathname?.startsWith('/d/');
+  const isNegotiatorView = !!negotiatorSession && currentSessionId === negotiatorSession.id;
+  const isHistoryView = pathname?.startsWith('/d/') && !isNegotiatorView;
   const isSettingsView = pathname?.startsWith('/settings');
   const isAgentsView = pathname?.startsWith('/agents') || pathname?.startsWith('/agent');
   const isMyNetworkView = pathname?.startsWith('/mynetwork');
   const isQuestionsView = pathname?.startsWith('/questions');
-  const isHomeView = !isMessagesView && !isNetworksView && !isHistoryView && !isSettingsView && !isAgentsView && !isMyNetworkView && !isQuestionsView;
-
-  // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
-  const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
+  const isHomeView = !isMessagesView && !isNetworksView && !isHistoryView && !isNegotiatorView && !isSettingsView && !isAgentsView && !isMyNetworkView && !isQuestionsView;
 
   const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown> }) => {
     try {
@@ -138,6 +145,53 @@ export default function Sidebar() {
       setNavigatingToChat(false);
     }
   };
+
+  // Resolve the existing negotiator DM (if bootstrapped) so the pinned entry
+  // can show the agent's name and highlight when active — without creating a
+  // session as a side effect of rendering the sidebar.
+  useEffect(() => {
+    if (!user?.id || !negotiatorEnabled) return;
+    let active = true;
+    apiClient
+      .get<{ sessions: ChatSession[] }>('/chat/sessions?persona=negotiator')
+      .then((data) => {
+        if (!active) return;
+        const session = data.sessions?.[0];
+        if (session) setNegotiatorSession({ id: session.id, title: session.title });
+      })
+      .catch((error) => {
+        logger.error('Failed to fetch negotiator session', { error });
+      });
+    return () => { active = false; };
+  }, [user?.id, negotiatorEnabled]);
+
+  // One persistent DM per user: get-or-create on click, then navigate to the
+  // regular session route. Repeat clicks and reloads land in the same session.
+  const handleNegotiatorClick = async () => {
+    if (!user?.id || openingNegotiator) return;
+    if (negotiatorSession) {
+      navigate(`/d/${negotiatorSession.id}`);
+      return;
+    }
+    setOpeningNegotiator(true);
+    try {
+      const { session, agent } = await apiClient.post<{
+        session: { id: string; title: string | null };
+        created: boolean;
+        agent: { id: string; name: string; description: string | null };
+      }>('/chat/negotiator/session');
+      setNegotiatorSession({ id: session.id, title: session.title ?? agent.name });
+      navigate(`/d/${session.id}`);
+    } catch (err) {
+      logger.error('Failed to open negotiator chat', { error: err });
+      error('Failed to open Personal Agent chat');
+    } finally {
+      setOpeningNegotiator(false);
+    }
+  };
+
+  const negotiatorLabel = negotiatorSession?.title
+    || (user?.name ? `${user.name.split(' ')[0]}'s Negotiator` : 'Personal Agent');
 
   // Fetch AI chat sessions (cookie-based auth; credentials sent automatically)
   useEffect(() => {
@@ -221,6 +275,24 @@ export default function Sidebar() {
           )}
         </button>
 
+        {/* Pinned Personal Agent DM (IND-411) — flag-gated, above History; a
+            pinned surface, not a history entry (backend excludes it from
+            /chat/sessions). */}
+        {negotiatorEnabled && (
+          <button
+            onClick={handleNegotiatorClick}
+            disabled={openingNegotiator}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+              isNegotiatorView
+                ? 'bg-gray-100 text-black font-bold'
+                : 'text-black font-medium hover:bg-gray-50'
+            } ${openingNegotiator ? 'opacity-50 cursor-wait' : ''}`}
+          >
+            <BotMessageSquare className="w-5 h-5" />
+            <span className="flex-1 text-left truncate">{negotiatorLabel}</span>
+          </button>
+        )}
+
         {/* History menu item with submenu */}
         <div>
           <button
@@ -244,7 +316,7 @@ export default function Sidebar() {
               ) : chatSessions.length === 0 ? (
                 <div className="text-sm text-gray-400 py-2">No conversations yet</div>
               ) : (
-                chatSessions.map((session) => {
+                chatSessions.filter((session) => session.id !== negotiatorSession?.id).map((session) => {
                   const isSelected = currentSessionId === session.id;
                   const sessionIndex = session.networkId ? indexes.find(i => i.id === session.networkId) : null;
                   return (
