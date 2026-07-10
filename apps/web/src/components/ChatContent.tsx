@@ -17,7 +17,6 @@ import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/AssistantMessageContent";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
-import IntentList from "@/components/IntentList";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
@@ -35,18 +34,6 @@ import { log } from "@/lib/logger";
 const logger = log.ui.from("ChatContent");
 
 const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
-
-/** Intent list item shown on the home shelf (from POST /intents/list). */
-interface HomeIntent {
-  id: string;
-  payload: string;
-  summary?: string | null;
-  createdAt: string;
-  sourceType?: 'file' | 'link' | 'integration';
-  networks?: { id: string; title: string }[];
-  status?: string;
-}
-
 
 interface PendingFile {
   id: string;
@@ -142,8 +129,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   } = useOpportunityActions({ scope: intentOpportunityScope });
 
   // Intents shown on the home shelf.
-  const [homeIntents, setHomeIntents] = useState<HomeIntent[]>([]);
-  const [homeIntentsLoading, setHomeIntentsLoading] = useState(false);
 
   // Stable list of opportunity IDs from assistant messages (avoids effect re-run on every streaming token)
   const opportunityIdsArray = useMemo(() => {
@@ -383,40 +368,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     if (chatScope?.type === "intent") return;
     setScopeNetworkId(selectedIndexId);
   }, [selectedIndexId, setScopeNetworkId, chatScope?.type]);
-
-  // Fetch the intent list only on the root/home composer. Empty /d/:sessionId
-  // conversations should render the chat shell, not the home shelf.
-  useEffect(() => {
-    if (messages.length > 0 || sessionIdFromUrl) return;
-    let active = true;
-    setHomeIntentsLoading(true);
-    apiClient
-      .post<{ intents?: HomeIntent[] }>("/intents/list", { page: 1, limit: 100 })
-      .then((res) => {
-        if (active) setHomeIntents(res.intents ?? []);
-      })
-      .catch(() => {
-        if (active) setHomeIntents([]);
-      })
-      .finally(() => {
-        if (active) setHomeIntentsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [messages.length, sessionIdFromUrl]);
-
-  const handleArchiveHomeIntent = useCallback(
-    async (intent: HomeIntent) => {
-      setHomeIntents((prev) => prev.filter((i) => i.id !== intent.id));
-      try {
-        await apiClient.patch(`/intents/${intent.id}/archive`);
-      } catch {
-        showError("Failed to archive intent");
-      }
-    },
-    [showError],
-  );
 
   const handleSuggestionClick = useCallback(
     (suggestion: {
@@ -911,7 +862,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         <ContentContainer className="text-left">
           <div className="mt-12 mb-6 flex items-center justify-center gap-2">
             <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
-              Find your others
+              Talk to your agent
             </h1>
             <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
           </div>
@@ -994,15 +945,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 )}
               </div>
             </form>
-          </div>
-          <div className="mt-8">
-            <IntentList
-              intents={homeIntents}
-              isLoading={homeIntentsLoading}
-              emptyMessage="No signals yet"
-              onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
-              onArchiveIntent={handleArchiveHomeIntent}
-            />
           </div>
         </ContentContainer>
       </div>
