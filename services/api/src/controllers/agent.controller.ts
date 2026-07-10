@@ -6,7 +6,7 @@ import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { AgentTestMessageService } from '../services/agent-test-message.service';
 import { agentService } from '../services/agent.service';
-import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedError } from '../services/negotiation-polling.service';
+import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedError, SeatViolationError } from '../services/negotiation-polling.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 
 const agentTestMessageService = new AgentTestMessageService();
@@ -61,8 +61,10 @@ const confirmOpportunityDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
 });
 
+// Accepts the union of v1 + v2 action vocabularies; the polling service
+// enforces the per-task version + seat subset (wrong-seat action → 400).
 const respondNegotiationSchema = z.object({
-  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question']),
+  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question', 'outreach', 'withdraw', 'decline']),
   message: z.string().nullable().optional(),
   assessment: z.object({
     reasoning: z.string(),
@@ -90,6 +92,7 @@ function parseErrorMessage(err: unknown): string {
 }
 
 function errorStatus(err: unknown, fallback = 400): number {
+  if (err instanceof SeatViolationError) return 400;
   if (err instanceof UnauthorizedError) return 403;
   if (err instanceof NotFoundError) return 404;
   if (err instanceof ConflictError) return 409;

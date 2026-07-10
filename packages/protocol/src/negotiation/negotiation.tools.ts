@@ -4,6 +4,8 @@ import type { DefineTool, ToolDeps } from '../shared/agent/tool.helpers.js';
 import { success, error } from '../shared/agent/tool.helpers.js';
 import { IndexNegotiator } from './negotiation.agent.js';
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationOutcome } from './negotiation.state.js';
+import { allowedActionsFor, isTerminalAction, readProtocolVersion, rejectActionFor, resolveSeat, seatViolationMessage } from './negotiation.protocol.js';
+import { NEGOTIATION_ACTIONS } from '../shared/schemas/negotiation-state.schema.js';
 import type { NegotiationTurnPayload } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { focusedNetworkId } from '../shared/agent/tool.scope.js';
@@ -134,9 +136,14 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             ? ((lastMessage.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data')?.data as { action?: string; assessment?: { reasoning?: string }; message?: string | null } | undefined)
             : undefined;
 
-          // Determine whose turn it is based on message count (alternating source/candidate)
+          // Determine whose turn it is from the last message's sender — not
+          // parity, which misattributes across continuation sessions. Rows
+          // without senderId (legacy) fall back to parity.
           const turnCount = messages.length;
-          const currentSpeaker = turnCount % 2 === 0 ? 'source' : 'candidate';
+          const lastSenderId = turnCount > 0 ? messages[turnCount - 1].senderId : null;
+          const currentSpeaker = lastSenderId
+            ? (lastSenderId === `agent:${meta.sourceUserId}` ? 'candidate' : 'source')
+            : (turnCount % 2 === 0 ? 'source' : 'candidate');
 
           // Map task state to tool status
           const status = task.state === 'working' ? 'active'
@@ -170,7 +177,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           const recentMessages = messages.slice(-RECENT_TURNS_LIMIT);
           const recentTurns = recentMessages.map((m, sliceIdx) => {
             const absoluteIdx = messages.length - recentMessages.length + sliceIdx;
-            const speaker = absoluteIdx % 2 === 0 ? 'source' : 'candidate';
+            const speaker = m.senderId
+              ? (m.senderId === `agent:${meta.sourceUserId}` ? 'source' : 'candidate')
+              : (absoluteIdx % 2 === 0 ? 'source' : 'candidate');
             const td = ((m.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data')?.data as { action?: string; message?: string | null } | undefined);
             return {
               turnNumber: absoluteIdx + 1,
@@ -258,6 +267,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         const meta = task.metadata as {
           sourceUserId?: string;
           candidateUserId?: string;
+          initiatorUserId?: string;
+          protocolVersion?: string;
           type?: string;
           maxTurns?: number;
           opportunityId?: string;
@@ -326,7 +337,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           negotiationDatabase.getArtifactsForTask(task.id),
         ]);
 
-        // Parse turns from messages
+        // Parse turns from messages (speaker from senderId, not parity —
+        // continuations can start with either side speaking first)
         const turns = messages.map((m, idx) => {
           const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data');
           const turnData = dataPart?.data as {
@@ -336,7 +348,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           } | undefined;
 
           const turnNumber = idx + 1;
-          const speaker = turnNumber % 2 === 1 ? 'source' : 'candidate';
+          const speaker = m.senderId
+            ? (m.senderId === `agent:${meta.sourceUserId}` ? 'source' : 'candidate')
+            : (turnNumber % 2 === 1 ? 'source' : 'candidate');
 
           return {
             turnNumber,
@@ -356,9 +370,13 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           ? (outcomeArtifact.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data')?.data
           : null;
 
-        // Determine whose turn it is
+        // Determine whose turn it is (last sender's counterpart, not parity;
+        // rows without senderId fall back to parity)
         const turnCount = messages.length;
-        const currentSpeaker = turnCount % 2 === 0 ? 'source' : 'candidate';
+        const lastSenderId = turnCount > 0 ? messages[turnCount - 1].senderId : null;
+        const currentSpeaker = lastSenderId
+          ? (lastSenderId === `agent:${meta.sourceUserId}` ? 'candidate' : 'source')
+          : (turnCount % 2 === 0 ? 'source' : 'candidate');
 
         const status = task.state === 'working' ? 'active'
           : task.state === 'waiting_for_agent' ? 'waiting_for_agent'
@@ -371,11 +389,19 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         const isContinuation = meta.isContinuation ?? false;
         const priorTurnCount = meta.priorTurnCount ?? 0;
 
+        // Seat + protocol version (v2 client-advocate): announce the caller's
+        // seat and the actions it may submit so agents don't guess.
+        const protocolVersion = readProtocolVersion(meta) ?? 'v1';
+        const seat = resolveSeat(context.userId, meta);
+
         return success({
           id: task.id,
           conversationId: task.conversationId,
           status,
           role: isSource ? 'source' : 'candidate',
+          seat,
+          protocolVersion,
+          allowedActions: allowedActionsFor(protocolVersion, seat),
           counterpartyId: counterpartyId ?? 'unknown',
           turnCount,
           isUsersTurn,
@@ -402,22 +428,25 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
       'by accepting, rejecting, countering, or asking a clarifying question.\n\n' +
       '**Turn-based model:** Negotiations alternate between source and candidate agents. When the graph yields with ' +
       '`waiting_for_agent` status, the user whose turn it is can respond.\n\n' +
-      '**Valid actions:**\n' +
-      '- `accept` — Accept the current proposal. The negotiation will be finalized as an opportunity.\n' +
-      '- `reject` — Reject the current proposal. The negotiation will end without creating an opportunity.\n' +
-      '- `counter` — Counter the proposal with a message (message is required). The negotiation will continue.\n' +
-      '- `question` — Ask the counterparty a clarifying question (message is required). The negotiation will continue.\n\n' +
-      '**What happens after:** Accept/reject finalizes the negotiation immediately. Counter/question continues the negotiation — ' +
-      'if the counterparty has an agent, the negotiation yields again; otherwise the AI agent responds inline.\n\n' +
+      '**Valid actions depend on the negotiation protocol version and your seat** — call get_negotiation first: ' +
+      'its `seat`, `protocolVersion`, and `allowedActions` fields tell you exactly what you may submit.\n\n' +
+      '**v1 negotiations (legacy):** `propose | accept | reject | counter | question` — on the first turn the action MUST be `propose`.\n\n' +
+      '**v2 negotiations (client-advocate seat rules):**\n' +
+      '- Initiator seat (`outreach | counter | question | withdraw`): you reached out — you can NEVER accept. ' +
+      '`outreach` opens the negotiation; `withdraw` ends it without an opportunity.\n' +
+      '- Counterparty seat (`accept | decline | counter | question`): only your seat can `accept` (finalizes an opportunity); ' +
+      '`decline` ends the negotiation without one.\n\n' +
+      '- `counter` — Counter with a message (message is required). The negotiation continues.\n' +
+      '- `question` — Ask the other side a clarifying question (message is required). The negotiation continues.\n\n' +
+      '**What happens after:** Terminal actions (accept/reject/withdraw/decline) finalize the negotiation immediately. ' +
+      'Counter/question continues — if the counterparty has an agent, the negotiation yields again; otherwise the AI agent responds inline.\n\n' +
       '**Silent-subagent response contract.** In negotiation-turn mode, submit exactly ONE call to this tool ' +
-      'per dispatch with the action (propose | counter | accept | reject | question) and the assessment ' +
-      '(reasoning + suggestedRoles). If the decision is ambiguous, pick the most conservative action — usually ' +
-      '`counter` with specific objections, or `reject` with clear reasoning. On the first turn of a negotiation ' +
-      '(turnCount === 0) the action MUST be `propose`. Do not ask the user clarifying questions; you are ' +
-      'authorized to act on their behalf within the scope granted to your agent.',
+      'per dispatch with an action from your seat\'s allowed set and the assessment (reasoning + suggestedRoles). ' +
+      'If the decision is ambiguous, pick the most conservative action — usually `counter` with specific objections. ' +
+      'Do not ask the user clarifying questions; you are authorized to act on their behalf within the scope granted to your agent.',
     querySchema: z.object({
       negotiationId: z.string().describe('The negotiation task ID to respond to.'),
-      action: z.enum(['propose', 'accept', 'reject', 'counter', 'question']).describe('The response action. On the first turn (turnCount === 0) this MUST be "propose".'),
+      action: z.enum(NEGOTIATION_ACTIONS).describe('The response action. Must be within your seat\'s allowedActions (see get_negotiation). v1 first turn MUST be "propose"; v2 initiator first turn MUST be "outreach".'),
       reasoning: z.string().describe('Why you are taking this action — your assessment of the opportunity.'),
       suggestedRoles: z.object({
         ownUser: z.enum(['agent', 'patient', 'peer']).describe('Suggested role for your user in this opportunity.'),
@@ -435,6 +464,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         const meta = task.metadata as {
           sourceUserId?: string;
           candidateUserId?: string;
+          initiatorUserId?: string;
+          protocolVersion?: string;
           type?: string;
           maxTurns?: number;
           networkId?: string;
@@ -466,15 +497,32 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           return error('Access denied: you are not a party to this negotiation.');
         }
 
-        // Determine whose turn it is
+        // Seat + version validation (v2 client-advocate): the submitted action
+        // must be within the caller's seat vocabulary. v1 tasks accept the
+        // legacy vocabulary unchanged (grandfathered).
+        const protocolVersion = readProtocolVersion(meta) ?? 'v1';
+        const seat = resolveSeat(context.userId, meta);
+        if (!allowedActionsFor(protocolVersion, seat).includes(query.action)) {
+          return error(seatViolationMessage(query.action, seat, protocolVersion));
+        }
+
+        // Determine whose turn it is from the last message's sender — not
+        // parity, which misattributes across continuation sessions. Rows
+        // without senderId (legacy) fall back to the parity heuristic.
         const messages = await negotiationDatabase.getMessagesForConversation(task.conversationId);
         const turnCount = messages.length;
-        const currentSpeaker = turnCount % 2 === 0 ? 'source' : 'candidate';
-        const isUsersTurn = (isSource && currentSpeaker === 'source') || (!isSource && currentSpeaker === 'candidate');
+        const lastSenderId = turnCount > 0 ? messages[turnCount - 1].senderId : null;
+        const paritySpeaker = turnCount % 2 === 0 ? 'source' : 'candidate';
+        const isUsersTurn = lastSenderId
+          ? lastSenderId !== `agent:${context.userId}`
+          : ((isSource && paritySpeaker === 'source') || (!isSource && paritySpeaker === 'candidate'));
 
         if (!isUsersTurn) {
           return error('It is not your turn to respond in this negotiation.');
         }
+
+        // The caller is the current speaker (verified above).
+        const currentSpeaker: 'source' | 'candidate' = isSource ? 'source' : 'candidate';
 
         // Validate counter/question has a message
         if ((query.action === 'counter' || query.action === 'question') && !query.message?.trim()) {
@@ -507,8 +555,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
 
         const newTurnCount = turnCount + 1;
 
-        // ── Handle accept/reject: finalize immediately ──
-        if (query.action === 'accept' || query.action === 'reject') {
+        // ── Handle terminal actions (accept / reject / withdraw / decline): finalize immediately ──
+        if (isTerminalAction(query.action)) {
           const allMessages = [...messages, { id: turnMessage.id, senderId: turnMessage.senderId, role: turnMessage.role, parts: turnMessage.parts as unknown[], createdAt: turnMessage.createdAt }];
           const history: NegotiationTurn[] = turnsFromMessages(allMessages);
 
@@ -526,7 +574,11 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           return success({
             message: query.action === 'accept'
               ? 'Negotiation accepted. An opportunity has been created.'
-              : 'Negotiation rejected.',
+              : query.action === 'withdraw'
+                ? 'Negotiation withdrawn.'
+                : query.action === 'decline'
+                  ? 'Negotiation declined.'
+                  : 'Negotiation rejected.',
             negotiationId: task.id,
             action: query.action,
             turnNumber: newTurnCount,
@@ -564,6 +616,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         // ── Counter/question under max turns: dispatch to counterparty's agent ──
         const counterpartyUserId = isSource ? meta.candidateUserId! : meta.sourceUserId!;
         const counterpartySpeaker = isSource ? 'candidate' : 'source';
+        const counterpartySeat = resolveSeat(counterpartyUserId, meta);
 
         // Build the current turn history for dispatcher payload
         const allMessagesWithTurn = [...messages, { id: turnMessage.id, senderId: turnMessage.senderId, role: turnMessage.role, parts: turnMessage.parts as unknown[], createdAt: turnMessage.createdAt }];
@@ -584,6 +637,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           history: historyForDispatch,
           isFinalTurn,
           isDiscoverer: false,
+          seat: counterpartySeat,
+          protocolVersion,
+          allowedActions: [...allowedActionsFor(protocolVersion, counterpartySeat, isFinalTurn)],
         };
 
         const scope = { action: 'negotiation.respond', scopeType: 'negotiation', scopeId: task.id };
@@ -600,7 +656,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           }
 
           return success({
-            message: `${query.action === 'question' ? 'Question' : query.action === 'propose' ? 'Proposal' : 'Counter-proposal'} submitted. Waiting for counterparty response.`,
+            message: `${query.action === 'question' ? 'Question' : query.action === 'propose' ? 'Proposal' : query.action === 'outreach' ? 'Outreach' : 'Counter-proposal'} submitted. Waiting for counterparty response.`,
             negotiationId: task.id,
             action: query.action,
             turnNumber: newTurnCount,
@@ -631,6 +687,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
               seedAssessment,
               history: historyForDispatch,
               isFinalTurn,
+              seat: counterpartySeat,
+              protocolVersion,
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -648,7 +706,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
               error: errMsg,
             });
             aiTurn = {
-              action: 'reject',
+              action: rejectActionFor(protocolVersion, counterpartySeat),
               assessment: {
                 reasoning: isTimeout
                   ? 'Negotiator response timed out.'
@@ -672,7 +730,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         const finalTurnCount = newTurnCount + 1;
 
         // Evaluate response
-        if (aiTurn.action === 'accept' || aiTurn.action === 'reject') {
+        if (isTerminalAction(aiTurn.action)) {
           const fullHistory = [...historyForDispatch, aiTurn];
           const outcome = buildNegotiationOutcome(fullHistory, finalTurnCount, aiTurn.action, meta.sourceUserId!, meta.candidateUserId!, counterpartySpeaker === 'source' ? 'candidate' : 'source');
 
@@ -727,6 +785,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           history: [...historyForDispatch, aiTurn],
           isFinalTurn: finalTurnCount + 1 >= maxTurns,
           isDiscoverer: true,
+          seat,
+          protocolVersion,
+          allowedActions: [...allowedActionsFor(protocolVersion, seat, finalTurnCount + 1 >= maxTurns)],
         };
 
         const userDispatchResult = await deps.agentDispatcher?.dispatch(context.userId, scope, userDispatchPayload, { timeoutMs });
@@ -781,7 +842,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
 
           const userTurnCount = finalTurnCount + 1;
 
-          if (userAgentTurn.action === 'accept' || userAgentTurn.action === 'reject') {
+          if (isTerminalAction(userAgentTurn.action)) {
             const fullHistory = [...historyForDispatch, aiTurn, userAgentTurn];
             const userSpeaker = isSource ? 'source' : 'candidate';
             const outcome = buildNegotiationOutcome(fullHistory, userTurnCount, userAgentTurn.action, meta.sourceUserId!, meta.candidateUserId!, userSpeaker === 'source' ? 'candidate' : 'source');
@@ -883,7 +944,8 @@ function buildNegotiationOutcome(
   currentSpeaker: string,
 ): NegotiationOutcome {
   const hasOpportunity = lastAction === 'accept';
-  const atCap = lastAction === 'counter';
+  // Non-terminal last action at finalization means the turn cap was hit.
+  const atCap = !isTerminalAction(lastAction);
 
   let agreedRoles: NegotiationOutcome['agreedRoles'] = [];
   if (hasOpportunity && history.length >= 2) {

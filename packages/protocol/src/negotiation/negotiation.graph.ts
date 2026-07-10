@@ -7,6 +7,8 @@ import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-e
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
+import { allowedActionsFor, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 
@@ -108,9 +110,13 @@ export class NegotiationGraphFactory {
           return typeof v === 'string' && v.length > 0 ? v : null;
         };
         let initiatorUserId = readInitiator(priorTask?.metadata) ?? state.initiatorUserId ?? state.sourceUser.id;
+        // Conversation-scoped prior task: reused for both the initiator tie-break
+        // (only when active+fresh) and protocol-version inheritance (any prior
+        // task on the conversation pins the version).
+        const convTask = (!readInitiator(priorTask?.metadata) || !readProtocolVersion(priorTask?.metadata))
+          ? await database.getLatestNegotiationTaskForConversation?.(conversation.id).catch(() => null)
+          : null;
         if (!readInitiator(priorTask?.metadata)) {
-          const convTask = await database.getLatestNegotiationTaskForConversation?.(conversation.id)
-            .catch(() => null);
           if (convTask && convTask.id !== priorTask?.id && isActiveAndFresh(convTask)) {
             const convInitiator = readInitiator(convTask.metadata);
             if (convInitiator) {
@@ -124,10 +130,28 @@ export class NegotiationGraphFactory {
           }
         }
 
+        // --- Protocol version: inherited, never re-stamped ---
+        // Every session (including continuations) creates a new task row, so a
+        // naïve "stamp from env at init" would flip a v1 conversation to v2
+        // mid-flight. Rule: any prior negotiation task on this conversation pins
+        // the version (absent field on a genuine prior = pre-v2 task = v1);
+        // prior turns without a readable task also grandfather to v1; only
+        // genuinely fresh negotiations stamp from NEGOTIATION_PROTOCOL_VERSION.
+        let protocolVersion: NegotiationProtocolVersion;
+        const priorVersionSource = priorTask ?? convTask;
+        if (priorVersionSource) {
+          protocolVersion = readProtocolVersion(priorVersionSource.metadata) ?? 'v1';
+        } else if (isContinuation) {
+          protocolVersion = 'v1';
+        } else {
+          protocolVersion = configuredProtocolVersion();
+        }
+
         const task = await database.createTask(conversation.id, {
           type: 'negotiation',
           sourceUserId: state.sourceUser.id,
           initiatorUserId,
+          protocolVersion,
           candidateUserId: state.candidateUser.id,
           networkId: state.indexContext.networkId,
           ...(state.opportunityId && { opportunityId: state.opportunityId }),
@@ -167,6 +191,7 @@ export class NegotiationGraphFactory {
           maxTurns,
           isContinuation,
           initiatorUserId,
+          protocolVersion,
           priorTurnCount: priorTurns.length,
           ...(userAnswers.length > 0 && { userAnswers }),
           ...(seedMessages.length > 0 && { messages: seedMessages }),
@@ -198,6 +223,14 @@ export class NegotiationGraphFactory {
         const maxTurns = state.maxTurns ?? 0;
         const isFinalTurn = maxTurns > 0 && (state.turnCount + 1) >= maxTurns;
 
+        // Seat attribution keys on initiatorUserId (rigid v2 stamp), never on
+        // parity or source/candidate position — under the conversation-scoped
+        // tie-break this run's source may hold the counterparty seat.
+        const version = state.protocolVersion ?? 'v1';
+        const seat: NegotiationSeat = ownUser.id === (state.initiatorUserId ?? state.sourceUser.id)
+          ? 'initiator'
+          : 'counterparty';
+
         const payload: NegotiationTurnPayload = {
           negotiationId: state.taskId,
           ownUser,
@@ -207,6 +240,9 @@ export class NegotiationGraphFactory {
           history,
           isFinalTurn,
           isDiscoverer: isSource,
+          seat,
+          protocolVersion: version,
+          allowedActions: [...allowedActionsFor(version, seat, isFinalTurn)],
           ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
         };
 
@@ -217,8 +253,16 @@ export class NegotiationGraphFactory {
         let turn: NegotiationTurn;
 
         if (dispatchResult.handled) {
-          // Personal agent responded
+          // Personal agent responded. Under v2, coerce out-of-seat actions to
+          // the conservative fallback — the polling/respond surfaces reject
+          // these with a 400, but locally-dispatched turns land here directly.
           turn = dispatchResult.turn;
+          if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn).includes(turn.action)) {
+            turnLog.warn('Personal agent returned out-of-seat action, coercing to conservative fallback', {
+              action: turn.action, seat, isFinalTurn,
+            });
+            turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+          }
         } else if (dispatchResult.reason === 'waiting') {
           // Long timeout — graph suspends. Persist the full turn context so the
           // polling agent (and MCP consumers via get_negotiation) reconstruct
@@ -249,6 +293,8 @@ export class NegotiationGraphFactory {
             history,
             isFinalTurn,
             isDiscoverer: isSource,
+            seat,
+            protocolVersion: version,
             ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
             isContinuation: state.isContinuation,
             ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
@@ -257,10 +303,16 @@ export class NegotiationGraphFactory {
 
         traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `${turn.action}` });
 
-        // First turn must be "propose" (unless continuing a prior conversation)
-        if (state.turnCount === 0 && !state.isContinuation && turn.action !== "propose") {
-          turnLog.warn("Agent returned unexpected action on turn 0, forcing to propose", { action: turn.action });
-          turn.action = "propose";
+        // First turn must open the negotiation (unless continuing a prior
+        // conversation): v1 → "propose"; v2 initiator → "outreach". A v2 turn-0
+        // speaker holding the counterparty seat (tie-break inheritance) is left
+        // unforced — it is responding, not opening.
+        if (state.turnCount === 0 && !state.isContinuation) {
+          const openingAction = version === 'v2' ? 'outreach' : 'propose';
+          if ((version !== 'v2' || seat === 'initiator') && turn.action !== openingAction) {
+            turnLog.warn(`Agent returned unexpected action on turn 0, forcing to ${openingAction}`, { action: turn.action });
+            turn.action = openingAction;
+          }
         }
 
         const parts = [{ kind: "data" as const, data: turn }];
@@ -305,9 +357,12 @@ export class NegotiationGraphFactory {
         const errMsg = err instanceof Error ? err.message : String(err);
         turnLog.error("Agent invocation failed", { error: errMsg, stack: err instanceof Error ? err.stack : undefined, turnCount: state.turnCount });
         traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `error: ${errMsg}` });
+        const errorSeat: NegotiationSeat = (state.currentSpeaker === 'source' ? state.sourceUser.id : state.candidateUser.id) === (state.initiatorUserId ?? state.sourceUser.id)
+          ? 'initiator'
+          : 'counterparty';
         return {
           lastTurn: {
-            action: "reject" as const,
+            action: rejectActionFor(state.protocolVersion ?? 'v1', errorSeat),
             assessment: { reasoning: `Agent error: ${errMsg}`, suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const } },
           },
           turnCount: state.turnCount + 1,
@@ -320,8 +375,8 @@ export class NegotiationGraphFactory {
       if (state.status === 'waiting_for_agent') return "finalize";
       if (state.error) return "finalize";
       if (!state.lastTurn) return "finalize";
-      if (state.lastTurn.action === "accept") return "finalize";
-      if (state.lastTurn.action === "reject") return "finalize";
+      // Terminal actions: accept (v1+v2), reject (v1), withdraw/decline (v2)
+      if (isTerminalAction(state.lastTurn.action)) return "finalize";
       // question routes same as counter — next turn
       if ((state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns!) return "finalize";
       return "turn";
@@ -349,7 +404,7 @@ export class NegotiationGraphFactory {
 
       const lastTurn = state.lastTurn;
       const hasOpportunity = lastTurn?.action === "accept";
-      const atCap = (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && lastTurn?.action !== "accept" && lastTurn?.action !== "reject";
+      const atCap = (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
       if (hasOpportunity && history.length >= 2) {
@@ -395,7 +450,7 @@ export class NegotiationGraphFactory {
         if (state.opportunityId) {
           const nextStatus = lastTurn?.action === 'accept'
             ? 'pending'
-            : lastTurn?.action === 'reject'
+            : isRejectLikeAction(lastTurn?.action)
               ? 'rejected'
               : 'stalled';
           await database.updateOpportunityStatus(state.opportunityId, nextStatus).catch((err) => {
@@ -414,8 +469,6 @@ export class NegotiationGraphFactory {
             ? "turn_cap"
             : state.error && /timeout/i.test(state.error)
             ? "timed_out"
-            : lastTurn?.action === "reject"
-            ? "rejected_stalled"
             : "rejected_stalled";
 
         emitWide({
@@ -438,7 +491,7 @@ export class NegotiationGraphFactory {
 
       // Enqueue question generation for stalled/capped negotiations (not accepted or explicitly rejected).
       // Require turnCount > 0 so early init/turn errors don't enqueue with empty context.
-      if (!hasOpportunity && lastTurn?.action !== 'reject' && state.turnCount > 0 && state.opportunityId && questionerEnqueue) {
+      if (!hasOpportunity && !isRejectLikeAction(lastTurn?.action) && state.turnCount > 0 && state.opportunityId && questionerEnqueue) {
         const stallReason: 'turn_cap' | 'timeout' | 'stalled' = atCap
           ? 'turn_cap'
           : (state.error && /timeout/i.test(state.error))

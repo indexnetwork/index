@@ -59,6 +59,12 @@ mock.module('@indexnetwork/protocol', () => ({
     }
   },
   AMBIENT_PARK_WINDOW_MS: 1000,
+  // Pure seat-rule helpers (mirror the real implementations — timeout.shared
+  // imports these from the barrel, which this mock replaces wholesale).
+  isTerminalAction: (a) => a === 'accept' || a === 'reject' || a === 'withdraw' || a === 'decline',
+  isRejectLikeAction: (a) => a === 'reject' || a === 'withdraw' || a === 'decline',
+  readProtocolVersion: (m) => (m?.protocolVersion === 'v2' ? 'v2' : m?.protocolVersion === 'v1' ? 'v1' : null),
+  resolveSeat: (userId, m) => ((m?.initiatorUserId || m?.sourceUserId) === userId ? 'initiator' : 'counterparty'),
 }));
 
 afterAll(() => {

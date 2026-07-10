@@ -39,16 +39,28 @@ On the first turn, the initiating side presents the match case. On subsequent tu
 
 Negotiation proceeds in alternating turns.
 
-### Actions
+### Protocol versions
 
-Each turn produces one of five actions:
+Each negotiation task carries a `protocolVersion` (`v1` | `v2`) in its metadata. The version is **inherited, never re-stamped**: continuations copy the version from the prior task on the conversation, so an in-flight v1 conversation stays v1 even after the environment moves to v2. Only genuinely fresh negotiations stamp from the `NEGOTIATION_PROTOCOL_VERSION` env switch (default `v1`); rollback is the same single switch.
+
+Under **v2 (client-advocate seat rules)** the action vocabulary is scoped by seat, keyed on `metadata.initiatorUserId` (the rigid stamp from discovery time — never turn parity):
+
+- **Initiator seat** (`outreach | counter | question | withdraw`): the side that surfaced the match. It reaches out and may walk away, but it can **never accept** — this is schema-enforced, not prompt-enforced.
+- **Counterparty seat** (`accept | decline | counter | question`): the receiving side. Acceptance is this seat's decision alone.
+- **Final turn**: initiator `withdraw | counter`; counterparty `accept | decline` (must decide).
+
+Outcome mapping is version-independent: `accept` → `pending`, `reject`/`withdraw`/`decline` → `rejected`, turn cap → `stalled`.
+
+### Actions (v1)
+
+Each v1 turn produces one of five actions:
 
 | Action | When used |
 |---|---|
-| **propose** | First turn only. The initiating agent presents the match case. |
+| **propose** | First turn only. The initiating agent presents the match case. (v2: **outreach**, initiator seat only.) |
 | **counter** | The agent partially agrees but has specific objections. States what is missing or weak. |
-| **accept** | The agent is convinced the match genuinely benefits their user. |
-| **reject** | The agent concludes the match does not serve their user's needs. |
+| **accept** | The agent is convinced the match genuinely benefits their user. (v2: counterparty seat only.) |
+| **reject** | The agent concludes the match does not serve their user's needs. (v2: split into **withdraw** for the initiator / **decline** for the counterparty.) |
 | **question** | Personal agents only. A clarifying question for the other party. Routes the same as counter (non-terminal, awaits response). |
 
 Every turn may also include an optional **message** field: free-form text accompanying the action (e.g. a note to the other user, context for a question, or elaboration beyond the structured reasoning).
@@ -57,7 +69,7 @@ Every turn may also include an optional **message** field: free-form text accomp
 
 Each turn produces a structured assessment:
 
-- **action**: The action taken this turn (`propose`, `counter`, `accept`, `reject`, or `question`)
+- **action**: The action taken this turn (v1: `propose`, `counter`, `accept`, `reject`, `question`; v2: `outreach`, `counter`, `question`, `withdraw` for the initiator / `accept`, `decline`, `counter`, `question` for the counterparty)
 - **assessment.reasoning**: Why the agent took this action
 - **assessment.suggestedRoles**: What roles each user should play
   - `ownUser`: agent, patient, or peer
@@ -90,8 +102,8 @@ If the cap is reached without accept or reject, the opportunity transitions to `
 
 The finalization logic examines the negotiation history to determine the outcome:
 
-- **Has opportunity**: The last action was "accept". The opportunity transitions to `pending` (awaiting human acceptance via the UI).
-- **Rejected**: The last action was "reject". The opportunity transitions to `rejected`.
+- **Has opportunity**: The last action was "accept". The opportunity transitions to `pending` (awaiting human acceptance via the UI). Under v2 only the counterparty seat can produce this action.
+- **Rejected**: The last action was "reject" (v1) or "withdraw"/"decline" (v2). The opportunity transitions to `rejected`.
 - **Turn cap**: The maximum turns were exhausted. The opportunity transitions to `stalled`; `reason: "turn_cap"`.
 - **Timeout**: 24 hours elapsed without resolution (personal-vs-personal only). The opportunity transitions to `stalled`; `reason: "timeout"`.
 
@@ -131,9 +143,9 @@ When a negotiation graph reaches a turn the system cannot resolve synchronously 
 ### Parked-turn lifecycle
 
 1. The negotiation graph writes the turn into `tasks.state = 'waiting_for_agent'` and enqueues a 24-hour fallback timeout.
-2. The user's personal agent polls `POST /api/agents/:id/negotiations/pickup` (authenticating with its API key). The backend atomically CAS's the oldest pending task for the caller's user from `waiting_for_agent` to `claimed`, cancels the 24-hour fallback, and enqueues a 6-hour claim timeout. The agent receives the turn number, deadline, counterparty action, full turn history, and the projected own/other user context.
+2. The user's personal agent polls `POST /api/agents/:id/negotiations/pickup` (authenticating with its API key). The backend atomically CAS's the oldest pending task for the caller's user from `waiting_for_agent` to `claimed`, cancels the 24-hour fallback, and enqueues a 6-hour claim timeout. The agent receives the turn number, deadline, counterparty action, full turn history, the projected own/other user context, and — since v2 — the caller's `seat`, the task's `protocolVersion`, and the `allowedActions` for that seat.
 3. The agent deliberates and submits its decision via `POST /api/agents/:id/negotiations/:negotiationId/respond` with `{ action, message?, assessment: { reasoning, suggestedRoles } }`. The backend CAS's the task from `claimed` (scoped to this `agentId`) to `working`, persists the turn as a message on the negotiation conversation, and cancels the claim timeout.
-4. If the action is `accept`, `reject`, or pushes the turn count over the cap, the task is completed and an outcome artifact is written. Otherwise the task returns to `waiting_for_agent` and a fresh 24-hour fallback is enqueued for the counterparty.
+4. The submitted action is validated against the caller's seat + the task's protocol version before any state changes — an out-of-seat action (e.g. a v2 initiator submitting `accept`) returns HTTP 400 and leaves the claim intact for a retry. If the action is terminal (`accept`, `reject`, `withdraw`, `decline`) or pushes the turn count over the cap, the task is completed and an outcome artifact is written. Otherwise the task returns to `waiting_for_agent` and a fresh 24-hour fallback is enqueued for the counterparty.
 5. If a pickup is not followed by a `respond` within 6 hours, the claim expires and the task returns to `waiting_for_agent` for another pickup attempt. If no agent claims within 24 hours of first parking, the in-process system `Index Negotiator` takes the turn instead.
 
 Agent resolution uses the agent registry — the claiming agent is identified by the API key's `metadata.agentId`, and `assertAgentOwnership` checks that the agent belongs to the polling user.
@@ -200,7 +212,7 @@ Called by a personal agent to submit a turn response.
 
 **Input fields:**
 - `negotiationId`: The negotiation to respond to
-- `action`: One of `propose`, `counter`, `accept`, `reject`, `question`
+- `action`: One of `propose`, `counter`, `accept`, `reject`, `question` (v1) or the caller's seat vocabulary under v2 (`outreach`/`counter`/`question`/`withdraw` for the initiator, `accept`/`decline`/`counter`/`question` for the counterparty) — `get_negotiation` announces `seat`, `protocolVersion`, and `allowedActions`
 - `reasoning`: Why the agent took this action
 - `suggestedRoles`: Role suggestions for own user and other user
 - `message` *(optional)*: Free-form text accompanying the action
