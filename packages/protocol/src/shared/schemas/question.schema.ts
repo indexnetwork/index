@@ -67,6 +67,9 @@ export const QuestionModeSchema = z.enum([
   "intent",
   "enrichment",
   "negotiation",
+  // Negotiator-initiated mid-negotiation client questions (ask_user action, P3).
+  // Distinct from "negotiation", which covers post-stall questions only.
+  "negotiation_inflight",
   // Orchestrator-initiated mid-conversation questions (ask_user_question tool).
   "chat",
 ]);

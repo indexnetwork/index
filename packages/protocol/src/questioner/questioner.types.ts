@@ -47,6 +47,27 @@ export interface NegotiationContext {
 }
 
 /**
+ * Negotiation-inflight context — a negotiator mid-negotiation wants to ask its
+ * OWN client a question before continuing (the `ask_user` action, P3.2). The
+ * negotiator states the disclosure subject and optionally drafts the question;
+ * the QuestionerAgent refines it into polished disclosure-gating questions.
+ * Distinct from {@link NegotiationContext}, which covers post-stall questions.
+ */
+export interface NegotiationInflightContext {
+  negotiationId: string;
+  /** Anonymized counterparty description (attributes, never identity). */
+  counterpartyHint: string;
+  /** What the negotiator wants permission to share or needs to know (e.g. "budget range", "availability in Q3"). */
+  disclosureSubject: string;
+  /** Draft question authored by the negotiator. The agent refines it. */
+  draftQuestion?: string;
+  /** Community / index context the negotiation runs in. */
+  indexContext: string;
+  /** The user's global user_context paragraph (profile-replacing identity text). */
+  userContext?: string;
+}
+
+/**
  * Chat context — data for orchestrator-initiated mid-conversation questions
  * (the `ask_user_question` tool). The orchestrator states what it needs to
  * learn; the QuestionerAgent turns that into polished structured questions,
@@ -73,6 +94,7 @@ export type QuestionerContext =
   | IntentContext
   | ProfileContext
   | NegotiationContext
+  | NegotiationInflightContext
   | ChatContext;
 
 /**

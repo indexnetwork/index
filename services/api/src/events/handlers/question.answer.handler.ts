@@ -24,7 +24,7 @@ const logger = log.service.from('QuestionAnswerHandler');
 interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
   sourceType: string;
   sourceId: string;
   answer: {

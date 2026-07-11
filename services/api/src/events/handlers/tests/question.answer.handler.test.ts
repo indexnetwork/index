@@ -114,6 +114,20 @@ describe("handleQuestionAnswered", () => {
     expect(failDeps.createPremiseFromAnswer).toHaveBeenCalledTimes(1);
   });
 
+  it("tolerates negotiation_inflight via the default branch without throwing (P3.2 owns consumption)", async () => {
+    // The mode exists in QuestionModeSchema as of P3.1 but nothing produces or
+    // consumes it yet — an answer must fall through to the default branch
+    // harmlessly, calling no reaction handler.
+    await handleQuestionAnswered(
+      { ...basePayload, mode: "negotiation_inflight", sourceType: "negotiation", sourceId: "neg-1" },
+      deps,
+    );
+    expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
+    expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
+    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
+    expect(deps.resolveChatQuestionWait).not.toHaveBeenCalled();
+  });
+
   it("handles unknown mode gracefully", async () => {
     await handleQuestionAnswered(
       { ...basePayload, mode: "unknown_mode" as "discovery" },
