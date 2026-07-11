@@ -63,6 +63,7 @@ import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
@@ -129,6 +130,9 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   // Finished negotiations enqueue memory distillation for both sides (P5.2,
   // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
   reflectEnqueueIfEnabled(),
+  // Screen/turn prompts read the speaker's own negotiator memories (P5.3,
+  // gated on NEGOTIATOR_MEMORY_INJECT).
+  negotiatorMemoryRetrieve(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,

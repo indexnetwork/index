@@ -4,6 +4,7 @@ import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema, type Negotiati
 import { turnSchemaFor, fallbackActionFor } from "./negotiation.protocol.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
+import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 
 const agentLog = protocolLogger("IndexNegotiator");
@@ -22,7 +23,7 @@ Rules:
 - Focus on concrete intent alignment, not vague overlap.
 - Do NOT reference internal system details like scores, pre-screens, or evaluator outputs.
 - suggestedRoles: "agent" = can help, "patient" = seeks help, "peer" = mutual benefit.
-{finalTurnInstruction}`;
+{finalTurnInstruction}{negotiatorMemory}`;
 
 /** v1 action rules — byte-identical to the pre-seat-rules prompt. */
 const V1_ACTION_RULES = `- On the FIRST turn: Propose the connection case. Explain why it would benefit both parties. Set action to "propose".
@@ -91,6 +92,12 @@ export interface NegotiationAgentInput {
    * negotiation. When true, the seat schema and prompt gain the action.
    */
   canAskUser?: boolean;
+  /**
+   * Retrieved negotiator memories for the acting user (P5.3 read path).
+   * Rendered as a private prompt section — hard disclosure constraints plus
+   * advisory hints. Absent/empty → the prompt is byte-identical to before.
+   */
+  memory?: NegotiatorMemoryEntry[];
 }
 
 export interface IndexNegotiatorConfig {
@@ -195,7 +202,8 @@ QUERY PRIORITY RULE: This search query is the PRIMARY criterion for this negotia
       .replace("{discoveryQueryContext}", discoveryQueryContext)
       .replace("{role}", role)
       .replace("{networkContext}", networkContext)
-      .replace("{finalTurnInstruction}", finalTurnInstruction);
+      .replace("{finalTurnInstruction}", finalTurnInstruction)
+      .replace("{negotiatorMemory}", renderNegotiatorMemorySection(input.memory ?? []));
 
     const historyText = input.history.length > 0
       ? `\n\nNegotiation history:\n${input.history.map((t, i) => {

@@ -7,7 +7,8 @@ import { conversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/da
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeout.queue';
 import { log } from '../lib/log';
-import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from '@indexnetwork/protocol';
+import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationAction, NegotiationSeat, NegotiationProtocolVersion, NegotiatorMemoryEntry } from '@indexnetwork/protocol';
+import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
 
 const logger = log.service.from('NegotiationPollingService');
@@ -116,6 +117,14 @@ export interface PickupResult {
     isDiscoverer: boolean;
     discoveryQuery?: string;
   } | null;
+  /**
+   * The CLAIMING user's own negotiator memories (P5.3 read path) — private
+   * context for their agent's turn. Strictly seat-scoped: retrieval is keyed
+   * on the claiming user's id, so this never contains the counterparty's
+   * memory. Absent when `NEGOTIATOR_MEMORY_INJECT` is off or nothing was
+   * retrieved.
+   */
+  negotiatorMemory?: NegotiatorMemoryEntry[];
 }
 
 export interface RespondInput {
@@ -595,6 +604,23 @@ export class NegotiationPollingService {
     const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, meta);
 
+    // P5.3: the claiming user's OWN negotiator memories. Keyed on the claiming
+    // userId — the counterparty's memory is unreachable by construction. The
+    // adapter resolves [] when the flag is off or retrieval fails.
+    const counterpartyUserId = meta.sourceUserId === userId ? meta.candidateUserId : meta.sourceUserId;
+    const memoryQueryText = [
+      context?.seedAssessment?.reasoning ?? opportunity?.reasoning ?? '',
+      context?.discoveryQuery ? `Search: ${context.discoveryQuery}` : '',
+      context?.otherUser?.profile?.name ?? '',
+      context?.otherUser?.profile?.bio ?? '',
+    ].filter(Boolean).join('\n');
+    const negotiatorMemory = await negotiatorMemoryRetrievalAdapter.retrieveForNegotiation({
+      userId,
+      counterpartyUserId,
+      queryText: memoryQueryText,
+      scope: 'turn',
+    });
+
     return {
       negotiationId: task.id,
       taskId: task.id,
@@ -609,6 +635,7 @@ export class NegotiationPollingService {
       protocolVersion,
       allowedActions: [...allowedActionsFor(protocolVersion, seat)],
       context,
+      ...(negotiatorMemory.length > 0 && { negotiatorMemory }),
     };
   }
 

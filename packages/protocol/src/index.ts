@@ -166,6 +166,8 @@ export { NegotiationScreener, configuredScreenMode, ScreenDecisionSchema, NEGOTI
 export type { ScreenDecision, ScreenDecisionRecord, NegotiationScreenMode, NegotiationScreenerInput } from "./negotiation/negotiation.screen.js";
 export { NegotiationReflector, DistilledMemorySchema, ReflectionResultSchema, MAX_DISTILLED_MEMORIES, NEGOTIATOR_MEMORY_KINDS } from "./negotiation/negotiation.reflect.js";
 export type { DistilledMemory, DistilledMemoryKind, ReflectionResult, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiation/negotiation.reflect.js";
+export { renderNegotiatorMemorySection, renderNegotiatorChatMemorySection } from "./negotiation/negotiation.memory.js";
+export type { NegotiatorMemoryEntry, NegotiatorMemoryQuery, NegotiatorMemoryScope, NegotiatorMemoryRetrieveFn } from "./negotiation/negotiation.memory.js";
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";

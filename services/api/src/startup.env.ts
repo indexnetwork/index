@@ -111,6 +111,7 @@ const envSchema = z.object({
   NEGOTIATION_ASK_USER_WINDOW_MS: optionalInt,
   NEGOTIATOR_MEMORY_WRITE_ENABLED: optionalBoolean,
   NEGOTIATOR_CHAT_REFLECT_DELAY_MS: optionalInt,
+  NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
   QUESTIONER_ENABLED: optionalBoolean,
 
   // 9. MCP / tool runtime

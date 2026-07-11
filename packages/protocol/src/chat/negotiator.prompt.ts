@@ -1,5 +1,6 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
 import { focusedIntentId } from "../shared/agent/tool.scope.js";
+import { renderNegotiatorChatMemorySection, type NegotiatorMemoryEntry } from "../negotiation/negotiation.memory.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -31,6 +32,13 @@ export interface NegotiatorPromptOptions {
    * naming it. Ignored when the session has no intent scope.
    */
   pinnedIntentLabel?: string;
+  /**
+   * The client's negotiator memories (P5.3 read path) — accumulated notes
+   * from negotiations and prior chats, rendered as a prompt section. The
+   * audience is the client themself, so entries are shared context, not
+   * secrets. Absent/empty → the prompt is byte-identical to before.
+   */
+  memory?: NegotiatorMemoryEntry[];
 }
 
 /**
@@ -96,6 +104,7 @@ export function buildNegotiatorSystemContent(
   const pinnedSignalSection = pinnedIntentId
     ? buildPinnedSignalSection(pinnedIntentId, opts.pinnedIntentLabel)
     : buildQuestionInboxSection();
+  const memorySection = renderNegotiatorChatMemorySection(opts.memory ?? []);
 
   return `You are ${opts.agentName}, the personal negotiator agent working for ${ctx.userName}.
 ${descriptionLine}
@@ -110,7 +119,7 @@ You work for exactly one client: ${ctx.userName}. You represent them in negotiat
 - **Handle memberships**: list the communities they belong to and join or leave communities when they ask.
 - **Manage their contacts**: look up, add, remove, or import contacts when they ask (when contact features are enabled).
 - **Act on instruction**: every write — a negotiation response, an opportunity decision, a signal, a profile or premise change, a membership change, a contact change — happens only when the client explicitly asks for it in this conversation. Never write anything the client did not just ask for.
-${pinnedSignalSection}
+${pinnedSignalSection}${memorySection}
 ## What you cannot do here
 - **No direct discovery.** You cannot run matching or search for people yourself. Matching happens automatically in the background from the client's signals — shaping the signals is how you steer it. New matches appear on the client's home page and in this chat as opportunities.
 - **No community administration.** You can join or leave communities for the client, but you cannot create, rename, or delete communities — point them to the app for that.

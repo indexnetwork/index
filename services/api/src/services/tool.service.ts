@@ -16,6 +16,7 @@ import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceA
 import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import db from '../lib/drizzle/drizzle';
@@ -260,6 +261,8 @@ export class ToolService {
       questionerEnqueueIfEnabled(),
       // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
       reflectEnqueueIfEnabled(),
+      // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+      negotiatorMemoryRetrieve(),
     ).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(
       database,

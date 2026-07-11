@@ -7,6 +7,7 @@
  */
 
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';
+import type { NegotiatorMemoryEntry } from '../../negotiation/negotiation.memory.js';
 
 /** Payload sent to the dispatcher for each negotiation turn. */
 export interface NegotiationTurnPayload {
@@ -27,6 +28,13 @@ export interface NegotiationTurnPayload {
   protocolVersion?: string;
   /** Actions the acting seat may submit on this turn (seat + version + final-turn scoped). */
   allowedActions?: string[];
+  /**
+   * The acting user's OWN negotiator memories (P5.3 read path) — private
+   * context for the dispatched agent. Never contains the counterparty's
+   * memory; absent when `NEGOTIATOR_MEMORY_INJECT` is off or nothing was
+   * retrieved.
+   */
+  negotiatorMemory?: NegotiatorMemoryEntry[];
 }
 
 /** Result of a dispatch attempt. */
