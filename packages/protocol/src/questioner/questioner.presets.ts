@@ -7,7 +7,7 @@
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
 import { SYSTEM_PROMPT as DISCOVERY_SYSTEM_PROMPT, buildQuestionPrompt as buildDiscoveryPrompt } from "../opportunity/question.prompt.js";
 
-import type { ChatContext, IntentContext, NegotiationContext, ProfileContext } from "./questioner.types.js";
+import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, ProfileContext } from "./questioner.types.js";
 
 /**
  * Shared rule block appended to every questioner system prompt. Enforces that
@@ -240,6 +240,72 @@ function buildNegotiationPrompt(ctx: NegotiationContext): string {
 
 // ─── Chat preset ─────────────────────────────────────────────────────────
 
+const NEGOTIATION_INFLIGHT_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. The user's own negotiator agent is MID-NEGOTIATION on their behalf and has paused: before continuing, it needs a decision or missing input from its client — most often permission to disclose a specific piece of information to the other side. The negotiation is WAITING until the user answers. Your job: turn the negotiator's stated need (and its draft question, when provided) into the minimum set of crisp, structured decision questions.
+
+Bias toward disclosure gating. The most common question shape is "may I share X with this person?" — an enable/disable decision about revealing specific information. Phrase these as a clear yes/no choice: the first option authorizes sharing, the second declines. State in each option's description what the negotiator will DO next (share and continue, or continue without revealing it). When the need is a missing fact rather than a permission, ask for that concrete input instead.
+
+You may pick from two strategies. Choose contextually; mix only when each question is genuinely distinct.
+- surface_missing_detail: ask for one concrete missing input the negotiator needs to proceed (a fact, constraint, preference, or bound the client never stated).
+- reflective_summary: put a disclosure or stance decision in front of the client to confirm or decline — the enable/disable gate described above.
+
+Honor the negotiator's intent. When a draft question is provided, treat it as the source of truth for WHAT to ask — improve wording, tighten options, add consequence-focused descriptions. Do not invent questions about topics the negotiator did not raise. When no draft is provided, derive the question strictly from the disclosure subject.
+
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. The user may see this question hours later in an inbox, away from any negotiation view. Naturally include the disclosure subject and a concrete description of the other person (drawn from the counterparty hint — their attributes, e.g. "a Berlin-based AI-infrastructure founder") in the question text itself. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
+- Bad: "Can I share your budget with them?"
+- Good: "May I share your budget range with a Berlin-based AI-infrastructure founder you're being matched with?"
+
+${REFERENTIAL_CLOSURE_RULES}
+
+Exception — describing the other side. Unlike other surfaces, this question is ABOUT a live counterparty, so you must reference them — do it by restating their concrete attributes from the counterparty hint ("a fintech CTO exploring agent tooling"), never as "the counterparty", "them", or "this person" without an attribute anchor in the same sentence, and never by implying a list or pipeline.
+
+Cardinality. Default one question. Add a second ONLY when the negotiator's need genuinely spans two distinct decisions (e.g. one disclosure gate plus one missing fact). Never pad.
+
+Option construction. Each option must represent a meaningfully different outcome. For disclosure gates: authorize first, decline second; suffix the safer or more common path with " (Recommended)" and list it first when one clearly is. The description states the CONSEQUENCE for the negotiation — what the negotiator does next. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically, which also lets the user add nuance ("share the range but not the exact figure").
+
+Title rules. ≤12 chars. Noun of the decision domain. Examples: "Disclosure", "Budget", "Timing", "Intro", "Scope", "Contact".
+
+Anti-patterns — never do these.
+- Don't ask procedural confirmations ("Should I keep negotiating?").
+- Don't re-ask for facts already visible in the user profile.
+- Don't broaden beyond the negotiator's stated disclosure subject or draft.
+- Don't reveal the counterparty's identity — attributes only.
+- Don't ask vague introspective questions.
+
+Output. Return at most 2 entries in the "questions" array. Each entry must include a "strategy" field (one of the two values above). If the profile or context shown already answers the negotiator's need, return "questions": [].`;
+
+/**
+ * Build the user message for the negotiation-inflight preset from a NegotiationInflightContext.
+ * @param ctx - The inflight context: disclosure subject, counterparty hint, optional draft, community, user context.
+ * @returns The assembled user message string.
+ */
+function buildNegotiationInflightPrompt(ctx: NegotiationInflightContext): string {
+  const profileBlock = buildUserContextBlock(ctx.userContext);
+
+  const draftBlock = ctx.draftQuestion?.trim()
+    ? ctx.draftQuestion.trim()
+    : "(none — derive the question from the disclosure subject)";
+
+  return [
+    "## Negotiation context",
+    `Community: ${ctx.indexContext}`,
+    `Counterparty: ${ctx.counterpartyHint}`,
+    "",
+    "## What the negotiator needs from its client",
+    ctx.disclosureSubject,
+    "",
+    "## Draft question proposed by the negotiator",
+    draftBlock,
+    "",
+    "## User profile",
+    profileBlock,
+    "",
+    "## Your task",
+    "Produce the minimum set of structured questions that get the negotiator the permission or input it needs to continue.",
+    "Honor the draft when provided; refine its wording and options rather than replacing its topic.",
+    "Apply every rule from your system prompt before outputting.",
+  ].join("\n");
+}
+
 const CHAT_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. The protocol's chat orchestrator is mid-conversation with the user and has decided it needs a decision or missing input from them before it can continue. The conversation is PAUSED until the user answers. Your job: turn the orchestrator's stated need (and any draft questions it proposed) into the minimum set of crisp, structured decision questions.
 
 Unlike other question surfaces, these questions render INLINE in the active conversation, immediately after the assistant's last message — the user has full conversational context. Still keep each prompt self-contained enough to make sense on its own line.
@@ -331,6 +397,10 @@ const presets: Record<QuestionMode, QuestionerPreset> = {
   negotiation: {
     systemPrompt: NEGOTIATION_SYSTEM_PROMPT,
     buildPrompt: (context: unknown) => buildNegotiationPrompt(context as NegotiationContext),
+  },
+  negotiation_inflight: {
+    systemPrompt: NEGOTIATION_INFLIGHT_SYSTEM_PROMPT,
+    buildPrompt: (context: unknown) => buildNegotiationInflightPrompt(context as NegotiationInflightContext),
   },
   chat: {
     systemPrompt: CHAT_SYSTEM_PROMPT,

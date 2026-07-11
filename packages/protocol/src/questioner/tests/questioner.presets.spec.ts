@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { getPreset } from "../questioner.presets.js";
+import { QuestionModeSchema, QuestionSchema } from "../../shared/schemas/question.schema.js";
 
 const standaloneModeExpectations = [
   {
@@ -26,12 +27,18 @@ const standaloneModeExpectations = [
     positiveExample: "For your search for AI infrastructure collaborators in the AI founders community",
     negativeExample: "Which role is a better fit for your immediate needs?",
   },
+  {
+    mode: "negotiation_inflight" as const,
+    anchors: ["disclosure subject", "counterparty hint"],
+    positiveExample: "May I share your budget range with a Berlin-based AI-infrastructure founder",
+    negativeExample: "Can I share your budget with them?",
+  },
 ];
 
 // Modes whose prompts must carry the shared referential-closure guardrail.
 // (chat renders inline in the active conversation, so it is exempt from the
 // standalone-prompt contract above but still carries referential closure.)
-const ALL_MODES = ["discovery", "intent", "enrichment", "negotiation", "chat"] as const;
+const ALL_MODES = ["discovery", "intent", "enrichment", "negotiation", "negotiation_inflight", "chat"] as const;
 
 describe("standalone prompt contract", () => {
   it.each(standaloneModeExpectations)("mode '$mode' requires self-contained generated prompt text", ({ mode, anchors, positiveExample, negativeExample }) => {
@@ -215,6 +222,87 @@ describe("negotiation preset", () => {
     expect(preset.systemPrompt).toContain("For your search for AI infrastructure collaborators in the AI founders community");
     // Must NOT instruct the model to restate the stalled-negotiation mechanics.
     expect(preset.systemPrompt).not.toContain("stalled negotiation context");
+  });
+});
+
+describe("negotiation_inflight preset", () => {
+  const baseContext = {
+    negotiationId: "neg-42",
+    counterpartyHint: "a fintech CTO exploring agent tooling in Berlin",
+    disclosureSubject: "permission to share the client's budget range",
+    indexContext: "AI founders community",
+    userContext: "Alice is a protocol engineer.",
+  };
+
+  it("is a registered QuestionMode and returns a preset with systemPrompt and buildPrompt", () => {
+    expect(QuestionModeSchema.options).toContain("negotiation_inflight");
+    const preset = getPreset("negotiation_inflight");
+    expect(typeof preset.systemPrompt).toBe("string");
+    expect(preset.systemPrompt.length).toBeGreaterThan(0);
+    expect(typeof preset.buildPrompt).toBe("function");
+  });
+
+  it("buildPrompt contains the counterparty hint, disclosure subject, and community", () => {
+    const preset = getPreset("negotiation_inflight");
+    const result = preset.buildPrompt(baseContext);
+    expect(result).toContain("a fintech CTO exploring agent tooling in Berlin");
+    expect(result).toContain("permission to share the client's budget range");
+    expect(result).toContain("AI founders community");
+    expect(result).toContain("Alice is a protocol engineer.");
+  });
+
+  it("buildPrompt passes the negotiator's draft question through for refinement", () => {
+    const preset = getPreset("negotiation_inflight");
+    const result = preset.buildPrompt({
+      ...baseContext,
+      draftQuestion: "Is it OK if I tell them your budget is around €50k?",
+    });
+    expect(result).toContain("## Draft question proposed by the negotiator");
+    expect(result).toContain("Is it OK if I tell them your budget is around €50k?");
+    // Refinement instruction, not replacement
+    expect(result).toContain("Honor the draft when provided");
+  });
+
+  it("buildPrompt falls back to the disclosure subject when no draft is provided", () => {
+    const preset = getPreset("negotiation_inflight");
+    const result = preset.buildPrompt(baseContext);
+    expect(result).toContain("(none — derive the question from the disclosure subject)");
+  });
+
+  it("buildPrompt shows (no profile data) when userContext is absent", () => {
+    const preset = getPreset("negotiation_inflight");
+    const { userContext: _omit, ...noProfile } = baseContext;
+    const result = preset.buildPrompt(noProfile);
+    expect(result).toContain("(no profile data)");
+  });
+
+  it("system prompt biases toward disclosure gating with clear yes/no options", () => {
+    const preset = getPreset("negotiation_inflight");
+    expect(preset.systemPrompt).toContain("Bias toward disclosure gating");
+    expect(preset.systemPrompt).toContain("yes/no");
+    expect(preset.systemPrompt).toContain("free-text fallback");
+    expect(preset.systemPrompt).toContain("the first option authorizes sharing, the second declines");
+    // Honors the negotiator's draft like chat honors the orchestrator's
+    expect(preset.systemPrompt).toContain("Honor the negotiator's intent");
+    expect(preset.systemPrompt).toContain("Do not invent questions about topics the negotiator did not raise");
+    // Identity protection
+    expect(preset.systemPrompt).toContain("Don't reveal the counterparty's identity");
+  });
+
+  it("a disclosure-gate shaped output validates against the question schema", () => {
+    // The shape the preset's rules ask the model to produce must be
+    // structurally valid per QuestionSchema (same schema the agent parses with).
+    const disclosureQuestion = {
+      title: "Disclosure",
+      prompt: "May I share your budget range with a Berlin-based fintech CTO you're being matched with?",
+      options: [
+        { label: "Yes, share the range (Recommended)", description: "Your negotiator discloses the budget range and continues negotiating with it on the table." },
+        { label: "No, keep it private", description: "Your negotiator continues without revealing any budget figure." },
+      ],
+      multiSelect: false,
+    };
+    const parsed = QuestionSchema.safeParse(disclosureQuestion);
+    expect(parsed.success).toBe(true);
   });
 });
 
