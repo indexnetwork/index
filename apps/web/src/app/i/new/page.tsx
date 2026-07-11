@@ -87,9 +87,10 @@ function NewSignalPage() {
   const trimmed = value.trim();
   const canAdvance = (!current.required || trimmed.length > 0) && !submitting;
 
-  const setValue = (v: string) => {
-    setAnswers((prev) => prev.map((a, i) => (i === step ? v : a)));
+  const setAnswerAt = (index: number, v: string) => {
+    setAnswers((prev) => prev.map((a, i) => (i === index ? v : a)));
   };
+  const setValue = (v: string) => setAnswerAt(step, v);
 
   const buildDescription = (ans: string[]) =>
     STEPS.map((s, i) => {
@@ -175,13 +176,18 @@ function NewSignalPage() {
                 <h2 className="text-base font-bold text-black font-ibm-plex-mono">
                   {s.question}
                 </h2>
-                <p className="mt-1.5 text-sm">
-                  {answers[i].trim() ? (
-                    <span className="text-gray-700">{answers[i]}</span>
-                  ) : (
-                    <span className="italic text-gray-400">skipped</span>
-                  )}
-                </p>
+                {/* Previous answers stay editable */}
+                <div className="mt-1.5 flex items-center gap-2 border-b border-transparent pb-1 hover:border-gray-200 focus-within:border-[#041729] transition-colors">
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-300" />
+                  <input
+                    type="text"
+                    value={answers[i]}
+                    onChange={(e) => setAnswerAt(i, e.target.value)}
+                    placeholder="skipped"
+                    disabled={submitting}
+                    className="flex-1 bg-transparent text-sm text-gray-700 placeholder:italic placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
+                  />
+                </div>
               </div>
             ))}
 
