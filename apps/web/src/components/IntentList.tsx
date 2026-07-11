@@ -189,7 +189,7 @@ export default function IntentList<T extends BaseIntent>({
                   className={cn(
                     'text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full',
                     (intent.pendingQuestionCount ?? 0) > 0
-                      ? 'bg-[#F97316] text-white'
+                      ? 'bg-[#F26522] text-white'
                       : 'bg-gray-100 text-gray-400 border border-gray-200',
                   )}
                   title={`${intent.pendingQuestionCount ?? 0} pending ${(intent.pendingQuestionCount ?? 0) === 1 ? 'question' : 'questions'}`}
