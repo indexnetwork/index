@@ -45,12 +45,24 @@ const STEPS: Step[] = [
     question: "what would make someone a great match?",
     placeholder: "they've shipped a product · they're in climate · they can intro me to investors…",
     label: "A great match",
+    examples: [
+      "they've actually shipped a product",
+      "they're deep in the same space as me",
+      "they can make warm intros",
+      "they think differently than i do",
+    ],
   },
   {
     key: "context",
     question: "anything specific — timing, location, or the kind of person?",
     placeholder: "based in NYC · moving in the next month · technical co-founder…",
     label: "Specifics",
+    examples: [
+      "based in nyc or willing to travel",
+      "looking to start in the next month",
+      "technical, can build things",
+      "no constraints — surprise me",
+    ],
   },
 ];
 
