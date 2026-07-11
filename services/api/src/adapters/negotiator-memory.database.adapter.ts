@@ -44,7 +44,8 @@ export interface CreateNegotiatorMemoryInput {
 
 export interface UpdateNegotiatorMemoryInput {
   content?: string;
-  embedding?: number[];
+  /** New vector, or null to clear a stale vector (e.g. re-embed failed after a content edit). */
+  embedding?: number[] | null;
   sourceRefs?: NegotiatorMemorySourceRef[];
   confidence?: number;
   subjectUserId?: string | null;

@@ -44,6 +44,8 @@ import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
+import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
+import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
@@ -153,6 +155,18 @@ const protocolDeps = {
   ...(isQuestionerEnabled() && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
       await questionerQueue.addGenerateJob(input);
+    },
+  }),
+  // P5.4 (IND-408): host bridge for the negotiator persona's remember/forget
+  // memory tools. Injected only while memory writes are enabled — when the
+  // flag is off the tools are simply not registered. Consumed exclusively by
+  // createNegotiatorTools; the orchestrator registry never sees these tools.
+  ...(isNegotiatorMemoryWriteEnabled() && {
+    negotiatorMemoryTools: {
+      remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>
+        negotiatorMemoryWriteService.rememberFromChat({ userId, ...input }),
+      forget: async (userId: string, input: { memoryId?: string; description?: string }) =>
+        negotiatorMemoryWriteService.forgetFromChat({ userId, ...input }),
     },
   }),
 };

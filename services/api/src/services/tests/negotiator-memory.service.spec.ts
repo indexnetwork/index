@@ -42,6 +42,8 @@ function mkService(overrides?: {
   listRows?: NegotiatorMemory[];
   embedding?: number[] | null;
   agentId?: string | null;
+  getByIdRow?: NegotiatorMemory | null;
+  similarRows?: Array<NegotiatorMemory & { similarity: number }>;
 }) {
   const created: unknown[] = [];
   const updated: Array<{ id: string; patch: unknown }> = [];
@@ -54,6 +56,8 @@ function mkService(overrides?: {
     update: mock(async (id: string, _userId: string, patch: unknown) => { updated.push({ id, patch }); return mkRow({ id }); }),
     delete: mock(async (id: string) => { deleted.push(id); return true; }),
     decayAll: mock(async (opts: unknown) => { decayCalls.push(opts); return { decayed: 2, deleted: 1 }; }),
+    getById: mock(async () => overrides?.getByIdRow ?? null),
+    searchSimilar: mock(async () => overrides?.similarRows ?? []),
   };
 
   const service = new NegotiatorMemoryWriteService({
@@ -317,5 +321,109 @@ describe('NegotiatorMemoryWriteService', () => {
       olderThanMs: 7 * 24 * 60 * 60 * 1000,
       deleteBelow: 0.05,
     });
+  });
+
+  // ─── P5.4 (IND-408): remember/forget chat-tool backing ───────────────────
+
+  it('rememberFromChat writes a high-confidence row with chat provenance', async () => {
+    const { service, created } = mkService();
+    const result = await service.rememberFromChat({
+      userId: 'u-1',
+      kind: 'disclosure_rule',
+      content: '  Never share my budget.  ',
+      sessionId: 'sess-1',
+    });
+
+    expect(result).not.toBeNull();
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      agentId: 'agent-1',
+      userId: 'u-1',
+      kind: 'disclosure_rule',
+      content: 'Never share my budget.',
+      confidence: 0.95,
+      sourceRefs: [{ type: 'chat', id: 'sess-1' }],
+    });
+  });
+
+  it('rememberFromChat returns null and writes nothing when the flag is off', async () => {
+    delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
+    const { service, memories } = mkService();
+    const result = await service.rememberFromChat({ userId: 'u-1', kind: 'threshold', content: 'Min $150/h.' });
+    expect(result).toBeNull();
+    expect(memories.create).not.toHaveBeenCalled();
+  });
+
+  it('rememberFromChat enforces the kind cap before writing', async () => {
+    const cap = NEGOTIATOR_MEMORY_KIND_CAPS.threshold;
+    const rows = Array.from({ length: cap }, (_, i) =>
+      mkRow({ id: `t-${i}`, kind: 'threshold', confidence: 0.1 + i * 0.01 }));
+    const { service, deleted } = mkService({ listRows: rows });
+
+    await service.rememberFromChat({ userId: 'u-1', kind: 'threshold', content: 'Min $150/h.' });
+    expect(deleted).toEqual(['t-0']); // lowest confidence evicted
+  });
+
+  it('forgetFromChat by id deletes the exact row (works with the flag off — forgetting is a standing right)', async () => {
+    delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
+    const row = mkRow({ id: 'mem-9', kind: 'playbook', content: 'Old tactic' });
+    const { service, deleted } = mkService({ getByIdRow: row });
+
+    const result = await service.forgetFromChat({ userId: 'u-1', memoryId: 'mem-9' });
+    expect(result).toEqual({ status: 'deleted', memory: { id: 'mem-9', kind: 'playbook', content: 'Old tactic' } });
+    expect(deleted).toEqual(['mem-9']);
+  });
+
+  it('forgetFromChat by id returns not_found for a row that is not the caller\'s (no oracle)', async () => {
+    const { service, deleted } = mkService({ getByIdRow: null });
+    const result = await service.forgetFromChat({ userId: 'u-1', memoryId: 'someone-elses' });
+    expect(result).toEqual({ status: 'not_found' });
+    expect(deleted).toEqual([]);
+  });
+
+  it('forgetFromChat deletes the clear similarity winner', async () => {
+    const { service, deleted } = mkService({
+      similarRows: [
+        { ...mkRow({ id: 'm-a', content: 'Never share budget' }), similarity: 0.9 },
+        { ...mkRow({ id: 'm-b', content: 'Prefers async' }), similarity: 0.4 },
+      ],
+    });
+    const result = await service.forgetFromChat({ userId: 'u-1', description: 'the budget rule' });
+    expect(result.status).toBe('deleted');
+    expect(deleted).toEqual(['m-a']);
+  });
+
+  it('forgetFromChat returns candidates when matches are too close to call', async () => {
+    const { service, deleted } = mkService({
+      similarRows: [
+        { ...mkRow({ id: 'm-a', content: 'Never share budget with vendors' }), similarity: 0.72 },
+        { ...mkRow({ id: 'm-b', content: 'Never share budget with recruiters' }), similarity: 0.70 },
+      ],
+    });
+    const result = await service.forgetFromChat({ userId: 'u-1', description: 'budget rule' });
+    expect(result.status).toBe('ambiguous');
+    if (result.status === 'ambiguous') {
+      expect(result.candidates.map((c) => c.id)).toEqual(['m-a', 'm-b']);
+    }
+    expect(deleted).toEqual([]);
+  });
+
+  it('forgetFromChat falls back to exact-phrase matching when embedding fails', async () => {
+    const rows = [
+      mkRow({ id: 'm-a', content: 'Never share my budget.' }),
+      mkRow({ id: 'm-b', content: 'Prefers async communication.' }),
+    ];
+    const { service, deleted } = mkService({ embedding: null, listRows: rows });
+
+    const result = await service.forgetFromChat({ userId: 'u-1', description: 'share my budget' });
+    expect(result.status).toBe('deleted');
+    expect(deleted).toEqual(['m-a']);
+  });
+
+  it('forgetFromChat returns not_found when nothing matches', async () => {
+    const { service, deleted } = mkService({ embedding: null, listRows: [mkRow({ id: 'm-a' })] });
+    const result = await service.forgetFromChat({ userId: 'u-1', description: 'no such rule anywhere' });
+    expect(result).toEqual({ status: 'not_found' });
+    expect(deleted).toEqual([]);
   });
 });

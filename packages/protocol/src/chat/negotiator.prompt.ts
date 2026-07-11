@@ -39,6 +39,13 @@ export interface NegotiatorPromptOptions {
    * secrets. Absent/empty → the prompt is byte-identical to before.
    */
   memory?: NegotiatorMemoryEntry[];
+  /**
+   * True when the `remember`/`forget` memory tools are registered for this
+   * session (P5.4 — the composition root injects them only while negotiator
+   * memory writes are enabled). Adds the memory-tool guidance section and
+   * tool-reference rows; false/absent → prompt unchanged.
+   */
+  memoryToolsEnabled?: boolean;
 }
 
 /**
@@ -74,6 +81,21 @@ The system collects open questions for your client (signal refinements, negotiat
 }
 
 /**
+ * Renders the remember/forget guidance section (P5.4). Only rendered when the
+ * memory tools are actually registered, so the model is never told about
+ * capabilities it does not have.
+ */
+function buildMemoryToolsSection(): string {
+  return `
+## Remembering and forgetting
+You keep a private working memory for negotiations: standing disclosure rules, thresholds, and playbook notes. The client can inspect, edit, and delete everything you remember on their agent page (Memory tab).
+- When the client states a standing rule that should outlive this conversation — especially about what to disclose or protect ("never share my budget", "don't reveal who my current clients are") — save it with remember. Pick the kind honestly: disclosure_rule for sharing constraints, threshold for hard limits, playbook for tactics. Confirm in one short sentence what you saved and that they can review it on your agent page.
+- Only remember what the client actually said. Never speculate a rule into memory, and don't save one-off instructions that only apply to the current request.
+- When the client asks you to forget or retract something, use forget with their description of it. If several memories match, lay out the candidates in plain language and ask which one they mean.
+- Disclosure rules are standing consent: treat a remembered disclosure rule as binding in every future negotiation until the client changes or deletes it.`;
+}
+
+/**
  * Builds the system prompt for the negotiator chat persona.
  *
  * Grounded in the client's preloaded user/profile context; everything else
@@ -105,6 +127,10 @@ export function buildNegotiatorSystemContent(
     ? buildPinnedSignalSection(pinnedIntentId, opts.pinnedIntentLabel)
     : buildQuestionInboxSection();
   const memorySection = renderNegotiatorChatMemorySection(opts.memory ?? []);
+  const memoryToolsSection = opts.memoryToolsEnabled ? buildMemoryToolsSection() : "";
+  const memoryToolsRows = opts.memoryToolsEnabled
+    ? `\n| **remember** | kind, content | Save a standing rule the client just stated into your private negotiator memory — ONLY what they actually said |\n| **forget** | memoryId? / description? | Delete a remembered rule when the client asks you to forget it |`
+    : "";
 
   return `You are ${opts.agentName}, the personal negotiator agent working for ${ctx.userName}.
 ${descriptionLine}
@@ -119,7 +145,7 @@ You work for exactly one client: ${ctx.userName}. You represent them in negotiat
 - **Handle memberships**: list the communities they belong to and join or leave communities when they ask.
 - **Manage their contacts**: look up, add, remove, or import contacts when they ask (when contact features are enabled).
 - **Act on instruction**: every write — a negotiation response, an opportunity decision, a signal, a profile or premise change, a membership change, a contact change — happens only when the client explicitly asks for it in this conversation. Never write anything the client did not just ask for.
-${pinnedSignalSection}${memorySection}
+${pinnedSignalSection}${memorySection}${memoryToolsSection}
 ## What you cannot do here
 - **No direct discovery.** You cannot run matching or search for people yourself. Matching happens automatically in the background from the client's signals — shaping the signals is how you steer it. New matches appear on the client's home page and in this chat as opportunities.
 - **No community administration.** You can join or leave communities for the client, but you cannot create, rename, or delete communities — point them to the app for that.
@@ -160,7 +186,7 @@ ${profileContext}
 | **create_network_membership** / **delete_network_membership** | networkId | Join/leave a community on instruction |
 | **list_contacts** / **search_contacts** / **add_contact** / **remove_contact** | ... | The client's contacts |
 | **import_contacts** / **import_gmail_contacts** | ... | Bulk contact import on instruction |
-| **scrape_url** | url, objective | Read a link the client pasted (e.g. before drafting a signal from it) |
+| **scrape_url** | url, objective | Read a link the client pasted (e.g. before drafting a signal from it) |${memoryToolsRows}
 
 ## Grounding rules
 - **Never fabricate.** Every claim about a negotiation, opportunity, signal, or premise must come from a tool result in this conversation. If you have not looked it up this turn, look it up before answering. Only the client's identity and profile above are preloaded.

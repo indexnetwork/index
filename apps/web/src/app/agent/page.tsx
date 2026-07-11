@@ -6,11 +6,12 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers } from "@/contexts/APIContext";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationHistory from "@/components/NegotiationHistory";
+import NegotiatorMemoryPanel from "@/components/NegotiatorMemoryPanel";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import type { NegotiationInsights } from "@/services/users";
 
-const VALID_TABS = ["overview", "negotiations"] as const;
+const VALID_TABS = ["overview", "negotiations", "memory"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -285,6 +286,12 @@ export default function AgentPage() {
               >
                 Negotiations
               </Tabs.Trigger>
+              <Tabs.Trigger
+                value="memory"
+                className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+              >
+                Memory
+              </Tabs.Trigger>
             </Tabs.List>
 
             <Tabs.Content value="overview" className="w-full">
@@ -293,6 +300,10 @@ export default function AgentPage() {
 
             <Tabs.Content value="negotiations" className="w-full">
               <NegotiationHistory userId={user?.id ?? ""} />
+            </Tabs.Content>
+
+            <Tabs.Content value="memory" className="w-full">
+              <NegotiatorMemoryPanel userId={user?.id ?? ""} />
             </Tabs.Content>
           </Tabs.Root>
         </ContentContainer>

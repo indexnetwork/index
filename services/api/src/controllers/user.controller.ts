@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { Controller, Delete, Get, Post, Put, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
@@ -9,6 +9,8 @@ import { userService } from '../services/user.service';
 import { contactService } from '../services/contact.service';
 import { TaskService } from '../services/task.service';
 import { NegotiationService } from '../services/negotiation.service';
+import { negotiatorMemoryInspectionService } from '../services/negotiator-memory-inspection.service';
+import type { NegotiatorMemory, NegotiatorMemoryKind } from '../schemas/database.schema';
 import { NegotiationInsightsGenerator } from '@indexnetwork/protocol';
 import type { NegotiationDigest } from '@indexnetwork/protocol';
  
@@ -22,6 +24,34 @@ const AddContactBodySchema = z.object({
 });
 
 const BATCH_MAX_IDS = 100;
+
+const NEGOTIATOR_MEMORY_KINDS = ['playbook', 'disclosure_rule', 'counterparty_dossier', 'threshold'] as const;
+
+const UpdateNegotiatorMemoryBodySchema = z
+  .object({
+    content: z.string().trim().min(1).max(4000).optional(),
+    confidence: z.number().min(0).max(1).optional(),
+  })
+  .refine((b) => b.content !== undefined || b.confidence !== undefined, {
+    message: 'Provide content and/or confidence',
+  });
+
+/** Maps a memory row to the owner-facing DTO (no embedding — it's an implementation detail). */
+function mapNegotiatorMemory(row: NegotiatorMemory, subjectMap: ReadonlyMap<string, SpeakerUser>) {
+  const subject = row.subjectUserId ? subjectMap.get(row.subjectUserId) : undefined;
+  return {
+    id: row.id,
+    kind: row.kind,
+    content: row.content,
+    confidence: row.confidence,
+    subjectUser: row.subjectUserId
+      ? { id: row.subjectUserId, name: subject?.name ?? 'Unknown user', avatar: subject?.avatar ?? null }
+      : null,
+    sourceRefs: row.sourceRefs,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
 type NegotiationRow = Awaited<ReturnType<TaskService['getNegotiationsByUser']>>[number];
 type NegotiationMessages = Awaited<ReturnType<TaskService['getMessagesByTaskIds']>>;
@@ -401,6 +431,104 @@ export class UserController {
     } catch (err) {
       logger.error('Failed to generate negotiation insights', { userId: params.userId, error: err instanceof Error ? err.message : String(err) });
       return Response.json({ error: 'Failed to generate insights' }, { status: 500 });
+    }
+  }
+
+  /**
+   * GET /users/:userId/negotiator/memories — list the user's negotiator's
+   * private memory (P5.4). Optional `?kind=` filter.
+   *
+   * Strict self-only — stricter than the neighbor negotiations route, which
+   * permits other viewers with mutual filtering. Negotiator memories are
+   * private operational knowledge: ANY non-self caller gets 403, mutuals
+   * included, no carve-outs.
+   */
+  @Get('/:userId/negotiator/memories')
+  @UseGuards(RateLimit('read'), AuthGuard)
+  async listNegotiatorMemories(req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
+    if (viewer.id !== params.userId) {
+      return Response.json({ error: 'Negotiator memories are only available to their owner' }, { status: 403 });
+    }
+
+    const url = new URL(req.url);
+    const kindParam = url.searchParams.get('kind');
+    if (kindParam && !NEGOTIATOR_MEMORY_KINDS.includes(kindParam as never)) {
+      return Response.json({ error: `Invalid kind: "${kindParam}". Use one of: ${NEGOTIATOR_MEMORY_KINDS.join(', ')}` }, { status: 400 });
+    }
+
+    try {
+      const rows = await negotiatorMemoryInspectionService.list(
+        params.userId,
+        kindParam ? { kind: kindParam as NegotiatorMemoryKind } : undefined,
+      );
+
+      const subjectIds = [...new Set(rows.map((r) => r.subjectUserId).filter((id): id is string => !!id))];
+      const subjectUsers = subjectIds.length > 0 ? await userService.findByIds(subjectIds) : [];
+      const subjectMap = new Map<string, SpeakerUser>(subjectUsers.map((u) => [u.id, u]));
+
+      return Response.json({ memories: rows.map((row) => mapNegotiatorMemory(row, subjectMap)) });
+    } catch (err) {
+      logger.error('Failed to list negotiator memories', { userId: params.userId, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to list negotiator memories' }, { status: 500 });
+    }
+  }
+
+  /**
+   * PATCH /users/:userId/negotiator/memories/:memoryId — edit a memory's
+   * content and/or confidence (P5.4). Content edits re-embed so similarity
+   * retrieval never serves stale meaning. Strict self-only (403 otherwise).
+   */
+  @Patch('/:userId/negotiator/memories/:memoryId')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async updateNegotiatorMemory(req: Request, viewer: AuthenticatedUser, params: { userId: string; memoryId: string }) {
+    if (viewer.id !== params.userId) {
+      return Response.json({ error: 'Negotiator memories are only available to their owner' }, { status: 403 });
+    }
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const parsed = UpdateNegotiatorMemoryBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid body' }, { status: 400 });
+    }
+
+    try {
+      const updated = await negotiatorMemoryInspectionService.update(params.userId, params.memoryId, parsed.data);
+      if (!updated) {
+        return Response.json({ error: 'Memory not found' }, { status: 404 });
+      }
+      return Response.json({ memory: mapNegotiatorMemory(updated, new Map()) });
+    } catch (err) {
+      logger.error('Failed to update negotiator memory', { userId: params.userId, memoryId: params.memoryId, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to update negotiator memory' }, { status: 500 });
+    }
+  }
+
+  /**
+   * DELETE /users/:userId/negotiator/memories/:memoryId — remove a memory
+   * (P5.4). Takes effect for the next retrieval immediately (P5.3 reads live
+   * rows per session). Strict self-only (403 otherwise).
+   */
+  @Delete('/:userId/negotiator/memories/:memoryId')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async deleteNegotiatorMemory(_req: Request, viewer: AuthenticatedUser, params: { userId: string; memoryId: string }) {
+    if (viewer.id !== params.userId) {
+      return Response.json({ error: 'Negotiator memories are only available to their owner' }, { status: 403 });
+    }
+
+    try {
+      const deleted = await negotiatorMemoryInspectionService.remove(params.userId, params.memoryId);
+      if (!deleted) {
+        return Response.json({ error: 'Memory not found' }, { status: 404 });
+      }
+      return Response.json({ success: true });
+    } catch (err) {
+      logger.error('Failed to delete negotiator memory', { userId: params.userId, memoryId: params.memoryId, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to delete negotiator memory' }, { status: 500 });
     }
   }
 
