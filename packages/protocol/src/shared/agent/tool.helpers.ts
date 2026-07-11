@@ -23,6 +23,7 @@ import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.j
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
 import type { MintConnectLink } from "../interfaces/connect-link.interface.js";
 import type { ChatQuestionsHost, QuestionerDatabase } from "../interfaces/questioner.interface.js";
+import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 import type { QuestionMode } from "../schemas/question.schema.js";
@@ -214,6 +215,14 @@ export interface ToolContext {
    * the backend composition root; when absent the tool is not registered.
    */
   chatQuestions?: ChatQuestionsHost;
+  /**
+   * Host bridge for the negotiator persona's `remember`/`forget` memory
+   * tools (P5.4). Injected by the composition root only when negotiator
+   * memory writes are enabled; when absent the tools are not registered.
+   * Consumed exclusively by the negotiator persona toolset — the
+   * orchestrator registry never sees these tools.
+   */
+  negotiatorMemoryTools?: NegotiatorMemoryToolsHost;
   /**
    * Resolve a user's global user_context paragraph (profile-replacing identity
    * text), generating it on demand when absent. Mirrors `ToolDeps.getUserContextText`

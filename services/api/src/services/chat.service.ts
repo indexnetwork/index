@@ -5,6 +5,7 @@ import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, createNego
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
+import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { HumanMessage } from '@langchain/core/messages';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -546,6 +547,10 @@ export class ChatSessionService {
         ...(agent.description?.trim() ? { agentDescription: agent.description } : {}),
         ...(pinnedIntent?.label?.trim() ? { pinnedIntentLabel: pinnedIntent.label.trim() } : {}),
         ...(memory.length > 0 ? { memory } : {}),
+        // P5.4: the remember/forget tools are registered by the composition
+        // root under the same flag — the prompt advertises them only when
+        // they actually exist for this session.
+        ...(isNegotiatorMemoryWriteEnabled() ? { memoryToolsEnabled: true } : {}),
       }),
     );
   }

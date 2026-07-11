@@ -1,6 +1,7 @@
 import { createChatTools, type ChatTools, type ToolContext, type ResolvedToolContext } from "../shared/agent/tool.factory.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
 import { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./negotiator.prompt.js";
+import { createNegotiatorMemoryTools } from "./negotiator.tools.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NEGOTIATOR PERSONA (P4.1)
@@ -113,7 +114,20 @@ export async function createNegotiatorTools(
   preResolvedContext?: ResolvedToolContext,
 ): Promise<ChatTools> {
   const tools = await createChatTools(deps, preResolvedContext);
-  return filterNegotiatorTools(tools);
+  const filtered = filterNegotiatorTools(tools);
+  // P5.4 (IND-408): `remember`/`forget` are negotiator-exclusive — appended
+  // AFTER the allowlist filter, and only when the composition root injected
+  // the host bridge (i.e. negotiator memory writes are enabled). They never
+  // enter the shared registry, so the orchestrator cannot see them.
+  if (deps.negotiatorMemoryTools) {
+    const memoryTools = createNegotiatorMemoryTools({
+      host: deps.negotiatorMemoryTools,
+      userId: deps.userId,
+      ...(deps.sessionId ? { sessionId: deps.sessionId } : {}),
+    });
+    return [...filtered, ...memoryTools] as ChatTools;
+  }
+  return filtered;
 }
 
 /**

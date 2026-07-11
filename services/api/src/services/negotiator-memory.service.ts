@@ -23,6 +23,7 @@
 import type { DistilledMemory } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
+import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { negotiatorMemoryDatabaseAdapter, type NegotiatorMemoryDatabaseAdapter } from '../adapters/negotiator-memory.database.adapter';
@@ -30,10 +31,10 @@ import type { NegotiatorMemoryKind, NegotiatorMemorySourceRef } from '../schemas
 
 const logger = log.service.from('NegotiatorMemoryWrite');
 
-/** Write-path flag. Default off; flipped per environment (dev first). */
-export function isNegotiatorMemoryWriteEnabled(): boolean {
-  return process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED === 'true';
-}
+// Re-exported for existing consumers (reflect queue); canonical definition
+// moved to lib/negotiator-feature.ts so the chat composition root can read it
+// without a service→service import (P5.4).
+export { isNegotiatorMemoryWriteEnabled };
 
 /** Per-kind entry caps per negotiator agent (anti-poisoning). */
 export const NEGOTIATOR_MEMORY_KIND_CAPS: Record<NegotiatorMemoryKind, number> = {
@@ -55,8 +56,27 @@ const DECAY_DELETE_BELOW = 0.05;
 
 type MemoryAdapterSurface = Pick<
   NegotiatorMemoryDatabaseAdapter,
-  'create' | 'list' | 'update' | 'delete' | 'decayAll'
+  'create' | 'list' | 'update' | 'delete' | 'decayAll' | 'getById' | 'searchSimilar'
 >;
+
+/** Row shape returned to the chat tools (no embedding, no provenance). */
+const toToolView = (row: { id: string; kind: string; content: string }) => ({
+  id: row.id,
+  kind: row.kind,
+  content: row.content,
+});
+
+export type NegotiatorMemoryForgetOutcome =
+  | { status: 'deleted'; memory: { id: string; kind: string; content: string } }
+  | { status: 'ambiguous'; candidates: Array<{ id: string; kind: string; content: string }> }
+  | { status: 'not_found' };
+
+/** Similarity floor for forget-by-description matching. */
+const FORGET_MIN_SCORE = 0.3;
+/** A top match this far ahead of the runner-up is deleted without asking. */
+const FORGET_CLEAR_MARGIN = 0.1;
+/** Confidence for rules the client dictated directly in chat. */
+const REMEMBER_CONFIDENCE = 0.95;
 
 export interface NegotiatorMemoryWriteDeps {
   memories?: MemoryAdapterSurface;
@@ -205,6 +225,106 @@ export class NegotiatorMemoryWriteService {
       }],
       sourceRef: { type: 'question_answer', id: input.questionId },
     });
+  }
+
+  /**
+   * Persist a standing rule the client dictated in the negotiator DM (P5.4
+   * `remember` tool). The content is already a distilled policy — no LLM
+   * pass — and confidence is high because this is the client speaking
+   * directly. Returns the created row, or null when writes are disabled or
+   * the negotiator agent cannot be resolved.
+   */
+  async rememberFromChat(input: {
+    userId: string;
+    kind: 'disclosure_rule' | 'playbook' | 'threshold';
+    content: string;
+    sessionId?: string;
+  }): Promise<{ id: string; kind: string; content: string } | null> {
+    if (!isNegotiatorMemoryWriteEnabled()) return null;
+    const content = input.content.trim();
+    if (!content) return null;
+
+    const agentId = await this.resolveNegotiatorAgentId(input.userId);
+    if (!agentId) {
+      logger.warn('No personal negotiator agent for user; remember skipped', { userId: input.userId });
+      return null;
+    }
+
+    await this.enforceKindCap(agentId, input.userId, input.kind);
+    const embedding = await this.embed(content);
+    const row = await this.memories.create({
+      agentId,
+      userId: input.userId,
+      kind: input.kind,
+      content,
+      confidence: REMEMBER_CONFIDENCE,
+      ...(embedding && { embedding }),
+      sourceRefs: [{ type: 'chat', id: input.sessionId ?? 'negotiator-dm' }],
+    });
+    logger.info('Negotiator memory remembered from chat', { userId: input.userId, agentId, kind: input.kind, id: row.id });
+    return toToolView(row);
+  }
+
+  /**
+   * Delete a memory by id or by the client's description of it (P5.4
+   * `forget` tool). NOT gated on the write flag — forgetting is the client's
+   * standing right. Matching: exact id first; otherwise embedding similarity
+   * over the client's own store (clear winner deleted, close calls returned
+   * as candidates); substring match as fallback when embedding fails or
+   * similarity finds nothing.
+   */
+  async forgetFromChat(input: {
+    userId: string;
+    memoryId?: string;
+    description?: string;
+  }): Promise<NegotiatorMemoryForgetOutcome> {
+    if (input.memoryId) {
+      const row = await this.memories.getById(input.memoryId, input.userId);
+      if (!row) return { status: 'not_found' };
+      await this.memories.delete(row.id, input.userId);
+      logger.info('Negotiator memory forgotten from chat', { userId: input.userId, id: row.id, kind: row.kind });
+      return { status: 'deleted', memory: toToolView(row) };
+    }
+
+    const description = input.description?.trim();
+    if (!description) return { status: 'not_found' };
+
+    const agentId = await this.resolveNegotiatorAgentId(input.userId);
+    if (!agentId) return { status: 'not_found' };
+
+    const embedding = await this.embed(description);
+    if (embedding) {
+      const matches = await this.memories.searchSimilar({
+        agentId,
+        userId: input.userId,
+        embedding,
+        limit: 3,
+        minScore: FORGET_MIN_SCORE,
+      });
+      if (matches.length === 1 || (matches.length > 1 && matches[0].similarity - matches[1].similarity >= FORGET_CLEAR_MARGIN)) {
+        await this.memories.delete(matches[0].id, input.userId);
+        logger.info('Negotiator memory forgotten from chat', { userId: input.userId, id: matches[0].id, kind: matches[0].kind });
+        return { status: 'deleted', memory: toToolView(matches[0]) };
+      }
+      if (matches.length > 1) {
+        return { status: 'ambiguous', candidates: matches.map(toToolView) };
+      }
+    }
+
+    // Embedding unavailable or nothing above the similarity floor — try an
+    // exact-phrase match over the client's own store (bounded: ≤290 rows by caps).
+    const all = await this.memories.list(agentId, input.userId, { limit: 300 });
+    const needle = description.toLowerCase();
+    const hits = all.filter((m) => m.content.toLowerCase().includes(needle));
+    if (hits.length === 1) {
+      await this.memories.delete(hits[0].id, input.userId);
+      logger.info('Negotiator memory forgotten from chat', { userId: input.userId, id: hits[0].id, kind: hits[0].kind });
+      return { status: 'deleted', memory: toToolView(hits[0]) };
+    }
+    if (hits.length > 1) {
+      return { status: 'ambiguous', candidates: hits.slice(0, 3).map(toToolView) };
+    }
+    return { status: 'not_found' };
   }
 
   /**

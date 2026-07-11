@@ -123,6 +123,17 @@ export {
   filterNegotiatorTools,
 } from "./chat/negotiator.persona.js";
 export { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./chat/negotiator.prompt.js";
+export {
+  NEGOTIATOR_MEMORY_TOOL_NAMES,
+  createNegotiatorMemoryTools,
+} from "./chat/negotiator.tools.js";
+export type {
+  NegotiatorMemoryToolsHost,
+  NegotiatorMemoryRememberInput,
+  NegotiatorMemoryToolView,
+  NegotiatorMemoryForgetResult,
+  RememberableMemoryKind,
+} from "./shared/interfaces/negotiator-memory.interface.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";
