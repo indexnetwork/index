@@ -74,9 +74,6 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
             className="w-full text-left px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all disabled:opacity-50"
           >
             {opt.label}
-            {opt.description && (
-              <span className="mt-0.5 block text-xs text-gray-400">{opt.description}</span>
-            )}
           </button>
         ))}
 
