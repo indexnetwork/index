@@ -346,3 +346,8 @@ button {
 .chat-markdown-invert hr {
   border-color: rgba(255, 255, 255, 0.3);
 }
+/* Blinking eye for the Questions panel face (mirrors the radar eye motion). */
+@keyframes eye-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.1); }
+}
