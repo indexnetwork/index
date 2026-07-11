@@ -27,7 +27,7 @@ export interface DiscoveryOutcome {
   reasoning: string;
   agreedRoles?: Array<{ userId: string; role: NegotiationRole }>;
   /** Why the negotiation stopped, when not by an explicit accept/reject. */
-  reason?: "turn_cap" | "timeout";
+  reason?: "turn_cap" | "timeout" | "screened_out";
 }
 
 /** One negotiation that ran during this discovery turn. */
@@ -235,6 +235,8 @@ function renderOutcomeReason(reason: DiscoveryNegotiationDigest["outcomeReason"]
       return "not enough mutual interest";
     case "stalled":
       return "stalled";
+    case "screened_out":
+      return "didn't look like a strong enough fit to pursue";
     case null:
       return "";
   }

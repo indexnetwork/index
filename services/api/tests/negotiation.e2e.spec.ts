@@ -3,7 +3,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, it, expect } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { NegotiationGraphFactory, requestContext } from "@indexnetwork/protocol";
+import { NegotiationGraphFactory, NegotiationScreener, requestContext } from "@indexnetwork/protocol";
 import type { NegotiationGraphDatabase } from "@indexnetwork/protocol";
 import { conversationDatabaseAdapter } from "../src/adapters/database.adapter";
 
@@ -95,6 +95,77 @@ describe("Negotiation E2E", () => {
     expect(screenEvents[0].opportunityId).toBe(opportunityId);
     expect(["reach_out", "pass"]).toContain(screenEvents[0].decision);
   }, 120_000);
+
+  it("enforce + forced pass → screened_out: zero A2A messages, completed task, artifact reason screened_out (IND-399)", async () => {
+    const factory = new NegotiationGraphFactory(
+      conversationDatabaseAdapter as unknown as NegotiationGraphDatabase,
+      noopDispatcher,
+    );
+    const graph = factory.createGraph();
+
+    const sourceId = `e2e-screen-src-${Date.now()}`;
+    const candidateId = `e2e-screen-cand-${Date.now()}`;
+    const opportunityId = randomUUID();
+
+    // Force a deterministic `pass` — the real screen LLM verdict is not stable
+    // enough to gate an e2e on; enforcement mechanics are what's under test.
+    const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
+    const origInvoke = NegotiationScreener.prototype.invoke;
+    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+    NegotiationScreener.prototype.invoke = async () => ({
+      decision: "pass",
+      reasoning: "e2e forced pass: generic overlap",
+      evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
+    });
+
+    const traceEvents: Array<Record<string, unknown>> = [];
+    try {
+      const result = await requestContext.run(
+        { traceEmitter: ((e: Record<string, unknown>) => { traceEvents.push(e); }) as never },
+        () => graph.invoke({
+          opportunityId,
+          sourceUser: { id: sourceId, intents: [], profile: { name: "Alice" } },
+          candidateUser: { id: candidateId, intents: [], profile: { name: "Bob" } },
+          indexContext: { networkId: "e2e-index", prompt: "AI startup co-founders" },
+          seedAssessment: { reasoning: "Vague overlap", valencyRole: "Peer" },
+          maxTurns: 4,
+        }),
+      );
+
+      // Outcome: rejected as screened_out with zero turns — never 'stalled'.
+      expect(result.outcome).not.toBeNull();
+      expect(result.outcome!.hasOpportunity).toBe(false);
+      expect(result.outcome!.reason).toBe("screened_out");
+      expect(result.outcome!.turnCount).toBe(0);
+      expect(result.outcome!.reasoning).toBe("e2e forced pass: generic overlap");
+
+      // Zero counterparty involvement: no A2A messages persisted.
+      const messages = await conversationDatabaseAdapter.getMessages(result.conversationId);
+      expect(messages.filter((m) => m.role === "agent").length).toBe(0);
+
+      // Task completed with the enforce decision on metadata…
+      const task = await conversationDatabaseAdapter.getTask(result.taskId);
+      expect(task?.state).toBe("completed");
+      const screen = (task?.metadata as Record<string, unknown>)?.screenDecision as Record<string, unknown>;
+      expect(screen.mode).toBe("enforce");
+      expect(screen.decision).toBe("pass");
+
+      // …and the outcome artifact carries reason screened_out (not stalled).
+      const artifacts = await conversationDatabaseAdapter.getArtifactsForTask(result.taskId);
+      const outcomeArtifact = artifacts.find((a) => a.name === "negotiation-outcome");
+      const data = (outcomeArtifact?.parts as Array<{ kind?: string; data?: Record<string, unknown> }>)?.find((p) => p.kind === "data")?.data;
+      expect(data?.reason).toBe("screened_out");
+
+      // Distinct trace outcome for observability.
+      const outcomeEvents = traceEvents.filter((e) => e.type === "negotiation_outcome");
+      expect(outcomeEvents.length).toBe(1);
+      expect(outcomeEvents[0].outcome).toBe("screened_out");
+    } finally {
+      NegotiationScreener.prototype.invoke = origInvoke;
+      if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
+      else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
+    }
+  }, 60_000);
 
   it("runs a full v2 negotiation: seat-scoped actions, counterparty-only accept (IND-397)", async () => {
     const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;

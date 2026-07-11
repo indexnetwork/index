@@ -16,7 +16,10 @@ import type { NegotiationTurn } from "../negotiation.state.js";
  *   metadata.screenDecision, negotiation always proceeds (even on `pass`),
  * - continuations never screen (even in shadow),
  * - screen failure fails OPEN: negotiation proceeds, failedOpen recorded,
- * - enforce (pre-P2.2): runs identically to shadow, mode recorded truthfully,
+ * - enforce (P2.2): a genuine `pass` blocks before the first turn — zero
+ *   messages, outcome reason `screened_out`, opportunity quietly `rejected`,
+ *   no questioner/reflect enqueue, distinct trace outcome; `reach_out` and
+ *   failed-open screens still proceed; shadow `pass` still never blocks,
  * - `negotiation_screen` trace event emitted when an opportunityId is present,
  * - screener inputs: client = initiator side, counterparty context fetched,
  *   discoveryQuery forwarded for source-side clients.
@@ -48,16 +51,25 @@ function mkStubs(opts?: {
   const createdMessages: Array<{ senderId: string; parts: Array<{ kind: string; data: NegotiationTurn }> }> = [];
   const screenWrites: Array<{ taskId: string; record: Record<string, unknown> }> = [];
   const userContextLookups: string[] = [];
+  const statusUpdates: Array<{ opportunityId: string; status: string }> = [];
+  const artifacts: Array<Record<string, unknown>> = [];
+  const taskStates: string[] = [];
   const database = {
     getOrCreateDM: async () => ({ id: "conv-1" }),
     createTask: async (conversationId: string) => ({ id: "task-new", conversationId, state: "submitted" }),
-    updateOpportunityStatus: async () => {},
+    updateOpportunityStatus: async (opportunityId: string, status: string) => {
+      statusUpdates.push({ opportunityId, status });
+    },
     createMessage: async (p: { senderId: string; parts: Array<{ kind: string; data: NegotiationTurn }> }) => {
       createdMessages.push(p);
       return { id: `msg-${createdMessages.length}`, senderId: p.senderId, parts: p.parts, createdAt: new Date() };
     },
-    updateTaskState: async () => {},
-    createArtifact: async () => {},
+    updateTaskState: async (_taskId: string, state: string) => {
+      taskStates.push(state);
+    },
+    createArtifact: async (a: Record<string, unknown>) => {
+      artifacts.push(a);
+    },
     setTaskTurnContext: async () => {},
     ...(opts?.omitSetTaskScreenDecision ? {} : {
       setTaskScreenDecision: async (taskId: string, record: Record<string, unknown>) => {
@@ -79,7 +91,7 @@ function mkStubs(opts?: {
     dispatch: async () => ({ handled: false, reason: "no_agent" }),
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[1];
 
-  return { database, dispatcher, createdMessages, screenWrites, userContextLookups };
+  return { database, dispatcher, createdMessages, screenWrites, userContextLookups, statusUpdates, artifacts, taskStates };
 }
 
 async function runGraph(stubs: ReturnType<typeof mkStubs>, input: Record<string, unknown> = {}) {
@@ -218,7 +230,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome).not.toBeNull();
   });
 
-  it("enforce (pre-P2.2): runs identically to shadow — proceeds, mode recorded truthfully", async () => {
+  it("enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected", async () => {
     process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     screenerResult = {
       decision: "pass",
@@ -227,13 +239,111 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     };
     const stubs = mkStubs();
 
-    const result = await runGraph(stubs);
+    const result = await runGraph(stubs, { opportunityId: "opp-1" });
 
+    // Decision recorded truthfully
     expect(stubs.screenWrites[0].record.mode).toBe("enforce");
     expect(stubs.screenWrites[0].record.decision).toBe("pass");
-    // Enforcement lands in P2.2 — until then even a pass proceeds.
+    // Zero turns — the counterparty is never involved
+    expect(stubs.createdMessages.length).toBe(0);
+    // Outcome artifact: rejected as screened_out, not stalled; screen reasoning carried
+    expect(result.outcome?.hasOpportunity).toBe(false);
+    expect(result.outcome?.reason).toBe("screened_out");
+    expect(result.outcome?.turnCount).toBe(0);
+    expect(result.outcome?.reasoning).toBe("not worth the client's name");
+    expect(stubs.taskStates).toContain("completed");
+    const artifactOutcome = (stubs.artifacts[0]?.parts as Array<{ data: Record<string, unknown> }>)[0]?.data;
+    expect(artifactOutcome?.reason).toBe("screened_out");
+    // Opportunity quietly rejected (init had flipped it to negotiating)
+    expect(stubs.statusUpdates).toEqual([
+      { opportunityId: "opp-1", status: "negotiating" },
+      { opportunityId: "opp-1", status: "rejected" },
+    ]);
+  });
+
+  it("enforce (P2.2): screened_out emits a distinct negotiation_outcome trace event and never enqueues questioner/reflect", async () => {
+    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+    screenerResult = {
+      decision: "pass",
+      reasoning: "generic overlap",
+      evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
+    };
+    const stubs = mkStubs();
+    const questionerCalls: unknown[] = [];
+    const reflectCalls: unknown[] = [];
+    const graph = new NegotiationGraphFactory(
+      stubs.database,
+      stubs.dispatcher,
+      undefined,
+      (async (job: unknown) => { questionerCalls.push(job); }) as never,
+      (async (job: unknown) => { reflectCalls.push(job); }) as never,
+    ).createGraph();
+    const events: Array<Record<string, unknown>> = [];
+
+    await requestContext.run(
+      { traceEmitter: ((e: Record<string, unknown>) => { events.push(e); }) as never },
+      () => graph.invoke({
+        sourceUser: { id: "u-src", intents: [], profile: { name: "Alice" } },
+        candidateUser: { id: "u-cand", intents: [], profile: { name: "Bob" } },
+        indexContext: { networkId: "net-1", prompt: "" },
+        seedAssessment: { reasoning: "complementary", valencyRole: "peer" },
+        maxTurns: 1,
+        opportunityId: "opp-1",
+      } as Partial<typeof NegotiationGraphState.State>),
+    );
+
+    const outcomeEvents = events.filter((e) => e.type === "negotiation_outcome");
+    expect(outcomeEvents.length).toBe(1);
+    expect(outcomeEvents[0].outcome).toBe("screened_out");
+    expect(outcomeEvents[0].turnCount).toBe(0);
+    // Zero downstream noise: no clarifying questions, no reflection
+    expect(questionerCalls.length).toBe(0);
+    expect(reflectCalls.length).toBe(0);
+  });
+
+  it("enforce (P2.2): `reach_out` proceeds to turns normally", async () => {
+    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+    const stubs = mkStubs();
+
+    const result = await runGraph(stubs);
+
+    expect(stubs.screenWrites[0].record.decision).toBe("reach_out");
     expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
     expect(result.outcome).not.toBeNull();
+    expect(result.outcome?.reason).not.toBe("screened_out");
+  });
+
+  it("enforce (P2.2): a failed screen still fails OPEN — negotiation proceeds", async () => {
+    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+    screenerError = new Error("provider exploded");
+    const stubs = mkStubs();
+
+    const result = await runGraph(stubs);
+
+    expect(stubs.screenWrites[0].record.failedOpen).toBe(true);
+    expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
+    expect(result.outcome).not.toBeNull();
+    expect(result.outcome?.reason).not.toBe("screened_out");
+  });
+
+  it("enforce (P2.2): continuations never screen — enforcement cannot touch in-flight dialogues", async () => {
+    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+    screenerResult = {
+      decision: "pass",
+      reasoning: "would block if it ran",
+      evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
+    };
+    const stubs = mkStubs({
+      priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
+    });
+
+    const result = await runGraph(stubs);
+
+    expect(screenerInputs.length).toBe(0);
+    expect(stubs.screenWrites.length).toBe(0);
+    expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
+    expect(result.outcome).not.toBeNull();
+    expect(result.outcome?.reason).not.toBe("screened_out");
   });
 
   it("emits a negotiation_screen trace event when an opportunityId is present", async () => {

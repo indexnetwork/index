@@ -30,7 +30,7 @@ export const DiscoveryOutcomeSchema = z.object({
     userId: z.string(),
     role: NegotiationRoleSchema,
   })).optional(),
-  reason: z.enum(["turn_cap", "timeout"]).optional(),
+  reason: z.enum(["turn_cap", "timeout", "screened_out"]).optional(),
 });
 export type DiscoveryOutcome = z.infer<typeof DiscoveryOutcomeSchema>;
 

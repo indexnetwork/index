@@ -76,7 +76,7 @@ Each turn produces a structured assessment:
   - `otherUser`: agent, patient, or peer
 - **message** *(optional)*: Free-form text accompanying the action
 
-### Screen gate (shadow)
+### Screen gate (shadow / enforce)
 
 Between init and the first turn, **fresh negotiations only** (continuations skip it) pass through an outreach gate: one structured LLM call from the reaching client's perspective deciding `reach_out | pass` — is this match worth the client's name before any turn is exchanged? Inputs: the client's intents + discovery query, the counterparty's `user_contexts` paragraph + active intents, and the seed assessment.
 
@@ -84,9 +84,11 @@ Controlled by `NEGOTIATION_SCREEN_MODE`:
 
 - `off` *(code default)* — node skipped entirely; no LLM call, no telemetry.
 - `shadow` — the decision is recorded (`tasks.metadata.screenDecision`, a `negotiation_screen` trace event, and a log line) but **never blocks**: every negotiation proceeds to its first turn. Used to measure pass rates against observed reject rates before enforcement.
-- `enforce` — reserved; until enforcement lands it runs identically to `shadow` with a warning (by the time the screen runs, init has already created the task and flipped the opportunity to `negotiating`, so a blocking `pass` needs its own quiet/correct path).
+- `enforce` *(P2.2)* — a `pass` blocks the negotiation **before the first turn**: the graph routes straight to finalize with outcome `reason: "screened_out"` — zero turns, zero counterparty involvement, zero notifications, no questioner, no reflection. Init had already flipped the opportunity to `negotiating`, so finalize quietly transitions it to `rejected` (hidden from default lists). `reach_out` proceeds normally.
 
-A screen failure (LLM error/timeout) **fails open**: the negotiation proceeds as `reach_out` with `failedOpen: true` recorded, so failed screens are excluded from pass-rate queries.
+A screen failure (LLM error/timeout) **fails open** in every mode (including enforce): the negotiation proceeds as `reach_out` with `failedOpen: true` recorded, so failed screens are excluded from pass-rate queries.
+
+**`screened_out` is the client's private gate decision, not a negotiation.** Presentation treats it as never-happened: the negotiation-context loader returns `null` for screened-out outcomes (so no card/feed/digest surface can frame it as "counterparty declined"), and the mutual-viewer negotiations list excludes screened-out rows — the counterparty never learns a gate decision was made. The owner still sees the row in their own negotiations list, and the summarizer/question-generator digests carry `outcomeReason: "screened_out"` with client-appropriate copy.
 
 ### Client consultation (`ask_user`, flag-gated)
 

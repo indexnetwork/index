@@ -4,7 +4,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
 
-import { NegotiationSummarizer } from "../negotiation.summarizer.js";
+import { NegotiationSummarizer, buildFallbackDigest } from "../negotiation.summarizer.js";
 import type { DiscoveryNegotiation } from "../../opportunity/question.prompt.js";
 
 const summarizer = new NegotiationSummarizer();
@@ -48,6 +48,26 @@ const richNegotiation: DiscoveryNegotiation = {
     ],
   },
 };
+
+describe("buildFallbackDigest — screened_out passthrough (P2.2, pure)", () => {
+  it("preserves reason screened_out instead of coercing to stalled", () => {
+    const digest = buildFallbackDigest({
+      counterpartyId: "user-bob",
+      counterpartyHint: "AI infra founder, Berlin",
+      indexContext: "Builders network",
+      turns: [],
+      outcome: {
+        hasOpportunity: false,
+        reasoning: "Gate declined: generic overlap, no concrete angle.",
+        reason: "screened_out",
+      },
+    });
+
+    expect(digest.outcomeRole).toBe("no-opportunity");
+    expect(digest.outcomeReason).toBe("screened_out");
+    expect(digest.keyTake).toContain("Gate declined");
+  });
+});
 
 describe("NegotiationSummarizer", () => {
   it("returns a digest with clamped fields when the LLM call succeeds", async () => {
