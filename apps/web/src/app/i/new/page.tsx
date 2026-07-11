@@ -79,19 +79,19 @@ function NewSignalPage() {
     setAnswers((prev) => prev.map((a, i) => (i === step ? v : a)));
   };
 
-  const buildDescription = () =>
+  const buildDescription = (ans: string[]) =>
     STEPS.map((s, i) => {
-      const ans = answers[i].trim();
-      if (!ans) return "";
-      return s.label ? `${s.label}: ${ans}` : ans;
+      const a = ans[i].trim();
+      if (!a) return "";
+      return s.label ? `${s.label}: ${a}` : a;
     })
       .filter(Boolean)
       .join("\n");
 
-  const submit = async () => {
+  const submit = async (ans: string[]) => {
     setSubmitting(true);
     try {
-      const { intentId } = await intentsService.createIntent(buildDescription());
+      const { intentId } = await intentsService.createIntent(buildDescription(ans));
       navigate(`/i/${intentId}`);
     } catch (err) {
       logger.error("Failed to create signal", { error: err });
@@ -100,14 +100,21 @@ function NewSignalPage() {
     }
   };
 
-  const handleNext = () => {
-    if (!canAdvance) return;
+  // Advance to the next step (or create on the last), using an explicit answers
+  // array so callers can advance immediately after setting a value without
+  // waiting for state to flush.
+  const advance = (ans: string[]) => {
     if (isLast) {
-      void submit();
+      void submit(ans);
       return;
     }
     setStep((s) => s + 1);
     setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleNext = () => {
+    if (!canAdvance) return;
+    advance(answers);
   };
 
   const handleBack = () => {
@@ -126,9 +133,11 @@ function NewSignalPage() {
     }
   };
 
+  // Clicking an example selects it AND advances — no separate button click.
   const pickExample = (prompt: string) => {
-    setValue(prompt);
-    inputRef.current?.focus();
+    const next = answers.map((a, i) => (i === step ? prompt : a));
+    setAnswers(next);
+    advance(next);
   };
 
   return (
