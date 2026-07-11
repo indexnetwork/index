@@ -191,12 +191,9 @@ function NewSignalPage() {
                 {current.question}
               </h1>
 
-              {/* Examples (first step only) */}
+              {/* Options for this step */}
               {current.examples && current.examples.length > 0 && (
                 <>
-                  <p className="mb-2 text-[11px] font-bold tracking-[0.2em] text-gray-400 font-ibm-plex-mono uppercase">
-                    Or pick one
-                  </p>
                   <div className="space-y-2 mb-6">
                     {current.examples.map((prompt) => (
                       <button
