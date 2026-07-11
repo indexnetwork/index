@@ -92,7 +92,7 @@ export default function DiscoverHome() {
             <Plus className="w-4 h-4" />
           </span>
           <span className="text-sm font-medium text-gray-900 group-hover:text-black">
-            New signal
+            Start a new signal
           </span>
         </button>
 
