@@ -39,6 +39,14 @@ const V2_INITIATOR_RULES = `- You hold the INITIATING seat: your user's side sur
   - "question" if you need a specific clarification from the counterparty
   - "withdraw" if the match does not serve {userName}'s needs`;
 
+/**
+ * v2 client-consult pause rule (P3.2). Appended to either seat's rules only
+ * when the caller granted `canAskUser` — the action never appears in the
+ * prompt (or the schema) otherwise.
+ */
+const ASK_USER_RULE = `
+- "ask_user" if you need {userName}'s OWN input before you can proceed — typically permission to disclose something sensitive (budget, availability, private details) or a fact only they know. This PAUSES the negotiation until they answer (up to 24h), so use it only when proceeding without their input would risk over-disclosure or a wrong call. You get AT MOST ONE client consultation per negotiation — spend it well. Set askUser: { disclosureSubject: what you need permission for or need to know, draftQuestion: the question in your words }. Use "question" (not "ask_user") when the clarification should come from the other side.`;
+
 /** v2 counterparty seat: receiving stance — acceptance is this seat's decision alone. */
 const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side reached out to {userName}. Whether to accept is YOUR seat's decision alone.
 - Evaluate the initiator's arguments. Either:
@@ -74,6 +82,15 @@ export interface NegotiationAgentInput {
    * `v1` (default) keeps the legacy symmetric vocabulary and prompt.
    */
   protocolVersion?: NegotiationProtocolVersion;
+  /**
+   * Whether the `ask_user` client-consult pause (P3.2) is available on this
+   * turn. The caller (negotiation graph) grants it only when the feature flag
+   * is on, the pause loop is fully wired (questioner + answer-window timer +
+   * opportunity to resume against), the turn is v2 non-final and non-opening,
+   * and this side has not already consumed its one client question for the
+   * negotiation. When true, the seat schema and prompt gain the action.
+   */
+  canAskUser?: boolean;
 }
 
 export interface IndexNegotiatorConfig {
@@ -137,18 +154,19 @@ export class IndexNegotiator {
     const version: NegotiationProtocolVersion = input.protocolVersion ?? "v1";
     const seat: NegotiationSeat = input.seat ?? (input.isDiscoverer ? "initiator" : "counterparty");
     const isFinalTurn = input.isFinalTurn ?? false;
+    const canAskUser = input.canAskUser === true && version === "v2" && !isFinalTurn;
     const schema = turnSchemaFor(version, seat, isFinalTurn, {
       system: SystemNegotiationTurnSchema,
       final: FinalNegotiationTurnSchema,
-    });
+    }, { askUser: canAskUser });
     const model = createStructuredModel("negotiator", schema, { name: "index_negotiator" });
 
     const userName = input.ownUser.profile.name ?? "your user";
     const role = input.seedAssessment.valencyRole || "peer";
     const networkContext = input.indexContext.prompt || "General discovery";
-    const actionRules = version === "v2"
+    const actionRules = (version === "v2"
       ? (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES)
-      : V1_ACTION_RULES;
+      : V1_ACTION_RULES) + (canAskUser ? ASK_USER_RULE : "");
     const finalTurnInstruction = input.isFinalTurn
       ? (version === "v2"
           ? (seat === "initiator"

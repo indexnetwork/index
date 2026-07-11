@@ -7,7 +7,7 @@ import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-e
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
-import { allowedActionsFor, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { ASK_USER_LOCK_SLACK_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { NegotiationScreener, configuredScreenMode, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -28,6 +28,24 @@ function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTu
       return dataPart?.data as NegotiationTurn;
     })
     .filter(Boolean);
+}
+
+/**
+ * Whether `userId`'s side has already spent its one `ask_user` client
+ * consultation in this conversation (P3.2 rationing: max one per negotiation
+ * per side, checked against the full message history so continuations count
+ * prior sessions' consultations too).
+ */
+function hasPriorAskUser(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+  userId: string,
+): boolean {
+  const sender = `agent:${userId}`;
+  return messages.some((m) => {
+    if (m.senderId !== sender) return false;
+    const dataPart = (m.parts as Array<{ kind?: string; data?: { action?: string } }>).find((p) => p.kind === "data");
+    return dataPart?.data?.action === "ask_user";
+  });
 }
 
 /**
@@ -58,8 +76,18 @@ export class NegotiationGraphFactory {
         const priorMessages = await database.getMessagesForConversation(conversation.id);
 
         const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
-        const isActiveAndFresh = (t: { state: string; updatedAt: Date }) =>
-          activeStates.includes(t.state) && (Date.now() - new Date(t.updatedAt).getTime()) < 5 * 60 * 1000;
+        const isActiveAndFresh = (t: { state: string; updatedAt: Date }) => {
+          if (!activeStates.includes(t.state)) return false;
+          // State-aware freshness (IND-401): an `input_required` task is an
+          // ask_user pause — it holds the conversation lock for its full answer
+          // window (+ slack for the expiry worker), not the 5-min turn window.
+          // Otherwise ambient rediscovery / chat negotiate_existing would start
+          // a fresh negotiation right past the pause after 5 minutes.
+          const freshnessMs = t.state === 'input_required'
+            ? askUserAnswerWindowMs() + ASK_USER_LOCK_SLACK_MS
+            : 5 * 60 * 1000;
+          return (Date.now() - new Date(t.updatedAt).getTime()) < freshnessMs;
+        };
 
         const priorTask = state.opportunityId
           ? await database.getNegotiationTaskForOpportunity(state.opportunityId)
@@ -79,11 +107,20 @@ export class NegotiationGraphFactory {
 
         const isContinuation = priorTurns.length > 0;
 
-        // Determine currentSpeaker from last prior message
+        // Determine currentSpeaker from last prior message. An `ask_user` last
+        // turn does NOT pass the floor: the sender paused to consult its own
+        // client, so on resume the same side speaks again — now armed with the
+        // client's answer (or its recorded absence). Flipping here would hand
+        // the turn to the counterparty, who has nothing to respond to.
         let currentSpeaker: 'source' | 'candidate' = 'source';
         if (isContinuation && priorMessages.length > 0) {
-          const lastSender = priorMessages[priorMessages.length - 1].senderId;
-          currentSpeaker = lastSender === agentIdA ? 'candidate' : 'source';
+          const lastMessage = priorMessages[priorMessages.length - 1];
+          const lastAction = turnsFromMessages([lastMessage])[0]?.action;
+          if (lastAction === 'ask_user') {
+            currentSpeaker = lastMessage.senderId === agentIdA ? 'source' : 'candidate';
+          } else {
+            currentSpeaker = lastMessage.senderId === agentIdA ? 'candidate' : 'source';
+          }
         }
 
         // Determine scenario-based maxTurns
@@ -336,6 +373,23 @@ export class NegotiationGraphFactory {
           ? 'initiator'
           : 'counterparty';
 
+        // ask_user availability (P3.2): flag on, full pause loop wired
+        // (questioner + answer-window timer + an opportunity to resume
+        // against), v2 non-final non-opening turn, and this side's one client
+        // consultation not yet spent (rationing). Chat-triggered runs get no
+        // special casing — the pause exits the graph at the turn boundary, so
+        // the stream never blocks on a question; the resume is always an async
+        // continuation.
+        const askUserAvailable =
+          version === 'v2'
+          && !isFinalTurn
+          && configuredAskUserEnabled()
+          && !!questionerEnqueue
+          && !!timeoutQueue?.enqueueAskUserExpiry
+          && !!state.opportunityId
+          && !(state.turnCount === 0 && !state.isContinuation)
+          && !hasPriorAskUser(state.messages, ownUser.id);
+
         const payload: NegotiationTurnPayload = {
           negotiationId: state.taskId,
           ownUser,
@@ -347,7 +401,7 @@ export class NegotiationGraphFactory {
           isDiscoverer: isSource,
           seat,
           protocolVersion: version,
-          allowedActions: [...allowedActionsFor(version, seat, isFinalTurn)],
+          allowedActions: [...allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable })],
           ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
         };
 
@@ -362,7 +416,7 @@ export class NegotiationGraphFactory {
           // the conservative fallback — the polling/respond surfaces reject
           // these with a 400, but locally-dispatched turns land here directly.
           turn = dispatchResult.turn;
-          if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn).includes(turn.action)) {
+          if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable }).includes(turn.action)) {
             turnLog.warn('Personal agent returned out-of-seat action, coercing to conservative fallback', {
               action: turn.action, seat, isFinalTurn,
             });
@@ -403,6 +457,7 @@ export class NegotiationGraphFactory {
             ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
             isContinuation: state.isContinuation,
             ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
+            ...(askUserAvailable && { canAskUser: true }),
           });
         }
 
@@ -420,6 +475,17 @@ export class NegotiationGraphFactory {
           }
         }
 
+        // Safety net: an ask_user that slipped past availability gating (e.g. a
+        // locally-dispatched agent ignoring allowedActions, or rationing already
+        // spent) is coerced to the conservative fallback BEFORE persisting — a
+        // pause we cannot resume must never enter the turn history.
+        if (turn.action === 'ask_user' && !askUserAvailable) {
+          turnLog.warn('ask_user emitted while unavailable, coercing to conservative fallback', {
+            seat, isFinalTurn, taskId: state.taskId,
+          });
+          turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+        }
+
         const parts = [{ kind: "data" as const, data: turn }];
         const message = await database.createMessage({
           conversationId: state.conversationId,
@@ -428,6 +494,96 @@ export class NegotiationGraphFactory {
           parts,
           taskId: state.taskId,
         });
+
+        // ─── ask_user pause (P3.2) ────────────────────────────────────────────
+        // The negotiator consults its OWN client: persist the turn (done above),
+        // park the full turn context, arm the answer-window timer, enqueue the
+        // question through the negotiation_inflight preset, then suspend the
+        // task as input_required. The graph exits at this turn boundary exactly
+        // like the waiting_for_agent suspend; the answer (or window expiry)
+        // resumes via the run-existing continuation path.
+        if (turn.action === 'ask_user') {
+          const disclosureSubject = turn.askUser?.disclosureSubject?.trim()
+            || turn.message
+            || turn.assessment.reasoning;
+          const draftQuestion = turn.askUser?.draftQuestion ?? turn.message ?? undefined;
+
+          await database.setTaskTurnContext(state.taskId, {
+            sourceUser: state.sourceUser,
+            candidateUser: state.candidateUser,
+            indexContext: state.indexContext,
+            seedAssessment: state.seedAssessment,
+            ...(isSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
+          });
+
+          // Arm the timer BEFORE flipping state: a timer against a task that
+          // never reaches input_required no-ops harmlessly at fire time, while
+          // an input_required task without a timer would strand until the lock
+          // slack expires.
+          const windowMs = askUserAnswerWindowMs();
+          await timeoutQueue!.enqueueAskUserExpiry!(state.taskId, {
+            opportunityId: state.opportunityId,
+            userId: ownUser.id,
+            disclosureSubject,
+          }, windowMs);
+
+          // Counterparty referenced by attributes, never identity — the
+          // negotiation_inflight preset's referential-closure contract.
+          const counterpartyHint = [
+            otherUser.profile.bio,
+            otherUser.profile.location,
+            otherUser.profile.skills?.length ? `skills: ${otherUser.profile.skills.join(', ')}` : undefined,
+          ].filter(Boolean).join('; ') || 'a potential match on the network';
+          const userContext = (await database.getUserContext(ownUser.id, null).catch(() => null))?.text ?? '';
+
+          await questionerEnqueue!({
+            mode: 'negotiation_inflight',
+            userId: ownUser.id,
+            sourceType: 'opportunity',
+            sourceId: state.opportunityId,
+            context: {
+              negotiationId: state.taskId,
+              counterpartyHint,
+              disclosureSubject,
+              ...(draftQuestion && { draftQuestion }),
+              indexContext: state.indexContext.prompt,
+              ...(userContext && { userContext }),
+            },
+          });
+
+          await database.updateTaskState(state.taskId, 'input_required');
+
+          turnLog.info('negotiation_ask_user_pause', {
+            taskId: state.taskId,
+            opportunityId: state.opportunityId,
+            seat,
+            askingUserId: ownUser.id,
+            windowMs,
+          });
+          traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: "ask_user" });
+          emitWide({
+            type: 'negotiation_ask_user',
+            opportunityId: state.opportunityId,
+            negotiationConversationId: state.conversationId,
+            turnIndex: state.turnCount,
+            actor: isSource ? 'source' : 'candidate',
+            disclosureSubject,
+            windowMs,
+          });
+
+          return {
+            messages: [{
+              id: message.id,
+              senderId: message.senderId,
+              role: "agent" as const,
+              parts: message.parts,
+              createdAt: message.createdAt,
+            }],
+            turnCount: state.turnCount + 1,
+            lastTurn: turn,
+            status: 'input_required' as const,
+          };
+        }
 
         await database.updateTaskState(state.taskId, "working");
 
@@ -478,6 +634,7 @@ export class NegotiationGraphFactory {
 
     const evaluateNode = (state: typeof NegotiationGraphState.State): string => {
       if (state.status === 'waiting_for_agent') return "finalize";
+      if (state.status === 'input_required') return "finalize";
       if (state.error) return "finalize";
       if (!state.lastTurn) return "finalize";
       // Terminal actions: accept (v1+v2), reject (v1), withdraw/decline (v2)
@@ -498,6 +655,21 @@ export class NegotiationGraphFactory {
             type: "negotiation_outcome",
             opportunityId: state.opportunityId,
             outcome: "waiting_for_agent",
+            turnCount: state.turnCount,
+            isContinuation: state.isContinuation,
+          });
+        }
+        return {};
+      }
+
+      // ask_user pause: no outcome, no completed state — the task stays
+      // input_required until the client answers or the window expires.
+      if (state.status === 'input_required') {
+        if (state.opportunityId) {
+          emitWide({
+            type: "negotiation_outcome",
+            opportunityId: state.opportunityId,
+            outcome: "input_required",
             turnCount: state.turnCount,
             isContinuation: state.isContinuation,
           });

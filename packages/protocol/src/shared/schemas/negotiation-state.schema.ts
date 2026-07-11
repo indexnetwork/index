@@ -20,6 +20,7 @@ import { z } from "zod";
 export const NEGOTIATION_ACTIONS = [
   "propose", "accept", "reject", "counter", "question",
   "outreach", "withdraw", "decline",
+  "ask_user",
 ] as const;
 export type NegotiationAction = (typeof NEGOTIATION_ACTIONS)[number];
 
@@ -28,6 +29,19 @@ export type NegotiationSeat = "initiator" | "counterparty";
 
 /** Negotiation protocol version stamped on task metadata. */
 export type NegotiationProtocolVersion = "v1" | "v2";
+
+/**
+ * Payload for the v2 `ask_user` action (P3.2): the negotiator pauses the
+ * negotiation to consult its OWN client. `disclosureSubject` states what the
+ * negotiator wants permission to share or needs to know; `draftQuestion` is
+ * the negotiator's own phrasing, refined by the questioner's
+ * `negotiation_inflight` preset before delivery.
+ */
+export const AskUserPayloadSchema = z.object({
+  disclosureSubject: z.string(),
+  draftQuestion: z.string().nullable().optional(),
+});
+export type AskUserPayload = z.infer<typeof AskUserPayloadSchema>;
 
 export const NegotiationTurnSchema = z.object({
   action: z.enum(NEGOTIATION_ACTIONS),
@@ -39,6 +53,8 @@ export const NegotiationTurnSchema = z.object({
     }),
   }),
   message: z.string().nullable().optional(),
+  /** Present when action is `ask_user` (v2, P3.2). */
+  askUser: AskUserPayloadSchema.nullable().optional(),
 });
 export type NegotiationTurn = z.infer<typeof NegotiationTurnSchema>;
 

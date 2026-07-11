@@ -73,6 +73,7 @@ import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
+import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
 import { QuestionerAdapter } from './adapters/questioner.adapter';
 import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
@@ -225,6 +226,24 @@ const answerQuestionerAdapter = new QuestionerAdapter(db);
 // re-embedding, persistence, and HyDE regeneration.
 const answerIntentGraph = new IntentGraphFactory(chatDatabaseAdapter, embedderAdapter, intentQueue).createGraph();
 
+// Shared by the `negotiation` (post-stall) and `negotiation_inflight`
+// (ask_user pause) answer reactions — both store the answer on the
+// opportunity's metadata.userAnswers channel.
+const storeNegotiationContext = storeNegotiationContextFactory({
+  getOpportunity: async (opportunityId) => {
+    const opp = await chatDatabaseAdapter.getOpportunity(opportunityId);
+    if (!opp) return null;
+    return {
+      id: opp.id,
+      status: opp.status,
+      metadata: (opp.metadata ?? {}) as Record<string, unknown>,
+    };
+  },
+  updateOpportunityMetadata: async (opportunityId, metadata) => {
+    await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
+  },
+});
+
 const questionAnswerDeps = {
   createPremiseFromAnswer: createPremiseFromAnswerFactory({
     runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
@@ -258,18 +277,17 @@ const questionAnswerDeps = {
       };
     },
   }),
-  storeNegotiationContext: storeNegotiationContextFactory({
-    getOpportunity: async (opportunityId) => {
-      const opp = await chatDatabaseAdapter.getOpportunity(opportunityId);
-      if (!opp) return null;
-      return {
-        id: opp.id,
-        status: opp.status,
-        metadata: (opp.metadata ?? {}) as Record<string, unknown>,
-      };
+  storeNegotiationContext,
+  resumeInflightNegotiation: resumeInflightNegotiationFactory({
+    storeNegotiationContext,
+    getNegotiationTaskForOpportunity: (opportunityId) =>
+      conversationDatabaseAdapter.getNegotiationTaskForOpportunity(opportunityId),
+    cancelAskUserExpiry: (negotiationId) => negotiationTimeoutQueue.cancelAskUserExpiry(negotiationId),
+    closeTask: async (taskId, reason) => {
+      await conversationDatabaseAdapter.updateTaskState(taskId, 'canceled', { reason });
     },
-    updateOpportunityMetadata: async (opportunityId, metadata) => {
-      await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
+    enqueueResume: async (opportunityId, userId) => {
+      await negotiationRunExistingQueue.addJob({ opportunityId, userId });
     },
   }),
   resolveChatQuestionWait: ({ questionId, answer }: {

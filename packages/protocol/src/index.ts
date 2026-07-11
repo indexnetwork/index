@@ -86,7 +86,7 @@ export type {
   UpdateUserEnrichmentRunInput, PreviewUserEnrichmentRunInput,
   EnrichmentRunRecord, EnrichmentRunStatus, EnrichmentRunOperation,
 } from "./shared/interfaces/enrichment-run.interface.js";
-export type { NegotiationTimeoutQueue } from "./shared/interfaces/negotiation-events.interface.js";
+export type { NegotiationTimeoutQueue, AskUserExpiryPayload } from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
 export type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput, AgentDatabase } from './shared/interfaces/agent.interface.js';
 export { SYSTEM_AGENT_IDS } from './shared/interfaces/agent.interface.js';
@@ -216,8 +216,8 @@ export type { ElicitResultLike, ElicitInputFn, DispatchElicitationsParams } from
 // @experimental — internal graph-state shapes; may change in a minor release.
 
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./shared/schemas/negotiation-state.schema.js";
-export { NEGOTIATION_ACTIONS } from "./shared/schemas/negotiation-state.schema.js";
-export type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "./shared/schemas/negotiation-state.schema.js";
+export { NEGOTIATION_ACTIONS, AskUserPayloadSchema } from "./shared/schemas/negotiation-state.schema.js";
+export type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion, AskUserPayload } from "./shared/schemas/negotiation-state.schema.js";
 export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";
 
 // ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
@@ -227,6 +227,8 @@ export {
   CounterpartyTurnSchema,
   FinalInitiatorTurnSchema,
   FinalCounterpartyTurnSchema,
+  InitiatorAskUserTurnSchema,
+  CounterpartyAskUserTurnSchema,
   allowedActionsFor,
   turnSchemaFor,
   isTerminalAction,
@@ -235,6 +237,10 @@ export {
   rejectActionFor,
   readProtocolVersion,
   configuredProtocolVersion,
+  configuredAskUserEnabled,
+  askUserAnswerWindowMs,
+  DEFAULT_ASK_USER_WINDOW_MS,
+  ASK_USER_LOCK_SLACK_MS,
   resolveSeat,
   seatViolationMessage,
 } from "./negotiation/negotiation.protocol.js";

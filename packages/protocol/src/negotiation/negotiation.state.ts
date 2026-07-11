@@ -2,7 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 import type { ScreenDecisionRecord } from "./negotiation.screen.js";
-import { NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
+import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
 /**
  * Zod schema for a single negotiation turn (DataPart payload in A2A message).
@@ -19,6 +19,8 @@ export const NegotiationTurnSchema = z.object({
     }),
   }),
   message: z.string().nullable().optional(),
+  /** Present when action is `ask_user` (v2, P3.2). */
+  askUser: AskUserPayloadSchema.nullable().optional(),
 });
 
 /** Restricted v1 turn schema for the system agent (no question action). */
@@ -222,9 +224,11 @@ export const NegotiationGraphState = Annotation.Root({
    * Graph status.
    * - `active` — agents are exchanging turns (default)
    * - `waiting_for_agent` — graph suspended; awaiting external agent response or timeout
+   * - `input_required` — graph suspended on an `ask_user` pause; awaiting the
+   *   negotiator's own client (answer or 24 h window expiry resumes it)
    * - `completed` — negotiation finalized (accept/reject/turn-cap/timeout)
    */
-  status: Annotation<'active' | 'waiting_for_agent' | 'completed'>({
+  status: Annotation<'active' | 'waiting_for_agent' | 'input_required' | 'completed'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'active' as const,
   }),

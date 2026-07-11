@@ -88,6 +88,20 @@ Controlled by `NEGOTIATION_SCREEN_MODE`:
 
 A screen failure (LLM error/timeout) **fails open**: the negotiation proceeds as `reach_out` with `failedOpen: true` recorded, so failed screens are excluded from pass-rate queries.
 
+### Client consultation (`ask_user`, flag-gated)
+
+With `NEGOTIATION_ASK_USER_ENABLED=true`, v2 negotiators gain one extra non-final action per seat: **`ask_user`** — pause the negotiation to consult **their own client** (not the counterparty; `question` covers that). The turn carries `askUser: { disclosureSubject, draftQuestion }`.
+
+Flow: the `ask_user` turn is persisted → the task transitions to `input_required` (an A2A state previously unused by negotiations) → the draft is refined by the questioner's `negotiation_inflight` preset and delivered through the pending-questions UI → a **24 h answer window** is armed (`NEGOTIATION_ASK_USER_WINDOW_MS` overridable). The graph exits at the turn boundary, so chat-triggered runs never block a stream on a question — the resume is always an async continuation.
+
+- **Answer in time**: the answer lands on the opportunity's `metadata.userAnswers`, the timer is cancelled, the paused task is closed (`canceled`, superseded), and a `negotiation-run-existing` continuation resumes the dialogue. The asker speaks again (an `ask_user` turn does not pass the floor) with the answer in its context.
+- **Window expires**: the negotiation resumes with a **conservative default** — a synthetic `userAnswers` entry records that the client did not answer and instructs no disclosure/commitment on the subject. Negotiations always terminate.
+- **Lock**: while a task is `input_required` it holds the conversation lock for the full answer window (+1 h slack), not the usual 5-minute freshness — ambient rediscovery cannot start a fresh negotiation past the pause.
+- **Rationing**: at most **one client consultation per negotiation per side**, checked against the full turn history (continuations count prior sessions). Opening turns and final-cap turns never offer the action.
+- The 5-min park/claim timeout machinery ignores paused tasks: those workers only act on `waiting_for_agent`/`claimed` states.
+
+The action is only offered when the full pause loop is wired (questioner enabled, answer-window timer available, an opportunity to resume against); it is not accepted from the external polling `respond` surface — polling agents have their own channel to their user.
+
 ### Flow
 
 1. **Init**: An opportunity is created with `negotiating` status. A conversation and task are created in the A2A system to track the negotiation.
@@ -95,7 +109,7 @@ A screen failure (LLM error/timeout) **fails open**: the negotiation proceeds as
 2. **Initiating agent's turn**: The agent presents the case (action: propose)
 3. **Responding agent's turn**: The agent evaluates and responds (accept, reject, counter, or question)
 4. **Alternation**: If the responding agent countered or asked a question, the other agent responds; turns alternate until resolution
-5. **Finalize**: When a terminal action occurs or the turn cap is reached, the outcome is computed and the opportunity status is updated accordingly
+5. **Finalize**: When a terminal action occurs or the turn cap is reached, the outcome is computed and the opportunity status is updated accordingly. An `ask_user` pause exits before finalization — the task stays `input_required` until the client answers or the window expires, then the dialogue resumes as a continuation.
 
 ### Turn cap
 
