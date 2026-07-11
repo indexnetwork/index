@@ -144,8 +144,8 @@ function NewSignalPage() {
     <ClientLayout>
       <div className="px-6 lg:px-8 py-6 pb-24 flex-1">
         <ContentContainer>
-          {/* Back + step counter */}
-          <div className="flex items-center gap-3 mb-6">
+          {/* Back */}
+          <div className="mb-6">
             <button
               type="button"
               onClick={handleBack}
@@ -154,86 +154,108 @@ function NewSignalPage() {
               <ChevronLeft className="h-3.5 w-3.5" />
               back
             </button>
-            <span className="text-[11px] font-ibm-plex-mono text-gray-400 tracking-widest">
-              {step + 1} / {STEPS.length}
-            </span>
           </div>
 
-          {/* Heading */}
-          <div className="flex items-center gap-2.5 mb-6">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#041729] text-white text-xs font-bold font-ibm-plex-mono">
-              h
-            </div>
-            <h1 className="text-lg font-bold text-black font-ibm-plex-mono">
-              {current.question}
-            </h1>
-          </div>
-
-          {/* Examples (first step only) */}
-          {current.examples && current.examples.length > 0 && (
-            <>
-              <p className="mb-2 text-[11px] font-bold tracking-[0.2em] text-gray-400 font-ibm-plex-mono uppercase">
-                Or pick one
-              </p>
-              <div className="space-y-2 mb-6">
-                {current.examples.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => pickExample(prompt)}
-                    className="w-full text-left px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all"
-                  >
-                    {prompt}
-                  </button>
-                ))}
+          {/* Conversation transcript: answered questions stay visible */}
+          <div className="space-y-6">
+            {STEPS.slice(0, step).map((s, i) => (
+              <div key={s.key}>
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#041729] text-white text-xs font-bold font-ibm-plex-mono">
+                    h
+                  </div>
+                  <h2 className="text-base font-bold text-black font-ibm-plex-mono">
+                    {s.question}
+                  </h2>
+                </div>
+                <p className="ml-[38px] mt-1.5 text-sm">
+                  {answers[i].trim() ? (
+                    <span className="text-gray-700">{answers[i]}</span>
+                  ) : (
+                    <span className="italic text-gray-400">skipped</span>
+                  )}
+                </p>
               </div>
-            </>
-          )}
+            ))}
 
-          {/* Input row */}
-          <div className="flex items-end gap-2">
-            <div className="flex flex-1 items-center gap-2 border-b border-gray-300 pb-1.5 focus-within:border-[#041729] transition-colors">
-              <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={value}
-                autoFocus
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={submitting}
-                placeholder={current.placeholder}
-                className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
-              />
-            </div>
-            <Button type="button" size="sm" onClick={handleNext} disabled={!canAdvance} className="shrink-0 gap-1.5">
-              {submitting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : isLast ? (
+            {/* Current question */}
+            <div>
+              <div className="flex items-center gap-2.5 mb-6">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#041729] text-white text-xs font-bold font-ibm-plex-mono">
+                  h
+                </div>
+                <h1 className="text-lg font-bold text-black font-ibm-plex-mono">
+                  {current.question}
+                </h1>
+              </div>
+
+              {/* Examples (first step only) */}
+              {current.examples && current.examples.length > 0 && (
                 <>
-                  send
-                  <CornerDownLeft className="h-3.5 w-3.5" />
-                </>
-              ) : (
-                <>
-                  next
-                  <ChevronRight className="h-3.5 w-3.5" />
+                  <p className="mb-2 text-[11px] font-bold tracking-[0.2em] text-gray-400 font-ibm-plex-mono uppercase">
+                    Or pick one
+                  </p>
+                  <div className="space-y-2 mb-6">
+                    {current.examples.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => pickExample(prompt)}
+                        className="w-full text-left px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
                 </>
               )}
-            </Button>
-          </div>
 
-          {/* Skip (optional steps) */}
-          {!current.required && (
-            <button
-              type="button"
-              onClick={handleNext}
-              disabled={submitting}
-              className="mt-4 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              {isLast ? "skip and create" : "skip this"}
-            </button>
-          )}
+              {/* Input row */}
+              <div className="flex items-end gap-2">
+                <div className="flex flex-1 items-center gap-2 border-b border-gray-300 pb-1.5 focus-within:border-[#041729] transition-colors">
+                  <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={value}
+                    autoFocus
+                    onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={submitting}
+                    placeholder={current.placeholder}
+                    className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
+                  />
+                </div>
+                <Button type="button" size="sm" onClick={handleNext} disabled={!canAdvance} className="shrink-0 gap-1.5">
+                  {submitting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : isLast ? (
+                    <>
+                      send
+                      <CornerDownLeft className="h-3.5 w-3.5" />
+                    </>
+                  ) : (
+                    <>
+                      next
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Skip (optional steps) */}
+              {!current.required && (
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  disabled={submitting}
+                  className="mt-4 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {isLast ? "skip and create" : "skip this"}
+                </button>
+              )}
+            </div>
+          </div>
         </ContentContainer>
       </div>
     </ClientLayout>
