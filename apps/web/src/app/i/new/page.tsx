@@ -172,7 +172,7 @@ function NewSignalPage() {
           <div className="space-y-6">
             {STEPS.slice(0, step).map((s, i) => (
               <div key={s.key}>
-                <h2 className="text-base font-bold text-black font-ibm-plex-mono">
+                <h2 className="text-lg font-bold text-black font-ibm-plex-mono">
                   {s.question}
                 </h2>
                 <p className="mt-1.5 text-sm">
