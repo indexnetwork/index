@@ -187,7 +187,7 @@ export default function IntentList<T extends BaseIntent>({
               <div className="flex items-center gap-2 shrink-0">
                 <span
                   className={cn(
-                    'text-xs font-ibm-plex-mono px-2 py-0.5 rounded-full',
+                    'text-xs font-bold font-ibm-plex-mono px-2 py-0.5 rounded-full',
                     (intent.pendingQuestionCount ?? 0) > 0
                       ? 'bg-[#F26522] text-white'
                       : 'bg-gray-100 text-gray-400 border border-gray-200',
