@@ -69,9 +69,12 @@ export default function IntentList<T extends BaseIntent>({
   selectedIntentIds = new Set(),
   className = '',
 }: IntentListProps<T>) {
-  // Sort intents by creation date (newest first) without grouping
+  // Live (active) signals first, then newest-first within each group.
   const sortedIntents = useMemo(() => {
+    const isLive = (i: T) => !i.status || i.status.toUpperCase() === 'ACTIVE';
     return [...intents].sort((a, b) => {
+      const liveDiff = Number(isLive(b)) - Number(isLive(a));
+      if (liveDiff !== 0) return liveDiff;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [intents]);
