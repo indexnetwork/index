@@ -88,7 +88,7 @@ export default function DiscoverHome() {
           onClick={() => navigate("/i/new")}
           className="group w-full flex items-center gap-3 p-4 rounded-lg border border-dashed border-gray-300 bg-white hover:border-[#041729] hover:shadow-sm transition-all mb-6"
         >
-          <Plus className="w-4 h-4 shrink-0 text-gray-400 group-hover:text-black transition-colors" />
+          <Plus className="w-5 h-5 shrink-0 text-[#041729]" strokeWidth={2.75} />
           <span className="text-sm font-medium text-gray-900 group-hover:text-black">
             Start a new signal
           </span>
