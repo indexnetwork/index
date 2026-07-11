@@ -139,6 +139,12 @@ function NewSignalPage() {
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
+  // Jump back to an earlier step to re-answer it (later answers are preserved).
+  const goToStep = (i: number) => {
+    setStep(i);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -172,23 +178,27 @@ function NewSignalPage() {
           {/* Conversation transcript: answered questions stay visible */}
           <div className="space-y-6">
             {STEPS.slice(0, step).map((s, i) => (
-              <div key={s.key}>
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => goToStep(i)}
+                disabled={submitting}
+                className="group block w-full text-left"
+              >
                 <h2 className="text-base font-bold text-black font-ibm-plex-mono">
                   {s.question}
                 </h2>
-                {/* Previous answers stay editable */}
-                <div className="mt-1.5 flex items-center gap-2 border-b border-transparent pb-1 hover:border-gray-200 focus-within:border-[#041729] transition-colors">
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-300" />
-                  <input
-                    type="text"
-                    value={answers[i]}
-                    onChange={(e) => setAnswerAt(i, e.target.value)}
-                    placeholder="skipped"
-                    disabled={submitting}
-                    className="flex-1 bg-transparent text-sm text-gray-700 placeholder:italic placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
-                  />
-                </div>
-              </div>
+                <p className="mt-1.5 flex items-center gap-2 text-sm">
+                  {answers[i].trim() ? (
+                    <span className="text-gray-700">{answers[i]}</span>
+                  ) : (
+                    <span className="italic text-gray-400">skipped</span>
+                  )}
+                  <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                    edit
+                  </span>
+                </p>
+              </button>
             ))}
 
             {/* Current question */}
