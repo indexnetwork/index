@@ -638,6 +638,13 @@
       "when": 1783679004538,
       "tag": "0090_chat_persona_column",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1783769774263,
+      "tag": "0091_negotiator_memories",
+      "breakpoints": true
     }
   ]
 }
