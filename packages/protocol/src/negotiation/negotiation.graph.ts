@@ -8,12 +8,14 @@ import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfac
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { allowedActionsFor, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { NegotiationScreener, configuredScreenMode, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 
 const logger = protocolLogger("NegotiationGraph");
 const initLog = protocolLogger("NegotiationGraph:Init");
+const screenNodeLog = protocolLogger("NegotiationGraph:Screen");
 const turnLog = protocolLogger("NegotiationGraph:Turn");
 const finalizeLog = protocolLogger("NegotiationGraph:Finalize");
 const negotiateCandidatesLog = protocolLogger("NegotiationGraph:negotiateCandidates");
@@ -43,6 +45,7 @@ export class NegotiationGraphFactory {
   createGraph() {
     const { database, dispatcher, timeoutQueue, questionerEnqueue } = this;
     const systemAgent = new IndexNegotiator();
+    const screener = new NegotiationScreener();
 
     const initNode = async (state: typeof NegotiationGraphState.State) => {
       try {
@@ -199,6 +202,108 @@ export class NegotiationGraphFactory {
       } catch (err) {
         return { error: `Init failed: ${err instanceof Error ? err.message : String(err)}` };
       }
+    };
+
+    /**
+     * Screen node (P2.1) — the outreach gate. Runs between init and the first
+     * turn on FRESH negotiations only (routing skips it on continuations and
+     * when NEGOTIATION_SCREEN_MODE=off). The reaching client's negotiator
+     * decides whether the match is worth its client's name; in shadow mode the
+     * decision is recorded (task metadata + trace event + log line) but never
+     * blocks — the negotiation always proceeds to the first turn. `enforce`
+     * runs identically until P2.2 lands enforcement (by the time this node
+     * runs, init has already created the task and flipped the opportunity to
+     * `negotiating` — P2.2 owns making a blocking `pass` quiet/correct).
+     */
+    const screenNode = async (state: typeof NegotiationGraphState.State) => {
+      const traceEmitter = requestContext.getStore()?.traceEmitter;
+      const emitWide = (event: Record<string, unknown>) =>
+        (traceEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
+
+      const mode = configuredScreenMode();
+      if (mode === "enforce") {
+        screenNodeLog.warn("NEGOTIATION_SCREEN_MODE=enforce requested but enforcement lands in P2.2; running shadow", {
+          taskId: state.taskId,
+        });
+      }
+
+      const start = Date.now();
+      // The client is the initiator seat's user — the side whose negotiator is
+      // reaching out. Fresh runs stamp initiatorUserId in init; fall back to
+      // sourceUser (what the stamp defaults to anyway).
+      const initiatorId = state.initiatorUserId ?? state.sourceUser.id;
+      const clientIsSource = initiatorId !== state.candidateUser.id;
+      const clientUser = clientIsSource ? state.sourceUser : state.candidateUser;
+      const counterpartyUser = clientIsSource ? state.candidateUser : state.sourceUser;
+
+      let decision: ScreenDecision;
+      let failedOpen = false;
+      let screenError: string | undefined;
+      try {
+        const counterpartyContext = (await database.getUserContext(counterpartyUser.id, null).catch(() => null))?.text ?? "";
+        decision = await screener.invoke({
+          clientUser,
+          counterpartyUser,
+          ...(counterpartyContext && { counterpartyContext }),
+          // discoveryQuery belongs to the discovery session's source user; only
+          // meaningful for the client when the client holds the source side.
+          ...(clientIsSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
+          seedAssessment: state.seedAssessment,
+          indexContext: state.indexContext,
+        });
+      } catch (err) {
+        // Fail open: a screen failure must never block a negotiation.
+        failedOpen = true;
+        screenError = err instanceof Error ? err.message : String(err);
+        screenNodeLog.warn("Screen failed; proceeding open (reach_out)", {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          error: screenError,
+        });
+        decision = {
+          decision: "reach_out",
+          reasoning: `screen_error: ${screenError}`,
+          evidence: { counterpartyPremiseFit: "", intentAlignment: "" },
+        };
+      }
+
+      const durationMs = Date.now() - start;
+      const record: ScreenDecisionRecord = {
+        ...decision,
+        mode,
+        ...(failedOpen && { failedOpen, error: screenError }),
+        screenedAt: new Date().toISOString(),
+        durationMs,
+      };
+
+      await database.setTaskScreenDecision?.(state.taskId, record as unknown as Record<string, unknown>).catch((err) => {
+        screenNodeLog.error("Failed to persist screen decision", { taskId: state.taskId, error: err });
+      });
+
+      screenNodeLog.info("negotiation_screen", {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        decision: decision.decision,
+        mode,
+        failedOpen,
+        durationMs,
+      });
+
+      if (state.opportunityId) {
+        emitWide({
+          type: "negotiation_screen",
+          opportunityId: state.opportunityId,
+          negotiationConversationId: state.conversationId,
+          decision: decision.decision,
+          reasoning: decision.reasoning,
+          mode,
+          failedOpen,
+          durationMs,
+        });
+      }
+
+      // Shadow (and pre-P2.2 enforce): always proceed to the first turn.
+      return { screenDecision: record };
     };
 
     const turnNode = async (state: typeof NegotiationGraphState.State) => {
@@ -525,6 +630,7 @@ export class NegotiationGraphFactory {
 
     const workflow = new StateGraph(NegotiationGraphState)
       .addNode("init", initNode)
+      .addNode("screen", screenNode)
       .addNode("turn", turnNode)
       .addNode("finalize", finalizeNode)
       .addConditionalEdges("turn", evaluateNode, {
@@ -532,8 +638,13 @@ export class NegotiationGraphFactory {
         finalize: "finalize",
       })
       .addConditionalEdges("init", (state: typeof NegotiationGraphState.State) => {
-        return state.error ? "finalize" : "turn";
-      }, { turn: "turn", finalize: "finalize" })
+        if (state.error) return "finalize";
+        // Screen gate: fresh negotiations only (continuations already passed
+        // the gate when the dialogue opened); off disables the node entirely.
+        if (!state.isContinuation && configuredScreenMode() !== "off") return "screen";
+        return "turn";
+      }, { screen: "screen", turn: "turn", finalize: "finalize" })
+      .addEdge("screen", "turn")
       .addEdge("__start__", "init")
       .addEdge("finalize", "__end__");
 

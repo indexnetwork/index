@@ -76,9 +76,22 @@ Each turn produces a structured assessment:
   - `otherUser`: agent, patient, or peer
 - **message** *(optional)*: Free-form text accompanying the action
 
+### Screen gate (shadow)
+
+Between init and the first turn, **fresh negotiations only** (continuations skip it) pass through an outreach gate: one structured LLM call from the reaching client's perspective deciding `reach_out | pass` — is this match worth the client's name before any turn is exchanged? Inputs: the client's intents + discovery query, the counterparty's `user_contexts` paragraph + active intents, and the seed assessment.
+
+Controlled by `NEGOTIATION_SCREEN_MODE`:
+
+- `off` *(code default)* — node skipped entirely; no LLM call, no telemetry.
+- `shadow` — the decision is recorded (`tasks.metadata.screenDecision`, a `negotiation_screen` trace event, and a log line) but **never blocks**: every negotiation proceeds to its first turn. Used to measure pass rates against observed reject rates before enforcement.
+- `enforce` — reserved; until enforcement lands it runs identically to `shadow` with a warning (by the time the screen runs, init has already created the task and flipped the opportunity to `negotiating`, so a blocking `pass` needs its own quiet/correct path).
+
+A screen failure (LLM error/timeout) **fails open**: the negotiation proceeds as `reach_out` with `failedOpen: true` recorded, so failed screens are excluded from pass-rate queries.
+
 ### Flow
 
 1. **Init**: An opportunity is created with `negotiating` status. A conversation and task are created in the A2A system to track the negotiation.
+1a. **Screen** *(fresh negotiations, `NEGOTIATION_SCREEN_MODE` ≠ `off`)*: the reaching client's gate records `reach_out | pass` on task metadata; in shadow mode the flow always continues.
 2. **Initiating agent's turn**: The agent presents the case (action: propose)
 3. **Responding agent's turn**: The agent evaluates and responds (accept, reject, counter, or question)
 4. **Alternation**: If the responding agent countered or asked a question, the other agent responds; turns alternate until resolution

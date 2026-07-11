@@ -2,7 +2,8 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, it, expect } from "bun:test";
-import { NegotiationGraphFactory } from "@indexnetwork/protocol";
+import { randomUUID } from "node:crypto";
+import { NegotiationGraphFactory, requestContext } from "@indexnetwork/protocol";
 import type { NegotiationGraphDatabase } from "@indexnetwork/protocol";
 import { conversationDatabaseAdapter } from "../src/adapters/database.adapter";
 
@@ -28,7 +29,19 @@ describe("Negotiation E2E", () => {
     const sourceId = `e2e-source-${Date.now()}`;
     const candidateId = `e2e-candidate-${Date.now()}`;
 
-    const result = await graph.invoke({
+    // IND-398: run this fresh negotiation with the screen gate in shadow mode
+    // and a trace collector, so the screenDecision metadata + negotiation_screen
+    // trace event can be asserted below. Random UUID: the opportunity row does
+    // not exist, so status flips update 0 rows (already .catch-guarded).
+    const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
+    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
+    const opportunityId = randomUUID();
+    const traceEvents: Array<Record<string, unknown>> = [];
+
+    const result = await requestContext.run(
+      { traceEmitter: ((e: Record<string, unknown>) => { traceEvents.push(e); }) as never },
+      () => graph.invoke({
+        opportunityId,
       sourceUser: {
         id: sourceId,
         intents: [{ id: "i1", title: "Looking for ML engineer", description: "Need ML expertise for recommendation system", confidence: 0.9 }],
@@ -42,6 +55,10 @@ describe("Negotiation E2E", () => {
       indexContext: { networkId: "e2e-index", prompt: "AI startup co-founders" },
       seedAssessment: { reasoning: "Complementary skills", valencyRole: "Peer" },
       maxTurns: 4,
+      }),
+    ).finally(() => {
+      if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
+      else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
     });
 
     // Verify outcome exists
@@ -63,6 +80,20 @@ describe("Negotiation E2E", () => {
     expect(metadata.sourceUserId).toBe(sourceId);
     // IND-397: fresh tasks are version-stamped (v1 unless env opts into v2).
     expect(metadata.protocolVersion).toBe(process.env.NEGOTIATION_PROTOCOL_VERSION === "v2" ? "v2" : "v1");
+
+    // IND-398: shadow screen ran before the first turn — decision persisted on
+    // task metadata and surfaced as a negotiation_screen trace event, and the
+    // negotiation proceeded regardless of the verdict.
+    const screen = metadata.screenDecision as Record<string, unknown> | undefined;
+    expect(screen).toBeTruthy();
+    expect(["reach_out", "pass"]).toContain(screen!.decision);
+    expect(screen!.mode).toBe("shadow");
+    expect(typeof (screen!.evidence as Record<string, unknown>).intentAlignment).toBe("string");
+
+    const screenEvents = traceEvents.filter((e) => e.type === "negotiation_screen");
+    expect(screenEvents.length).toBe(1);
+    expect(screenEvents[0].opportunityId).toBe(opportunityId);
+    expect(["reach_out", "pass"]).toContain(screenEvents[0].decision);
   }, 120_000);
 
   it("runs a full v2 negotiation: seat-scoped actions, counterparty-only accept (IND-397)", async () => {

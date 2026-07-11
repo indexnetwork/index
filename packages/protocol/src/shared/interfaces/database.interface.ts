@@ -2230,6 +2230,16 @@ export interface NegotiationQueries {
   setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void>;
 
   /**
+   * Merges a screen-gate decision (P2.1 shadow mode) into
+   * `metadata.screenDecision`, leaving other metadata keys intact. Optional so
+   * existing fakes/wireups remain valid; when absent the screen node logs the
+   * decision and proceeds without persisting.
+   * @param taskId - Task whose metadata to enrich
+   * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
+   */
+  setTaskScreenDecision?(taskId: string, screenDecision: Record<string, unknown>): Promise<void>;
+
+  /**
    * Returns the most-recently-created task whose metadata carries
    * `type: 'negotiation'` and `opportunityId: <id>`. Returns null if no
    * negotiation has been started for that opportunity yet.
