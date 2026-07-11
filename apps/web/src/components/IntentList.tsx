@@ -145,30 +145,30 @@ export default function IntentList<T extends BaseIntent>({
                   {summary}
                 </p>
                 
-                <div className="flex items-center gap-3 mt-2.5">
-                  {/* Date Badge + waiting-opportunity count */}
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mt-2.5">
+                  {/* Date */}
                   {createdLabel && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-400 font-ibm-plex-mono">
                       <Calendar className="w-3 h-3" />
                       <span>{createdLabel}</span>
                     </div>
                   )}
 
-                  {/* Running indicator — active intents are worked in the background */}
+                  {/* Running — active signals are worked in the background */}
                   {isActive && (
-                    <div className="flex items-center gap-1.5 text-xs text-green-600 font-ibm-plex-mono">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 font-ibm-plex-mono">
                       <span className="relative flex h-1.5 w-1.5">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
                       </span>
                       running
                     </div>
                   )}
 
-                  {/* Opportunities waiting — next to the date */}
+                  {/* Opportunities waiting — actionable, in the app's blue accent */}
                   {(intent.waitingOpportunityCount ?? 0) > 0 && (
                     <div
-                      className="flex items-center gap-1.5 text-xs text-emerald-700 font-ibm-plex-mono"
+                      className="flex items-center gap-1 text-xs font-medium text-[#4091BB] font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB]/10"
                       title={`${intent.waitingOpportunityCount} ${intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'} waiting`}
                     >
                       <Handshake className="w-3 h-3" />
