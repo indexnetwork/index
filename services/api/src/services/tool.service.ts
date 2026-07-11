@@ -15,6 +15,7 @@ import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import db from '../lib/drizzle/drizzle';
@@ -257,6 +258,8 @@ export class ToolService {
       undefined,
       // Stalled negotiations enqueue follow-up questions for the source user.
       questionerEnqueueIfEnabled(),
+      // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
+      reflectEnqueueIfEnabled(),
     ).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(
       database,

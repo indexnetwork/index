@@ -4,6 +4,7 @@ import { ChatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/da
 import { NegotiationGraphFactory } from '@indexnetwork/protocol';
 import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/protocol';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 
 const logger = log.service.from('NegotiationService');
 
@@ -41,6 +42,8 @@ export class NegotiationService {
       undefined,
       // Stalled negotiations enqueue follow-up questions for the source user.
       questionerEnqueueIfEnabled(),
+      // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
+      reflectEnqueueIfEnabled(),
     ).createGraph();
 
     logger.info('Starting discovery negotiation', { sourceUserId, candidateUserId });

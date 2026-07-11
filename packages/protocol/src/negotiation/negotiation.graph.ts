@@ -12,6 +12,7 @@ import { NegotiationScreener, configuredScreenMode, type ScreenDecision, type Sc
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
+import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 
 const logger = protocolLogger("NegotiationGraph");
 const initLog = protocolLogger("NegotiationGraph:Init");
@@ -58,10 +59,11 @@ export class NegotiationGraphFactory {
     private dispatcher: AgentDispatcher,
     private timeoutQueue?: NegotiationTimeoutQueue,
     private questionerEnqueue?: QuestionerEnqueueFn,
+    private reflectEnqueue?: ReflectEnqueueFn,
   ) {}
 
   createGraph() {
-    const { database, dispatcher, timeoutQueue, questionerEnqueue } = this;
+    const { database, dispatcher, timeoutQueue, questionerEnqueue, reflectEnqueue } = this;
     const systemAgent = new IndexNegotiator();
     const screener = new NegotiationScreener();
 
@@ -764,6 +766,35 @@ export class NegotiationGraphFactory {
             },
           }),
         });
+      }
+
+      // Enqueue post-negotiation reflection (P5.2 memory write path) — fire
+      // and forget: a reflection failure must never affect the outcome. Only
+      // sessions that actually exchanged turns teach anything; init/turn
+      // errors with turnCount 0 are skipped.
+      if (reflectEnqueue && state.turnCount > 0) {
+        reflectEnqueue({
+          negotiationId: state.taskId,
+          conversationId: state.conversationId,
+          ...(state.opportunityId && { opportunityId: state.opportunityId }),
+          sourceUser: {
+            id: state.sourceUser.id,
+            ...(state.sourceUser.profile.name && { name: state.sourceUser.profile.name }),
+            ...(state.sourceUser.profile.bio && { bio: state.sourceUser.profile.bio }),
+          },
+          candidateUser: {
+            id: state.candidateUser.id,
+            ...(state.candidateUser.profile.name && { name: state.candidateUser.profile.name }),
+            ...(state.candidateUser.profile.bio && { bio: state.candidateUser.profile.bio }),
+          },
+          initiatorUserId: state.initiatorUserId ?? state.sourceUser.id,
+          outcome: { hasOpportunity, reasoning: outcome.reasoning, turnCount: state.turnCount },
+        }).catch((err) =>
+          finalizeLog.error('Failed to enqueue negotiation reflection', {
+            taskId: state.taskId,
+            error: err,
+          })
+        );
       }
 
       // Enqueue question generation for stalled/capped negotiations (not accepted or explicitly rejected).

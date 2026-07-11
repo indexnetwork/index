@@ -17,7 +17,7 @@
  * vectors — it never calls the embedding API itself.
  */
 
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm/sql';
+import { and, desc, eq, isNotNull, lt, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
@@ -222,6 +222,32 @@ export class NegotiatorMemoryDatabaseAdapter {
       .limit(query.limit ?? 5);
 
     return rows.map((r) => ({ ...r.memory, similarity: r.similarity }));
+  }
+
+  /**
+   * Maintenance-only bulk confidence decay (P5.2 anti-poisoning schedule).
+   * Multiplies confidence by `factor` for rows whose updatedAt is older than
+   * `olderThanMs`, then deletes rows whose confidence fell below
+   * `deleteBelow`. Deliberately unscoped — this is the cron maintenance path
+   * across all owners, not a user read surface. Decay does NOT bump
+   * updatedAt: stale rows keep decaying daily until reinforced (which bumps
+   * updatedAt via update) or they fall below the floor and are removed.
+   */
+  async decayAll(opts: { factor: number; olderThanMs: number; deleteBelow: number }): Promise<{ decayed: number; deleted: number }> {
+    const cutoff = new Date(Date.now() - opts.olderThanMs);
+    const decayedRows = await db
+      .update(schema.negotiatorMemories)
+      .set({ confidence: sql`${schema.negotiatorMemories.confidence} * ${opts.factor}` })
+      .where(lt(schema.negotiatorMemories.updatedAt, cutoff))
+      .returning({ id: schema.negotiatorMemories.id });
+    const deletedRows = await db
+      .delete(schema.negotiatorMemories)
+      .where(lt(schema.negotiatorMemories.confidence, opts.deleteBelow))
+      .returning({ id: schema.negotiatorMemories.id });
+    if (decayedRows.length > 0 || deletedRows.length > 0) {
+      logger.info('Negotiator memory decay pass', { decayed: decayedRows.length, deleted: deletedRows.length });
+    }
+    return { decayed: decayedRows.length, deleted: deletedRows.length };
   }
 }
 

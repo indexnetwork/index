@@ -42,6 +42,7 @@ import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
+import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
@@ -192,6 +193,8 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.agentDispatcher!,
     protocolDeps.negotiationTimeoutQueue,
     qEnqueue,
+    // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
+    reflectEnqueueIfEnabled(),
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,

@@ -1,0 +1,239 @@
+/**
+ * IND-406 — NegotiationReflectQueue job handlers (unit tests, deps injected).
+ *
+ * Pins:
+ * - `reflect`: flag off → distiller never invoked; flag on → BOTH sides get a
+ *   reflection pass with perspective-projected transcripts and correct seat
+ *   attribution; one side failing never costs the other its memories,
+ * - `chat_reflect`: ownership/persona guard (only the negotiator DM reflects),
+ *   counterparty_dossier entries are dropped (no subject in chat scope),
+ *   sessions without client messages are skipped.
+ */
+process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://unused:unused@localhost:5432/unused';
+process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? 'test-key';
+
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+
+import { NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
+import type { NegotiationReflectionInput, ChatReflectionInput, DistilledMemory } from '@indexnetwork/protocol';
+
+import { NegotiationReflectQueue, type ReflectJobData } from '../negotiations/reflect.queue';
+
+const origFlag = process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
+
+function turnMessage(senderUserId: string, action: string, message?: string): {
+  id: string; senderId: string; parts: unknown[]; createdAt: Date;
+} {
+  return {
+    id: `msg-${action}-${senderUserId}`,
+    senderId: `agent:${senderUserId}`,
+    parts: [{ kind: 'data', data: { action, ...(message && { message }), assessment: { reasoning: `${action} reasoning` } } }],
+    createdAt: new Date(),
+  };
+}
+
+const reflectJob: ReflectJobData = {
+  negotiationId: 'neg-1',
+  conversationId: 'conv-1',
+  opportunityId: 'opp-1',
+  sourceUser: { id: 'u-alice', name: 'Alice' },
+  candidateUser: { id: 'u-bob', name: 'Bob' },
+  initiatorUserId: 'u-alice',
+  outcome: { hasOpportunity: true, reasoning: 'aligned', turnCount: 2 },
+};
+
+const distilled: DistilledMemory[] = [{
+  kind: 'playbook',
+  content: 'x',
+  confidence: 0.5,
+  aboutCounterparty: false,
+  turnIndexes: [0],
+}];
+
+function mkQueue(opts?: {
+  reflectNegotiation?: (input: NegotiationReflectionInput) => Promise<DistilledMemory[]>;
+  reflectChat?: (input: ChatReflectionInput) => Promise<DistilledMemory[]>;
+  session?: { persona: string } | null;
+  chatMessages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+}) {
+  const reflectCalls: NegotiationReflectionInput[] = [];
+  const chatCalls: ChatReflectionInput[] = [];
+  const writes: Array<Record<string, unknown>> = [];
+
+  const queue = new NegotiationReflectQueue({
+    conversations: {
+      getMessagesForConversation: async () => [
+        turnMessage('u-alice', 'outreach', 'hello'),
+        turnMessage('u-bob', 'accept', 'deal'),
+      ],
+    },
+    chat: {
+      getSession: async () => opts?.session === undefined ? { persona: NEGOTIATOR_PERSONA_ID } : opts.session,
+      getSessionMessages: async () => opts?.chatMessages ?? [
+        { role: 'user', content: 'never share my rate' },
+        { role: 'assistant', content: 'understood' },
+      ],
+    },
+    reflector: {
+      reflectNegotiation: mock(async (input: NegotiationReflectionInput) => {
+        reflectCalls.push(input);
+        return opts?.reflectNegotiation ? opts.reflectNegotiation(input) : distilled;
+      }),
+      reflectChat: mock(async (input: ChatReflectionInput) => {
+        chatCalls.push(input);
+        return opts?.reflectChat ? opts.reflectChat(input) : distilled;
+      }),
+    },
+    writer: {
+      writeDistilledMemories: mock(async (input: Record<string, unknown>) => {
+        writes.push(input);
+        return { written: (input.entries as unknown[]).length, skipped: 0 };
+      }) as never,
+      runConfidenceDecay: mock(async () => ({ decayed: 0, deleted: 0 })),
+    },
+  });
+
+  return { queue, reflectCalls, chatCalls, writes };
+}
+
+describe('NegotiationReflectQueue', () => {
+  const queues: NegotiationReflectQueue[] = [];
+
+  beforeEach(() => {
+    process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = 'true';
+  });
+
+  afterEach(async () => {
+    if (origFlag === undefined) delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
+    else process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = origFlag;
+    await Promise.all(queues.splice(0).map((q) => q.close().catch(() => undefined)));
+  });
+
+  describe('reflect', () => {
+    it('flag off → distiller never invoked, zero writes', async () => {
+      delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
+      const { queue, reflectCalls, writes } = mkQueue();
+      queues.push(queue);
+
+      await queue.processJob('reflect', reflectJob);
+
+      expect(reflectCalls.length).toBe(0);
+      expect(writes.length).toBe(0);
+    });
+
+    it('runs one perspective-projected pass per side with correct seat attribution', async () => {
+      const { queue, reflectCalls, writes } = mkQueue();
+      queues.push(queue);
+
+      await queue.processJob('reflect', reflectJob);
+
+      expect(reflectCalls.length).toBe(2);
+
+      // Alice's pass: she spoke turn 0, holds the initiator seat.
+      const alicePass = reflectCalls.find((c) => c.clientUser.id === 'u-alice')!;
+      expect(alicePass.seat).toBe('initiator');
+      expect(alicePass.counterpartyUser.id).toBe('u-bob');
+      expect(alicePass.transcript).toEqual([
+        { index: 0, speaker: 'client', action: 'outreach', message: 'hello', reasoning: 'outreach reasoning' },
+        { index: 1, speaker: 'counterparty', action: 'accept', message: 'deal', reasoning: 'accept reasoning' },
+      ]);
+
+      // Bob's pass: same transcript, flipped perspective, counterparty seat.
+      const bobPass = reflectCalls.find((c) => c.clientUser.id === 'u-bob')!;
+      expect(bobPass.seat).toBe('counterparty');
+      expect(bobPass.transcript[0].speaker).toBe('counterparty');
+      expect(bobPass.transcript[1].speaker).toBe('client');
+
+      // Both sides write with negotiation provenance and the counterparty as dossier subject.
+      expect(writes.length).toBe(2);
+      expect(writes[0]).toMatchObject({
+        userId: 'u-alice',
+        counterpartyUserId: 'u-bob',
+        sourceRef: { type: 'negotiation', id: 'neg-1' },
+      });
+      expect(writes[1]).toMatchObject({ userId: 'u-bob', counterpartyUserId: 'u-alice' });
+    });
+
+    it('one side failing never costs the other its memories', async () => {
+      const { queue, writes } = mkQueue({
+        reflectNegotiation: async (input) => {
+          if (input.clientUser.id === 'u-alice') throw new Error('LLM timeout');
+          return distilled;
+        },
+      });
+      queues.push(queue);
+
+      await queue.processJob('reflect', reflectJob);
+
+      expect(writes.length).toBe(1);
+      expect(writes[0]).toMatchObject({ userId: 'u-bob' });
+    });
+  });
+
+  describe('chat_reflect', () => {
+    const chatJob = { sessionId: 'sess-1', userId: 'u-alice' };
+
+    it('flag off → skipped entirely', async () => {
+      delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
+      const { queue, chatCalls } = mkQueue();
+      queues.push(queue);
+
+      await queue.processJob('chat_reflect', chatJob);
+      expect(chatCalls.length).toBe(0);
+    });
+
+    it('non-negotiator persona → skipped (guard)', async () => {
+      const { queue, chatCalls, writes } = mkQueue({ session: { persona: 'orchestrator' } });
+      queues.push(queue);
+
+      await queue.processJob('chat_reflect', chatJob);
+      expect(chatCalls.length).toBe(0);
+      expect(writes.length).toBe(0);
+    });
+
+    it('missing/unowned session → skipped (guard)', async () => {
+      const { queue, chatCalls } = mkQueue({ session: null });
+      queues.push(queue);
+
+      await queue.processJob('chat_reflect', chatJob);
+      expect(chatCalls.length).toBe(0);
+    });
+
+    it('no client messages → skipped', async () => {
+      const { queue, chatCalls } = mkQueue({
+        chatMessages: [{ role: 'assistant', content: 'hello, I am your negotiator' }],
+      });
+      queues.push(queue);
+
+      await queue.processJob('chat_reflect', chatJob);
+      expect(chatCalls.length).toBe(0);
+    });
+
+    it('distills the DM and writes with chat provenance; dossiers are dropped', async () => {
+      const { queue, chatCalls, writes } = mkQueue({
+        reflectChat: async () => [
+          { kind: 'disclosure_rule', content: 'never share rate', confidence: 0.9, aboutCounterparty: false, turnIndexes: [0] },
+          { kind: 'counterparty_dossier', content: 'should be dropped', confidence: 0.5, aboutCounterparty: true, turnIndexes: [] },
+        ],
+      });
+      queues.push(queue);
+
+      await queue.processJob('chat_reflect', chatJob);
+
+      expect(chatCalls.length).toBe(1);
+      expect(chatCalls[0].messages).toEqual([
+        { role: 'user', content: 'never share my rate' },
+        { role: 'assistant', content: 'understood' },
+      ]);
+
+      expect(writes.length).toBe(1);
+      const entries = writes[0].entries as DistilledMemory[];
+      expect(entries.length).toBe(1);
+      expect(entries[0].kind).toBe('disclosure_rule');
+      expect(writes[0]).toMatchObject({
+        userId: 'u-alice',
+        sourceRef: { type: 'chat', id: 'sess-1' },
+      });
+    });
+  });
+});

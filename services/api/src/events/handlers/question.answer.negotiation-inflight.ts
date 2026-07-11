@@ -39,6 +39,19 @@ export interface InflightResumeDeps {
   closeTask: (taskId: string, reason: string) => Promise<void>;
   /** Enqueue the run-existing continuation. */
   enqueueResume: (opportunityId: string, userId: string) => Promise<void>;
+  /**
+   * Optional P5.2 hook: record the client's answer as an immediate
+   * `disclosure_rule` negotiator memory (the answer is already a distilled
+   * policy). Fire-and-forget — a memory-write failure must never affect the
+   * resume. Absent → behaves exactly as before.
+   */
+  recordDisclosureRule?: (input: {
+    userId: string;
+    opportunityId: string;
+    questionId: string;
+    selectedOptions: string[];
+    freeText?: string;
+  }) => Promise<void>;
 }
 
 export function resumeInflightNegotiationFactory(deps: InflightResumeDeps) {
@@ -52,6 +65,15 @@ export function resumeInflightNegotiationFactory(deps: InflightResumeDeps) {
     // 1. Store the answer first — even if the resume below short-circuits,
     //    the context enrichment must not be lost.
     await deps.storeNegotiationContext(input);
+
+    // 1b. Memory write path (P5.2): an ask_user answer is already a distilled
+    //     disclosure policy — record it immediately, fire-and-forget.
+    deps.recordDisclosureRule?.(input).catch((err) => {
+      logger.warn('Failed to record disclosure rule from ask_user answer', {
+        questionId: input.questionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     // 2. Find the paused task.
     const task = await deps.getNegotiationTaskForOpportunity(input.opportunityId);

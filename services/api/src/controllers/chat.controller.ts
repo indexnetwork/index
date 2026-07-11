@@ -9,6 +9,7 @@ import { chatSessionService } from "../services/chat.service";
 import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
+import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
@@ -537,6 +538,15 @@ export class ChatController {
               routingDecision,
               subgraphResults,
             });
+          }
+
+          // Negotiator DM turns debounce-schedule a chat reflection (P5.2):
+          // the job fires once the session has been idle for the delay window,
+          // distilling stated preferences into negotiator memories. No-op when
+          // NEGOTIATOR_MEMORY_WRITE_ENABLED is off; never blocks the stream.
+          if (sessionPersona === NEGOTIATOR_PERSONA_ID && fullResponse) {
+            negotiationReflectQueue.scheduleChatReflect({ sessionId, userId: user.id })
+              .catch((err) => logger.error("Failed to schedule negotiator chat reflection", { sessionId, error: err }));
           }
 
           // Persist debug metadata (non-blocking for user experience)

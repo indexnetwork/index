@@ -742,6 +742,8 @@ export type NegotiatorMemoryKind = 'playbook' | 'disclosure_rule' | 'counterpart
 export interface NegotiatorMemorySourceRef {
   type: 'negotiation' | 'question_answer' | 'chat' | 'manual';
   id: string;
+  /** For negotiation refs: 0-based turn indexes evidencing the memory. */
+  turnIndexes?: number[];
 }
 
 /**
