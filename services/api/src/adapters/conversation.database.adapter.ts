@@ -737,6 +737,24 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Merges a screen-gate decision (P2.1 shadow mode) into the task's metadata
+   * JSONB under the `screenDecision` key, preserving other metadata keys.
+   * Sibling of {@link setTaskTurnContext}.
+   *
+   * @param taskId - Task to update
+   * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
+   */
+  async setTaskScreenDecision(taskId: string, screenDecision: Record<string, unknown>): Promise<void> {
+    await db
+      .update(schema.tasks)
+      .set({
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('screenDecision', ${JSON.stringify(screenDecision)}::jsonb)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.id, taskId));
+  }
+
+  /**
    * Retrieves a task by ID.
    * @param taskId - Task ID
    * @returns The task, or null if not found

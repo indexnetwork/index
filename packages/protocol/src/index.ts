@@ -162,6 +162,8 @@ export { LensInferrer } from "./shared/hyde/lens.inferrer.js";
 export { NegotiationInsightsGenerator } from "./negotiation/insight.generator.js";
 export type { NegotiationDigest } from "./negotiation/insight.generator.js";
 export { IndexNegotiator } from "./negotiation/negotiation.agent.js";
+export { NegotiationScreener, configuredScreenMode, ScreenDecisionSchema, NEGOTIATION_SCREEN_MODES } from "./negotiation/negotiation.screen.js";
+export type { ScreenDecision, ScreenDecisionRecord, NegotiationScreenMode, NegotiationScreenerInput } from "./negotiation/negotiation.screen.js";
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";

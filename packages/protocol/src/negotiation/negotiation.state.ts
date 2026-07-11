@@ -1,6 +1,7 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
+import type { ScreenDecisionRecord } from "./negotiation.screen.js";
 import { NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
 /**
@@ -155,6 +156,16 @@ export const NegotiationGraphState = Annotation.Root({
   protocolVersion: Annotation<NegotiationProtocolVersion>({
     reducer: (curr, next) => next ?? curr,
     default: () => "v1" as const,
+  }),
+
+  /**
+   * Screen-gate decision for this fresh run (P2.1 shadow mode). Written by the
+   * screen node; null when the gate is off, on continuations, or before the
+   * node runs. Mirrors `tasks.metadata.screenDecision`.
+   */
+  screenDecision: Annotation<ScreenDecisionRecord | null>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => null,
   }),
 
   /** Whether this run is continuing a prior conversation with the same pair. */
