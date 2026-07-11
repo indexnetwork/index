@@ -164,7 +164,7 @@ function NewSignalPage() {
       <div className="px-6 lg:px-8 py-6 pb-24 flex-1">
         <ContentContainer>
           {/* Back */}
-          <div className="mb-6">
+          <div className="mb-4">
             <button
               type="button"
               onClick={handleBack}
@@ -174,6 +174,11 @@ function NewSignalPage() {
               back
             </button>
           </div>
+
+          {/* Title */}
+          <p className="mb-6 text-xs font-bold tracking-[0.2em] text-gray-400 font-ibm-plex-mono uppercase">
+            Start a new signal
+          </p>
 
           {/* Conversation transcript: answered questions stay visible */}
           <div className="space-y-6">
