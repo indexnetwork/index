@@ -254,6 +254,42 @@ describe('NegotiatorMemoryDatabaseAdapter', () => {
     expect(orphan).toBeUndefined();
   });
 
+  it('decayAll: decays stale rows and deletes below the floor (fresh rows untouched)', async () => {
+    // NOTE: decayAll is deliberately global (the cron maintenance path), and
+    // .env.test points at the shared dev DB — so this test uses the mild
+    // production-like factor (0.99) and a floor (0.001) low enough that no
+    // realistic real row is deleted by a re-run.
+    const stale = await adapter.create({
+      agentId, userId: ownerId, kind: 'playbook', content: `stale playbook ${run}`, confidence: 0.5,
+    });
+    const nearFloor = await adapter.create({
+      agentId, userId: ownerId, kind: 'playbook', content: `near-floor playbook ${run}`, confidence: 0.0005,
+    });
+    const fresh = await adapter.create({
+      agentId, userId: ownerId, kind: 'playbook', content: `fresh playbook ${run}`, confidence: 0.5,
+    });
+    // Backdate the stale rows past the decay window; `fresh` keeps its defaultNow().
+    const backdated = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    await db.update(schema.negotiatorMemories)
+      .set({ updatedAt: backdated })
+      .where(inArray(schema.negotiatorMemories.id, [stale.id, nearFloor.id]));
+
+    const result = await adapter.decayAll({ factor: 0.99, olderThanMs: 7 * 24 * 60 * 60 * 1000, deleteBelow: 0.001 });
+
+    expect(result.decayed).toBeGreaterThanOrEqual(2);
+    expect(result.deleted).toBeGreaterThanOrEqual(1);
+
+    const staleAfter = await adapter.getById(stale.id, ownerId);
+    expect(staleAfter?.confidence).toBeCloseTo(0.495); // 0.5 * 0.99, above the floor
+    const nearFloorAfter = await adapter.getById(nearFloor.id, ownerId);
+    expect(nearFloorAfter).toBeNull(); // 0.0005 * 0.99 < 0.001 → deleted
+    const freshAfter = await adapter.getById(fresh.id, ownerId);
+    expect(freshAfter?.confidence).toBeCloseTo(0.5); // untouched
+
+    await adapter.delete(stale.id, ownerId);
+    await adapter.delete(fresh.id, ownerId);
+  });
+
   it('cascades: deleting the subject user removes dossiers about them', async () => {
     const tempSubject = await createUser('subject-cascade');
     const dossier = await adapter.create({

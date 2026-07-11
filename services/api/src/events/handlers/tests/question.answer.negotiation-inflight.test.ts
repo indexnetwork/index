@@ -85,4 +85,39 @@ describe("resumeInflightNegotiationFactory", () => {
     expect(deps.closeTask).toHaveBeenCalledWith("task-1", "ask_user_answered");
     expect(deps.enqueueResume).toHaveBeenCalledWith("opp-1", "u-1");
   });
+
+  // ─── P5.2 (IND-406): disclosure_rule memory hook ──────────────────────────
+
+  it("records the answer as a disclosure rule when the hook is wired (even without a paused task)", async () => {
+    const recordDisclosureRule = mock(async () => {});
+    deps = makeDeps({
+      getNegotiationTaskForOpportunity: mock(async () => null),
+      recordDisclosureRule,
+    });
+    const resume = resumeInflightNegotiationFactory(deps);
+    await resume(input);
+
+    expect(recordDisclosureRule).toHaveBeenCalledWith(input);
+  });
+
+  it("a rejecting disclosure-rule hook never affects the resume (fire-and-forget)", async () => {
+    deps = makeDeps({
+      recordDisclosureRule: mock(async () => { throw new Error("memory write failed"); }),
+    });
+    const resume = resumeInflightNegotiationFactory(deps);
+    await resume(input);
+    // Let the fire-and-forget rejection settle so its .catch runs inside the test.
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(deps.closeTask).toHaveBeenCalledWith("task-1", "ask_user_answered");
+    expect(deps.enqueueResume).toHaveBeenCalledWith("opp-1", "u-1");
+  });
+
+  it("absent hook → behavior unchanged (optional dep)", async () => {
+    const resume = resumeInflightNegotiationFactory(deps);
+    await resume(input);
+
+    expect(deps.storeNegotiationContext).toHaveBeenCalledTimes(1);
+    expect(deps.enqueueResume).toHaveBeenCalledWith("opp-1", "u-1");
+  });
 });

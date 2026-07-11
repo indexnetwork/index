@@ -62,6 +62,8 @@ import { emailQueue } from './queues/email.queue';
 import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
+import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
+import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
@@ -124,6 +126,9 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   // source user (mode='negotiation', sourceType='opportunity') so the intent
   // page can surface what would unblock the next attempt.
   questionerEnqueueIfEnabled(),
+  // Finished negotiations enqueue memory distillation for both sides (P5.2,
+  // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
+  reflectEnqueueIfEnabled(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -289,6 +294,18 @@ const questionAnswerDeps = {
     enqueueResume: async (opportunityId, userId) => {
       await negotiationRunExistingQueue.addJob({ opportunityId, userId });
     },
+    // P5.2: the answer is already a distilled disclosure policy — record it
+    // as a negotiator memory (no-op while NEGOTIATOR_MEMORY_WRITE_ENABLED is off).
+    recordDisclosureRule: async ({ userId, questionId, selectedOptions, freeText }) => {
+      const question = await answerQuestionerAdapter.getById(questionId).catch(() => null);
+      await negotiatorMemoryWriteService.recordDisclosureRuleFromAnswer({
+        userId,
+        questionId,
+        ...(question?.payload.prompt && { questionPrompt: question.payload.prompt }),
+        selectedOptions,
+        ...(freeText !== undefined && { freeText }),
+      });
+    },
   }),
   resolveChatQuestionWait: ({ questionId, answer }: {
     questionId: string;
@@ -328,6 +345,8 @@ hydeQueue.startCrons();
 emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
+negotiationReflectQueue.startWorker();
+negotiationReflectQueue.startCrons();
 integrationSyncQueue.startWorker();
 if (isQuestionerEnabled()) {
   questionerQueue.startWorker();

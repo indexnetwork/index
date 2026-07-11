@@ -148,6 +148,10 @@ The finalization logic examines the negotiation history to determine the outcome
 
 When an opportunity is produced, the final roles are derived from the last two turns (the accept turn and the preceding turn). Each side's `suggestedRoles.ownUser` from their respective last turns becomes the agreed role for that user.
 
+### Reflection (memory write path, flag-gated)
+
+When `NEGOTIATOR_MEMORY_WRITE_ENABLED=true`, the finalize node fire-and-forgets a `reflect` job (via the injected `reflectEnqueue` callback — same pattern as `questionerEnqueue`). The `negotiation-reflect` queue worker replays the turn history from **both sides' perspectives** and distills ≤ 3 private `negotiator_memories` entries per side (playbooks, disclosure rules, counterparty dossiers, thresholds), each citing the evidencing turn indexes in its `sourceRefs`. Reflection failure never affects the outcome — the negotiation finalized before the job runs. Two companion write paths: negotiator-DM turns debounce-schedule a `chat_reflect` job that distills the client's stated preferences once the session goes idle, and `ask_user` answers are recorded immediately as high-confidence disclosure rules (an answer is already a distilled policy). Anti-poisoning: per-kind entry caps with lowest-confidence eviction, one dossier per (agent, subject) with reinforce-on-repeat, and a daily confidence-decay cron. Nothing reads these memories yet (P5.3).
+
 ---
 
 ## Seed Assessment
