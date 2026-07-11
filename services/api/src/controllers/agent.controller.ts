@@ -64,7 +64,7 @@ const confirmOpportunityDeliveredSchema = z.object({
 // Accepts the union of v1 + v2 action vocabularies; the polling service
 // enforces the per-task version + seat subset (wrong-seat action → 400).
 const respondNegotiationSchema = z.object({
-  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question', 'outreach', 'withdraw', 'decline']),
+  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question', 'outreach', 'withdraw', 'decline', 'ask_user']),
   message: z.string().nullable().optional(),
   assessment: z.object({
     reasoning: z.string(),

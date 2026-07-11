@@ -107,6 +107,8 @@ const envSchema = z.object({
   NEGOTIATION_MAX_TURNS_AMBIENT: optionalInt,
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
+  NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
+  NEGOTIATION_ASK_USER_WINDOW_MS: optionalInt,
   QUESTIONER_ENABLED: optionalBoolean,
 
   // 9. MCP / tool runtime

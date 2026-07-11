@@ -19,6 +19,7 @@
  */
 import { z } from "zod";
 
+import { AskUserPayloadSchema } from "../shared/schemas/negotiation-state.schema.js";
 import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
 // ─── Shared assessment fragment ──────────────────────────────────────────────
@@ -36,6 +37,8 @@ function turnSchema<T extends [NegotiationAction, ...NegotiationAction[]]>(actio
     action: z.enum(actions),
     assessment: AssessmentSchema,
     message: z.string().nullable().optional(),
+    /** Present when action is `ask_user` (v2, P3.2). */
+    askUser: AskUserPayloadSchema.nullable().optional(),
   });
 }
 
@@ -53,6 +56,17 @@ export const FinalInitiatorTurnSchema = turnSchema(["withdraw", "counter"]);
 /** Counterparty seat, final allowed turn: must decide. */
 export const FinalCounterpartyTurnSchema = turnSchema(["accept", "decline"]);
 
+// ─── v2 ask_user variants (P3.2, flag-gated) ────────────────────────────────
+// Non-final turns only: the final-cap turn must decide, never pause. Selected
+// via the `opts.askUser` parameter on allowedActionsFor/turnSchemaFor — the
+// base schemas above stay byte-identical for every existing caller.
+
+/** Initiator seat, non-final turn, with the client-consult pause available. */
+export const InitiatorAskUserTurnSchema = turnSchema(["outreach", "counter", "question", "withdraw", "ask_user"]);
+
+/** Counterparty seat, non-final turn, with the client-consult pause available. */
+export const CounterpartyAskUserTurnSchema = turnSchema(["accept", "decline", "counter", "question", "ask_user"]);
+
 // ─── Action vocabulary per version + seat ────────────────────────────────────
 
 const V1_ACTIONS: readonly NegotiationAction[] = ["propose", "accept", "reject", "counter", "question"];
@@ -61,6 +75,8 @@ const V2_INITIATOR_ACTIONS: readonly NegotiationAction[] = ["outreach", "counter
 const V2_COUNTERPARTY_ACTIONS: readonly NegotiationAction[] = ["accept", "decline", "counter", "question"];
 const V2_FINAL_INITIATOR_ACTIONS: readonly NegotiationAction[] = ["withdraw", "counter"];
 const V2_FINAL_COUNTERPARTY_ACTIONS: readonly NegotiationAction[] = ["accept", "decline"];
+const V2_INITIATOR_ASK_USER_ACTIONS: readonly NegotiationAction[] = [...V2_INITIATOR_ACTIONS, "ask_user"];
+const V2_COUNTERPARTY_ASK_USER_ACTIONS: readonly NegotiationAction[] = [...V2_COUNTERPARTY_ACTIONS, "ask_user"];
 
 /**
  * The set of actions a given seat may submit under a given protocol version.
@@ -72,10 +88,14 @@ export function allowedActionsFor(
   version: NegotiationProtocolVersion,
   seat: NegotiationSeat,
   isFinalTurn = false,
+  opts?: AskUserOpts,
 ): readonly NegotiationAction[] {
   if (version !== "v2") return isFinalTurn ? V1_FINAL_ACTIONS : V1_ACTIONS;
-  if (seat === "initiator") return isFinalTurn ? V2_FINAL_INITIATOR_ACTIONS : V2_INITIATOR_ACTIONS;
-  return isFinalTurn ? V2_FINAL_COUNTERPARTY_ACTIONS : V2_COUNTERPARTY_ACTIONS;
+  const askUser = opts?.askUser === true && !isFinalTurn;
+  if (seat === "initiator") {
+    return isFinalTurn ? V2_FINAL_INITIATOR_ACTIONS : (askUser ? V2_INITIATOR_ASK_USER_ACTIONS : V2_INITIATOR_ACTIONS);
+  }
+  return isFinalTurn ? V2_FINAL_COUNTERPARTY_ACTIONS : (askUser ? V2_COUNTERPARTY_ASK_USER_ACTIONS : V2_COUNTERPARTY_ACTIONS);
 }
 
 /**
@@ -92,10 +112,27 @@ export function turnSchemaFor(
   seat: NegotiationSeat,
   isFinalTurn: boolean,
   v1Schemas: { system: z.ZodTypeAny; final: z.ZodTypeAny },
+  opts?: AskUserOpts,
 ): z.ZodTypeAny {
   if (version !== "v2") return isFinalTurn ? v1Schemas.final : v1Schemas.system;
-  if (seat === "initiator") return isFinalTurn ? FinalInitiatorTurnSchema : InitiatorTurnSchema;
-  return isFinalTurn ? FinalCounterpartyTurnSchema : CounterpartyTurnSchema;
+  const askUser = opts?.askUser === true && !isFinalTurn;
+  if (seat === "initiator") {
+    return isFinalTurn ? FinalInitiatorTurnSchema : (askUser ? InitiatorAskUserTurnSchema : InitiatorTurnSchema);
+  }
+  return isFinalTurn ? FinalCounterpartyTurnSchema : (askUser ? CounterpartyAskUserTurnSchema : CounterpartyTurnSchema);
+}
+
+/**
+ * Opt-in extension of the seat vocabulary with the `ask_user` client-consult
+ * pause (P3.2). Never granted on final-cap turns (the final turn must decide)
+ * and never under v1. Callers pass `{ askUser: true }` only when the full
+ * pause loop is available on their surface: the ask-user feature flag is on,
+ * a questioner enqueue and an answer-window timer are wired, the negotiation
+ * has an opportunity to resume against, and the acting side has not already
+ * consumed its one client question for this negotiation (rationing).
+ */
+export interface AskUserOpts {
+  askUser?: boolean;
 }
 
 // ─── Action semantics (version-independent) ──────────────────────────────────
@@ -160,6 +197,41 @@ export function readProtocolVersion(
 export function configuredProtocolVersion(): NegotiationProtocolVersion {
   return process.env.NEGOTIATION_PROTOCOL_VERSION === "v2" ? "v2" : "v1";
 }
+
+/**
+ * Whether the `ask_user` client-consult pause (P3.2) is enabled, from the
+ * `NEGOTIATION_ASK_USER_ENABLED` env switch. Defaults to off — the deployment
+ * is byte-for-byte unchanged until the flag is flipped, and rolling back is
+ * the same single switch.
+ */
+export function configuredAskUserEnabled(): boolean {
+  return process.env.NEGOTIATION_ASK_USER_ENABLED === "true";
+}
+
+/** Default answer window for a paused `ask_user` negotiation: 24 hours. */
+export const DEFAULT_ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Answer window for a paused `ask_user` negotiation, in ms. Overridable via
+ * `NEGOTIATION_ASK_USER_WINDOW_MS` (dev/e2e use shorter windows to exercise
+ * the expiry path); invalid or non-positive values fall back to 24 h.
+ */
+export function askUserAnswerWindowMs(): number {
+  const raw = process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return DEFAULT_ASK_USER_WINDOW_MS;
+}
+
+/**
+ * Slack added on top of the answer window when deciding whether a paused
+ * (`input_required`) task still holds the conversation lock. Covers expiry
+ * worker delay: the lock must outlive the timer slightly, so ambient
+ * rediscovery cannot slip in between window expiry and the worker's resume.
+ */
+export const ASK_USER_LOCK_SLACK_MS = 60 * 60 * 1000;
 
 /**
  * Resolve the seat of `userId` on a negotiation task.

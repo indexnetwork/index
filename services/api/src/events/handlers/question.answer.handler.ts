@@ -11,6 +11,9 @@
  * - profile:   create a premise from the answer → triggers profile regen
  * - intent:    enqueue intent refinement with the new context
  * - negotiation: store answer as context for the next negotiation turn
+ * - negotiation_inflight: store answer, cancel the 24h answer-window timer,
+ *              close the paused input_required task, resume the negotiation
+ *              via the run-existing continuation (P3.2 ask_user loop)
  * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
  *              tool call resumes the paused chat turn with the answer
  */
@@ -56,6 +59,19 @@ export interface QuestionAnswerHandlerDeps {
 
   /** Store the answer as negotiation context for the next turn. */
   storeNegotiationContext: (input: {
+    userId: string;
+    opportunityId: string;
+    questionId: string;
+    selectedOptions: string[];
+    freeText?: string;
+  }) => Promise<void>;
+
+  /**
+   * Resume a negotiation paused on an `ask_user` client consultation:
+   * store the answer, cancel the answer-window timer, close the paused
+   * task, and enqueue the run-existing continuation.
+   */
+  resumeInflightNegotiation: (input: {
     userId: string;
     opportunityId: string;
     questionId: string;
@@ -115,6 +131,16 @@ export async function handleQuestionAnswered(
 
       case 'negotiation':
         await deps.storeNegotiationContext({
+          userId,
+          opportunityId: sourceId,
+          questionId,
+          selectedOptions: answer.selectedOptions,
+          freeText: answer.freeText,
+        });
+        break;
+
+      case 'negotiation_inflight':
+        await deps.resumeInflightNegotiation({
           userId,
           opportunityId: sourceId,
           questionId,

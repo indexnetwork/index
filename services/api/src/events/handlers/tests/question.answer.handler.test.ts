@@ -6,6 +6,7 @@ function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswe
     createPremiseFromAnswer: mock(async () => {}),
     enqueueIntentRefinement: mock(async () => {}),
     storeNegotiationContext: mock(async () => {}),
+    resumeInflightNegotiation: mock(async () => {}),
     resolveChatQuestionWait: mock(() => {}),
     ...overrides,
   };
@@ -114,18 +115,33 @@ describe("handleQuestionAnswered", () => {
     expect(failDeps.createPremiseFromAnswer).toHaveBeenCalledTimes(1);
   });
 
-  it("tolerates negotiation_inflight via the default branch without throwing (P3.2 owns consumption)", async () => {
-    // The mode exists in QuestionModeSchema as of P3.1 but nothing produces or
-    // consumes it yet — an answer must fall through to the default branch
-    // harmlessly, calling no reaction handler.
+  it("routes negotiation_inflight to resumeInflightNegotiation (P3.2 resume path)", async () => {
+    // P3.1 shipped the mode with a default-branch tolerance; P3.2 (IND-401)
+    // owns consumption: the answer resumes the paused negotiation.
     await handleQuestionAnswered(
-      { ...basePayload, mode: "negotiation_inflight", sourceType: "negotiation", sourceId: "neg-1" },
+      { ...basePayload, mode: "negotiation_inflight", sourceType: "opportunity", sourceId: "opp-1", answer: { ...basePayload.answer, freeText: "yes, share it" } },
       deps,
     );
-    expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
-    expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
+    expect(deps.resumeInflightNegotiation).toHaveBeenCalledTimes(1);
+    const call = (deps.resumeInflightNegotiation as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toEqual({
+      userId: "u-1",
+      opportunityId: "opp-1",
+      questionId: "q-1",
+      selectedOptions: ["Option A"],
+      freeText: "yes, share it",
+    });
     expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
     expect(deps.resolveChatQuestionWait).not.toHaveBeenCalled();
+  });
+
+  it("resumeInflightNegotiation failure is caught, not thrown", async () => {
+    deps = makeDeps({ resumeInflightNegotiation: mock(async () => { throw new Error("boom"); }) });
+    await handleQuestionAnswered(
+      { ...basePayload, mode: "negotiation_inflight", sourceType: "opportunity", sourceId: "opp-1" },
+      deps,
+    );
+    expect(deps.resumeInflightNegotiation).toHaveBeenCalledTimes(1);
   });
 
   it("handles unknown mode gracefully", async () => {
