@@ -175,6 +175,14 @@ function NewSignalPage() {
             </button>
           </div>
 
+          {/* Header illustration */}
+          <img
+            src="/signal-intent.png"
+            alt=""
+            aria-hidden="true"
+            className="mb-6 h-24 w-auto object-contain"
+          />
+
           {/* Conversation transcript: answered questions stay visible */}
           <div className="space-y-6">
             {STEPS.slice(0, step).map((s, i) => (
