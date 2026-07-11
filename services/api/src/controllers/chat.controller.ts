@@ -358,8 +358,9 @@ export class ChatController {
     // Capture for closure
     const sessionId = currentSessionId;
     const factory = sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
-      ? chatSessionService.getNegotiatorGraphFactory(
+      ? await chatSessionService.getNegotiatorGraphFactory(
           negotiatorAgent,
+          user.id,
           effectiveScope?.scopeType === 'intent' && pinnedIntentLabel
             ? { label: pinnedIntentLabel }
             : undefined,

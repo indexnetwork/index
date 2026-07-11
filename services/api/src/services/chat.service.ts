@@ -4,6 +4,7 @@ import type { ChatScopeType } from '../adapters/database.shared';
 import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
+import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { HumanMessage } from '@langchain/core/messages';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -529,15 +530,22 @@ export class ChatSessionService {
    *                       sessions (P4.2); rendered in the prompt's pinned
    *                       signal section
    */
-  getNegotiatorGraphFactory(
+  async getNegotiatorGraphFactory(
     agent: { name: string; description?: string | null },
+    userId: string,
     pinnedIntent?: { label?: string },
-  ): ChatGraphFactory {
+  ): Promise<ChatGraphFactory> {
+    // P5.3: the client's accumulated negotiator memories inform the DM
+    // persona (gated on NEGOTIATOR_MEMORY_INJECT; [] → byte-identical
+    // prompt). The adapter never throws — the catch is belt and braces so a
+    // memory failure can never take down the chat surface.
+    const memory = await negotiatorMemoryRetrievalAdapter.retrieveForChat(userId).catch(() => []);
     return this.factory.withPersona(
       createNegotiatorPersona({
         agentName: agent.name,
         ...(agent.description?.trim() ? { agentDescription: agent.description } : {}),
         ...(pinnedIntent?.label?.trim() ? { pinnedIntentLabel: pinnedIntent.label.trim() } : {}),
+        ...(memory.length > 0 ? { memory } : {}),
       }),
     );
   }

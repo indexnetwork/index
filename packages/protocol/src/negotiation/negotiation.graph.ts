@@ -13,6 +13,7 @@ import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/sche
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
+import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
 
 const logger = protocolLogger("NegotiationGraph");
 const initLog = protocolLogger("NegotiationGraph:Init");
@@ -60,12 +61,49 @@ export class NegotiationGraphFactory {
     private timeoutQueue?: NegotiationTimeoutQueue,
     private questionerEnqueue?: QuestionerEnqueueFn,
     private reflectEnqueue?: ReflectEnqueueFn,
+    private memoryRetrieve?: NegotiatorMemoryRetrieveFn,
   ) {}
 
   createGraph() {
-    const { database, dispatcher, timeoutQueue, questionerEnqueue, reflectEnqueue } = this;
+    const { database, dispatcher, timeoutQueue, questionerEnqueue, reflectEnqueue, memoryRetrieve } = this;
     const systemAgent = new IndexNegotiator();
     const screener = new NegotiationScreener();
+
+    /**
+     * P5.3 memory retrieval — never throws, never blocks a negotiation. The
+     * injected fn already resolves [] when NEGOTIATOR_MEMORY_INJECT is off;
+     * this wrapper adds the graph-side failure guard.
+     */
+    const retrieveMemory = async (
+      userId: string,
+      counterpartyUserId: string,
+      queryText: string,
+      scope: NegotiatorMemoryScope,
+    ): Promise<NegotiatorMemoryEntry[]> => {
+      if (!memoryRetrieve) return [];
+      try {
+        return await memoryRetrieve({ userId, counterpartyUserId, queryText, scope });
+      } catch (err) {
+        logger.warn("Negotiator memory retrieval failed; proceeding without memory", {
+          userId,
+          scope,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      }
+    };
+
+    /** Similarity query text: seed reasoning + counterparty context. */
+    const memoryQueryText = (
+      state: typeof NegotiationGraphState.State,
+      counterparty: UserNegotiationContext,
+    ): string => [
+      state.discoveryQuery ? `Search: ${state.discoveryQuery}` : "",
+      state.seedAssessment?.reasoning ?? "",
+      counterparty?.profile?.name ?? "",
+      counterparty?.profile?.bio ?? "",
+      (counterparty?.intents ?? []).slice(0, 5).map((i) => `${i.title}: ${i.description}`).join("\n"),
+    ].filter(Boolean).join("\n");
 
     const initNode = async (state: typeof NegotiationGraphState.State) => {
       try {
@@ -275,6 +313,14 @@ export class NegotiationGraphFactory {
       const clientUser = clientIsSource ? state.sourceUser : state.candidateUser;
       const counterpartyUser = clientIsSource ? state.candidateUser : state.sourceUser;
 
+      // P5.3: the client's own negotiator memory informs the outreach gate.
+      // Cached into state so the client's first turn reuses it.
+      const clientSide: "source" | "candidate" = clientIsSource ? "source" : "candidate";
+      const clientMemory = state.memoryBySide?.[clientSide]
+        ?? (memoryRetrieve
+          ? await retrieveMemory(clientUser.id, counterpartyUser.id, memoryQueryText(state, counterpartyUser), "screen")
+          : []);
+
       let decision: ScreenDecision;
       let failedOpen = false;
       let screenError: string | undefined;
@@ -284,6 +330,7 @@ export class NegotiationGraphFactory {
           clientUser,
           counterpartyUser,
           ...(counterpartyContext && { counterpartyContext }),
+          ...(clientMemory.length > 0 && { memory: clientMemory }),
           // discoveryQuery belongs to the discovery session's source user; only
           // meaningful for the client when the client holds the source side.
           ...(clientIsSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
@@ -342,7 +389,7 @@ export class NegotiationGraphFactory {
       }
 
       // Shadow (and pre-P2.2 enforce): always proceed to the first turn.
-      return { screenDecision: record };
+      return { screenDecision: record, memoryBySide: { [clientSide]: clientMemory } };
     };
 
     const turnNode = async (state: typeof NegotiationGraphState.State) => {
@@ -392,6 +439,15 @@ export class NegotiationGraphFactory {
           && !(state.turnCount === 0 && !state.isContinuation)
           && !hasPriorAskUser(state.messages, ownUser.id);
 
+        // P5.3: the speaker's own negotiator memory (cached per side across
+        // turns). Injected into both the dispatch payload (the user's own
+        // agent — scope-correct) and the system-agent prompt.
+        const ownSide: "source" | "candidate" = isSource ? "source" : "candidate";
+        const ownMemory = state.memoryBySide?.[ownSide]
+          ?? (memoryRetrieve
+            ? await retrieveMemory(ownUser.id, otherUser.id, memoryQueryText(state, otherUser), "turn")
+            : []);
+
         const payload: NegotiationTurnPayload = {
           negotiationId: state.taskId,
           ownUser,
@@ -405,6 +461,7 @@ export class NegotiationGraphFactory {
           protocolVersion: version,
           allowedActions: [...allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable })],
           ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
+          ...(ownMemory.length > 0 && { negotiatorMemory: ownMemory }),
         };
 
         const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
@@ -460,6 +517,7 @@ export class NegotiationGraphFactory {
             isContinuation: state.isContinuation,
             ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
             ...(askUserAvailable && { canAskUser: true }),
+            ...(ownMemory.length > 0 && { memory: ownMemory }),
           });
         }
 
@@ -615,6 +673,7 @@ export class NegotiationGraphFactory {
           turnCount: state.turnCount + 1,
           currentSpeaker: (isSource ? "candidate" : "source") as "source" | "candidate",
           lastTurn: turn,
+          memoryBySide: { [ownSide]: ownMemory },
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);

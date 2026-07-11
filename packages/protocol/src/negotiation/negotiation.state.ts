@@ -2,6 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 import type { ScreenDecisionRecord } from "./negotiation.screen.js";
+import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
 /**
@@ -168,6 +169,18 @@ export const NegotiationGraphState = Annotation.Root({
   screenDecision: Annotation<ScreenDecisionRecord | null>({
     reducer: (curr, next) => next ?? curr,
     default: () => null,
+  }),
+
+  /**
+   * Per-side negotiator-memory cache (P5.3 read path). Populated lazily the
+   * first time each side's memory is retrieved (screen node for the client,
+   * turn node for the speaker) so a multi-turn session pays for retrieval at
+   * most once per side. `undefined` per side = not yet retrieved; `[]` =
+   * retrieved and empty (flag off / no rows / retrieval failed).
+   */
+  memoryBySide: Annotation<Partial<Record<"source" | "candidate", NegotiatorMemoryEntry[]>>>({
+    reducer: (curr, next) => ({ ...curr, ...next }),
+    default: () => ({}),
   }),
 
   /** Whether this run is continuing a prior conversation with the same pair. */

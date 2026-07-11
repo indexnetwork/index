@@ -4,6 +4,7 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import type { UserNegotiationContext, SeedAssessment } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
 
 const screenLog = protocolLogger("NegotiationScreener");
 
@@ -51,7 +52,7 @@ export const ScreenDecisionSchema = z.object({
     counterpartyPremiseFit: z.string(),
     /** How the client's intents align with what the counterparty seeks. */
     intentAlignment: z.string(),
-    /** Prior-negotiation memory signals. Wired in P5.3 — always absent today. */
+    /** Prior-negotiation memory signals (P5.3). Filled only when negotiator memory was injected into the screen prompt. */
     memoryHints: z.string().nullable().optional(),
   }),
 });
@@ -84,6 +85,12 @@ export interface NegotiationScreenerInput {
   discoveryQuery?: string;
   seedAssessment: Omit<SeedAssessment, "actors">;
   indexContext: { networkId: string; prompt?: string };
+  /**
+   * Retrieved negotiator memories for the client (P5.3 read path). Rendered
+   * as a private prompt section with a memoryHints instruction. Absent/empty
+   * → the prompt is byte-identical to before.
+   */
+  memory?: NegotiatorMemoryEntry[];
 }
 
 const SYSTEM_PROMPT = `You are the outreach gate for {clientName}'s negotiator agent on a discovery network. Before any negotiation turn is exchanged, you decide whether this match is worth reaching out to on {clientName}'s behalf — their name and attention are spent with every outreach.
@@ -98,7 +105,7 @@ Rules:
 {queryRule}
 - Judge concrete intent alignment, not topical adjacency.
 - Fill evidence.counterpartyPremiseFit with what (if anything) in the counterparty's context actually fits, and evidence.intentAlignment with how the intents line up. Be specific; cite the strongest signal either way.
-- Do NOT reference internal system details like scores, pre-screens, or evaluator outputs in reasoning that could be shown to users.`;
+- Do NOT reference internal system details like scores, pre-screens, or evaluator outputs in reasoning that could be shown to users.{negotiatorMemory}`;
 
 const QUERY_RULE = `- {clientName} explicitly searched for "{discoveryQuery}". This query is the PRIMARY criterion: if the counterparty does not satisfy it, pass — background intents cannot rescue a query mismatch.`;
 const NO_QUERY_RULE = `- No explicit search query: judge against {clientName}'s active intents.`;
@@ -142,7 +149,8 @@ export class NegotiationScreener {
     const systemPrompt = SYSTEM_PROMPT
       .replace(/{clientName}/g, clientName)
       .replace("{networkContext}", networkContext)
-      .replace("{queryRule}", queryRule);
+      .replace("{queryRule}", queryRule)
+      .replace("{negotiatorMemory}", renderNegotiatorMemorySection(input.memory ?? [], { memoryHintsInstruction: true }));
 
     const formatIntents = (intents: UserNegotiationContext["intents"]): string =>
       intents.length > 0 ? intents.map((i) => `- ${i.title}: ${i.description}`).join("\n") : "- (none)";

@@ -5,6 +5,7 @@ import { NegotiationGraphFactory } from '@indexnetwork/protocol';
 import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/protocol';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 
 const logger = log.service.from('NegotiationService');
 
@@ -44,6 +45,8 @@ export class NegotiationService {
       questionerEnqueueIfEnabled(),
       // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
       reflectEnqueueIfEnabled(),
+      // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+      negotiatorMemoryRetrieve(),
     ).createGraph();
 
     logger.info('Starting discovery negotiation', { sourceUserId, candidateUserId });
