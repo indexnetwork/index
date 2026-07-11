@@ -113,6 +113,9 @@ export default function IntentList<T extends BaseIntent>({
         const isFresh = newIntentIds.has(intent.id);
         const isSelectedSource = selectedIntentIds.has(intent.id);
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
+        // ACTIVE (or the schema default / unset) means the intent is live and
+        // being worked in the background.
+        const isActive = !intent.status || intent.status.toUpperCase() === 'ACTIVE';
         
         return (
           <div 
@@ -148,6 +151,17 @@ export default function IntentList<T extends BaseIntent>({
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono">
                       <Calendar className="w-3 h-3" />
                       <span>{createdLabel}</span>
+                    </div>
+                  )}
+
+                  {/* Running indicator — active intents are worked in the background */}
+                  {isActive && (
+                    <div className="flex items-center gap-1.5 text-xs text-green-600 font-ibm-plex-mono">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+                      </span>
+                      running
                     </div>
                   )}
 
