@@ -16,9 +16,11 @@ const screenLog = protocolLogger("NegotiationScreener");
  *   trace event + log line) but NEVER blocks: every fresh negotiation still
  *   proceeds to the first turn. Used to measure pass rates against observed
  *   reject rates before enforcement.
- * - `enforce` — reserved for P2.2. Until enforcement lands, `enforce` runs
- *   identically to `shadow` (decision recorded, negotiation proceeds) and the
- *   screen node logs a warning that enforcement is not yet implemented.
+ * - `enforce` — (P2.2) a `pass` decision blocks the negotiation before the
+ *   first turn: the graph routes straight to finalize with outcome
+ *   `reason: "screened_out"` — zero turns, zero counterparty involvement,
+ *   zero notifications; the opportunity is quietly `rejected`. A failed
+ *   screen still fails OPEN (never blocks), and `reach_out` proceeds normally.
  */
 export const NEGOTIATION_SCREEN_MODES = ["off", "shadow", "enforce"] as const;
 

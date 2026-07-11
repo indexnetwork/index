@@ -287,10 +287,11 @@ export class NegotiationGraphFactory {
      * when NEGOTIATION_SCREEN_MODE=off). The reaching client's negotiator
      * decides whether the match is worth its client's name; in shadow mode the
      * decision is recorded (task metadata + trace event + log line) but never
-     * blocks — the negotiation always proceeds to the first turn. `enforce`
-     * runs identically until P2.2 lands enforcement (by the time this node
-     * runs, init has already created the task and flipped the opportunity to
-     * `negotiating` — P2.2 owns making a blocking `pass` quiet/correct).
+     * blocks — the negotiation always proceeds to the first turn. In enforce
+     * mode (P2.2) a `pass` routes straight to finalize: zero turns, zero
+     * counterparty involvement, outcome `reason: "screened_out"`, opportunity
+     * quietly `rejected` (init had already flipped it to `negotiating`).
+     * A failed screen still fails OPEN in every mode.
      */
     const screenNode = async (state: typeof NegotiationGraphState.State) => {
       const traceEmitter = requestContext.getStore()?.traceEmitter;
@@ -298,12 +299,6 @@ export class NegotiationGraphFactory {
         (traceEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
 
       const mode = configuredScreenMode();
-      if (mode === "enforce") {
-        screenNodeLog.warn("NEGOTIATION_SCREEN_MODE=enforce requested but enforcement lands in P2.2; running shadow", {
-          taskId: state.taskId,
-        });
-      }
-
       const start = Date.now();
       // The client is the initiator seat's user — the side whose negotiator is
       // reaching out. Fresh runs stamp initiatorUserId in init; fall back to
@@ -388,9 +383,21 @@ export class NegotiationGraphFactory {
         });
       }
 
-      // Shadow (and pre-P2.2 enforce): always proceed to the first turn.
+      // Routing happens on the conditional edge: shadow always proceeds to
+      // the first turn; enforce routes a (non-failed-open) pass to finalize.
       return { screenDecision: record, memoryBySide: { [clientSide]: clientMemory } };
     };
+
+    /**
+     * P2.2 — true when the screen gate blocked this negotiation: enforce mode,
+     * a genuine `pass` (never failed-open), before any turn was exchanged.
+     * Shadow-mode passes and fail-open records never block.
+     */
+    const isScreenBlocked = (state: typeof NegotiationGraphState.State): boolean =>
+      state.screenDecision?.mode === "enforce"
+      && state.screenDecision.decision === "pass"
+      && state.screenDecision.failedOpen !== true
+      && state.turnCount === 0;
 
     const turnNode = async (state: typeof NegotiationGraphState.State) => {
       const traceEmitter = requestContext.getStore()?.traceEmitter;
@@ -742,7 +749,10 @@ export class NegotiationGraphFactory {
 
       const lastTurn = state.lastTurn;
       const hasOpportunity = lastTurn?.action === "accept";
-      const atCap = (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
+      // P2.2: the client's own outreach gate declined before any turn — the
+      // negotiation never happened from the counterparty's perspective.
+      const screenedOut = isScreenBlocked(state);
+      const atCap = !screenedOut && (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
       if (hasOpportunity && history.length >= 2) {
@@ -761,9 +771,15 @@ export class NegotiationGraphFactory {
       const outcome: NegotiationOutcome = {
         hasOpportunity,
         agreedRoles,
-        reasoning: lastTurn?.assessment.reasoning ?? "",
+        reasoning: screenedOut
+          ? (state.screenDecision?.reasoning ?? "")
+          : (lastTurn?.assessment.reasoning ?? ""),
         turnCount: state.turnCount,
-        ...(atCap && { reason: "turn_cap" as const }),
+        ...(screenedOut
+          ? { reason: "screened_out" as const }
+          : atCap
+            ? { reason: "turn_cap" as const }
+            : {}),
       };
 
       try {
@@ -781,14 +797,17 @@ export class NegotiationGraphFactory {
           isContinuation: state.isContinuation,
           turnsAdded: state.turnCount,
           priorTurnCount: state.priorTurnCount,
-          outcome: hasOpportunity ? 'accepted' : (atCap ? 'turn_cap' : (lastTurn?.action ?? 'unknown')),
+          outcome: hasOpportunity ? 'accepted' : screenedOut ? 'screened_out' : (atCap ? 'turn_cap' : (lastTurn?.action ?? 'unknown')),
           opportunityId: state.opportunityId || undefined,
         });
 
         if (state.opportunityId) {
+          // screened_out → 'rejected': quiet terminal status (hidden from
+          // default lists), never 'stalled' — with zero turns the generic
+          // mapping would misfile the client's own gate decision.
           const nextStatus = lastTurn?.action === 'accept'
             ? 'pending'
-            : isRejectLikeAction(lastTurn?.action)
+            : (screenedOut || isRejectLikeAction(lastTurn?.action))
               ? 'rejected'
               : 'stalled';
           await database.updateOpportunityStatus(state.opportunityId, nextStatus).catch((err) => {
@@ -800,9 +819,11 @@ export class NegotiationGraphFactory {
       }
 
       if (state.opportunityId) {
-        const emittedOutcome: "accepted" | "rejected_stalled" | "turn_cap" | "timed_out" =
+        const emittedOutcome: "accepted" | "rejected_stalled" | "turn_cap" | "timed_out" | "screened_out" =
           hasOpportunity
             ? "accepted"
+            : screenedOut
+            ? "screened_out"
             : atCap
             ? "turn_cap"
             : state.error && /timeout/i.test(state.error)
@@ -906,7 +927,10 @@ export class NegotiationGraphFactory {
         if (!state.isContinuation && configuredScreenMode() !== "off") return "screen";
         return "turn";
       }, { screen: "screen", turn: "turn", finalize: "finalize" })
-      .addEdge("screen", "turn")
+      // P2.2: enforce-mode pass → finalize (screened_out); everything else → turn.
+      .addConditionalEdges("screen", (state: typeof NegotiationGraphState.State) =>
+        isScreenBlocked(state) ? "finalize" : "turn",
+      { turn: "turn", finalize: "finalize" })
       .addEdge("__start__", "init")
       .addEdge("finalize", "__end__");
 

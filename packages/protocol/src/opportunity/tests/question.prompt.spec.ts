@@ -114,12 +114,23 @@ describe("buildQuestionPrompt", () => {
     expect(out).not.toContain("(no negotiations)");
   });
 
+
+
   it("redacts internal outcome reasons", () => {
     const out = buildQuestionPrompt(makeInput({
       negotiationDigests: [makeDigest({ outcomeReason: "turn_cap" })],
     }));
     expect(out).toContain("needed more detail");
     expect(out).not.toContain("turn_cap");
+  });
+
+  it("renders screened_out with user-facing copy and no protocol jargon (P2.2)", () => {
+    const out = buildQuestionPrompt(makeInput({
+      negotiationDigests: [makeDigest({ outcomeReason: "screened_out" })],
+    }));
+    expect(out).toContain("didn't look like a strong enough fit to pursue");
+    expect(out).not.toContain("screened_out");
+    expect(out).not.toContain("screen");
   });
 
   it("renders suggestedRoles as user-facing relationship signals", () => {

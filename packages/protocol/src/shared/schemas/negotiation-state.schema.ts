@@ -66,7 +66,7 @@ export const NegotiationOutcomeSchema = z.object({
   })),
   reasoning: z.string(),
   turnCount: z.number(),
-  reason: z.enum(["turn_cap", "timeout"]).optional(),
+  reason: z.enum(["turn_cap", "timeout", "screened_out"]).optional(),
 });
 export type NegotiationOutcome = z.infer<typeof NegotiationOutcomeSchema>;
 

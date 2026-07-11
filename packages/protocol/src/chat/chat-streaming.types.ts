@@ -520,7 +520,8 @@ export interface NegotiationOutcomeEvent extends ChatStreamEventBase {
     | "rejected_stalled"
     | "waiting_for_agent"
     | "timed_out"
-    | "turn_cap";
+    | "turn_cap"
+    | "screened_out";
   turnCount: number;
   reasoning?: string;
   agreedRoles?: { ownUser?: string; otherUser?: string };

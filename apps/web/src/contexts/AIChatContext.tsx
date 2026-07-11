@@ -99,7 +99,7 @@ export interface TraceEvent {
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };
-  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap";
+  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap" | "screened_out";
   turnCount?: number;
   agreedRoles?: { ownUser?: string; otherUser?: string };
 }

@@ -1117,7 +1117,18 @@ export class ConversationDatabaseAdapter {
       ? sql`${schema.tasks.createdAt} >= ${opts.since.toISOString()}`
       : undefined;
 
-    const allFilters = [userFilter, resultFilter, sinceFilter].filter(Boolean);
+    // P2.2: screened_out negotiations are the owner's private outreach-gate
+    // decisions — zero turns, no counterparty involvement. They stay visible
+    // to the owner (self view) but are excluded from the mutual (non-self
+    // viewer) list so the counterparty never learns a gate decision was made.
+    const screenedOutFilter = opts?.mutualWithUserId
+      ? or(
+          isNull(schema.artifacts.id),
+          sql`coalesce(${schema.artifacts.parts}->0->'data'->>'reason', '') <> 'screened_out'`,
+        )
+      : undefined;
+
+    const allFilters = [userFilter, resultFilter, sinceFilter, screenedOutFilter].filter(Boolean);
     const combinedFilter = allFilters.length > 1 ? and(...allFilters) : allFilters[0];
 
     const rows = await db
