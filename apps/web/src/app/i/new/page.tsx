@@ -172,15 +172,10 @@ function NewSignalPage() {
           <div className="space-y-6">
             {STEPS.slice(0, step).map((s, i) => (
               <div key={s.key}>
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#041729] text-white text-xs font-bold font-ibm-plex-mono">
-                    h
-                  </div>
-                  <h2 className="text-base font-bold text-black font-ibm-plex-mono">
-                    {s.question}
-                  </h2>
-                </div>
-                <p className="ml-[38px] mt-1.5 text-sm">
+                <h2 className="text-base font-bold text-black font-ibm-plex-mono">
+                  {s.question}
+                </h2>
+                <p className="mt-1.5 text-sm">
                   {answers[i].trim() ? (
                     <span className="text-gray-700">{answers[i]}</span>
                   ) : (
@@ -192,14 +187,9 @@ function NewSignalPage() {
 
             {/* Current question */}
             <div>
-              <div className="flex items-center gap-2.5 mb-6">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#041729] text-white text-xs font-bold font-ibm-plex-mono">
-                  h
-                </div>
-                <h1 className="text-lg font-bold text-black font-ibm-plex-mono">
-                  {current.question}
-                </h1>
-              </div>
+              <h1 className="mb-6 text-lg font-bold text-black font-ibm-plex-mono">
+                {current.question}
+              </h1>
 
               {/* Examples (first step only) */}
               {current.examples && current.examples.length > 0 && (
