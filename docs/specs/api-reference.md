@@ -799,7 +799,7 @@ Revoke an API key bound to an owned personal agent.
 
 Claim the next pending negotiation turn for an owned personal agent. Authenticates with the agent's API key (`x-api-key` header) or a regular session. Idempotent: if the agent already holds a claimed turn, the same turn is returned instead of a new one.
 
-The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'` row where the caller's user is a participant to `state = 'claimed'`. A 6-hour claim timeout is enqueued; if the agent does not submit a response in that window the turn is released back to `waiting_for_agent` for another claim attempt, and an unclaimed turn eventually falls through to the system `Index Negotiator` after 24 hours.
+The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'` row where the caller's user is a participant to `state = 'claimed'`. The park timeout is cancelled and a claim timeout is enqueued with the **remaining** park-window budget (a single shared budget of `AMBIENT_PARK_WINDOW_MS` = 5 minutes from park start — park and claim timers never stack). If the agent does not respond before the budget expires — or the turn is never claimed at all — the system `Index Negotiator` takes the turn as a fallback (seat-scoped under v2); an expired claim is not re-parked for another pickup attempt.
 
 **Request body**: empty.
 
@@ -833,13 +833,18 @@ The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'
     "seedAssessment": { "score": 82, "reasoning": "...", "valencyRole": "..." },
     "isDiscoverer": true,
     "discoveryQuery": "optional — only set when the negotiation originated from a discovery query"
-  }
+  },
+  "seat": "initiator",
+  "protocolVersion": "v2",
+  "allowedActions": ["outreach", "counter", "question", "withdraw"]
 }
 ```
 
-- `turn.deadline` — ISO-8601 timestamp; the claim expires at `claimedAt + 6h`.
-- `turn.counterpartyAction` — action from the preceding turn (`propose`, `counter`, `question`, `accept`, `reject`), or `"none"` if this is the first turn.
+- `turn.deadline` — ISO-8601 timestamp; park start + the park-window budget (`AMBIENT_PARK_WINDOW_MS`, 5 minutes). The claim shares this same budget — it is not extended by picking up.
+- `turn.counterpartyAction` — action from the preceding turn, or `"none"` if this is the first turn.
+- `seat` / `protocolVersion` / `allowedActions` — the claiming user's seat under the task's protocol version and the exact actions that seat may submit this turn (`propose | accept | reject | counter | question` on v1 tasks; seat-scoped `outreach | counter | question | withdraw` vs `accept | decline | counter | question` on v2).
 - `context.ownUser` / `context.otherUser` — the persisted absolute source/candidate context projected into the claiming user's perspective. May be `null` only for legacy tasks created before turn-context persistence landed.
+- `negotiatorMemory` — optional array of the claiming user's own negotiator-memory entries (present only when `NEGOTIATOR_MEMORY_INJECT` is on and the user's agent has relevant memories — never contains the counterparty's).
 - `opportunity` — `null` when the task has no linked opportunity.
 
 **Errors**:
@@ -847,7 +852,7 @@ The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'
 
 ### POST /api/agents/:id/negotiations/:negotiationId/respond
 
-Submit a response for a negotiation turn previously claimed via `pickup`. Authenticates with the agent's API key or a session. The backend atomically CAS's the task from `claimed` (scoped to this `agentId`) to `working`, persists the turn, then either finalizes the negotiation (on `accept`, `reject`, or when the turn cap is reached) or returns it to `waiting_for_agent` for the counterparty.
+Submit a response for a negotiation turn previously claimed via `pickup`. Authenticates with the agent's API key or a session. The submitted action is validated against the caller's seat + the task's protocol version **before** any state change. The backend then atomically CAS's the task from `claimed` (scoped to this `agentId`) to `working`, persists the turn, then either finalizes the negotiation (on a terminal action — `accept`/`reject` on v1, `accept`/`decline`/`withdraw` on v2 — or when the turn cap is reached) or returns it to `waiting_for_agent` with a fresh 5-minute park window for the counterparty.
 
 **Request body**:
 ```json
@@ -864,7 +869,7 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 }
 ```
 
-- `action` — one of `propose`, `accept`, `reject`, `counter`, `question`.
+- `action` — must be within the seat's `allowedActions` returned by `pickup`: v1 tasks accept `propose | accept | reject | counter | question`; v2 tasks are seat-scoped (initiator `outreach | counter | question | withdraw`, counterparty `accept | decline | counter | question`).
 - `message` — optional string or `null`.
 - `assessment.suggestedRoles.ownUser` / `.otherUser` — each one of `agent`, `patient`, `peer`.
 
@@ -874,6 +879,7 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 ```
 
 **Errors**:
+- `400` if the action is outside the caller's seat's allowed set for the task's protocol version (the claim stays intact for a retry).
 - `403` if the agent is not owned by the authenticated user.
 - `404` if the negotiation does not exist or the referenced task is not a negotiation.
 - `409` if the task is not in `claimed` state or is claimed by a different agent.
