@@ -346,7 +346,7 @@ export default function IntentDetailPage() {
           <button
             type="button"
             onClick={() => navigate("/")}
-            className="mb-3 inline-flex shrink-0 items-center gap-1 text-sm text-gray-600 hover:text-black transition-colors"
+            className="mb-3 inline-flex shrink-0 items-center gap-1 self-start text-sm text-gray-600 hover:text-black transition-colors"
             aria-label="Back to home"
           >
             <ChevronLeft className="h-4 w-4" />

@@ -1,6 +1,7 @@
 import { PropsWithChildren, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useLocation } from 'react-router';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import ChatSidebar from "@/components/ChatSidebar";
@@ -14,9 +15,19 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { isAuthenticated } = useAuthContext();
 
+  // Intent detail pages open with the sidebar collapsed to give the two-column
+  // workspace the full width; the floating toggle brings it back. Leaving the
+  // intent page restores the expanded sidebar.
+  const isIntentDetail = useMemo(() => pathname?.startsWith('/i/') ?? false, [pathname]);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(isIntentDetail);
+
   useEffect(() => {
     setMobileSidebarOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    setDesktopSidebarCollapsed(isIntentDetail);
+  }, [isIntentDetail]);
 
   const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c', '/l', '/index'];
@@ -93,12 +104,16 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                   id="app-sidebar"
                   className={`
                     fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200
-                    transform transition-transform duration-200 ease-in-out
-                    lg:translate-x-0 lg:relative lg:z-auto
+                    transform transition-[transform,width] duration-200 ease-in-out
+                    lg:relative lg:z-auto lg:translate-x-0
                     ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                    ${desktopSidebarCollapsed ? 'lg:w-0 lg:overflow-hidden lg:border-r-0' : 'lg:w-64'}
                   `}
                 >
-                  <Sidebar />
+                  {/* Fixed-width inner wrapper so content doesn't reflow while the width animates. */}
+                  <div className="h-full w-64">
+                    <Sidebar />
+                  </div>
                 </aside>
 
                 {/* Secondary sidebar for chat - only on messages view */}
@@ -129,6 +144,23 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                       <path d="M3 6h18M3 12h18M3 18h18" />
                     </svg>
                   </button>
+
+                  {/* Desktop sidebar toggle - only where the sidebar auto-collapses (intent pages) */}
+                  {isIntentDetail && (
+                    <button
+                      type="button"
+                      onClick={() => setDesktopSidebarCollapsed((v) => !v)}
+                      title={desktopSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                      aria-label={desktopSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                      className="hidden lg:inline-flex absolute top-4 left-2 z-30 p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      {desktopSidebarCollapsed ? (
+                        <PanelLeftOpen className="h-5 w-5" />
+                      ) : (
+                        <PanelLeftClose className="h-5 w-5" />
+                      )}
+                    </button>
+                  )}
                   
                   {/* Scrollable content area */}
                   <main className="flex-1 overflow-y-auto flex flex-col">
