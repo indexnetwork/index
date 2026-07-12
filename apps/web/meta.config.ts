@@ -19,6 +19,13 @@ const MARKETING: Record<string, PageMeta> = {
     image: `${ORIGIN}/found-in-translation/found-in-translation-1-hero.png`,
     type: "article",
   },
+  "/overview": {
+    title: "Index Network — Protocol Overview",
+    description:
+      "Index Network is a private, intent-driven social discovery protocol.",
+    image: DEFAULT_IMAGE,
+    type: "website",
+  },
 };
 
 export function buildMetaMap(distDir: string): Record<string, PageMeta> {
