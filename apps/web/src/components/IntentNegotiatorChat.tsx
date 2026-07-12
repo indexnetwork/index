@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, BotMessageSquare, Loader2, Square } from "lucide-react";
+import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
@@ -155,8 +155,23 @@ export default function IntentNegotiatorChat({
     >
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {!ready ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+          /* Conversation-shaped skeleton while the session bootstraps. */
+          <div className="animate-pulse space-y-4 pt-1" data-testid="negotiator-chat-skeleton" aria-hidden="true">
+            <div className="flex justify-end">
+              <div className="h-9 w-2/5 rounded-2xl rounded-br-md bg-gray-200" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-11/12 rounded bg-gray-200" />
+              <div className="h-3 w-4/5 rounded bg-gray-200" />
+              <div className="h-3 w-2/3 rounded bg-gray-200" />
+            </div>
+            <div className="flex justify-end">
+              <div className="h-9 w-1/3 rounded-2xl rounded-br-md bg-gray-200" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-3/4 rounded bg-gray-200" />
+              <div className="h-3 w-1/2 rounded bg-gray-200" />
+            </div>
           </div>
         ) : (
           <>

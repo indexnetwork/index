@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ChevronLeft, Loader2, Pause, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, Pause, Pencil, Trash2 } from "lucide-react";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import OpportunityCard from "@/components/chat/OpportunityCardInChat";
+import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -353,17 +353,22 @@ export default function IntentDetailPage() {
             Back
           </button>
 
-          {intentLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-            </div>
-          ) : !intent ? (
+          {!intentLoading && !intent ? (
             <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
               Intent not found
             </div>
           ) : (
             <>
+              {/* Header card: skeleton while the intent loads — the workspace
+                  below renders (and fetches) immediately, in parallel. */}
               <div className="mb-4 shrink-0 rounded-lg border border-gray-200 bg-white p-4">
+                {intentLoading ? (
+                  <div className="animate-pulse space-y-3" data-testid="intent-header-skeleton">
+                    <div className="h-4 w-2/3 rounded bg-gray-200" />
+                    <div className="h-3.5 w-52 rounded bg-gray-200" />
+                  </div>
+                ) : (
+                  <>
                 <div className="flex items-start justify-between gap-4">
                   <h1 className="text-sm font-bold text-black font-ibm-plex-mono leading-snug">
                     {title}
@@ -421,6 +426,8 @@ export default function IntentDetailPage() {
                       {refining ? "Refining..." : "Refine"}
                     </button>
                   </div>
+                )}
+                  </>
                 )}
               </div>
 
@@ -495,8 +502,9 @@ export default function IntentDetailPage() {
                   </div>
                   <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
                   {opportunitiesLoading ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                    <div className="space-y-3" data-testid="radar-skeleton">
+                      <OpportunitySkeleton />
+                      <OpportunitySkeleton />
                     </div>
                   ) : visibleOpportunities.length === 0 ? (
                     <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
