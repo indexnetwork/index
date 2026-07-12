@@ -151,16 +151,64 @@ export class ConversationDatabaseAdapter {
       hiddenAtByConv.set(r.conversationId, r.hiddenAt);
     }
 
-    const convs = await db
-      .select()
-      .from(schema.conversations)
-      .where(inArray(schema.conversations.id, ids))
-      .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`);
-
-    const allParticipants = await db
-      .select()
-      .from(schema.conversationParticipants)
-      .where(inArray(schema.conversationParticipants.conversationId, ids));
+    // Everything below only needs `ids` — run the lookups in one parallel
+    // wave instead of sequential round trips; this method is on the chat
+    // sidebar's critical path (GET /conversations and /conversations/negotiations).
+    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta] = await Promise.all([
+      db
+        .select()
+        .from(schema.conversations)
+        .where(inArray(schema.conversations.id, ids))
+        .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`),
+      db
+        .select()
+        .from(schema.conversationParticipants)
+        .where(inArray(schema.conversationParticipants.conversationId, ids)),
+      // System negotiator name — fallback label when no personal agent drove a
+      // side. Well-known UUID from agent.database.adapter.ts SYSTEM_AGENT_IDS.
+      db
+        .select({ name: schema.agents.name })
+        .from(schema.agents)
+        .where(eq(schema.agents.id, '00000000-0000-0000-0000-000000000002'))
+        .limit(1),
+      // The *actual* agent that drove each user's side. For polling-backed
+      // turns, tasks.claimed_by_agent_id is the personal agent that picked the
+      // turn up. Deterministic ordering: most recent claim per owner wins.
+      db
+        .select({
+          conversationId: schema.tasks.conversationId,
+          agentId: schema.tasks.claimedByAgentId,
+          agentName: schema.agents.name,
+          agentType: schema.agents.type,
+          ownerId: schema.agents.ownerId,
+          avatar: schema.users.avatar,
+        })
+        .from(schema.tasks)
+        .innerJoin(schema.agents, eq(schema.agents.id, schema.tasks.claimedByAgentId))
+        .leftJoin(schema.users, eq(schema.users.id, schema.agents.ownerId))
+        .where(
+          and(
+            inArray(schema.tasks.conversationId, ids),
+            eq(schema.agents.type, 'external'),
+          ),
+        )
+        .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id)),
+      // Last message per conversation via DISTINCT ON.
+      db
+        .selectDistinctOn([schema.messages.conversationId], {
+          conversationId: schema.messages.conversationId,
+          parts: schema.messages.parts,
+          senderId: schema.messages.senderId,
+          createdAt: schema.messages.createdAt,
+        })
+        .from(schema.messages)
+        .where(inArray(schema.messages.conversationId, ids))
+        .orderBy(schema.messages.conversationId, desc(schema.messages.createdAt)),
+      db
+        .select()
+        .from(schema.conversationMetadata)
+        .where(inArray(schema.conversationMetadata.conversationId, ids)),
+    ]);
 
     // Resolve user names/avatars for participants
     const userIds = [...new Set(allParticipants.filter(p => p.participantType === 'user').map(p => p.participantId))];
@@ -182,56 +230,18 @@ export class ConversationDatabaseAdapter {
       }
     }
 
-    // Resolve the system negotiator agent name (used as the fallback label when no
-    // personal agent drove any turn on a user's side). Well-known UUID from
-    // agent.database.adapter.ts SYSTEM_AGENT_IDS.negotiator.
-    let systemNegotiatorName = 'Index Negotiator';
-    const negotiatorRow = await db
-      .select({ name: schema.agents.name })
-      .from(schema.agents)
-      .where(eq(schema.agents.id, '00000000-0000-0000-0000-000000000002'))
-      .limit(1);
-    if (negotiatorRow.length > 0) {
-      systemNegotiatorName = negotiatorRow[0].name;
-    }
+    const systemNegotiatorName = negotiatorRow.length > 0 ? negotiatorRow[0].name : 'Index Negotiator';
 
-    // Resolve the *actual* agent that drove each user's side. For polling-backed turns,
-    // tasks.claimed_by_agent_id is set to the personal agent that picked the turn up.
-    // Fall back to the system negotiator when no claim exists (sync system-driven turns).
-    // Map: conversationId → (ownerUserId → agent { id, name, avatar })
+    // Map: conversationId → (ownerUserId → agent { name, avatar })
     const claimedAgentByConv = new Map<string, Map<string, { name: string; avatar: string | null }>>();
-    if (ids.length > 0) {
-      const claimRows = await db
-        .select({
-          conversationId: schema.tasks.conversationId,
-          agentId: schema.tasks.claimedByAgentId,
-          agentName: schema.agents.name,
-          agentType: schema.agents.type,
-          ownerId: schema.agents.ownerId,
-          avatar: schema.users.avatar,
-        })
-        .from(schema.tasks)
-        .innerJoin(schema.agents, eq(schema.agents.id, schema.tasks.claimedByAgentId))
-        .leftJoin(schema.users, eq(schema.users.id, schema.agents.ownerId))
-        .where(
-          and(
-            inArray(schema.tasks.conversationId, ids),
-            eq(schema.agents.type, 'external'),
-          ),
-        )
-        // Deterministic ordering so that if a conversation ever has claims
-        // from multiple external (poller) agents for the same owner, the displayed
-        // agent name is stable across requests. Most recent claim wins.
-        .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id));
-      for (const r of claimRows) {
-        if (!r.ownerId) continue;
-        const convMap = claimedAgentByConv.get(r.conversationId) ?? new Map();
-        // First row wins after deterministic ordering — most recent claim per owner.
-        if (!convMap.has(r.ownerId)) {
-          convMap.set(r.ownerId, { name: r.agentName, avatar: r.avatar });
-        }
-        claimedAgentByConv.set(r.conversationId, convMap);
+    for (const r of claimRows) {
+      if (!r.ownerId) continue;
+      const convMap = claimedAgentByConv.get(r.conversationId) ?? new Map();
+      // First row wins after deterministic ordering — most recent claim per owner.
+      if (!convMap.has(r.ownerId)) {
+        convMap.set(r.ownerId, { name: r.agentName, avatar: r.avatar });
       }
+      claimedAgentByConv.set(r.conversationId, convMap);
     }
 
     const participantsByConv = new Map<string, ResolvedParticipant[]>();
@@ -260,38 +270,16 @@ export class ConversationDatabaseAdapter {
       participantsByConv.set(p.conversationId, list);
     }
 
-    // Fetch last message per conversation efficiently using DISTINCT ON
     const lastMessageByConv = new Map<string, { parts: unknown[]; senderId: string; createdAt: Date }>();
-    if (ids.length > 0) {
-      const lastMessages = await db
-        .selectDistinctOn([schema.messages.conversationId], {
-          conversationId: schema.messages.conversationId,
-          parts: schema.messages.parts,
-          senderId: schema.messages.senderId,
-          createdAt: schema.messages.createdAt,
-        })
-        .from(schema.messages)
-        .where(inArray(schema.messages.conversationId, ids))
-        .orderBy(schema.messages.conversationId, desc(schema.messages.createdAt));
-
-      for (const r of lastMessages) {
-        const hiddenAt = hiddenAtByConv.get(r.conversationId);
-        if (hiddenAt && r.createdAt <= hiddenAt) continue;
-        lastMessageByConv.set(r.conversationId, {
-          parts: r.parts as unknown[],
-          senderId: r.senderId,
-          createdAt: r.createdAt,
-        });
-      }
+    for (const r of lastMessages) {
+      const hiddenAt = hiddenAtByConv.get(r.conversationId);
+      if (hiddenAt && r.createdAt <= hiddenAt) continue;
+      lastMessageByConv.set(r.conversationId, {
+        parts: r.parts as unknown[],
+        senderId: r.senderId,
+        createdAt: r.createdAt,
+      });
     }
-
-    // Fetch metadata per conversation
-    const allMeta = ids.length > 0
-      ? await db
-          .select()
-          .from(schema.conversationMetadata)
-          .where(inArray(schema.conversationMetadata.conversationId, ids))
-      : [];
 
     const metaByConv = new Map<string, Record<string, unknown>>();
     for (const m of allMeta) {

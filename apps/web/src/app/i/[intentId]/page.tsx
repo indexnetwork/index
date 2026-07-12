@@ -415,7 +415,7 @@ export default function IntentDetailPage() {
                       placeholder="Refine this signal..."
                       disabled={refining}
                       autoFocus
-                      className="flex-1 text-sm bg-[#FCFCFC] border border-[#E9E9E9] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30"
+                      className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 bg-[#FCFCFC] border border-[#E9E9E9] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30"
                     />
                     <button
                       type="button"

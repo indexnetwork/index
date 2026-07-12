@@ -254,7 +254,7 @@ export default function IntentNegotiatorChat({
           placeholder={placeholder}
           disabled={!ready}
           data-testid="negotiator-chat-input"
-          className="flex-1 rounded-full border border-[#E9E9E9] bg-[#FCFCFC] px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30 disabled:opacity-60"
+          className="flex-1 rounded-full border border-[#E9E9E9] bg-[#FCFCFC] px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30 disabled:opacity-60"
         />
         {isLoading && sessionId ? (
           <button
