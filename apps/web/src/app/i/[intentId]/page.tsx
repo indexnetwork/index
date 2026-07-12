@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ChevronLeft, Loader2, Pause, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, Pause, Pencil, Trash2 } from "lucide-react";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import OpportunityCard from "@/components/chat/OpportunityCardInChat";
+import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -100,7 +100,7 @@ function StatPill({
       aria-pressed={active}
       onClick={onSelect}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
         active
           ? "bg-[#041729] text-white"
           : "text-gray-500 hover:bg-gray-100 hover:text-gray-700",
@@ -136,9 +136,9 @@ function Panel({
   className?: string;
 }) {
   return (
-    <section className={className}>
-      <div className="mb-4">
-        <h3 className="flex items-center gap-2 text-base font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
+    <section className={cn("flex min-h-0 flex-col", className)}>
+      <div className="mb-2.5 shrink-0">
+        <h3 className="flex items-center gap-2 text-sm font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
           <span>
             {title}
             {count !== undefined && ` (${count})`}
@@ -146,7 +146,7 @@ function Panel({
           {media}
         </h3>
         {description && (
-          <p className="mt-1.5 text-sm text-gray-500">{description}</p>
+          <p className="mt-1 text-xs text-gray-500">{description}</p>
         )}
       </div>
       {children}
@@ -341,31 +341,36 @@ export default function IntentDetailPage() {
   return (
     <ClientLayout>
       {inviteModalElement}
-      <div className="px-10 lg:px-16 py-6">
-        <ContentContainer size="xwide">
+      <div className="flex min-h-0 flex-1 flex-col px-6 py-4 lg:px-10">
+        <ContentContainer size="xwide" className="flex w-full min-h-0 flex-1 flex-col">
           <button
             type="button"
             onClick={() => navigate("/")}
-            className="mb-4 inline-flex items-center gap-1 text-sm text-gray-600 hover:text-black transition-colors"
+            className="mb-3 inline-flex shrink-0 items-center gap-1 self-start text-sm text-gray-600 hover:text-black transition-colors"
             aria-label="Back to home"
           >
             <ChevronLeft className="h-4 w-4" />
             Back
           </button>
 
-          {intentLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-            </div>
-          ) : !intent ? (
+          {!intentLoading && !intent ? (
             <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
               Intent not found
             </div>
           ) : (
             <>
-              <div className="mb-6 rounded-lg border border-gray-200 bg-white p-5">
+              {/* Header card: skeleton while the intent loads — the workspace
+                  below renders (and fetches) immediately, in parallel. */}
+              <div className="mb-4 shrink-0 rounded-lg border border-gray-200 bg-white p-4">
+                {intentLoading ? (
+                  <div className="animate-pulse space-y-3" data-testid="intent-header-skeleton">
+                    <div className="h-4 w-2/3 rounded bg-gray-200" />
+                    <div className="h-3.5 w-52 rounded bg-gray-200" />
+                  </div>
+                ) : (
+                  <>
                 <div className="flex items-start justify-between gap-4">
-                  <h1 className="text-base font-bold text-black font-ibm-plex-mono leading-snug">
+                  <h1 className="text-sm font-bold text-black font-ibm-plex-mono leading-snug">
                     {title}
                   </h1>
                   <div className="flex shrink-0 items-center gap-0.5">
@@ -387,7 +392,7 @@ export default function IntentDetailPage() {
                     />
                   </div>
                 </div>
-                <div className="mt-2.5 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
+                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
                   <span className="inline-flex items-center gap-1.5 rounded border border-green-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-green-600">
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
@@ -399,7 +404,7 @@ export default function IntentDetailPage() {
                 </div>
 
                 {showRefine && (
-                  <div className="mt-4 flex items-center gap-2">
+                  <div className="mt-3 flex items-center gap-2">
                     <input
                       type="text"
                       value={refineText}
@@ -410,7 +415,7 @@ export default function IntentDetailPage() {
                       placeholder="Refine this signal..."
                       disabled={refining}
                       autoFocus
-                      className="flex-1 text-sm bg-[#FCFCFC] border border-[#E9E9E9] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30"
+                      className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 bg-[#FCFCFC] border border-[#E9E9E9] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30"
                     />
                     <button
                       type="button"
@@ -422,15 +427,16 @@ export default function IntentDetailPage() {
                     </button>
                   </div>
                 )}
+                  </>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+              <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-10 lg:grid-rows-[minmax(0,1fr)]">
                 {negotiatorChatEnabled && intentId ? (
                   <Panel
                     title="Personal Agent"
-                    count={questions.length}
-                    description="Chat with your negotiator about this signal."
-                    className="lg:col-span-2"
+                    description="Your negotiator, scoped to this intent — ask what it's doing, steer it, or answer its follow-ups."
+                    className="lg:col-span-6"
                   >
                     <IntentNegotiatorChat
                       key={intentId}
@@ -451,19 +457,21 @@ export default function IntentDetailPage() {
                     title="Questions"
                     count={questions.length}
                     description="Answer pending follow-ups for this intent."
-                    className="lg:col-span-2"
+                    className="lg:col-span-6"
                   >
-                    {questions.length === 0 ? (
-                      <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
-                        No pending questions right now.
-                      </div>
-                    ) : (
-                      <InjectedQuestions
-                        questions={questions}
-                        onAnswer={handleAnswer}
-                        onDismiss={handleDismiss}
-                      />
-                    )}
+                    <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
+                      {questions.length === 0 ? (
+                        <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
+                          No pending questions right now.
+                        </div>
+                      ) : (
+                        <InjectedQuestions
+                          questions={questions}
+                          onAnswer={handleAnswer}
+                          onDismiss={handleDismiss}
+                        />
+                      )}
+                    </div>
                   </Panel>
                 )}
 
@@ -479,9 +487,9 @@ export default function IntentDetailPage() {
                       className="h-6 w-auto object-contain"
                     />
                   }
-                  className="lg:col-span-3"
+                  className="lg:col-span-4"
                 >
-                  <div className="mb-4 flex flex-wrap gap-2">
+                  <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
                     {RADAR_BUCKETS.map((bucket) => (
                       <StatPill
                         key={bucket.key}
@@ -492,9 +500,11 @@ export default function IntentDetailPage() {
                       />
                     ))}
                   </div>
+                  <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
                   {opportunitiesLoading ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                    <div className="space-y-3" data-testid="radar-skeleton">
+                      <OpportunitySkeleton />
+                      <OpportunitySkeleton />
                     </div>
                   ) : visibleOpportunities.length === 0 ? (
                     <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
@@ -518,6 +528,7 @@ export default function IntentDetailPage() {
                       ))}
                     </div>
                   )}
+                  </div>
                 </Panel>
               </div>
             </>

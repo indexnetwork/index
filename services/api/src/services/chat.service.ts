@@ -304,8 +304,19 @@ export class ChatSessionService {
     }
   }
 
+  /**
+   * True when the error (or any error in its `cause` chain) is a Postgres
+   * unique violation. Drizzle wraps driver errors in `DrizzleQueryError`
+   * with the pg error on `cause`, so checking only the top level misses the
+   * 23505 and turns a benign create race into a 500.
+   */
   private isUniqueViolation(err: unknown): boolean {
-    return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === '23505';
+    let current: unknown = err;
+    for (let depth = 0; current !== null && typeof current === 'object' && depth < 5; depth++) {
+      if ((current as { code?: unknown }).code === '23505') return true;
+      current = (current as { cause?: unknown }).cause;
+    }
+    return false;
   }
 
   /**

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, BotMessageSquare, Loader2, Square } from "lucide-react";
+import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
@@ -149,11 +149,29 @@ export default function IntentNegotiatorChat({
   const placeholder = agentName ? `Message ${agentName}…` : "Message your negotiator…";
 
   return (
-    <div className="flex h-[520px] flex-col" data-testid="intent-negotiator-chat">
-      <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+    <div
+      className="flex h-[520px] flex-col lg:h-auto lg:min-h-0 lg:flex-1"
+      data-testid="intent-negotiator-chat"
+    >
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {!ready ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+          /* Conversation-shaped skeleton while the session bootstraps. */
+          <div className="animate-pulse space-y-4 pt-1" data-testid="negotiator-chat-skeleton" aria-hidden="true">
+            <div className="flex justify-end">
+              <div className="h-9 w-2/5 rounded-2xl rounded-br-md bg-gray-200" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-11/12 rounded bg-gray-200" />
+              <div className="h-3 w-4/5 rounded bg-gray-200" />
+              <div className="h-3 w-2/3 rounded bg-gray-200" />
+            </div>
+            <div className="flex justify-end">
+              <div className="h-9 w-1/3 rounded-2xl rounded-br-md bg-gray-200" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-3/4 rounded bg-gray-200" />
+              <div className="h-3 w-1/2 rounded bg-gray-200" />
+            </div>
           </div>
         ) : (
           <>
@@ -161,8 +179,9 @@ export default function IntentNegotiatorChat({
               <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
                 <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                 <p>
-                  This is your direct line to {agentName ?? "your negotiator"} about this signal —
-                  ask what's happening, refine what you're looking for, or answer follow-ups here.
+                  This is your direct line to {agentName ?? "your negotiator"} about this intent —
+                  ask who it found, why, what it's waiting on, or tell it how to negotiate on your
+                  behalf.
                 </p>
               </div>
             )}
@@ -170,7 +189,7 @@ export default function IntentNegotiatorChat({
             {questions.length > 0 && (
               <div data-testid="negotiator-opening-questions">
                 <p className="mb-2 text-xs uppercase tracking-wider text-gray-500 font-ibm-plex-mono">
-                  Open questions for this signal
+                  Your negotiator needs your input
                 </p>
                 <InjectedQuestions
                   questions={questions}
@@ -221,7 +240,7 @@ export default function IntentNegotiatorChat({
         <div ref={scrollRef} />
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+      <div className="mt-2 flex shrink-0 items-center gap-2 border-t border-gray-100 pt-2">
         <input
           type="text"
           value={input}
@@ -235,7 +254,7 @@ export default function IntentNegotiatorChat({
           placeholder={placeholder}
           disabled={!ready}
           data-testid="negotiator-chat-input"
-          className="flex-1 rounded-full border border-[#E9E9E9] bg-[#FCFCFC] px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30 disabled:opacity-60"
+          className="flex-1 rounded-full border border-[#E9E9E9] bg-[#FCFCFC] px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30 disabled:opacity-60"
         />
         {isLoading && sessionId ? (
           <button

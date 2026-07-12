@@ -24,22 +24,44 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
   const [error, setError] = useState<string | null>(null);
   const [socialProviders, setSocialProviders] = useState<string[]>([]);
   const [emailPasswordEnabled, setEmailPasswordEnabled] = useState(false);
+  const [providersStatus, setProvidersStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [providersRetryKey, setProvidersRetryKey] = useState(0);
   const [isSignUp, setIsSignUp] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     ensureLandingFonts();
-    fetch(`${API_BASE}/auth/providers`)
-      .then((r) => r.json())
-      .then((data: { providers?: string[]; emailPassword?: boolean }) => {
-        setSocialProviders(data.providers ?? []);
-        setEmailPasswordEnabled(data.emailPassword ?? false);
-      })
-      .catch(() => {
-        setSocialProviders([]);
-        setEmailPasswordEnabled(false);
-      });
-  }, [isOpen]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = (attempt: number) => {
+      setProvidersStatus('loading');
+      fetch(`${API_BASE}/auth/providers`)
+        .then((r) => {
+          if (!r.ok) throw new Error(`providers request failed: ${r.status}`);
+          return r.json();
+        })
+        .then((data: { providers?: string[]; emailPassword?: boolean }) => {
+          if (cancelled) return;
+          setSocialProviders(data.providers ?? []);
+          setEmailPasswordEnabled(data.emailPassword ?? false);
+          setProvidersStatus('ready');
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // Retry twice with backoff — covers transient API restarts (bun --watch).
+          if (attempt < 2) {
+            timer = setTimeout(() => load(attempt + 1), 1000 * (attempt + 1));
+          } else {
+            setProvidersStatus('error');
+          }
+        });
+    };
+    load(0);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen, providersRetryKey]);
 
   if (!isOpen) return null;
 
@@ -179,6 +201,19 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
             <p className="av-lede">
               Write what you want — let the network bring people to you.
             </p>
+
+            {providersStatus === 'error' && (
+              <p className="av-note">
+                Couldn&apos;t load all sign-in options.{' '}
+                <button
+                  type="button"
+                  className="av-link"
+                  onClick={() => setProvidersRetryKey((k) => k + 1)}
+                >
+                  Retry
+                </button>
+              </p>
+            )}
 
             {hasGoogle && (
               <button

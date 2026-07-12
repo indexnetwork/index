@@ -145,7 +145,7 @@ describe('Intent page — negotiator chat gating', () => {
     await screen.findByText('Looking for a technical co-founder');
     await screen.findByTestId('intent-negotiator-chat-stub');
     expect(screen.queryByTestId('injected-questions')).toBeNull();
-    expect(screen.getByText(/^Personal Agent \(/)).toBeInTheDocument();
+    expect(screen.getByText(/^Personal Agent$/)).toBeInTheDocument();
     expect(screen.queryByText(/^Questions \(/)).toBeNull();
   });
 
