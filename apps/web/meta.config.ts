@@ -20,7 +20,7 @@ const MARKETING: Record<string, PageMeta> = {
     type: "article",
   },
   "/overview": {
-    title: "Index Network — Protocol Overview",
+    title: "Index Network: Protocol Overview",
     description:
       "Index Network is a private, intent-driven social discovery protocol.",
     image: DEFAULT_IMAGE,

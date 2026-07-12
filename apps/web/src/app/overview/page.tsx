@@ -11,7 +11,7 @@ import { useEffect } from 'react';
 // demand rather than bundled into the JS. Meta is set here for client-side
 // navigation; server.ts/meta.config.ts inject the same tags for crawlers.
 
-const TITLE = 'Index Network — Protocol Overview';
+const TITLE = 'Index Network: Protocol Overview';
 const DESCRIPTION =
   'Index Network is a private, intent-driven social discovery protocol.';
 
