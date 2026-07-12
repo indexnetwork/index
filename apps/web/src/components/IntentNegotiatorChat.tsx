@@ -149,8 +149,11 @@ export default function IntentNegotiatorChat({
   const placeholder = agentName ? `Message ${agentName}…` : "Message your negotiator…";
 
   return (
-    <div className="flex h-[520px] flex-col" data-testid="intent-negotiator-chat">
-      <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+    <div
+      className="flex h-[520px] flex-col lg:h-auto lg:min-h-0 lg:flex-1"
+      data-testid="intent-negotiator-chat"
+    >
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {!ready ? (
           <div className="flex justify-center py-10">
             <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
@@ -161,8 +164,9 @@ export default function IntentNegotiatorChat({
               <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
                 <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                 <p>
-                  This is your direct line to {agentName ?? "your negotiator"} about this signal —
-                  ask what's happening, refine what you're looking for, or answer follow-ups here.
+                  This is your direct line to {agentName ?? "your negotiator"} about this intent —
+                  ask who it found, why, what it's waiting on, or tell it how to negotiate on your
+                  behalf.
                 </p>
               </div>
             )}
@@ -170,7 +174,7 @@ export default function IntentNegotiatorChat({
             {questions.length > 0 && (
               <div data-testid="negotiator-opening-questions">
                 <p className="mb-2 text-xs uppercase tracking-wider text-gray-500 font-ibm-plex-mono">
-                  Open questions for this signal
+                  Your negotiator needs your input
                 </p>
                 <InjectedQuestions
                   questions={questions}
@@ -221,7 +225,7 @@ export default function IntentNegotiatorChat({
         <div ref={scrollRef} />
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+      <div className="mt-2 flex shrink-0 items-center gap-2 border-t border-gray-100 pt-2">
         <input
           type="text"
           value={input}
