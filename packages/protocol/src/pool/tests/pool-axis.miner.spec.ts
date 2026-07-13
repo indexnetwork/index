@@ -71,6 +71,46 @@ describe("verifyAxis", () => {
     expect(verified.assignments.find((a) => a.id === "opp-1")?.verified).toBe(true);
   });
 
+  it("tolerates sentence-ized spans: trailing period / wrapping quotes added by the LLM", () => {
+    // Source continues with a comma: "...shipping embedded firmware." — the
+    // model habitually appends terminal punctuation to copied spans.
+    const verified = verifyAxis(
+      rawAxis([
+        { id: "opp-1", side: "Hands-on builder", evidence: "Hands-on Rust engineer shipping embedded firmware." },
+        { id: "opp-2", side: "Advisor", evidence: "\"Fractional CTO advising early-stage teams\"." },
+      ]),
+      candidates,
+    );
+    expect(verified.assignments.find((a) => a.id === "opp-1")?.verified).toBe(true);
+    expect(verified.assignments.find((a) => a.id === "opp-2")?.verified).toBe(true);
+    expect(verified.evidenceRate).toBe(1);
+  });
+
+  it("folds typographic punctuation (curly apostrophes) on both sides", () => {
+    const curly: PoolAxisCandidate[] = [
+      { id: "opp-c", publicContext: "Name: Ashley O\u2019Brien. Bio: co\u2011founder \u2014 systems thinker", score: 0.5 },
+    ];
+    const verified = verifyAxis(
+      {
+        axis: "a",
+        questionSeed: "q",
+        sides: ["X", "Y"],
+        assignments: [{ id: "opp-c", side: "X", evidence: "Ashley O'Brien" }],
+      },
+      curly,
+    );
+    expect(verified.assignments[0].verified).toBe(true);
+  });
+
+  it("still rejects evidence that is only punctuation after stripping", () => {
+    const verified = verifyAxis(
+      rawAxis([{ id: "opp-1", side: "Hands-on builder", evidence: "\"...\"" }]),
+      candidates,
+    );
+    expect(verified.assignments.find((a) => a.id === "opp-1")?.verified).toBe(false);
+    expect(verified.evidenceRate).toBe(0);
+  });
+
   it("demotes sides that are not in the axis side list", () => {
     const verified = verifyAxis(
       rawAxis([{ id: "opp-1", side: "Mentor", evidence: "Hands-on Rust engineer" }]),

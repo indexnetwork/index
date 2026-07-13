@@ -41,52 +41,11 @@ const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferre
   return { url: buildConnectShortUrl(apiBaseUrl, code) };
 };
 
-/**
- * Minimal shape of one discovery-result candidate needed for pool-axis
- * mining (a subset of the protocol's FormattedDiscoveryCandidate).
- */
-interface DiscoveryResultCandidate {
-  opportunityId?: unknown;
-  userId?: unknown;
-  name?: unknown;
-  bio?: unknown;
-  matchReason?: unknown;
-  score?: unknown;
-  presentation?: { headline?: unknown };
-  homeCardPresentation?: { headline?: unknown };
-}
+/** Statuses that make an opportunity part of the viewer's live candidate pool. */
+const POOL_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
 
-/** One extracted candidate usable for pool-axis mining. */
-interface ExtractedCandidate {
-  opportunityId: string;
-  userId: string;
-  name?: string;
-  bio?: string;
-  matchReason?: string;
-  headline?: string;
-  score: number;
-}
-
-/** Extracts usable pool candidates from a completed discovery-run result. */
-function extractDiscoveryCandidates(result: unknown): ExtractedCandidate[] {
-  const opportunities = (result as { opportunities?: unknown })?.opportunities;
-  if (!Array.isArray(opportunities)) return [];
-  const out: ExtractedCandidate[] = [];
-  for (const raw of opportunities as DiscoveryResultCandidate[]) {
-    if (typeof raw?.opportunityId !== 'string' || typeof raw?.userId !== 'string') continue;
-    const headline = raw.homeCardPresentation?.headline ?? raw.presentation?.headline;
-    out.push({
-      opportunityId: raw.opportunityId,
-      userId: raw.userId,
-      ...(typeof raw.name === 'string' && raw.name ? { name: raw.name } : {}),
-      ...(typeof raw.bio === 'string' && raw.bio ? { bio: raw.bio } : {}),
-      ...(typeof raw.matchReason === 'string' && raw.matchReason ? { matchReason: raw.matchReason } : {}),
-      ...(typeof headline === 'string' && headline ? { headline } : {}),
-      score: typeof raw.score === 'number' && Number.isFinite(raw.score) ? raw.score : 0,
-    });
-  }
-  return out;
-}
+/** Max chars of bio / match-reason folded into one candidate's publicContext. */
+const POOL_FIELD_MAX_CHARS = 100;
 
 /** Splits free text into novelty-reference sentences (short fragments dropped). */
 function toReferenceSentences(text: string): string[] {
@@ -204,7 +163,7 @@ export class DiscoveryRunQueue {
       }
       await discoveryRunAdapter.markSucceeded(runId, result);
       this.logger.info('Completed', { runId, userId: run.userId });
-      this.maybeMinePoolAxes(run, result);
+      this.maybeMinePoolAxes(run);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (abortController.signal.aborted || await discoveryRunAdapter.isCancelRequested(runId)) {
@@ -337,10 +296,18 @@ export class DiscoveryRunQueue {
    * IND-417 shadow axis mining. Fire-and-forget: never awaited by the run
    * lifecycle and never allowed to fail the discovery run. Active only when
    * POOL_QUESTIONS_MINING=shadow; flag off = zero behavior change.
+   *
+   * The pool is read from the opportunities table (the run's durable output —
+   * the MCP tool response flattens cards into message text, so the run result
+   * carries no structured candidate array). These are also the exact rows P3
+   * will re-rank, so mining over them keeps the phases consistent.
    */
-  private maybeMinePoolAxes(run: DiscoveryRunRecord, result: unknown): void {
+  private maybeMinePoolAxes(run: DiscoveryRunRecord): void {
     if (poolQuestionsMiningMode() !== 'shadow') return;
-    void this.minePoolAxesShadow(run, result).catch((err) => {
+    // Introducer flow: the discovered candidates are matches for someone else,
+    // not the viewer's own pool — discriminator questions don't apply.
+    if (run.input.introTargetUserId) return;
+    void this.minePoolAxesShadow(run).catch((err) => {
       this.poolAxisLogger.warn('pool-axis.miner shadow pass failed', {
         runId: run.id,
         userId: run.userId,
@@ -349,24 +316,49 @@ export class DiscoveryRunQueue {
     });
   }
 
-  private async minePoolAxesShadow(run: DiscoveryRunRecord, result: unknown): Promise<void> {
-    const extracted = extractDiscoveryCandidates(result);
-    if (extracted.length < POOL_AXIS_MIN_POOL_SIZE) {
+  private async minePoolAxesShadow(run: DiscoveryRunRecord): Promise<void> {
+    const intentId = run.input.intentId;
+    const pool = await chatDatabaseAdapter.getOpportunitiesForUser(run.userId, {
+      statuses: [...POOL_STATUSES],
+      limit: 50,
+      ...(intentId ? { scopeType: 'intent' as const, scopeId: intentId } : {}),
+      // Chat-scoped MCP discovery creates this session's candidates as drafts;
+      // passing the session id includes them in the pool.
+      ...(run.context.sessionId ? { conversationId: run.context.sessionId } : {}),
+    });
+
+    const withCounterpart = pool
+      .map((o) => ({
+        opportunity: o,
+        counterpartUserId: o.actors.find((a) => a.userId !== run.userId && a.role !== 'introducer')?.userId,
+      }))
+      .filter((x): x is typeof x & { counterpartUserId: string } => Boolean(x.counterpartUserId));
+
+    if (withCounterpart.length < POOL_AXIS_MIN_POOL_SIZE) {
       this.poolAxisLogger.debug('pool-axis.miner skipped: pool below k-anonymity floor', {
         runId: run.id,
-        poolSize: extracted.length,
+        poolSize: withCounterpart.length,
         minPoolSize: POOL_AXIS_MIN_POOL_SIZE,
       });
       return;
     }
 
-    const top = [...extracted]
-      .sort((a, b) => b.score - a.score)
+    const top = withCounterpart
+      .sort((a, b) => (b.opportunity.interpretation?.confidence ?? 0) - (a.opportunity.interpretation?.confidence ?? 0))
       .slice(0, POOL_AXIS_MAX_CANDIDATES);
 
-    // ≤3 active premise snippets per candidate enrich the thin (≤100 char)
-    // bio/matchReason context — the same corpus the presenter exposes.
-    const uniqueUserIds = [...new Set(top.map((c) => c.userId))];
+    // Thin per-candidate context: profile name/bio + ≤3 active premise
+    // snippets — the same public corpus the presenter exposes.
+    const uniqueUserIds = [...new Set(top.map((c) => c.counterpartUserId))];
+    const profilesByUser = new Map<string, { name: string; bio: string }>();
+    await Promise.all(uniqueUserIds.map(async (uid) => {
+      try {
+        const profile = await chatDatabaseAdapter.getProfile(uid);
+        if (profile) profilesByUser.set(uid, { name: profile.identity.name, bio: profile.identity.bio });
+      } catch {
+        // Profile is enrichment only — a failed lookup never blocks mining.
+      }
+    }));
     const premisesByUser = new Map<string, string>();
     await Promise.all(uniqueUserIds.map(async (uid) => {
       try {
@@ -379,19 +371,19 @@ export class DiscoveryRunQueue {
     }));
 
     const candidates: PoolAxisCandidate[] = top.map((c) => {
+      const profile = profilesByUser.get(c.counterpartUserId);
+      const matchReason = c.opportunity.interpretation?.reasoning?.slice(0, POOL_FIELD_MAX_CHARS);
       const publicContext = [
-        c.name ? `Name: ${c.name}.` : null,
-        c.bio ? `Bio: ${c.bio}` : null,
-        c.matchReason ? `Match: ${c.matchReason}` : null,
-        c.headline ? `Headline: ${c.headline}` : null,
-        premisesByUser.has(c.userId) ? `Premises: ${premisesByUser.get(c.userId)}` : null,
+        profile?.name ? `Name: ${profile.name}.` : null,
+        profile?.bio ? `Bio: ${profile.bio.slice(0, POOL_FIELD_MAX_CHARS)}` : null,
+        matchReason ? `Match: ${matchReason}` : null,
+        premisesByUser.has(c.counterpartUserId) ? `Premises: ${premisesByUser.get(c.counterpartUserId)}` : null,
       ].filter(Boolean).join(' ').slice(0, POOL_AXIS_MAX_PUBLIC_CONTEXT_CHARS);
-      return { id: c.opportunityId, publicContext, score: c.score };
+      return { id: c.opportunity.id, publicContext, score: c.opportunity.interpretation?.confidence ?? 0 };
     });
 
     // Intent text: prefer the triggering intent record; fall back to the ad-hoc query.
     let intentText = run.input.searchQuery ?? run.input.hint ?? '';
-    const intentId = run.input.intentId;
     if (intentId) {
       const intent = await chatDatabaseAdapter.getIntent(intentId);
       if (intent) intentText = `${intent.payload}${intent.summary ? ` (${intent.summary})` : ''}`;

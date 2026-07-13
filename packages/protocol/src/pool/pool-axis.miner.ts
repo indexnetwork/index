@@ -78,7 +78,7 @@ Rules for every axis:
 
 Rules for assignments:
 - Assign EVERY candidate: pick a side only when the candidate's context contains clear support; otherwise use side null.
-- When you pick a side you MUST quote a short (≤80 chars) VERBATIM substring of that candidate's context as evidence. Copy it exactly — it is checked mechanically, and paraphrased evidence is discarded.
+- When you pick a side you MUST quote a short (≤80 chars) VERBATIM substring of that candidate's context as evidence. Copy it exactly — it is checked mechanically, and paraphrased evidence is discarded. Do NOT add punctuation that is not in the source (no trailing period); cutting off mid-sentence is fine.
 - Never invent context. If unsure, use side null with evidence null.
 
 Prefer axes that split the pool close to evenly and that cover many candidates with verifiable evidence. Propose at most ${MAX_AXES} axes; fewer strong axes beat many weak ones.`;
@@ -89,9 +89,29 @@ export interface PoolAxisMinerConfig {
   modelConfig?: Parameters<typeof createStructuredModel>[3];
 }
 
-/** Collapse whitespace + lowercase, so evidence matching tolerates formatting drift. */
+/**
+ * Collapse whitespace, lowercase, and fold typographic punctuation to ASCII
+ * (curly quotes/apostrophes, en/em dashes, ellipsis), so evidence matching
+ * tolerates formatting drift without weakening the verbatim requirement.
+ */
 function normalizeForMatch(s: string): string {
-  return s.toLowerCase().replace(/\s+/g, " ").trim();
+  return s
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02bc]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Strips wrapping quotes and edge punctuation from an evidence span before
+ * matching. LLMs habitually sentence-ize copied spans (append a trailing
+ * period, wrap in quotes); the meaningful content must still match verbatim.
+ */
+function stripEdgePunctuation(s: string): string {
+  return s.replace(/^[\s"'.,;:!?()\u2018\u2019\u201c\u201d]+/, "").replace(/[\s"'.,;:!?()\u2018\u2019\u201c\u201d]+$/, "");
 }
 
 /**
@@ -174,10 +194,8 @@ export function verifyAxis(
     }
     proposed++;
     const sideOk = axis.sides.includes(a.side);
-    const evidenceOk =
-      a.evidence !== null &&
-      a.evidence.trim().length > 0 &&
-      context.includes(normalizeForMatch(a.evidence));
+    const evidenceCore = a.evidence === null ? "" : normalizeForMatch(stripEdgePunctuation(a.evidence));
+    const evidenceOk = evidenceCore.length > 0 && context.includes(evidenceCore);
     if (sideOk && evidenceOk) {
       verified++;
       byId.set(a.id, { id: a.id, side: a.side, evidence: a.evidence, verified: true });
