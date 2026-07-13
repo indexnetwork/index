@@ -146,7 +146,7 @@ export default function IntentNegotiatorChat({
     [proposalIntentMap],
   );
 
-  const placeholder = agentName ? `Message ${agentName}…` : "Message your negotiator…";
+  const placeholder = agentName ? `Message ${agentName}…` : "Message your Personal Agent…";
 
   return (
     <div
@@ -179,7 +179,7 @@ export default function IntentNegotiatorChat({
               <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
                 <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                 <p>
-                  This is your direct line to {agentName ?? "your negotiator"} about this intent —
+                  This is your direct line to {agentName ?? "your Personal Agent"} about this intent —
                   ask who it found, why, what it's waiting on, or tell it how to negotiate on your
                   behalf.
                 </p>
@@ -189,7 +189,7 @@ export default function IntentNegotiatorChat({
             {questions.length > 0 && (
               <div data-testid="negotiator-opening-questions">
                 <p className="mb-2 text-xs uppercase tracking-wider text-gray-500 font-ibm-plex-mono">
-                  Your negotiator needs your input
+                  Your Personal Agent needs your input
                 </p>
                 <InjectedQuestions
                   questions={questions}

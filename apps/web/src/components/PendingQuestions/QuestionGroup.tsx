@@ -8,7 +8,7 @@ import type { AnswerBody } from '@/services/questions';
 export function groupLabel(sourceType: string, mode: string): string {
   if (sourceType === 'opportunity' && mode === 'discovery') return 'About your opportunities';
   if (sourceType === 'opportunity' && mode === 'negotiation') return 'About a negotiation';
-  if (sourceType === 'opportunity' && mode === 'negotiation_inflight') return 'Your negotiator needs your input';
+  if (sourceType === 'opportunity' && mode === 'negotiation_inflight') return 'Your Personal Agent needs your input';
   if (sourceType === 'intent') return 'About your signal';
   if (sourceType === 'profile') return 'About you';
   return 'Questions';

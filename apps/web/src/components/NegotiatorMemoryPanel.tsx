@@ -25,19 +25,19 @@ const KIND_META: Record<NegotiatorMemoryKind, { title: string; description: stri
   disclosure_rule: {
     title: 'Disclosure rules',
     description:
-      'What your negotiator may or may not share. These are binding in every negotiation until you edit or delete them.',
+      'What your Personal Agent may or may not share. These are binding in every negotiation until you edit or delete them.',
   },
   threshold: {
     title: 'Thresholds',
-    description: 'Hard limits and reservation points your negotiator holds to.',
+    description: 'Hard limits and reservation points your Personal Agent holds to.',
   },
   playbook: {
     title: 'Playbooks',
-    description: 'Tactics your negotiator has learned work for you.',
+    description: 'Tactics your Personal Agent has learned work for you.',
   },
   counterparty_dossier: {
     title: 'Counterparty notes',
-    description: 'What your negotiator has learned about people it negotiated with.',
+    description: 'What your Personal Agent has learned about people it negotiated with.',
   },
 };
 
@@ -158,7 +158,7 @@ export default function NegotiatorMemoryPanel({ userId }: { userId: string }) {
       setMemories(res.memories);
       setError(null);
     } catch {
-      setError('Failed to load your negotiator’s memory.');
+      setError('Failed to load your Personal Agent’s memory.');
     } finally {
       setLoading(false);
     }
@@ -203,7 +203,7 @@ export default function NegotiatorMemoryPanel({ userId }: { userId: string }) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <Brain className="w-10 h-10 text-gray-300 mb-3" />
-        <p className="text-sm text-gray-500">Your negotiator hasn’t learned anything yet</p>
+        <p className="text-sm text-gray-500">Your Personal Agent hasn’t learned anything yet</p>
         <p className="text-xs text-gray-400 mt-1 max-w-sm">
           As it negotiates for you — and as you give it standing rules in chat (“never share my
           budget”) — everything it remembers shows up here for you to review, edit, or delete.
