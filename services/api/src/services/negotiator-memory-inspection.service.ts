@@ -73,13 +73,19 @@ export class NegotiatorMemoryInspectionService {
 
   /**
    * List the user's own negotiator memories, newest first, optionally
-   * filtered by kind. Returns [] when the user has no negotiator agent.
+   * filtered by kind and/or by the intent whose negotiations produced them
+   * (source-ref → task → opportunity → intent; see the adapter filter).
+   * Returns [] when the user has no negotiator agent.
    */
-  async list(userId: string, filter?: { kind?: NegotiatorMemoryKind }): Promise<NegotiatorMemory[]> {
+  async list(
+    userId: string,
+    filter?: { kind?: NegotiatorMemoryKind; intentId?: string },
+  ): Promise<NegotiatorMemory[]> {
     const agentId = await this.resolveNegotiatorAgentId(userId);
     if (!agentId) return [];
     return this.memories.list(agentId, userId, {
       ...(filter?.kind ? { kind: filter.kind } : {}),
+      ...(filter?.intentId ? { intentId: filter.intentId } : {}),
       limit: LIST_LIMIT,
     });
   }

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, History, Network, Bot, BotMessageSquare, CircleHelp } from 'lucide-react';
+import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, History, Network, Bot, BotMessageSquare, Brain, CircleHelp } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -194,8 +194,9 @@ export default function Sidebar() {
     }
   };
 
-  const negotiatorLabel = negotiatorSession?.title
-    || (user?.name ? `${user.name.split(' ')[0]}'s Negotiator` : 'Personal Agent');
+  // Canonical branding: the pinned entry is "Personal Agent" unless the
+  // session carries the agent's real name (e.g. "Ada's Negotiator").
+  const negotiatorLabel = negotiatorSession?.title || 'Personal Agent';
 
   // Fetch AI chat sessions (cookie-based auth; credentials sent automatically)
   useEffect(() => {
@@ -283,13 +284,16 @@ export default function Sidebar() {
             pinned surface, not a history entry (backend excludes it from
             /chat/sessions). */}
         {negotiatorEnabled && (
+          <div
+            className={`group flex items-center rounded-md transition-colors ${
+              isNegotiatorView ? 'bg-gray-100' : 'hover:bg-gray-50'
+            }`}
+          >
           <button
             onClick={handleNegotiatorClick}
             disabled={openingNegotiator}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
-              isNegotiatorView
-                ? 'bg-gray-100 text-black font-bold'
-                : 'text-black font-medium hover:bg-gray-50'
+            className={`min-w-0 flex-1 flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-black ${
+              isNegotiatorView ? 'font-bold' : 'font-medium'
             } ${openingNegotiator ? 'opacity-50 cursor-wait' : ''}`}
           >
             <BotMessageSquare className="w-5 h-5" />
@@ -305,6 +309,17 @@ export default function Sidebar() {
               </span>
             )}
           </button>
+          {/* Memory shortcut — everything the agent remembers is inspectable
+              at /agent/memory (P5.4); revealed on hover to keep the row calm. */}
+          <button
+            onClick={() => navigate('/agent/memory')}
+            aria-label="Personal Agent memory"
+            data-testid="negotiator-memory-link"
+            className="p-1.5 mr-1.5 rounded text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-black transition-opacity"
+          >
+            <Brain className="w-4 h-4" />
+          </button>
+          </div>
         )}
 
         {/* History menu item with submenu */}

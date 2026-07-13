@@ -161,7 +161,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
     expect(mocks.apiClient.get).not.toHaveBeenCalledWith('/chat/sessions?persona=negotiator');
   });
 
-  test('flag on, no session yet → entry visible with derived label; click get-or-creates and navigates', async () => {
+  test('flag on, no session yet → entry visible with canonical label; click get-or-creates and navigates', async () => {
     mocks.authState.features = { negotiatorChat: true };
     mocks.apiClient.post.mockResolvedValue({
       session: { id: 'neg-session-1', title: "Alice's Negotiator" },
@@ -171,7 +171,9 @@ describe('Sidebar pinned Personal Agent entry', () => {
 
     renderSidebar();
 
-    const entry = await screen.findByText("Alice's Negotiator");
+    // Canonical branding until the session (which carries the agent's real
+    // name) resolves.
+    const entry = await screen.findByText('Personal Agent');
     fireEvent.click(entry);
 
     await waitFor(() =>
@@ -180,6 +182,21 @@ describe('Sidebar pinned Personal Agent entry', () => {
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('/d/neg-session-1')
     );
+  });
+
+  test('memory shortcut on the pinned entry navigates to /agent/memory', async () => {
+    mocks.authState.features = { negotiatorChat: true };
+
+    renderSidebar();
+
+    const link = await screen.findByTestId('negotiator-memory-link');
+    fireEvent.click(link);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/agent/memory')
+    );
+    // The memory shortcut must not bootstrap a chat session.
+    expect(mocks.apiClient.post).not.toHaveBeenCalled();
   });
 
   test('flag on, existing session → label from session title; click navigates without POST', async () => {
