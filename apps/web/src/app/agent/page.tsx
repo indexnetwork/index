@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Loader2, Sparkles, ArrowUp, Handshake, Clock, TrendingUp } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useAuthenticatedAPI } from "@/lib/api";
+import { negotiatorMemoriesPath, type NegotiatorMemoriesResponse } from "@/services/negotiatorMemories";
 import { useUsers } from "@/contexts/APIContext";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationHistory from "@/components/NegotiationHistory";
@@ -240,7 +242,28 @@ export default function AgentPage() {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab?: string }>();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
+  const api = useAuthenticatedAPI();
   const [feedback, setFeedback] = useState("");
+  // Lightweight count for the Memory tab badge — the panel refetches its own
+  // full list when opened; this only signals "there's something to review".
+  const [memoryCount, setMemoryCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    api
+      .get<NegotiatorMemoriesResponse>(negotiatorMemoriesPath(user.id))
+      .then((res) => {
+        if (!cancelled) setMemoryCount(res.memories.length);
+      })
+      .catch(() => {
+        /* badge is best-effort */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const activeTab: TabValue = VALID_TABS.includes(tab as TabValue)
     ? (tab as TabValue)
@@ -269,7 +292,7 @@ export default function AgentPage() {
       <div className="px-6 lg:px-8 py-6 pb-32 flex-1">
         <ContentContainer>
           <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-6">
-            Agent
+            Personal Agent
           </h1>
 
           <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
@@ -291,6 +314,14 @@ export default function AgentPage() {
                 className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
               >
                 Memory
+                {memoryCount !== null && memoryCount > 0 && (
+                  <span
+                    data-testid="memory-tab-count"
+                    className="ml-1.5 inline-block rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 align-middle"
+                  >
+                    {memoryCount}
+                  </span>
+                )}
               </Tabs.Trigger>
             </Tabs.List>
 

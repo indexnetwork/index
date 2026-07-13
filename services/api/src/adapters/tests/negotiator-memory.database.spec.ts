@@ -192,6 +192,80 @@ describe('NegotiatorMemoryDatabaseAdapter', () => {
     await adapter.delete(b.id, ownerId);
   }, 15000);
 
+  it('filters by intentId via negotiation source refs — triggeredBy and owner-actor paths, no cross-user widening', async () => {
+    const intentA = randomUUID();
+    const intentB = randomUUID();
+    const networkId = randomUUID();
+
+    // Fixture graph: memory → sourceRef(negotiation task) → opportunity → intent.
+    const [conversation] = await db.insert(schema.conversations).values({}).returning({ id: schema.conversations.id });
+
+    const [oppA] = await db.insert(schema.opportunities).values({
+      // Path 1: the opportunity's triggering intent. The stranger actor on
+      // intentB must NOT widen intentB's results to this opportunity.
+      detection: { source: 'opportunity_graph', triggeredBy: intentA, timestamp: new Date().toISOString() },
+      actors: [{ networkId, userId: strangerId, intent: intentB, role: 'peer' }],
+      interpretation: { category: 'test', reasoning: 'test', confidence: 0.9 },
+      context: {},
+      confidence: '0.9',
+    }).returning({ id: schema.opportunities.id });
+
+    const [oppB] = await db.insert(schema.opportunities).values({
+      // Path 2: the memory owner's own actor intent.
+      detection: { source: 'opportunity_graph', timestamp: new Date().toISOString() },
+      actors: [{ networkId, userId: ownerId, intent: intentB, role: 'peer' }],
+      interpretation: { category: 'test', reasoning: 'test', confidence: 0.9 },
+      context: {},
+      confidence: '0.9',
+    }).returning({ id: schema.opportunities.id });
+
+    const [taskA] = await db.insert(schema.tasks).values({
+      conversationId: conversation.id,
+      metadata: { type: 'negotiation', opportunityId: oppA.id },
+    }).returning({ id: schema.tasks.id });
+    const [taskB] = await db.insert(schema.tasks).values({
+      conversationId: conversation.id,
+      metadata: { type: 'negotiation', opportunityId: oppB.id },
+    }).returning({ id: schema.tasks.id });
+
+    const memA = await adapter.create({
+      agentId, userId: ownerId, kind: 'playbook',
+      content: 'learned from intent A negotiation',
+      sourceRefs: [{ type: 'negotiation', id: taskA.id, turnIndexes: [3] }],
+    });
+    const memB = await adapter.create({
+      agentId, userId: ownerId, kind: 'threshold',
+      content: 'learned from intent B negotiation',
+      sourceRefs: [{ type: 'negotiation', id: taskB.id }],
+    });
+    const memNoRefs = await adapter.create({
+      agentId, userId: ownerId, kind: 'playbook',
+      content: 'standing rule with no negotiation provenance',
+    });
+
+    try {
+      const forA = await adapter.list(agentId, ownerId, { intentId: intentA });
+      expect(forA.map((m) => m.id)).toEqual([memA.id]);
+
+      const forB = await adapter.list(agentId, ownerId, { intentId: intentB });
+      expect(forB.map((m) => m.id)).toEqual([memB.id]);
+
+      // Unknown intent → empty; unfiltered list still sees everything.
+      expect(await adapter.list(agentId, ownerId, { intentId: randomUUID() })).toHaveLength(0);
+      const all = await adapter.list(agentId, ownerId);
+      expect(all.map((m) => m.id)).toEqual(expect.arrayContaining([memA.id, memB.id, memNoRefs.id]));
+
+      // Composable with kind.
+      expect((await adapter.list(agentId, ownerId, { intentId: intentB, kind: 'playbook' }))).toHaveLength(0);
+    } finally {
+      await adapter.delete(memA.id, ownerId);
+      await adapter.delete(memB.id, ownerId);
+      await adapter.delete(memNoRefs.id, ownerId);
+      await db.delete(schema.conversations).where(eq(schema.conversations.id, conversation.id));
+      await db.delete(schema.opportunities).where(inArray(schema.opportunities.id, [oppA.id, oppB.id]));
+    }
+  }, 20000);
+
   it('returns top-k by cosine similarity, scoped to the agent', async () => {
     const exact = await adapter.create({
       agentId, userId: ownerId, kind: 'playbook',

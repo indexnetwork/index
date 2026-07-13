@@ -55,6 +55,15 @@ export interface ListNegotiatorMemoriesFilter {
   kind?: NegotiatorMemoryKind;
   subjectUserId?: string;
   limit?: number;
+  /**
+   * Only memories learned from negotiations that ran for this intent: a
+   * source ref of type 'negotiation' whose task's opportunity involves the
+   * intent — either as the triggering intent or as the owner's actor intent.
+   * Owner-scoped by construction (the actor match keys on the memory's own
+   * userId), so it can never widen the row set beyond the (agentId, userId)
+   * scope — it only narrows it.
+   */
+  intentId?: string;
 }
 
 export interface SimilarNegotiatorMemoriesQuery {
@@ -145,6 +154,23 @@ export class NegotiatorMemoryDatabaseAdapter {
       eq(schema.negotiatorMemories.userId, userId),
       ...(filter.kind ? [eq(schema.negotiatorMemories.kind, filter.kind)] : []),
       ...(filter.subjectUserId ? [eq(schema.negotiatorMemories.subjectUserId, filter.subjectUserId)] : []),
+      ...(filter.intentId
+        ? [sql`EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(${schema.negotiatorMemories.sourceRefs}) AS src_ref
+            JOIN ${schema.tasks} ON ${schema.tasks.id} = src_ref->>'id'
+            JOIN ${schema.opportunities} ON ${schema.opportunities.id} = ${schema.tasks.metadata}->>'opportunityId'
+            WHERE src_ref->>'type' = 'negotiation'
+              AND (
+                ${schema.opportunities.detection}->>'triggeredBy' = ${filter.intentId}
+                OR EXISTS (
+                  SELECT 1 FROM jsonb_array_elements(${schema.opportunities.actors}) AS actor
+                  WHERE actor->>'userId' = ${schema.negotiatorMemories.userId}
+                    AND actor->>'intent' = ${filter.intentId}
+                )
+              )
+          )`]
+        : []),
     ];
     return db
       .select()

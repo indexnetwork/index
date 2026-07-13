@@ -42,8 +42,10 @@ export interface UpdateNegotiatorMemoryBody {
   confidence?: number;
 }
 
-export const negotiatorMemoriesPath = (userId: string) =>
-  `/users/${userId}/negotiator/memories`;
+export const negotiatorMemoriesPath = (userId: string, opts?: { intentId?: string }) =>
+  opts?.intentId
+    ? `/users/${userId}/negotiator/memories?intentId=${encodeURIComponent(opts.intentId)}`
+    : `/users/${userId}/negotiator/memories`;
 
 export const negotiatorMemoryPath = (userId: string, memoryId: string) =>
   `/users/${userId}/negotiator/memories/${memoryId}`;

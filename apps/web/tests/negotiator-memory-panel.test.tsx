@@ -112,6 +112,6 @@ describe('NegotiatorMemoryPanel', () => {
     mocks.apiClient.get.mockResolvedValue({ memories: [] });
     render(<NegotiatorMemoryPanel userId="u-1" />);
     await waitFor(() =>
-      expect(screen.getByText('Your negotiator hasn’t learned anything yet')).toBeInTheDocument());
+      expect(screen.getByText('Your Personal Agent hasn’t learned anything yet')).toBeInTheDocument());
   });
 });

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ChevronLeft, Pause, Pencil, Trash2 } from "lucide-react";
+import { Brain, ChevronLeft, Pause, Pencil, Trash2 } from "lucide-react";
+import { Link } from "react-router";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
+import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
@@ -125,6 +127,7 @@ function Panel({
   count,
   description,
   media,
+  action,
   children,
   className,
 }: {
@@ -132,6 +135,8 @@ function Panel({
   count?: number;
   description?: string;
   media?: React.ReactNode;
+  /** Right-aligned header affordance (e.g. a link to a related surface). */
+  action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -144,6 +149,7 @@ function Panel({
             {count !== undefined && ` (${count})`}
           </span>
           {media}
+          {action && <span className="ml-auto">{action}</span>}
         </h3>
         {description && (
           <p className="mt-1 text-xs text-gray-500">{description}</p>
@@ -166,7 +172,7 @@ export default function IntentDetailPage() {
   const opportunitiesService = useOpportunities();
   const questionsService = useQuestionsService();
   const { error: showError } = useNotifications();
-  const { features } = useAuthContext();
+  const { user, features } = useAuthContext();
 
   const [intent, setIntent] = useState<
     Awaited<ReturnType<typeof intentsService.getIntent>> | null
@@ -435,9 +441,22 @@ export default function IntentDetailPage() {
                 {negotiatorChatEnabled && intentId ? (
                   <Panel
                     title="Personal Agent"
-                    description="Your negotiator, scoped to this intent — ask what it's doing, steer it, or answer its follow-ups."
+                    description="Your Personal Agent, scoped to this intent — ask what it's doing, steer it, or answer its follow-ups."
+                    action={
+                      <Link
+                        to="/agent/memory"
+                        data-testid="intent-agent-memory-link"
+                        className="inline-flex items-center gap-1 text-[11px] font-medium normal-case tracking-normal text-gray-400 hover:text-gray-700"
+                      >
+                        <Brain className="h-3.5 w-3.5" />
+                        Memory
+                      </Link>
+                    }
                     className="lg:col-span-6"
                   >
+                    {user?.id && (
+                      <IntentMemoryStrip intentId={intentId} userId={user.id} />
+                    )}
                     <IntentNegotiatorChat
                       key={intentId}
                       intentId={intentId}

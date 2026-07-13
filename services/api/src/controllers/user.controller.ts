@@ -436,7 +436,8 @@ export class UserController {
 
   /**
    * GET /users/:userId/negotiator/memories — list the user's negotiator's
-   * private memory (P5.4). Optional `?kind=` filter.
+   * private memory (P5.4). Optional `?kind=` and `?intentId=` filters
+   * (intentId narrows to memories learned from that intent's negotiations).
    *
    * Strict self-only — stricter than the neighbor negotiations route, which
    * permits other viewers with mutual filtering. Negotiator memories are
@@ -455,11 +456,17 @@ export class UserController {
     if (kindParam && !NEGOTIATOR_MEMORY_KINDS.includes(kindParam as never)) {
       return Response.json({ error: `Invalid kind: "${kindParam}". Use one of: ${NEGOTIATOR_MEMORY_KINDS.join(', ')}` }, { status: 400 });
     }
+    const intentIdParam = url.searchParams.get('intentId')?.trim() || undefined;
 
     try {
       const rows = await negotiatorMemoryInspectionService.list(
         params.userId,
-        kindParam ? { kind: kindParam as NegotiatorMemoryKind } : undefined,
+        kindParam || intentIdParam
+          ? {
+            ...(kindParam ? { kind: kindParam as NegotiatorMemoryKind } : {}),
+            ...(intentIdParam ? { intentId: intentIdParam } : {}),
+          }
+          : undefined,
       );
 
       const subjectIds = [...new Set(rows.map((r) => r.subjectUserId).filter((id): id is string => !!id))];
