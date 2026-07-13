@@ -168,14 +168,14 @@ export default function IntentList<T extends BaseIntent>({
                     </div>
                   )}
 
-                  {/* Opportunities waiting — actionable, in the app's blue accent */}
+                  {/* Opportunities — actionable, quiet blue accent. Only when any. */}
                   {(intent.waitingOpportunityCount ?? 0) > 0 && (
                     <div
-                      className="flex items-center gap-1 text-xs font-medium text-[#4091BB] font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB]/10"
-                      title={`${intent.waitingOpportunityCount} ${intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'} waiting`}
+                      className="flex items-center gap-1 text-xs font-medium text-[#4091BB] font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB]/10 border border-[#4091BB]/25"
+                      title={`${intent.waitingOpportunityCount} ${intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'} for you`}
                     >
                       <Handshake className="w-3 h-3" />
-                      <span>{intent.waitingOpportunityCount} waiting</span>
+                      <span>{intent.waitingOpportunityCount} {intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'}</span>
                     </div>
                   )}
 
@@ -199,20 +199,19 @@ export default function IntentList<T extends BaseIntent>({
                 </div>
               </div>
 
-              {/* Right side: pending-question notification (always shown —
-                  important signal; muted at zero, highlighted when any) + hover actions */}
+              {/* Right side: pending-question badge — the most important action,
+                  so it carries the strongest treatment (solid). Only rendered
+                  when there's something to answer; no zero state. + hover actions */}
               <div className="flex items-center gap-2 shrink-0">
-                <span
-                  className={cn(
-                    'text-xs font-bold font-ibm-plex-mono px-2 py-0.5 rounded-full',
-                    (intent.pendingQuestionCount ?? 0) > 0
-                      ? 'bg-[#F26522] text-white'
-                      : 'bg-gray-100 text-gray-400 border border-gray-200',
-                  )}
-                  title={`${intent.pendingQuestionCount ?? 0} pending ${(intent.pendingQuestionCount ?? 0) === 1 ? 'question' : 'questions'}`}
-                >
-                  {intent.pendingQuestionCount ?? 0}
-                </span>
+                {(intent.pendingQuestionCount ?? 0) > 0 && (
+                  <span
+                    className="flex items-center gap-1 text-xs font-semibold font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB] text-white"
+                    title={`${intent.pendingQuestionCount} ${intent.pendingQuestionCount === 1 ? 'question' : 'questions'} to answer`}
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    {intent.pendingQuestionCount} to answer
+                  </span>
+                )}
 
                 {/* Open source (link-sourced signals only) */}
                 {onOpenIntentSource && canOpenSource && (
