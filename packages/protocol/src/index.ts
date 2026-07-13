@@ -186,6 +186,14 @@ export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, Ques
 export { getPreset } from "./questioner/questioner.presets.js";
 export { isQuestionerEnabled, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs } from "./questioner/questioner.env.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
+export { PoolAxisMiner } from "./pool/pool-axis.miner.js";
+export type { PoolAxisMinerConfig } from "./pool/pool-axis.miner.js";
+export { runPoolAxisShadow } from "./pool/pool-axis.shadow.js";
+export type { PoolAxisShadowInput } from "./pool/pool-axis.shadow.js";
+export { scoreAxis, computeNovelty, cosineSimilarity } from "./pool/pool-axis.scorer.js";
+export { poolQuestionsMiningMode, POOL_AXIS_MIN_POOL_SIZE, POOL_AXIS_MAX_CANDIDATES, POOL_AXIS_MAX_PUBLIC_CONTEXT_CHARS } from "./pool/pool-axis.env.js";
+export type { PoolQuestionsMiningMode } from "./pool/pool-axis.env.js";
+export type { PoolAxisCandidate, PoolAxisMiningInput, MinedAxis, ScoredAxis, VerifiedAssignment, PoolAxisShadowResult } from "./pool/pool-axis.types.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";

@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
-import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
-import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, PoolAxisMiner, POOL_AXIS_MAX_CANDIDATES, POOL_AXIS_MAX_PUBLIC_CONTEXT_CHARS, POOL_AXIS_MIN_POOL_SIZE, createOpportunityTools, getToolTimeoutPolicy, poolQuestionsMiningMode, requestContext, resolveChatContext, runPoolAxisShadow } from '@indexnetwork/protocol';
+import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, PoolAxisCandidate, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { captureAppException } from '../../lib/sentry';
@@ -41,6 +41,61 @@ const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferre
   return { url: buildConnectShortUrl(apiBaseUrl, code) };
 };
 
+/**
+ * Minimal shape of one discovery-result candidate needed for pool-axis
+ * mining (a subset of the protocol's FormattedDiscoveryCandidate).
+ */
+interface DiscoveryResultCandidate {
+  opportunityId?: unknown;
+  userId?: unknown;
+  name?: unknown;
+  bio?: unknown;
+  matchReason?: unknown;
+  score?: unknown;
+  presentation?: { headline?: unknown };
+  homeCardPresentation?: { headline?: unknown };
+}
+
+/** One extracted candidate usable for pool-axis mining. */
+interface ExtractedCandidate {
+  opportunityId: string;
+  userId: string;
+  name?: string;
+  bio?: string;
+  matchReason?: string;
+  headline?: string;
+  score: number;
+}
+
+/** Extracts usable pool candidates from a completed discovery-run result. */
+function extractDiscoveryCandidates(result: unknown): ExtractedCandidate[] {
+  const opportunities = (result as { opportunities?: unknown })?.opportunities;
+  if (!Array.isArray(opportunities)) return [];
+  const out: ExtractedCandidate[] = [];
+  for (const raw of opportunities as DiscoveryResultCandidate[]) {
+    if (typeof raw?.opportunityId !== 'string' || typeof raw?.userId !== 'string') continue;
+    const headline = raw.homeCardPresentation?.headline ?? raw.presentation?.headline;
+    out.push({
+      opportunityId: raw.opportunityId,
+      userId: raw.userId,
+      ...(typeof raw.name === 'string' && raw.name ? { name: raw.name } : {}),
+      ...(typeof raw.bio === 'string' && raw.bio ? { bio: raw.bio } : {}),
+      ...(typeof raw.matchReason === 'string' && raw.matchReason ? { matchReason: raw.matchReason } : {}),
+      ...(typeof headline === 'string' && headline ? { headline } : {}),
+      score: typeof raw.score === 'number' && Number.isFinite(raw.score) ? raw.score : 0,
+    });
+  }
+  return out;
+}
+
+/** Splits free text into novelty-reference sentences (short fragments dropped). */
+function toReferenceSentences(text: string): string[] {
+  return text
+    .split(/[.!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 15);
+}
+
 function assertDiscoveryRunOutputFits(raw: string): void {
   const policy = getToolTimeoutPolicy('discover_opportunities');
   const outputBytes = new TextEncoder().encode(raw).byteLength;
@@ -58,6 +113,10 @@ export class DiscoveryRunQueue {
 
   private readonly logger = log.job.from('DiscoveryRunJob');
   private readonly queueLogger = log.queue.from('DiscoveryRunQueue');
+  /** Greppable shadow-mining logger (IND-417): search deploy logs for "PoolAxisMiner". */
+  private readonly poolAxisLogger = log.job.from('PoolAxisMiner');
+  /** Lazily constructed so queue creation never requires OPENROUTER_API_KEY. */
+  private poolAxisMiner: PoolAxisMiner | null = null;
   private worker: ReturnType<typeof QueueFactory.createWorker<DiscoveryRunJobData>> | null = null;
   private deps: DiscoveryRunQueueDeps | undefined;
 
@@ -145,6 +204,7 @@ export class DiscoveryRunQueue {
       }
       await discoveryRunAdapter.markSucceeded(runId, result);
       this.logger.info('Completed', { runId, userId: run.userId });
+      this.maybeMinePoolAxes(run, result);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (abortController.signal.aborted || await discoveryRunAdapter.isCancelRequested(runId)) {
@@ -272,6 +332,111 @@ export class DiscoveryRunQueue {
       return raw;
     }
   }
+
+  /**
+   * IND-417 shadow axis mining. Fire-and-forget: never awaited by the run
+   * lifecycle and never allowed to fail the discovery run. Active only when
+   * POOL_QUESTIONS_MINING=shadow; flag off = zero behavior change.
+   */
+  private maybeMinePoolAxes(run: DiscoveryRunRecord, result: unknown): void {
+    if (poolQuestionsMiningMode() !== 'shadow') return;
+    void this.minePoolAxesShadow(run, result).catch((err) => {
+      this.poolAxisLogger.warn('pool-axis.miner shadow pass failed', {
+        runId: run.id,
+        userId: run.userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  private async minePoolAxesShadow(run: DiscoveryRunRecord, result: unknown): Promise<void> {
+    const extracted = extractDiscoveryCandidates(result);
+    if (extracted.length < POOL_AXIS_MIN_POOL_SIZE) {
+      this.poolAxisLogger.debug('pool-axis.miner skipped: pool below k-anonymity floor', {
+        runId: run.id,
+        poolSize: extracted.length,
+        minPoolSize: POOL_AXIS_MIN_POOL_SIZE,
+      });
+      return;
+    }
+
+    const top = [...extracted]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, POOL_AXIS_MAX_CANDIDATES);
+
+    // ≤3 active premise snippets per candidate enrich the thin (≤100 char)
+    // bio/matchReason context — the same corpus the presenter exposes.
+    const uniqueUserIds = [...new Set(top.map((c) => c.userId))];
+    const premisesByUser = new Map<string, string>();
+    await Promise.all(uniqueUserIds.map(async (uid) => {
+      try {
+        const premises = await chatDatabaseAdapter.getPremisesForUser(uid, 'ACTIVE');
+        const snippets = premises.slice(0, 3).map((p) => p.assertion.text.slice(0, 90));
+        if (snippets.length > 0) premisesByUser.set(uid, snippets.join('; '));
+      } catch {
+        // Premises are enrichment only — a failed lookup never blocks mining.
+      }
+    }));
+
+    const candidates: PoolAxisCandidate[] = top.map((c) => {
+      const publicContext = [
+        c.name ? `Name: ${c.name}.` : null,
+        c.bio ? `Bio: ${c.bio}` : null,
+        c.matchReason ? `Match: ${c.matchReason}` : null,
+        c.headline ? `Headline: ${c.headline}` : null,
+        premisesByUser.has(c.userId) ? `Premises: ${premisesByUser.get(c.userId)}` : null,
+      ].filter(Boolean).join(' ').slice(0, POOL_AXIS_MAX_PUBLIC_CONTEXT_CHARS);
+      return { id: c.opportunityId, publicContext, score: c.score };
+    });
+
+    // Intent text: prefer the triggering intent record; fall back to the ad-hoc query.
+    let intentText = run.input.searchQuery ?? run.input.hint ?? '';
+    const intentId = run.input.intentId;
+    if (intentId) {
+      const intent = await chatDatabaseAdapter.getIntent(intentId);
+      if (intent) intentText = `${intent.payload}${intent.summary ? ` (${intent.summary})` : ''}`;
+    }
+
+    // Novelty references: the owner's own intent sentences + active premises —
+    // axes the user has effectively already answered should score ~0.
+    let ownerPremises: string[] = [];
+    try {
+      ownerPremises = (await chatDatabaseAdapter.getPremisesForUser(run.userId, 'ACTIVE'))
+        .slice(0, 12)
+        .map((p) => p.assertion.text);
+    } catch {
+      // Novelty degrades gracefully without references.
+    }
+    const referenceTexts = [...toReferenceSentences(intentText), ...ownerPremises];
+
+    this.poolAxisMiner ??= new PoolAxisMiner();
+    const shadow = await runPoolAxisShadow({
+      intentText,
+      candidates,
+      referenceTexts,
+      miner: this.poolAxisMiner,
+      embedder: embedderAdapter,
+    });
+
+    const round = (n: number): number => Math.round(n * 1000) / 1000;
+    this.poolAxisLogger.info('pool-axis.miner shadow result', {
+      runId: run.id,
+      userId: run.userId,
+      intentId: intentId ?? null,
+      poolSize: shadow.poolSize,
+      axes: shadow.axes.map((a) => ({
+        axis: a.axis,
+        questionSeed: a.questionSeed,
+        sides: a.sides,
+        voi: round(a.voi),
+        entropy: round(a.entropy),
+        coverage: round(a.coverage),
+        novelty: round(a.novelty),
+        evidenceRate: round(a.evidenceRate),
+      })),
+    });
+  }
 }
 
 export const discoveryRunQueue = new DiscoveryRunQueue();
+
