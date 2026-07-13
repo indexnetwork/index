@@ -351,3 +351,36 @@ button {
   0%, 92%, 100% { transform: scaleY(1); }
   96% { transform: scaleY(0.1); }
 }
+
+/* New Signal flow: next question "generating" then streaming in.
+   Elements rise + fade on a decelerate curve; options cascade via inline
+   animation-delay. Reduced-motion drops the travel and keeps a plain fade. */
+@keyframes signal-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.signal-rise {
+  animation: signal-rise 300ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+/* Three soft dots pulsing where the next question will land. */
+.signal-think-dot {
+  animation: dot-pulse 1.25s ease-in-out infinite;
+}
+.signal-think-dot:nth-child(2) { animation-delay: 0.16s; }
+.signal-think-dot:nth-child(3) { animation-delay: 0.32s; }
+
+/* Chosen option confirms (navy ring) while the others recede during the
+   hand-off to the next question. !important beats the signal-rise fill state. */
+.signal-opt-picked {
+  border-color: #041729 !important;
+  box-shadow: 0 0 0 1px #041729 !important;
+}
+.signal-opt-dim { opacity: 0.25 !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-rise {
+    animation-name: fade-in-delayed;
+    transform: none;
+  }
+  .signal-think-dot { animation: none; opacity: 0.5; }
+}
