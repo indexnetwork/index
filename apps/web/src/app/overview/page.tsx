@@ -55,6 +55,10 @@ export default function OverviewPage() {
     <iframe
       src="/overview.html"
       title={TITLE}
+      // The overview lives in its own document (font/CSS isolation). Move focus
+      // into the frame once it loads so keyboard selection — Cmd/Ctrl+A — targets
+      // the article text inside the iframe rather than the empty parent page.
+      onLoad={(e) => e.currentTarget.contentWindow?.focus()}
       style={{
         position: 'fixed',
         inset: 0,
