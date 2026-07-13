@@ -12,6 +12,11 @@
  * For `pending`, `stalled`, `accepted`, and `rejected` opportunities, the
  * full transcript and outcome are included so the prompt can ground its
  * explanation in concrete turn content.
+ *
+ * Screened-out negotiations (P2.2 — the client's own outreach gate declined
+ * before any turn was exchanged) return null: presentation treats them as
+ * never-happened, so no card, feed, or digest surface can frame the client's
+ * private gate decision as a "counterparty declined" event.
  */
 
 import type { NegotiationGraphDatabase, OpportunityStatus } from '../shared/interfaces/database.interface.js';
@@ -91,6 +96,11 @@ export async function loadNegotiationContext(
 
   const artifacts = await db.getArtifactsForTask(task.id);
   const outcome = extractOutcome(artifacts);
+
+  // P2.2: screened_out is the client's private gate decision, not a negotiation.
+  if (outcome?.reason === 'screened_out') {
+    return null;
+  }
 
   return {
     status: opportunityStatus,

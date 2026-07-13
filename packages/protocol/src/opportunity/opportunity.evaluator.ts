@@ -7,14 +7,15 @@ import type { Lens } from "../shared/hyde/lens.inferrer.js";
 import type { OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import { Timed } from "../shared/observability/performance.js";
 import { stripUuids } from "./opportunity.presentation.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import { renderOpportunityEvidenceForPrompt } from './opportunity.evidence.js';
 
 const logger = protocolLogger("OpportunityEvaluator");
+const invokeLog = protocolLogger("OpportunityEvaluator:invoke");
+const invokeEntityBundleLog = protocolLogger("OpportunityEvaluator:invokeEntityBundle");
 
-const model = createModel("opportunityEvaluator");
 
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
@@ -281,10 +282,10 @@ export class OpportunityEvaluator {
   private entityBundleModel: Runnable;
 
   constructor(options?: OpportunityEvaluatorOptionsConstructor) {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("opportunityEvaluator", responseFormat, {
       name: "opportunity_evaluator"
     });
-    this.entityBundleModel = options?.entityBundleModel ?? model.withStructuredOutput(entityBundleResponseFormat, {
+    this.entityBundleModel = options?.entityBundleModel ?? createStructuredModel("opportunityEvaluator", entityBundleResponseFormat, {
       name: "opportunity_evaluator_entity_bundle"
     });
   }
@@ -305,10 +306,10 @@ export class OpportunityEvaluator {
   ): Promise<Opportunity[]> {
     const minScore = options.minScore || 70;
 
-    logger.verbose(`[OpportunityEvaluator.invoke] Analyzing ${candidates.length} candidates...`);
+    invokeLog.verbose('Analyzing candidates', { count: candidates.length });
 
     if (candidates.length === 0) {
-      logger.verbose('[OpportunityEvaluator] No candidates provided.');
+      logger.verbose('No candidates provided.');
       return [];
     }
 
@@ -330,7 +331,7 @@ export class OpportunityEvaluator {
 
     // Sort by score and take top 1
     const out = opportunities.sort((a, b) => b.score - a.score).slice(0, 1);
-    logger.verbose('[OpportunityEvaluator.invoke] Done', { accepted: out.length });
+    invokeLog.verbose('Done', { accepted: out.length });
     return out;
   }
 
@@ -380,7 +381,7 @@ export class OpportunityEvaluator {
       return mappedOpportunities;
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      logger.warn(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message });
+      logger.warn('Analysis failed for candidate', { candidateUserId, message });
       throw e;
     }
   }
@@ -397,7 +398,7 @@ export class OpportunityEvaluator {
     const returnAll = options.returnAll ?? false;
     const totalEntities = input.entities?.length ?? 0;
     if (!input.entities?.length) {
-      logger.verbose('[OpportunityEvaluator.invokeEntityBundle] No entities.');
+      invokeEntityBundleLog.verbose('No entities.');
       return [];
     }
     const existingPart = input.existingOpportunities
@@ -508,7 +509,7 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
           ? parsed.opportunities.filter((op) => op.actors.length === 2)
           : parsed.opportunities;
       const filtered = introGuard.filter((op) => op.score >= minScore);
-      logger.verbose('[OpportunityEvaluator.invokeEntityBundle] Done', {
+      invokeEntityBundleLog.verbose('Done', {
         total: parsed.opportunities.length,
         afterIntroGuard: introGuard.length,
         accepted: filtered.length,
@@ -516,7 +517,7 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
       });
       return returnAll ? introGuard : filtered;
     } catch (llmError) {
-      logger.error('[OpportunityEvaluator.invokeEntityBundle] Failed', {
+      invokeEntityBundleLog.error('Failed', {
         discovererId: input.discovererId,
         totalEntities,
         parsedTotal,

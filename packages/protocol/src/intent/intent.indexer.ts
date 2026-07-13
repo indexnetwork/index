@@ -1,10 +1,9 @@
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { log } from "../shared/observability/log.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 // ──────────────────────────────────────────────────────────────
@@ -23,8 +22,8 @@ export const IntentIndexerOutputSchema = z.object({
 export type IntentIndexerOutput = z.infer<typeof IntentIndexerOutputSchema>;
 
 const logger = log.lib.from("IntentIndexer");
+const invokeLog = log.lib.from("IntentIndexer:invoke");
 
-const model = createModel("intentIndexer");
 
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
@@ -79,10 +78,10 @@ type ResponseType = z.infer<typeof responseFormat>;
 // ──────────────────────────────────────────────────────────────
 
 export class IntentIndexer {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("intentIndexer", responseFormat, {
       name: "intent_indexer",
     });
   }
@@ -117,7 +116,7 @@ export class IntentIndexer {
     sourceName?: string | null,
     networkContext?: string | null
   ): Promise<IntentIndexerOutput | null> {
-    logger.verbose("[IntentIndexer.invoke] Evaluating intent");
+    invokeLog.verbose("Evaluating intent");
 
     const contextParts: string[] = [];
     if (sourceName) contextParts.push(`Source: ${sourceName}`);
@@ -144,13 +143,13 @@ export class IntentIndexer {
       const result = await invokeWithAbortSignal(this.model, messages);
       const output = responseFormat.parse(result) as IntentIndexerOutput;
 
-      logger.verbose("[IntentIndexer.invoke] Evaluation complete", {
+      invokeLog.verbose("Evaluation complete", {
         indexScore: output.indexScore,
         memberScore: output.memberScore,
       });
       return output;
     } catch (error) {
-      logger.error("[IntentIndexer] Error during execution", { error });
+      logger.error("Error during execution", { error });
       return null;
     }
   }

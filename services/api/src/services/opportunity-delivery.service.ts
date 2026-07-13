@@ -300,9 +300,15 @@ export class OpportunityDeliveryService {
         deliveredAt: new Date(),
       });
     } catch (err) {
-      // Postgres unique_violation (23505) — a concurrent call already committed this delivery.
-      if ((err as { code?: string }).code === '23505') {
-        return 'already_delivered';
+      // Postgres unique_violation (23505) — a concurrent call already committed
+      // this delivery. Drizzle wraps the pg error in DrizzleQueryError, so walk
+      // the `cause` chain rather than checking only the top-level error.
+      let current: unknown = err;
+      for (let depth = 0; current !== null && typeof current === 'object' && depth < 5; depth++) {
+        if ((current as { code?: unknown }).code === '23505') {
+          return 'already_delivered';
+        }
+        current = (current as { cause?: unknown }).cause;
       }
       throw err;
     }

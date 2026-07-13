@@ -3,12 +3,12 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("IntentReconciler");
+const invokeLog = protocolLogger("IntentReconciler:invoke");
 
-const model = createModel("intentReconciler");
 
 const CreateActionTypeSchema = z.union([z.literal("create"), z.literal("CREATE")]);
 const UpdateActionTypeSchema = z.union([z.literal("update"), z.literal("UPDATE")]);
@@ -125,7 +125,7 @@ const normalizeActionType = (type: string): "create" | "update" | "expire" => {
   if (normalized === "create" || normalized === "update" || normalized === "expire") {
     return normalized;
   }
-  logger.warn(`normalizeActionType: unexpected action type "${type}", defaulting to "create"`);
+  logger.warn('normalizeActionType: unexpected action type, defaulting to "create"', { type });
   return "create";
 };
 
@@ -134,10 +134,10 @@ const normalizeActionType = (type: string): "create" | "update" | "expire" => {
 // ──────────────────────────────────────────────────────────────
 
 export class IntentReconciler {
-  private model: any;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("intentReconciler", responseFormat, {
       name: "intent_reconciler"
     });
   }
@@ -149,7 +149,7 @@ export class IntentReconciler {
    */
   @Timed()
   public async invoke(inferredIntentsFormatted: string, activeIntentsContext: string) {
-    logger.verbose(`[IntentReconciler.invoke] Reconciling intents...`);
+    invokeLog.verbose(`Reconciling intents...`);
 
     const prompt = `
       # Active Intents
@@ -177,10 +177,10 @@ export class IntentReconciler {
         type: normalizeActionType(action.type),
       })) as NormalizedIntentAction[];
 
-      logger.verbose(`[IntentReconciler.invoke] Decision: ${normalizedActions.length} actions.`);
+      invokeLog.verbose('Decision computed', { actionCount: normalizedActions.length });
       return { actions: normalizedActions };
     } catch (error) {
-      logger.error("[IntentReconciler] Error during invocation", { error });
+      logger.error("Error during invocation", { error });
       return { actions: [] };
     }
   }

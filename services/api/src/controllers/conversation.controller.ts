@@ -35,7 +35,7 @@ export class ConversationController {
       return Response.json({ conversations });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('[listConversations] Error', { userId: user.id, error: message });
+      logger.error('listConversations failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -51,7 +51,7 @@ export class ConversationController {
       return Response.json({ conversations });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('[listNegotiations] Error', { userId: user.id, error: message });
+      logger.error('listNegotiations failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -92,7 +92,7 @@ export class ConversationController {
       return Response.json({ conversation }, { status: 201 });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('[createConversation] Error', { userId: user.id, error: message });
+      logger.error('createConversation failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -133,7 +133,7 @@ export class ConversationController {
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });
       }
-      logger.error('[getMessages] Error', { userId: user.id, conversationId, error: message });
+      logger.error('getMessages failed', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -182,7 +182,7 @@ export class ConversationController {
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });
       }
-      logger.error('[sendMessage] Error', { userId: user.id, conversationId, error: message });
+      logger.error('sendMessage failed', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -213,7 +213,7 @@ export class ConversationController {
       return Response.json({ conversation });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('[getOrCreateDM] Error', { userId: user.id, error: message });
+      logger.error('getOrCreateDM failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -260,7 +260,7 @@ export class ConversationController {
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });
       }
-      logger.error('[updateMetadata] Error', { userId: user.id, conversationId, error: message });
+      logger.error('updateMetadata failed', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -296,7 +296,7 @@ export class ConversationController {
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });
       }
-      logger.error('[hideConversation] Error', { userId: user.id, conversationId, error: message });
+      logger.error('hideConversation failed', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -333,7 +333,7 @@ export class ConversationController {
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: message }, { status: 403 });
       }
-      logger.error('[listTasks] Error', { userId: user.id, conversationId, error: message });
+      logger.error('listTasks failed', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -374,7 +374,7 @@ export class ConversationController {
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: 'Task not found' }, { status: 404 });
       }
-      logger.error('[getTask] Error', { userId: user.id, conversationId, taskId, error: message });
+      logger.error('getTask failed', { userId: user.id, conversationId, taskId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -412,7 +412,7 @@ export class ConversationController {
       if (message.startsWith('Forbidden')) {
         return Response.json({ error: 'Task not found' }, { status: 404 });
       }
-      logger.error('[getArtifacts] Error', { userId: user.id, conversationId, taskId, error: message });
+      logger.error('getArtifacts failed', { userId: user.id, conversationId, taskId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }

@@ -87,12 +87,12 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
       const lastCreated = created[created.length - 1];
       if (lastCreated?.status === 'pending' && injectChat) {
         await injectChat(lastCreated).catch((err) => {
-          logger.warn('[PersistOpportunities] Chat injection failed', { opportunityId: lastCreated.id, error: err });
+          logger.warn('Chat injection failed', { opportunityId: lastCreated.id, error: err });
         });
       }
     } catch (err) {
       errors.push({ itemIndex, error: err });
-      logger.warn('[PersistOpportunities] Item failed', { itemIndex, error: err });
+      logger.warn('Item failed', { itemIndex, error: err });
     }
   }
 

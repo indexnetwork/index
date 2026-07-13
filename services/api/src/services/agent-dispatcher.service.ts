@@ -5,9 +5,9 @@ import type { AgentWithRelations } from '../adapters/agent.database.adapter';
 
 import { log } from '../lib/log';
 
-const logger = log.service.from('AgentDispatcherImpl');
+const logger = log.service.from('AgentDispatcher');
 
-/** How recently a personal agent must have polled to be considered live. */
+/** How recently an external (poller) agent must have polled to be considered live. */
 const FRESHNESS_THRESHOLD_MS = 90_000;
 
 /** Subset of AgentService needed by the dispatcher. */
@@ -21,7 +21,8 @@ interface AgentLookup {
 
 /**
  * Concrete AgentDispatcher that bridges the agent registry to the negotiation graph.
- * Checks for personal agents and parks the turn for polling pickup.
+ * Checks for external (poller) agents and parks the turn for polling pickup.
+ * Personal negotiator rows never poll and never trigger parking.
  */
 export class AgentDispatcherImpl implements AgentDispatcher {
   constructor(
@@ -30,9 +31,9 @@ export class AgentDispatcherImpl implements AgentDispatcher {
   ) {}
 
   /**
-   * Attempt to dispatch a negotiation turn to a personal agent.
+   * Attempt to dispatch a negotiation turn to an external (poller) agent.
    *
-   * Heartbeat-aware: checks `lastSeenAt` on each personal agent. If none is fresh
+   * Heartbeat-aware: checks `lastSeenAt` on each external agent. If none is fresh
    * (within 90 seconds), returns `timeout` so the graph falls back to the system
    * agent inline. Otherwise parks the turn in `waiting_for_agent` and arms the
    * response-window timer with the caller-supplied `timeoutMs`.
@@ -54,21 +55,21 @@ export class AgentDispatcherImpl implements AgentDispatcher {
   ): Promise<AgentDispatchResult> {
     const authorizedAgents = await this.findAuthorizedAgentsForScope(userId, scope);
 
-    const personalAgents = authorizedAgents.filter((a) => a.type === 'personal');
+    const externalAgents = authorizedAgents.filter((a) => a.type === 'external');
 
-    if (personalAgents.length === 0) {
+    if (externalAgents.length === 0) {
       return { handled: false, reason: 'no_agent' };
     }
 
     const cutoff = Date.now() - FRESHNESS_THRESHOLD_MS;
-    const freshAgents = personalAgents.filter(
+    const freshAgents = externalAgents.filter(
       (a) => a.lastSeenAt != null && a.lastSeenAt.getTime() > cutoff,
     );
 
     if (freshAgents.length === 0) {
-      logger.info('Personal agent registered but stale — falling back to system agent', {
+      logger.info('External agent registered but stale — falling back to system agent', {
         userId,
-        agentCount: personalAgents.length,
+        agentCount: externalAgents.length,
         freshnessThresholdMs: FRESHNESS_THRESHOLD_MS,
       });
       return { handled: false, reason: 'timeout' };
@@ -104,18 +105,20 @@ export class AgentDispatcherImpl implements AgentDispatcher {
   }
 
   /**
-   * Check whether a user has an authorized personal agent for the given scope.
+   * Check whether a user has an authorized external (poller) agent for the given scope.
+   * Drives the unlimited-maxTurns rule: type-only by design — adding heartbeat
+   * freshness here would change negotiation budgets for stale-poller pairs (IND-410).
    *
    * @param userId - The user to check
    * @param scope - Permission scope for agent resolution
-   * @returns `true` if at least one personal agent is authorized
+   * @returns `true` if at least one external agent is authorized
    */
-  async hasPersonalAgent(
+  async hasExternalAgent(
     userId: string,
     scope: { action: string; scopeType: string; scopeId?: string },
   ): Promise<boolean> {
     const agents = await this.findAuthorizedAgentsForScope(userId, scope);
-    return agents.some((a) => a.type === 'personal');
+    return agents.some((a) => a.type === 'external');
   }
 
   /**

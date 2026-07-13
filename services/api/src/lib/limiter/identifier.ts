@@ -2,7 +2,7 @@ import { isIP } from 'node:net';
 
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 
-import { BASE_URL, JWT_AUDIENCE } from '../betterauth/betterauth';
+import { API_URL, JWT_AUDIENCE } from '../betterauth/betterauth';
 
 /**
  * Identifier kinds the limiter buckets against. Only two — `user` for
@@ -87,7 +87,7 @@ export async function sha256Truncated(input: string): Promise<string> {
     .map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const JWKS = createRemoteJWKSet(new URL('/api/auth/jwks', BASE_URL));
+const JWKS = createRemoteJWKSet(new URL('/api/auth/jwks', API_URL));
 
 export async function resolveIdentifier(
   req: Request,
@@ -102,7 +102,7 @@ export async function resolveIdentifier(
   if (auth?.startsWith('Bearer ')) {
     try {
       const { payload } = await jwtVerify(auth.slice(7), JWKS, {
-        issuer: BASE_URL, audience: JWT_AUDIENCE,
+        issuer: API_URL, audience: JWT_AUDIENCE,
       });
       // Better Auth JWTs carry `id`; MCP OAuth tokens (also signed by the
       // same JWKS) carry `sub` per the OAuth/OIDC convention. Accept either.

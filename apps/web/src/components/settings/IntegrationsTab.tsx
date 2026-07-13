@@ -9,6 +9,9 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService, type ComposioConnection } from '@/services/integrations';
 import CopyableBox from '@/components/CopyableBox';
 import MasterKeyDialog from '@/components/MasterKeyDialog';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('IntegrationsTab');
 
 /** Toolkits available for connection, keyed by network type. */
 const COMMUNITY_TOOLKITS = ['gmail', 'slack'] as const;
@@ -92,7 +95,7 @@ export default function IntegrationsTab({
       const response = await integrationsService.getConnections(networkId);
       setConnections(response.connections);
     } catch (err) {
-      console.error('Failed to load connections:', err);
+      logger.error('Failed to load connections', { error: err });
       setConnections([]);
     } finally {
       setConnectionsLoaded(true);
@@ -230,7 +233,7 @@ export default function IntegrationsTab({
       setRotatedMasterKey(result.masterKey);
       success('Master key rotated — old key is now invalid');
     } catch (err) {
-      console.error('Master key rotation failed', err);
+      logger.error('Master key rotation failed', { error: err });
       error('Failed to rotate master key');
     } finally {
       setIsRotating(false);

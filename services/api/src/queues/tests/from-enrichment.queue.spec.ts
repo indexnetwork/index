@@ -149,7 +149,7 @@ describe('FromEnrichmentQueue', () => {
       const invokeOpportunityGraph = mock(async () => {});
       const queue = new FromEnrichmentQueue({ invokeOpportunityGraph });
       const negotiationGraph = {} as Parameters<InstanceType<typeof FromEnrichmentQueue>['setRuntimeDeps']>[0]['negotiationGraph'];
-      const agentDispatcher = { hasPersonalAgent: async () => false };
+      const agentDispatcher = { hasExternalAgent: async () => false };
       queue.setRuntimeDeps({ negotiationGraph, agentDispatcher });
       await queue.processJob('discover_opportunities', { userId: 'u1' });
       expect(invokeOpportunityGraph).toHaveBeenCalled();

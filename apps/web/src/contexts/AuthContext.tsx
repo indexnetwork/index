@@ -5,12 +5,25 @@ import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
 import AuthModal from '@/components/AuthModal';
+import { log } from '@/lib/logger';
+
+const logger = log.context.from('AuthContext');
+
+/**
+ * Server-driven feature flags returned alongside the user on GET /auth/me
+ * (sibling of `user`, not part of it). `negotiatorChat` gates the pinned
+ * Personal Agent entry in the sidebar (IND-411).
+ */
+export type UserFeatures = {
+  negotiatorChat?: boolean;
+};
 
 type AuthContextType = {
   isReady: boolean;
   isLoading: boolean;
   isAuthenticated: boolean;
   user: User | null;
+  features: UserFeatures | null;
   userLoading: boolean;
   error: string | null;
   refetchUser: () => Promise<void>;
@@ -26,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [features, setFeatures] = useState<UserFeatures | null>(null);
   const [userLoading, setUserLoading] = useState(false);
   const [userFetchAttempted, setUserFetchAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,9 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserFetchAttempted(true);
     setError(null);
     try {
-      const response = await api.get<APIResponse<User>>('/auth/me');
+      const response = await api.get<APIResponse<User> & { features?: UserFeatures }>('/auth/me');
       if (response.user) {
         setUser(response.user);
+        setFeatures(response.features ?? null);
 
         const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (browserTimezone && response.user.timezone !== browserTimezone) {
@@ -72,14 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setUser(updatedUser);
             })
             .catch(err => {
-              console.error('Failed to update timezone:', err);
+              logger.error('Failed to update timezone', { error: err });
             });
         }
       } else {
         throw new Error('No user data received');
       }
     } catch (error) {
-      console.error('Failed to fetch user:', error);
+      logger.error('Failed to fetch user', { error });
 
       // The browser can retain a Better Auth session/JWT for a user that no
       // longer exists in the currently selected dev database. Treat auth/user
@@ -88,9 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error instanceof APIError && (error.status === 401 || error.status === 404)) {
         clearJwtToken();
         await authClient.signOut().catch(signOutError => {
-          console.error('Failed to clear stale auth session:', signOutError);
+          logger.error('Failed to clear stale auth session', { error: signOutError });
         });
         setUser(null);
+        setFeatures(null);
         setUserFetchAttempted(false);
         setError(null);
         return;
@@ -98,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setError('Failed to load user data. Please try refreshing the page.');
       setUser(null);
+      setFeatures(null);
     } finally {
       setUserLoading(false);
     }
@@ -108,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fetchUser();
     } else if (!authenticated) {
       setUser(null);
+      setFeatures(null);
       setUserLoading(false);
       setUserFetchAttempted(false);
       setError(null);
@@ -130,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isHomePage = pathname === '/';
     const publicPrefixes = [
       '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
-      '/login', '/s/', '/oauth/', '/found-in-translation', '/cli-auth', '/u/', '/c/',
+      '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/cli-auth', '/u/', '/c/',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
     const isProtectedPage = pathname.startsWith('/i/');
@@ -170,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: authenticated,
         user,
+        features,
         userLoading,
         error,
         refetchUser: fetchUser,

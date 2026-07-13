@@ -8,7 +8,7 @@ import { HYDE_CORPUS_PROMPTS } from './hyde.strategies.js';
 import type { HydeTargetCorpus } from './lens.inferrer.js';
 import { Timed } from "../observability/performance.js";
 import { protocolLogger } from '../observability/protocol.logger.js';
-import { createModel } from "../agent/model.config.js";
+import { createStructuredModel } from "../agent/model.config.js";
 import { invokeWithAbortSignal } from "../agent/model-signal.js";
 
 const logger = protocolLogger("HydeGenerator");
@@ -29,8 +29,6 @@ const responseFormat = z.object({
     .describe('The hypothetical document text in the target voice, suitable for embedding and retrieval'),
 });
 
-const model = createModel("hydeGenerator");
-
 export interface HydeGeneratorOutput {
   text: string;
 }
@@ -49,7 +47,7 @@ export interface HydeGenerateInput {
  * Uses free-text lens labels (from LensInferrer) instead of enum strategies.
  */
 export class HydeGenerator {
-  private model = model.withStructuredOutput(responseFormat, {
+  private model = createStructuredModel("hydeGenerator", responseFormat, {
     name: "hyde_generator",
   });
 

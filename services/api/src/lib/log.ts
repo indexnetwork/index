@@ -119,6 +119,20 @@ const EMBEDDING_KEYS = new Set([
   'embeddings',
 ]);
 
+/**
+ * Truncation limits for logged meta. Logs are for humans and Sentry —
+ * never dump large payloads (full entities, LLM outputs, API responses).
+ */
+const MAX_LOG_STRING_LENGTH = 2000;
+const MAX_LOG_ARRAY_ITEMS = 25;
+const MAX_LOG_OBJECT_KEYS = 50;
+const MAX_LOG_DEPTH = 6;
+
+function truncateLogString(value: string): string {
+  if (value.length <= MAX_LOG_STRING_LENGTH) return value;
+  return `${value.slice(0, MAX_LOG_STRING_LENGTH)}… [truncated ${value.length - MAX_LOG_STRING_LENGTH} chars]`;
+}
+
 function isNumberArray(value: unknown): value is number[] {
   return (
     Array.isArray(value) &&
@@ -269,12 +283,16 @@ function wrapWithContext(
   const colorOn = useColor() && effectiveColor;
   const ansi = colorOn ? hexToAnsi(effectiveColor) : '';
   const reset = colorOn ? RESET : '';
+  // Path-based deprecation only applies to api-internal file-path sources
+  // (e.g. "routes/foo.ts"). Protocol/graph/agent sources are component names
+  // (e.g. "OpportunityGraph:Prep") and are never deprecated by path.
+  const looksLikePath = (s: string) => s.endsWith('.ts') || s.includes('/');
   const deprecatedTag =
     context === 'cli' || context === 'route'
       ? '[DEPRECATED] '
       : context === 'lib' || context === 'job' || context === 'service' || context === 'server' || context === 'controller' || context === 'protocol' || context === 'queue'
         ? ''
-        : (source && isDeprecatedSource(source))
+        : (source && looksLikePath(source) && isDeprecatedSource(source))
           ? '[DEPRECATED] '
           : '';
   const prefix = source ? `${emoji} ${deprecatedTag}${source}: ` : `${emoji} `;
@@ -328,13 +346,19 @@ function addFrom<T extends LogContext>(context: T): LoggerWithSource & { from: (
 
 const base = createLogger(undefined, undefined);
 
-/** Logger with optional context (emoji + color). Use .from('filename.ts') for consistent source in every line. */
+/** Logger with optional context (emoji + color). Use .from(source) for a consistent source label in every line — see the per-layer conventions on the pre-bound loggers below. */
 export const log = {
   ...base,
   withContext(context: LogContext, source?: string) {
     return source ? createLogger(context, source) : addFrom(context);
   },
-  /** Pre-bound logger. Pass path relative to src/ (e.g. "controllers/chat.controller.ts"). Non-blessed paths get [DEPRECATED] in output. */
+  /**
+   * Pre-bound loggers. Source label conventions per layer:
+   * controllers = lowercase feature ('chat'); services = PascalCase class name ('IntentService');
+   * queues = 'XxxJob'/'XxxQueue'; adapters = '<name>.adapter'; guards = '<name>.guard';
+   * lib = module name without lib/ prefix or extension ('email/transport.helper');
+   * protocol components = PascalCase with optional ':SubScope' ('OpportunityGraph:Prep').
+   */
   controller: addFrom('controller'),
   service: addFrom('service'),
   agent: addFrom('agent'),
@@ -349,37 +373,56 @@ export const log = {
   lib: addFrom('lib'),
 };
 
-/** Sanitize an object for logging: redact embedding/vector arrays. Use before logging objects that may contain embeddings. */
+/**
+ * Sanitize an object for logging: redact embedding/vector arrays and truncate
+ * oversized strings/arrays/objects. Use before logging objects that may contain
+ * embeddings or large payloads.
+ */
 export function sanitizeForLog(value: unknown): unknown {
   return sanitizeForLogInternal(value);
 }
 
-function sanitizeForLogInternal(value: unknown): unknown {
+function sanitizeForLogInternal(value: unknown, depth = 0): unknown {
   if (value == null) return value;
+  if (typeof value === 'string') return truncateLogString(value);
   if (isNumberArray(value)) return `[redacted: ${value.length} values]`;
   if (Array.isArray(value)) {
     if (value.length > 0 && typeof value[0] === 'number') return `[redacted: ${value.length} values]`;
-    return value.map(sanitizeForLogInternal);
+    if (depth >= MAX_LOG_DEPTH) return `[truncated: array(${value.length})]`;
+    const items = value
+      .slice(0, MAX_LOG_ARRAY_ITEMS)
+      .map((item) => sanitizeForLogInternal(item, depth + 1));
+    if (value.length > MAX_LOG_ARRAY_ITEMS) {
+      items.push(`… [truncated ${value.length - MAX_LOG_ARRAY_ITEMS} more items]`);
+    }
+    return items;
   }
   if (value instanceof Error) {
     const out: Record<string, unknown> = {
-      message: value.message,
+      message: truncateLogString(value.message),
       name: value.name,
     };
     // Capture any extra enumerable own properties (e.g. Drizzle/postgres driver fields: query, parameters, code, constraint)
     for (const [k, v] of Object.entries(value as unknown as Record<string, unknown>)) {
-      if (!(k in out)) out[k] = sanitizeForLogInternal(v);
+      if (!(k in out)) out[k] = sanitizeForLogInternal(v, depth + 1);
     }
     return out;
   }
   if (typeof value === 'object' && value.constructor === Object) {
+    if (depth >= MAX_LOG_DEPTH) return `[truncated: object(${Object.keys(value).length} keys)]`;
     const out: Record<string, unknown> = {};
+    let keyCount = 0;
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (keyCount >= MAX_LOG_OBJECT_KEYS) {
+        out['…'] = `[truncated ${Object.keys(value).length - MAX_LOG_OBJECT_KEYS} more keys]`;
+        break;
+      }
+      keyCount++;
       if (EMBEDDING_KEYS.has(k) || isNumberArray(v)) {
-        out[k] = isNumberArray(v) ? `[redacted: ${v.length} values]` : sanitizeForLogInternal(v);
+        out[k] = isNumberArray(v) ? `[redacted: ${v.length} values]` : sanitizeForLogInternal(v, depth + 1);
       } else if (v != null && typeof v === 'object' && !Array.isArray(v) && v.constructor === Object) {
         const nested = v as Record<string, unknown>;
-        if (Object.keys(nested).every((key) => isNumberArray(nested[key]))) {
+        if (Object.keys(nested).length > 0 && Object.keys(nested).every((key) => isNumberArray(nested[key]))) {
           out[k] = Object.fromEntries(
             Object.entries(nested).map(([key, val]) => [
               key,
@@ -387,10 +430,10 @@ function sanitizeForLogInternal(value: unknown): unknown {
             ])
           );
         } else {
-          out[k] = sanitizeForLogInternal(v);
+          out[k] = sanitizeForLogInternal(v, depth + 1);
         }
       } else {
-        out[k] = sanitizeForLogInternal(v);
+        out[k] = sanitizeForLogInternal(v, depth + 1);
       }
     }
     return out;

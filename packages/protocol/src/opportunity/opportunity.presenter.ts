@@ -14,7 +14,7 @@ import { z } from "zod";
 import { Timed } from "../shared/observability/performance.js";
 
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { viewerCentricCardSummary } from "./opportunity.presentation.js";
 import type { Opportunity } from "../shared/interfaces/database.interface.js";
 import type { ChatGraphCompositeDatabase } from "../shared/interfaces/database.interface.js";
@@ -31,9 +31,10 @@ export type PresenterDatabase = Pick<
 >;
 
 const logger = protocolLogger("OpportunityPresenter");
+const presentLog = protocolLogger("OpportunityPresenter:present");
+const presentHomeCardLog = protocolLogger("OpportunityPresenter:presentHomeCard");
 const LLM_TIMEOUT_MS = 20_000;
 
-const model = createModel("opportunityPresenter");
 
 const GREETING_DESCRIPTION =
   "A 2-4 sentence first-person message the viewer could send to the counterpart, in the viewer's voice, referencing what they have in common. Plain prose only — no markdown, no greeting prefix like 'Hey {Name},'. Example body: 'Saw we're both working on regenerative coordination tooling — your post on consent flows resonated. Would love to compare notes if you have time this week.'";
@@ -285,10 +286,10 @@ export class OpportunityPresenter {
   private homeCardModel: Runnable;
 
   constructor() {
-    this.model = model.withStructuredOutput(responseFormat, {
+    this.model = createStructuredModel("opportunityPresenter", responseFormat, {
       name: "opportunity_presenter",
     });
-    this.homeCardModel = model.withStructuredOutput(homeCardResponseFormat, {
+    this.homeCardModel = createStructuredModel("opportunityPresenter", homeCardResponseFormat, {
       name: "opportunity_presenter_home_card",
     });
   }
@@ -362,8 +363,8 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
-      logger.warn(
-        "[OpportunityPresenter.present] LLM failed, returning fallback",
+      presentLog.warn(
+        "LLM failed, returning fallback",
         {
           event: "presenter_fallback",
           presenter: "opportunity",
@@ -463,8 +464,8 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
-      logger.warn(
-        "[OpportunityPresenter.presentHomeCard] LLM failed, returning fallback",
+      presentHomeCardLog.warn(
+        "LLM failed, returning fallback",
         {
           event: "presenter_fallback",
           presenter: "home_card",

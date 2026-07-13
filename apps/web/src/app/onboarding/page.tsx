@@ -19,6 +19,9 @@ import { cn } from "@/lib/utils";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import type { Suggestion } from "@/hooks/useSuggestions";
 import NetworksPanel from "@/components/chat/NetworksPanel";
+import { log } from "@/lib/logger";
+
+const logger = log.page.from("onboarding");
 
 /** Step-specific suggestions for onboarding. */
 const ONBOARDING_STEP_SUGGESTIONS: Record<string, Suggestion[]> = {
@@ -205,7 +208,7 @@ export default function OnboardingPage() {
         })
         .catch((err) => {
           // Keep code in localStorage so user can retry via the invitation link
-          console.error('Failed to accept deferred invitation:', err);
+          logger.error('Failed to accept deferred invitation', { error: err });
           showError('Could not join the network from your invitation link. Please try the link again.');
         });
     }

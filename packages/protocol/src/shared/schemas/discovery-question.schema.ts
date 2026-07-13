@@ -14,7 +14,7 @@ export const NegotiationRoleSchema = z.enum(["agent", "patient", "peer"]);
 export type NegotiationRole = z.infer<typeof NegotiationRoleSchema>;
 
 export const DiscoveryTurnSchema = z.object({
-  action: z.enum(["propose", "accept", "reject", "counter", "question"]),
+  action: z.enum(["propose", "accept", "reject", "counter", "question", "outreach", "withdraw", "decline", "ask_user"]),
   reasoning: z.string(),
   suggestedRoles: z.object({
     ownUser: NegotiationRoleSchema,
@@ -30,7 +30,7 @@ export const DiscoveryOutcomeSchema = z.object({
     userId: z.string(),
     role: NegotiationRoleSchema,
   })).optional(),
-  reason: z.enum(["turn_cap", "timeout"]).optional(),
+  reason: z.enum(["turn_cap", "timeout", "screened_out"]).optional(),
 });
 export type DiscoveryOutcome = z.infer<typeof DiscoveryOutcomeSchema>;
 

@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, real } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm/relations';
 import { sql } from 'drizzle-orm/sql';
@@ -10,7 +10,7 @@ export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
-export const agentTypeEnum = pgEnum('agent_type', ['personal', 'system']);
+export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
@@ -499,7 +499,7 @@ export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
 }));
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -673,7 +673,7 @@ export const agents = pgTable('agents', {
   ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   description: text('description'),
-  type: agentTypeEnum('type').notNull().default('personal'),
+  type: agentTypeEnum('type').notNull(),
   status: agentStatusEnum('status').notNull().default('active'),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -688,6 +688,11 @@ export const agents = pgTable('agents', {
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
   lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
+  // One active personal negotiator row per owner. External (poller) and system
+  // rows are unconstrained.
+  uniquePersonalPerOwner: uniqueIndex('uniq_agents_personal_per_owner')
+    .on(table.ownerId)
+    .where(sql`${table.type} = 'personal' AND ${table.deletedAt} IS NULL`),
 }));
 
 export const agentTransports = pgTable('agent_transports', {
@@ -719,6 +724,61 @@ export const agentPermissions = pgTable('agent_permissions', {
   uniqueGlobalPermission: uniqueIndex('uniq_agent_permissions_global')
     .on(table.agentId, table.userId)
     .where(sql`${table.scope} = 'global'`),
+}));
+
+/**
+ * Negotiator memory kinds (IND-405):
+ * - `playbook`: negotiation tactics/strategies the negotiator has learned for its client.
+ * - `disclosure_rule`: standing rules about what may/may not be shared, with whom.
+ * - `counterparty_dossier`: private notes about a specific counterparty (subjectUserId).
+ * - `threshold`: client-specific limits (pricing floors, time budgets, deal-breakers).
+ *
+ * Plain text column (not a pg enum) by design: adding kinds is a code-only change,
+ * avoiding ALTER TYPE ... ADD VALUE same-deploy hazards (55P04).
+ */
+export type NegotiatorMemoryKind = 'playbook' | 'disclosure_rule' | 'counterparty_dossier' | 'threshold';
+
+/** Provenance pointer for a negotiator memory (e.g. the negotiation it was learned from). */
+export interface NegotiatorMemorySourceRef {
+  type: 'negotiation' | 'question_answer' | 'chat' | 'manual';
+  id: string;
+  /** For negotiation refs: 0-based turn indexes evidencing the memory. */
+  turnIndexes?: number[];
+}
+
+/**
+ * Private operational memory of a user's personal negotiator agent row (IND-405).
+ *
+ * Strictly separate from premises: premises are public-ish identity assertions
+ * that feed discovery; negotiator memories are private operational knowledge
+ * (playbooks, disclosure rules, dossiers, thresholds) and MUST NOT be exposed
+ * to discovery, user contexts, or any counterparty-visible surface.
+ *
+ * Nothing reads or writes this table in production paths yet — adapter + tests only.
+ */
+export const negotiatorMemories = pgTable('negotiator_memories', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  /** The owning negotiator agent row (type='personal'). Memories die with the agent. */
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  /** Denormalized owner (matches agents.ownerId) for cheap user-scoped queries. */
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: text('kind').$type<NegotiatorMemoryKind>().notNull(),
+  /**
+   * For counterparty dossiers: who the memory is about. Cascade delete is a
+   * privacy stance — when the subject user is deleted, notes about them go too.
+   */
+  subjectUserId: text('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  /** Same embedding space as premises: text-embedding-3-large @ 2000 dims. */
+  embedding: vector('embedding', { dimensions: 2000 }),
+  sourceRefs: jsonb('source_refs').$type<NegotiatorMemorySourceRef[]>().notNull().default([]),
+  confidence: real('confidence').notNull().default(0.5),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  agentKindIdx: index('negotiator_memories_agent_kind_idx').on(table.agentId, table.kind),
+  userSubjectIdx: index('negotiator_memories_user_subject_idx').on(table.userId, table.subjectUserId),
+  embeddingIdx: index('negotiator_memories_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
 }));
 
 export const agentTestMessages = pgTable(
@@ -926,6 +986,21 @@ export const agentPermissionsRelations = relations(agentPermissions, ({ one }) =
   }),
 }));
 
+export const negotiatorMemoriesRelations = relations(negotiatorMemories, ({ one }) => ({
+  agent: one(agents, {
+    fields: [negotiatorMemories.agentId],
+    references: [agents.id],
+  }),
+  user: one(users, {
+    fields: [negotiatorMemories.userId],
+    references: [users.id],
+  }),
+  subjectUser: one(users, {
+    fields: [negotiatorMemories.subjectUserId],
+    references: [users.id],
+  }),
+}));
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Export types
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -956,6 +1031,8 @@ export type AgentTransport = typeof agentTransports.$inferSelect;
 export type NewAgentTransport = typeof agentTransports.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
+export type NegotiatorMemory = typeof negotiatorMemories.$inferSelect;
+export type NewNegotiatorMemory = typeof negotiatorMemories.$inferInsert;
 export type Premise = typeof premises.$inferSelect;
 export type NewPremise = typeof premises.$inferInsert;
 export type PremiseNetwork = typeof premiseNetworks.$inferSelect;

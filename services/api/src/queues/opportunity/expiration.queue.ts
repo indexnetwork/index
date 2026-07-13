@@ -27,7 +27,7 @@ export class OpportunityExpirationCron {
       this.expireStale()
         .then((count) => {
           if (count > 0) {
-            this.logger.info(`Expired ${count} opportunit${count === 1 ? 'y' : 'ies'}`);
+            this.logger.info('Expired opportunities', { count });
           }
         })
         .catch((err) => this.logger.error('Cron failed', { error: err }));

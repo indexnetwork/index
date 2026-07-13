@@ -2,6 +2,8 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
 }
 
 .index-dashboard__radar-strip {
@@ -19,10 +21,10 @@
 .index-dashboard__opp {
   display: grid;
   gap: 0.6rem;
-  padding: 0.85rem;
-  border: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 72%, transparent);
-  border-radius: calc(var(--radius, 0.75rem) * 0.75);
-  background: color-mix(in srgb, var(--color-background, #020617) 36%, transparent);
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
 }
 
 .index-dashboard__opp-head {
@@ -132,9 +134,9 @@
   align-items: baseline;
   gap: 0.45rem;
   padding: 0.45rem 0.65rem;
-  border: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 78%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-background, #020617) 34%, transparent);
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
 }
 
 .index-dashboard__stat--selectable {
@@ -144,7 +146,7 @@
 }
 
 .index-dashboard__stat--selectable:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #6366f1) 55%, transparent);
+  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 30%, transparent);
 }
 
 .index-dashboard__stat--selectable:focus-visible {
@@ -153,8 +155,8 @@
 }
 
 .index-dashboard__stat--active {
-  border-color: var(--color-primary, #6366f1);
-  background: color-mix(in srgb, var(--color-primary, #6366f1) 22%, transparent);
+  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 45%, transparent);
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 12%, var(--background-base, #041c1c));
 }
 
 .index-dashboard__stat--active strong,
@@ -179,9 +181,44 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.5rem;
   margin-top: 0.75rem;
+}
+
+.index-dashboard__opp-socials {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.index-dashboard__opp-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.index-dashboard__opp-social {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.index-dashboard__opp-social:hover {
+  color: var(--midground, #ffe6cb);
+  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 40%, transparent);
+}
+
+.index-dashboard__opp-social svg {
+  width: 0.9rem;
+  height: 0.9rem;
 }
 
 /* Medium footprint for the SDK action buttons (no native `md` size). Used by
@@ -211,9 +248,9 @@
 }
 
 .index-dashboard__card {
-  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: var(--radius, 0.75rem);
-  background: color-mix(in srgb, var(--color-card, #0f172a) 88%, transparent);
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .index-dashboard__card p {
@@ -353,6 +390,29 @@
   color: var(--color-destructive, #ef4444);
 }
 
+/* Hero loading state: the eye animation, color-reversed for the dark theme. */
+.index-dashboard__loading--hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3.5rem 1rem;
+  border: none;
+  border-radius: 0;
+  text-align: center;
+}
+
+.index-dashboard__loading-anim {
+  width: 340px;
+  max-width: 80%;
+  height: auto;
+  /* Source has a transparent background (white keyed out). invert lightens the
+     dark line-art; grayscale + brightness push everything (eye AND the blue
+     swooshes) to white while keeping the pencil texture. */
+  filter: invert(1) grayscale(1) brightness(1.15);
+}
+
 .index-dashboard__body {
   display: flex;
   flex-direction: column;
@@ -392,6 +452,7 @@
 
 .index-dashboard__pitch {
   display: flex;
+  flex-direction: row-reverse;
   align-items: center;
   gap: 1rem;
   padding: 1.5rem;
@@ -444,28 +505,35 @@
   display: grid;
   gap: 1rem;
   align-content: start;
+  /* Right breathing room so the Networks column doesn't sit against the
+     content edge / scrollbar — mirrors the Intents column's left inset. */
+  padding-right: 1rem;
 }
 
 .index-dashboard__net-card {
-  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: var(--radius, 0.75rem);
-  background: color-mix(in srgb, var(--color-card, #0f172a) 88%, transparent);
-  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .index-dashboard__net-head {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.85rem 1rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 60%, transparent);
+  min-height: 2.75rem;
+  padding: 0 0 0.75rem 0;
+  border-bottom: none;
 }
 
 .index-dashboard__net-heading {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.9375rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.1875rem;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
@@ -513,6 +581,7 @@
 .index-dashboard__net-list {
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
 }
 
 .index-dashboard__net-row--static {
@@ -528,23 +597,20 @@
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  padding: 0.625rem 1rem;
-  border: none;
-  border-top: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 45%, transparent);
-  background: transparent;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
   color: var(--color-card-foreground, inherit);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.index-dashboard__net-list .index-dashboard__net-row:first-child {
-  border-top: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .index-dashboard__net-row:hover {
-  background: color-mix(in srgb, var(--color-background, #020617) 36%, transparent);
+  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 30%, transparent);
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 6%, var(--background-base, #041c1c));
 }
 
 .index-dashboard__net-avatar {
@@ -639,24 +705,30 @@
   justify-content: space-between;
   gap: 0.6rem;
   width: 100%;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 72%, transparent);
-  border-radius: calc(var(--radius, 0.75rem) * 0.75);
-  background: color-mix(in srgb, var(--color-background, #020617) 36%, transparent);
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
   color: var(--color-card-foreground, inherit);
   text-align: left;
   cursor: pointer;
 }
 
 .index-dashboard__intent-row--selected {
-  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 60%, var(--color-border, rgba(148, 163, 184, 0.24)));
-  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 12%, transparent);
+  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 45%, transparent);
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 8%, var(--background-base, #041c1c));
 }
 
 .index-dashboard__intent-main {
   display: grid;
   gap: 0.25rem;
   min-width: 0;
+}
+
+/* Keep the status tag compact (like a cron badge) instead of stretching to the
+   grid column width. */
+.index-dashboard__intent-main .index-dashboard__badge {
+  justify-self: start;
 }
 
 .index-dashboard__intent-title {
@@ -686,6 +758,35 @@
   gap: 0.6rem;
 }
 
+.index-dashboard__tip {
+  position: relative;
+  display: inline-flex;
+}
+
+.index-dashboard__tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  background: var(--background-base, #041c1c);
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 30;
+}
+
+.index-dashboard__tip:hover::after,
+.index-dashboard__tip:focus-within::after {
+  opacity: 1;
+}
+
 .index-dashboard__detail-title {
   margin: 0;
   font-size: 1.1rem;
@@ -697,10 +798,10 @@
   gap: 0.6rem;
   width: 100%;
   box-sizing: border-box;
-  padding: 0.85rem;
-  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
-  border-radius: calc(var(--radius, 0.75rem) * 0.75);
-  background: color-mix(in srgb, var(--color-card, #0f172a) 88%, transparent);
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
 }
 
 .index-dashboard__detail-title-row {
@@ -724,12 +825,18 @@
 }
 
 .index-dashboard__card--primary {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-card, #0f172a) 96%, rgba(79, 209, 197, 0.12)), var(--color-card, #0f172a));
+  background: transparent;
 }
 
 .index-dashboard__card-header {
-  padding-bottom: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 2.75rem;
+  padding-top: 0;
+  padding-bottom: 0.75rem;
+  border-bottom: none;
+  text-align: left;
 }
 
 .index-dashboard__card-title-row {
@@ -740,13 +847,27 @@
 }
 
 .index-dashboard__card-title {
-  font-size: 1rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.1875rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
 .index-dashboard__card-title-media {
   flex: 0 0 auto;
   height: 2.6rem;
   width: auto;
+}
+
+.index-dashboard__radar-eye {
+  flex: 0 0 auto;
+  height: 1.5rem;
+  width: auto;
+  object-fit: contain;
 }
 
 .index-dashboard__card-description {
@@ -758,6 +879,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding-top: 0;
 }
 
 .index-dashboard__badge {
@@ -778,10 +900,10 @@
 .index-dashboard__item {
   display: grid;
   gap: 0.35rem;
-  padding: 0.85rem;
-  border: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 72%, transparent);
-  border-radius: calc(var(--radius, 0.75rem) * 0.75);
-  background: color-mix(in srgb, var(--color-background, #020617) 36%, transparent);
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
 }
 
 .index-dashboard__card--primary .index-dashboard__item:first-child {
@@ -951,6 +1073,7 @@
 
 /* Header account button (opens the profile/settings panel). */
 .index-dashboard__hdr-account {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -963,6 +1086,19 @@
   background: transparent;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
   cursor: pointer;
+}
+
+/* Unread-message notification dot on the header messages icon. */
+.index-dashboard__hdr-account--dot::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-primary, #4fd1c5);
+  border: 1px solid var(--background-base, #041c1c);
 }
 
 .index-dashboard__hdr-account:hover {
@@ -1005,8 +1141,14 @@
 
 .index-dashboard__profile-title {
   margin: 0;
-  font-size: 1.15rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.1875rem;
   line-height: 1.2;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
 .index-dashboard__profile-close {

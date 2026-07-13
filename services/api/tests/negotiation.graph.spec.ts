@@ -48,7 +48,7 @@ function createDeps() {
   } as unknown as NegotiationGraphDatabase;
   const dispatcher = {
     dispatch: mock(async () => ({ handled: false as const, reason: "no_agent" as const })),
-    hasPersonalAgent: mock(async () => false),
+    hasExternalAgent: mock(async () => false),
   } satisfies Partial<AgentDispatcher> as unknown as AgentDispatcher;
   return { database, dispatcher, updateOpportunityStatus };
 }
@@ -90,5 +90,48 @@ describe("NegotiationGraph → opportunity status lifecycle (init)", () => {
     // The init branch is guarded by `if (state.opportunityId)`.
     const initCall = deps.updateOpportunityStatus.mock.calls.find((c: unknown[]) => c[1] === "negotiating");
     expect(initCall).toBeUndefined();
+  }, 30_000);
+});
+
+describe("NegotiationGraph → initiatorUserId stamp (IND-396)", () => {
+  it("stamps metadata.initiatorUserId = sourceUser.id when not supplied", async () => {
+    const deps = createDeps();
+
+    const factory = new NegotiationGraphFactory(deps.database, deps.dispatcher);
+    const graph = factory.createGraph();
+    await graph.invoke({
+      sourceUser,
+      candidateUser,
+      indexContext: { networkId: "idx-1", prompt: "AI co-founders" },
+      seedAssessment: seed,
+      opportunityId: "opp-1",
+      maxTurns: 1,
+    });
+
+    const createTaskMock = deps.database.createTask as unknown as { mock: { calls: unknown[][] } };
+    expect(createTaskMock.mock.calls.length).toBe(1);
+    const metadata = createTaskMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(metadata.initiatorUserId).toBe("user-source");
+    expect(metadata.sourceUserId).toBe("user-source");
+  }, 30_000);
+
+  it("stamps an explicit initiatorUserId (triggerDiscoveryNegotiation path, no opportunityId)", async () => {
+    const deps = createDeps();
+
+    const factory = new NegotiationGraphFactory(deps.database, deps.dispatcher);
+    const graph = factory.createGraph();
+    await graph.invoke({
+      sourceUser,
+      candidateUser,
+      indexContext: { networkId: "idx-1", prompt: "AI co-founders" },
+      seedAssessment: seed,
+      maxTurns: 1,
+      initiatorUserId: "user-viewer",
+    });
+
+    const createTaskMock = deps.database.createTask as unknown as { mock: { calls: unknown[][] } };
+    expect(createTaskMock.mock.calls.length).toBe(1);
+    const metadata = createTaskMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(metadata.initiatorUserId).toBe("user-viewer");
   }, 30_000);
 });

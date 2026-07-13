@@ -12,6 +12,9 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNetworks } from '@/contexts/APIContext';
 import { Network } from '@/lib/types';
+import { log } from '@/lib/logger';
+
+const logger = log.page.from('networks/[id]');
 
 export type TabValue = 'overview' | 'settings' | 'access' | 'integrations';
 
@@ -68,7 +71,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
       const memberSettings = await indexesService.getCurrentUserMemberSettings(networkId);
       return memberSettings.isOwner;
     } catch (err) {
-      console.error('Error loading member settings:', err);
+      logger.error('Error loading member settings', { error: err });
       return networkData?.user ? user?.id === networkData.user.id : false;
     }
   }, [indexesService, user?.id]);
@@ -90,7 +93,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
         setNetwork(fetchedNetwork);
         setIsOwner(ownerStatus);
       } catch (err) {
-        console.error('Error loading network:', err);
+        logger.error('Error loading network', { error: err });
         setNotFound(true);
       } finally {
         setLoading(false);

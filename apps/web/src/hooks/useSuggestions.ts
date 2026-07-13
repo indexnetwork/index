@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { log } from '@/lib/logger';
+
+const logger = log.hook.from('useSuggestions');
 
 export interface Suggestion {
   label: string;
@@ -61,7 +64,7 @@ export function useSuggestions({
         ];
         setFetchedSuggestions(mockDynamicSuggestions);
       } catch (error) {
-        console.error('Failed to fetch suggestions:', error);
+        logger.error('Failed to fetch suggestions', { error });
         setFetchedSuggestions([]);
       } finally {
         setIsLoading(false);

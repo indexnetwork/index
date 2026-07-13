@@ -29,6 +29,13 @@ import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
 
 const logger = protocolLogger('HomeGraph');
+const checkCategorizerCacheLog = protocolLogger('HomeGraph:checkCategorizerCache');
+const cacheCategorizerResultsLog = protocolLogger('HomeGraph:cacheCategorizerResults');
+const checkPresenterCacheLog = protocolLogger('HomeGraph:checkPresenterCache');
+const cachePresenterResultsLog = protocolLogger('HomeGraph:cachePresenterResults');
+const categorizeDynamicallyLog = protocolLogger('HomeGraph:categorizeDynamically');
+const normalizeAndSortLog = protocolLogger('HomeGraph:normalizeAndSort');
+const generateCardTextLog = protocolLogger('HomeGraph:generateCardText');
 
 /** Database must satisfy both HomeGraphDatabase and presenter context (getProfile, getActiveIntents, getNetwork, getUser). */
 type HomeGraphDb = HomeGraphDatabase;
@@ -40,7 +47,19 @@ export type HomeGraphInvokeInput = {
   scopeId?: string;
   limit?: number;
   noCache?: boolean;
-  /** When set, filter loaded opportunities to these lifecycle statuses. Defaults to `DEFAULT_HOME_STATUSES`. */
+  /**
+   * 'skeleton' returns immediately without LLM work: cached cards complete,
+   * uncached cards with identity fields only + `presentationPending: true`,
+   * single flat section (no categorizer). Meant as the fast first phase of a
+   * two-phase fetch — follow up with a full request to fill in the text.
+   */
+  presentation?: 'full' | 'skeleton';
+  /**
+   * When set, filter loaded opportunities to these lifecycle statuses. Defaults to `DEFAULT_HOME_STATUSES`.
+   * Explicit statuses switch the graph to "lifecycle view" mode: terminal/internal
+   * statuses pass through (only latent/pending stay gated by viewer actionability),
+   * ordering is newest-first, and feed composition capping is skipped.
+   */
   statuses?: OpportunityStatus[];
 };
 
@@ -210,9 +229,41 @@ export class HomeGraphFactory {
           const visible = raw.filter((opp) =>
             canUserSeeOpportunity(opp.actors, opp.status, state.userId)
           );
-          const visibleForFeed = visible.filter((opp) =>
-            isActionableForViewer(opp.actors, opp.status, state.userId)
-          );
+          // Actionability only gates the live statuses a viewer could act on:
+          // latent/pending cards the viewer cannot act on are noise, but
+          // terminal/internal statuses (accepted, rejected, expired, negotiating,
+          // stalled, draft) are deliberate history — when a caller explicitly
+          // requests them via `statuses`, they must pass through (they are never
+          // actionable by rule 5, so filtering them here would return nothing).
+          // The requested-status membership check is defense-in-depth: rows
+          // outside the requested set are dropped even if the adapter drifts.
+          const requestedStatuses = new Set<OpportunityStatus>(statuses);
+          const visibleForFeed = visible.filter((opp) => {
+            if (!requestedStatuses.has(opp.status)) return false;
+            if (opp.status === 'latent' || opp.status === 'pending') {
+              return isActionableForViewer(opp.actors, opp.status, state.userId);
+            }
+            return true;
+          });
+          const explicitStatuses = (state.statuses?.length ?? 0) > 0;
+          if (explicitStatuses) {
+            // Lifecycle view (e.g. intent radar): newest-first so counterpart
+            // dedup keeps each person's most recent state (an accepted
+            // opportunity supersedes an older pending one), no composition
+            // capping — the caller wants the full pipeline up to `limit`.
+            const newestFirst = [...visibleForFeed].sort(
+              (a, b) => safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt)
+            );
+            const seenIds = new Set<string>();
+            const dedupedByCounterpart = newestFirst.filter((opp) => {
+              const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
+              const hasOverlap = [...counterpartIds].some((id) => seenIds.has(id));
+              if (hasOverlap) return false;
+              for (const id of counterpartIds) seenIds.add(id);
+              return true;
+            });
+            return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
+          }
           const sorted = [...visibleForFeed].sort((a, b) => {
             // Connections before connector-flow so dedup claims counterpart IDs
             // for direct connections first — prevents introducer cards from
@@ -252,7 +303,7 @@ export class HomeGraphFactory {
         }
 
         if (state.noCache) {
-          logger.verbose('[HomeGraph:checkPresenterCache] noCache=true, skipping cache');
+          checkPresenterCacheLog.verbose('noCache=true, skipping cache');
           return { cachedCards: new Map(), uncachedOpportunities: opportunities };
         }
 
@@ -279,13 +330,15 @@ export class HomeGraphFactory {
             const cached = results[i];
             if (cached) {
               const originalIndex = opportunities.indexOf(cacheable[i]);
-              cachedCards.set(cacheable[i].id, { ...cached, _cardIndex: originalIndex });
+              // Stamp the live status: pre-status cache entries lack the field,
+              // and the key already guarantees it matches the current status.
+              cachedCards.set(cacheable[i].id, { ...cached, status: cacheable[i].status, _cardIndex: originalIndex });
             } else {
               uncachedOpportunities.push(cacheable[i]);
             }
           }
 
-          logger.verbose('[HomeGraph:checkPresenterCache]', {
+          checkPresenterCacheLog.verbose('', {
             total: opportunities.length,
             cacheHits: cachedCards.size,
             cacheMisses: uncachedOpportunities.length,
@@ -293,7 +346,7 @@ export class HomeGraphFactory {
 
           return { cachedCards, uncachedOpportunities };
         } catch (e) {
-          logger.warn('[HomeGraph:checkPresenterCache] cache unavailable, skipping', { error: e });
+          checkPresenterCacheLog.warn('cache unavailable, skipping', { error: e });
           return { cachedCards: new Map(), uncachedOpportunities: opportunities };
         }
       });
@@ -303,7 +356,7 @@ export class HomeGraphFactory {
       if (state.uncachedOpportunities.length > 0) {
         return 'generate';
       }
-      logger.verbose('[HomeGraph] All presenter results cached, skipping generation');
+      logger.verbose('All presenter results cached, skipping generation');
       return 'skip';
     };
 
@@ -312,9 +365,9 @@ export class HomeGraphFactory {
       const opportunities = state.uncachedOpportunities.length > 0
         ? state.uncachedOpportunities
         : state.opportunities;
-      logger.verbose('[HomeGraph:generateCardText] entry', { opportunitiesLength: opportunities.length, userId: state.userId });
+      generateCardTextLog.verbose('entry', { opportunitiesLength: opportunities.length, userId: state.userId });
       if (opportunities.length === 0) {
-        logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: 0, totalSections: 0 });
+        generateCardTextLog.verbose('exit', { totalOpportunities: 0, totalSections: 0 });
         return { cards: [], agentTimings: [], meta: { totalOpportunities: 0, totalSections: 0 } };
       }
       const db = this.database as PresenterDatabase & HomeGraphDb;
@@ -387,11 +440,24 @@ export class HomeGraphFactory {
             // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
             if ((userName === 'Unknown' || !userName?.trim()) && otherActor?.userId && db.getProfile) {
               const profile = await db.getProfile(otherActor.userId).catch((err) => {
-                logger.debug('[HomeGraph] getProfile fallback failed', { otherActorUserId: otherActor.userId, error: err });
+                logger.debug('getProfile fallback failed', { otherActorUserId: otherActor.userId, error: err });
                 return null;
               });
               const profileName = profile?.identity?.name?.trim();
               if (profileName) userName = profileName;
+            }
+            // Unresolvable display counterpart (deleted user: no users row, no
+            // profile fallback). Drop the card entirely instead of rendering an
+            // "Unknown" placeholder: such cards are unusable, excluded from the
+            // presenter cache (see cachePresenterResults), and would otherwise
+            // trigger a fresh presenter LLM call on every request — a permanent
+            // cache miss that keeps the whole feed slow (~9s per load).
+            if (userName === 'Unknown' || !userName?.trim()) {
+              logger.verbose('[HomeGraph:generateCardText] dropping card with unresolvable counterpart', {
+                opportunityId: opportunity.id,
+                otherActorUserId: otherActor?.userId,
+              });
+              return null;
             }
             const userAvatar = otherUser?.avatar ?? null;
             // Shared sanitization standard (UUID strip, viewer-centric rewrite,
@@ -422,9 +488,33 @@ export class HomeGraphFactory {
             }
 
             const isCounterpartGhost = otherUser?.isGhost ?? false;
+            // Skeleton presentation: return an identity-only card without the
+            // presenter LLM or negotiation-context load. Name resolution and
+            // the unresolvable-counterpart drop above still apply, so the card
+            // set matches what the follow-up full request will return.
+            if (state.presentation === 'skeleton') {
+              return {
+                opportunityId: opportunity.id,
+                status: opportunity.status,
+                userId: otherActor?.userId ?? '',
+                name: userName,
+                avatar: userAvatar,
+                mainText: '',
+                cta: '',
+                primaryActionLabel: getPrimaryActionLabel(viewerRole),
+                secondaryActionLabel: SECONDARY_ACTION_LABEL,
+                mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
+                viewerRole,
+                isGhost: isCounterpartGhost,
+                ...(secondPartyData ? { secondParty: secondPartyData } : {}),
+                presentationPending: true,
+                _cardIndex: cardIndex,
+              } satisfies HomeCardItem;
+            }
             const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
             const fallbackCard = (): HomeCardItem => ({
               opportunityId: opportunity.id,
+              status: opportunity.status,
               userId: otherActor?.userId ?? '',
               name: userName,
               avatar: userAvatar,
@@ -487,6 +577,7 @@ export class HomeGraphFactory {
               }
               return {
                 opportunityId: opportunity.id,
+                status: opportunity.status,
                 userId: otherActor?.userId ?? '',
                 name: userName,
                 avatar: userAvatar,
@@ -508,9 +599,9 @@ export class HomeGraphFactory {
             }
           })
         );
-        cards.push(...chunkCards);
+        cards.push(...chunkCards.filter((c): c is HomeCardItem => c !== null));
       }
-      logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
+      generateCardTextLog.verbose('exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
       return {
         cards,
         agentTimings: agentTimingsAccum,
@@ -533,6 +624,9 @@ export class HomeGraphFactory {
               const status = statusById.get(card.opportunityId);
               // Skip persisting negotiating cards — see read-side note.
               if (!status || status === 'negotiating') return Promise.resolve();
+              // Never cache skeleton cards — they carry no presenter text and
+              // would otherwise be served as "complete" for the full TTL.
+              if (card.presentationPending) return Promise.resolve();
               // Skip caching cards with unresolved names — transient DB failures
               // would persist "Unknown" placeholders for the full TTL.
               if (!card.name || card.name === 'Unknown') return Promise.resolve();
@@ -544,7 +638,7 @@ export class HomeGraphFactory {
             })
           );
         } catch (e) {
-          logger.warn('[HomeGraph:cachePresenterResults] cache write failed, continuing', { error: e });
+          cachePresenterResultsLog.warn('cache write failed, continuing', { error: e });
         }
 
         // Merge cached cards into full card list
@@ -558,7 +652,7 @@ export class HomeGraphFactory {
         // Re-sort by _cardIndex to maintain original ordering
         allCards.sort((a, b) => a._cardIndex - b._cardIndex);
 
-        logger.verbose('[HomeGraph:cachePresenterResults]', {
+        cachePresenterResultsLog.verbose('', {
           newlyCached: newCards.length,
           totalCards: allCards.length,
         });
@@ -576,8 +670,27 @@ export class HomeGraphFactory {
           return { categoryCacheHit: false };
         }
 
+        // Skeleton runs never categorize (some cards have no text to categorize
+        // and the response must stay LLM-free): emit flat sections and mark the
+        // categorizer as "hit" so the generate node and the cache write are both
+        // skipped. Chunked by MAX_ITEMS_PER_SECTION because normalizeAndSort
+        // caps every section — one giant section would silently drop cards that
+        // the follow-up full request (multiple sections) does return.
+        if (state.presentation === 'skeleton') {
+          const sectionProposals: HomeSectionProposal[] = [];
+          for (let start = 0; start < state.cards.length; start += MAX_ITEMS_PER_SECTION) {
+            sectionProposals.push({
+              id: `all-${sectionProposals.length + 1}`,
+              title: 'All matches',
+              iconName: DEFAULT_HOME_SECTION_ICON,
+              itemIndices: state.cards.slice(start, start + MAX_ITEMS_PER_SECTION).map((_, i) => start + i),
+            });
+          }
+          return { sectionProposals, categoryCacheHit: true };
+        }
+
         if (state.noCache) {
-          logger.verbose('[HomeGraph:checkCategorizerCache] noCache=true, skipping cache');
+          checkCategorizerCacheLog.verbose('noCache=true, skipping cache');
           return { categoryCacheHit: false };
         }
 
@@ -586,13 +699,13 @@ export class HomeGraphFactory {
 
           const cached = await this.cache.get<HomeSectionProposal[]>(key);
           if (cached) {
-            logger.verbose('[HomeGraph:checkCategorizerCache] cache hit');
+            checkCategorizerCacheLog.verbose('cache hit');
             return { sectionProposals: cached, categoryCacheHit: true };
           }
 
-          logger.verbose('[HomeGraph:checkCategorizerCache] cache miss');
+          checkCategorizerCacheLog.verbose('cache miss');
         } catch (e) {
-          logger.warn('[HomeGraph:checkCategorizerCache] cache unavailable, skipping', { error: e });
+          checkCategorizerCacheLog.warn('cache unavailable, skipping', { error: e });
         }
         return { categoryCacheHit: false };
       });
@@ -600,7 +713,7 @@ export class HomeGraphFactory {
 
     const shouldCategorize = (state: typeof HomeGraphState.State): string => {
       if (state.categoryCacheHit) {
-        logger.verbose('[HomeGraph] Categorizer results cached, skipping');
+        logger.verbose('Categorizer results cached, skipping');
         return 'skip';
       }
       return 'categorize';
@@ -608,9 +721,9 @@ export class HomeGraphFactory {
 
     const categorizeDynamicallyNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.categorizeDynamically", async () => {
-        logger.verbose('[HomeGraph:categorizeDynamically] entry', { cardsLength: state.cards.length });
+        categorizeDynamicallyLog.verbose('entry', { cardsLength: state.cards.length });
         if (state.cards.length === 0) {
-          logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: 0 });
+          categorizeDynamicallyLog.verbose('exit', { sectionProposalsCount: 0 });
           return { sectionProposals: [], agentTimings: [] };
         }
         const agentTimingsAccum: DebugMetaAgent[] = [];
@@ -633,7 +746,7 @@ export class HomeGraphFactory {
           ...s,
           itemIndices: s.itemIndices.filter((i) => i >= 0 && i < state.cards.length),
         }));
-        logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: proposals.length });
+        categorizeDynamicallyLog.verbose('exit', { sectionProposalsCount: proposals.length });
         return { sectionProposals: proposals, agentTimings: agentTimingsAccum };
       });
     };
@@ -649,11 +762,11 @@ export class HomeGraphFactory {
 
           await this.cache.set(key, state.sectionProposals, { ttl: HOME_CACHE_TTL });
 
-          logger.verbose('[HomeGraph:cacheCategorizerResults] cached', {
+          cacheCategorizerResultsLog.verbose('cached', {
             sectionCount: state.sectionProposals.length,
           });
         } catch (e) {
-          logger.warn('[HomeGraph:cacheCategorizerResults] cache write failed, continuing', { error: e });
+          cacheCategorizerResultsLog.warn('cache write failed, continuing', { error: e });
         }
 
         return {};
@@ -664,9 +777,9 @@ export class HomeGraphFactory {
       return timed("HomeGraph.normalizeAndSort", async () => {
         const cards = state.cards;
         const proposals = state.sectionProposals;
-        logger.verbose('[HomeGraph:normalizeAndSort] entry', { cardsLength: cards.length, proposalsLength: proposals.length });
+        normalizeAndSortLog.verbose('entry', { cardsLength: cards.length, proposalsLength: proposals.length });
         if (cards.length === 0) {
-          logger.verbose('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: 0, totalSections: 0 });
+          normalizeAndSortLog.verbose('exit', { totalOpportunities: 0, totalSections: 0 });
           return { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } };
         }
         const usedIndices = new Set<number>();
@@ -705,7 +818,7 @@ export class HomeGraphFactory {
           totalOpportunities: state.opportunities.length,
           totalSections: sections.length,
         };
-        logger.verbose('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
+        normalizeAndSortLog.verbose('exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
         return { sections, meta };
       });
     };

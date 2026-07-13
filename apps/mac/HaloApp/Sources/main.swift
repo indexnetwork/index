@@ -1,7 +1,22 @@
 import Cocoa
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+// Injected into the page: pressing "chrome" (desktop background, menu bar, or a
+// window's title bar) but not an interactive control asks the native side to
+// drag the window. The frameless WKWebView otherwise swallows every mouse event,
+// so there is no native title bar to grab.
+private let windowDragScript = """
+document.addEventListener('mousedown', function (e) {
+  if (e.button !== 0) return;
+  if (e.target.closest('a, button, input, textarea, select, [contenteditable], [role=button], .amiga-gadget, .mac-close, .mac-zoom')) return;
+  // Inside a window's body, let clicks through; only its title bar drags.
+  var win = e.target.closest('.amiga-window');
+  if (win && !e.target.closest('.mac-titlebar')) return;
+  window.webkit.messageHandlers.windowDrag.postMessage(null);
+}, true);
+"""
+
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var webView: WKWebView!
 
@@ -16,6 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if #available(macOS 11.0, *) {
             config.defaultWebpagePreferences.allowsContentJavaScript = true
         }
+        // Window-drag bridge (see windowDragScript above).
+        config.userContentController.add(self, name: "windowDrag")
+        config.userContentController.addUserScript(WKUserScript(
+            source: windowDragScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
 
         let contentRect = NSRect(x: 0, y: 0, width: 1200, height: 800)
         webView = WKWebView(frame: contentRect, configuration: config)
@@ -108,6 +127,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                  didFail navigation: WKNavigation!,
                  withError error: Error) {
         presentError("Failed to load: \(error.localizedDescription)")
+    }
+
+    // Page reported a press on a draggable region. performDrag needs a live
+    // event and is unreliable from an async handler, so run our own drag loop:
+    // while the button stays down, follow the cursor and reposition the window.
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.name == "windowDrag" else { return }
+        guard NSEvent.pressedMouseButtons & 0x1 != 0 else { return }
+
+        let startMouse = NSEvent.mouseLocation
+        let startOrigin = window.frame.origin
+        while let event = NSApp.nextEvent(matching: [.leftMouseUp, .leftMouseDragged],
+                                          until: .distantFuture,
+                                          inMode: .eventTracking,
+                                          dequeue: true) {
+            if event.type == .leftMouseUp { break }
+            let now = NSEvent.mouseLocation
+            window.setFrameOrigin(NSPoint(
+                x: startOrigin.x + (now.x - startMouse.x),
+                y: startOrigin.y + (now.y - startMouse.y)))
+        }
     }
 }
 

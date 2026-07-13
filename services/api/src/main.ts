@@ -33,10 +33,11 @@ import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
+import { SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
-import { log } from './lib/log';
+import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
@@ -53,14 +54,19 @@ import { discoveryRunQueue } from './queues/opportunity/discovery-run.queue';
 import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
+import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
+import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
+import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
+import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { integrationSyncQueue } from './queues/integration.queue';
-import { questionerQueue } from './queues/questioner.queue';
+import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
@@ -70,17 +76,28 @@ import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
+import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
+import { QuestionerAdapter } from './adapters/questioner.adapter';
+import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
 import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { NegotiationGraphFactory, PremiseGraphFactory, setTimingWrapper } from '@indexnetwork/protocol';
+import { IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
 import { agentService } from './services/agent.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
+
+// Wire the protocol library's logging into the rich API logger (context colors,
+// emoji, LOG_FILTER/LOG_LEVEL, Sentry, embedding redaction + payload truncation).
+// Protocol loggers are late-bound, so this upgrades loggers created at import time too.
+setLoggerFactory(
+  (context, source) => log.withContext(context as Parameters<typeof log.withContext>[0], source),
+  sanitizeForLog,
+);
 
 // Wire ChatGraphFactory into chat service at startup
 chatSessionService.setFactory(chatFactory);
@@ -106,6 +123,16 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
   backgroundAgentDispatcher,
   negotiationTimeoutQueue,
+  // Stalled/capped/timeout negotiations enqueue follow-up questions for the
+  // source user (mode='negotiation', sourceType='opportunity') so the intent
+  // page can surface what would unblock the next attempt.
+  questionerEnqueueIfEnabled(),
+  // Finished negotiations enqueue memory distillation for both sides (P5.2,
+  // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
+  reflectEnqueueIfEnabled(),
+  // Screen/turn prompts read the speaker's own negotiator memories (P5.3,
+  // gated on NEGOTIATOR_MEMORY_INJECT).
+  negotiatorMemoryRetrieve(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -202,12 +229,52 @@ const profileAnswerPremiseGraph = new PremiseGraphFactory(
   embedderAdapter,
 ).createGraph();
 
+const answerQuestionerAdapter = new QuestionerAdapter(db);
+// Intent graph for answer-driven refinements — same update path as the chat
+// update_intent tool. The graph owns merge, verification, sanitization,
+// re-embedding, persistence, and HyDE regeneration.
+const answerIntentGraph = new IntentGraphFactory(chatDatabaseAdapter, embedderAdapter, intentQueue).createGraph();
+
+// Shared by the `negotiation` (post-stall) and `negotiation_inflight`
+// (ask_user pause) answer reactions — both store the answer on the
+// opportunity's metadata.userAnswers channel.
+const storeNegotiationContext = storeNegotiationContextFactory({
+  getOpportunity: async (opportunityId) => {
+    const opp = await chatDatabaseAdapter.getOpportunity(opportunityId);
+    if (!opp) return null;
+    return {
+      id: opp.id,
+      status: opp.status,
+      metadata: (opp.metadata ?? {}) as Record<string, unknown>,
+    };
+  },
+  updateOpportunityMetadata: async (opportunityId, metadata) => {
+    await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
+  },
+});
+
 const questionAnswerDeps = {
   createPremiseFromAnswer: createPremiseFromAnswerFactory({
     runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
     emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
   }),
   enqueueIntentRefinement: enqueueIntentRefinementFactory({
+    getQuestionPrompt: async (questionId) => {
+      const question = await answerQuestionerAdapter.getById(questionId);
+      return question?.payload.prompt ?? null;
+    },
+    getUserProfile: async (userId) => {
+      const profile = await chatDatabaseAdapter.getProfile(userId);
+      return profile ? JSON.stringify(profile) : '';
+    },
+    runIntentUpdate: async ({ userId, userProfile, inputContent, targetIntentIds }) => {
+      const result = await answerIntentGraph.invoke(
+        { userId, userProfile, operationMode: 'update' as const, inputContent, targetIntentIds },
+        { recursionLimit: 100 },
+      );
+      const executionResults = (result as { executionResults?: Array<{ success: boolean }> }).executionResults;
+      return { applied: !!executionResults?.some((r) => r.success) };
+    },
     getIntent: async (intentId) => {
       const intent = await chatDatabaseAdapter.getIntent(intentId);
       if (!intent) return null;
@@ -218,25 +285,30 @@ const questionAnswerDeps = {
         status: (intent.status ?? 'ACTIVE').toLowerCase(),
       };
     },
-    updateIntentDescription: async (intentId, newDescription) => {
-      await chatDatabaseAdapter.updateIntent(intentId, { payload: newDescription });
-    },
-    enqueueHydeRegeneration: async (data) => {
-      await intentQueue.addGenerateHydeJob(data);
-    },
   }),
-  storeNegotiationContext: storeNegotiationContextFactory({
-    getOpportunity: async (opportunityId) => {
-      const opp = await chatDatabaseAdapter.getOpportunity(opportunityId);
-      if (!opp) return null;
-      return {
-        id: opp.id,
-        status: opp.status,
-        metadata: (opp.metadata ?? {}) as Record<string, unknown>,
-      };
+  storeNegotiationContext,
+  resumeInflightNegotiation: resumeInflightNegotiationFactory({
+    storeNegotiationContext,
+    getNegotiationTaskForOpportunity: (opportunityId) =>
+      conversationDatabaseAdapter.getNegotiationTaskForOpportunity(opportunityId),
+    cancelAskUserExpiry: (negotiationId) => negotiationTimeoutQueue.cancelAskUserExpiry(negotiationId),
+    closeTask: async (taskId, reason) => {
+      await conversationDatabaseAdapter.updateTaskState(taskId, 'canceled', { reason });
     },
-    updateOpportunityMetadata: async (opportunityId, metadata) => {
-      await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
+    enqueueResume: async (opportunityId, userId) => {
+      await negotiationRunExistingQueue.addJob({ opportunityId, userId });
+    },
+    // P5.2: the answer is already a distilled disclosure policy — record it
+    // as a negotiator memory (no-op while NEGOTIATOR_MEMORY_WRITE_ENABLED is off).
+    recordDisclosureRule: async ({ userId, questionId, selectedOptions, freeText }) => {
+      const question = await answerQuestionerAdapter.getById(questionId).catch(() => null);
+      await negotiatorMemoryWriteService.recordDisclosureRuleFromAnswer({
+        userId,
+        questionId,
+        ...(question?.payload.prompt && { questionPrompt: question.payload.prompt }),
+        selectedOptions,
+        ...(freeText !== undefined && { freeText }),
+      });
     },
   }),
   resolveChatQuestionWait: ({ questionId, answer }: {
@@ -270,14 +342,17 @@ discoveryRunQueue.startWorker();
 enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
+checkpointRetentionCron.start();
 notificationQueue.startWorker();
 enrichmentQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
+negotiationReflectQueue.startWorker();
+negotiationReflectQueue.startCrons();
 integrationSyncQueue.startWorker();
-if (process.env.QUESTIONER_ENABLED === 'true') {
+if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
 premiseQueue.startWorker();
@@ -304,9 +379,18 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
 
+// Warm up the PostgresSaver checkpointer at boot so the first chat request
+// doesn't pay the table-setup round trip and misconfiguration surfaces at
+// startup instead of mid-stream. Non-fatal: chat degrades to no checkpointer.
+getCheckpointer().catch((err) => {
+  logger.warn('Checkpointer warm-up failed; chat will run without persistence', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+});
+
 // ── Telegram bot startup ────────────────────────────────────────────────────
 if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
-  const webhookBase = process.env.TELEGRAM_WEBHOOK_URL ?? process.env.BASE_URL ?? process.env.APP_URL ?? '';
+  const webhookBase = process.env.TELEGRAM_WEBHOOK_URL ?? process.env.API_URL ?? '';
   const webhookUrl = `${webhookBase.replace(/\/$/, '')}/api/webhooks/telegram`;
   setWebhook(webhookUrl, process.env.TELEGRAM_WEBHOOK_SECRET).catch((err) => {
     logger.error('Failed to register Telegram webhook on startup', { error: err });
@@ -600,6 +684,11 @@ const server = Bun.serve({
             // Map agent-scope violations to 403 (network-scoped API keys hitting
             // a network they aren't bound to)
             if (error instanceof ScopeViolationError) {
+              setSpanHttpStatus(403);
+              return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+            }
+            // Session-only endpoints reject API-key credentials outright
+            if (error instanceof SessionRequiredError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }

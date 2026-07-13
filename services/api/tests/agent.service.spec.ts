@@ -17,7 +17,7 @@ function createAgentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     ownerId: OWNER_ID,
     name: 'Test Agent',
     description: 'Handles agent tasks',
-    type: 'personal',
+    type: 'external',
     status: 'active',
     metadata: {},
     notifyOnOpportunity: true,
@@ -165,7 +165,7 @@ describe('AgentService', () => {
         ownerId: OWNER_ID,
         name: 'Test Agent',
         description: 'Helpful assistant',
-        type: 'personal',
+        type: 'external',
       },
     ]);
     expect(result.transports).toEqual([]);

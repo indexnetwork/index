@@ -699,7 +699,7 @@ export interface Database {
    * // After graph outputs EXPIRE action
    * const result = await db.archiveIntent(action.id);
    * if (!result.success) {
-   *   console.error(`Failed to archive: ${result.error}`);
+   *   console.error('Failed to archive intent', { error: result.error });
    * }
    * ```
    */
@@ -2230,11 +2230,39 @@ export interface NegotiationQueries {
   setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void>;
 
   /**
+   * Merges a screen-gate decision (P2.1 shadow mode) into
+   * `metadata.screenDecision`, leaving other metadata keys intact. Optional so
+   * existing fakes/wireups remain valid; when absent the screen node logs the
+   * decision and proceeds without persisting.
+   * @param taskId - Task whose metadata to enrich
+   * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
+   */
+  setTaskScreenDecision?(taskId: string, screenDecision: Record<string, unknown>): Promise<void>;
+
+  /**
    * Returns the most-recently-created task whose metadata carries
    * `type: 'negotiation'` and `opportunityId: <id>`. Returns null if no
    * negotiation has been started for that opportunity yet.
    */
   getNegotiationTaskForOpportunity(opportunityId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null>;
+
+  /**
+   * Returns the most-recently-created task whose metadata carries
+   * `type: 'negotiation'` on the given conversation, regardless of
+   * opportunityId or direction. Used by the init node's conversation-scoped
+   * tie-break: symmetric concurrent starts carry different opportunityIds, so
+   * the opportunity-scoped lookup above cannot see the competing task.
+   * Optional so existing fakes/wireups remain valid; when absent the
+   * tie-break is skipped (pre-stamp behavior).
+   */
+  getLatestNegotiationTaskForConversation?(conversationId: string): Promise<{
     id: string;
     conversationId: string;
     state: string;

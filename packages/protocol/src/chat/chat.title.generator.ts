@@ -1,10 +1,9 @@
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { log } from "../shared/observability/log.js";
 import { Timed } from "../shared/observability/performance.js";
 
-import { createModel } from "../shared/agent/model.config.js";
+import { createResilientModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = log.lib.from("ChatTitleGenerator");
@@ -26,10 +25,10 @@ export interface TitleGeneratorInput {
  * Only meaningful when there is at least one user message and one assistant message.
  */
 export class ChatTitleGenerator {
-  private model: ChatOpenAI;
+  private model: ReturnType<typeof createResilientModel>;
 
   constructor() {
-    this.model = createModel("chatTitleGenerator");
+    this.model = createResilientModel("chatTitleGenerator");
   }
 
   /**
@@ -54,10 +53,10 @@ export class ChatTitleGenerator {
 
       const text = typeof response.content === "string" ? response.content : String(response.content ?? "").trim();
       const title = text.slice(0, 80).trim() || "New chat";
-      logger.verbose("[ChatTitleGenerator.invoke] Title generated", { titleLength: title.length });
+      logger.verbose("Title generated", { titleLength: title.length });
       return title;
     } catch (error) {
-      logger.warn("[ChatTitleGenerator.invoke] Failed to generate title", {
+      logger.warn("Failed to generate title", {
         error: error instanceof Error ? error.message : String(error),
       });
       return "New chat";

@@ -42,15 +42,19 @@ import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
+import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
+import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
+import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
-import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory } from '@indexnetwork/protocol';
+import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, ChatQuestionsHost, PersistableQuestion, PersistedQuestion } from '@indexnetwork/protocol';
 
-import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
+import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
@@ -143,14 +147,26 @@ const protocolDeps = {
   },
   mintConnectToken: signConnectToken,
   mintConnectLink,
-  frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
+  frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
   questionerDatabase: questionerAdapter,
   getUserContextText: ensureGlobalUserContext,
   chatQuestions: chatQuestionsHost,
-  ...(process.env.QUESTIONER_ENABLED === 'true' && {
+  ...(isQuestionerEnabled() && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
       await questionerQueue.addGenerateJob(input);
+    },
+  }),
+  // P5.4 (IND-408): host bridge for the negotiator persona's remember/forget
+  // memory tools. Injected only while memory writes are enabled — when the
+  // flag is off the tools are simply not registered. Consumed exclusively by
+  // createNegotiatorTools; the orchestrator registry never sees these tools.
+  ...(isNegotiatorMemoryWriteEnabled() && {
+    negotiatorMemoryTools: {
+      remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>
+        negotiatorMemoryWriteService.rememberFromChat({ userId, ...input }),
+      forget: async (userId: string, input: { memoryId?: string; description?: string }) =>
+        negotiatorMemoryWriteService.forgetFromChat({ userId, ...input }),
     },
   }),
 };
@@ -192,6 +208,10 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.agentDispatcher!,
     protocolDeps.negotiationTimeoutQueue,
     qEnqueue,
+    // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
+    reflectEnqueueIfEnabled(),
+    // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+    negotiatorMemoryRetrieve(),
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
@@ -221,7 +241,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const JWKS = createRemoteJWKSet(
-  new URL('/api/auth/jwks', BASE_URL),
+  new URL('/api/auth/jwks', API_URL),
 );
 
 function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
@@ -454,7 +474,7 @@ const authResolver: McpAuthResolver = {
       if (isJwt) {
         // JWT path
         try {
-          const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
+          const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
           if (typeof payload.id === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface });
           if (typeof payload.sub === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
           throw new Error('JWT payload missing user ID');
@@ -469,7 +489,7 @@ const authResolver: McpAuthResolver = {
       } else {
         // Opaque token path
         try {
-          const res = await fetch(`${BASE_URL}/api/auth/mcp/get-session`, {
+          const res = await fetch(`${API_URL}/api/auth/mcp/get-session`, {
             headers: { Authorization: `Bearer ${input.bearerToken}` },
             signal: AbortSignal.timeout(5000),
           });
@@ -490,7 +510,7 @@ const authResolver: McpAuthResolver = {
       let sessionUserId: string | undefined;
 
       try {
-        const sessionRes = await fetch(`${BASE_URL}/api/auth/get-session`, {
+        const sessionRes = await fetch(`${API_URL}/api/auth/get-session`, {
           headers: { 'x-api-key': input.apiKey },
           signal: AbortSignal.timeout(5000),
         });
@@ -655,7 +675,7 @@ function createMcpServerInstance(): McpServer {
         networkId?: string;
         scopeType?: 'intent';
         scopeId?: string;
-        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat'>;
+        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat'>;
         limit?: number;
       },
     ) => {
@@ -882,7 +902,7 @@ export async function mcpHandler(
         status: 401,
         headers: {
           'Content-Type': 'application/json',
-          'WWW-Authenticate': `Bearer resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+          'WWW-Authenticate': `Bearer resource_metadata="${API_URL}/.well-known/oauth-protected-resource"`,
           ...corsHeaders,
         },
       },
@@ -950,7 +970,7 @@ export async function mcpHandler(
           status: 401,
           headers: {
             'Content-Type': 'application/json',
-            'WWW-Authenticate': `Bearer resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+            'WWW-Authenticate': `Bearer resource_metadata="${API_URL}/.well-known/oauth-protected-resource"`,
             ...corsHeaders,
           },
         },

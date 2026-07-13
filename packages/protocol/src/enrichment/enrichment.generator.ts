@@ -3,7 +3,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("EnrichmentGenerator");
@@ -37,12 +37,11 @@ type Profile = z.infer<typeof responseFormat>;
 export type GeneratedProfile = Profile & { userId: string };
 
 export class EnrichmentGenerator {
-  private static baseModel: ReturnType<typeof createModel> | undefined;
+  private static sharedModel: ReturnType<typeof createStructuredModel> | undefined;
   private model: { invoke(input: unknown, config?: { signal?: AbortSignal }): Promise<unknown> };
 
   constructor() {
-    const baseModel = EnrichmentGenerator.baseModel ??= createModel("profileGenerator");
-    this.model = baseModel.withStructuredOutput(responseFormat, {
+    this.model = EnrichmentGenerator.sharedModel ??= createStructuredModel("profileGenerator", responseFormat, {
       name: "profile_generator"
     });
   }

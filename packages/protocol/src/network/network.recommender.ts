@@ -1,10 +1,9 @@
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
 import { log } from "../shared/observability/log.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 // ─── Response schema ───────────────────────────────────────────────────────────
@@ -36,6 +35,7 @@ export interface NetworkRecommenderInput {
 // ─── Logger ───────────────────────────────────────────────────────────────────
 
 const logger = log.lib.from("NetworkRecommender");
+const invokeLog = log.lib.from("NetworkRecommender:invoke");
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
@@ -73,11 +73,10 @@ OUTPUT RULES:
  * be set — tests that import `createNetworkTools` without a live LLM env are unaffected.
  */
 export class NetworkRecommender {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const model = createModel("networkRecommender");
-    this.model = model.withStructuredOutput(NetworkRecommenderOutputSchema, {
+    this.model = createStructuredModel("networkRecommender", NetworkRecommenderOutputSchema, {
       name: "network_recommender",
     });
   }
@@ -92,7 +91,7 @@ export class NetworkRecommender {
   public async invoke(input: NetworkRecommenderInput): Promise<NetworkRecommenderOutput | null> {
     if (input.networks.length === 0) return null;
 
-    logger.verbose("[NetworkRecommender.invoke] Ranking communities", {
+    invokeLog.verbose("Ranking communities", {
       networkCount: input.networks.length,
     });
 
@@ -113,15 +112,15 @@ export class NetworkRecommender {
       const result = await invokeWithAbortSignal(this.model, messages);
       const parsed = NetworkRecommenderOutputSchema.safeParse(result);
       if (!parsed.success) {
-        logger.error("[NetworkRecommender] Schema validation failed", { error: parsed.error });
+        logger.error("Schema validation failed", { error: parsed.error });
         return null;
       }
-      logger.verbose("[NetworkRecommender.invoke] Ranking complete", {
+      invokeLog.verbose("Ranking complete", {
         top: parsed.data.rankedNetworkIds[0],
       });
       return parsed.data;
     } catch (error) {
-      logger.error("[NetworkRecommender] Error during execution", { error });
+      logger.error("Error during execution", { error });
       return null;
     }
   }

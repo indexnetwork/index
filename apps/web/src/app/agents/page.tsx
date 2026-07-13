@@ -326,7 +326,7 @@ export default function AgentsPage() {
     }
 
     let cancelled = false;
-    const personalIds = agents.filter((a) => a.type === 'personal').map((a) => a.id);
+    const personalIds = agents.filter((a) => a.type === 'external').map((a) => a.id);
 
     Promise.all(
       personalIds.map((id) =>
@@ -348,7 +348,7 @@ export default function AgentsPage() {
   
 
   const personalAgents = useMemo(
-    () => agents.filter((agent) => agent.type === 'personal'),
+    () => agents.filter((agent) => agent.type === 'external'),
     [agents],
   );
   const systemAgents = useMemo(

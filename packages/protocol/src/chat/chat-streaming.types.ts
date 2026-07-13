@@ -484,6 +484,8 @@ export interface NegotiationSessionStartEvent extends ChatStreamEventBase {
   negotiationConversationId: string;
   sourceUserId: string;
   candidateUserId: string;
+  /** The user holding the initiating seat for this match (v2 stamp). */
+  initiatorUserId?: string;
   candidateName?: string;
   trigger: "orchestrator" | "ambient";
   startedAt: number;
@@ -503,7 +505,7 @@ export interface NegotiationTurnEvent extends ChatStreamEventBase {
   negotiationConversationId: string;
   turnIndex: number;
   actor: "source" | "candidate";
-  action: "propose" | "accept" | "reject" | "counter" | "question";
+  action: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };
@@ -518,7 +520,8 @@ export interface NegotiationOutcomeEvent extends ChatStreamEventBase {
     | "rejected_stalled"
     | "waiting_for_agent"
     | "timed_out"
-    | "turn_cap";
+    | "turn_cap"
+    | "screened_out";
   turnCount: number;
   reasoning?: string;
   agreedRoles?: { ownUser?: string; otherUser?: string };

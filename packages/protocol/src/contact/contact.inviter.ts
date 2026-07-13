@@ -9,9 +9,7 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
-import { createModel } from "../shared/agent/model.config.js";
-
-const model = createModel("inviteGenerator");
+import { createStructuredModel } from "../shared/agent/model.config.js";
 
 const InviteInputSchema = z.object({
   recipientName: z.string(),
@@ -51,7 +49,7 @@ Do NOT use placeholder brackets like [Name]. Use the actual names provided.`;
 export async function generateInviteMessage(input: InviteInput): Promise<InviteOutput> {
   const validated = InviteInputSchema.parse(input);
 
-  const structuredModel = model.withStructuredOutput(InviteOutputSchema);
+  const structuredModel = createStructuredModel("inviteGenerator", InviteOutputSchema);
 
   const userPrompt = `Generate an invite message with this context:
 - Sender: ${validated.senderName}

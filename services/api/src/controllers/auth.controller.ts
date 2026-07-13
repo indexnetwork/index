@@ -2,10 +2,11 @@ import { z } from 'zod';
 
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard } from '../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
 import { enrichmentService } from '../services/enrichment.service';
+import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
@@ -85,6 +86,11 @@ export class AuthController {
         ...userFields,
         notificationPreferences,
       },
+      // Feature flags the web app reads off the session bootstrap (no separate
+      // config channel). negotiatorChat gates the sidebar negotiator entry (P4.4).
+      features: {
+        negotiatorChat: isNegotiatorChatEnabled(),
+      },
     });
   }
 
@@ -123,9 +129,10 @@ export class AuthController {
 
   /**
    * Soft-deletes the authenticated user's account.
+   * Session-only: a leaked agent API key must not be able to destroy the account (IND-384).
    */
   @Delete('/account')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async deleteAccount(_req: Request, user: AuthenticatedUser) {
     logger.verbose('Account deletion requested', { userId: user.id });
     await userService.softDelete(user.id);

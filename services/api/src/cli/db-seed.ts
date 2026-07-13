@@ -5,7 +5,7 @@ import { writeFile } from 'node:fs/promises';
 import { and, eq, sql } from 'drizzle-orm/sql';
 
 const envFile = `.env.development`;
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { agentPermissions, agents, networkMembers, networks, users, userSocials } from '../schemas/database.schema';
@@ -428,7 +428,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         ownerId: user.id,
         name: `${persona.name}'s Agent`,
         description: `Personal agent for ${persona.name}`,
-        type: 'personal',
+        type: 'external',
         status: 'active',
         metadata: {},
       }).onConflictDoNothing();

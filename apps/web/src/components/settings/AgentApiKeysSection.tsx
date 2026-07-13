@@ -149,8 +149,8 @@ export default function AgentApiKeysSection() {
 
   const tokensRequestRef = useRef(0);
 
-  const personalAgents = useMemo(() => agents.filter((a) => a.type === "personal"), [agents]);
-  const primaryAgent = personalAgents[0] ?? null;
+  const externalAgents = useMemo(() => agents.filter((a) => a.type === "external"), [agents]);
+  const primaryAgent = externalAgents[0] ?? null;
 
   // Defensive: clear plaintext API key from memory on unmount.
   useEffect(() => {
@@ -220,7 +220,7 @@ export default function AgentApiKeysSection() {
 
   async function handleCreateAgent() {
     setConnecting(true);
-    const name = generateDefaultAgentName(personalAgents);
+    const name = generateDefaultAgentName(externalAgents);
     let createdAgent: Agent | null = null;
     try {
       createdAgent = await agentsService.create(name);

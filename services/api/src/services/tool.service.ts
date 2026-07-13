@@ -14,13 +14,16 @@ import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, Op
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
+import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import db from '../lib/drizzle/drizzle';
 
 import { log } from '../lib/log';
 
-const logger = log.service.from('tool');
+const logger = log.service.from('ToolService');
 
 const questionerAdapter = new QuestionerAdapter(db);
 
@@ -73,7 +76,7 @@ export class ToolService {
           networkId?: string;
           scopeType?: 'intent';
           scopeId?: string;
-          modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat'>;
+          modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat'>;
           limit?: number;
         },
       ) => {
@@ -95,6 +98,19 @@ export class ToolService {
           })),
         }));
       },
+      // P4.3/IND-404: conversational answers from the negotiator chat ride the
+      // exact pipeline the question cards use — atomic pending→answered flip in
+      // the adapter, then QuestionEvents.onAnswered mode dispatch.
+      answerPendingQuestion: async (
+        userId: string,
+        questionId: string,
+        answer: { selectedOptions: string[]; freeText?: string },
+      ) => questionerAdapter.answer(questionId, userId, {
+        selectedOptions: answer.selectedOptions,
+        ...(answer.freeText ? { freeText: answer.freeText } : {}),
+        answeredBy: userId,
+        answeredAt: new Date().toISOString(),
+      }),
       graphs,
     };
   }
@@ -235,11 +251,18 @@ export class ToolService {
     // External agent yield is handled via the ProtocolDeps flow in tool.factory.ts and mcp.controller.ts.
     const noOpDispatcher: AgentDispatcher = {
       dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
-      hasPersonalAgent: async () => false,
+      hasExternalAgent: async () => false,
     };
     const negotiationGraph = new NegotiationGraphFactory(
       conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
       noOpDispatcher,
+      undefined,
+      // Stalled negotiations enqueue follow-up questions for the source user.
+      questionerEnqueueIfEnabled(),
+      // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
+      reflectEnqueueIfEnabled(),
+      // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+      negotiatorMemoryRetrieve(),
     ).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(
       database,

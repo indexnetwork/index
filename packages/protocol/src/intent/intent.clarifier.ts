@@ -1,16 +1,15 @@
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("IntentClarifier");
 
-type ClarifierStructuredModel = ReturnType<ChatOpenAI["withStructuredOutput"]>;
+type ClarifierStructuredModel = ReturnType<typeof createStructuredModel>;
 
 const clarificationSchema = z.object({
   needsClarification: z.boolean(),
@@ -76,14 +75,14 @@ export class IntentClarifier {
   private readonly clarificationDraftModel: ClarifierStructuredModel;
 
   constructor() {
-    const baseModel = createModel("intentClarifier");
-    this.model = baseModel.withStructuredOutput(clarificationSchema, {
+    this.model = createStructuredModel("intentClarifier", clarificationSchema, {
       name: "intent_clarifier",
     });
-    this.suggestionModel = baseModel.withStructuredOutput(suggestionSchema, {
+    this.suggestionModel = createStructuredModel("intentClarifier", suggestionSchema, {
       name: "intent_clarifier_suggestion",
     });
-    this.clarificationDraftModel = baseModel.withStructuredOutput(
+    this.clarificationDraftModel = createStructuredModel(
+      "intentClarifier",
       clarificationDraftSchema,
       { name: "intent_clarifier_message" }
     );

@@ -10,7 +10,7 @@ export interface SeedAgentInput {
   id: string;
   ownerId: string;
   name: string;
-  type?: 'personal' | 'system';
+  type?: 'personal' | 'external' | 'system';
   description?: string | null;
   status?: 'active' | 'inactive';
 }
@@ -68,7 +68,7 @@ export function createFakeAgentDb(): FakeAgentDb {
         ownerId: input.ownerId,
         name: input.name,
         description: input.description ?? null,
-        type: input.type ?? 'personal',
+        type: input.type ?? 'external',
         status: input.status ?? 'active',
         metadata: {},
         createdAt: now,
@@ -85,7 +85,7 @@ export function createFakeAgentDb(): FakeAgentDb {
         ownerId: input.ownerId,
         name: input.name,
         description: input.description ?? null,
-        type: input.type ?? 'personal',
+        type: input.type,
         status: 'active',
         metadata: input.metadata ?? {},
         createdAt: now,

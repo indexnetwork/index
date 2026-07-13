@@ -8,7 +8,7 @@ function makeAgent(overrides: Partial<AgentWithRelations> = {}): AgentWithRelati
     ownerId: overrides.ownerId ?? 'user-1',
     name: 'Test Agent',
     description: null,
-    type: overrides.type ?? 'personal',
+    type: overrides.type ?? 'external',
     status: 'active',
     metadata: {},
     lastSeenAt: overrides.lastSeenAt ?? null,
@@ -39,14 +39,14 @@ describe('AgentDispatcherImpl.dispatch', () => {
   const scope = { action: 'negotiation.respond', scopeType: 'network', scopeId: 'net-1' };
   const payload = { negotiationId: 'neg-1', history: [] } as Parameters<AgentDispatcherImpl['dispatch']>[2];
 
-  it('returns no_agent when no personal agent is registered', async () => {
+  it('returns no_agent when no external agent is registered', async () => {
     findAuthorizedAgents.mockResolvedValue([]);
     const result = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(result).toEqual({ handled: false, reason: 'no_agent' });
     expect(enqueueTimeout).not.toHaveBeenCalled();
   });
 
-  it('returns timeout when all personal agents are stale', async () => {
+  it('returns timeout when all external agents are stale', async () => {
     findAuthorizedAgents.mockResolvedValue([makeAgent({ lastSeenAt: STALE })]);
     const result = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(result.handled).toBe(false);
@@ -54,14 +54,14 @@ describe('AgentDispatcherImpl.dispatch', () => {
     expect(enqueueTimeout).not.toHaveBeenCalled();
   });
 
-  it('returns timeout when the personal agent has never been seen', async () => {
+  it('returns timeout when the external agent has never been seen', async () => {
     findAuthorizedAgents.mockResolvedValue([makeAgent({ lastSeenAt: null })]);
     const result = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(result.reason).toBe('timeout');
     expect(enqueueTimeout).not.toHaveBeenCalled();
   });
 
-  it('parks with the provided timeoutMs when a fresh personal agent exists', async () => {
+  it('parks with the provided timeoutMs when a fresh external agent exists', async () => {
     findAuthorizedAgents.mockResolvedValue([makeAgent({ lastSeenAt: FRESH })]);
     const result = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(result).toEqual({ handled: false, reason: 'waiting', resumeToken: 'neg-1' });
@@ -81,9 +81,40 @@ describe('AgentDispatcherImpl.dispatch', () => {
   it('ignores system agents when checking freshness', async () => {
     findAuthorizedAgents.mockResolvedValue([
       makeAgent({ type: 'system', lastSeenAt: FRESH }),
-      makeAgent({ type: 'personal', lastSeenAt: STALE }),
+      makeAgent({ type: 'external', lastSeenAt: STALE }),
     ]);
     const result = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(result.reason).toBe('timeout');
+  });
+
+  it('personal negotiator rows never trigger parking (IND-410)', async () => {
+    // Even a "fresh" personal row must not park a turn — negotiators do not poll.
+    findAuthorizedAgents.mockResolvedValue([makeAgent({ type: 'personal', lastSeenAt: FRESH })]);
+    const result = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
+    expect(result).toEqual({ handled: false, reason: 'no_agent' });
+    expect(enqueueTimeout).not.toHaveBeenCalled();
+  });
+});
+
+describe('AgentDispatcherImpl.hasExternalAgent', () => {
+  const scope = { action: 'negotiation.respond', scopeType: 'network', scopeId: 'net-1' };
+
+  const makeDispatcher = (agents: AgentWithRelations[]) =>
+    new AgentDispatcherImpl(
+      { findAuthorizedAgents: mock(async () => agents) },
+      undefined,
+    );
+
+  it('is type-only: a stale external agent still counts (maxTurns rule, IND-410)', async () => {
+    const dispatcher = makeDispatcher([makeAgent({ lastSeenAt: STALE })]);
+    expect(await dispatcher.hasExternalAgent('user-1', scope)).toBe(true);
+  });
+
+  it('ignores personal negotiator and system rows', async () => {
+    const dispatcher = makeDispatcher([
+      makeAgent({ type: 'personal', lastSeenAt: FRESH }),
+      makeAgent({ type: 'system', lastSeenAt: FRESH }),
+    ]);
+    expect(await dispatcher.hasExternalAgent('user-1', scope)).toBe(false);
   });
 });

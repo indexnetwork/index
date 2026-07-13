@@ -80,6 +80,32 @@ describe('ConversationDatabaseAdapter', () => {
     }, 10000);
   });
 
+  describe('getLatestNegotiationTaskForConversation', () => {
+    it('returns the negotiation task, ignoring non-negotiation tasks, and null for fresh conversations', async () => {
+      const conv = await adapter.createConversation([
+        { participantId: 'agent:init-a', participantType: 'agent' as const },
+        { participantId: 'agent:init-b', participantType: 'agent' as const },
+      ]);
+      createdIds.push(conv.id);
+
+      expect(await adapter.getLatestNegotiationTaskForConversation(conv.id)).toBeNull();
+
+      // Non-negotiation task must not match.
+      await adapter.createTask(conv.id, { type: 'chat' });
+      expect(await adapter.getLatestNegotiationTaskForConversation(conv.id)).toBeNull();
+
+      const negotiationTask = await adapter.createTask(conv.id, {
+        type: 'negotiation',
+        sourceUserId: 'init-a',
+        initiatorUserId: 'init-a',
+      });
+
+      const found = await adapter.getLatestNegotiationTaskForConversation(conv.id);
+      expect(found?.id).toBe(negotiationTask.id);
+      expect(found?.metadata?.initiatorUserId).toBe('init-a');
+    }, 10000);
+  });
+
   describe('artifacts', () => {
     it('creates artifact linked to task', async () => {
       const task = await adapter.createTask(createdIds[0]);
@@ -91,6 +117,71 @@ describe('ConversationDatabaseAdapter', () => {
       expect(artifact.id).toBeDefined();
       expect(artifact.taskId).toBe(task.id);
     }, 10000);
+  });
+
+  describe('getNegotiationsByUser — screened_out visibility (P2.2)', () => {
+    it('screened_out rows stay visible to the owner but are excluded from the mutual (non-self) view', async () => {
+      const run = Date.now();
+      const userA = `screen-owner-${run}`;
+      const userB = `screen-counterparty-${run}`;
+
+      const conv = await adapter.createConversation([
+        { participantId: `agent:${userA}`, participantType: 'agent' as const },
+        { participantId: `agent:${userB}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conv.id);
+
+      // 1. A screened_out negotiation (zero turns, gate declined).
+      const screenedTask = await adapter.createTask(conv.id, {
+        type: 'negotiation',
+        sourceUserId: userA,
+        candidateUserId: userB,
+        initiatorUserId: userA,
+      });
+      await adapter.updateTaskState(screenedTask.id, 'completed');
+      await adapter.createArtifact({
+        taskId: screenedTask.id,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: false, agreedRoles: [], reasoning: 'gate declined', turnCount: 0, reason: 'screened_out' } }],
+      });
+
+      // 2. A normally-rejected negotiation between the same pair.
+      const rejectedTask = await adapter.createTask(conv.id, {
+        type: 'negotiation',
+        sourceUserId: userA,
+        candidateUserId: userB,
+        initiatorUserId: userA,
+      });
+      await adapter.updateTaskState(rejectedTask.id, 'completed');
+      await adapter.createArtifact({
+        taskId: rejectedTask.id,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: false, agreedRoles: [], reasoning: 'declined after turns', turnCount: 3 } }],
+      });
+
+      // 3. An in-progress negotiation (no artifact yet) — must survive the exclusion filter.
+      const inProgressTask = await adapter.createTask(conv.id, {
+        type: 'negotiation',
+        sourceUserId: userA,
+        candidateUserId: userB,
+        initiatorUserId: userA,
+      });
+
+      // Self view: the owner sees all three, including their own gate decision.
+      const selfRows = await adapter.getNegotiationsByUser(userA, { limit: 50 });
+      const selfIds = selfRows.map((r) => r.id);
+      expect(selfIds).toContain(screenedTask.id);
+      expect(selfIds).toContain(rejectedTask.id);
+      expect(selfIds).toContain(inProgressTask.id);
+
+      // Mutual view (counterparty viewing the owner's profile): the gate
+      // decision is invisible; real negotiations and in-flight rows remain.
+      const mutualRows = await adapter.getNegotiationsByUser(userA, { limit: 50, mutualWithUserId: userB });
+      const mutualIds = mutualRows.map((r) => r.id);
+      expect(mutualIds).not.toContain(screenedTask.id);
+      expect(mutualIds).toContain(rejectedTask.id);
+      expect(mutualIds).toContain(inProgressTask.id);
+    }, 30000);
   });
 
   describe('hideConversation', () => {

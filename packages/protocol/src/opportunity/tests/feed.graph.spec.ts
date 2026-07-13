@@ -5,7 +5,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { HomeGraphFactory, stripLeadingNarratorName } from '../feed/feed.graph.js';
+import { HomeGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES } from '../feed/feed.graph.js';
 import { selectByComposition, classifyOpportunity, FEED_SOFT_TARGETS } from '../opportunity.utils.js';
 import type { HomeGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
@@ -147,6 +147,45 @@ describe('HomeGraph', () => {
     expect(firstItem?.narratorChip?.name).toBe('Index');
   }, 70000);
 
+  test('drops card when counterpart user is deleted (no users row, no profile)', async () => {
+    const viewerId = 'viewer-1';
+    const orphanId = 'deleted-user';
+    const keptId = 'other-1';
+    const orphanOpp = minimalOpportunityAgentViewer(viewerId, orphanId, 'opp-orphan');
+    const keptOpp = minimalOpportunityAgentViewer(viewerId, keptId, 'opp-kept');
+    const db = createMockDb([orphanOpp, keptOpp]);
+    // Simulate a deleted counterpart: users row gone, profile gone.
+    db.getUser = (id: string) =>
+      id === orphanId
+        ? Promise.resolve(null)
+        : Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null });
+    const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    const items = result.sections.flatMap((s) => s.items);
+    expect(items.map((i) => i.opportunityId)).toEqual(['opp-kept']);
+    expect(items.some((i) => i.name === 'Unknown')).toBe(false);
+  }, 30000);
+
+  test('keeps card when users row is missing but profile identity name resolves', async () => {
+    const viewerId = 'viewer-1';
+    const ghostId = 'profile-only-user';
+    const opp = minimalOpportunityAgentViewer(viewerId, ghostId, 'opp-profile-only');
+    const db = createMockDb([opp]);
+    db.getUser = () => Promise.resolve(null);
+    db.getProfile = () => Promise.resolve({ identity: { name: 'Profile Name' } });
+    const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    const items = result.sections.flatMap((s) => s.items);
+    expect(items.map((i) => i.opportunityId)).toEqual(['opp-profile-only']);
+    expect(items[0]?.name).toBe('Profile Name');
+  }, 30000);
+
   test('actor-dedupes multiple opportunities between same actors to one card', async () => {
     const viewerId = 'viewer-1';
     const otherId = 'other-1';
@@ -277,6 +316,65 @@ describe('HomeGraph', () => {
     expect(result.meta.totalOpportunities).toBe(0);
     const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
     expect(totalItems).toBe(0);
+  }, 30000);
+
+  test('explicit statuses (lifecycle view): terminal statuses pass through, acted-pending stays filtered, newest state wins dedup', async () => {
+    const viewerId = 'viewer-1';
+    const now = Date.now();
+    const at = (msAgo: number) => new Date(now - msAgo);
+    const base = (id: string, status: Opportunity['status'], otherId: string, updatedAt: Date, viewerActors: Opportunity['actors']): Opportunity => ({
+      id,
+      detection: { source: 'manual', timestamp: new Date().toISOString() },
+      actors: [...viewerActors, { userId: otherId, role: 'agent', networkId: 'idx-1' }],
+      interpretation: { reasoning: 'Test match.', category: 'connection', confidence: 0.8 },
+      context: { networkId: 'idx-1' },
+      confidence: '0.8',
+      status,
+      createdAt: updatedAt,
+      updatedAt,
+      expiresAt: null,
+    });
+
+    const opps: Opportunity[] = [
+      // Accepted with counterpart X — newest state, must pass through AND claim X in dedup.
+      base('opp-accepted-x', 'accepted', 'user-x', at(1_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1', actedAt: new Date(now - 1_000).toISOString() },
+      ]),
+      // Older pending with the same counterpart X — deduped away by the accepted one.
+      base('opp-pending-x-old', 'pending', 'user-x', at(50_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1' },
+      ]),
+      // Pending the viewer ALREADY acted on (dup unstamped rows from re-detection) — must stay filtered.
+      base('opp-pending-acted', 'pending', 'user-y', at(2_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1', actedAt: new Date(now - 90_000).toISOString() },
+        { userId: viewerId, role: 'patient', networkId: 'idx-1' },
+      ]),
+      // Genuinely actionable pending — must pass.
+      base('opp-pending-live', 'pending', 'user-z', at(3_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1' },
+      ]),
+      // Expired — terminal, must pass through in lifecycle view.
+      base('opp-expired', 'expired', 'user-w', at(4_000), [
+        { userId: viewerId, role: 'patient', networkId: 'idx-1' },
+      ]),
+    ];
+
+    const db = createMockDb(opps);
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({
+      userId: viewerId,
+      limit: 50,
+      statuses: ALL_OPPORTUNITY_STATUSES.filter((s) => s !== 'draft'),
+    });
+
+    expect(result.error).toBeUndefined();
+    const items = result.sections.flatMap((s) => s.items);
+    const ids = items.map((i) => i.opportunityId).sort();
+    expect(ids).toEqual(['opp-accepted-x', 'opp-expired', 'opp-pending-live']);
+    // Cards carry the lifecycle status for client-side bucketing.
+    const statusById = new Map(items.map((i) => [i.opportunityId, i.status]));
+    expect(statusById.get('opp-accepted-x')).toBe('accepted');
+    expect(statusById.get('opp-pending-live')).toBe('pending');
+    expect(statusById.get('opp-expired')).toBe('expired');
   }, 30000);
 
   test('shows latent opportunity for introducer but not pending', async () => {
@@ -817,4 +915,82 @@ describe('home.graph introducer card name format', () => {
     expect(allNames).toContain('Mert Karadayi');
     expect(allNames).toContain('Yanki Ekin Yuksel');
   }, 30_000);
+});
+
+describe('HomeGraph skeleton presentation', () => {
+  test('uncached cards come back identity-only, flagged presentationPending, in one flat section, and are never cached', async () => {
+    const viewerId = 'viewer-1';
+    const opp = minimalOpportunityAgentViewer(viewerId, 'other-1');
+    const db = createMockDb([opp]);
+    const cache = createMockCache();
+    const factory = new HomeGraphFactory(db, cache);
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
+
+    expect(result.error).toBeUndefined();
+    expect(result.sections.length).toBe(1);
+    expect(result.sections[0].items.length).toBe(1);
+
+    const item = result.sections[0].items[0];
+    expect(item.presentationPending).toBe(true);
+    // Identity fields are real…
+    expect(item.name).toBe('User other-1');
+    expect(item.userId).toBe('other-1');
+    expect(item.status).toBe('pending');
+    expect(item.primaryActionLabel).toBeTruthy();
+    // …but presenter text is absent (no LLM ran).
+    expect(item.mainText).toBe('');
+    expect(item.cta).toBe('');
+
+    // Skeleton cards must not poison the presenter cache: the follow-up full
+    // request has to see a miss and generate real text.
+    const cached = await cache.get(`home:card:${opp.id}:pending:${viewerId}`);
+    expect(cached).toBeNull();
+  });
+
+  test('presenter-cache hits are served complete (no pending flag) even in skeleton mode', async () => {
+    const viewerId = 'viewer-1';
+    const opp = minimalOpportunityAgentViewer(viewerId, 'other-1');
+    const db = createMockDb([opp]);
+    const cache = createMockCache();
+    await cache.set(`home:card:${opp.id}:pending:${viewerId}`, {
+      opportunityId: opp.id,
+      userId: 'other-1',
+      name: 'User other-1',
+      avatar: null,
+      mainText: 'Cached summary.',
+      cta: 'Say hi.',
+      primaryActionLabel: 'Connect',
+      secondaryActionLabel: 'Skip',
+      mutualIntentsLabel: 'Shared interests',
+      _cardIndex: 0,
+    });
+    const factory = new HomeGraphFactory(db, cache);
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
+
+    expect(result.error).toBeUndefined();
+    const item = result.sections[0].items[0];
+    expect(item.presentationPending).toBeUndefined();
+    expect(item.mainText).toBe('Cached summary.');
+  });
+
+  test('skeleton mode still drops cards with unresolvable counterparts', async () => {
+    const viewerId = 'viewer-1';
+    const opp = minimalOpportunityAgentViewer(viewerId, 'ghost-user');
+    const db = createMockDb([opp]);
+    // Counterpart has no users row and no profile identity name.
+    db.getUser = (id: string) =>
+      Promise.resolve(id === viewerId ? { id, name: 'Viewer', email: '', avatar: null } : null);
+    const factory = new HomeGraphFactory(db, createMockCache());
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
+
+    expect(result.error).toBeUndefined();
+    const items = result.sections.flatMap((s) => s.items);
+    expect(items.length).toBe(0);
+  });
 });

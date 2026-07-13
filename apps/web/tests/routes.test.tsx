@@ -81,14 +81,13 @@ vi.mock('@/contexts/APIContext', () => {
     useConnections: () => noopService,
     useSynthesis: () => noopService,
     useDiscover: () => noopService,
-    useFiles: () => noopService,
     useSync: () => noopService,
-    useLinks: () => noopService,
     useAuth: () => noopService,
     useIntegrations: () => noopService,
     useAdmin: () => noopService,
     useUsers: () => noopService,
     useOpportunities: () => noopService,
+    useQuestionsService: () => noopService,
   };
 });
 
@@ -147,6 +146,13 @@ vi.mock('@/contexts/AIChatContext', () => ({
         },
       }
     ),
+}));
+
+// Mock ConversationContext
+vi.mock('@/contexts/ConversationContext', () => ({
+  ConversationProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useConversation: () =>
+    new Proxy({}, { get: () => vi.fn() }),
 }));
 
 // Mock IndexesContext
@@ -294,6 +300,14 @@ describe('Route rendering smoke tests', () => {
     expect(container).toBeTruthy();
   });
 
+  test('/i/:intentId — Intent detail page renders without crashing', async () => {
+    const { Component } = await import('@/app/i/[intentId]/page');
+    const { container } = renderWithRouter(<Component />, {
+      route: '/i/mock-intent-id',
+    });
+    expect(container).toBeTruthy();
+  });
+
   test('/index/:indexId — Index detail page renders without crashing', async () => {
     const { Component } = await import('@/app/index/[indexId]/page');
     const { container } = renderWithRouter(<Component />, {
@@ -306,14 +320,6 @@ describe('Route rendering smoke tests', () => {
     const { Component } = await import('@/app/l/[code]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/l/mock-invite-code',
-    });
-    expect(container).toBeTruthy();
-  });
-
-  test('/library — Library page renders without crashing', async () => {
-    const { Component } = await import('@/app/library/page');
-    const { container } = renderWithRouter(<Component />, {
-      route: '/library',
     });
     expect(container).toBeTruthy();
   });

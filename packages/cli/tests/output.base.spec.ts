@@ -60,11 +60,11 @@ describe("warn", () => {
   let spy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
-    spy = spyOn(console, "log").mockImplementation(() => {});
+    spy = spyOn(console, "warn").mockImplementation(() => {});
   });
   afterEach(() => spy.mockRestore());
 
-  it("prints a yellow warning message", () => {
+  it("prints a yellow warning message to stderr", () => {
     warn("careful");
     const msg = spy.mock.calls[0][0] as string;
     expect(msg).toContain("careful");

@@ -13,7 +13,7 @@ export type OpportunityGraphDb = OpportunityGraphDatabase & HydeGraphDatabase;
 /** Runtime deps shared by every opportunity-discovery queue worker. */
 export interface OpportunityDiscoveryDeps {
   negotiationGraph?: NegotiationGraphLike;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
 }
 
 type DiscoveryLogger = ReturnType<typeof log.job.from>;
@@ -55,19 +55,19 @@ type OpportunityInvokeOptions = Parameters<ReturnType<typeof buildOpportunityGra
  * Encapsulates the block that was copy-pasted across the three `from-*` queues:
  * the `invokeOpportunityGraph` test short-circuit, graph assembly + invocation,
  * `result.error` handling, and the candidates/opportunities (and optional trace)
- * completion logging. Per-queue variation is passed in via `label`/`logContext`/`logTrace`.
+ * completion logging. Per-queue variation is passed in via `errorLabel`/`logContext`/`logTrace`.
  */
 export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOptions>(params: {
   graphDb: OpportunityGraphDb;
   deps?: OpportunityDiscoveryDeps & { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
   invokeOpts: TOpts;
   logger: DiscoveryLogger;
-  /** Human label for log-line prefixes, e.g. `'FromIntent'`. */
+  /** Human label for the queue, e.g. `'FromIntent'`. */
   label: string;
   /**
    * Label for the thrown fallback error message, e.g. `'from-intent'`. Kept
    * distinct from `label` so the thrown message stays lowercase-dashed (matching
-   * the pre-split queues) while log prefixes stay PascalCase. Defaults to `label`.
+   * the pre-split queues). Defaults to `label`.
    */
   errorLabel?: string;
   /** Identifier fields merged into every log line (e.g. `{ intentId, userId }`). */
@@ -85,14 +85,14 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
   const opportunityGraph = buildOpportunityGraph(graphDb, deps);
   const result = await opportunityGraph.invoke(invokeOpts);
   if (result.error) {
-    logger.error(`[${label}] Graph failed`, { ...logContext, error: result.error });
+    logger.error('Graph failed', { ...logContext, error: result.error });
     throw new Error(typeof result.error === 'string' ? result.error : `${errorLabel} graph failed`);
   }
 
   const candidates = Array.isArray(result.candidates) ? result.candidates : [];
   const opportunitiesArr = Array.isArray(result.opportunities) ? result.opportunities : [];
 
-  logger.info(`[${label}] Graph complete`, {
+  logger.info('Graph complete', {
     ...logContext,
     candidatesFound: candidates.length,
     opportunitiesCreated: opportunitiesArr.length,
@@ -100,7 +100,7 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
 
   if (logTrace) {
     const trace = Array.isArray(result.trace) ? result.trace : [];
-    logger.verbose(`[${label}] Graph trace`, {
+    logger.verbose('Graph trace', {
       ...logContext,
       trace: trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
         node: t.node,

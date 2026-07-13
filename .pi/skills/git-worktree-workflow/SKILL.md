@@ -1,6 +1,17 @@
 ---
 name: git-worktree-workflow
-description: Create and operate git worktrees in the index monorepo using the project's `bun run worktree:*` helpers instead of raw git. Use whenever you need an isolated branch checkout to make changes (the canonical root must stay on dev and is read-only for the assistant, enforced by the root-dev-guard extension), or when a worktree is missing env files, node_modules, or git hooks, or when a tool/bash call is blocked for touching the canonical root, or when `git commit`/`git rebase` fails with "gpg: signing failed: Inappropriate ioctl for device" in a non-interactive shell. Covers the dashed-folder / slashed-branch naming convention, why `worktree:setup` is mandatory after creating a worktree, and how to disable GPG signing worktree-locally without touching the user's repo-wide signing config.
+description: >-
+  Create and operate git worktrees in the index monorepo using the project's
+  `bun run worktree:*` helpers instead of raw git. Use whenever you need an
+  isolated branch checkout to make changes (the canonical root must stay on dev
+  and is read-only for the assistant, enforced by the root-dev-guard extension),
+  or when a worktree is missing env files, node_modules, or git hooks, or when a
+  tool/bash call is blocked for touching the canonical root, or when
+  `git commit`/`git rebase` fails with "gpg: signing failed: Inappropriate ioctl
+  for device" in a non-interactive shell. Covers the dashed-folder /
+  slashed-branch naming convention, why `worktree:setup` is mandatory after
+  creating a worktree, and how to disable GPG signing worktree-locally without
+  touching the user's repo-wide signing config.
 ---
 
 # git-worktree-workflow

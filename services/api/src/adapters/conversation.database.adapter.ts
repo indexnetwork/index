@@ -1,5 +1,32 @@
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, opportunities, or, sql } from './database.shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 
+/**
+ * Persona value for the user's negotiator DM session (P4.1 / IND-402).
+ * Mirrors `NEGOTIATOR_PERSONA_ID` in @indexnetwork/protocol; kept as a local
+ * literal so the data layer does not import the protocol package.
+ */
+const NEGOTIATOR_PERSONA = 'negotiator';
+
+/**
+ * Stable-session registry key for the negotiator DM in `chat_session_scopes`.
+ * The table's `(user_id, scope_type, scope_id)` unique index is what makes
+ * get-or-create race-safe. `scope_type='persona'` is deliberately outside the
+ * `ChatScopeType` ('network' | 'intent') envelope: `_normalizeScopeType`
+ * ignores it, so the negotiator session presents as an unscoped chat session.
+ */
+const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } as const;
+
+/**
+ * Registry scope_type for intent-pinned negotiator sessions (P4.2/IND-403).
+ * Keying the `chat_session_scopes` unique index as ('negotiator-intent',
+ * intentId) makes the negotiator's per-intent session distinct from the
+ * orchestrator's ('intent', intentId) session for the same user — persona is
+ * part of the key without a migration. Like 'persona', this value never
+ * appears in the `ChatScopeType` envelope: conversation_metadata still says
+ * scopeType 'intent' so scope-driven behavior (graph seeding, session load)
+ * is identical to any intent-scoped session.
+ */
+const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
 
 export class ConversationDatabaseAdapter {
   /**
@@ -38,7 +65,7 @@ export class ConversationDatabaseAdapter {
       }
     });
 
-    return { id, dmPair: null, lastMessageAt: null, createdAt: now, updatedAt: now };
+    return { id, dmPair: null, persona: 'orchestrator', lastMessageAt: null, createdAt: now, updatedAt: now };
   }
 
   /**
@@ -124,16 +151,64 @@ export class ConversationDatabaseAdapter {
       hiddenAtByConv.set(r.conversationId, r.hiddenAt);
     }
 
-    const convs = await db
-      .select()
-      .from(schema.conversations)
-      .where(inArray(schema.conversations.id, ids))
-      .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`);
-
-    const allParticipants = await db
-      .select()
-      .from(schema.conversationParticipants)
-      .where(inArray(schema.conversationParticipants.conversationId, ids));
+    // Everything below only needs `ids` — run the lookups in one parallel
+    // wave instead of sequential round trips; this method is on the chat
+    // sidebar's critical path (GET /conversations and /conversations/negotiations).
+    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta] = await Promise.all([
+      db
+        .select()
+        .from(schema.conversations)
+        .where(inArray(schema.conversations.id, ids))
+        .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`),
+      db
+        .select()
+        .from(schema.conversationParticipants)
+        .where(inArray(schema.conversationParticipants.conversationId, ids)),
+      // System negotiator name — fallback label when no personal agent drove a
+      // side. Well-known UUID from agent.database.adapter.ts SYSTEM_AGENT_IDS.
+      db
+        .select({ name: schema.agents.name })
+        .from(schema.agents)
+        .where(eq(schema.agents.id, '00000000-0000-0000-0000-000000000002'))
+        .limit(1),
+      // The *actual* agent that drove each user's side. For polling-backed
+      // turns, tasks.claimed_by_agent_id is the personal agent that picked the
+      // turn up. Deterministic ordering: most recent claim per owner wins.
+      db
+        .select({
+          conversationId: schema.tasks.conversationId,
+          agentId: schema.tasks.claimedByAgentId,
+          agentName: schema.agents.name,
+          agentType: schema.agents.type,
+          ownerId: schema.agents.ownerId,
+          avatar: schema.users.avatar,
+        })
+        .from(schema.tasks)
+        .innerJoin(schema.agents, eq(schema.agents.id, schema.tasks.claimedByAgentId))
+        .leftJoin(schema.users, eq(schema.users.id, schema.agents.ownerId))
+        .where(
+          and(
+            inArray(schema.tasks.conversationId, ids),
+            eq(schema.agents.type, 'external'),
+          ),
+        )
+        .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id)),
+      // Last message per conversation via DISTINCT ON.
+      db
+        .selectDistinctOn([schema.messages.conversationId], {
+          conversationId: schema.messages.conversationId,
+          parts: schema.messages.parts,
+          senderId: schema.messages.senderId,
+          createdAt: schema.messages.createdAt,
+        })
+        .from(schema.messages)
+        .where(inArray(schema.messages.conversationId, ids))
+        .orderBy(schema.messages.conversationId, desc(schema.messages.createdAt)),
+      db
+        .select()
+        .from(schema.conversationMetadata)
+        .where(inArray(schema.conversationMetadata.conversationId, ids)),
+    ]);
 
     // Resolve user names/avatars for participants
     const userIds = [...new Set(allParticipants.filter(p => p.participantType === 'user').map(p => p.participantId))];
@@ -155,56 +230,18 @@ export class ConversationDatabaseAdapter {
       }
     }
 
-    // Resolve the system negotiator agent name (used as the fallback label when no
-    // personal agent drove any turn on a user's side). Well-known UUID from
-    // agent.database.adapter.ts SYSTEM_AGENT_IDS.negotiator.
-    let systemNegotiatorName = 'Index Negotiator';
-    const negotiatorRow = await db
-      .select({ name: schema.agents.name })
-      .from(schema.agents)
-      .where(eq(schema.agents.id, '00000000-0000-0000-0000-000000000002'))
-      .limit(1);
-    if (negotiatorRow.length > 0) {
-      systemNegotiatorName = negotiatorRow[0].name;
-    }
+    const systemNegotiatorName = negotiatorRow.length > 0 ? negotiatorRow[0].name : 'Index Negotiator';
 
-    // Resolve the *actual* agent that drove each user's side. For polling-backed turns,
-    // tasks.claimed_by_agent_id is set to the personal agent that picked the turn up.
-    // Fall back to the system negotiator when no claim exists (sync system-driven turns).
-    // Map: conversationId → (ownerUserId → agent { id, name, avatar })
+    // Map: conversationId → (ownerUserId → agent { name, avatar })
     const claimedAgentByConv = new Map<string, Map<string, { name: string; avatar: string | null }>>();
-    if (ids.length > 0) {
-      const claimRows = await db
-        .select({
-          conversationId: schema.tasks.conversationId,
-          agentId: schema.tasks.claimedByAgentId,
-          agentName: schema.agents.name,
-          agentType: schema.agents.type,
-          ownerId: schema.agents.ownerId,
-          avatar: schema.users.avatar,
-        })
-        .from(schema.tasks)
-        .innerJoin(schema.agents, eq(schema.agents.id, schema.tasks.claimedByAgentId))
-        .leftJoin(schema.users, eq(schema.users.id, schema.agents.ownerId))
-        .where(
-          and(
-            inArray(schema.tasks.conversationId, ids),
-            eq(schema.agents.type, 'personal'),
-          ),
-        )
-        // Deterministic ordering so that if a conversation ever has claims
-        // from multiple personal agents for the same owner, the displayed
-        // agent name is stable across requests. Most recent claim wins.
-        .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id));
-      for (const r of claimRows) {
-        if (!r.ownerId) continue;
-        const convMap = claimedAgentByConv.get(r.conversationId) ?? new Map();
-        // First row wins after deterministic ordering — most recent claim per owner.
-        if (!convMap.has(r.ownerId)) {
-          convMap.set(r.ownerId, { name: r.agentName, avatar: r.avatar });
-        }
-        claimedAgentByConv.set(r.conversationId, convMap);
+    for (const r of claimRows) {
+      if (!r.ownerId) continue;
+      const convMap = claimedAgentByConv.get(r.conversationId) ?? new Map();
+      // First row wins after deterministic ordering — most recent claim per owner.
+      if (!convMap.has(r.ownerId)) {
+        convMap.set(r.ownerId, { name: r.agentName, avatar: r.avatar });
       }
+      claimedAgentByConv.set(r.conversationId, convMap);
     }
 
     const participantsByConv = new Map<string, ResolvedParticipant[]>();
@@ -233,38 +270,16 @@ export class ConversationDatabaseAdapter {
       participantsByConv.set(p.conversationId, list);
     }
 
-    // Fetch last message per conversation efficiently using DISTINCT ON
     const lastMessageByConv = new Map<string, { parts: unknown[]; senderId: string; createdAt: Date }>();
-    if (ids.length > 0) {
-      const lastMessages = await db
-        .selectDistinctOn([schema.messages.conversationId], {
-          conversationId: schema.messages.conversationId,
-          parts: schema.messages.parts,
-          senderId: schema.messages.senderId,
-          createdAt: schema.messages.createdAt,
-        })
-        .from(schema.messages)
-        .where(inArray(schema.messages.conversationId, ids))
-        .orderBy(schema.messages.conversationId, desc(schema.messages.createdAt));
-
-      for (const r of lastMessages) {
-        const hiddenAt = hiddenAtByConv.get(r.conversationId);
-        if (hiddenAt && r.createdAt <= hiddenAt) continue;
-        lastMessageByConv.set(r.conversationId, {
-          parts: r.parts as unknown[],
-          senderId: r.senderId,
-          createdAt: r.createdAt,
-        });
-      }
+    for (const r of lastMessages) {
+      const hiddenAt = hiddenAtByConv.get(r.conversationId);
+      if (hiddenAt && r.createdAt <= hiddenAt) continue;
+      lastMessageByConv.set(r.conversationId, {
+        parts: r.parts as unknown[],
+        senderId: r.senderId,
+        createdAt: r.createdAt,
+      });
     }
-
-    // Fetch metadata per conversation
-    const allMeta = ids.length > 0
-      ? await db
-          .select()
-          .from(schema.conversationMetadata)
-          .where(inArray(schema.conversationMetadata.conversationId, ids))
-      : [];
 
     const metaByConv = new Map<string, Record<string, unknown>>();
     for (const m of allMeta) {
@@ -352,7 +367,7 @@ export class ConversationDatabaseAdapter {
       }
     });
 
-    return { id, dmPair, lastMessageAt: null, createdAt: now, updatedAt: now };
+    return { id, dmPair, persona: 'orchestrator', lastMessageAt: null, createdAt: now, updatedAt: now };
   }
 
   /**
@@ -710,6 +725,24 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Merges a screen-gate decision (P2.1 shadow mode) into the task's metadata
+   * JSONB under the `screenDecision` key, preserving other metadata keys.
+   * Sibling of {@link setTaskTurnContext}.
+   *
+   * @param taskId - Task to update
+   * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
+   */
+  async setTaskScreenDecision(taskId: string, screenDecision: Record<string, unknown>): Promise<void> {
+    await db
+      .update(schema.tasks)
+      .set({
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('screenDecision', ${JSON.stringify(screenDecision)}::jsonb)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.id, taskId));
+  }
+
+  /**
    * Retrieves a task by ID.
    * @param taskId - Task ID
    * @returns The task, or null if not found
@@ -850,6 +883,49 @@ export class ConversationDatabaseAdapter {
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
           sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+        ),
+      )
+      .orderBy(desc(schema.tasks.createdAt))
+      .limit(1);
+
+    const [row] = rows;
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      conversationId: row.conversationId,
+      state: row.state as string,
+      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  /**
+   * Returns the most-recently-created negotiation task on a conversation,
+   * regardless of opportunityId or direction. Used by the negotiation init
+   * node's conversation-scoped initiator tie-break: symmetric concurrent
+   * starts carry different opportunityIds, so the opportunity-scoped lookup
+   * cannot see the competing task on the same agent-pair DM.
+   *
+   * @param conversationId - The agent-pair DM conversation id
+   * @returns The task record or null
+   */
+  async getLatestNegotiationTaskForConversation(conversationId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.conversationId, conversationId),
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
         ),
       )
       .orderBy(desc(schema.tasks.createdAt))
@@ -1029,7 +1105,18 @@ export class ConversationDatabaseAdapter {
       ? sql`${schema.tasks.createdAt} >= ${opts.since.toISOString()}`
       : undefined;
 
-    const allFilters = [userFilter, resultFilter, sinceFilter].filter(Boolean);
+    // P2.2: screened_out negotiations are the owner's private outreach-gate
+    // decisions — zero turns, no counterparty involvement. They stay visible
+    // to the owner (self view) but are excluded from the mutual (non-self
+    // viewer) list so the counterparty never learns a gate decision was made.
+    const screenedOutFilter = opts?.mutualWithUserId
+      ? or(
+          isNull(schema.artifacts.id),
+          sql`coalesce(${schema.artifacts.parts}->0->'data'->>'reason', '') <> 'screened_out'`,
+        )
+      : undefined;
+
+    const allFilters = [userFilter, resultFilter, sinceFilter, screenedOutFilter].filter(Boolean);
     const combinedFilter = allFilters.length > 1 ? and(...allFilters) : allFilters[0];
 
     const rows = await db
@@ -1089,7 +1176,7 @@ export class ConversationDatabaseAdapter {
    * Helper: convert a conversations row + metadata into a backward-compatible ChatSession.
    */
   private _toChatSession(
-    conv: { id: string; createdAt: Date; updatedAt: Date },
+    conv: { id: string; createdAt: Date; updatedAt: Date; persona: string },
     userId: string,
     meta: ChatConversationMeta | null,
   ): ChatSession {
@@ -1102,6 +1189,7 @@ export class ConversationDatabaseAdapter {
       id: conv.id,
       userId,
       title: meta?.title ?? null,
+      persona: conv.persona,
       networkId: legacyNetworkId,
       scopeType,
       scopeId: scopeType ? scopeId : null,
@@ -1125,6 +1213,7 @@ export class ConversationDatabaseAdapter {
     await db.transaction(async (tx) => {
       await tx.insert(schema.conversations).values({
         id: data.id,
+        ...(data.persona ? { persona: data.persona } : {}),
         createdAt: now,
         updatedAt: now,
       });
@@ -1203,7 +1292,12 @@ export class ConversationDatabaseAdapter {
    * Get all chat sessions for a user, ordered by most recent.
    * Queries conversation_participants to find conversations with system-agent.
    */
-  async getUserChatSessions(userId: string, limit: number): Promise<ChatSession[]> {
+  async getUserChatSessions(
+    userId: string,
+    limit: number,
+    persona?: string,
+    excludePersona?: string,
+  ): Promise<ChatSession[]> {
     // Subquery: conversation IDs that include the system agent (i.e. chat sessions, not DMs)
     const chatSessionIds = db
       .select({ conversationId: schema.conversationParticipants.conversationId })
@@ -1218,6 +1312,7 @@ export class ConversationDatabaseAdapter {
     const rows = await db
       .select({
         id: schema.conversations.id,
+        persona: schema.conversations.persona,
         createdAt: schema.conversations.createdAt,
         updatedAt: schema.conversations.updatedAt,
       })
@@ -1232,6 +1327,8 @@ export class ConversationDatabaseAdapter {
           eq(schema.conversationParticipants.participantType, 'user'),
           isNull(schema.conversationParticipants.hiddenAt),
           inArray(schema.conversations.id, chatSessionIds),
+          ...(persona ? [eq(schema.conversations.persona, persona)] : []),
+          ...(excludePersona ? [ne(schema.conversations.persona, excludePersona)] : []),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1295,6 +1392,9 @@ export class ConversationDatabaseAdapter {
             gt(schema.conversations.lastMessageAt, schema.conversationParticipants.hiddenAt),
           ),
           inArray(schema.conversations.id, chatSessionIds),
+          // The negotiator DM is a private persona surface — keep it out of
+          // generic chat-history summaries (MCP listSessions, chat summary).
+          ne(schema.conversations.persona, NEGOTIATOR_PERSONA),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1433,6 +1533,137 @@ export class ConversationDatabaseAdapter {
       createdAt: conv.createdAt,
       messages,
     };
+  }
+
+  /**
+   * Find the user's stable negotiator DM session, if provisioned.
+   */
+  async getNegotiatorChatSession(userId: string): Promise<ChatSession | null> {
+    const [row] = await db
+      .select({ conversationId: schema.chatSessionScopes.conversationId })
+      .from(schema.chatSessionScopes)
+      .where(
+        and(
+          eq(schema.chatSessionScopes.userId, userId),
+          eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_SCOPE.scopeType),
+          eq(schema.chatSessionScopes.scopeId, NEGOTIATOR_SCOPE.scopeId),
+        ),
+      )
+      .limit(1);
+    return row ? this.getChatSession(row.conversationId) : null;
+  }
+
+  /**
+   * Create the user's stable negotiator DM session (one per user).
+   *
+   * Same transaction shape as {@link createChatSession} (conversation +
+   * user/system-agent participants + title metadata) plus the
+   * `chat_session_scopes` registry row whose unique index guarantees at most
+   * one negotiator session per user — concurrent creates lose with a 23505
+   * unique violation the caller resolves by re-reading.
+   */
+  async createNegotiatorChatSession(data: { id: string; userId: string; title?: string }): Promise<void> {
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.conversations).values({
+        id: data.id,
+        persona: NEGOTIATOR_PERSONA,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
+        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
+      ]);
+
+      if (data.title) {
+        await tx.insert(schema.conversationMetadata).values({
+          conversationId: data.id,
+          metadata: { title: data.title } satisfies ChatConversationMeta,
+        });
+      }
+
+      await tx.insert(schema.chatSessionScopes).values({
+        conversationId: data.id,
+        userId: data.userId,
+        scopeType: NEGOTIATOR_SCOPE.scopeType,
+        scopeId: NEGOTIATOR_SCOPE.scopeId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+  }
+
+  /**
+   * Find the user's negotiator session pinned to a specific intent, if any
+   * (P4.2/IND-403).
+   */
+  async getNegotiatorIntentChatSession(userId: string, intentId: string): Promise<ChatSession | null> {
+    const normalizedIntentId = intentId.trim();
+    if (!normalizedIntentId) return null;
+    const [row] = await db
+      .select({ conversationId: schema.chatSessionScopes.conversationId })
+      .from(schema.chatSessionScopes)
+      .where(
+        and(
+          eq(schema.chatSessionScopes.userId, userId),
+          eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_INTENT_SCOPE_TYPE),
+          eq(schema.chatSessionScopes.scopeId, normalizedIntentId),
+        ),
+      )
+      .limit(1);
+    return row ? this.getChatSession(row.conversationId) : null;
+  }
+
+  /**
+   * Create a negotiator session pinned to one of the user's intents
+   * (one per user+intent, P4.2/IND-403).
+   *
+   * Same transaction shape as {@link createNegotiatorChatSession}, but the
+   * registry row is keyed ('negotiator-intent', intentId) and the
+   * conversation metadata carries the canonical intent scope so the session
+   * behaves like any intent-scoped chat (graph seeding, scope echo on load)
+   * while staying a distinct conversation from the orchestrator's session
+   * for the same intent.
+   */
+  async createNegotiatorIntentChatSession(data: {
+    id: string;
+    userId: string;
+    intentId: string;
+    title?: string;
+  }): Promise<void> {
+    const now = new Date();
+    const intentId = data.intentId.trim();
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.conversations).values({
+        id: data.id,
+        persona: NEGOTIATOR_PERSONA,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
+        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
+      ]);
+
+      const meta: ChatConversationMeta = { scopeType: 'intent', scopeId: intentId };
+      if (data.title) meta.title = data.title;
+      await tx.insert(schema.conversationMetadata).values({
+        conversationId: data.id,
+        metadata: meta,
+      });
+
+      await tx.insert(schema.chatSessionScopes).values({
+        conversationId: data.id,
+        userId: data.userId,
+        scopeType: NEGOTIATOR_INTENT_SCOPE_TYPE,
+        scopeId: intentId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
   }
 
   /**

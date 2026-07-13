@@ -1,0 +1,7 @@
+[test]
+
+# Preload the repo-root .env.test before any test module runs (runtime env
+# files live at the repo root — see the root .env.example). Legacy per-spec
+# `config({ path: '.env.test' })` calls are harmless no-ops now that no
+# .env.test exists in the package directory.
+preload = ["./test-preload.ts"]

@@ -9,10 +9,10 @@
  * dropped the connection at ~3 minutes. Per-negotiation summarization caps
  * the question-generator input at a fixed, predictable size.
  */
-import type { ChatOpenAI } from "@langchain/openai";
+
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { DiscoveryNegotiationDigestSchema, type DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
@@ -26,7 +26,7 @@ Output requirements (ALL fields — set optional fields to null when not applica
 - counterpartyHint: copy the input field verbatim, truncated to ≤120 chars.
 - indexContext: copy the input field verbatim, truncated to ≤120 chars.
 - outcomeRole: "opportunity" when hasOpportunity=true, else "no-opportunity".
-- outcomeReason: when outcomeRole="no-opportunity", set to "turn_cap" / "timeout" if the input's reason matches; else "rejected" (if a turn explicitly rejected) or "stalled". When outcomeRole="opportunity", set to null.
+- outcomeReason: when outcomeRole="no-opportunity", set to "turn_cap" / "timeout" / "screened_out" if the input's reason matches; else "rejected" (if a turn explicitly rejected) or "stalled". When outcomeRole="opportunity", set to null. "screened_out" means the seeker's own agent chose not to reach out before any turn was exchanged — never describe it as the candidate declining or stalling.
 - keyTake: ONE sentence (≤180 chars). Describe the decisive moment, the alignment gap, or the recurring signal — anything a question generator could use to formulate a clarifying question. NOT a generic outcome restatement. Anchor in a concrete detail from the negotiation if possible (a role mismatch, a missing input the candidate flagged, a pivot one party suggested).
 - suggestedRoles: when both parties agreed on roles (the last turn's suggestedRoles), copy them from input. Otherwise set to null.
 
@@ -53,11 +53,10 @@ function buildUserPrompt(n: DiscoveryNegotiation): string {
 }
 
 export class NegotiationSummarizer {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const llm = createModel("negotiationSummarizer");
-    this.model = llm.withStructuredOutput(DiscoveryNegotiationDigestSchema, {
+    this.model = createStructuredModel("negotiationSummarizer", DiscoveryNegotiationDigestSchema, {
       name: "negotiation_digest",
     });
   }
@@ -114,7 +113,7 @@ export function buildFallbackDigest(n: DiscoveryNegotiation): DiscoveryNegotiati
     outcomeRole,
     outcomeReason:
       outcomeRole === "no-opportunity"
-        ? ((n.outcome.reason ?? "stalled") as "turn_cap" | "timeout" | "stalled")
+        ? ((n.outcome.reason ?? "stalled") as "turn_cap" | "timeout" | "stalled" | "screened_out")
         : null,
     keyTake: keyTakeRaw.slice(0, 180),
     suggestedRoles:

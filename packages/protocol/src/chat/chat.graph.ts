@@ -2,6 +2,7 @@ import { StateGraph, START, END, BaseCheckpointSaver, type LangGraphRunnableConf
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatGraphState } from "./chat.state.js";
 import { ChatAgent } from "./chat.agent.js";
+import { ORCHESTRATOR_PERSONA, type ChatPersonaConfig } from "./chat.persona.js";
 import type { ChatGraphCompositeDatabase } from "../shared/interfaces/database.interface.js";
 import type { Embedder } from "../shared/interfaces/embedder.interface.js";
 import type { Scraper } from "../shared/interfaces/scraper.interface.js";
@@ -58,10 +59,32 @@ export class ChatGraphFactory {
     private scraper: Scraper,
     private chatSession: ChatSessionReader,
     private protocolDeps: ProtocolDeps,
+    /** Persona driving this graph's agent loop. Defaults to the orchestrator. */
+    private persona: ChatPersonaConfig = ORCHESTRATOR_PERSONA,
   ) {
     this.streamingService = new ChatStreamer(
       (sessionId, maxMessages) => this.loadSessionContext(sessionId, maxMessages),
       (checkpointer) => this.createStreamingGraph(checkpointer)
+    );
+  }
+
+  /**
+   * Returns a sibling factory sharing all dependencies but driven by a
+   * different persona. Used to derive per-session persona factories (e.g. the
+   * negotiator, whose identity comes from the user's personal agent row) from
+   * the composition-root orchestrator factory without re-wiring deps.
+   *
+   * @param persona - The persona config for the derived factory
+   * @returns A new ChatGraphFactory with identical deps and the given persona
+   */
+  public withPersona(persona: ChatPersonaConfig): ChatGraphFactory {
+    return new ChatGraphFactory(
+      this.database,
+      this.embedder,
+      this.scraper,
+      this.chatSession,
+      this.protocolDeps,
+      persona,
     );
   }
 
@@ -177,6 +200,7 @@ export class ChatGraphFactory {
     const embedder = this.embedder;
     const scraper = this.scraper;
     const protocolDeps = this.protocolDeps;
+    const persona = this.persona;
 
     // ─────────────────────────────────────────────────────────────────────────
     // AGENT LOOP NODE
@@ -214,7 +238,7 @@ export class ChatGraphFactory {
             ...(legacyNetworkId ? { networkId: legacyNetworkId } : {}),
             ...(scopeType && scopeId ? { scopeType, scopeId } : {}),
             sessionId: state.sessionId,
-          } as import("../shared/agent/tool.helpers.js").ToolContext);
+          } as import("../shared/agent/tool.helpers.js").ToolContext, persona);
           // Direct streaming writer - emit events immediately instead of buffering
           const directWriter = (data: unknown) => {
             try {

@@ -36,23 +36,25 @@ export async function withCallLogging<T>(
   const { logOutput = true, context = {} } = options;
   const start = Date.now();
   const sanitizedInputs = sanitizeForLog(inputs) as Record<string, unknown>;
-  logger.verbose(`[Call] ${callName} start`, { inputs: sanitizedInputs, ...context });
+  logger.verbose('call start', { callName, inputs: sanitizedInputs, ...context });
 
   try {
     const result = await fn();
     const durationMs = Date.now() - start;
     const outMeta: Record<string, unknown> = {
+      callName,
       durationMs,
       ...context,
     };
     if (logOutput) {
       outMeta.output = sanitizeForLog(result);
     }
-    logger.verbose(`[Call] ${callName} end`, outMeta);
+    logger.verbose('call end', outMeta);
     return result;
   } catch (err) {
     const durationMs = Date.now() - start;
-    logger.error(`[Call] ${callName} failed`, {
+    logger.error('call failed', {
+      callName,
       error: err,
       durationMs,
       ...context,

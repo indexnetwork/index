@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
-import { AuthGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { AgentTestMessageService } from '../services/agent-test-message.service';
 import { agentService } from '../services/agent.service';
-import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedError } from '../services/negotiation-polling.service';
+import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedError, SeatViolationError } from '../services/negotiation-polling.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 
 const agentTestMessageService = new AgentTestMessageService();
@@ -61,8 +61,10 @@ const confirmOpportunityDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
 });
 
+// Accepts the union of v1 + v2 action vocabularies; the polling service
+// enforces the per-task version + seat subset (wrong-seat action → 400).
 const respondNegotiationSchema = z.object({
-  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question']),
+  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question', 'outreach', 'withdraw', 'decline', 'ask_user']),
   message: z.string().nullable().optional(),
   assessment: z.object({
     reasoning: z.string(),
@@ -90,6 +92,7 @@ function parseErrorMessage(err: unknown): string {
 }
 
 function errorStatus(err: unknown, fallback = 400): number {
+  if (err instanceof SeatViolationError) return 400;
   if (err instanceof UnauthorizedError) return 403;
   if (err instanceof NotFoundError) return 404;
   if (err instanceof ConflictError) return 409;
@@ -174,7 +177,7 @@ export class AgentController {
   }
 
   @Post('')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async create(req: Request, user: AuthenticatedUser) {
     const body = await parseBody(req, createAgentSchema);
     if (body instanceof Response) {
@@ -222,7 +225,7 @@ export class AgentController {
   }
 
   @Patch('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async update(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -243,7 +246,7 @@ export class AgentController {
   }
 
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async remove(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -259,7 +262,7 @@ export class AgentController {
   }
 
   @Post('/:id/transports')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async addTransport(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -286,7 +289,7 @@ export class AgentController {
   }
 
   @Delete('/:id/transports/:transportId')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async removeTransport(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const transportId = params?.transportId;
@@ -303,7 +306,7 @@ export class AgentController {
   }
 
   @Post('/:id/permissions')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async grantPermission(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -330,7 +333,7 @@ export class AgentController {
   }
 
   @Delete('/:id/permissions/:permissionId')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async revokePermission(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const permissionId = params?.permissionId;
@@ -363,7 +366,7 @@ export class AgentController {
   }
 
   @Post('/:id/tokens')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async createToken(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -384,7 +387,7 @@ export class AgentController {
   }
 
   @Delete('/:id/tokens/:tokenId')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async revokeToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const tokenId = params?.tokenId;
@@ -583,7 +586,7 @@ export class AgentController {
       return limit;
     }
 
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+    const frontendUrl = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
 
     try {
       await agentService.getById(agentId, user.id);

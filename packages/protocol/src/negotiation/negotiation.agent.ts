@@ -1,7 +1,13 @@
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment } from "./negotiation.state.js";
+import { turnSchemaFor, fallbackActionFor } from "./negotiation.protocol.js";
+import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
+import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+
+const agentLog = protocolLogger("IndexNegotiator");
 
 const SYSTEM_PROMPT = `You are the Index Negotiator, an AI agent acting on behalf of {userName}. You represent their interests in a bilateral negotiation about a potential connection on a discovery network.
 
@@ -13,15 +19,43 @@ Network context: {networkContext}
 Your job: Evaluate whether this connection genuinely serves {userName}'s interests given their role. Argue their case honestly — acknowledge weaknesses, but advocate for genuine fit.
 
 Rules:
-- On the FIRST turn: Propose the connection case. Explain why it would benefit both parties. Set action to "propose".
-- On SUBSEQUENT turns: Evaluate the other agent's arguments. Either:
-  - "counter" if you have specific objections but see potential
-  - "accept" if the match genuinely benefits {userName}
-  - "reject" if the match does not serve {userName}'s needs
+{actionRules}
 - Focus on concrete intent alignment, not vague overlap.
 - Do NOT reference internal system details like scores, pre-screens, or evaluator outputs.
 - suggestedRoles: "agent" = can help, "patient" = seeks help, "peer" = mutual benefit.
-{finalTurnInstruction}`;
+{finalTurnInstruction}{negotiatorMemory}`;
+
+/** v1 action rules — byte-identical to the pre-seat-rules prompt. */
+const V1_ACTION_RULES = `- On the FIRST turn: Propose the connection case. Explain why it would benefit both parties. Set action to "propose".
+- On SUBSEQUENT turns: Evaluate the other agent's arguments. Either:
+  - "counter" if you have specific objections but see potential
+  - "accept" if the match genuinely benefits {userName}
+  - "reject" if the match does not serve {userName}'s needs`;
+
+/** v2 initiator seat: reaching stance — accept is structurally unavailable. */
+const V2_INITIATOR_RULES = `- You hold the INITIATING seat: your user's side surfaced this match and you are reaching out. Only the counterparty may accept — "accept" is NOT available to you.
+- On the FIRST turn: Make the outreach case. Explain why the connection would benefit both parties. Set action to "outreach".
+- On SUBSEQUENT turns: Evaluate the counterparty's arguments. Either:
+  - "counter" if you have specific objections but see potential
+  - "question" if you need a specific clarification from the counterparty
+  - "withdraw" if the match does not serve {userName}'s needs`;
+
+/**
+ * v2 client-consult pause rule (P3.2). Appended to either seat's rules only
+ * when the caller granted `canAskUser` — the action never appears in the
+ * prompt (or the schema) otherwise.
+ */
+const ASK_USER_RULE = `
+- "ask_user" if you need {userName}'s OWN input before you can proceed — typically permission to disclose something sensitive (budget, availability, private details) or a fact only they know. This PAUSES the negotiation until they answer (up to 24h), so use it only when proceeding without their input would risk over-disclosure or a wrong call. You get AT MOST ONE client consultation per negotiation — spend it well. Set askUser: { disclosureSubject: what you need permission for or need to know, draftQuestion: the question in your words }. Use "question" (not "ask_user") when the clarification should come from the other side.`;
+
+/** v2 counterparty seat: receiving stance — acceptance is this seat's decision alone. */
+const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side reached out to {userName}. Whether to accept is YOUR seat's decision alone.
+- Evaluate the initiator's arguments. Either:
+  - "accept" if the match genuinely benefits {userName}
+  - "decline" if the match does not serve {userName}'s needs
+  - "counter" if you have specific objections but see potential
+  - "question" if you need a specific clarification from the initiator
+- Never use "outreach" — you are responding, not reaching out.`;
 
 export interface NegotiationAgentInput {
   ownUser: UserNegotiationContext;
@@ -38,6 +72,32 @@ export interface NegotiationAgentInput {
   isContinuation?: boolean;
   /** User answers collected by the questioner between negotiation sessions. */
   userAnswers?: NegotiationUserAnswer[];
+  /**
+   * The acting user's seat under the v2 client-advocate protocol. Selects the
+   * seat-scoped turn schema and prompt stance when `protocolVersion` is `v2`.
+   * Ignored under v1. Defaults from `isDiscoverer` when omitted.
+   */
+  seat?: NegotiationSeat;
+  /**
+   * Negotiation protocol version for this task (inherited, never re-stamped).
+   * `v1` (default) keeps the legacy symmetric vocabulary and prompt.
+   */
+  protocolVersion?: NegotiationProtocolVersion;
+  /**
+   * Whether the `ask_user` client-consult pause (P3.2) is available on this
+   * turn. The caller (negotiation graph) grants it only when the feature flag
+   * is on, the pause loop is fully wired (questioner + answer-window timer +
+   * opportunity to resume against), the turn is v2 non-final and non-opening,
+   * and this side has not already consumed its one client question for the
+   * negotiation. When true, the seat schema and prompt gain the action.
+   */
+  canAskUser?: boolean;
+  /**
+   * Retrieved negotiator memories for the acting user (P5.3 read path).
+   * Rendered as a private prompt section — hard disclosure constraints plus
+   * advisory hints. Absent/empty → the prompt is byte-identical to before.
+   */
+  memory?: NegotiatorMemoryEntry[];
 }
 
 export interface IndexNegotiatorConfig {
@@ -98,14 +158,28 @@ export class IndexNegotiator {
    * @throws If the per-turn timeout fires before the LLM responds.
    */
   async invoke(input: NegotiationAgentInput): Promise<NegotiationTurn> {
-    const schema = input.isFinalTurn ? FinalNegotiationTurnSchema : SystemNegotiationTurnSchema;
-    const model = createModel("negotiator").withStructuredOutput(schema, { name: "index_negotiator" });
+    const version: NegotiationProtocolVersion = input.protocolVersion ?? "v1";
+    const seat: NegotiationSeat = input.seat ?? (input.isDiscoverer ? "initiator" : "counterparty");
+    const isFinalTurn = input.isFinalTurn ?? false;
+    const canAskUser = input.canAskUser === true && version === "v2" && !isFinalTurn;
+    const schema = turnSchemaFor(version, seat, isFinalTurn, {
+      system: SystemNegotiationTurnSchema,
+      final: FinalNegotiationTurnSchema,
+    }, { askUser: canAskUser });
+    const model = createStructuredModel("negotiator", schema, { name: "index_negotiator" });
 
     const userName = input.ownUser.profile.name ?? "your user";
     const role = input.seedAssessment.valencyRole || "peer";
     const networkContext = input.indexContext.prompt || "General discovery";
+    const actionRules = (version === "v2"
+      ? (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES)
+      : V1_ACTION_RULES) + (canAskUser ? ASK_USER_RULE : "");
     const finalTurnInstruction = input.isFinalTurn
-      ? "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'accept' or 'reject'. No counter is allowed."
+      ? (version === "v2"
+          ? (seat === "initiator"
+              ? "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'withdraw' or 'counter'. Accept is not available to your seat."
+              : "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'accept' or 'decline'. No counter is allowed.")
+          : "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'accept' or 'reject'. No counter is allowed.")
       : "";
 
     const otherName = input.otherUser.profile.name ?? "the other user";
@@ -122,12 +196,14 @@ QUERY PRIORITY RULE: This search query is the PRIMARY criterion for this negotia
       : '';
 
     const systemPrompt = SYSTEM_PROMPT
+      .replace("{actionRules}", actionRules)
       .replace(/{userName}/g, userName)
       .replace("{discoveryContext}", discoveryContext)
       .replace("{discoveryQueryContext}", discoveryQueryContext)
       .replace("{role}", role)
       .replace("{networkContext}", networkContext)
-      .replace("{finalTurnInstruction}", finalTurnInstruction);
+      .replace("{finalTurnInstruction}", finalTurnInstruction)
+      .replace("{negotiatorMemory}", renderNegotiatorMemorySection(input.memory ?? []));
 
     const historyText = input.history.length > 0
       ? `\n\nNegotiation history:\n${input.history.map((t, i) => {
@@ -179,17 +255,51 @@ ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n"
 
 Why this match was suggested: ${input.seedAssessment.reasoning}${input.isContinuation ? continuationContext : historyText}${userAnswersContext}
 ${discoveryQueryReminder}
-${input.history.length === 0 && !input.isContinuation ? "This is the opening turn. Propose the connection case." : "Evaluate the latest arguments and respond."}`;
+${input.history.length === 0 && !input.isContinuation ? (version === "v2" && seat === "initiator" ? "This is the opening turn. Make the outreach case." : "This is the opening turn. Propose the connection case.") : "Evaluate the latest arguments and respond."}`;
 
-    const result = await invokeWithAbortSignal(
-      model,
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      AbortSignal.timeout(this.turnTimeoutMs),
-    );
+    const chatMessages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ];
 
-    return result as NegotiationTurn;
+    // Structured output is schema-constrained, but providers can still emit
+    // out-of-vocabulary actions. Validate; retry once; then fall back to the
+    // conservative seat-valid action instead of poisoning the turn history.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await this.callModel(model, chatMessages);
+      const parsed = schema.safeParse(result);
+      if (parsed.success) return parsed.data as NegotiationTurn;
+      agentLog.warn("Negotiator output failed seat-schema validation", {
+        attempt: attempt + 1,
+        seat,
+        version,
+        isFinalTurn,
+        issues: parsed.error.issues.map((i) => i.message).slice(0, 3),
+      });
+    }
+
+    const fallbackAction = fallbackActionFor(version, seat, isFinalTurn);
+    agentLog.warn("Negotiator output invalid after retry; using conservative fallback", {
+      seat, version, isFinalTurn, fallbackAction,
+    });
+    return {
+      action: fallbackAction,
+      assessment: {
+        reasoning: "Agent produced an invalid response; conservative fallback applied.",
+        suggestedRoles: { ownUser: "peer", otherUser: "peer" },
+      },
+      message: null,
+    };
+  }
+
+  /**
+   * Raw structured-model round trip. Split out as a seam so tests can drive
+   * the validate→retry→fallback loop without a live provider.
+   */
+  protected async callModel(
+    model: ReturnType<typeof createStructuredModel>,
+    chatMessages: Array<{ role: string; content: string }>,
+  ): Promise<unknown> {
+    return invokeWithAbortSignal(model, chatMessages, AbortSignal.timeout(this.turnTimeoutMs));
   }
 }

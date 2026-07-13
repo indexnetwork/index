@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { validateFiles } from '@/lib/file-validation';
 import NetworkAvatar, { resolveNetworkImageSrc } from '@/components/IndexAvatar';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('SettingsTab');
 
 interface SettingsTabProps {
   network: Network;
@@ -163,7 +166,7 @@ export default function SettingsTab({
       onUpdated(updatedIndex);
       success('Settings updated');
     } catch (err) {
-      console.error('Error updating index:', err);
+      logger.error('Error updating index', { error: err });
       error('Failed to update settings');
     } finally {
       setIsSavingSettings(false);
@@ -205,7 +208,7 @@ export default function SettingsTab({
       onUpdated(updatedNetwork);
       success('Event details updated');
     } catch (err) {
-      console.error('Error updating event metadata:', err);
+      logger.error('Error updating event metadata', { error: err });
       error('Failed to update event details');
     } finally {
       setIsSavingMeta(false);
@@ -229,7 +232,7 @@ export default function SettingsTab({
       setShowDeleteConfirmation(false);
       onDeleted?.();
     } catch (err) {
-      console.error('Error deleting index:', err);
+      logger.error('Error deleting index', { error: err });
       error('Failed to delete network');
     } finally {
       setIsDeletingIndex(false);

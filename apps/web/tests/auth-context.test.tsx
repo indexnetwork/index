@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import { useLocation } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuthContext } from '@/contexts/AuthContext';
 import { renderWithRouter } from '@/test/test-utils';
 
 const mocks = vi.hoisted(() => {
@@ -61,6 +61,15 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
+function FeaturesProbe() {
+  const { features } = useAuthContext();
+  return (
+    <div data-testid="features">
+      {features === null ? 'null' : JSON.stringify(features)}
+    </div>
+  );
+}
+
 function renderAuthProviderAt(route: string) {
   return renderWithRouter(
     <AuthProvider>
@@ -100,6 +109,37 @@ describe('AuthProvider onboarding routing', () => {
 
     expect(await screen.findByTestId('location')).toHaveTextContent('/');
     expect(mocks.apiClient.get).not.toHaveBeenCalled();
+  });
+
+  test('captures the sibling features object from /auth/me', async () => {
+    mocks.apiClient.get.mockResolvedValue({
+      user: incompleteUser(),
+      features: { negotiatorChat: true },
+    });
+
+    renderWithRouter(
+      <AuthProvider>
+        <FeaturesProbe />
+      </AuthProvider>,
+      { route: '/networks' }
+    );
+
+    expect(await screen.findByTestId('features')).toHaveTextContent('{"negotiatorChat":true}');
+  });
+
+  test('features stays null when /auth/me omits the features object', async () => {
+    mocks.apiClient.get.mockResolvedValue({ user: incompleteUser() });
+
+    renderWithRouter(
+      <AuthProvider>
+        <FeaturesProbe />
+      </AuthProvider>,
+      { route: '/networks' }
+    );
+
+    // Wait for the user fetch to settle, then assert features stayed null.
+    await screen.findByTestId('features');
+    expect(await screen.findByTestId('features')).toHaveTextContent('null');
   });
 
   test('opens the login modal with a preserved callbackURL when an unauthenticated user hits a protected deep link', async () => {

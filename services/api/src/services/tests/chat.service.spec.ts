@@ -49,6 +49,15 @@ mock.module("../../adapters/database.adapter", () => ({
   ChatDatabaseAdapter: class {
     getNetwork = mock(() => Promise.resolve(null));
     isNetworkMember = mock(() => Promise.resolve(false));
+    getIntent = mock(() =>
+      Promise.resolve({
+        id: "intent-001",
+        userId: "user-001",
+        summary: "Find a co-founder",
+        payload: "",
+        archivedAt: null,
+      }),
+    );
   },
 }));
 mock.module("../../adapters/embedder.adapter", () => ({
@@ -118,6 +127,53 @@ function createMockDb(overrides: Partial<MockDb> = {}): MockDb {
 
 // ─── createSession ────────────────────────────────────────────────────────────
 
+describe("ChatSessionService.resolveNegotiatorIntentSession", () => {
+  it("recovers the raced session when create hits a Drizzle-wrapped 23505", async () => {
+    // Drizzle wraps the pg error in DrizzleQueryError with the real error on
+    // `cause` — the unique-violation detection must walk the cause chain, or a
+    // benign create race (e.g. React StrictMode double-bootstrap) becomes a 500.
+    const session = makeSession();
+    const wrapped = new Error('Failed query: insert into "chat_session_scopes" (...)');
+    (wrapped as { cause?: unknown }).cause = Object.assign(
+      new Error("duplicate key value violates unique constraint"),
+      { code: "23505" },
+    );
+
+    let scopeLookups = 0;
+    const db = createMockDb({
+      getNegotiatorIntentChatSession: mock(() => {
+        scopeLookups += 1;
+        // First lookup: no session yet. Post-conflict re-read: the winner's row.
+        return Promise.resolve(scopeLookups === 1 ? null : session);
+      }),
+      createNegotiatorIntentChatSession: mock(() => Promise.reject(wrapped)),
+      getChatSession: mock(() => Promise.resolve(session)),
+    });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    const res = await svc.resolveNegotiatorIntentSession("user-001", "intent-001");
+
+    if ("error" in res) throw new Error(`expected session, got error: ${res.error}`);
+    expect(res.session.id).toBe(SESSION_ID);
+    expect(res.created).toBe(false);
+    expect(scopeLookups).toBe(2);
+  });
+
+  it("still rethrows non-unique-violation errors", async () => {
+    const db = createMockDb({
+      getNegotiatorIntentChatSession: mock(() => Promise.resolve(null)),
+      createNegotiatorIntentChatSession: mock(() =>
+        Promise.reject(new Error("connection refused")),
+      ),
+    });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    expect(svc.resolveNegotiatorIntentSession("user-001", "intent-001")).rejects.toThrow(
+      "connection refused",
+    );
+  });
+});
+
 describe("ChatSessionService.createSession", () => {
   it("returns a UUID and persists the session", async () => {
     const db = createMockDb();
@@ -185,7 +241,7 @@ describe("ChatSessionService.getSession", () => {
 // ─── getUserSessions ──────────────────────────────────────────────────────────
 
 describe("ChatSessionService.getUserSessions", () => {
-  it("delegates to db and returns sessions", async () => {
+  it("delegates to db and returns sessions, excluding the negotiator DM by default", async () => {
     const sessions = [makeSession(), makeSession({ id: "session-002" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
@@ -195,7 +251,20 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10);
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, undefined, "negotiator");
+  });
+
+  it("passes the persona filter through to the adapter", async () => {
+    const sessions = [makeSession()];
+    const db = createMockDb({
+      getUserChatSessions: mock(() => Promise.resolve(sessions)),
+    });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    const result = await svc.getUserSessions(USER_ID, 10, "orchestrator");
+
+    expect(result).toEqual(sessions);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator", undefined);
   });
 });
 

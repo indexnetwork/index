@@ -3,6 +3,9 @@ import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/databa
 import { ChatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { NegotiationGraphFactory } from '@indexnetwork/protocol';
 import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/protocol';
+import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 
 const logger = log.service.from('NegotiationService');
 
@@ -29,14 +32,21 @@ export class NegotiationService {
     ]);
 
     // No-op dispatcher: NegotiationService triggers synchronous discovery negotiations
-    // without routing turns to personal agents.
+    // without routing turns to external poller agents.
     const noOpDispatcher: AgentDispatcher = {
       dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
-      hasPersonalAgent: async () => false,
+      hasExternalAgent: async () => false,
     };
     const graph = new NegotiationGraphFactory(
       conversationDatabaseAdapter as ConstructorParameters<typeof NegotiationGraphFactory>[0],
       noOpDispatcher,
+      undefined,
+      // Stalled negotiations enqueue follow-up questions for the source user.
+      questionerEnqueueIfEnabled(),
+      // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
+      reflectEnqueueIfEnabled(),
+      // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+      negotiatorMemoryRetrieve(),
     ).createGraph();
 
     logger.info('Starting discovery negotiation', { sourceUserId, candidateUserId });
@@ -47,6 +57,10 @@ export class NegotiationService {
       indexContext: { networkId: '', prompt: '' },
       seedAssessment: { reasoning: 'Discovery negotiation', valencyRole: 'peer' },
       maxTurns: 4,
+      // v2 initiator stamp: explicit user-triggered negotiation — the viewer
+      // who requested it holds the initiating seat. This path has no
+      // opportunityId, so the stamp must ride the invoke input directly.
+      initiatorUserId: sourceUserId,
     });
 
     logger.info('Discovery negotiation completed', {

@@ -5,7 +5,7 @@
  * default-baked-in URL is used.
  */
 export const buildConnectCommand = (apiKey: string): string => {
-  const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/+$/, '');
+  const baseUrl = (process.env.WEB_APP_URL || '').replace(/\/+$/, '');
   const urlFlag = baseUrl && baseUrl !== 'https://index.network' ? ` --url ${baseUrl}` : '';
   return `openclaw index connect --api-key ${apiKey}${urlFlag}`;
 };

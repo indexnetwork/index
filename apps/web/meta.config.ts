@@ -8,7 +8,7 @@ export interface PageMeta {
   type?: string;
 }
 
-export const ORIGIN = process.env.APP_URL || "https://index.network";
+export const ORIGIN = process.env.WEB_APP_URL || "https://index.network";
 const DEFAULT_IMAGE = `${ORIGIN}/link-preview.png`;
 
 const MARKETING: Record<string, PageMeta> = {
@@ -18,6 +18,13 @@ const MARKETING: Record<string, PageMeta> = {
       "Some things find you. Most don't. That is, until language became our new interface and agents became our calling cards.",
     image: `${ORIGIN}/found-in-translation/found-in-translation-1-hero.png`,
     type: "article",
+  },
+  "/overview": {
+    title: "Index Network: Protocol Overview",
+    description:
+      "Index Network is a private, intent-driven social discovery protocol.",
+    image: DEFAULT_IMAGE,
+    type: "website",
   },
 };
 

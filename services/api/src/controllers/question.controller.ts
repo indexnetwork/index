@@ -20,7 +20,7 @@ const answerBodySchema = z.object({
 });
 
 const statusQuerySchema = z.enum(['pending', 'answered', 'dismissed']).default('pending');
-const modeQuerySchema = z.enum(['discovery', 'intent', 'enrichment', 'negotiation', 'chat']);
+const modeQuerySchema = z.enum(['discovery', 'intent', 'enrichment', 'negotiation', 'negotiation_inflight', 'chat']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 

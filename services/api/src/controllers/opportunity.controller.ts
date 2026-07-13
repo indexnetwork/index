@@ -32,6 +32,8 @@ const discoverBodySchema = z.object({
 });
 
 const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
+/** Full lifecycle enum for the home view's explicit `statuses` filter (e.g. the intent radar). */
+const homeStatusSchema = z.enum(['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -154,7 +156,7 @@ export class OpportunityController {
       return Response.json(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('[getChatContext] Error', { userId: user.id, error: message });
+      logger.error('getChatContext failed', { userId: user.id, error: message });
       return Response.json({ error: 'Internal server error' }, { status: 500 });
     }
   }
@@ -173,11 +175,33 @@ export class OpportunityController {
     const scope = parseIntentScopeFromUrl(url);
     if (scope instanceof Response) return scope;
 
+    // Optional explicit lifecycle filter (comma-separated). Switches the home
+    // graph into lifecycle-view mode (see HomeGraphInvokeInput.statuses).
+    const statusesParam = url.searchParams.get('statuses');
+    let statuses: z.infer<typeof homeStatusSchema>[] | undefined;
+    if (statusesParam) {
+      const parsed = z.array(homeStatusSchema).nonempty().safeParse(statusesParam.split(',').map((s) => s.trim()).filter(Boolean));
+      if (!parsed.success) {
+        return Response.json({ error: `Invalid statuses; allowed: ${homeStatusSchema.options.join(', ')}` }, { status: 400 });
+      }
+      statuses = [...new Set(parsed.data)];
+    }
+
+    // Optional fast mode: skip presenter LLM + categorizer for cache misses and
+    // return identity-only cards flagged presentationPending (two-phase fetch).
+    const presentationParam = url.searchParams.get('presentation');
+    if (presentationParam && presentationParam !== 'skeleton' && presentationParam !== 'full') {
+      return Response.json({ error: "Invalid presentation; allowed: 'skeleton', 'full'" }, { status: 400 });
+    }
+    const presentation = presentationParam === 'skeleton' ? 'skeleton' as const : undefined;
+
     const result = await opportunityService.getHomeView(user.id, {
       networkId,
       ...scope,
       limit: limitParam ? parseInt(limitParam, 10) : undefined,
       noCache,
+      statuses,
+      presentation,
     });
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: 500 });
@@ -359,7 +383,7 @@ export class OpportunityController {
    * Body (optional): `{ kind?: 'connect' | 'approve_introduction' | 'outreach' }`.
    * Defaults to `'connect'` when omitted or unrecognized.
    *
-   * @returns `{ url: string }` — full short URL pointing at `${BASE_URL}/c/:code`.
+   * @returns `{ url: string }` — full short URL pointing at `${API_URL}/c/:code`.
    */
   @Post('/:id/connect-link')
   @UseGuards(RateLimit('write'), AuthGuard)
@@ -397,7 +421,7 @@ export class OpportunityController {
     });
 
     // Public origin for short links — the protocol host only (never the
-    // frontend APP_URL), shared with the MCP-minted path via this helper.
+    // web WEB_APP_URL), shared with the MCP-minted path via this helper.
     const apiBaseUrl = resolveProtocolBaseUrl();
 
     return Response.json({ url: `${apiBaseUrl}/c/${code}` });
@@ -445,7 +469,7 @@ export class OpportunityController {
 
     // Look up counterpart's Telegram handle
     const telegramHandle = await opportunityService.getCounterpartTelegramHandle(counterpartId);
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+    const frontendUrl = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
 
     let redirectUrl: string;
     if (telegramHandle) {

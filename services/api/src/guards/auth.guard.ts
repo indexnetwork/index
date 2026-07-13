@@ -4,10 +4,10 @@ import { eq } from 'drizzle-orm/sql';
 import db from '../lib/drizzle/drizzle';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { apikeys, users } from '../schemas/database.schema';
-import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
+import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 
-const logger = log.server.from('auth-guard');
+const logger = log.server.from('auth.guard');
 
 export interface AuthenticatedUser {
   id: string;
@@ -16,7 +16,7 @@ export interface AuthenticatedUser {
 }
 
 const JWKS = createRemoteJWKSet(
-  new URL('/api/auth/jwks', BASE_URL)
+  new URL('/api/auth/jwks', API_URL)
 );
 
 /** SHA-256 hash a raw API key into the base64url form stored in `apikeys.key`. */
@@ -40,7 +40,7 @@ const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
     throw new Error('Access token required');
   }
   try {
-    const { payload } = await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
+    const { payload } = await jwtVerify(token, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
     return {
       id: payload.id as string,
       email: (payload.email as string) ?? null,
@@ -49,6 +49,47 @@ const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
   } catch {
     throw new Error('Invalid or expired access token');
   }
+};
+
+/**
+ * Thrown when a session-only endpoint is hit with an API key (or any
+ * non-JWT credential). Mapped to HTTP 403 in main.ts.
+ */
+export class SessionRequiredError extends Error {
+  constructor(message = 'This endpoint requires a session token; API keys are not accepted') {
+    super(message);
+    this.name = 'SessionRequiredError';
+  }
+}
+
+/**
+ * SessionOnlyGuard: accepts ONLY a Better Auth session JWT (`Authorization:
+ * Bearer` header or `?token=`), never an API key.
+ *
+ * Use for endpoints where a leaked agent API key must not be able to act:
+ * account deletion and agent-management writes (create/update/delete agents,
+ * tokens, permissions, transports). Re-walling those keeps leaked-key blast
+ * radius at "act as the user in the product" — a key must never be able to
+ * mint successor credentials (which would survive rotation of the leaked
+ * key) or destroy the account. See IND-384.
+ */
+export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser> => {
+  const authHeader = req.headers.get('Authorization');
+  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
+
+  if (authHeader?.startsWith('Bearer ') || queryToken) {
+    return resolveJwtUser(req);
+  }
+
+  if (req.headers.get('x-api-key')) {
+    logger.warn('API key rejected on session-only endpoint', {
+      path: new URL(req.url, 'http://localhost').pathname,
+      ua: req.headers.get('user-agent') ?? 'unknown',
+    });
+    throw new SessionRequiredError();
+  }
+
+  throw new Error('Access token required');
 };
 
 /**

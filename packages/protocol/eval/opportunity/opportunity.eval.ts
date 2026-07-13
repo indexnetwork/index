@@ -17,7 +17,7 @@
  *   bun run eval:opportunity -- --alpha 0.01           # stricter regression significance threshold
  *   bun run eval:opportunity -- --no-save              # do not auto-save full-corpus run JSON
  *
- * Requires OPENROUTER_API_KEY (loaded via --env-file=.env.test in the package script).
+ * Requires OPENROUTER_API_KEY (loaded via --env-file=../../.env.test in the package script).
  * Exits non-zero when a regression vs the committed baseline is detected.
  */
 import path from "path";

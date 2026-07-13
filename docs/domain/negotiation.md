@@ -3,10 +3,13 @@ title: "Negotiation"
 type: domain
 tags: [negotiation, bilateral, agents, opportunity, a2a, roles]
 created: 2026-03-26
-updated: 2026-04-11
+updated: 2026-07-11
+proposal: "Negotiations v2 — The Client-Advocate Protocol: see the visual proposal attached to IND-395 (https://linear.app/indexnetwork/issue/IND-395/)"
 ---
 
 # Negotiation
+
+> **Design rationale:** the v2 (client-advocate) behaviors described throughout this doc — rigid initiator seats, the outreach screen, `ask_user`, negotiator chat, and negotiator memory — are motivated and illustrated in the visual proposal attached to [IND-395](https://linear.app/indexnetwork/issue/IND-395/) (self-contained HTML).
 
 Negotiation is a bilateral agent-to-agent protocol that acts as a quality gate over proposed matches. Two AI agents -- one representing each user -- debate whether a connection genuinely serves both parties. An opportunity is created before negotiation begins (with `negotiating` status) so users have real-time visibility; the negotiation then gates whether it transitions to `pending` (awaiting human acceptance), `rejected`, or `stalled` (turn cap hit without consensus).
 
@@ -39,16 +42,28 @@ On the first turn, the initiating side presents the match case. On subsequent tu
 
 Negotiation proceeds in alternating turns.
 
-### Actions
+### Protocol versions
 
-Each turn produces one of five actions:
+Each negotiation task carries a `protocolVersion` (`v1` | `v2`) in its metadata. The version is **inherited, never re-stamped**: continuations copy the version from the prior task on the conversation, so an in-flight v1 conversation stays v1 even after the environment moves to v2. Only genuinely fresh negotiations stamp from the `NEGOTIATION_PROTOCOL_VERSION` env switch (default `v1`); rollback is the same single switch.
+
+Under **v2 (client-advocate seat rules)** the action vocabulary is scoped by seat, keyed on `metadata.initiatorUserId` (the rigid stamp from discovery time — never turn parity):
+
+- **Initiator seat** (`outreach | counter | question | withdraw`): the side that surfaced the match. It reaches out and may walk away, but it can **never accept** — this is schema-enforced, not prompt-enforced.
+- **Counterparty seat** (`accept | decline | counter | question`): the receiving side. Acceptance is this seat's decision alone.
+- **Final turn**: initiator `withdraw | counter`; counterparty `accept | decline` (must decide).
+
+Outcome mapping is version-independent: `accept` → `pending`, `reject`/`withdraw`/`decline` → `rejected`, turn cap → `stalled`.
+
+### Actions (v1)
+
+Each v1 turn produces one of five actions:
 
 | Action | When used |
 |---|---|
-| **propose** | First turn only. The initiating agent presents the match case. |
+| **propose** | First turn only. The initiating agent presents the match case. (v2: **outreach**, initiator seat only.) |
 | **counter** | The agent partially agrees but has specific objections. States what is missing or weak. |
-| **accept** | The agent is convinced the match genuinely benefits their user. |
-| **reject** | The agent concludes the match does not serve their user's needs. |
+| **accept** | The agent is convinced the match genuinely benefits their user. (v2: counterparty seat only.) |
+| **reject** | The agent concludes the match does not serve their user's needs. (v2: split into **withdraw** for the initiator / **decline** for the counterparty.) |
 | **question** | Personal agents only. A clarifying question for the other party. Routes the same as counter (non-terminal, awaits response). |
 
 Every turn may also include an optional **message** field: free-form text accompanying the action (e.g. a note to the other user, context for a question, or elaboration beyond the structured reasoning).
@@ -57,32 +72,62 @@ Every turn may also include an optional **message** field: free-form text accomp
 
 Each turn produces a structured assessment:
 
-- **action**: The action taken this turn (`propose`, `counter`, `accept`, `reject`, or `question`)
+- **action**: The action taken this turn (v1: `propose`, `counter`, `accept`, `reject`, `question`; v2: `outreach`, `counter`, `question`, `withdraw` for the initiator / `accept`, `decline`, `counter`, `question` for the counterparty)
 - **assessment.reasoning**: Why the agent took this action
 - **assessment.suggestedRoles**: What roles each user should play
   - `ownUser`: agent, patient, or peer
   - `otherUser`: agent, patient, or peer
 - **message** *(optional)*: Free-form text accompanying the action
 
+### Screen gate (shadow / enforce)
+
+Between init and the first turn, **fresh negotiations only** (continuations skip it) pass through an outreach gate: one structured LLM call from the reaching client's perspective deciding `reach_out | pass` — is this match worth the client's name before any turn is exchanged? Inputs: the client's intents + discovery query, the counterparty's `user_contexts` paragraph + active intents, and the seed assessment.
+
+Controlled by `NEGOTIATION_SCREEN_MODE`:
+
+- `off` *(code default)* — node skipped entirely; no LLM call, no telemetry.
+- `shadow` — the decision is recorded (`tasks.metadata.screenDecision`, a `negotiation_screen` trace event, and a log line) but **never blocks**: every negotiation proceeds to its first turn. Used to measure pass rates against observed reject rates before enforcement.
+- `enforce` *(P2.2)* — a `pass` blocks the negotiation **before the first turn**: the graph routes straight to finalize with outcome `reason: "screened_out"` — zero turns, zero counterparty involvement, zero notifications, no questioner, no reflection. Init had already flipped the opportunity to `negotiating`, so finalize quietly transitions it to `rejected` (hidden from default lists). `reach_out` proceeds normally.
+
+A screen failure (LLM error/timeout) **fails open** in every mode (including enforce): the negotiation proceeds as `reach_out` with `failedOpen: true` recorded, so failed screens are excluded from pass-rate queries.
+
+**`screened_out` is the client's private gate decision, not a negotiation.** Presentation treats it as never-happened: the negotiation-context loader returns `null` for screened-out outcomes (so no card/feed/digest surface can frame it as "counterparty declined"), and the mutual-viewer negotiations list excludes screened-out rows — the counterparty never learns a gate decision was made. The owner still sees the row in their own negotiations list, and the summarizer/question-generator digests carry `outcomeReason: "screened_out"` with client-appropriate copy.
+
+### Client consultation (`ask_user`, flag-gated)
+
+With `NEGOTIATION_ASK_USER_ENABLED=true`, v2 negotiators gain one extra non-final action per seat: **`ask_user`** — pause the negotiation to consult **their own client** (not the counterparty; `question` covers that). The turn carries `askUser: { disclosureSubject, draftQuestion }`.
+
+Flow: the `ask_user` turn is persisted → the task transitions to `input_required` (an A2A state previously unused by negotiations) → the draft is refined by the questioner's `negotiation_inflight` preset and delivered through the pending-questions UI → a **24 h answer window** is armed (`NEGOTIATION_ASK_USER_WINDOW_MS` overridable). The graph exits at the turn boundary, so chat-triggered runs never block a stream on a question — the resume is always an async continuation.
+
+- **Answer in time**: the answer lands on the opportunity's `metadata.userAnswers`, the timer is cancelled, the paused task is closed (`canceled`, superseded), and a `negotiation-run-existing` continuation resumes the dialogue. The asker speaks again (an `ask_user` turn does not pass the floor) with the answer in its context.
+- **Window expires**: the negotiation resumes with a **conservative default** — a synthetic `userAnswers` entry records that the client did not answer and instructs no disclosure/commitment on the subject. Negotiations always terminate.
+- **Lock**: while a task is `input_required` it holds the conversation lock for the full answer window (+1 h slack), not the usual 5-minute freshness — ambient rediscovery cannot start a fresh negotiation past the pause.
+- **Rationing**: at most **one client consultation per negotiation per side**, checked against the full turn history (continuations count prior sessions). Opening turns and final-cap turns never offer the action.
+- The 5-min park/claim timeout machinery ignores paused tasks: those workers only act on `waiting_for_agent`/`claimed` states.
+
+The action is only offered when the full pause loop is wired (questioner enabled, answer-window timer available, an opportunity to resume against); it is not accepted from the external polling `respond` surface — polling agents have their own channel to their user.
+
 ### Flow
 
 1. **Init**: An opportunity is created with `negotiating` status. A conversation and task are created in the A2A system to track the negotiation.
+1a. **Screen** *(fresh negotiations, `NEGOTIATION_SCREEN_MODE` ≠ `off`)*: the reaching client's gate records `reach_out | pass` on task metadata; in shadow mode the flow always continues.
 2. **Initiating agent's turn**: The agent presents the case (action: propose)
 3. **Responding agent's turn**: The agent evaluates and responds (accept, reject, counter, or question)
 4. **Alternation**: If the responding agent countered or asked a question, the other agent responds; turns alternate until resolution
-5. **Finalize**: When a terminal action occurs or the turn cap is reached, the outcome is computed and the opportunity status is updated accordingly
+5. **Finalize**: When a terminal action occurs or the turn cap is reached, the outcome is computed and the opportunity status is updated accordingly. An `ask_user` pause exits before finalization — the task stays `input_required` until the client answers or the window expires, then the dialogue resumes as a continuation.
 
 ### Turn cap
 
-Negotiations have a maximum turn limit that depends on the participant types:
+The turn cap is resolved at init from whether each side has an external (polling) agent authorized for `manage:negotiations` on the negotiation's network:
 
 | Scenario | Turn cap |
 |---|---|
-| System agent vs System agent | 6 turns |
-| Mixed (system + personal agent) | 8 turns |
-| Personal agent vs Personal agent | Unlimited (24-hour timeout safety valve) |
+| At least one side has no external agent | `NEGOTIATION_MAX_TURNS_AMBIENT` (default **6**) |
+| Both sides have external agents | Uncapped (`maxTurns = 0`) |
 
-If the cap is reached without accept or reject, the opportunity transitions to `stalled`. The outcome records `reason: "turn_cap"` to distinguish this from explicit rejection. Likewise, if 24 hours elapse in a personal-vs-personal negotiation without resolution, the opportunity transitions to `stalled` and the outcome records `reason: "timeout"`.
+The resolved value is stamped on the task metadata; the polling respond path falls back to 6 if the stamp is missing. If the cap is reached without a terminal action, the opportunity transitions to `stalled` and the outcome records `reason: "turn_cap"` to distinguish this from explicit rejection.
+
+⚠️ **Uncapped runs have no wall-clock bound today.** Termination relies on one side eventually taking a terminal action — the park-window timeout (below) guarantees *turns keep happening* (the system negotiator takes over abandoned turns), not that the dialogue ends. A wall-clock cap for uncapped external-vs-external runs is an open item tracked on the v2 master issue (IND-395, open question 3).
 
 ---
 
@@ -90,10 +135,10 @@ If the cap is reached without accept or reject, the opportunity transitions to `
 
 The finalization logic examines the negotiation history to determine the outcome:
 
-- **Has opportunity**: The last action was "accept". The opportunity transitions to `pending` (awaiting human acceptance via the UI).
-- **Rejected**: The last action was "reject". The opportunity transitions to `rejected`.
+- **Has opportunity**: The last action was "accept". The opportunity transitions to `pending` (awaiting human acceptance via the UI). Under v2 only the counterparty seat can produce this action.
+- **Rejected**: The last action was "reject" (v1) or "withdraw"/"decline" (v2). The opportunity transitions to `rejected`.
 - **Turn cap**: The maximum turns were exhausted. The opportunity transitions to `stalled`; `reason: "turn_cap"`.
-- **Timeout**: 24 hours elapsed without resolution (personal-vs-personal only). The opportunity transitions to `stalled`; `reason: "timeout"`.
+- **Screened out** *(v2, enforce mode)*: The client's own outreach gate declined before any turn. The opportunity transitions to `rejected`; `reason: "screened_out"`.
 
 ### Outcome fields
 
@@ -103,11 +148,23 @@ The finalization logic examines the negotiation history to determine the outcome
 | `agreedRoles` | Roles for each user (derived from the last two turns' `suggestedRoles`) |
 | `reasoning` | Summary of why the negotiation concluded this way |
 | `turnCount` | Number of turns taken |
-| `reason` *(optional)* | `"turn_cap"` or `"timeout"` when the negotiation ended without a terminal action |
+| `reason` *(optional)* | `"turn_cap"` when the cap ended the negotiation, or `"screened_out"` when the outreach gate blocked it. (`"timeout"` remains in the schema for legacy artifacts, but no current finalize path writes it — the trace layer separately emits a `timed_out` outcome when a graph run dies on a timeout error.) |
 
 ### Agreed roles
 
 When an opportunity is produced, the final roles are derived from the last two turns (the accept turn and the preceding turn). Each side's `suggestedRoles.ownUser` from their respective last turns becomes the agreed role for that user.
+
+### Reflection (memory write path, flag-gated)
+
+When `NEGOTIATOR_MEMORY_WRITE_ENABLED=true`, the finalize node fire-and-forgets a `reflect` job (via the injected `reflectEnqueue` callback — same pattern as `questionerEnqueue`). The `negotiation-reflect` queue worker replays the turn history from **both sides' perspectives** and distills ≤ 3 private `negotiator_memories` entries per side (playbooks, disclosure rules, counterparty dossiers, thresholds), each citing the evidencing turn indexes in its `sourceRefs`. Reflection failure never affects the outcome — the negotiation finalized before the job runs. Two companion write paths: negotiator-DM turns debounce-schedule a `chat_reflect` job that distills the client's stated preferences once the session goes idle, and `ask_user` answers are recorded immediately as high-confidence disclosure rules (an answer is already a distilled policy). Anti-poisoning: per-kind entry caps with lowest-confidence eviction, one dossier per (agent, subject) with reinforce-on-repeat, and a daily confidence-decay cron.
+
+### Memory injection (read path, flag-gated)
+
+When `NEGOTIATOR_MEMORY_INJECT=true`, the negotiator reads its own accumulated memories back into every surface where it argues or reports (P5.3). The negotiation graph takes an optional injected `memoryRetrieve` callback (composition-root pattern, like `reflectEnqueue`); retrieval is keyed on the **acting user's** id, so an agent can only ever see its own client's memories — the counterparty's are unreachable by construction. Retrieved entries render as a `PRIVATE NEGOTIATOR MEMORY` prompt section in four places: the **screen gate** (which reflects the influence into `evidence.memoryHints`), the **turn agent** system prompt, the **polling pickup** payload (`negotiatorMemory`, claiming user's own memory only), and the **negotiator DM persona** (where the audience is the client, so entries are shared context rather than secrets). Disclosure rules are **hard constraints** ("never disclose X") that override every other goal including reaching a deal, and are always included regardless of similarity; dossier notes are looked up directly by counterparty; playbooks and thresholds ride top-k embedding similarity against the seed assessment + counterparty context. The prompt section leads with a leak guard — memory text must never be quoted or referenced in anything counterparty-visible — and per-side retrieval is cached in graph state so a multi-turn session pays for it at most once per side. Retrieval failure (or the flag being off, or empty memory) yields prompts **byte-identical** to the pre-P5.3 build — memory can never break a negotiation.
+
+### Memory inspection & control (P5.4)
+
+It's the user's agent — everything it remembers is inspectable and editable. `GET|PATCH|DELETE /users/:userId/negotiator/memories(/:memoryId)` is **strictly self-only** (403 for any non-self caller, mutuals included — deliberately stricter than the neighbor negotiations route, which permits mutual viewers); the web app surfaces it as the **Memory tab** on the agent page, with disclosure rules listed first and labelled as *standing consent*. Content edits re-embed the row so similarity retrieval never serves stale meaning; deletes take effect for the very next retrieval (P5.3 reads live rows per session). Inspection and deletion are **not** gated on `NEGOTIATOR_MEMORY_WRITE_ENABLED` — they are the user's standing rights over already-accumulated rows. The negotiator DM additionally registers two persona-exclusive tools while the write flag is on: **`remember`** (persist a standing rule the client just stated — confidence 0.95, chat provenance, kind caps enforced) and **`forget`** (delete by id or by the client's description; a clear similarity winner is deleted, close calls come back as candidates to disambiguate). Both are appended after the persona allowlist filter and never enter the shared tool registry, so the orchestrator cannot see them.
 
 ---
 
@@ -130,17 +187,28 @@ When a negotiation graph reaches a turn the system cannot resolve synchronously 
 
 ### Parked-turn lifecycle
 
-1. The negotiation graph writes the turn into `tasks.state = 'waiting_for_agent'` and enqueues a 24-hour fallback timeout.
-2. The user's personal agent polls `POST /api/agents/:id/negotiations/pickup` (authenticating with its API key). The backend atomically CAS's the oldest pending task for the caller's user from `waiting_for_agent` to `claimed`, cancels the 24-hour fallback, and enqueues a 6-hour claim timeout. The agent receives the turn number, deadline, counterparty action, full turn history, and the projected own/other user context.
+A parked turn lives on a **single response-window budget** that is armed once at park time and *carried across* the `waiting_for_agent → claimed` transition — the park timer and the claim timer never stack. The budget depends on how the negotiation was triggered:
+
+| Trigger | Park-window budget |
+|---|---|
+| Ambient / background queue | `AMBIENT_PARK_WINDOW_MS` = **5 minutes** |
+| Chat-driven, external agent authorized on every candidate network | 5 minutes (same ambient budget — the agent polls) |
+| Chat-driven, no external agent somewhere | **30 seconds** (the system negotiator kicks in without stalling the chat) |
+| Orchestrator (chat-driven a2h fan-out) | **60 seconds** (the user is watching the stream) |
+
+1. The negotiation graph writes the turn into `tasks.state = 'waiting_for_agent'` and enqueues the park-window timeout with the trigger's budget.
+2. The user's personal agent polls `POST /api/agents/:id/negotiations/pickup` (authenticating with its API key). The backend atomically CAS's the oldest pending task for the caller's user from `waiting_for_agent` to `claimed`, cancels the park timeout, and enqueues a **claim timeout with the remaining budget** — `computeRemainingBudgetMs(parkStart, AMBIENT_PARK_WINDOW_MS)`, clamped to a 1-second floor — not a fresh window. The agent receives the turn number, a `deadline` (= park start + the 5-minute budget), counterparty action, full turn history, the projected own/other user context, and — since v2 — the caller's `seat`, the task's `protocolVersion`, and the `allowedActions` for that seat.
 3. The agent deliberates and submits its decision via `POST /api/agents/:id/negotiations/:negotiationId/respond` with `{ action, message?, assessment: { reasoning, suggestedRoles } }`. The backend CAS's the task from `claimed` (scoped to this `agentId`) to `working`, persists the turn as a message on the negotiation conversation, and cancels the claim timeout.
-4. If the action is `accept`, `reject`, or pushes the turn count over the cap, the task is completed and an outcome artifact is written. Otherwise the task returns to `waiting_for_agent` and a fresh 24-hour fallback is enqueued for the counterparty.
-5. If a pickup is not followed by a `respond` within 6 hours, the claim expires and the task returns to `waiting_for_agent` for another pickup attempt. If no agent claims within 24 hours of first parking, the in-process system `Index Negotiator` takes the turn instead.
+4. The submitted action is validated against the caller's seat + the task's protocol version before any state changes — an out-of-seat action (e.g. a v2 initiator submitting `accept`) returns HTTP 400 and leaves the claim intact for a retry. If the action is terminal (`accept`, `reject`, `withdraw`, `decline`) or pushes the turn count over the cap, the task is completed and an outcome artifact is written. Otherwise the task returns to `waiting_for_agent` and a **fresh 5-minute park window** is enqueued for the counterparty.
+5. When the budget expires — whether the turn was never picked up (park timeout) or was claimed and abandoned (claim timeout) — the in-process system `Index Negotiator` takes the turn as a fallback. Under v2 the fallback is **seat-scoped**: an initiator-seat fallback can never accept on the user's behalf. If the fallback's action is terminal or hits the cap, the negotiation finalizes; if it counters under the cap, a fresh 5-minute park window is armed for the next speaker. An expired claim is *not* re-parked for another pickup attempt.
+
+`ask_user`-paused tasks (`input_required`) are invisible to both timeout workers — they run on the separate 24-hour answer window described above.
 
 Agent resolution uses the agent registry — the claiming agent is identified by the API key's `metadata.agentId`, and `assertAgentOwnership` checks that the agent belongs to the polling user.
 
 ### Why polling
 
-Polling decouples turn delivery from the backend's request path. The graph does not hold any open connections waiting for an agent response, personal agents do not need to expose a public HTTPS endpoint, and there is no shared secret to manage. Agents work at their own cadence; the claim timeout bounds how long a claimed turn can block progress, and the 24-hour parked timeout guarantees the negotiation always terminates.
+Polling decouples turn delivery from the backend's request path. The graph does not hold any open connections waiting for an agent response, personal agents do not need to expose a public HTTPS endpoint, and there is no shared secret to manage. Agents work at their own cadence within the shared budget; the remaining-budget claim timeout bounds how long a claimed turn can block progress, and the park-window timeout guarantees every parked turn is eventually taken — by the polling agent or by the system negotiator fallback.
 
 ### Personal agent reference implementation
 
@@ -150,13 +218,13 @@ Running the turn as a silent subagent (rather than inline in the poller) lets th
 
 ### Turn mode behavioral contract
 
-When a subagent sees a session key prefixed `index:negotiation:`, the MCP server's instructions direct it to:
+The turn-mode behavioral contract lives in the **`respond_to_negotiation` tool description** (the "silent-subagent response contract"), not in the server-level `MCP_INSTRUCTIONS` (which carries voice/output rules and points agents at per-tool guidance). It directs the subagent to:
 
-- Not produce user-facing output (it is running in the background).
-- Not ask clarifying questions (there is no user in the loop).
-- If the decision is ambiguous, pick the most conservative action — usually `counter` with specific objections, or `reject` with clear reasoning.
+- Submit exactly **one** `respond_to_negotiation` call per dispatch, with an action from its seat's allowed set and the full assessment (reasoning + suggestedRoles).
+- Not ask the user clarifying questions (it is authorized to act on their behalf within the agent's granted scope).
+- If the decision is ambiguous, pick the most conservative action — usually `counter` with specific objections.
 
-Because this behavioral contract lives in `MCP_INSTRUCTIONS` on the protocol's MCP server, every MCP-connected runtime (Claude Code, Codex, …) picks it up automatically and behaves consistently. Plugin skill files do not need to repeat it.
+The tool description also carries the seat-scoped v2 vocabulary (initiator `outreach | counter | question | withdraw`, counterparty `accept | decline | counter | question`) and instructs the agent to call `get_negotiation` first — its `seat`, `protocolVersion`, and `allowedActions` fields announce exactly what may be submitted. Because this contract ships in the tool metadata itself, every MCP-connected runtime (Claude Code, Codex, …) picks it up automatically; plugin skill files do not need to repeat it.
 
 ---
 
@@ -200,7 +268,7 @@ Called by a personal agent to submit a turn response.
 
 **Input fields:**
 - `negotiationId`: The negotiation to respond to
-- `action`: One of `propose`, `counter`, `accept`, `reject`, `question`
+- `action`: One of `propose`, `counter`, `accept`, `reject`, `question` (v1) or the caller's seat vocabulary under v2 (`outreach`/`counter`/`question`/`withdraw` for the initiator, `accept`/`decline`/`counter`/`question` for the counterparty) — `get_negotiation` announces `seat`, `protocolVersion`, and `allowedActions`
 - `reasoning`: Why the agent took this action
 - `suggestedRoles`: Role suggestions for own user and other user
 - `message` *(optional)*: Free-form text accompanying the action

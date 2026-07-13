@@ -33,12 +33,11 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { PersistableQuestion, PersistedQuestion, ChatQuestionAnswerOutcome } from "../shared/interfaces/questioner.interface.js";
 import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
 import { QuestionerAgent } from "./questioner.agent.js";
+import { chatQuestionWaitTimeoutMs } from "./questioner.env.js";
 import type { ChatContext } from "./questioner.types.js";
 
 const logger = protocolLogger("AskUserQuestionTool");
 
-/** Default in-tool wait budget for the user's answer (4 minutes). */
-const DEFAULT_WAIT_TIMEOUT_MS = 4 * 60 * 1000;
 
 /** Heartbeat interval while blocked, so SSE transports do not idle out. */
 const WAIT_HEARTBEAT_MS = 15_000;
@@ -55,13 +54,6 @@ const EXCERPT_FETCH_LIMIT = 100;
 
 /** Max characters per message inside the excerpt. */
 const EXCERPT_MESSAGE_CHARS = 400;
-
-function waitTimeoutMs(): number {
-  const raw = process.env.CHAT_QUESTION_WAIT_TIMEOUT_MS;
-  if (!raw) return DEFAULT_WAIT_TIMEOUT_MS;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WAIT_TIMEOUT_MS;
-}
 
 // Lazy singleton — construction binds the LLM once; invocations are stateless.
 let questionerAgent: QuestionerAgent | null = null;
@@ -277,7 +269,7 @@ export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDep
       try {
         outcomes = await host.awaitAnswers(
           persisted.map((q) => q.id),
-          { timeoutMs: waitTimeoutMs(), ...(signal ? { signal } : {}) },
+          { timeoutMs: chatQuestionWaitTimeoutMs(), ...(signal ? { signal } : {}) },
         );
       } finally {
         clearInterval(heartbeat);

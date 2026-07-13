@@ -5,6 +5,9 @@ import { apiClient } from "@/lib/api";
 import type { Suggestion } from "@/hooks/useSuggestions";
 import type { Question } from "@/components/DecisionQuestions/types";
 import type { PendingQuestion } from "@/services/questions";
+import { log } from "@/lib/logger";
+
+const logger = log.context.from("AIChatContext");
 
 export interface DiscoveryOpportunity {
   candidateId: string;
@@ -92,11 +95,11 @@ export interface TraceEvent {
   startedAt?: number;
   turnIndex?: number;
   actor?: "source" | "candidate";
-  action?: "propose" | "accept" | "reject" | "counter" | "question";
+  action?: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };
-  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap";
+  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap" | "screened_out";
   turnCount?: number;
   agreedRoles?: { ownUser?: string; otherUser?: string };
 }
@@ -148,6 +151,8 @@ interface AIChatContextType {
   messages: ChatMessage[];
   sessionId: string | null;
   sessionTitle: string | null;
+  /** Persona driving the loaded session's agent loop (e.g. 'negotiator'). Null until a session is loaded. */
+  sessionPersona: string | null;
   setSessionId: (id: string | null) => void;
   /** The network bound to the current session (persisted). Null if no network scope. */
   sessionNetworkId: string | null;
@@ -291,6 +296,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
+  const [sessionPersona, setSessionPersona] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { refetchSessions } = useAIChatSessions();
@@ -925,7 +931,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     break;
                 }
               } catch (e) {
-                console.error("Failed to parse SSE event:", e);
+                logger.error("Failed to parse SSE event", { error: e });
               }
             }
           }
@@ -933,7 +939,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           const isSteerAbort = abortControllerRef.current?.signal.reason === 'steer';
-          console.log(isSteerAbort ? "Chat stream interrupted by steer" : "Chat stream aborted");
+          logger.debug(isSteerAbort ? "Chat stream interrupted by steer" : "Chat stream aborted");
           const stoppedAt = Date.now();
           setMessages((prev) =>
             prev.map((msg) =>
@@ -949,7 +955,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
             ),
           );
         } else {
-          console.error("Chat error:", error);
+          logger.error("Chat error", { error });
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMessageId
@@ -1034,6 +1040,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setLiveQuestions([]);
     setSessionId(null);
     setSessionTitle(null);
+    setSessionPersona(null);
     setSessionScope(null); // Clear session-bound scope so new chat can use UI selection
     setSessionNetworkId(null); // Clear session-bound network so new chat can use UI selection
     if (abortStream && abortControllerRef.current) {
@@ -1055,6 +1062,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         session: {
           id: string;
           title?: string | null;
+          persona?: string | null;
           networkId?: string | null;
           scopeType?: "network" | "intent" | null;
           scopeId?: string | null;
@@ -1084,6 +1092,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       }>("/chat/session", { sessionId: id });
       setSessionId(data.session.id);
       setSessionTitle(data.session.title?.trim() ?? null);
+      setSessionPersona(data.session.persona ?? null);
       setSuggestions([]); // Session load does not return suggestions; next response will
       // Load the session's bound scope - this is the persisted scope for this conversation.
       const loadedScope: ChatScope = data.session.scopeType && data.session.scopeId
@@ -1120,7 +1129,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         })),
       );
     } catch (err) {
-      console.error("Load session error:", err);
+      logger.error("Load session error", { error: err });
     }
   }, []);
 
@@ -1137,7 +1146,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         refetchSessions();
         return true;
       } catch (err) {
-        console.error("Update session title error:", err);
+        logger.error("Update session title error", { error: err });
         return false;
       }
     },
@@ -1152,6 +1161,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         messages,
         sessionId,
         sessionTitle,
+        sessionPersona,
         setSessionId,
         sessionNetworkId,
         chatScope,

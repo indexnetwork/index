@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, Library, History, Network, Bot, CircleHelp } from 'lucide-react';
+import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, History, Network, Bot, BotMessageSquare, CircleHelp } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -16,12 +16,17 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
 import MasterKeyDialog from '@/components/MasterKeyDialog';
 import { useQuestions } from '@/contexts/QuestionsContext';
+import { log } from '@/lib/logger';
+
+const logger = log.ui.from('Sidebar');
 
 
 interface ChatSession {
   id: string;
   title: string | null;
   networkId: string | null;
+  /** Canonical scope; intent-pinned negotiator sessions carry 'intent' (IND-403). */
+  scopeType?: 'network' | 'intent' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,7 +34,7 @@ interface ChatSession {
 export default function Sidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, signOut } = useAuthContext();
+  const { user, features, signOut } = useAuthContext();
   useConversation();
   const totalUnreadCount = 0; // Unread tracking out of scope for now
   const { sessionsVersion } = useAIChatSessions();
@@ -50,18 +55,24 @@ export default function Sidebar() {
   const userDropdownRef = useRef<HTMLDivElement>(null);
   const { count: pendingQuestionsCount } = useQuestions();
 
+  // Pinned negotiator DM (IND-411). Flag-gated: the entry renders only when
+  // the backend reports the negotiator chat feature enabled on /auth/me.
+  const negotiatorEnabled = features?.negotiatorChat === true;
+  const [negotiatorSession, setNegotiatorSession] = useState<{ id: string; title: string | null } | null>(null);
+  const [openingNegotiator, setOpeningNegotiator] = useState(false);
+
+  // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
+  const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
+
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
-  const isLibraryView = pathname?.startsWith('/library');
   const isNetworksView = pathname?.startsWith('/networks');
-  const isHistoryView = pathname?.startsWith('/d/');
+  const isNegotiatorView = !!negotiatorSession && currentSessionId === negotiatorSession.id;
+  const isHistoryView = pathname?.startsWith('/d/') && !isNegotiatorView;
   const isSettingsView = pathname?.startsWith('/settings');
   const isAgentsView = pathname?.startsWith('/agents') || pathname?.startsWith('/agent');
   const isMyNetworkView = pathname?.startsWith('/mynetwork');
   const isQuestionsView = pathname?.startsWith('/questions');
-  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView && !isSettingsView && !isAgentsView && !isMyNetworkView && !isQuestionsView;
-
-  // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
-  const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
+  const isHomeView = !isMessagesView && !isNetworksView && !isHistoryView && !isNegotiatorView && !isSettingsView && !isAgentsView && !isMyNetworkView && !isQuestionsView;
 
   const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown> }) => {
     try {
@@ -84,7 +95,7 @@ export default function Sidebar() {
         success('Index created successfully');
       }
     } catch (err) {
-      console.error('Error creating index:', err);
+      logger.error('Error creating index', { error: err });
       error('Failed to create network');
     }
   }, [indexesService, addIndex, success, error]);
@@ -131,11 +142,60 @@ export default function Sidebar() {
 
       navigate('/chat');
     } catch (err) {
-      console.error('Failed to fetch most recent chat:', err);
+      logger.error('Failed to fetch most recent chat', { error: err });
     } finally {
       setNavigatingToChat(false);
     }
   };
+
+  // Resolve the existing negotiator DM (if bootstrapped) so the pinned entry
+  // can show the agent's name and highlight when active — without creating a
+  // session as a side effect of rendering the sidebar.
+  useEffect(() => {
+    if (!user?.id || !negotiatorEnabled) return;
+    let active = true;
+    apiClient
+      .get<{ sessions: ChatSession[] }>('/chat/sessions?persona=negotiator')
+      .then((data) => {
+        if (!active) return;
+        // The pinned entry is the unscoped DM — intent-pinned negotiator
+        // sessions (IND-403) also carry persona=negotiator but have a scope.
+        const session = data.sessions?.find((s) => !s.scopeType);
+        if (session) setNegotiatorSession({ id: session.id, title: session.title });
+      })
+      .catch((error) => {
+        logger.error('Failed to fetch negotiator session', { error });
+      });
+    return () => { active = false; };
+  }, [user?.id, negotiatorEnabled]);
+
+  // One persistent DM per user: get-or-create on click, then navigate to the
+  // regular session route. Repeat clicks and reloads land in the same session.
+  const handleNegotiatorClick = async () => {
+    if (!user?.id || openingNegotiator) return;
+    if (negotiatorSession) {
+      navigate(`/d/${negotiatorSession.id}`);
+      return;
+    }
+    setOpeningNegotiator(true);
+    try {
+      const { session, agent } = await apiClient.post<{
+        session: { id: string; title: string | null };
+        created: boolean;
+        agent: { id: string; name: string; description: string | null };
+      }>('/chat/negotiator/session');
+      setNegotiatorSession({ id: session.id, title: session.title ?? agent.name });
+      navigate(`/d/${session.id}`);
+    } catch (err) {
+      logger.error('Failed to open negotiator chat', { error: err });
+      error('Failed to open Personal Agent chat');
+    } finally {
+      setOpeningNegotiator(false);
+    }
+  };
+
+  const negotiatorLabel = negotiatorSession?.title
+    || (user?.name ? `${user.name.split(' ')[0]}'s Negotiator` : 'Personal Agent');
 
   // Fetch AI chat sessions (cookie-based auth; credentials sent automatically)
   useEffect(() => {
@@ -149,7 +209,7 @@ export default function Sidebar() {
         const data = await apiClient.get<{ sessions: ChatSession[] }>('/chat/sessions');
         setChatSessions(data.sessions.slice(0, 10));
       } catch (error) {
-        console.error('Failed to fetch chat sessions:', error);
+        logger.error('Failed to fetch chat sessions', { error });
       } finally {
         if (isInitialLoad) setLoadingSessions(false);
       }
@@ -219,6 +279,34 @@ export default function Sidebar() {
           )}
         </button>
 
+        {/* Pinned Personal Agent DM (IND-411) — flag-gated, above History; a
+            pinned surface, not a history entry (backend excludes it from
+            /chat/sessions). */}
+        {negotiatorEnabled && (
+          <button
+            onClick={handleNegotiatorClick}
+            disabled={openingNegotiator}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+              isNegotiatorView
+                ? 'bg-gray-100 text-black font-bold'
+                : 'text-black font-medium hover:bg-gray-50'
+            } ${openingNegotiator ? 'opacity-50 cursor-wait' : ''}`}
+          >
+            <BotMessageSquare className="w-5 h-5" />
+            <span className="flex-1 text-left truncate">{negotiatorLabel}</span>
+            {/* Pending question inbox count (IND-404) — the DM surfaces the
+                same open questions the Questions page lists. */}
+            {pendingQuestionsCount > 0 && (
+              <span
+                data-testid="negotiator-question-badge"
+                className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center"
+              >
+                {pendingQuestionsCount > 99 ? '99+' : pendingQuestionsCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* History menu item with submenu */}
         <div>
           <button
@@ -242,7 +330,7 @@ export default function Sidebar() {
               ) : chatSessions.length === 0 ? (
                 <div className="text-sm text-gray-400 py-2">No conversations yet</div>
               ) : (
-                chatSessions.map((session) => {
+                chatSessions.filter((session) => session.id !== negotiatorSession?.id).map((session) => {
                   const isSelected = currentSessionId === session.id;
                   const sessionIndex = session.networkId ? indexes.find(i => i.id === session.networkId) : null;
                   return (
@@ -344,15 +432,6 @@ export default function Sidebar() {
           {userDropdownOpen && (
             <div className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-gray-200 rounded-lg shadow-sm z-50 overflow-hidden">
               <div className="py-1.5">
-                <button
-                  className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
-                    isLibraryView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                  onClick={() => { setUserDropdownOpen(false); navigate('/library'); }}
-                >
-                  <Library className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                  Library
-                </button>
                 <button
                   className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
                     isSettingsView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'

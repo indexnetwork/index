@@ -61,7 +61,7 @@ describe('Email Handlers', () => {
 
       await sendConnectionRequestEmail(to, initiatorName, receiverName, synthesisHtml, subject);
 
-      const unsubscribeUrl = `${process.env.BASE_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
+      const unsubscribeUrl = `${process.env.API_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
       expect(templatesModule.connectionRequestTemplate).toHaveBeenCalledWith(initiatorName, receiverName, synthesisHtml, subject, unsubscribeUrl);
       expect(emailModule.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -83,7 +83,7 @@ describe('Email Handlers', () => {
 
       await sendConnectionAcceptedEmail(to, initiatorName, accepterName, synthesisHtml);
 
-      const unsubscribeUrl = `${process.env.BASE_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
+      const unsubscribeUrl = `${process.env.API_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
       expect(connectionAcceptedTemplateModule.connectionAcceptedTemplate).toHaveBeenCalledWith(initiatorName, accepterName, synthesisHtml, unsubscribeUrl);
       // Sends one email per recipient
       expect(emailModule.sendEmail).toHaveBeenCalledTimes(2);

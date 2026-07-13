@@ -25,7 +25,7 @@ const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Detection context describing how/where a question was generated. */
 export interface AdapterQuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -87,10 +87,15 @@ export interface AdapterPersistedQuestion {
 
 /** Optional filters for the `findPending` query. */
 export interface AdapterQuestionFilters {
-  mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
+  mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
   sourceType?: string;
   sourceId?: string;
-  /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */
+  /**
+   * Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected
+   * intent id. Matches questions triggered by the intent, intent-mode questions about it, and
+   * any question sourced from an opportunity linked to the intent (including negotiation
+   * questions, since those persist with `sourceType: 'opportunity'`).
+   */
   scopeType?: 'intent';
   scopeId?: string;
   /** Restrict to questions whose actor carries this network id. */
@@ -100,7 +105,7 @@ export interface AdapterQuestionFilters {
   /** When true, only return questions with no conversationId (sidebar-only). */
   noConversation?: boolean;
   /** Restrict to questions whose detection mode is in this set. */
-  modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat'>;
+  modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat'>;
   /** Maximum rows to return (applied as a SQL LIMIT). */
   limit?: number;
 }
@@ -181,8 +186,7 @@ export class QuestionerAdapter {
           AND ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
         )
         OR (
-          ${questions.detection}->>'mode' = 'negotiation'
-          AND ${questions.detection}->>'sourceType' = 'opportunity'
+          ${questions.detection}->>'sourceType' = 'opportunity'
           AND EXISTS (
             SELECT 1
             FROM ${opportunities} scoped_opp
@@ -192,8 +196,7 @@ export class QuestionerAdapter {
                 OR EXISTS (
                   SELECT 1
                   FROM jsonb_array_elements(scoped_opp.actors) AS actor
-                  WHERE actor->>'userId' = ${userId}
-                    AND actor->>'intent' = ${filters.scopeId}
+                  WHERE actor->>'intent' = ${filters.scopeId}
                 )
               )
           )
@@ -224,6 +227,22 @@ export class QuestionerAdapter {
       : await baseQuery;
 
     return rows.map(toPersistedQuestion);
+  }
+
+  /**
+   * Fetch a single question by id.
+   *
+   * @param questionId - ID of the question to fetch.
+   * @returns The question row, or null when not found.
+   */
+  async getById(questionId: string): Promise<AdapterPersistedQuestion | null> {
+    const [row] = await this.db
+      .select()
+      .from(questions)
+      .where(eq(questions.id, questionId))
+      .limit(1);
+
+    return row ? toPersistedQuestion(row) : null;
   }
 
   /**

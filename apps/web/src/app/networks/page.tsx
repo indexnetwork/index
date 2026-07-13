@@ -13,6 +13,9 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworks } from '@/contexts/APIContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { Network as NetworkType } from '@/lib/types';
+import { log } from '@/lib/logger';
+
+const logger = log.page.from('networks');
 
 export default function NetworksPage() {
   const navigate = useNavigate();
@@ -40,7 +43,7 @@ export default function NetworksPage() {
       const response = await indexesService.discoverPublicIndexes(1, 50);
       setPublicNetworks(response.data);
     } catch (err) {
-      console.error('Error loading public networks:', err);
+      logger.error('Error loading public networks', { error: err });
     } finally {
       setLoadingPublic(false);
     }
@@ -58,7 +61,7 @@ export default function NetworksPage() {
       }
       await loadPublicNetworks();
     } catch (err) {
-      console.error('Error joining network:', err);
+      logger.error('Error joining network', { error: err });
       error('Failed to join network');
     } finally {
       setJoiningNetwork(null);
@@ -86,7 +89,7 @@ export default function NetworksPage() {
       }
       success('Network created successfully');
     } catch (err) {
-      console.error('Error creating network:', err);
+      logger.error('Error creating network', { error: err });
       error('Failed to create network');
     }
   }, [indexesService, addIndex, navigate, success, error]);

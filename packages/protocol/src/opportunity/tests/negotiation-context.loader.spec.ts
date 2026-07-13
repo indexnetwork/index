@@ -35,7 +35,7 @@ function turnMessage(
 
 function outcomeArtifact(
   hasOpportunity: boolean,
-  reason?: "turn_cap" | "timeout",
+  reason?: "turn_cap" | "timeout" | "screened_out",
 ): { id: string; name: string | null; parts: unknown[]; metadata: Record<string, unknown> | null } {
   const outcome: NegotiationOutcome = {
     hasOpportunity,
@@ -179,6 +179,25 @@ describe("loadNegotiationContext", () => {
     expect(result!.outcome?.reason).toBe("turn_cap");
     expect(result!.outcome?.hasOpportunity).toBe(false);
     expect(result!.turns).toHaveLength(3);
+  });
+
+  it("returns null for screened_out outcomes — presentation treats the client's gate decision as never-happened (P2.2)", async () => {
+    const db = buildDb({
+      getNegotiationTaskForOpportunity: async () => ({
+        id: "task-1",
+        conversationId: "conv-1",
+        state: "completed",
+        metadata: { type: "negotiation", opportunityId: OPPORTUNITY_ID, maxTurns: 6 },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+      getMessagesForConversation: async () => [],
+      getArtifactsForTask: async () => [outcomeArtifact(false, "screened_out")],
+    });
+
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "rejected");
+
+    expect(result).toBeNull();
   });
 
   it("defaults turnCap to 0 when task metadata omits maxTurns", async () => {

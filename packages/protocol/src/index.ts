@@ -31,6 +31,8 @@ export {
 } from "./shared/agent/tool.scope.js";
 export type { ToolScopeEnvelope, ToolScopeType, ScopeMembership, DeriveNetworkScopeInput } from "./shared/agent/tool.scope.js";
 export { requestContext } from "./shared/observability/request-context.js";
+export { setLoggerFactory } from "./shared/observability/log.js";
+export type { LoggerWithSource as ProtocolLoggerWithSource } from "./shared/observability/log.js";
 export { setTimingWrapper } from "./shared/observability/performance.js";
 export { ToolRuntimeError, getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } from "./shared/agent/tool.runtime.js";
 export type { ToolRuntimeErrorCode, ToolTimeoutClass, ToolTimeoutPolicy } from "./shared/agent/tool.runtime.js";
@@ -84,7 +86,7 @@ export type {
   UpdateUserEnrichmentRunInput, PreviewUserEnrichmentRunInput,
   EnrichmentRunRecord, EnrichmentRunStatus, EnrichmentRunOperation,
 } from "./shared/interfaces/enrichment-run.interface.js";
-export type { NegotiationTimeoutQueue } from "./shared/interfaces/negotiation-events.interface.js";
+export type { NegotiationTimeoutQueue, AskUserExpiryPayload } from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
 export type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput, AgentDatabase } from './shared/interfaces/agent.interface.js';
 export { SYSTEM_AGENT_IDS } from './shared/interfaces/agent.interface.js';
@@ -107,6 +109,31 @@ export type { EvidenceCandidateInput } from "./opportunity/opportunity.evidence.
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
 export { ChatGraphFactory } from "./chat/chat.graph.js";
+export {
+  ORCHESTRATOR_PERSONA,
+  ORCHESTRATOR_PERSONA_ID,
+  type ChatPersonaConfig,
+  type ChatPersonaLoopBehaviors,
+} from "./chat/chat.persona.js";
+export {
+  NEGOTIATOR_PERSONA_ID,
+  NEGOTIATOR_TOOL_NAMES,
+  createNegotiatorPersona,
+  createNegotiatorTools,
+  filterNegotiatorTools,
+} from "./chat/negotiator.persona.js";
+export { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./chat/negotiator.prompt.js";
+export {
+  NEGOTIATOR_MEMORY_TOOL_NAMES,
+  createNegotiatorMemoryTools,
+} from "./chat/negotiator.tools.js";
+export type {
+  NegotiatorMemoryToolsHost,
+  NegotiatorMemoryRememberInput,
+  NegotiatorMemoryToolView,
+  NegotiatorMemoryForgetResult,
+  RememberableMemoryKind,
+} from "./shared/interfaces/negotiator-memory.interface.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";
@@ -146,11 +173,18 @@ export { LensInferrer } from "./shared/hyde/lens.inferrer.js";
 export { NegotiationInsightsGenerator } from "./negotiation/insight.generator.js";
 export type { NegotiationDigest } from "./negotiation/insight.generator.js";
 export { IndexNegotiator } from "./negotiation/negotiation.agent.js";
+export { NegotiationScreener, configuredScreenMode, ScreenDecisionSchema, NEGOTIATION_SCREEN_MODES } from "./negotiation/negotiation.screen.js";
+export type { ScreenDecision, ScreenDecisionRecord, NegotiationScreenMode, NegotiationScreenerInput } from "./negotiation/negotiation.screen.js";
+export { NegotiationReflector, DistilledMemorySchema, ReflectionResultSchema, MAX_DISTILLED_MEMORIES, NEGOTIATOR_MEMORY_KINDS } from "./negotiation/negotiation.reflect.js";
+export type { DistilledMemory, DistilledMemoryKind, ReflectionResult, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiation/negotiation.reflect.js";
+export { renderNegotiatorMemorySection, renderNegotiatorChatMemorySection } from "./negotiation/negotiation.memory.js";
+export type { NegotiatorMemoryEntry, NegotiatorMemoryQuery, NegotiatorMemoryScope, NegotiatorMemoryRetrieveFn } from "./negotiation/negotiation.memory.js";
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
-export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, ChatContext } from "./questioner/questioner.types.js";
+export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, NegotiationInflightContext, ChatContext } from "./questioner/questioner.types.js";
 export { getPreset } from "./questioner/questioner.presets.js";
+export { isQuestionerEnabled, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs } from "./questioner/questioner.env.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
@@ -197,7 +231,34 @@ export type { ElicitResultLike, ElicitInputFn, DispatchElicitationsParams } from
 // @experimental — internal graph-state shapes; may change in a minor release.
 
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./shared/schemas/negotiation-state.schema.js";
+export { NEGOTIATION_ACTIONS, AskUserPayloadSchema } from "./shared/schemas/negotiation-state.schema.js";
+export type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion, AskUserPayload } from "./shared/schemas/negotiation-state.schema.js";
 export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";
+
+// ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
+
+export {
+  InitiatorTurnSchema,
+  CounterpartyTurnSchema,
+  FinalInitiatorTurnSchema,
+  FinalCounterpartyTurnSchema,
+  InitiatorAskUserTurnSchema,
+  CounterpartyAskUserTurnSchema,
+  allowedActionsFor,
+  turnSchemaFor,
+  isTerminalAction,
+  isRejectLikeAction,
+  fallbackActionFor,
+  rejectActionFor,
+  readProtocolVersion,
+  configuredProtocolVersion,
+  configuredAskUserEnabled,
+  askUserAnswerWindowMs,
+  DEFAULT_ASK_USER_WINDOW_MS,
+  ASK_USER_LOCK_SLACK_MS,
+  resolveSeat,
+  seatViolationMessage,
+} from "./negotiation/negotiation.protocol.js";
 
 // ─── Streamers ────────────────────────────────────────────────────────────────
 

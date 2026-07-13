@@ -3,6 +3,9 @@ import { Network } from '@/lib/types';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useIndexesV2 } from '@/services/v2/networks.service';
 import { useNetworks as useIndexesAPI } from '@/contexts/APIContext';
+import { log } from '@/lib/logger';
+
+const logger = log.context.from('IndexesContext');
 
 interface NetworksContextType {
   indexes: Network[];
@@ -38,7 +41,7 @@ export function NetworksProvider({ children }: { children: ReactNode }) {
       hasFetchedRef.current = true;
       hasDataRef.current = true;
     } catch (err) {
-      console.error('Error fetching networks:', err);
+      logger.error('Error fetching networks', { error: err });
       setError('Failed to load networks');
       setIndexes([]);
     } finally {
@@ -89,7 +92,7 @@ export function NetworksProvider({ children }: { children: ReactNode }) {
 
     indexesAPI.joinIndex(pendingNetworkId)
       .then(() => refreshIndexes())
-      .catch((err) => console.error('Failed to auto-join pending network:', err));
+      .catch((err) => logger.error('Failed to auto-join pending network', { error: err }));
   }, [isAuthenticated, indexesAPI, refreshIndexes]);
 
   return (

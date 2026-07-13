@@ -10,6 +10,8 @@ import type { HydeTargetCorpus } from '../shared/hyde/lens.inferrer.js';
 import { log } from '../shared/observability/log.js';
 
 const logger = log.graph.from('SelectByComposition');
+const dedupeByPersonLog = log.graph.from('DeduplicateByPerson');
+const digestCandidatesLog = log.graph.from('SelectDigestCandidates');
 
 /** Actor roles in the opportunity model (agent / patient / peer). */
 export type OpportunityActorRole = 'agent' | 'patient' | 'peer';
@@ -152,7 +154,10 @@ export function canUserSeeOpportunity(
  *   (1) `latent`, no introducer                   → all actors actionable
  *   (2) `latent`, introducer `approved !== true`  → introducer only
  *   (3) `latent`, introducer `approved === true`  → all non-introducer actors
- *   (4) `pending` (any introducer config)         → non-introducer actors who have not acted
+ *   (4) `pending` (any introducer config)         → non-introducer actors who have not acted.
+ *       Acting is per-user, not per-actor-row: re-detection can append duplicate
+ *       actor rows for the same user without `actedAt`, so any viewer row with
+ *       `actedAt` means the viewer has already acted.
  *   (5) `accepted`/`rejected`/`expired`/`stalled`/`draft`/`negotiating`
  *                                                 → never actionable
  *
@@ -169,11 +174,16 @@ export function isActionableForViewer(
   const viewerActors = actors.filter((a) => a.userId === viewerId);
   if (viewerActors.length === 0) return false;
 
+  // Per-user acted signal: duplicate actor rows appended by re-detection may
+  // lack `actedAt` even though the viewer already accepted/rejected — a single
+  // stamped row means the viewer has acted on this opportunity.
+  const viewerActed = viewerActors.some((a) => !!a.actedAt);
+
   const introducer = actors.find((a) => a.role === 'introducer');
   const hasIntroducer = !!introducer;
   const introducerApproved = introducer?.approved === true;
 
-  return viewerActors.some(({ role, actedAt }) => {
+  return viewerActors.some(({ role }) => {
     if (role === 'introducer') {
       // Rule 2: introducer sees own latent opp only while not yet approved.
       return status === 'latent' && !introducerApproved;
@@ -186,10 +196,10 @@ export function isActionableForViewer(
       return !hasIntroducer || introducerApproved;
     }
     if (status === 'pending') {
-      // Rule 4: pending is actionable only for actors who have not already
-      // acted. Once an actor has `actedAt`, the opportunity is waiting on the
-      // counterparty and should not appear in that actor's home feed.
-      return !actedAt;
+      // Rule 4: pending is actionable only while the viewer has not acted.
+      // Once any of the viewer's actor rows has `actedAt`, the opportunity is
+      // waiting on the counterparty and should not appear in the viewer's feed.
+      return !viewerActed;
     }
     // Rule 5: never actionable at terminal or internal statuses.
     return false;
@@ -285,7 +295,19 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
   selected['connector-flow'].sort(sortByOriginal);
   selected.expired.sort(sortByOriginal);
 
-  logger.info(`[selectByComposition] input=${opportunities.length} buckets: connection=${buckets.connection.length} connector-flow=${buckets['connector-flow'].length} expired=${buckets.expired.length} → selected: connection=${selected.connection.length} connector-flow=${selected['connector-flow'].length} expired=${selected.expired.length}`);
+  logger.info('Selected opportunities by composition', {
+    input: opportunities.length,
+    buckets: {
+      connection: buckets.connection.length,
+      connectorFlow: buckets['connector-flow'].length,
+      expired: buckets.expired.length,
+    },
+    selected: {
+      connection: selected.connection.length,
+      connectorFlow: selected['connector-flow'].length,
+      expired: selected.expired.length,
+    },
+  });
 
   return [
     ...selected.connection,
@@ -344,9 +366,10 @@ export function deduplicateByPerson<T extends {
 
   const result = all.map((entry) => entry.opp);
   if (result.length < opportunities.length) {
-    logger.info(
-      `[deduplicateByPerson] deduped ${opportunities.length} → ${result.length} opportunities`,
-    );
+    dedupeByPersonLog.info('Deduped opportunities by person', {
+      input: opportunities.length,
+      output: result.length,
+    });
   }
   return result;
 }
@@ -420,9 +443,10 @@ export function selectDigestCandidates<T extends {
     return !counterpart || !acceptedCounterpartIds.has(counterpart.userId);
   });
   if (afterAccepted.length < candidates.length) {
-    logger.info(
-      `[selectDigestCandidates] accepted-counterpart suppression dropped ${candidates.length - afterAccepted.length} of ${candidates.length} candidates`,
-    );
+    digestCandidatesLog.info('Accepted-counterpart suppression dropped candidates', {
+      dropped: candidates.length - afterAccepted.length,
+      total: candidates.length,
+    });
   }
 
   // Rule 2: delivery-ledger dedup keyed (opportunityId, deliveredAtStatus).
@@ -439,9 +463,9 @@ export function selectDigestCandidates<T extends {
   const fresh = afterAccepted.filter((opp) => !lastDeliveredByKey.has(`${opp.id}:${opp.status}`));
   if (fresh.length > 0) {
     if (fresh.length < afterAccepted.length) {
-      logger.info(
-        `[selectDigestCandidates] ledger dedup dropped ${afterAccepted.length - fresh.length} already-shown candidates`,
-      );
+      digestCandidatesLog.info('Ledger dedup dropped already-shown candidates', {
+        dropped: afterAccepted.length - fresh.length,
+      });
     }
     return { pool: fresh, redeliveryIds: new Set<string>() };
   }
@@ -457,9 +481,9 @@ export function selectDigestCandidates<T extends {
     .sort((a, b) => a.at.getTime() - b.at.getTime());
 
   if (cooled.length > 0) {
-    logger.info(
-      `[selectDigestCandidates] no fresh candidates — re-showing ${cooled.length} past-cooldown candidate(s)`,
-    );
+    digestCandidatesLog.info('No fresh candidates — re-showing past-cooldown candidates', {
+      count: cooled.length,
+    });
   }
   return {
     pool: cooled.map((entry) => entry.opp),

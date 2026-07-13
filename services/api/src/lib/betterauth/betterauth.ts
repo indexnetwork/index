@@ -7,19 +7,20 @@ import { resolveClassConfig } from "../limiter/config";
 
 const logger = log.server.from("betterauth");
 
-export const BASE_URL =
-  process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+export const API_URL =
+  process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
 
-export const JWT_AUDIENCE = BASE_URL;
+export const JWT_AUDIENCE = API_URL;
 
-export const APP_URL =
-  process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
+export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
 
 /** Contract for the auth database adapter injected into createAuth. */
 export interface AuthDbContract {
   /** Returns a configured adapter object for Better Auth's `database` option. */
   createDrizzleAdapter(): unknown;
   ensurePersonalNetwork(userId: string): Promise<string>;
+  /** Ensures the user has a personal negotiator agent row. Idempotent; skips ghosts. */
+  ensureNegotiatorAgent(userId: string): Promise<string | null>;
   /** Flips isGhost to false for the given user. No-op if already non-ghost. */
   claimGhostUser(userId: string): Promise<void>;
 }
@@ -71,7 +72,7 @@ export function createAuth(deps: AuthDeps) {
   const authWriteRule = { window: authWrite.windowSec, max: authWrite.perMinute };
 
   return betterAuth({
-    baseURL: BASE_URL,
+    baseURL: API_URL,
     database: authDb.createDrizzleAdapter(),
     databaseHooks: {
       session: {
@@ -87,6 +88,11 @@ export function createAuth(deps: AuthDeps) {
             } catch (err) {
               logger.error('Failed to ensure personal network on sign-in', { userId: session.userId, error: err });
             }
+            try {
+              await authDb.ensureNegotiatorAgent(session.userId);
+            } catch (err) {
+              logger.error('Failed to ensure negotiator agent on sign-in', { userId: session.userId, error: err });
+            }
           },
         },
       },
@@ -97,6 +103,11 @@ export function createAuth(deps: AuthDeps) {
               await authDb.ensurePersonalNetwork(user.id);
             } catch (err) {
               logger.error('Failed to create personal network on registration', { userId: user.id, error: err });
+            }
+            try {
+              await authDb.ensureNegotiatorAgent(user.id);
+            } catch (err) {
+              logger.error('Failed to ensure negotiator agent on registration', { userId: user.id, error: err });
             }
           },
         },
@@ -161,7 +172,7 @@ export function createAuth(deps: AuthDeps) {
       bearer(),
       jwt({
         jwt: {
-          issuer: BASE_URL,
+          issuer: API_URL,
           audience: JWT_AUDIENCE,
           expirationTime: "1h",
           definePayload: ({ user }) => ({
@@ -179,7 +190,7 @@ export function createAuth(deps: AuthDeps) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,
       mcp({
-        loginPage: `${APP_URL}/login`,
+        loginPage: `${WEB_APP_URL}/login`,
         // No consentPage needed: the mcp() plugin skips consent automatically when the
         // authorization request does not include prompt=consent, which Claude Code never
         // sends. The flow goes: /mcp/authorize → session check → code → callback.

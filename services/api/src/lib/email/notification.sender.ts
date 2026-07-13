@@ -10,10 +10,10 @@ import { connectionAcceptedTemplate } from './templates/connection-accepted.temp
 
 const logger = log.lib.from('notification.sender');
 
-const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
+const API_URL = process.env.API_URL || 'https://protocol.index.network';
 
 function unsubscribeUrlForToken(token: string, type: 'weeklyNewsletter' | 'connectionUpdates') {
-  return `${BASE_URL}/api/notifications/unsubscribe?token=${token}&type=${type}`;
+  return `${API_URL}/api/notifications/unsubscribe?token=${token}&type=${type}`;
 }
 
 async function getUnsubscribeUrl(userId: string, type: 'weeklyNewsletter' | 'connectionUpdates') {

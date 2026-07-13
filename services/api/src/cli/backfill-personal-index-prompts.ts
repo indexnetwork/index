@@ -20,7 +20,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
 import { sql } from 'drizzle-orm/sql';
 

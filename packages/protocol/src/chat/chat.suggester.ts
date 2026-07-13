@@ -1,10 +1,9 @@
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import type { ChatSuggestion } from "./chat-streaming.types.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("SuggestionGenerator");
@@ -47,11 +46,10 @@ export interface SuggestionGeneratorInput {
  * Uses a fast model and structured output to return 3-5 suggestions per call.
  */
 export class SuggestionGenerator {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const llm = createModel("suggestionGenerator");
-    this.model = llm.withStructuredOutput(suggestionsSchema, { name: "chat_suggestions" });
+    this.model = createStructuredModel("suggestionGenerator", suggestionsSchema, { name: "chat_suggestions" });
   }
 
   /**
@@ -79,7 +77,7 @@ export class SuggestionGenerator {
       ]);
       const parsed = suggestionsSchema.safeParse(result);
       if (!parsed.success) {
-        logger.warn("[SuggestionGenerator] Parse failed", { error: parsed.error.message });
+        logger.warn("Parse failed", { error: parsed.error.message });
         return [];
       }
       const out: ChatSuggestion[] = parsed.data.suggestions.map((s) => ({
@@ -88,10 +86,10 @@ export class SuggestionGenerator {
         ...(s.type === "direct" && s.followupText != null && { followupText: s.followupText }),
         ...(s.type === "prompt" && s.prefill != null && { prefill: s.prefill }),
       }));
-      logger.verbose("[SuggestionGenerator] Generated", { count: out.length });
+      logger.verbose("Generated", { count: out.length });
       return out;
     } catch (error) {
-      logger.warn("[SuggestionGenerator] Failed", {
+      logger.warn("Failed", {
         error: error instanceof Error ? error.message : String(error),
       });
       return [];

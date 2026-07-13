@@ -62,7 +62,7 @@ export class IntegrationController {
     if (params.toolkit === 'telegram') {
       return this.integrationService.connectTelegram(user.id);
     }
-    const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
+    const baseUrl = (process.env.WEB_APP_URL || '').replace(/\/$/, '');
     const callbackUrl = `${baseUrl}/oauth/callback`;
     const result = await this.integrationService.getAuthUrl(user.id, params.toolkit, callbackUrl);
     return result;

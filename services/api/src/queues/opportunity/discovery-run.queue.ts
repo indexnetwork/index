@@ -25,7 +25,7 @@ export interface DiscoveryRunJobData {
 
 export interface DiscoveryRunQueueDeps {
   negotiationGraph?: NegotiationGraphLike;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
 }
 
 const apiBaseUrl = resolveProtocolBaseUrl();
@@ -93,14 +93,14 @@ export class DiscoveryRunQueue {
         await this.handleRun(data.runId);
         break;
       default:
-        this.queueLogger.warn(`[DiscoveryRunProcessor] Unknown job name: ${name}`);
+        this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<DiscoveryRunJobData>) => {
-      this.queueLogger.info(`[DiscoveryRunProcessor] Processing job ${job.id}`);
+      this.queueLogger.info('Processing job', { jobId: job.id });
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<DiscoveryRunJobData>(QUEUE_NAME, processor);
@@ -130,7 +130,7 @@ export class DiscoveryRunQueue {
             abortController.abort(new Error('Discovery run cancelled'));
           }
         })
-        .catch((err) => this.logger.warn('[DiscoveryRun] cancel poll failed', {
+        .catch((err) => this.logger.warn('Cancel poll failed', {
           runId,
           error: err instanceof Error ? err.message : String(err),
         }));
@@ -144,7 +144,7 @@ export class DiscoveryRunQueue {
         return;
       }
       await discoveryRunAdapter.markSucceeded(runId, result);
-      this.logger.info('[DiscoveryRun] Completed', { runId, userId: run.userId });
+      this.logger.info('Completed', { runId, userId: run.userId });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (abortController.signal.aborted || await discoveryRunAdapter.isCancelRequested(runId)) {
@@ -152,7 +152,7 @@ export class DiscoveryRunQueue {
         return;
       }
       await discoveryRunAdapter.markFailed(runId, message);
-      this.logger.error('[DiscoveryRun] Failed', { runId, userId: run.userId, error: message });
+      this.logger.error('Failed', { runId, userId: run.userId, error: message });
       captureAppException(err, {
         subsystem: 'protocol',
         operation: 'discovery-run.queue',
@@ -217,7 +217,7 @@ export class DiscoveryRunQueue {
 
     // Env-gated questioner enqueue: queued/async discovery runs generate
     // discovery-mode questions exactly like synchronous MCP discover calls
-    // (the tool computes enableQuestions from ENABLE_DISCOVERY_QUESTIONS +
+    // (the tool computes enableQuestions from QUESTIONER_ENABLED + QUESTIONER_DISCOVERY_ENABLED +
     // context.isMcp, which is true here).
     const questionerEnqueue = questionerEnqueueIfEnabled();
 
@@ -248,7 +248,7 @@ export class DiscoveryRunQueue {
       enricher: {} as ToolDeps['enricher'],
       negotiationDatabase: {} as ToolDeps['negotiationDatabase'],
       mintConnectLink,
-      frontendUrl: process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'https://index.network',
+      frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
       apiBaseUrl,
       ...(questionerEnqueue && { questionerEnqueue }),
       graphs: {

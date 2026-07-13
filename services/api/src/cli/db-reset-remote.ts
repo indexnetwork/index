@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 const envFile = `.env.development`;
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
 import postgres from 'postgres';
 import { setLevel } from '../lib/log';

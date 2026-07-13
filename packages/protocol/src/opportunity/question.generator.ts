@@ -13,11 +13,10 @@
  *   5. If empty, return null. Otherwise split into public Question[] + parallel
  *      QuestionStrategy[] (debug-only; strategy is NEVER on the public shape).
  */
-import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { QuestionGeneratorResponseSchema, type Question, type QuestionGenerationResult, type QuestionStrategy, type QuestionWithStrategy } from "../shared/schemas/question.schema.js";
-import { createModel } from "../shared/agent/model.config.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
@@ -30,11 +29,10 @@ const MAX_SAME_STRATEGY = 2;
 
 /** @deprecated Use QuestionerAgent instead. Will be removed in a future version. */
 export class QuestionGenerator {
-  private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
+  private model: ReturnType<typeof createStructuredModel>;
 
   constructor() {
-    const llm = createModel("discoveryQuestionGenerator");
-    this.model = llm.withStructuredOutput(QuestionGeneratorResponseSchema, {
+    this.model = createStructuredModel("discoveryQuestionGenerator", QuestionGeneratorResponseSchema, {
       name: "clarifying_questions",
     });
   }
