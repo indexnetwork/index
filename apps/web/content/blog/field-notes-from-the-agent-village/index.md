@@ -17,7 +17,7 @@ With hundreds of people looking for collaborators, investors, friends, and roman
 
 ---
 
-*The Agent Village experiment is led by [Edge City](https://x.com/JoinEdgeCity) and Index Network, in partnership with [Cosmos Institute](https://www.cosmos-institute.org) and supported by [Foresight Institute](https://foresight.org/). Thanks to [Geo](https://www.geobrowser.io/) behind the village knowledge graph, and our agent doctor, [Joshua Pham](https://x.com/jphorism).*
+*The Agent Village experiment was created by [Edge City](https://www.edgecity.live/), [Cosmos Institute](https://www.cosmos-institute.org), and Index Network. The experiment was supported by [Foresight Institute](https://foresight.org/). Other tech partners included [Geo](https://www.geobrowser.io/), SimpleFi, [Joshua Pham](https://x.com/jphorism), as well as World, Simocracy (Protocol Labs), and Circleback.*
 
 ---
 
