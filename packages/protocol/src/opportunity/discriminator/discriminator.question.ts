@@ -64,9 +64,44 @@ function chipLabel(side: string): string {
   return words.slice(0, MAX_LABEL_WORDS).join(" ");
 }
 
-/** Ensures the prompt reads as one question and fits the schema bounds. */
-function toPrompt(questionSeed: string): string {
-  let p = questionSeed.trim().replace(/\s+/g, " ");
+/**
+ * Miner seeds are sometimes written from the intent owner's POV ("Do I
+ * prefer…"). The question is asked TO the owner, so normalize to second
+ * person. Conservative verb-pair map + bare pronoun/possessive swaps.
+ */
+function toSecondPerson(seed: string): string {
+  return seed
+    .replace(/\b(do|should|would|could|can|will) I\b/gi, (_, verb: string) => `${verb.toLowerCase()} you`)
+    .replace(/\bam I\b/gi, "are you")
+    .replace(/\bI\b/g, "you")
+    .replace(/\bmy\b/gi, "your");
+}
+
+/**
+ * A good discriminator prompt names BOTH sides so the chips read as a real
+ * choice. When the seed mentions fewer than two sides (e.g. "Do you prefer
+ * hands-on prototyping?"), fall back to a deterministic two-sided template.
+ */
+function mentionsSide(seed: string, side: string): boolean {
+  const lowerSeed = seed.toLowerCase();
+  return side
+    .toLowerCase()
+    .split(/[^a-z0-9-]+/)
+    .filter((w) => w.length > 3)
+    .some((w) => lowerSeed.includes(w));
+}
+
+/** Ensures the prompt reads as one second-person, two-sided question. */
+function toPrompt(questionSeed: string, sides: string[]): string {
+  let p = toSecondPerson(questionSeed.trim().replace(/\s+/g, " "));
+  const sidesMentioned = sides.filter((s) => mentionsSide(p, s)).length;
+  if (sidesMentioned < 2) {
+    const last = sides[sides.length - 1];
+    const head = sides.slice(0, -1).join(", ");
+    p = `Which matters more here: ${head} or ${last}`;
+  }
+  // Sentence-case the first character (template + normalization can lowercase it).
+  p = p.charAt(0).toUpperCase() + p.slice(1);
   if (!/[?]$/.test(p)) p = p.replace(/[.!]+$/, "") + "?";
   return p.slice(0, 400);
 }
@@ -115,7 +150,7 @@ export function synthesizePoolQuestion(input: SynthesizePoolQuestionInput): Synt
   return {
     payload: {
       title: POOL_QUESTION_TITLE,
-      prompt: toPrompt(d.questionSeed),
+      prompt: toPrompt(d.questionSeed, d.sides),
       options,
       multiSelect: false,
       evidence: `based on ${poolSize} people matching this intent`,

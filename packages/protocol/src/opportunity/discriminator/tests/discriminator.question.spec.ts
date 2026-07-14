@@ -123,8 +123,54 @@ describe("synthesizePoolQuestion", () => {
   it("normalizes trailing punctuation on the seed into a single question mark", () => {
     const out = synthesizePoolQuestion({
       ...base,
-      discriminator: questionDiscriminator({ questionSeed: "Which side matters most." }),
+      discriminator: questionDiscriminator({
+        questionSeed: "Do you want someone hands-on builder style, or advisor style.",
+      }),
     })!;
-    expect(out.payload.prompt).toBe("Which side matters most?");
+    expect(out.payload.prompt).toBe("Do you want someone hands-on builder style, or advisor style?");
+  });
+
+  it("rewrites first-person miner seeds into second person", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        questionSeed: "Do I prefer a hands-on builder, or am I open to an advisor for my intent",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe(
+      "Do you prefer a hands-on builder, or are you open to an advisor for your intent?",
+    );
+  });
+
+  it("falls back to the two-sided template when the seed names fewer than two sides", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        questionSeed: "Do you prefer hands-on builders", // never mentions 'Advisor'
+      }),
+    })!;
+    expect(out.payload.prompt).toBe("Which matters more here: Hands-on builder or Advisor?");
+  });
+
+  it("uses the template with a comma list for 3-sided discriminators", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        sides: ["Builders", "Advisors", "Investors"],
+        sideCounts: { Builders: 5, Advisors: 4, Investors: 3 },
+        questionSeed: "What kind of person are you seeking",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe("Which matters more here: Builders, Advisors or Investors?");
+  });
+
+  it("keeps a seed that already names both sides untouched apart from the question mark", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        questionSeed: "Are you looking for a hands-on builder or a strategic advisor",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe("Are you looking for a hands-on builder or a strategic advisor?");
   });
 });
