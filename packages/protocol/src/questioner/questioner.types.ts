@@ -7,7 +7,7 @@
  */
 import type { DiscoveryQuestionInput } from "../opportunity/question.prompt.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
-import type { QuestionMode } from "../shared/schemas/question.schema.js";
+import type { QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/question.schema.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
 
@@ -88,6 +88,25 @@ export interface ChatContext {
   userContext?: string;
 }
 
+/**
+ * Pool-discovery context — mined discriminators from a discovery-run pool
+ * (IND-418). No generator LLM runs for this mode: the QuestionerQueue
+ * synthesizes the question deterministically from the top discriminator and
+ * stashes the rest as interview-mode alternates.
+ */
+export interface PoolDiscoveryContext {
+  intentId: string;
+  /** Intent payload (+ summary) used for the question's grounding. */
+  intentText: string;
+  poolSize: number;
+  /** Discovery run that produced the pool. */
+  runId?: string;
+  /** Eligible discriminators, VoI-descending (asked + chain alternates). */
+  discriminators: QuestionPoolDiscriminator[];
+  /** ISO-8601 timestamp of the mining pass. */
+  minedAt: string;
+}
+
 /** Discriminated union: mode selects the context shape. */
 export type QuestionerContext =
   | DiscoveryContext
@@ -95,7 +114,8 @@ export type QuestionerContext =
   | ProfileContext
   | NegotiationContext
   | NegotiationInflightContext
-  | ChatContext;
+  | ChatContext
+  | PoolDiscoveryContext;
 
 /**
  * Payload shape accepted by the questionerEnqueue callback. Covers all

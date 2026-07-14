@@ -114,6 +114,7 @@ const envSchema = z.object({
   NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
   QUESTIONER_ENABLED: optionalBoolean,
   POOL_QUESTIONS_MINING: z.union([z.literal(''), z.enum(['off', 'shadow'])]).optional(),
+  POOL_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
 
   // 9. MCP / tool runtime
   MCP_MAX_REQUEST_BYTES: optionalInt,

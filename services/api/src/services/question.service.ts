@@ -17,6 +17,17 @@ const logger = log.service.from('QuestionService');
  * answer/dismiss mutations through a service boundary, keeping
  * controllers free of adapter dependencies.
  */
+/**
+ * Removes server-only detection fields before a question leaves the API.
+ * `detection.pool` carries pool_discovery candidate assignments + chain
+ * alternates — k-anonymity requires they never reach a client (IND-418).
+ */
+export function stripInternalDetection(question: AdapterPersistedQuestion): AdapterPersistedQuestion {
+  if (!question.detection.pool) return question;
+  const { pool: _pool, ...detection } = question.detection;
+  return { ...question, detection };
+}
+
 export class QuestionService {
   private readonly adapter: QuestionerAdapter;
 
@@ -39,7 +50,8 @@ export class QuestionService {
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
     logger.verbose('Finding pending questions', { userId, filters });
-    return this.adapter.findPending(userId, filters);
+    const rows = await this.adapter.findPending(userId, filters);
+    return rows.map(stripInternalDetection);
   }
 
   /**

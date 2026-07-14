@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, PoolDiscriminatorMiner, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_DISCRIMINATOR_MIN_POOL_SIZE, createOpportunityTools, getToolTimeoutPolicy, poolQuestionsMiningMode, requestContext, resolveChatContext, runPoolDiscriminatorShadow } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, PoolDiscriminatorMiner, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_DISCRIMINATOR_MIN_POOL_SIZE, createOpportunityTools, getToolTimeoutPolicy, poolQuestionsMiningMode, poolQuestionsMode, requestContext, resolveChatContext, runPoolDiscriminatorShadow, selectQuestionDiscriminators, toQuestionDiscriminator } from '@indexnetwork/protocol';
 import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, PoolCandidate, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
@@ -293,9 +293,12 @@ export class DiscoveryRunQueue {
   }
 
   /**
-   * IND-417 shadow axis mining. Fire-and-forget: never awaited by the run
-   * lifecycle and never allowed to fail the discovery run. Active only when
-   * POOL_QUESTIONS_MINING=shadow; flag off = zero behavior change.
+   * IND-417 shadow axis mining + IND-418 question enqueue. Fire-and-forget:
+   * never awaited by the run lifecycle and never allowed to fail the
+   * discovery run. Mining runs when POOL_QUESTIONS_MINING=shadow OR
+   * POOL_QUESTIONS_MODE=on; questions are enqueued only when the latter is on
+   * (and QUESTIONER_ENABLED gates the actual enqueue). Both flags off = zero
+   * behavior change.
    *
    * The pool is read from the opportunities table (the run's durable output —
    * the MCP tool response flattens cards into message text, so the run result
@@ -303,7 +306,7 @@ export class DiscoveryRunQueue {
    * will re-rank, so mining over them keeps the phases consistent.
    */
   private maybeMinePoolDiscriminators(run: DiscoveryRunRecord): void {
-    if (poolQuestionsMiningMode() !== 'shadow') return;
+    if (poolQuestionsMiningMode() !== 'shadow' && poolQuestionsMode() !== 'on') return;
     // Introducer flow: the discovered candidates are matches for someone else,
     // not the viewer's own pool — discriminator questions don't apply.
     if (run.input.introTargetUserId) return;
@@ -426,6 +429,41 @@ export class DiscoveryRunQueue {
         novelty: round(d.novelty),
         evidenceRate: round(d.evidenceRate),
       })),
+    });
+
+    // IND-418: turn the top eligible discriminator into a pool_discovery
+    // question. QUESTIONER_ENABLED gates via questionerEnqueueIfEnabled;
+    // budget + dedup enforcement lives in the QuestionerQueue worker.
+    if (poolQuestionsMode() !== 'on' || !intentId) return;
+    const enqueue = questionerEnqueueIfEnabled();
+    if (!enqueue) return;
+    const eligible = selectQuestionDiscriminators(shadow.discriminators);
+    if (eligible.length === 0) {
+      this.poolDiscriminatorLogger.debug('no discriminator cleared the question bar', {
+        runId: run.id,
+        intentId,
+      });
+      return;
+    }
+    await enqueue({
+      mode: 'pool_discovery',
+      userId: run.userId,
+      sourceType: 'intent',
+      sourceId: intentId,
+      triggeredByIntentId: intentId,
+      context: {
+        intentId,
+        intentText,
+        poolSize: shadow.poolSize,
+        runId: run.id,
+        minedAt: new Date().toISOString(),
+        discriminators: eligible.map(toQuestionDiscriminator),
+      },
+    });
+    this.poolDiscriminatorLogger.info('pool question enqueued', {
+      runId: run.id,
+      intentId,
+      eligible: eligible.length,
     });
   }
 }

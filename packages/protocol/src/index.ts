@@ -182,7 +182,7 @@ export type { NegotiatorMemoryEntry, NegotiatorMemoryQuery, NegotiatorMemoryScop
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
-export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, NegotiationInflightContext, ChatContext } from "./questioner/questioner.types.js";
+export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, NegotiationInflightContext, ChatContext, PoolDiscoveryContext } from "./questioner/questioner.types.js";
 export { getPreset } from "./questioner/questioner.presets.js";
 export { isQuestionerEnabled, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs } from "./questioner/questioner.env.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
@@ -191,8 +191,11 @@ export type { PoolDiscriminatorMinerConfig } from "./opportunity/discriminator/d
 export { runPoolDiscriminatorShadow } from "./opportunity/discriminator/discriminator.shadow.js";
 export type { DiscriminatorShadowInput } from "./opportunity/discriminator/discriminator.shadow.js";
 export { scoreDiscriminator, computeNovelty, cosineSimilarity } from "./opportunity/discriminator/discriminator.scorer.js";
-export { poolQuestionsMiningMode, POOL_DISCRIMINATOR_MIN_POOL_SIZE, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunity/discriminator/discriminator.env.js";
-export type { PoolQuestionsMiningMode } from "./opportunity/discriminator/discriminator.env.js";
+export { poolQuestionsMiningMode, poolQuestionsMode, POOL_DISCRIMINATOR_MIN_POOL_SIZE, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_QUESTION_MIN_VOI, POOL_QUESTION_MIN_EVIDENCE_RATE, POOL_QUESTION_MAX_DISCRIMINATORS, POOL_QUESTION_MAX_PENDING_PER_INTENT } from "./opportunity/discriminator/discriminator.env.js";
+export type { PoolQuestionsMiningMode, PoolQuestionsMode } from "./opportunity/discriminator/discriminator.env.js";
+export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunity/discriminator/discriminator.question.js";
+export type { SynthesizePoolQuestionInput, SynthesizedPoolQuestion } from "./opportunity/discriminator/discriminator.question.js";
+export type { QuestionPoolAssignment, QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./shared/schemas/question.schema.js";
 export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator, ScoredDiscriminator, VerifiedAssignment, DiscriminatorShadowResult } from "./opportunity/discriminator/discriminator.types.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
