@@ -3,8 +3,8 @@
  * return the log payload (IND-417). No persistence, no questions, no UI —
  * P1 output is consumed only by structured logs for human review.
  */
-import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { EmbeddingGenerator } from "../shared/interfaces/embedder.interface.js";
+import { protocolLogger } from "../../shared/observability/protocol.logger.js";
+import type { EmbeddingGenerator } from "../../shared/interfaces/embedder.interface.js";
 import type { PoolDiscriminatorMiner } from "./discriminator.miner.js";
 import { computeNovelty, scoreDiscriminator } from "./discriminator.scorer.js";
 import type { MinedDiscriminator, PoolCandidate, DiscriminatorShadowResult } from "./discriminator.types.js";

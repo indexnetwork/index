@@ -16,10 +16,10 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
-import { createStructuredModel } from "../shared/agent/model.config.js";
-import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import { Timed } from "../shared/observability/performance.js";
+import { createStructuredModel } from "../../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
+import { protocolLogger } from "../../shared/observability/protocol.logger.js";
+import { Timed } from "../../shared/observability/performance.js";
 import type { MinedDiscriminator, DiscriminatorMiningInput, VerifiedAssignment } from "./discriminator.types.js";
 
 const logger = protocolLogger("PoolDiscriminatorMiner");

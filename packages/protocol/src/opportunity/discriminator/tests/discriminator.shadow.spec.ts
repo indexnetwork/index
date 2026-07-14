@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 
 import { runPoolDiscriminatorShadow } from "../discriminator.shadow.js";
-import type { EmbeddingGenerator } from "../../shared/interfaces/embedder.interface.js";
+import type { EmbeddingGenerator } from "../../../shared/interfaces/embedder.interface.js";
 import type { MinedDiscriminator, PoolCandidate } from "../discriminator.types.js";
 
 const candidates: PoolCandidate[] = Array.from({ length: 6 }, (_, i) => ({
