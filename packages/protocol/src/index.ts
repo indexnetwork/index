@@ -186,6 +186,14 @@ export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, Ques
 export { getPreset } from "./questioner/questioner.presets.js";
 export { isQuestionerEnabled, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs } from "./questioner/questioner.env.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
+export { PoolDiscriminatorMiner } from "./opportunity/discriminator/discriminator.miner.js";
+export type { PoolDiscriminatorMinerConfig } from "./opportunity/discriminator/discriminator.miner.js";
+export { runPoolDiscriminatorShadow } from "./opportunity/discriminator/discriminator.shadow.js";
+export type { DiscriminatorShadowInput } from "./opportunity/discriminator/discriminator.shadow.js";
+export { scoreDiscriminator, computeNovelty, cosineSimilarity } from "./opportunity/discriminator/discriminator.scorer.js";
+export { poolQuestionsMiningMode, POOL_DISCRIMINATOR_MIN_POOL_SIZE, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunity/discriminator/discriminator.env.js";
+export type { PoolQuestionsMiningMode } from "./opportunity/discriminator/discriminator.env.js";
+export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator, ScoredDiscriminator, VerifiedAssignment, DiscriminatorShadowResult } from "./opportunity/discriminator/discriminator.types.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";
