@@ -113,6 +113,31 @@ Run targeted tests relevant to the diff. Avoid full slow suites unless the PR is
 
 If the user explicitly wants a local run/smoke test, start only the necessary service(s), capture logs, hit a lightweight health/page/API check, and then shut the process down. Do not leave dev servers running.
 
+### 4b. Verify semantic version bumps (mandatory repo convention)
+
+Every substantive PR bumps the `version` field of **each package it touches, in the PR itself** (not after merge). This repo uses semantic versioning per package:
+
+- `packages/protocol/package.json`
+- `services/api/package.json`
+- `apps/web/package.json`
+
+Rules (per touched package):
+
+- `feat` → **minor** bump
+- `fix` → **patch** bump
+- breaking change (`feat!` / `refactor!`) → **major** bump (pre-1.0 packages: minor)
+- pure `docs`/`chore`/`test`-only diffs → bump optional; skip unless the user asks
+- refactors that change exported symbols/file layout without behavior change → treat as minor for `packages/protocol` (it is a published contract), patch otherwise
+
+Check which packages the PR touches and whether each got a bump:
+
+```bash
+git diff origin/BASE...HEAD --stat -- packages/protocol services/api apps/web | tail -5
+git diff origin/BASE...HEAD -- packages/protocol/package.json services/api/package.json apps/web/package.json | grep '"version"'
+```
+
+If a bump is missing, add it as a `chore: bump <pkg> to X.Y.Z (…)` commit on the PR branch before merging. After bumping, run `bun install` and commit any root `bun.lock` change — a stale root lockfile fails the prod build under `--frozen-lockfile` (see `release-prod-safety`). Precedents: PR #1087 (feat, protocol 4.4.1→4.5.0), #1082 (fix, 4.4.0→4.4.1), #1081 (feat touching all three packages — all bumped).
+
 ### 5. Check GitHub readiness before merge
 
 Check PR status and reviews:
