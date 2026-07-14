@@ -380,7 +380,14 @@ function buildChatPrompt(ctx: ChatContext): string {
   ].join("\n");
 }
 
-const presets: Record<QuestionMode, QuestionerPreset> = {
+/**
+ * pool_discovery has NO preset by design: those questions are synthesized
+ * deterministically from mined discriminators (see
+ * `opportunity/discriminator/discriminator.question.ts`) and never reach the
+ * QuestionerAgent. `getPreset("pool_discovery")` therefore throws — the
+ * QuestionerQueue branches on the mode before invoking the agent.
+ */
+const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   discovery: {
     systemPrompt: DISCOVERY_SYSTEM_PROMPT,
     buildPrompt: (context: unknown) =>

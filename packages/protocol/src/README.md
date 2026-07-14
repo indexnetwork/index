@@ -43,7 +43,7 @@ packages/protocol/src/
 | Enrichment | `enrichment/enrichment.graph.ts` | Generate/update user identity with scraping and embedding (decomposes into premises) |
 | Premise | `premise/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `opportunity/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
-| HyDE | `shared/hyde/hyde.graph.ts` | Generate hypothetical documents (Mirror, Reciprocal, Neighborhood) and embed them (cache-aware) |
+| HyDE | `shared/hyde/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |
 | Network | `network/network.graph.ts` | Manage network CRUD |
 | Network Membership | `network/membership/membership.graph.ts` | Manage network member join/leave |
 | Intent Indexer | `network/indexer/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
@@ -75,9 +75,9 @@ packages/protocol/src/
 | User Context Generator | `context/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
 | Questioner Agent | `questioner/questioner.agent.ts` | Questioner queue — mode-driven structured decision-question generation (profile/intent/negotiation/discovery) |
 | Network Recommender | `network/network.recommender.ts` | Network flows — recommends networks for a user/intent |
-| HyDE Generator | `shared/hyde/hyde.generator.ts` | HyDE graph — generates hypothetical match documents per strategy |
-| HyDE Strategies | `shared/hyde/hyde.strategies.ts` | HyDE graph — LLM-selected strategy registry |
-| Lens Inferrer | `shared/hyde/lens.inferrer.ts` | HyDE graph — infers target corpus (profiles vs. intents) per strategy |
+| HyDE Generator | `shared/hyde/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
+| HyDE Strategies | `shared/hyde/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
+| Lens Inferrer | `shared/hyde/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses, each tagged with a target corpus (profiles / intents / premises) |
 | Opportunity Evaluator | `opportunity/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `opportunity/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 | Feed Categorizer | `opportunity/feed/feed.categorizer.ts` | Feed graph — classifies and curates feed items |
@@ -122,7 +122,7 @@ The system models human collaboration through a linguistic and information-theor
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Index** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share an index. |
 | **Opportunity** | A **semantic intersection**: the point where a candidate's constitutive facts (profile/intent) satisfy the propositional content of a source intent. Scored by the Opportunity Evaluator using **valency** (argument-role fit) and **constraint satisfaction**. Presented with dual descriptions per **Grice's Maxim of Relation** — one framed for the source, one for the candidate. |
-| **HyDE** | Hypothetical Document Embeddings. Three strategy types: **Mirror** (hallucinates the ideal candidate's biography — direct satisfaction of the intent's conditions), **Reciprocal** (hallucinates a complementary intent via meaning postulates — "if A wants to buy, infer B wants to sell"), and **Neighborhood** (hallucinates the discourse frame/community context). The encoder acts as a dense bottleneck filtering hallucinated specifics and retaining the semantic signal. |
+| **HyDE** | Hypothetical Document Embeddings. Lens-based: the `LensInferrer` derives 1–N free-text **lenses** (search perspectives, e.g. "SF-based early-stage investor"), each tagged with a target corpus. Per-corpus generation preserves the original strategy semantics: **profiles** hallucinates the ideal candidate's biography (direct satisfaction of the intent's conditions — the former *Mirror* strategy), **intents** hallucinates a complementary goal via meaning postulates ("if A wants to buy, infer B wants to sell" — the former *Reciprocal* strategy), and **premises** hallucinates an identity/values self-description. (The former *Neighborhood* discourse-frame strategy was retired with the move to lenses.) The encoder acts as a dense bottleneck filtering hallucinated specifics and retaining the semantic signal. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
 | **Semantic Entropy** | Constraint density of an intent (0.0 = maximally constrained, 1.0 = trivially satisfiable). High-entropy intents ("I want a job") trigger an **elaboration loop** — a request for missing constraints before persistence. |
 | **Semantic Governance** | The full pipeline that ensures only felicitous, low-entropy, referentially anchored intents enter the graph. Implemented by the Intent Verifier and Intent Clarifier agents. |
@@ -231,7 +231,7 @@ sequenceDiagram
     Note over PG: scrape web for identity (constitutive context)
     Note over PG: EnrichmentGenerator builds structured identity
     Note over PG: embed profile (pgvector)
-    Note over PG: HyDE Generator creates Mirror + Reciprocal + Neighborhood docs
+    Note over PG: LensInferrer infers search lenses; HyDE Generator creates per-lens docs
     Note over PG: embed HyDE docs
     PG-->>PT: profile created
     PT-->>Agent: "Profile created successfully"
@@ -269,8 +269,8 @@ sequenceDiagram
     CO->>OG: invoke(userId, sourceText, indexId)
 
     OG->>HG: Generate HyDE docs
-    Note over HG: Mirror: "ideal co-founder bio for React + startup stage"
-    Note over HG: Reciprocal: "intent to join as co-founder on React project"
+    Note over HG: Lens "early-stage React co-founder" → profiles: hypothetical bio
+    Note over HG: Lens → intents: complementary goal ("join as co-founder on React project")
     HG-->>OG: HyDE embeddings (dense bottleneck applied)
 
     Note over OG: Vector search within network scope
@@ -340,10 +340,11 @@ Handled by the **Premise Graph**, **Enrichment Graph**, and **User Context Gener
 
 ### HyDE Pipeline
 
-Handled by the **HyDE Graph** and **Enrichment Graph**:
-- **Mirror strategy**: Generates a hypothetical biography of the ideal candidate whose constitutive facts satisfy the intent's conditions of satisfaction (direct valency slot fill).
-- **Reciprocal strategy**: Generates a complementary intent via meaning postulates — "If user A wants to invest, infer B wants funding."
-- **Neighborhood strategy**: Generates a discourse frame document (conference abstract, forum thread) that contextualises the intent topic via frame semantics.
+Handled by the **HyDE Graph** and **Enrichment Graph**. The pipeline is **lens-based**: instead of hardcoded strategy names, the `LensInferrer` derives 1–N free-text lenses from the source text (and optional profile context), each tagged with a target corpus that selects the generation template:
+- **profiles corpus**: Generates a hypothetical biography of the ideal candidate whose constitutive facts satisfy the intent's conditions of satisfaction (direct valency slot fill — the former *Mirror* strategy).
+- **intents corpus**: Generates a complementary goal statement via meaning postulates — "If user A wants to invest, infer B wants funding" (the former *Reciprocal* strategy).
+- **premises corpus**: Generates an identity/values self-description for someone whose worldview aligns with the source text.
+- The former *Neighborhood* (discourse-frame) strategy was retired with the move to lenses; lens labels carry the contextual specificity instead (including location awareness).
 - The encoder acts as a **dense bottleneck** — hallucinated specifics (fake names, invented details) are filtered out; only the semantic relevance signal is preserved in the embedding.
 
 ### Opportunity Discovery
@@ -384,7 +385,7 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 | `opportunity/opportunity.discover.ts` | Ad-hoc discovery from chat queries |
 | `opportunity/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `opportunity/opportunity.enricher.ts` | Enrich opportunity records with profile data |
-| `opportunity/opportunity.utils.ts` | HyDE strategy selection and actor role derivation |
+| `opportunity/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, feed composition helpers |
 | `opportunity/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | `opportunity/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
 | `opportunity/delivery-card.cache.ts` | Cached delivery-card batch builder for opportunity delivery |

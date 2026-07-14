@@ -16,6 +16,9 @@
  *              via the run-existing continuation (P3.2 ask_user loop)
  * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
  *              tool call resumes the paused chat turn with the answer
+ * - pool_discovery: interview-mode chaining — synthesize the next pool
+ *              question from the answered question's stored alternates
+ *              (IND-418; re-rank + reactive re-discovery land in P3)
  */
 
 import { log } from '../../lib/log';
@@ -27,7 +30,7 @@ const logger = log.service.from('QuestionAnswerHandler');
 interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
   sourceType: string;
   sourceId: string;
   answer: {
@@ -88,6 +91,17 @@ export interface QuestionAnswerHandlerDeps {
     questionId: string;
     answer: QuestionAnsweredPayload['answer'];
   }) => void;
+
+  /**
+   * Interview-mode chaining for pool_discovery answers: persist the next
+   * pool question from the answered question's stored alternates (no-op when
+   * POOL_QUESTIONS_MODE is off or no fresh alternate remains).
+   */
+  chainPoolQuestion: (input: {
+    userId: string;
+    questionId: string;
+    intentId: string;
+  }) => Promise<void>;
 }
 
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
@@ -151,6 +165,14 @@ export async function handleQuestionAnswered(
 
       case 'chat':
         deps.resolveChatQuestionWait({ questionId, answer });
+        break;
+
+      case 'pool_discovery':
+        await deps.chainPoolQuestion({
+          userId,
+          questionId,
+          intentId: sourceId,
+        });
         break;
 
       default:

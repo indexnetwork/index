@@ -1,13 +1,14 @@
 import { Job } from 'bullmq';
 
-import { QuestionerAgent, isQuestionerEnabled } from '@indexnetwork/protocol';
-import type { QuestionerInput, QuestionerEnqueueFn, PersistableQuestion, QuestionGenerationResult } from '@indexnetwork/protocol';
+import { POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled } from '@indexnetwork/protocol';
+import type { PersistableQuestion, PoolDiscoveryContext, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import db from '../lib/drizzle/drizzle';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { QuestionEvents } from '../events/question.event';
+import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool/question.shared';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
@@ -20,7 +21,7 @@ export type QuestionerJobData = QuestionerInput;
  * stubs without touching real DB or LLM.
  */
 export interface QuestionerQueueDeps {
-  adapter?: Pick<QuestionerAdapter, 'persist'>;
+  adapter?: Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>;
   agent?: Pick<QuestionerAgent, 'invoke'>;
 }
 
@@ -41,7 +42,7 @@ export class QuestionerQueue {
 
   private readonly logger = log.job.from('QuestionerJob');
   private readonly queueLogger = log.queue.from('QuestionerQueue');
-  private readonly adapter: Pick<QuestionerAdapter, 'persist'>;
+  private readonly adapter: Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>;
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
 
@@ -138,6 +139,14 @@ export class QuestionerQueue {
       sourceId: data.sourceId,
     });
 
+    // pool_discovery questions are synthesized deterministically from mined
+    // discriminators — no generator LLM (IND-418). Budget + dedup live here
+    // so every producer (mining hook, future paths) hits one choke point.
+    if (data.mode === 'pool_discovery') {
+      await this.handlePoolDiscovery(data);
+      return;
+    }
+
     const result: QuestionGenerationResult | null = await this.getAgent().invoke(data);
 
     if (!result) {
@@ -186,6 +195,51 @@ export class QuestionerQueue {
         sourceId: data.sourceId,
       });
     }
+  }
+
+  /**
+   * Deterministic pool_discovery arm: enforce the unattended budget
+   * (≤1 pending pool_discovery per intent, ≤{@link POOL_QUESTION_MAX_PENDING_PER_INTENT}
+   * pending total per intent), dedup against already-asked axes, then
+   * synthesize + persist the top discriminator.
+   */
+  private async handlePoolDiscovery(data: QuestionerJobData): Promise<void> {
+    const context = data.context as PoolDiscoveryContext;
+    const intentId = context.intentId;
+
+    const pending = await this.adapter.findPending(data.userId, {
+      scopeType: 'intent',
+      scopeId: intentId,
+    });
+    if (pending.some((q) => q.detection.mode === 'pool_discovery')) {
+      this.logger.info('Pool question skipped: one already pending for intent', { intentId });
+      return;
+    }
+    if (pending.length >= POOL_QUESTION_MAX_PENDING_PER_INTENT) {
+      this.logger.info('Pool question skipped: intent question budget exhausted', {
+        intentId,
+        pending: pending.length,
+      });
+      return;
+    }
+
+    const askedLabels = await this.adapter.listPoolQuestionLabels(data.userId, intentId);
+    const fresh = dedupDiscriminators(context.discriminators, askedLabels);
+    const question = buildPoolQuestion({
+      userId: data.userId,
+      intentId,
+      poolSize: context.poolSize,
+      minedAt: context.minedAt,
+      ...(context.runId ? { runId: context.runId } : {}),
+      discriminators: fresh,
+    });
+    if (!question) {
+      this.logger.info('Pool question skipped: no fresh discriminator', { intentId });
+      return;
+    }
+
+    const id = await persistPoolQuestion(this.adapter, question, data.userId);
+    this.logger.info('Persisted pool question', { intentId, questionId: id });
   }
 }
 
