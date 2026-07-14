@@ -499,7 +499,7 @@ export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
 }));
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
+  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -508,6 +508,11 @@ export interface QuestionDetection {
   strategy?: string;
   /** ID of the assistant message that triggered this question. */
   messageId?: string;
+  /**
+   * pool_discovery only: mined pool snapshot (assignments + chain alternates).
+   * INTERNAL — stripped from every client-facing read (web + MCP).
+   */
+  pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
 }
 
 export interface QuestionActor {

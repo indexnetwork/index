@@ -675,7 +675,7 @@ function createMcpServerInstance(): McpServer {
         networkId?: string;
         scopeType?: 'intent';
         scopeId?: string;
-        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat'>;
+        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery'>;
         limit?: number;
       },
     ) => {

@@ -57,6 +57,16 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
+      {payload.evidence && (
+        <div className="mb-2">
+          <span
+            data-testid="question-evidence-chip"
+            className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+          >
+            {`\u25CE ${payload.evidence}`}
+          </span>
+        </div>
+      )}
       <p className="text-[15px] font-semibold leading-snug text-gray-900">
         {payload.prompt}
       </p>
@@ -76,6 +86,7 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
             checked={selectedLabels.includes(opt.label)}
             disabled={submitting}
             onChange={(checked) => toggleSelection(opt.label, checked)}
+            showSubline={!payload.multiSelect}
           />
         ))}
         <OptionRow
@@ -126,14 +137,39 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
   );
 }
 
+/**
+ * Three-dot typing indicator shown while the agent may be preparing a
+ * follow-up pool-discovery question (interview-mode chaining, IND-418).
+ */
+function TypingDots() {
+  return (
+    <div
+      data-testid="question-chain-typing"
+      aria-label="Your agent is preparing a follow-up"
+      className="flex items-center gap-1 px-2 py-2"
+    >
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400 [animation-delay:150ms]" />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400 [animation-delay:300ms]" />
+    </div>
+  );
+}
+
 interface InjectedQuestionsProps {
   questions: PendingQuestion[];
   onAnswer: (questionId: string, body: AnswerBody) => Promise<void>;
   onDismiss: (questionId: string) => Promise<void>;
+  /** Show a typing indicator below the cards (follow-up may be incoming). */
+  showTypingIndicator?: boolean;
 }
 
-export function InjectedQuestions({ questions, onAnswer, onDismiss }: InjectedQuestionsProps) {
-  if (questions.length === 0) return null;
+export function InjectedQuestions({
+  questions,
+  onAnswer,
+  onDismiss,
+  showTypingIndicator,
+}: InjectedQuestionsProps) {
+  if (questions.length === 0 && !showTypingIndicator) return null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -145,6 +181,7 @@ export function InjectedQuestions({ questions, onAnswer, onDismiss }: InjectedQu
           onDismiss={onDismiss}
         />
       ))}
+      {showTypingIndicator && <TypingDots />}
     </div>
   );
 }

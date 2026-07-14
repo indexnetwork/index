@@ -181,6 +181,19 @@ export default function IntentDetailPage() {
   const [opportunities, setOpportunities] = useState<HomeViewCardItem[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
+  // Interview-mode chaining (IND-418): after a pool_discovery answer, the
+  // backend may synchronously persist a follow-up — show a typing indicator,
+  // refetch once, and append any new pool_discovery card.
+  const [questionChainPending, setQuestionChainPending] = useState(false);
+  /** Every question id ever displayed — so a chain refetch only appends new cards. */
+  const seenQuestionIdsRef = useRef<Set<string>>(new Set());
+  const chainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
+    },
+    [],
+  );
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
@@ -265,7 +278,9 @@ export default function IntentDetailPage() {
     questionsService
       .getPending({ scopeType: "intent", scopeId: intentId })
       .then((res) => {
-        if (active) setQuestions(res);
+        if (!active) return;
+        for (const q of res) seenQuestionIdsRef.current.add(q.id);
+        setQuestions(res);
       })
       .catch(() => {});
     void loadOpportunities();
@@ -304,10 +319,38 @@ export default function IntentDetailPage() {
 
   const handleAnswer = useCallback(
     async (questionId: string, body: AnswerBody) => {
+      const answered = questions.find((q) => q.id === questionId);
       await questionsService.answer(questionId, body);
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      // Chain once per answer: a pool_discovery answer may have synchronously
+      // produced a follow-up question — refetch shortly and append it.
+      if (answered?.detection?.mode === "pool_discovery" && intentId) {
+        setQuestionChainPending(true);
+        if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
+        chainTimerRef.current = setTimeout(async () => {
+          try {
+            const refreshed = await questionsService.getPending({
+              scopeType: "intent",
+              scopeId: intentId,
+            });
+            const fresh = refreshed.filter(
+              (q) =>
+                q.detection?.mode === "pool_discovery" &&
+                !seenQuestionIdsRef.current.has(q.id),
+            );
+            for (const q of fresh) seenQuestionIdsRef.current.add(q.id);
+            if (fresh.length > 0) {
+              setQuestions((current) => [...current, ...fresh]);
+            }
+          } catch {
+            // Best-effort — the follow-up will surface on the next visit.
+          } finally {
+            setQuestionChainPending(false);
+          }
+        }, 1200);
+      }
     },
-    [questionsService],
+    [questions, questionsService, intentId],
   );
 
   const handleDismiss = useCallback(
@@ -442,6 +485,16 @@ export default function IntentDetailPage() {
                   <Panel
                     title="Personal Agent"
                     description="Your Personal Agent, scoped to this intent — ask what it's doing, steer it, or answer its follow-ups."
+                    media={
+                      questions.length > 0 ? (
+                        <span
+                          data-testid="intent-question-count"
+                          className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center font-sans normal-case tracking-normal"
+                        >
+                          {questions.length > 99 ? "99+" : questions.length}
+                        </span>
+                      ) : undefined
+                    }
                     action={
                       <Link
                         to="/agent/memory"
@@ -463,6 +516,7 @@ export default function IntentDetailPage() {
                       questions={questions}
                       onAnswerQuestion={handleAnswer}
                       onDismissQuestion={handleDismiss}
+                      questionChainPending={questionChainPending}
                       opportunityStatusMap={opportunityStatusMap}
                       opportunityActionLoading={opportunityActionLoading}
                       onOpportunityAction={(id, action, userId, role, name) =>
@@ -479,7 +533,7 @@ export default function IntentDetailPage() {
                     className="lg:col-span-6"
                   >
                     <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
-                      {questions.length === 0 ? (
+                      {questions.length === 0 && !questionChainPending ? (
                         <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
                           No pending questions right now.
                         </div>
@@ -488,6 +542,7 @@ export default function IntentDetailPage() {
                           questions={questions}
                           onAnswer={handleAnswer}
                           onDismiss={handleDismiss}
+                          showTypingIndicator={questionChainPending}
                         />
                       )}
                     </div>

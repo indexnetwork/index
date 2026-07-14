@@ -72,6 +72,7 @@ import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
+import { chainPoolQuestionFactory } from './events/handlers/question.answer.pool';
 import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
@@ -317,6 +318,7 @@ const questionAnswerDeps = {
   }) => {
     emitChatQuestionResolution({ questionId, status: 'answered', answer });
   },
+  chainPoolQuestion: chainPoolQuestionFactory({ adapter: answerQuestionerAdapter }),
 };
 
 QuestionEvents.onAnswered = (payload) => {

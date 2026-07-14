@@ -23,15 +23,24 @@ const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
 
+/** Union of all question modes the adapter stores. */
+export type AdapterQuestionMode = 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
+
 /** Detection context describing how/where a question was generated. */
 export interface AdapterQuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
+  mode: AdapterQuestionMode;
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
   timestamp: string;
   /** ID of the assistant message that triggered this question. */
   messageId?: string;
+  /**
+   * pool_discovery only: mined pool snapshot (assignments + chain alternates).
+   * INTERNAL — the service/controller read paths strip this before any
+   * payload leaves the server.
+   */
+  pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
 }
 
 /** An actor targeted by a question (typically the user who should answer). */
@@ -47,6 +56,8 @@ export interface AdapterQuestionPayload {
   prompt: string;
   options: Array<{ label: string; description: string }>;
   multiSelect: boolean;
+  /** Optional provenance chip line (e.g. "based on 18 people matching this intent"). */
+  evidence?: string;
 }
 
 /** Answer recorded when a user responds to a question. */
@@ -87,7 +98,7 @@ export interface AdapterPersistedQuestion {
 
 /** Optional filters for the `findPending` query. */
 export interface AdapterQuestionFilters {
-  mode?: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
+  mode?: AdapterQuestionMode;
   sourceType?: string;
   sourceId?: string;
   /**
@@ -105,7 +116,7 @@ export interface AdapterQuestionFilters {
   /** When true, only return questions with no conversationId (sidebar-only). */
   noConversation?: boolean;
   /** Restrict to questions whose detection mode is in this set. */
-  modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat'>;
+  modes?: AdapterQuestionMode[];
   /** Maximum rows to return (applied as a SQL LIMIT). */
   limit?: number;
 }
@@ -227,6 +238,23 @@ export class QuestionerAdapter {
       : await baseQuery;
 
     return rows.map(toPersistedQuestion);
+  }
+
+  /**
+   * Discriminator labels of every pool_discovery question (any status) for
+   * one user+intent — the dedup set that prevents re-asking an axis the user
+   * already saw, answered, or dismissed (IND-418).
+   */
+  async listPoolQuestionLabels(userId: string, intentId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ label: sql<string | null>`${questions.detection}->'pool'->'discriminator'->>'label'` })
+      .from(questions)
+      .where(and(
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+        sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+      ));
+    return rows.map((r) => r.label).filter((l): l is string => typeof l === 'string' && l.length > 0);
   }
 
   /**
