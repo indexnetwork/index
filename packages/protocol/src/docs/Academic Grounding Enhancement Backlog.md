@@ -50,7 +50,7 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 - Constrain **lens-based** generation (`shared/hyde/hyde.generator.ts` + `lens.inferrer.ts`) to frame elements extracted from the source intent (roles, constraints, domain vocabulary) — prompt-side slot discipline instead of free hallucination.
 - Add a post-generation check in `hyde.graph.ts` (between generate and embed nodes) that rejects docs introducing entities/constraints absent from the source frame (cheap LLM check or lexical overlap heuristic).
 - Measure on `eval/matching` before/after — this is the one item with an existing regression harness, so do it behind a flag and compare.
-- Housekeeping: update `src/README.md`, which still describes the retired M/R/N strategy registry.
+- ~~Housekeeping: update `src/README.md`, which still describes the retired M/R/N strategy registry.~~ Done in the same PR that introduced this backlog.
 
 ## 5. Dowty proto-role scoring in the evaluator — **M**
 
