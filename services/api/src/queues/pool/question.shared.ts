@@ -10,8 +10,8 @@
 import { synthesizePoolQuestion } from '@indexnetwork/protocol';
 import type { QuestionPoolDiscriminator } from '@indexnetwork/protocol';
 
-import type { AdapterPersistableQuestion, QuestionerAdapter } from '../adapters/questioner.adapter';
-import { QuestionEvents } from '../events/question.event';
+import type { AdapterPersistableQuestion, QuestionerAdapter } from '../../adapters/questioner.adapter';
+import { QuestionEvents } from '../../events/question.event';
 
 /** Normalized form used for axis dedup (re-asking an already-seen axis). */
 export function normalizePoolLabel(label: string): string {

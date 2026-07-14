@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
-import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, PoolDiscriminatorMiner, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_DISCRIMINATOR_MIN_POOL_SIZE, createOpportunityTools, getToolTimeoutPolicy, poolQuestionsMiningMode, poolQuestionsMode, requestContext, resolveChatContext, runPoolDiscriminatorShadow, selectQuestionDiscriminators, toQuestionDiscriminator } from '@indexnetwork/protocol';
-import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, PoolCandidate, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
+import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { captureAppException } from '../../lib/sentry';
@@ -16,6 +16,7 @@ import { resolveProtocolBaseUrl } from '../../lib/protocol-url';
 import type { ConnectLinkKind } from '../../services/connect-link.service';
 import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
 import { questionerEnqueueIfEnabled } from '../questioner.queue';
+import { maybeMinePoolDiscriminators } from '../pool/mining.shared';
 
 export const QUEUE_NAME = 'opportunity-discovery-run';
 
@@ -41,20 +42,6 @@ const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferre
   return { url: buildConnectShortUrl(apiBaseUrl, code) };
 };
 
-/** Statuses that make an opportunity part of the viewer's live candidate pool. */
-const POOL_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
-
-/** Max chars of bio / match-reason folded into one candidate's publicContext. */
-const POOL_FIELD_MAX_CHARS = 100;
-
-/** Splits free text into novelty-reference sentences (short fragments dropped). */
-function toReferenceSentences(text: string): string[] {
-  return text
-    .split(/[.!?\n]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 15);
-}
-
 function assertDiscoveryRunOutputFits(raw: string): void {
   const policy = getToolTimeoutPolicy('discover_opportunities');
   const outputBytes = new TextEncoder().encode(raw).byteLength;
@@ -72,10 +59,6 @@ export class DiscoveryRunQueue {
 
   private readonly logger = log.job.from('DiscoveryRunJob');
   private readonly queueLogger = log.queue.from('DiscoveryRunQueue');
-  /** Greppable shadow-mining logger (IND-417): search deploy logs for "PoolDiscriminatorMiner". */
-  private readonly poolDiscriminatorLogger = log.job.from('PoolDiscriminatorMiner');
-  /** Lazily constructed so queue creation never requires OPENROUTER_API_KEY. */
-  private poolDiscriminatorMiner: PoolDiscriminatorMiner | null = null;
   private worker: ReturnType<typeof QueueFactory.createWorker<DiscoveryRunJobData>> | null = null;
   private deps: DiscoveryRunQueueDeps | undefined;
 
@@ -293,177 +276,18 @@ export class DiscoveryRunQueue {
   }
 
   /**
-   * IND-417 shadow axis mining + IND-418 question enqueue. Fire-and-forget:
-   * never awaited by the run lifecycle and never allowed to fail the
-   * discovery run. Mining runs when POOL_QUESTIONS_MINING=shadow OR
-   * POOL_QUESTIONS_MODE=on; questions are enqueued only when the latter is on
-   * (and QUESTIONER_ENABLED gates the actual enqueue). Both flags off = zero
-   * behavior change.
-   *
-   * The pool is read from the opportunities table (the run's durable output —
-   * the MCP tool response flattens cards into message text, so the run result
-   * carries no structured candidate array). These are also the exact rows P3
-   * will re-rank, so mining over them keeps the phases consistent.
+   * Pool-discriminator mining + question enqueue on run completion
+   * (IND-417/418) — shared with FromIntentQueue, see queues/pool/mining.shared.ts.
    */
   private maybeMinePoolDiscriminators(run: DiscoveryRunRecord): void {
-    if (poolQuestionsMiningMode() !== 'shadow' && poolQuestionsMode() !== 'on') return;
-    // Introducer flow: the discovered candidates are matches for someone else,
-    // not the viewer's own pool — discriminator questions don't apply.
-    if (run.input.introTargetUserId) return;
-    void this.minePoolDiscriminatorsShadow(run).catch((err) => {
-      this.poolDiscriminatorLogger.warn('shadow mining pass failed', {
-        runId: run.id,
-        userId: run.userId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-  }
-
-  private async minePoolDiscriminatorsShadow(run: DiscoveryRunRecord): Promise<void> {
-    const intentId = run.input.intentId;
-    const pool = await chatDatabaseAdapter.getOpportunitiesForUser(run.userId, {
-      statuses: [...POOL_STATUSES],
-      limit: 50,
-      ...(intentId ? { scopeType: 'intent' as const, scopeId: intentId } : {}),
-      // Chat-scoped MCP discovery creates this session's candidates as drafts;
-      // passing the session id includes them in the pool.
-      ...(run.context.sessionId ? { conversationId: run.context.sessionId } : {}),
-    });
-
-    const withCounterpart = pool
-      .map((o) => ({
-        opportunity: o,
-        counterpartUserId: o.actors.find((a) => a.userId !== run.userId && a.role !== 'introducer')?.userId,
-      }))
-      .filter((x): x is typeof x & { counterpartUserId: string } => Boolean(x.counterpartUserId));
-
-    if (withCounterpart.length < POOL_DISCRIMINATOR_MIN_POOL_SIZE) {
-      this.poolDiscriminatorLogger.debug('shadow mining skipped: pool below k-anonymity floor', {
-        runId: run.id,
-        poolSize: withCounterpart.length,
-        minPoolSize: POOL_DISCRIMINATOR_MIN_POOL_SIZE,
-      });
-      return;
-    }
-
-    const top = withCounterpart
-      .sort((a, b) => (b.opportunity.interpretation?.confidence ?? 0) - (a.opportunity.interpretation?.confidence ?? 0))
-      .slice(0, POOL_DISCRIMINATOR_MAX_CANDIDATES);
-
-    // Thin per-candidate context: profile name/bio + ≤3 active premise
-    // snippets — the same public corpus the presenter exposes.
-    const uniqueUserIds = [...new Set(top.map((c) => c.counterpartUserId))];
-    const profilesByUser = new Map<string, { name: string; bio: string }>();
-    await Promise.all(uniqueUserIds.map(async (uid) => {
-      try {
-        const profile = await chatDatabaseAdapter.getProfile(uid);
-        if (profile) profilesByUser.set(uid, { name: profile.identity.name, bio: profile.identity.bio });
-      } catch {
-        // Profile is enrichment only — a failed lookup never blocks mining.
-      }
-    }));
-    const premisesByUser = new Map<string, string>();
-    await Promise.all(uniqueUserIds.map(async (uid) => {
-      try {
-        const premises = await chatDatabaseAdapter.getPremisesForUser(uid, 'ACTIVE');
-        const snippets = premises.slice(0, 3).map((p) => p.assertion.text.slice(0, 90));
-        if (snippets.length > 0) premisesByUser.set(uid, snippets.join('; '));
-      } catch {
-        // Premises are enrichment only — a failed lookup never blocks mining.
-      }
-    }));
-
-    const candidates: PoolCandidate[] = top.map((c) => {
-      const profile = profilesByUser.get(c.counterpartUserId);
-      const matchReason = c.opportunity.interpretation?.reasoning?.slice(0, POOL_FIELD_MAX_CHARS);
-      const publicContext = [
-        profile?.name ? `Name: ${profile.name}.` : null,
-        profile?.bio ? `Bio: ${profile.bio.slice(0, POOL_FIELD_MAX_CHARS)}` : null,
-        matchReason ? `Match: ${matchReason}` : null,
-        premisesByUser.has(c.counterpartUserId) ? `Premises: ${premisesByUser.get(c.counterpartUserId)}` : null,
-      ].filter(Boolean).join(' ').slice(0, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS);
-      return { id: c.opportunity.id, publicContext, score: c.opportunity.interpretation?.confidence ?? 0 };
-    });
-
-    // Intent text: prefer the triggering intent record; fall back to the ad-hoc query.
-    let intentText = run.input.searchQuery ?? run.input.hint ?? '';
-    if (intentId) {
-      const intent = await chatDatabaseAdapter.getIntent(intentId);
-      if (intent) intentText = `${intent.payload}${intent.summary ? ` (${intent.summary})` : ''}`;
-    }
-
-    // Novelty references: the owner's own intent sentences + active premises —
-    // axes the user has effectively already answered should score ~0.
-    let ownerPremises: string[] = [];
-    try {
-      ownerPremises = (await chatDatabaseAdapter.getPremisesForUser(run.userId, 'ACTIVE'))
-        .slice(0, 12)
-        .map((p) => p.assertion.text);
-    } catch {
-      // Novelty degrades gracefully without references.
-    }
-    const referenceTexts = [...toReferenceSentences(intentText), ...ownerPremises];
-
-    this.poolDiscriminatorMiner ??= new PoolDiscriminatorMiner();
-    const shadow = await runPoolDiscriminatorShadow({
-      intentText,
-      candidates,
-      referenceTexts,
-      miner: this.poolDiscriminatorMiner,
-      embedder: embedderAdapter,
-    });
-
-    const round = (n: number): number => Math.round(n * 1000) / 1000;
-    this.poolDiscriminatorLogger.info('shadow mining result', {
+    maybeMinePoolDiscriminators({
+      source: 'discovery_run',
       runId: run.id,
       userId: run.userId,
-      intentId: intentId ?? null,
-      poolSize: shadow.poolSize,
-      discriminators: shadow.discriminators.map((d) => ({
-        label: d.label,
-        questionSeed: d.questionSeed,
-        sides: d.sides,
-        voi: round(d.voi),
-        entropy: round(d.entropy),
-        coverage: round(d.coverage),
-        novelty: round(d.novelty),
-        evidenceRate: round(d.evidenceRate),
-      })),
-    });
-
-    // IND-418: turn the top eligible discriminator into a pool_discovery
-    // question. QUESTIONER_ENABLED gates via questionerEnqueueIfEnabled;
-    // budget + dedup enforcement lives in the QuestionerQueue worker.
-    if (poolQuestionsMode() !== 'on' || !intentId) return;
-    const enqueue = questionerEnqueueIfEnabled();
-    if (!enqueue) return;
-    const eligible = selectQuestionDiscriminators(shadow.discriminators);
-    if (eligible.length === 0) {
-      this.poolDiscriminatorLogger.debug('no discriminator cleared the question bar', {
-        runId: run.id,
-        intentId,
-      });
-      return;
-    }
-    await enqueue({
-      mode: 'pool_discovery',
-      userId: run.userId,
-      sourceType: 'intent',
-      sourceId: intentId,
-      triggeredByIntentId: intentId,
-      context: {
-        intentId,
-        intentText,
-        poolSize: shadow.poolSize,
-        runId: run.id,
-        minedAt: new Date().toISOString(),
-        discriminators: eligible.map(toQuestionDiscriminator),
-      },
-    });
-    this.poolDiscriminatorLogger.info('pool question enqueued', {
-      runId: run.id,
-      intentId,
-      eligible: eligible.length,
+      ...(run.input.intentId ? { intentId: run.input.intentId } : {}),
+      ...(run.context.sessionId ? { sessionId: run.context.sessionId } : {}),
+      isIntroducerFlow: Boolean(run.input.introTargetUserId),
+      ...(run.input.searchQuery ?? run.input.hint ? { searchQuery: run.input.searchQuery ?? run.input.hint } : {}),
     });
   }
 }

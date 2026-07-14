@@ -90,6 +90,31 @@ describe('FromIntentQueue', () => {
       await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
     });
 
+    it('discover: fires the pool-mining hook after discovery completes (IND-418 web coverage)', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const minePoolDiscriminators = mock((_trigger: unknown) => {});
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
+      };
+      const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph, minePoolDiscriminators });
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+      expect(minePoolDiscriminators).toHaveBeenCalledWith({
+        source: 'from_intent',
+        userId: 'u1',
+        intentId: 'i1',
+      });
+    });
+
+    it('discover: does NOT fire the pool-mining hook when the intent is missing', async () => {
+      const minePoolDiscriminators = mock((_trigger: unknown) => {});
+      const db = {
+        getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>,
+      };
+      const queue = new FromIntentQueue({ database: asDb(db), minePoolDiscriminators });
+      await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
+      expect(minePoolDiscriminators).not.toHaveBeenCalled();
+    });
+
     it('discover: intent found, invokeOpportunityGraph called when provided', async () => {
       const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
       const db = {

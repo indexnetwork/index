@@ -8,7 +8,7 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import db from '../lib/drizzle/drizzle';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { QuestionEvents } from '../events/question.event';
-import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool-question.shared';
+import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool/question.shared';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
