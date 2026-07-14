@@ -15,7 +15,7 @@
  *             An axis the user has already answered elsewhere scores ~0.
  */
 
-import type { MinedAxis, PoolAxisCandidate, ScoredAxis } from "./pool-axis.types.js";
+import type { MinedDiscriminator, PoolCandidate, ScoredDiscriminator } from "./discriminator.types.js";
 
 /** Cosine similarity of two equal-length vectors, in [-1, 1]. 0 for degenerate input. */
 export function cosineSimilarity(a: number[], b: number[]): number {
@@ -61,11 +61,11 @@ function massOf(score: number): number {
  * @param candidates  The pool (provides score mass per candidate id).
  * @param novelty     Precomputed novelty in [0,1] (see {@link computeNovelty}).
  */
-export function scoreAxis(
-  axis: MinedAxis,
-  candidates: PoolAxisCandidate[],
+export function scoreDiscriminator(
+  axis: MinedDiscriminator,
+  candidates: PoolCandidate[],
   novelty: number,
-): ScoredAxis {
+): ScoredDiscriminator {
   const massById = new Map<string, number>();
   let totalMass = 0;
   for (const c of candidates) {

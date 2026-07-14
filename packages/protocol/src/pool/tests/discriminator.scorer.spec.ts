@@ -1,9 +1,9 @@
 import { describe, it, expect } from "bun:test";
 
-import { cosineSimilarity, computeNovelty, scoreAxis } from "../pool-axis.scorer.js";
-import type { MinedAxis, PoolAxisCandidate, VerifiedAssignment } from "../pool-axis.types.js";
+import { cosineSimilarity, computeNovelty, scoreDiscriminator } from "../discriminator.scorer.js";
+import type { MinedDiscriminator, PoolCandidate, VerifiedAssignment } from "../discriminator.types.js";
 
-function pool(n: number, score = 0.8): PoolAxisCandidate[] {
+function pool(n: number, score = 0.8): PoolCandidate[] {
   return Array.from({ length: n }, (_, i) => ({
     id: `c${i}`,
     publicContext: `candidate ${i}`,
@@ -12,7 +12,7 @@ function pool(n: number, score = 0.8): PoolAxisCandidate[] {
 }
 
 function assignments(
-  candidates: PoolAxisCandidate[],
+  candidates: PoolCandidate[],
   sideFor: (i: number) => string | null,
 ): VerifiedAssignment[] {
   return candidates.map((c, i) => {
@@ -21,9 +21,9 @@ function assignments(
   });
 }
 
-function axis(candidates: PoolAxisCandidate[], sideFor: (i: number) => string | null, sides = ["A", "B"]): MinedAxis {
+function axis(candidates: PoolCandidate[], sideFor: (i: number) => string | null, sides = ["A", "B"]): MinedDiscriminator {
   return {
-    axis: "test axis",
+    label: "test axis",
     questionSeed: "which?",
     sides,
     assignments: assignments(candidates, sideFor),
@@ -61,11 +61,11 @@ describe("computeNovelty", () => {
   });
 });
 
-describe("scoreAxis", () => {
+describe("scoreDiscriminator", () => {
   it("a balanced split beats a 90/10 split (same coverage, same novelty)", () => {
     const p = pool(10);
-    const balanced = scoreAxis(axis(p, (i) => (i < 5 ? "A" : "B")), p, 1);
-    const skewed = scoreAxis(axis(p, (i) => (i < 9 ? "A" : "B")), p, 1);
+    const balanced = scoreDiscriminator(axis(p, (i) => (i < 5 ? "A" : "B")), p, 1);
+    const skewed = scoreDiscriminator(axis(p, (i) => (i < 9 ? "A" : "B")), p, 1);
     expect(balanced.entropy).toBeCloseTo(1, 6);
     expect(balanced.coverage).toBeCloseTo(1, 6);
     expect(balanced.voi).toBeGreaterThan(skewed.voi);
@@ -73,9 +73,9 @@ describe("scoreAxis", () => {
 
   it("an unknown-heavy axis loses to a covered axis with the same split", () => {
     const p = pool(10);
-    const covered = scoreAxis(axis(p, (i) => (i % 2 === 0 ? "A" : "B")), p, 1);
+    const covered = scoreDiscriminator(axis(p, (i) => (i % 2 === 0 ? "A" : "B")), p, 1);
     // Only 4 of 10 assigned (2 per side) — balanced but low coverage.
-    const unknownHeavy = scoreAxis(
+    const unknownHeavy = scoreDiscriminator(
       axis(p, (i) => (i < 2 ? "A" : i < 4 ? "B" : null)),
       p,
       1,
@@ -89,18 +89,18 @@ describe("scoreAxis", () => {
 
   it("novelty ~0 (axis equals an existing premise) zeroes the VoI", () => {
     const p = pool(10);
-    const scored = scoreAxis(axis(p, (i) => (i < 5 ? "A" : "B")), p, 0);
+    const scored = scoreDiscriminator(axis(p, (i) => (i < 5 ? "A" : "B")), p, 0);
     expect(scored.voi).toBe(0);
   });
 
   it("weights entropy by score mass, not head counts", () => {
     // 5 low-confidence on A vs 5 high-confidence on B: mass 0.5 vs 4.5.
-    const p: PoolAxisCandidate[] = [
+    const p: PoolCandidate[] = [
       ...Array.from({ length: 5 }, (_, i) => ({ id: `lo${i}`, publicContext: "x", score: 0.1 })),
       ...Array.from({ length: 5 }, (_, i) => ({ id: `hi${i}`, publicContext: "x", score: 0.9 })),
     ];
-    const a: MinedAxis = {
-      axis: "mass",
+    const a: MinedDiscriminator = {
+      label: "mass",
       questionSeed: "q",
       sides: ["A", "B"],
       assignments: p.map((c) => ({
@@ -111,7 +111,7 @@ describe("scoreAxis", () => {
       })),
       evidenceRate: 1,
     };
-    const scored = scoreAxis(a, p, 1);
+    const scored = scoreDiscriminator(a, p, 1);
     // p(A) = 0.1 → H = -(0.1 log 0.1 + 0.9 log 0.9) ≈ 0.469, well below 1
     expect(scored.entropy).toBeLessThan(0.5);
     expect(scored.entropy).toBeGreaterThan(0.4);
@@ -119,8 +119,8 @@ describe("scoreAxis", () => {
 
   it("ignores unverified assignments and sides outside the axis", () => {
     const p = pool(4);
-    const a: MinedAxis = {
-      axis: "strict",
+    const a: MinedDiscriminator = {
+      label: "strict",
       questionSeed: "q",
       sides: ["A", "B"],
       assignments: [
@@ -131,7 +131,7 @@ describe("scoreAxis", () => {
       ],
       evidenceRate: 0.5,
     };
-    const scored = scoreAxis(a, p, 1);
+    const scored = scoreDiscriminator(a, p, 1);
     // Only c0 counts → single side → entropy 0, coverage 0.25.
     expect(scored.coverage).toBeCloseTo(0.25, 6);
     expect(scored.entropy).toBe(0);
@@ -140,7 +140,7 @@ describe("scoreAxis", () => {
 
   it("falls back to count weights when the whole pool has zero score mass", () => {
     const p = pool(6, 0);
-    const scored = scoreAxis(axis(p, (i) => (i < 3 ? "A" : "B")), p, 1);
+    const scored = scoreDiscriminator(axis(p, (i) => (i < 3 ? "A" : "B")), p, 1);
     expect(scored.entropy).toBeCloseTo(1, 6);
     expect(scored.coverage).toBeCloseTo(1, 6);
     expect(scored.voi).toBeCloseTo(1, 6);
@@ -148,7 +148,7 @@ describe("scoreAxis", () => {
 
   it("handles 3-sided axes (normalizes entropy by log2(3))", () => {
     const p = pool(9);
-    const scored = scoreAxis(
+    const scored = scoreDiscriminator(
       axis(p, (i) => ["A", "B", "C"][i % 3], ["A", "B", "C"]),
       p,
       1,

@@ -4,10 +4,10 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key-for
 
 import { describe, it, expect } from "bun:test";
 
-import { PoolAxisMiner, buildMiningPrompt, verifyAxis } from "../pool-axis.miner.js";
-import type { PoolAxisCandidate } from "../pool-axis.types.js";
+import { PoolDiscriminatorMiner, buildMiningPrompt, verifyAxis } from "../discriminator.miner.js";
+import type { PoolCandidate } from "../discriminator.types.js";
 
-const candidates: PoolAxisCandidate[] = [
+const candidates: PoolCandidate[] = [
   { id: "opp-1", publicContext: "Name: Ada. Bio: Hands-on Rust engineer shipping embedded firmware.", score: 0.9 },
   { id: "opp-2", publicContext: "Name: Grace. Bio: Fractional CTO advising early-stage teams.", score: 0.7 },
   { id: "opp-3", publicContext: "Name: Alan. Bio: Researcher exploring formal verification.", score: 0.5 },
@@ -87,7 +87,7 @@ describe("verifyAxis", () => {
   });
 
   it("folds typographic punctuation (curly apostrophes) on both sides", () => {
-    const curly: PoolAxisCandidate[] = [
+    const curly: PoolCandidate[] = [
       { id: "opp-c", publicContext: "Name: Ashley O\u2019Brien. Bio: co\u2011founder \u2014 systems thinker", score: 0.5 },
     ];
     const verified = verifyAxis(
@@ -159,9 +159,9 @@ describe("buildMiningPrompt", () => {
   });
 });
 
-describe("PoolAxisMiner.mine", () => {
-  function makeMiner(invokeImpl: (input: unknown) => Promise<unknown>): PoolAxisMiner {
-    const miner = new PoolAxisMiner();
+describe("PoolDiscriminatorMiner.mine", () => {
+  function makeMiner(invokeImpl: (input: unknown) => Promise<unknown>): PoolDiscriminatorMiner {
+    const miner = new PoolDiscriminatorMiner();
     // Swap the internal model for a mock, same pattern as questioner.agent.spec.ts
     (miner as unknown as { model: { invoke: typeof invokeImpl } }).model = { invoke: invokeImpl };
     return miner;

@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
-import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, PoolAxisMiner, POOL_AXIS_MAX_CANDIDATES, POOL_AXIS_MAX_PUBLIC_CONTEXT_CHARS, POOL_AXIS_MIN_POOL_SIZE, createOpportunityTools, getToolTimeoutPolicy, poolQuestionsMiningMode, requestContext, resolveChatContext, runPoolAxisShadow } from '@indexnetwork/protocol';
-import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, PoolAxisCandidate, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, PoolDiscriminatorMiner, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_DISCRIMINATOR_MIN_POOL_SIZE, createOpportunityTools, getToolTimeoutPolicy, poolQuestionsMiningMode, requestContext, resolveChatContext, runPoolDiscriminatorShadow } from '@indexnetwork/protocol';
+import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, PoolCandidate, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { captureAppException } from '../../lib/sentry';
@@ -72,10 +72,10 @@ export class DiscoveryRunQueue {
 
   private readonly logger = log.job.from('DiscoveryRunJob');
   private readonly queueLogger = log.queue.from('DiscoveryRunQueue');
-  /** Greppable shadow-mining logger (IND-417): search deploy logs for "PoolAxisMiner". */
-  private readonly poolAxisLogger = log.job.from('PoolAxisMiner');
+  /** Greppable shadow-mining logger (IND-417): search deploy logs for "PoolDiscriminatorMiner". */
+  private readonly poolDiscriminatorLogger = log.job.from('PoolDiscriminatorMiner');
   /** Lazily constructed so queue creation never requires OPENROUTER_API_KEY. */
-  private poolAxisMiner: PoolAxisMiner | null = null;
+  private poolDiscriminatorMiner: PoolDiscriminatorMiner | null = null;
   private worker: ReturnType<typeof QueueFactory.createWorker<DiscoveryRunJobData>> | null = null;
   private deps: DiscoveryRunQueueDeps | undefined;
 
@@ -163,7 +163,7 @@ export class DiscoveryRunQueue {
       }
       await discoveryRunAdapter.markSucceeded(runId, result);
       this.logger.info('Completed', { runId, userId: run.userId });
-      this.maybeMinePoolAxes(run);
+      this.maybeMinePoolDiscriminators(run);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (abortController.signal.aborted || await discoveryRunAdapter.isCancelRequested(runId)) {
@@ -302,13 +302,13 @@ export class DiscoveryRunQueue {
    * carries no structured candidate array). These are also the exact rows P3
    * will re-rank, so mining over them keeps the phases consistent.
    */
-  private maybeMinePoolAxes(run: DiscoveryRunRecord): void {
+  private maybeMinePoolDiscriminators(run: DiscoveryRunRecord): void {
     if (poolQuestionsMiningMode() !== 'shadow') return;
     // Introducer flow: the discovered candidates are matches for someone else,
     // not the viewer's own pool — discriminator questions don't apply.
     if (run.input.introTargetUserId) return;
-    void this.minePoolAxesShadow(run).catch((err) => {
-      this.poolAxisLogger.warn('pool-axis.miner shadow pass failed', {
+    void this.minePoolDiscriminatorsShadow(run).catch((err) => {
+      this.poolDiscriminatorLogger.warn('shadow mining pass failed', {
         runId: run.id,
         userId: run.userId,
         error: err instanceof Error ? err.message : String(err),
@@ -316,7 +316,7 @@ export class DiscoveryRunQueue {
     });
   }
 
-  private async minePoolAxesShadow(run: DiscoveryRunRecord): Promise<void> {
+  private async minePoolDiscriminatorsShadow(run: DiscoveryRunRecord): Promise<void> {
     const intentId = run.input.intentId;
     const pool = await chatDatabaseAdapter.getOpportunitiesForUser(run.userId, {
       statuses: [...POOL_STATUSES],
@@ -334,18 +334,18 @@ export class DiscoveryRunQueue {
       }))
       .filter((x): x is typeof x & { counterpartUserId: string } => Boolean(x.counterpartUserId));
 
-    if (withCounterpart.length < POOL_AXIS_MIN_POOL_SIZE) {
-      this.poolAxisLogger.debug('pool-axis.miner skipped: pool below k-anonymity floor', {
+    if (withCounterpart.length < POOL_DISCRIMINATOR_MIN_POOL_SIZE) {
+      this.poolDiscriminatorLogger.debug('shadow mining skipped: pool below k-anonymity floor', {
         runId: run.id,
         poolSize: withCounterpart.length,
-        minPoolSize: POOL_AXIS_MIN_POOL_SIZE,
+        minPoolSize: POOL_DISCRIMINATOR_MIN_POOL_SIZE,
       });
       return;
     }
 
     const top = withCounterpart
       .sort((a, b) => (b.opportunity.interpretation?.confidence ?? 0) - (a.opportunity.interpretation?.confidence ?? 0))
-      .slice(0, POOL_AXIS_MAX_CANDIDATES);
+      .slice(0, POOL_DISCRIMINATOR_MAX_CANDIDATES);
 
     // Thin per-candidate context: profile name/bio + ≤3 active premise
     // snippets — the same public corpus the presenter exposes.
@@ -370,7 +370,7 @@ export class DiscoveryRunQueue {
       }
     }));
 
-    const candidates: PoolAxisCandidate[] = top.map((c) => {
+    const candidates: PoolCandidate[] = top.map((c) => {
       const profile = profilesByUser.get(c.counterpartUserId);
       const matchReason = c.opportunity.interpretation?.reasoning?.slice(0, POOL_FIELD_MAX_CHARS);
       const publicContext = [
@@ -378,7 +378,7 @@ export class DiscoveryRunQueue {
         profile?.bio ? `Bio: ${profile.bio.slice(0, POOL_FIELD_MAX_CHARS)}` : null,
         matchReason ? `Match: ${matchReason}` : null,
         premisesByUser.has(c.counterpartUserId) ? `Premises: ${premisesByUser.get(c.counterpartUserId)}` : null,
-      ].filter(Boolean).join(' ').slice(0, POOL_AXIS_MAX_PUBLIC_CONTEXT_CHARS);
+      ].filter(Boolean).join(' ').slice(0, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS);
       return { id: c.opportunity.id, publicContext, score: c.opportunity.interpretation?.confidence ?? 0 };
     });
 
@@ -401,30 +401,30 @@ export class DiscoveryRunQueue {
     }
     const referenceTexts = [...toReferenceSentences(intentText), ...ownerPremises];
 
-    this.poolAxisMiner ??= new PoolAxisMiner();
-    const shadow = await runPoolAxisShadow({
+    this.poolDiscriminatorMiner ??= new PoolDiscriminatorMiner();
+    const shadow = await runPoolDiscriminatorShadow({
       intentText,
       candidates,
       referenceTexts,
-      miner: this.poolAxisMiner,
+      miner: this.poolDiscriminatorMiner,
       embedder: embedderAdapter,
     });
 
     const round = (n: number): number => Math.round(n * 1000) / 1000;
-    this.poolAxisLogger.info('pool-axis.miner shadow result', {
+    this.poolDiscriminatorLogger.info('shadow mining result', {
       runId: run.id,
       userId: run.userId,
       intentId: intentId ?? null,
       poolSize: shadow.poolSize,
-      axes: shadow.axes.map((a) => ({
-        axis: a.axis,
-        questionSeed: a.questionSeed,
-        sides: a.sides,
-        voi: round(a.voi),
-        entropy: round(a.entropy),
-        coverage: round(a.coverage),
-        novelty: round(a.novelty),
-        evidenceRate: round(a.evidenceRate),
+      discriminators: shadow.discriminators.map((d) => ({
+        label: d.label,
+        questionSeed: d.questionSeed,
+        sides: d.sides,
+        voi: round(d.voi),
+        entropy: round(d.entropy),
+        coverage: round(d.coverage),
+        novelty: round(d.novelty),
+        evidenceRate: round(d.evidenceRate),
       })),
     });
   }

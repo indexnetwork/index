@@ -26,10 +26,10 @@ export function poolQuestionsMiningMode(): PoolQuestionsMiningMode {
  * candidates, so no axis (or later, question option) can be traced back to a
  * specific individual.
  */
-export const POOL_AXIS_MIN_POOL_SIZE = 5;
+export const POOL_DISCRIMINATOR_MIN_POOL_SIZE = 5;
 
 /** Max candidates sent to the miner LLM (top-N by score). */
-export const POOL_AXIS_MAX_CANDIDATES = 24;
+export const POOL_DISCRIMINATOR_MAX_CANDIDATES = 24;
 
 /** Max chars of public context per candidate in the miner prompt. */
-export const POOL_AXIS_MAX_PUBLIC_CONTEXT_CHARS = 400;
+export const POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS = 400;

@@ -1,5 +1,5 @@
 /**
- * PoolAxisMiner — one structured LLM pass that proposes discriminating axes
+ * PoolDiscriminatorMiner — one structured LLM pass that proposes discriminating axes
  * over a discovery-run candidate pool, with code-side evidence verification
  * (IND-417).
  *
@@ -20,9 +20,9 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
-import type { MinedAxis, PoolAxisMiningInput, VerifiedAssignment } from "./pool-axis.types.js";
+import type { MinedDiscriminator, DiscriminatorMiningInput, VerifiedAssignment } from "./discriminator.types.js";
 
-const logger = protocolLogger("PoolAxisMiner");
+const logger = protocolLogger("PoolDiscriminatorMiner");
 
 /** Max axes requested from (and accepted out of) one mining pass. */
 const MAX_AXES = 6;
@@ -83,8 +83,8 @@ Rules for assignments:
 
 Prefer axes that split the pool close to evenly and that cover many candidates with verifiable evidence. Propose at most ${MAX_AXES} axes; fewer strong axes beat many weak ones.`;
 
-/** Config for PoolAxisMiner construction. */
-export interface PoolAxisMinerConfig {
+/** Config for PoolDiscriminatorMiner construction. */
+export interface PoolDiscriminatorMinerConfig {
   /** Optional model config override (API key / base URL / model). */
   modelConfig?: Parameters<typeof createStructuredModel>[3];
 }
@@ -118,12 +118,12 @@ function stripEdgePunctuation(s: string): string {
  * Stateless axis-mining agent. One `mine()` call = one structured LLM pass +
  * deterministic evidence verification.
  */
-export class PoolAxisMiner {
+export class PoolDiscriminatorMiner {
   private model: ReturnType<typeof createStructuredModel<AxisMiningResponse>>;
 
-  constructor(config?: PoolAxisMinerConfig) {
+  constructor(config?: PoolDiscriminatorMinerConfig) {
     this.model = createStructuredModel<AxisMiningResponse>(
-      "poolAxisMiner",
+      "poolDiscriminatorMiner",
       AxisMiningResponseSchema,
       { name: "pool_axes" },
       config?.modelConfig,
@@ -138,9 +138,9 @@ export class PoolAxisMiner {
    */
   @Timed()
   async mine(
-    input: PoolAxisMiningInput,
+    input: DiscriminatorMiningInput,
     options?: { signal?: AbortSignal },
-  ): Promise<MinedAxis[]> {
+  ): Promise<MinedDiscriminator[]> {
     const prompt = buildMiningPrompt(input);
     const raw = await invokeWithAbortSignal(
       this.model,
@@ -157,7 +157,7 @@ export class PoolAxisMiner {
 }
 
 /** Builds the human message: intent text + one numbered block per candidate. */
-export function buildMiningPrompt(input: PoolAxisMiningInput): string {
+export function buildMiningPrompt(input: DiscriminatorMiningInput): string {
   const candidateBlocks = input.candidates
     .map((c) => `[${c.id}]\n${c.publicContext}`)
     .join("\n\n");
@@ -177,8 +177,8 @@ export function buildMiningPrompt(input: PoolAxisMiningInput): string {
  */
 export function verifyAxis(
   axis: AxisMiningResponse["axes"][number],
-  candidates: PoolAxisMiningInput["candidates"],
-): MinedAxis {
+  candidates: DiscriminatorMiningInput["candidates"],
+): MinedDiscriminator {
   const contextById = new Map(candidates.map((c) => [c.id, normalizeForMatch(c.publicContext)]));
   const byId = new Map<string, VerifiedAssignment>();
   let proposed = 0;
@@ -211,7 +211,7 @@ export function verifyAxis(
   );
 
   return {
-    axis: axis.axis,
+    label: axis.axis,
     questionSeed: axis.questionSeed,
     sides: axis.sides,
     assignments,

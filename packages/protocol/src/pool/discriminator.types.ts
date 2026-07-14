@@ -1,18 +1,23 @@
 /**
- * Pool-aware discriminator axis mining — shared types (IND-416 / IND-417).
+ * Pool discriminator mining — shared types (IND-416 / IND-417).
  *
- * A "pool axis" is a preference dimension that splits a discovery-run
+ * A "pool discriminator" is a preference dimension that splits a discovery-run
  * candidate pool into meaningfully different groups (e.g. "hands-on builders
- * vs advisors"). Axes are mined by one structured LLM pass, then scored
- * deterministically (VoI = entropy × coverage^1.5 × novelty) so the highest
- * value question can eventually be asked to the intent owner.
+ * vs advisors"). Discriminators are mined by one structured LLM pass, then
+ * scored deterministically (VoI = entropy × coverage^1.5 × novelty) so the
+ * highest value question can eventually be asked to the intent owner.
+ *
+ * Vocabulary note: the LLM wire format (prompt + response schema in the miner)
+ * speaks of "axes" with mutually exclusive "sides" — the clearest way to
+ * explain the concept to the model. Everything the rest of the codebase
+ * touches (types, exports, logs) uses "discriminator".
  *
  * P1 (shadow) uses these types for log-only output; later phases reuse them
  * for question synthesis and answer application.
  */
 
 /** One candidate in the pool as supplied to the miner LLM. */
-export interface PoolAxisCandidate {
+export interface PoolCandidate {
   /** Opportunity id (stable key for later answer application). */
   id: string;
   /**
@@ -26,21 +31,21 @@ export interface PoolAxisCandidate {
 }
 
 /** Input envelope for one mining pass. */
-export interface PoolAxisMiningInput {
+export interface DiscriminatorMiningInput {
   /** Intent payload (+ summary) or ad-hoc search query that produced the pool. */
   intentText: string;
-  candidates: PoolAxisCandidate[];
+  candidates: PoolCandidate[];
 }
 
 /**
- * One candidate assignment on an axis, after code-side evidence verification.
+ * One candidate assignment on a discriminator, after code-side evidence verification.
  * `side === null` means unknown (LLM abstained, evidence failed verification,
  * or the candidate was missing from the LLM output).
  */
 export interface VerifiedAssignment {
   /** Candidate (opportunity) id. */
   id: string;
-  /** Verified side label (one of the axis sides), or null = unknown. */
+  /** Verified side label (one of the discriminator's sides), or null = unknown. */
   side: string | null;
   /** The evidence span quoted by the LLM (kept for logging/audit), if any. */
   evidence: string | null;
@@ -51,25 +56,25 @@ export interface VerifiedAssignment {
   verified: boolean;
 }
 
-/** One mined axis after evidence verification (pre-scoring). */
-export interface MinedAxis {
-  /** Short axis label, e.g. "Hands-on builders vs strategic advisors". */
-  axis: string;
-  /** A question the intent owner could be asked to resolve the axis. */
+/** One mined discriminator after evidence verification (pre-scoring). */
+export interface MinedDiscriminator {
+  /** Short discriminator label, e.g. "Hands-on builders vs strategic advisors". */
+  label: string;
+  /** A question the intent owner could be asked to resolve the discriminator. */
   questionSeed: string;
   /** 2–3 mutually exclusive side labels. */
   sides: string[];
   /** Exactly one entry per pool candidate. */
   assignments: VerifiedAssignment[];
   /**
-   * verified-proposals / total side proposals from the LLM for this axis
+   * verified-proposals / total side proposals from the LLM for this discriminator
    * (0 when the LLM proposed no sides at all). The hallucination health metric.
    */
   evidenceRate: number;
 }
 
-/** A mined axis with its deterministic VoI score components. */
-export interface ScoredAxis extends MinedAxis {
+/** A mined discriminator with its deterministic VoI score components. */
+export interface ScoredDiscriminator extends MinedDiscriminator {
   /** Normalized score-weighted entropy over sides, in [0,1]. */
   entropy: number;
   /** Assigned score mass / total pool score mass, in [0,1]. */
@@ -81,8 +86,8 @@ export interface ScoredAxis extends MinedAxis {
 }
 
 /** Result of one shadow mining+scoring pass (the log payload shape). */
-export interface PoolAxisShadowResult {
+export interface DiscriminatorShadowResult {
   poolSize: number;
-  /** Scored axes, sorted by VoI descending. */
-  axes: ScoredAxis[];
+  /** Scored discriminators, sorted by VoI descending. */
+  discriminators: ScoredDiscriminator[];
 }
