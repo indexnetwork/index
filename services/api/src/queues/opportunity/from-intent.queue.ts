@@ -7,6 +7,7 @@ import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
+import { maybeMinePoolDiscriminators, type PoolMiningTrigger } from '../pool/mining.shared';
 
 export const QUEUE_NAME = 'opportunity-from-intent';
 
@@ -32,6 +33,8 @@ export interface FromIntentDeps {
   invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
+  /** Pool-discriminator mining hook (IND-417/418). Defaults to the shared fire-and-forget implementation; injectable for tests. */
+  minePoolDiscriminators?: (trigger: PoolMiningTrigger) => void;
 }
 
 export class FromIntentQueue {
@@ -117,6 +120,16 @@ export class FromIntentQueue {
       label: 'FromIntent',
       errorLabel: 'from-intent',
       logContext: { intentId, userId },
+    });
+
+    // Pool-discriminator mining + question enqueue (IND-417/418): web intent
+    // creation/edit is the frontend's discovery path — without this hook only
+    // MCP-triggered runs would ever produce pool questions. Fire-and-forget;
+    // flags off = no-op.
+    (this.deps?.minePoolDiscriminators ?? maybeMinePoolDiscriminators)({
+      source: 'from_intent',
+      userId,
+      intentId,
     });
   }
 

@@ -19,7 +19,7 @@ import { POOL_QUESTION_MIN_VOI, poolQuestionsMode } from '@indexnetwork/protocol
 
 import { log } from '../../lib/log';
 import type { QuestionerAdapter } from '../../adapters/questioner.adapter';
-import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from '../../queues/pool-question.shared';
+import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from '../../queues/pool/question.shared';
 
 const logger = log.service.from('PoolQuestionChain');
 
