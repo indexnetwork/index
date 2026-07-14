@@ -1,5 +1,5 @@
 import { useState, useCallback, KeyboardEvent } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, ChevronLeft, ChevronRight } from "lucide-react";
 
 import type { PendingQuestion, AnswerBody } from "@/services/questions";
 
@@ -12,6 +12,11 @@ interface QuestionCardProps {
   question: PendingQuestion;
   onAnswer: (questionId: string, body: AnswerBody) => Promise<void>;
   onDismiss: (questionId: string) => Promise<void>;
+  /** Navigate between pending questions. Rendered inside the card when provided. */
+  onPrev?: () => void;
+  onNext?: () => void;
+  canPrev?: boolean;
+  canNext?: boolean;
 }
 
 /**
@@ -23,6 +28,10 @@ export function QuestionCard({
   question,
   onAnswer,
   onDismiss,
+  onPrev,
+  onNext,
+  canPrev,
+  canNext,
 }: QuestionCardProps) {
   const [otherText, setOtherText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -73,9 +82,33 @@ export function QuestionCard({
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <p className="text-[15px] font-semibold leading-snug text-gray-900">
-        {payload.prompt}
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[15px] font-semibold leading-snug text-gray-900">
+          {payload.prompt}
+        </p>
+        {(onPrev || onNext) && (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              aria-label="Previous question"
+              disabled={!canPrev}
+              onClick={onPrev}
+              className="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next question"
+              disabled={!canNext}
+              onClick={onNext}
+              className="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="mt-4 flex flex-col gap-0.5">
         {payload.options.map((opt, i) => (

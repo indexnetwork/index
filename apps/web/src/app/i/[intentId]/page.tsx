@@ -37,6 +37,20 @@ function bucketForStatus(status?: string): string {
   return STATUS_BUCKET[status ?? ""] ?? "pending";
 }
 
+/** Prototype canned agent replies to a user message (no backend). */
+const AGENT_REPLIES = [
+  "Got it — I'll factor that in while I look.",
+  "Noted. I'll keep an eye out for that.",
+  "Makes sense — I'll sharpen what I surface.",
+  "Thanks, that helps. I'll adjust the search.",
+  "Understood. I'll weave that into the signal.",
+];
+
+/** Pick a canned agent reply. Prototype only. */
+function agentReply(): string {
+  return AGENT_REPLIES[Math.floor(Math.random() * AGENT_REPLIES.length)];
+}
+
 /** Compact relative time for the answered thread, e.g. "just now", "2d ago". */
 function timeAgo(iso?: string): string {
   if (!iso) return "";
@@ -248,9 +262,19 @@ export default function IntentDetailPage() {
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   // Answered questions kept in view as a conversation thread (oldest first).
+  // Conversation thread: answered questions (with a `prompt`) and free-form
+  // messages the user sends (no `prompt`), oldest first.
   const [answered, setAnswered] = useState<
-    Array<{ id: string; prompt: string; response: string; answeredAt?: string }>
+    Array<{
+      id: string;
+      prompt?: string;
+      response: string;
+      answeredAt?: string;
+      from?: "user" | "agent";
+    }>
   >([]);
+  // Which pending question is currently shown (navigable via the header pager).
+  const [questionIndex, setQuestionIndex] = useState(0);
   // Chat-style conversation column: scrolls internally, pinned to the bottom so
   // the newest question is always in view above the composer.
   const conversationRef = useRef<HTMLDivElement>(null);
@@ -353,7 +377,7 @@ export default function IntentDetailPage() {
       }),
     );
     return () => cancelAnimationFrame(raf);
-  }, [answered, questions]);
+  }, [answered, questions, questionIndex]);
 
   const handleArchive = useCallback(async () => {
     if (!intentId) return;
@@ -427,6 +451,43 @@ export default function IntentDetailPage() {
     [questionsService],
   );
 
+  // Prototype: a sent message posts straight into the conversation thread
+  // (no backend), and the agent streams back a canned reply character by
+  // character (typewriter) after a short beat.
+  const handleSendMessage = useCallback(async (text: string): Promise<boolean> => {
+    const value = text.trim();
+    if (!value) return false;
+    setAnswered((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        response: value,
+        answeredAt: new Date().toISOString(),
+        from: "user",
+      },
+    ]);
+    const agentId = crypto.randomUUID();
+    const full = agentReply();
+    window.setTimeout(() => {
+      setAnswered((prev) => [
+        ...prev,
+        { id: agentId, response: "", from: "agent" },
+      ]);
+      let i = 0;
+      const tick = () => {
+        i += 1;
+        setAnswered((prev) =>
+          prev.map((m) =>
+            m.id === agentId ? { ...m, response: full.slice(0, i) } : m,
+          ),
+        );
+        if (i < full.length) window.setTimeout(tick, 22);
+      };
+      tick();
+    }, 450);
+    return true;
+  }, []);
+
   const bucketOf = useCallback(
     // Local actions (accept/reject in this session) override the fetched status.
     (item: HomeViewCardItem) =>
@@ -447,6 +508,13 @@ export default function IntentDetailPage() {
     () => opportunities.filter((item) => bucketOf(item) === selectedBucket),
     [opportunities, bucketOf, selectedBucket],
   );
+
+  // Clamp the pager index to the current queue; the shown question follows it.
+  const currentQuestionIndex =
+    questions.length === 0
+      ? 0
+      : Math.min(questionIndex, questions.length - 1);
+  const currentQuestion = questions[currentQuestionIndex];
 
   const title = (
     intent?.summary && intent.summary.trim().length > 0
@@ -511,7 +579,6 @@ export default function IntentDetailPage() {
                     </span>
                     live
                   </span>
-                  <span>your agent is looking in the background</span>
                 </div>
 
                 {showRefine && (
@@ -553,7 +620,7 @@ export default function IntentDetailPage() {
                 >
                   <div className="mb-4 shrink-0">
                     <h3 className="flex items-center gap-2 text-base font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
-                      <span>Questions ({questions.length})</span>
+                      <span>Questions</span>
                     </h3>
                   </div>
                   <div className="flex min-h-0 flex-1 flex-col">
@@ -573,47 +640,67 @@ export default function IntentDetailPage() {
                           <div className="flex flex-col gap-3">
                             {answered.map((a) => (
                               <div key={a.id} className="px-1">
-                                <p className="text-[13px] text-gray-400">
-                                  {a.prompt}
-                                  {a.answeredAt && (
-                                    <span className="text-gray-300">
-                                      {" · "}
-                                      {timeAgo(a.answeredAt)}
-                                    </span>
-                                  )}
-                                </p>
-                                <p className="mt-0.5 flex gap-1.5 text-[13px] text-gray-900 font-ibm-plex-mono">
-                                  <span className="text-gray-400">›</span>
-                                  <span>{a.response}</span>
-                                </p>
+                                {a.from === "agent" ? (
+                                  <p className="text-[13px] leading-relaxed text-gray-500">
+                                    {a.response}
+                                  </p>
+                                ) : (
+                                  <>
+                                    {a.prompt && (
+                                      <p className="text-[13px] text-gray-400">
+                                        {a.prompt}
+                                        {a.answeredAt && (
+                                          <span className="text-gray-300">
+                                            {" · "}
+                                            {timeAgo(a.answeredAt)}
+                                          </span>
+                                        )}
+                                      </p>
+                                    )}
+                                    <p className="mt-0.5 flex gap-1.5 text-[13px] text-gray-900 font-ibm-plex-mono">
+                                      <span className="text-gray-400">›</span>
+                                      <span>{a.response}</span>
+                                    </p>
+                                  </>
+                                )}
                               </div>
                             ))}
                           </div>
                         )}
-                        {questions.length > 0 ? (
-                          // One question at a time: only the first pending question
-                          // renders; answering/dismissing it surfaces the next.
+                        {currentQuestion && (
+                          // One question at a time, selected by the header pager;
+                          // answering/dismissing it surfaces the next.
                           <QuestionCard
-                            question={questions[0]}
+                            question={currentQuestion}
                             onAnswer={handleAnswer}
                             onDismiss={handleDismiss}
+                            onPrev={
+                              questions.length > 1
+                                ? () =>
+                                    setQuestionIndex(
+                                      Math.max(currentQuestionIndex - 1, 0),
+                                    )
+                                : undefined
+                            }
+                            onNext={
+                              questions.length > 1
+                                ? () =>
+                                    setQuestionIndex(
+                                      Math.min(
+                                        currentQuestionIndex + 1,
+                                        questions.length - 1,
+                                      ),
+                                    )
+                                : undefined
+                            }
+                            canPrev={currentQuestionIndex > 0}
+                            canNext={currentQuestionIndex < questions.length - 1}
                           />
-                        ) : (
-                          <div className="flex items-start gap-3 rounded-lg border border-dashed border-gray-200 px-4 py-4">
-                            <span className="relative mt-1 flex h-2 w-2 shrink-0">
-                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4091BB] opacity-60" />
-                              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4091BB]" />
-                            </span>
-                            <p className="text-sm leading-relaxed text-gray-500">
-                              Your agent is looking in the background. When it
-                              needs a signal from you, a question shows up here.
-                            </p>
-                          </div>
                         )}
                       </div>
                     </div>
                     <div className="pt-4 shrink-0">
-                      <AgentMessageInput onSend={submitRefine} />
+                      <AgentMessageInput onSend={handleSendMessage} />
                     </div>
                   </div>
                 </section>
