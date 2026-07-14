@@ -19,6 +19,11 @@ export interface IntentNegotiatorChatProps {
   questions: PendingQuestion[];
   onAnswerQuestion: (questionId: string, body: AnswerBody) => Promise<void>;
   onDismissQuestion: (questionId: string) => Promise<void>;
+  /**
+   * A pool-discovery answer was just submitted and a chained follow-up may
+   * be incoming — render a typing indicator below the question cards.
+   */
+  questionChainPending?: boolean;
   /** Opportunity card plumbing shared with the page's Radar panel. */
   opportunityStatusMap: Record<string, string>;
   opportunityActionLoading: Record<string, boolean>;
@@ -51,6 +56,7 @@ export default function IntentNegotiatorChat({
   questions,
   onAnswerQuestion,
   onDismissQuestion,
+  questionChainPending,
   opportunityStatusMap,
   opportunityActionLoading,
   onOpportunityAction,
@@ -113,7 +119,7 @@ export default function IntentNegotiatorChat({
   // Follow the stream.
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, questions.length, ready]);
+  }, [messages, questions.length, questionChainPending, ready]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -186,7 +192,7 @@ export default function IntentNegotiatorChat({
               </div>
             )}
 
-            {questions.length > 0 && (
+            {(questions.length > 0 || questionChainPending) && (
               <div data-testid="negotiator-opening-questions">
                 <p className="mb-2 text-xs uppercase tracking-wider text-gray-500 font-ibm-plex-mono">
                   Your Personal Agent needs your input
@@ -195,6 +201,7 @@ export default function IntentNegotiatorChat({
                   questions={questions}
                   onAnswer={onAnswerQuestion}
                   onDismiss={onDismissQuestion}
+                  showTypingIndicator={questionChainPending}
                 />
               </div>
             )}

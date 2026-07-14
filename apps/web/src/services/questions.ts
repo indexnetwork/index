@@ -12,10 +12,22 @@ export interface QuestionPayload {
   prompt: string;
   options: QuestionOption[];
   multiSelect: boolean;
+  /**
+   * Optional provenance line rendered as a muted chip above the prompt
+   * (e.g. "based on 18 people matching this intent"). Aggregate counts only.
+   */
+  evidence?: string;
 }
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat';
+  mode:
+    | 'discovery'
+    | 'intent'
+    | 'enrichment'
+    | 'negotiation'
+    | 'negotiation_inflight'
+    | 'chat'
+    | 'pool_discovery';
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;

@@ -12,6 +12,12 @@ interface OptionRowProps {
   checked: boolean;
   disabled?: boolean;
   onChange: (next: boolean) => void;
+  /**
+   * Render the label as the main line with the description as a muted
+   * sub-line (chip-style options with counts, e.g. pool discriminators).
+   * Default keeps the legacy single-line `description || label` rendering.
+   */
+  showSubline?: boolean;
 }
 
 /**
@@ -28,6 +34,7 @@ export function OptionRow({
   checked,
   disabled,
   onChange,
+  showSubline,
 }: OptionRowProps) {
   return (
     <label
@@ -73,11 +80,20 @@ export function OptionRow({
       </span>
       <span
         className={cn(
-          'text-sm leading-snug',
+          'flex min-w-0 flex-col text-sm leading-snug',
           checked ? 'font-medium text-gray-900' : 'text-gray-700',
         )}
       >
-        {description || label}
+        {showSubline ? (
+          <>
+            <span>{label}</span>
+            {description && description !== label && (
+              <span className="text-xs font-normal text-gray-500">{description}</span>
+            )}
+          </>
+        ) : (
+          description || label
+        )}
       </span>
     </label>
   );
