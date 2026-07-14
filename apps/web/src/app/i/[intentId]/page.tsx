@@ -610,7 +610,7 @@ export default function IntentDetailPage() {
               <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row">
                 <section
                   className={cn(
-                    "flex min-h-0 min-w-0 flex-1 flex-col lg:w-2/5 lg:flex-none",
+                    "flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[2]",
                     // When there's no conversation yet, take natural height
                     // instead of stretching, so the empty state stays compact.
                     answered.length === 0 &&
@@ -705,7 +705,7 @@ export default function IntentDetailPage() {
                   </div>
                 </section>
 
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:w-3/5 lg:flex-none">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-[3]">
                 <Panel
                   title="Radar"
                   description="People the network surfaced for this intent."
