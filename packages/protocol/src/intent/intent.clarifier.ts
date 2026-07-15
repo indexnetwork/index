@@ -218,7 +218,7 @@ ${activeIntentsContext || "none"}
           case "missing_constraint":
             return "Which location, timing, format, or range should constrain this intent?";
           case "open_alternative_set":
-            return `Which alternative should this intent pursue instead: ${suggestion}?`;
+            return `Your intent names different alternatives — "${description}". Which one should take priority?`;
         }
       })();
       return {
