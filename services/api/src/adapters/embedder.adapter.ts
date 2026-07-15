@@ -4,7 +4,7 @@
  */
 
 import OpenAI from 'openai';
-import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm/sql';
+import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
 import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
@@ -239,6 +239,7 @@ export class EmbedderAdapter {
       inArray(intentNetworks.networkId, filter.indexScope),
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
       isNull(intents.archivedAt),
+      or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
       isNull(schema.users.deletedAt),
       isNotNull(intents.embedding),
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
@@ -360,6 +361,7 @@ export class EmbedderAdapter {
 
     const baseConditions = [
       isNull(intents.archivedAt),
+      or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
       isNull(schema.users.deletedAt),
       sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];

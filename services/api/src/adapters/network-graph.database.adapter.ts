@@ -9,6 +9,8 @@ export class NetworkGraphDatabaseAdapter {
         userId: intents.userId,
         sourceType: intents.sourceType,
         sourceId: intents.sourceId,
+        status: intents.status,
+        archivedAt: intents.archivedAt,
       })
       .from(intents)
       .where(eq(intents.id, intentId))

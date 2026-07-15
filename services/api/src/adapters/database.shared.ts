@@ -149,11 +149,13 @@ export interface ArchiveResultShape {
   success: boolean;
   error?: string;
 }
+export type IntentLifecycleStatus = 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
+
 export interface IntentListRow {
   id: string;
   payload: string;
   summary: string | null;
-  status: string | null;
+  status: IntentLifecycleStatus | null;
   isIncognito: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -290,16 +292,31 @@ export function toHydeDocument(row: typeof hydeDocuments.$inferSelect): HydeDocu
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Canonical "active own intents" WHERE predicate: a row the user owns that has
- * not been archived. No status filter — `intents.status` is vestigial (selected
- * but never filtered). Both the REST (IntentDatabaseAdapter) and MCP
- * (ChatDatabaseAdapter) surfaces route through this so their counts cannot
- * drift between them. See EDG-53.
+ * Canonical lifecycle predicate for intents eligible to drive discovery.
+ * Legacy null status remains discoverable alongside explicit `ACTIVE` rows.
+ *
+ * @returns A Drizzle predicate matching active lifecycle states.
+ */
+export function activeIntentLifecycleWhere() {
+  return or(
+    isNull(schema.intents.status),
+    eq(schema.intents.status, 'ACTIVE'),
+  );
+}
+
+/**
+ * Canonical "active own intents" WHERE predicate: an unarchived, discoverable
+ * row owned by the user. REST own-intent list/detail reads intentionally do not
+ * use this predicate so paused and terminal records remain visible there.
+ *
+ * @param userId - Intent owner.
+ * @returns A Drizzle predicate matching the owner's discoverable intents.
  */
 export function activeOwnIntentsWhere(userId: string) {
   return and(
     eq(schema.intents.userId, userId),
     isNull(schema.intents.archivedAt),
+    activeIntentLifecycleWhere(),
   );
 }
 

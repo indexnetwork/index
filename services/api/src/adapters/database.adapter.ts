@@ -309,7 +309,11 @@ export function createSystemDatabase(
       const intents = await Promise.all(results.map((r) => db.getIntent(r.item.id)));
       return results
         .map((r, i) => ({ r, intent: intents[i] }))
-        .filter((pair): pair is { r: (typeof results)[0]; intent: NonNullable<(typeof intents)[0]> } => pair.intent != null)
+        .filter((pair): pair is { r: (typeof results)[0]; intent: NonNullable<(typeof intents)[0]> } =>
+          pair.intent != null &&
+          !pair.intent.archivedAt &&
+          (pair.intent.status == null || pair.intent.status === 'ACTIVE')
+        )
         .map(({ r, intent }): SimilarIntent => ({
           id: intent.id,
           payload: intent.payload,

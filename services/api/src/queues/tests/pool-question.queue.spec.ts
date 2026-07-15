@@ -62,7 +62,7 @@ interface Harness {
   setAskedLabels(labels: string[]): void;
 }
 
-function makeHarness(): Harness {
+function makeHarness(intentStatus: 'ACTIVE' | 'PAUSED' = 'ACTIVE'): Harness {
   const persisted: AdapterPersistableQuestion[][] = [];
   let pending: AdapterPersistedQuestion[] = [];
   let askedLabels: string[] = [];
@@ -82,6 +82,7 @@ function makeHarness(): Harness {
         return null;
       },
     },
+    getIntentLifecycle: async (intentId) => ({ id: intentId, status: intentStatus, archivedAt: null }),
   });
   return {
     queue,
@@ -118,6 +119,13 @@ describe('QuestionerQueue pool_discovery arm', () => {
     // Evidence names the intent (context.intentText) so the card self-identifies on any surface.
     expect(q.payload.evidence).toBe('based on 21 people matching \u201cfind collaborators\u201d');
     expect(q.detection.pool?.intentText).toBe('find collaborators');
+  });
+
+  it('skips before persistence when the tied intent is paused', async () => {
+    h = makeHarness('PAUSED');
+    await h.queue.processJob('generate_questions', poolInput([discriminator('top')]));
+    expect(h.agentInvocations).toBe(0);
+    expect(h.persisted).toHaveLength(0);
   });
 
   it('skips when a pool_discovery question is already pending for the intent', async () => {

@@ -17,11 +17,11 @@ export interface FromIntentJobData {
   userId: string;
   networkIds?: string[];
   /**
-   * What enqueued this run. 'pool_answer' marks Tier-1 answer-triggered
-   * re-discovery (IND-419): its completion writes the Beat-2 narration line
-   * into the intent's negotiator session. Absent for intent-creation/cron.
+   * What enqueued this run. `pool_answer` marks Tier-1 answer-triggered
+   * re-discovery; `intent_resume` identifies lifecycle resume runs while
+   * retaining the ordinary discovery/mining path.
    */
-  trigger?: 'pool_answer';
+  trigger?: 'pool_answer' | 'intent_resume';
 }
 
 export type FromIntentDatabase = Pick<ChatDatabaseAdapter, 'getIntentForIndexing'>;
@@ -111,7 +111,24 @@ export class FromIntentQueue {
     // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
     const intent = await this.database.getIntentForIndexing(intentId);
     if (!intent) {
-      this.logger.warn('Intent not found, skipping', { intentId });
+      this.logger.warn('Intent not found, skipping admission', { intentId, userId });
+      return;
+    }
+    if (intent.userId !== userId) {
+      this.logger.warn('Intent owner mismatch, skipping admission', {
+        intentId,
+        expectedUserId: userId,
+        actualUserId: intent.userId,
+      });
+      return;
+    }
+    if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) {
+      this.logger.info('Intent is not discoverable, skipping admission', {
+        intentId,
+        userId,
+        status: intent.status ?? 'ACTIVE',
+        archived: Boolean(intent.archivedAt),
+      });
       return;
     }
 

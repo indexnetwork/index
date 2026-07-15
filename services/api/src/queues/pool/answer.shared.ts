@@ -31,6 +31,9 @@ const logger = log.service.from('PoolAnswerApply');
 /** Statuses that make an opportunity part of the viewer's live candidate pool. */
 const POOL_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
 
+/** Lifecycle admission for new work after applying an existing answer. */
+export type PoolLifecycleAdmission = 'active' | 'paused' | 'unavailable';
+
 /** Outcome of one answer application (drives the Beat-1 template). */
 export type PoolAnswerOutcome =
   | { kind: 'none' }
@@ -146,19 +149,41 @@ export async function applyPoolAnswer(input: {
   return { kind: 'applied', promoted, demoted, unknownAdjusted };
 }
 
-/** Beat-1 template (never LLM text; counts + the user's own choice only). */
-export function beatOneMessage(outcome: PoolAnswerOutcome, rankingEnabled = true): string {
+/**
+ * Beat-1 template (never LLM text; counts + the user's own choice only).
+ *
+ * @param outcome - Deterministic Tier-0 result.
+ * @param rankingEnabled - Whether local pool ranking is visible.
+ * @param admission - Lifecycle admission for Tier-1 discovery.
+ * @returns User-facing deterministic narration.
+ */
+export function beatOneMessage(
+  outcome: PoolAnswerOutcome,
+  rankingEnabled = true,
+  admission: PoolLifecycleAdmission = 'active',
+): string {
+  const willResearch = admission === 'active';
+  if (admission === 'unavailable' && outcome.kind !== 'none') {
+    return "Preference saved, but I couldn't start a fresh search right now.";
+  }
+
   switch (outcome.kind) {
     case 'applied': {
       if (!rankingEnabled) {
-        return 'Noted — I saved your preference. It will shape the fresh matches I am searching for now.';
+        return willResearch
+          ? 'Noted — I saved your preference. It will shape the fresh matches I am searching for now.'
+          : "Noted — I saved your preference. This signal is paused, so I didn't start a new search.";
       }
       const parts = [`Applied your answer — ${outcome.promoted} match${outcome.promoted === 1 ? '' : 'es'} prioritized`];
       if (outcome.demoted > 0) parts.push(`${outcome.demoted} deprioritized`);
-      return `${parts.join(', ')}. I'm also re-searching with this in mind — new matches land here in about a minute.`;
+      return willResearch
+        ? `${parts.join(', ')}. I'm also re-searching with this in mind — new matches land here in about a minute.`
+        : `${parts.join(', ')}. This signal is paused, so I didn't start a new search.`;
     }
     case 'stale':
-      return "Noted — your matches shifted since I mined that question, so I didn't reshuffle anything. Your answer will shape the new matches I'm about to find.";
+      return willResearch
+        ? "Noted — your matches shifted since I mined that question, so I didn't reshuffle anything. Your answer will shape the new matches I'm about to find."
+        : "Noted — your matches shifted since I mined that question, so I didn't reshuffle anything. This signal is paused, so I didn't start a new search.";
     case 'none':
       return "Got it — both sides matter, so I'm keeping your matches ranked as they are.";
   }

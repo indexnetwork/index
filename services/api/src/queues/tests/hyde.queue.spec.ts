@@ -138,6 +138,58 @@ describe('HydeQueue', () => {
       expect(count).toBe(0);
     });
 
+    it('preserves stale HyDE and never invokes the graph for inactive or ownerless intents', async () => {
+      const invokeHyde = mock(async () => {});
+      const deleteHydeDocumentsForSource = mock(async () => 0);
+      const rows = {
+        paused: { id: 'paused', payload: 'P', userId: 'u1', status: 'PAUSED', archivedAt: null },
+        fulfilled: { id: 'fulfilled', payload: 'P', userId: 'u1', status: 'FULFILLED', archivedAt: null },
+        expired: { id: 'expired', payload: 'P', userId: 'u1', status: 'EXPIRED', archivedAt: null },
+        archived: { id: 'archived', payload: 'P', userId: 'u1', status: 'ACTIVE', archivedAt: new Date() },
+        ownerless: { id: 'ownerless', payload: 'P', userId: '', status: 'ACTIVE', archivedAt: null },
+      } as const;
+      const db = {
+        deleteExpiredHydeDocuments: async () => 0,
+        getStaleHydeDocuments: async () => Object.keys(rows).map((sourceId) => ({
+          sourceId,
+          sourceType: 'intent',
+          strategy: 'mirror',
+        })) as Awaited<ReturnType<HydeQueueDatabase['getStaleHydeDocuments']>>,
+        getIntentForIndexing: async (sourceId: string) => rows[sourceId as keyof typeof rows] as Awaited<
+          ReturnType<HydeQueueDatabase['getIntentForIndexing']>
+        >,
+        deleteHydeDocumentsForSource,
+      };
+      const queue = new HydeQueue({ database: asHydeDb(db), invokeHyde });
+
+      expect(await queue.refreshStaleHyde()).toBe(0);
+      expect(invokeHyde).not.toHaveBeenCalled();
+      expect(deleteHydeDocumentsForSource).not.toHaveBeenCalled();
+    });
+
+    it('still regenerates stale HyDE for active legacy and explicit-active intents', async () => {
+      const invokeHyde = mock(async () => {});
+      const db = {
+        deleteExpiredHydeDocuments: async () => 0,
+        getStaleHydeDocuments: async () => [
+          { sourceId: 'legacy', sourceType: 'intent', strategy: 'mirror' },
+          { sourceId: 'active', sourceType: 'intent', strategy: 'mirror' },
+        ] as Awaited<ReturnType<HydeQueueDatabase['getStaleHydeDocuments']>>,
+        getIntentForIndexing: async (sourceId: string) => ({
+          id: sourceId,
+          payload: `Payload ${sourceId}`,
+          userId: 'u1',
+          status: sourceId === 'legacy' ? null : 'ACTIVE',
+          archivedAt: null,
+        }) as Awaited<ReturnType<HydeQueueDatabase['getIntentForIndexing']>>,
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new HydeQueue({ database: asHydeDb(db), invokeHyde });
+
+      expect(await queue.refreshStaleHyde()).toBe(2);
+      expect(invokeHyde).toHaveBeenCalledTimes(2);
+    });
+
     it.skip('refreshes when intent found (needs Redis/embedder; run in integration)', async () => {
       const db = {
         deleteExpiredHydeDocuments: async () => 0,

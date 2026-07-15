@@ -711,6 +711,28 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid network ID format.");
       }
 
+      const contextIntentId = focusedIntentId(context);
+      const requestedIntentId = query.intentId?.trim() || undefined;
+      if (requestedIntentId != null && !UUID_REGEX.test(requestedIntentId)) {
+        return error("Invalid intent ID format.");
+      }
+      if (contextIntentId && requestedIntentId && requestedIntentId !== contextIntentId) {
+        return error("This chat is scoped to a different intent.");
+      }
+      const triggerIntentId = contextIntentId ?? requestedIntentId;
+      if (triggerIntentId) {
+        const triggerIntent = await systemDb.getIntent(triggerIntentId);
+        if (!triggerIntent || triggerIntent.userId !== context.userId) {
+          return error("Intent not found or you are not authorized to use it for discovery.");
+        }
+        if (
+          triggerIntent.archivedAt ||
+          (triggerIntent.status != null && triggerIntent.status !== 'ACTIVE')
+        ) {
+          return error("This intent is not active. Resume it before starting discovery.");
+        }
+      }
+
       if (context.isMcp && deps.discoveryRuns && deps.discoveryRunQueue) {
         // Coalesce: if an equivalent discovery is already queued/running for this
         // user, return that run instead of spawning a duplicate. An over-eager
@@ -1134,16 +1156,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const toolDebugSteps: Array<{ step: string; detail?: string }> = [
         { step: "resolve_index_scope", detail: `${indexScope.length} index(es)` },
       ];
-
-      const contextIntentId = focusedIntentId(context);
-      const requestedIntentId = query.intentId?.trim() || undefined;
-      if (requestedIntentId != null && !UUID_REGEX.test(requestedIntentId)) {
-        return error("Invalid intent ID format.");
-      }
-      if (contextIntentId && requestedIntentId && requestedIntentId !== contextIntentId) {
-        return error("This chat is scoped to a different intent.");
-      }
-      const triggerIntentId = contextIntentId ?? requestedIntentId;
 
       if (query.introTargetUserId?.trim() && query.introTargetUserId.trim() === context.userId) {
         return error("You cannot discover introductions for yourself. Try regular discovery instead.");

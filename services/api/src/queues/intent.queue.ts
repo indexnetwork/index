@@ -275,7 +275,21 @@ export class IntentQueue implements IntentGraphQueue {
     const db = this.deps?.database ?? this.database;
     const intent = await db.getIntentForIndexing(intentId);
     if (!intent) {
-      this.hydeLogger.warn('Intent not found, skipping', { intentId });
+      this.hydeLogger.warn('Intent not found, skipping admission', { intentId, userId });
+      return;
+    }
+    if (
+      intent.userId !== userId ||
+      intent.archivedAt ||
+      (intent.status != null && intent.status !== 'ACTIVE')
+    ) {
+      this.hydeLogger.info('Intent is not eligible for HyDE generation, skipping admission', {
+        intentId,
+        userId,
+        actualUserId: intent.userId,
+        status: intent.status ?? 'ACTIVE',
+        archived: Boolean(intent.archivedAt),
+      });
       return;
     }
     this.hydeLogger.info('Starting HyDE generation', { intentId, userId });
@@ -386,6 +400,20 @@ export class IntentQueue implements IntentGraphQueue {
     const intent = await db.getIntentForIndexing(intentId);
     if (!intent) {
       this.assignLogger.warn('Intent not found, skipping', { intentId });
+      return { assignedNetworkIds: [], evaluatedCount: 0 };
+    }
+    if (
+      intent.userId !== userId ||
+      intent.archivedAt ||
+      (intent.status != null && intent.status !== 'ACTIVE')
+    ) {
+      this.assignLogger.info('Intent is not eligible for assignment, skipping', {
+        intentId,
+        userId,
+        actualUserId: intent.userId,
+        status: intent.status ?? 'ACTIVE',
+        archived: Boolean(intent.archivedAt),
+      });
       return { assignedNetworkIds: [], evaluatedCount: 0 };
     }
 

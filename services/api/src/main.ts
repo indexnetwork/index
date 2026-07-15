@@ -68,7 +68,7 @@ import { negotiatorMemoryWriteService } from './services/negotiator-memory.servi
 import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { IntentEvents } from './events/intent.event';
+import { IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
@@ -363,6 +363,12 @@ const questionAnswerDeps = {
   },
   handlePoolAnswer: handlePoolAnswerFactory({
     adapter: answerQuestionerAdapter,
+    getIntentAdmission: async (userId, intentId) => {
+      const intent = await chatDatabaseAdapter.getIntentForIndexing(intentId);
+      if (!intent || intent.userId !== userId || intent.archivedAt) return 'unavailable';
+      if (intent.status === 'PAUSED') return 'paused';
+      return intent.status == null || intent.status === 'ACTIVE' ? 'active' : 'unavailable';
+    },
     narrateBeatOne: async ({ userId, intentId, message }) => {
       await appendPoolNarration({ userId, intentId, message });
     },
@@ -416,6 +422,25 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
     { priority: 10, jobId: `rediscovery-${userId}-${intentId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
   ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue discovery on create', { intentId, userId, error: err }));
   opportunityService.triggerMaintenance(userId, 'intent-created');
+};
+
+IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: number) => {
+  log.job.from('IntentEvents').verbose('Intent paused', { intentId, userId, lifecycleVersionMs });
+};
+
+IntentEvents.onResumed = async (intentId: string, userId: string, lifecycleVersionMs: number) => {
+  log.job.from('IntentEvents').verbose('Intent resumed, triggering discovery', {
+    intentId,
+    userId,
+    lifecycleVersionMs,
+  });
+  await fromIntentQueue.addJob(
+    { intentId, userId, trigger: 'intent_resume' },
+    {
+      priority: 10,
+      jobId: intentResumeDiscoveryJobId(userId, intentId, lifecycleVersionMs),
+    },
+  );
 };
 
 IntentEvents.onArchived = (intentId: string, userId: string) => {

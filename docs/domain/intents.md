@@ -115,10 +115,16 @@ Intents follow a four-state lifecycle:
 
 | Status | Meaning |
 |---|---|
-| **ACTIVE** | The intent is live and participates in discovery. New intents start here. |
-| **PAUSED** | The user has temporarily suspended the intent. It does not participate in discovery but is not expired. |
+| **ACTIVE** | The intent is live and can admit new discovery and matching work. New intents start here. |
+| **PAUSED** | The user has temporarily suspended new intent-driven discovery and matching without removing the existing intent workspace. |
 | **FULFILLED** | The intent has been satisfied (the user found what they were looking for or completed what they committed to). |
 | **EXPIRED** | The intent is no longer relevant. This can happen through explicit user action, through reconciliation (a tombstone matched it), or through system expiration rules. |
+
+Legacy rows whose `status` is null are treated as **ACTIVE**.
+
+Pausing is non-destructive. Existing opportunities (including Radar cards), pending questions, conversations, intent-network assignments, and HyDE documents remain in place. A paused intent cannot admit not-yet-started intent-driven discovery, be returned as a candidate match, start new pool mining or question generation, or schedule an answer-triggered Tier-1 discovery rerun. Work that already passed its lifecycle admission check may still finish.
+
+Existing pending questions remain answerable while paused. Their deterministic Tier-0 preference adjustment can still re-rank the existing pool, but the answer does not start Tier-1 discovery or chain a new question. Resuming changes the intent to **ACTIVE** and immediately enqueues one lifecycle-version-deduplicated from-intent discovery run; ordinary pool mining and question generation then follow the normal discovery flow. If that enqueue is not acknowledged, a changed resume is compare-and-set back to **PAUSED** when no concurrent lifecycle write intervened, and the client receives a retryable failure rather than false success.
 
 An archived intent (with an `archivedAt` timestamp) is effectively removed from active consideration.
 
@@ -194,7 +200,7 @@ An active intent can receive `pool_discovery` questions derived from meaningful 
 
 Answer application is deterministic and auditable—no LLM runs at answer time. Candidates on the chosen side retain a `1.0` factor, the other side receives `0.6`, and live candidates that were not assigned by the mined snapshot receive `0.9`. Multiple answers multiply, with a cumulative floor of `0.3`, so a match may be deprioritized but never hidden. “Both matter” records no preference and changes no ranking. If more than 30% of the snapshot has left the live pool, the system skips the local reshuffle rather than applying stale evidence.
 
-A preference answer also schedules one debounced discovery rerun for the intent. The worker reads all valid answers after the debounce window, adds those user-stated preferences to the search context, re-mines the refreshed pool, and stages the next eligible question. The Personal Agent narrates the immediate adjustment and later refresh using count-only templates; cards expose only the user's selected side in a muted deprioritization chip, never evaluator reasoning.
+For an active intent, a preference answer also schedules one debounced discovery rerun. The worker reads all valid answers after the debounce window, adds those user-stated preferences to the search context, re-mines the refreshed pool, and stages the next eligible question. While the intent is paused, the pending question remains answerable and the immediate deterministic re-ranking can still apply, but this rerun and any next question are withheld. The Personal Agent narrates the immediate adjustment and later refresh using count-only templates; cards expose only the user's selected side in a muted deprioritization chip, never evaluator reasoning.
 
 This behavior is independently gated: `POOL_QUESTIONS_MODE` controls question generation/application and `POOL_QUESTIONS_RANKING` controls whether stored adjustments affect read-time ordering. With ranking off, feed ordering remains unchanged.
 
@@ -234,6 +240,7 @@ Matching uses Donnellan's distinction: referential intents match only if they sh
 
 Intent state changes emit events that other parts of the system react to asynchronously:
 
-- **onCreated**: Fired when a new intent is created. Triggers HyDE document generation and opportunity discovery.
-- **onUpdated**: Fired when an intent is modified. Triggers re-evaluation of index assignments and opportunity re-discovery.
-- **onArchived**: Fired when an intent is archived/expired. Triggers cleanup of associated HyDE documents and opportunity expiration.
+- **onCreated**: Fired when a new intent is created; its handler enqueues from-intent discovery and triggers opportunity maintenance.
+- **onPaused**: Fired only when an intent actually changes to **PAUSED**. It records the lifecycle transition without deleting existing workspace state.
+- **onResumed**: Invoked for **ACTIVE** requests, including idempotent retries. Its async handler enqueues the lifecycle-version-deduplicated from-intent discovery job, and the status request waits for that enqueue acknowledgement. A failed enqueue returns `enqueue_failed`; a changed resume is narrowly compensated back to **PAUSED** when still at the same lifecycle version.
+- **onArchived**: Fired after archive handling removes intent-network assignments, expires opportunities that reference the intent, and enqueues HyDE deletion; its handler triggers opportunity maintenance.
