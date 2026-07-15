@@ -331,11 +331,12 @@ export default function IntentDetailPage() {
       if (answered?.detection?.mode === "pool_discovery" && intentId) {
         // The answer endpoint persists first and dispatches reactions
         // asynchronously. Refresh now, shortly for Beat 1, and only at bounded
-        // Tier-1 checkpoints (65s/90s) for Beat 2 — no permanent polling.
+        // Tier-1 checkpoints through three minutes for Beat 2/retries — no
+        // permanent polling.
         setNegotiatorRefreshVersion((version) => version + 1);
         void loadOpportunities();
         for (const timer of reactionTimersRef.current) clearTimeout(timer);
-        reactionTimersRef.current = [1_500, 65_000, 90_000].map((delay) =>
+        reactionTimersRef.current = [1_500, 65_000, 90_000, 120_000, 180_000].map((delay) =>
           setTimeout(() => {
             setNegotiatorRefreshVersion((version) => version + 1);
             void loadOpportunities();

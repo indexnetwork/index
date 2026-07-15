@@ -153,8 +153,10 @@ describe('FromIntentQueue', () => {
         callOrder.push('discover');
       });
       const getPoolAnswerContext = mock(async () => 'User-stated matching preferences:\n- Builders vs advisors: Builders');
-      const minePoolDiscriminators = mock(() => {
-        callOrder.push('mine');
+      const minePoolDiscriminators = mock(async () => {
+        callOrder.push('mine-start');
+        await Promise.resolve();
+        callOrder.push('mine-end');
       });
       const narratePoolRerun = mock(async () => {
         callOrder.push('narrate');
@@ -185,7 +187,7 @@ describe('FromIntentQueue', () => {
         intentId: 'i1',
         newCandidates: null,
       });
-      expect(callOrder).toEqual(['discover', 'mine', 'narrate']);
+      expect(callOrder).toEqual(['discover', 'mine-start', 'mine-end', 'narrate']);
     });
 
     it('discover: uses networkIds[0] as networkId', async () => {

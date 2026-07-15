@@ -43,8 +43,14 @@ describe('applyPoolAnswer', () => {
         { id: 'opp-b', metadata: {} },
         { id: 'opp-unknown', metadata: {} },
       ],
-      applyAdjustment: async (id, adjustment, signal) => {
-        writes.push({ id, factor: adjustment.factor, side: adjustment.side, weight: signal.weight, detail: signal.detail });
+      applyAdjustments: async (batch) => {
+        writes.push(...batch.map(({ opportunityId, adjustment, signal }) => ({
+          id: opportunityId,
+          factor: adjustment.factor,
+          side: adjustment.side,
+          weight: signal.weight,
+          detail: signal.detail,
+        })));
       },
     });
 
@@ -57,7 +63,7 @@ describe('applyPoolAnswer', () => {
   });
 
   it('skips every write when more than 30% of assignments left the live pool', async () => {
-    const applyAdjustment = mock(async () => {});
+    const applyAdjustments = mock(async () => {});
     const outcome = await applyPoolAnswer({
       ...baseInput,
       pool: pool([
@@ -71,25 +77,25 @@ describe('applyPoolAnswer', () => {
         { id: 'opp-a', metadata: {} },
         { id: 'opp-b', metadata: {} },
       ],
-      applyAdjustment,
+      applyAdjustments,
     });
 
     expect(outcome.kind).toBe('stale');
-    expect(applyAdjustment).not.toHaveBeenCalled();
+    expect(applyAdjustments).not.toHaveBeenCalled();
   });
 
   it('does not read or write the pool for Both matter', async () => {
     const listLivePool = mock(async () => [{ id: 'opp-a', metadata: {} }]);
-    const applyAdjustment = mock(async () => {});
+    const applyAdjustments = mock(async () => {});
     const outcome = await applyPoolAnswer({
       ...baseInput,
       selectedOption: 'Both matter',
       pool: pool([{ opportunityId: 'opp-a', side: 'Builders' }]),
-    }, { listLivePool, applyAdjustment });
+    }, { listLivePool, applyAdjustments });
 
     expect(outcome).toEqual({ kind: 'none' });
     expect(listLivePool).not.toHaveBeenCalled();
-    expect(applyAdjustment).not.toHaveBeenCalled();
+    expect(applyAdjustments).not.toHaveBeenCalled();
   });
 });
 

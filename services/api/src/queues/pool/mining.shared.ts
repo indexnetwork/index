@@ -68,18 +68,29 @@ function toReferenceSentences(text: string): string[] {
  * never allowed to fail the discovery pipeline. Both flags off = no-op.
  */
 export function maybeMinePoolDiscriminators(trigger: PoolMiningTrigger): void {
+  void minePoolDiscriminatorsOnCompletion(trigger);
+}
+
+/**
+ * Awaitable, failure-isolated mining completion used by pool-answer Tier 1.
+ * Regular discovery callers retain the fire-and-forget wrapper above; the
+ * answer path awaits this so Beat 2 cannot race ahead of the next question.
+ */
+export async function minePoolDiscriminatorsOnCompletion(trigger: PoolMiningTrigger): Promise<void> {
   if (poolQuestionsMiningMode() !== 'shadow' && poolQuestionsMode() !== 'on') return;
   // Introducer flow: the discovered candidates are matches for someone else,
   // not the viewer's own pool — discriminator questions don't apply.
   if (trigger.isIntroducerFlow) return;
-  void minePoolDiscriminators(trigger).catch((err) => {
+  try {
+    await minePoolDiscriminators(trigger);
+  } catch (err) {
     logger.warn('shadow mining pass failed', {
       source: trigger.source,
       runId: trigger.runId ?? null,
       userId: trigger.userId,
       error: err instanceof Error ? err.message : String(err),
     });
-  });
+  }
 }
 
 async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void> {

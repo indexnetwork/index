@@ -2,12 +2,24 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, expect, it, mock } from "bun:test";
-import { OpportunityPresenter, type HomeCardPresenterInput } from "../opportunity.presenter.js";
+import { OpportunityPresenter, summarizeSignalsForPresenter, type HomeCardPresenterInput } from "../opportunity.presenter.js";
 
 /** Test-only type to override the private invokeWithTimeout method via index access. */
 type PresenterWithInvokeOverride = {
   invokeWithTimeout: (...args: unknown[]) => unknown;
 };
+
+describe("summarizeSignalsForPresenter", () => {
+  it("excludes pool-discriminator disposition from LLM context", () => {
+    expect(summarizeSignalsForPresenter([
+      { type: "semantic_match", weight: 0.8, detail: "Complementary goals" },
+      { type: "pool_discriminator", weight: -1, detail: "Builders vs advisors: Builders" },
+    ])).toBe("semantic_match: Complementary goals");
+    expect(summarizeSignalsForPresenter([
+      { type: "pool_discriminator", weight: -1, detail: "Builders vs advisors: Builders" },
+    ])).toBe("Match based on profile and intent alignment.");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Zero mutual intents – fallback path (no LLM needed)

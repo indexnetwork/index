@@ -2386,12 +2386,10 @@ export class ChatDatabaseAdapter {
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
   }
-  async applyOpportunityPoolAdjustment(
-    id: string,
-    adjustment: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustment']>[1],
-    signal: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustment']>[2],
+  async applyOpportunityPoolAdjustments(
+    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[0],
   ): Promise<void> {
-    await this.opportunityAdapter.applyOpportunityPoolAdjustment(id, adjustment, signal);
+    await this.opportunityAdapter.applyOpportunityPoolAdjustments(writes);
   }
   async stampOpportunityActorAction(
     id: string,

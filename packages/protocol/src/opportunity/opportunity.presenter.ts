@@ -614,6 +614,19 @@ function buildNegotiatingChip(input: HomeCardPresenterInput): HomeCardLLMResult 
 // ──────────────────────────────────────────────────────────────
 
 /**
+ * Build the LLM-facing signal summary while excluding pool adjustments. Pool
+ * disposition is rendered deterministically by the card chip; asking the
+ * presenter to interpret it could turn a demotion into a positive rationale.
+ */
+export function summarizeSignalsForPresenter(
+  signals: Opportunity['interpretation']['signals'],
+): string {
+  const safeSignals = signals?.filter((signal) => signal.type !== 'pool_discriminator') ?? [];
+  if (safeSignals.length === 0) return 'Match based on profile and intent alignment.';
+  return safeSignals.map((signal) => `${signal.type}: ${signal.detail ?? signal.type}`).join('; ');
+}
+
+/**
  * Gather all context needed for the presenter from the database.
  * Fetches viewer profile, viewer intents, other party profile(s), and index in parallel.
  *
@@ -789,9 +802,7 @@ export async function gatherPresenterContext(
   }
 
   const interp = opportunity.interpretation;
-  const signalsSummary =
-    interp.signals?.map((s) => `${s.type}: ${s.detail ?? s.type}`).join("; ") ??
-    "Match based on profile and intent alignment.";
+  const signalsSummary = summarizeSignalsForPresenter(interp.signals);
 
   // Detect introduction-originated opportunities: only when there is an explicit introducer actor.
   // Do NOT use detection.source === "manual" alone — system-discovered opportunities can have manual source without an introducer.

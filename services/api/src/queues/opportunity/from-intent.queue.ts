@@ -7,7 +7,7 @@ import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
-import { maybeMinePoolDiscriminators, type PoolMiningTrigger } from '../pool/mining.shared';
+import { maybeMinePoolDiscriminators, minePoolDiscriminatorsOnCompletion, type PoolMiningTrigger } from '../pool/mining.shared';
 
 export const QUEUE_NAME = 'opportunity-from-intent';
 
@@ -40,7 +40,7 @@ export interface FromIntentDeps {
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   /** Pool-discriminator mining hook (IND-417/418). Defaults to the shared fire-and-forget implementation; injectable for tests. */
-  minePoolDiscriminators?: (trigger: PoolMiningTrigger) => void;
+  minePoolDiscriminators?: (trigger: PoolMiningTrigger) => void | Promise<void>;
   /** Answer context appended to Tier-1 discovery input after the debounce window. */
   getPoolAnswerContext?: (userId: string, intentId: string) => Promise<string>;
   /** Beat-2 narration for pool-answer re-runs (IND-419); injectable for tests. */
@@ -159,13 +159,19 @@ export class FromIntentQueue {
 
     // Pool-discriminator mining + question enqueue (IND-417/418): web intent
     // creation/edit is the frontend's discovery path — without this hook only
-    // MCP-triggered runs would ever produce pool questions. Fire-and-forget;
-    // flags off = no-op.
-    (this.deps?.minePoolDiscriminators ?? maybeMinePoolDiscriminators)({
+    // MCP-triggered runs would ever produce pool questions. Normal runs stay
+    // fire-and-forget; pool-answer runs await failure-isolated mining so the
+    // next question is ready before Beat 2. Flags off = no-op.
+    const miningTrigger: PoolMiningTrigger = {
       source: 'from_intent',
       userId,
       intentId,
-    });
+    };
+    if (data.trigger === 'pool_answer') {
+      await (this.deps?.minePoolDiscriminators ?? minePoolDiscriminatorsOnCompletion)(miningTrigger);
+    } else {
+      (this.deps?.minePoolDiscriminators ?? maybeMinePoolDiscriminators)(miningTrigger);
+    }
 
     if (data.trigger === 'pool_answer' && this.deps?.narratePoolRerun) {
       await this.deps.narratePoolRerun({
