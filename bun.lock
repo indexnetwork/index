@@ -18,7 +18,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.14.2",
+      "version": "0.15.0",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
@@ -64,7 +64,7 @@
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.10.12",
+      "version": "0.11.0",
       "bin": {
         "index": "bin/index.cjs",
       },
@@ -72,15 +72,15 @@
         "@types/bun": "latest",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.10.12",
-        "@indexnetwork/cli-darwin-x64": "0.10.12",
-        "@indexnetwork/cli-linux-arm64": "0.10.12",
-        "@indexnetwork/cli-linux-x64": "0.10.12",
+        "@indexnetwork/cli-darwin-arm64": "0.11.0",
+        "@indexnetwork/cli-darwin-x64": "0.11.0",
+        "@indexnetwork/cli-linux-arm64": "0.11.0",
+        "@indexnetwork/cli-linux-x64": "0.11.0",
       },
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.8.1",
+      "version": "0.10.0",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
