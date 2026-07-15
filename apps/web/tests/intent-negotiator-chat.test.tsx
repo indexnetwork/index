@@ -143,6 +143,16 @@ describe('IntentNegotiatorChat', () => {
     expect((input as HTMLInputElement).value).toBe('');
   });
 
+  test('reloads the stable session when a bounded pool-reaction checkpoint arrives', async () => {
+    mocks.chat.sessionId = 'neg-intent-sess-1';
+    const { rerender, props } = renderChat({ refreshVersion: 0 });
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1));
+
+    rerender(<IntentNegotiatorChat {...props} refreshVersion={1} />);
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(2));
+    expect(mocks.chat.loadSession).toHaveBeenLastCalledWith('neg-intent-sess-1');
+  });
+
   test('releases the shared chat context on unmount', async () => {
     const { unmount } = renderChat();
     await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalled());

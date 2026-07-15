@@ -1,0 +1,139 @@
+/**
+ * Pool-adjustment domain logic (IND-419) — pure functions, no I/O.
+ *
+ * When a user answers a pool_discovery question, every candidate the mining
+ * pass assigned to a side gets a multiplicative adjustment written to
+ * `opportunities.metadata.poolAdjustments`. The home feed (flag-gated) orders
+ * by `confidence × Π factor`, floored so demoted candidates stay visible.
+ *
+ * Invariants:
+ * - Deterministic and O(pool): no LLM at answer time — the applyPlan was
+ *   computed (and evidence-verified) at mining time.
+ * - Reversible: entries are keyed by questionId; re-answering replaces them,
+ *   dismissal-driven reversal removes them.
+ * - `detail` carries the template chip text built from the user's OWN answer
+ *   ("Hands-on builders vs advisors: you chose Advisor") — never LLM
+ *   reasoning (opportunity-presentation-safety).
+ */
+import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
+import type { QuestionPoolDiscriminator } from "../../shared/schemas/question.schema.js";
+
+/** One applied adjustment on an opportunity (stored in metadata.poolAdjustments). */
+export interface PoolAdjustment {
+  /** The answered question that produced this adjustment (reversal key). */
+  questionId: string;
+  /** Discriminator label, e.g. "Hands-on builders vs advisors". */
+  label: string;
+  /** Side this candidate was assigned to (or "unknown"). */
+  side: string;
+  /** Multiplicative factor: chosen 1.0, other 0.6, unknown 0.9. */
+  factor: number;
+  /** Template chip text from the user's own answer. Set on demotions only. */
+  detail?: string;
+  /** ISO-8601 apply timestamp. */
+  appliedAt: string;
+}
+
+/** Reads the adjustments array off an opportunity's metadata (tolerant). */
+export function readPoolAdjustments(metadata: Record<string, unknown> | null | undefined): PoolAdjustment[] {
+  const raw = metadata?.poolAdjustments;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((a): a is PoolAdjustment =>
+    typeof a === "object" && a !== null &&
+    typeof (a as PoolAdjustment).questionId === "string" &&
+    typeof (a as PoolAdjustment).factor === "number");
+}
+
+/**
+ * Cumulative adjustment multiplier for an opportunity, floored at
+ * {@link POOL_ADJUSTMENT_FLOOR}. 1 when no adjustments exist.
+ */
+export function poolAdjustmentMultiplier(metadata: Record<string, unknown> | null | undefined): number {
+  const adjustments = readPoolAdjustments(metadata);
+  if (adjustments.length === 0) return 1;
+  const product = adjustments.reduce((acc, a) => acc * (Number.isFinite(a.factor) && a.factor > 0 ? a.factor : 1), 1);
+  return Math.max(POOL_ADJUSTMENT_FLOOR, product);
+}
+
+/** Adjusted confidence: `confidence × Π factor`, floored. */
+export function adjustedConfidence(confidence: number, metadata: Record<string, unknown> | null | undefined): number {
+  return confidence * poolAdjustmentMultiplier(metadata);
+}
+
+/** Plan entry: what to write on one opportunity for one answer. */
+export interface PoolAdjustmentPlanEntry {
+  opportunityId: string;
+  adjustment: PoolAdjustment;
+}
+
+/**
+ * Computes the write plan for one answered discriminator. Pure: the caller
+ * loads/patches rows. "Both matter" (or any label not in `sides`) yields an
+ * empty plan — no preference, no adjustments.
+ *
+ * @param discriminator  The asked discriminator (from detection.pool).
+ * @param chosenSide     The selected option label (chip label = side label).
+ * @param questionId     Reversal key.
+ * @param now            ISO-8601 timestamp.
+ */
+export function planPoolAdjustments(
+  discriminator: QuestionPoolDiscriminator,
+  chosenSide: string,
+  questionId: string,
+  now: string,
+): PoolAdjustmentPlanEntry[] {
+  // Chip labels are word-capped side labels; match on the capped prefix too.
+  const matchesSide = (side: string): boolean =>
+    side === chosenSide || side.startsWith(chosenSide) || chosenSide.startsWith(side);
+  const chosen = discriminator.sides.find(matchesSide);
+  if (!chosen) return []; // "Both matter" or unrecognized option → no adjustments.
+
+  const plan: PoolAdjustmentPlanEntry[] = [];
+  for (const a of discriminator.assignments) {
+    const isChosen = a.side === chosen;
+    plan.push({
+      opportunityId: a.opportunityId,
+      adjustment: {
+        questionId,
+        label: discriminator.label,
+        side: a.side,
+        factor: isChosen ? 1 : POOL_ADJUSTMENT_FACTOR_OTHER,
+        ...(isChosen ? {} : { detail: `${discriminator.label}: you chose ${chosen}` }),
+        appliedAt: now,
+      },
+    });
+  }
+  return plan;
+}
+
+/**
+ * Merges one adjustment into an opportunity's existing metadata, replacing
+ * any prior entry for the same questionId (re-answer semantics). Returns the
+ * NEW metadata object (caller persists it wholesale).
+ */
+export function mergePoolAdjustment(
+  metadata: Record<string, unknown> | null | undefined,
+  adjustment: PoolAdjustment,
+): Record<string, unknown> {
+  const existing = readPoolAdjustments(metadata).filter((a) => a.questionId !== adjustment.questionId);
+  return { ...(metadata ?? {}), poolAdjustments: [...existing, adjustment] };
+}
+
+/** Latest user-explainable demotion detail for card presentation, if any. */
+export function latestPoolDemotionDetail(
+  metadata: Record<string, unknown> | null | undefined,
+): string | undefined {
+  return [...readPoolAdjustments(metadata)]
+    .reverse()
+    .find((adjustment) => adjustment.factor < 1 && typeof adjustment.detail === 'string' && adjustment.detail.length > 0)
+    ?.detail;
+}
+
+/** Removes all adjustments for a questionId (dismissal/withdrawal reversal). */
+export function removePoolAdjustment(
+  metadata: Record<string, unknown> | null | undefined,
+  questionId: string,
+): Record<string, unknown> {
+  const remaining = readPoolAdjustments(metadata).filter((a) => a.questionId !== questionId);
+  return { ...(metadata ?? {}), poolAdjustments: remaining };
+}

@@ -1,53 +1,105 @@
 /**
- * pool_discovery answer reaction — interview-mode chaining (IND-418).
+ * pool_discovery answer reaction (IND-418/419).
  *
- * When a user answers a pool question while POOL_QUESTIONS_MODE=on, the next
- * eligible discriminator from the answered question's stored alternates is
- * synthesized and persisted immediately (dialogue, not homework). The web
- * client refetches pending questions after answering and renders the chained
- * card behind a typing indicator.
+ * One deterministic handler owns the full immediate reaction:
+ *  1. apply stored assignments to the live pool (Tier 0),
+ *  2. append template Beat-1 narration,
+ *  3. enqueue one debounced answer-conditioned from-intent run (Tier 1),
+ *  4. chain the next eligible stored discriminator for interview cadence.
  *
- * Chaining keeps the ≤1-pending invariant by construction: the answered
- * question just left `pending`, and exactly one successor is created. The
- * chain stops when no fresh alternate clears the VoI bar, the user dismisses
- * (dismissals never reach this handler), or the user navigates away (the one
- * pending successor then simply waits within the unattended budget).
- *
- * P3 adds the re-rank + reactive re-discovery reactions on this same arm.
+ * "Both matter" records the answer and chains normally, but produces no
+ * adjustments and no Tier-1 run because it expresses no ranking preference.
  */
-import { POOL_QUESTION_MIN_VOI, poolQuestionsMode } from '@indexnetwork/protocol';
+import { POOL_QUESTION_MIN_VOI, poolQuestionsMode, poolQuestionsRanking } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import type { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from '../../queues/pool/question.shared';
+import { applyPoolAnswer, beatOneMessage, enqueuePoolRerun } from '../../queues/pool/answer.shared';
+import type { PoolAnswerOutcome } from '../../queues/pool/answer.shared';
 
-const logger = log.service.from('PoolQuestionChain');
+const logger = log.service.from('PoolQuestionAnswer');
 
-export interface ChainPoolQuestionDeps {
+export interface HandlePoolAnswerDeps {
   adapter: Pick<QuestionerAdapter, 'getById' | 'persist' | 'listPoolQuestionLabels'>;
+  applyAnswer?: typeof applyPoolAnswer;
+  narrateBeatOne?: (input: {
+    userId: string;
+    intentId: string;
+    message: string;
+    outcome: PoolAnswerOutcome;
+  }) => Promise<void>;
+  enqueueRerun?: typeof enqueuePoolRerun;
 }
 
-/**
- * Factory for the `chainPoolQuestion` answer-handler dependency.
- */
-export function chainPoolQuestionFactory(deps: ChainPoolQuestionDeps) {
-  return async function chainPoolQuestion(input: {
+/** Factory for the complete `pool_discovery` answer reaction. */
+export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
+  return async function handlePoolAnswer(input: {
     userId: string;
     questionId: string;
     intentId: string;
+    selectedOptions: string[];
   }): Promise<void> {
     if (poolQuestionsMode() !== 'on') return;
 
     const answered = await deps.adapter.getById(input.questionId);
     const pool = answered?.detection.pool;
-    if (!pool || pool.alternates.length === 0) {
+    if (!pool) {
+      logger.warn('Answered pool question is missing its server snapshot', {
+        questionId: input.questionId,
+        intentId: input.intentId,
+      });
+      return;
+    }
+
+    const selectedOption = input.selectedOptions[0] ?? '';
+    const outcome = await (deps.applyAnswer ?? applyPoolAnswer)({
+      userId: input.userId,
+      intentId: input.intentId,
+      questionId: input.questionId,
+      pool,
+      selectedOption,
+    });
+
+    if (deps.narrateBeatOne) {
+      try {
+        await deps.narrateBeatOne({
+          userId: input.userId,
+          intentId: input.intentId,
+          message: beatOneMessage(outcome, poolQuestionsRanking() === 'on'),
+          outcome,
+        });
+      } catch (error) {
+        logger.warn('Beat-1 narration failed; continuing answer reaction', {
+          questionId: input.questionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // A stale preference still shapes fresh candidates; "Both matter" does not.
+    if (outcome.kind !== 'none') {
+      try {
+        await (deps.enqueueRerun ?? enqueuePoolRerun)({
+          userId: input.userId,
+          intentId: input.intentId,
+        });
+      } catch (error) {
+        logger.warn('Tier-1 pool re-discovery enqueue failed', {
+          questionId: input.questionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (pool.alternates.length === 0) {
       logger.verbose('No alternates to chain', { questionId: input.questionId });
       return;
     }
 
     const askedLabels = await deps.adapter.listPoolQuestionLabels(input.userId, input.intentId);
     const fresh = dedupDiscriminators(pool.alternates, askedLabels)
-      .filter((d) => d.voi >= POOL_QUESTION_MIN_VOI);
+      .filter((discriminator) => discriminator.voi >= POOL_QUESTION_MIN_VOI);
     if (fresh.length === 0) {
       logger.verbose('No fresh alternate clears the VoI bar', { questionId: input.questionId });
       return;

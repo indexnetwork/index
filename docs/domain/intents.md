@@ -1,9 +1,9 @@
 ---
 title: "Intents"
 type: domain
-tags: [intents, speech-acts, felicity-conditions, semantic-entropy, reconciliation, lifecycle]
+tags: [intents, speech-acts, felicity-conditions, semantic-entropy, reconciliation, lifecycle, pool-questions]
 created: 2026-03-26
-updated: 2026-04-06
+updated: 2026-07-15
 ---
 
 # Intents
@@ -185,6 +185,18 @@ An intent qualifies for an index when its `indexScore` reaches 0.7 or above. Bel
 ### Relevancy in discovery
 
 The `relevancyScore` stored on the junction table is used during opportunity discovery to break ties. When a candidate appears across multiple shared networks, the index with the highest relevancy to the trigger intent wins. Networks without prompts default to a score of 1.0.
+
+---
+
+## Pool-Aware Refinement Questions
+
+An active intent can receive `pool_discovery` questions derived from meaningful differences across its current opportunity pool. The discriminator miner verifies evidence against candidate context, scores each axis for expected value of information, and asks only sufficiently supported questions. These questions are scoped to the intent's Personal Agent thread rather than the global question inbox.
+
+Answer application is deterministic and auditable—no LLM runs at answer time. Candidates on the chosen side retain a `1.0` factor, the other side receives `0.6`, and live candidates that were not assigned by the mined snapshot receive `0.9`. Multiple answers multiply, with a cumulative floor of `0.3`, so a match may be deprioritized but never hidden. “Both matter” records no preference and changes no ranking. If more than 30% of the snapshot has left the live pool, the system skips the local reshuffle rather than applying stale evidence.
+
+A preference answer also schedules one debounced discovery rerun for the intent. The worker reads all valid answers after the debounce window, adds those user-stated preferences to the search context, re-mines the refreshed pool, and stages the next eligible question. The Personal Agent narrates the immediate adjustment and later refresh using count-only templates; cards expose only the user's selected side in a muted deprioritization chip, never evaluator reasoning.
+
+This behavior is independently gated: `POOL_QUESTIONS_MODE` controls question generation/application and `POOL_QUESTIONS_RANKING` controls whether stored adjustments affect read-time ordering. With ranking off, feed ordering remains unchanged.
 
 ---
 

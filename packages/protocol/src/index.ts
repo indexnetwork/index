@@ -194,7 +194,10 @@ export { runPoolDiscriminatorShadow } from "./opportunity/discriminator/discrimi
 export type { DiscriminatorShadowInput } from "./opportunity/discriminator/discriminator.shadow.js";
 export { scoreDiscriminator, computeNovelty, cosineSimilarity } from "./opportunity/discriminator/discriminator.scorer.js";
 export { poolQuestionsMiningMode, poolQuestionsMode, POOL_DISCRIMINATOR_MIN_POOL_SIZE, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_QUESTION_MIN_VOI, POOL_QUESTION_MIN_EVIDENCE_RATE, POOL_QUESTION_MAX_DISCRIMINATORS, POOL_QUESTION_MAX_PENDING_PER_INTENT } from "./opportunity/discriminator/discriminator.env.js";
-export type { PoolQuestionsMiningMode, PoolQuestionsMode } from "./opportunity/discriminator/discriminator.env.js";
+export type { PoolQuestionsMiningMode, PoolQuestionsMode, PoolQuestionsRankingMode } from "./opportunity/discriminator/discriminator.env.js";
+export { poolQuestionsRanking, POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR, POOL_STALENESS_THRESHOLD, POOL_RERUN_DEBOUNCE_MS } from "./opportunity/discriminator/discriminator.env.js";
+export { planPoolAdjustments, mergePoolAdjustment, removePoolAdjustment, readPoolAdjustments, poolAdjustmentMultiplier, adjustedConfidence, latestPoolDemotionDetail } from "./opportunity/discriminator/discriminator.adjustments.js";
+export type { PoolAdjustment, PoolAdjustmentPlanEntry } from "./opportunity/discriminator/discriminator.adjustments.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunity/discriminator/discriminator.question.js";
 export type { SynthesizePoolQuestionInput, SynthesizedPoolQuestion } from "./opportunity/discriminator/discriminator.question.js";
 export type { QuestionPoolAssignment, QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./shared/schemas/question.schema.js";

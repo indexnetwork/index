@@ -11,7 +11,7 @@
  * alignment spec.
  */
 
-import { eq, and, sql, or, isNull } from 'drizzle-orm/sql';
+import { eq, and, sql, or, isNull, desc } from 'drizzle-orm/sql';
 
 import { questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
@@ -266,6 +266,48 @@ export class QuestionerAdapter {
         sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
       ));
     return rows.map((r) => r.label).filter((l): l is string => typeof l === 'string' && l.length > 0);
+  }
+
+  /**
+   * Read valid answered discriminator preferences for one intent. "Both
+   * matter" and malformed answers are excluded because they intentionally do
+   * not shape Tier-1 re-discovery (IND-419).
+   *
+   * @param userId - Owner of the answered questions.
+   * @param intentId - Intent whose pool questions were answered.
+   * @returns Latest valid side choices, newest first.
+   */
+  async listAnsweredPoolPreferences(
+    userId: string,
+    intentId: string,
+  ): Promise<Array<{ questionId: string; label: string; chosenSide: string }>> {
+    const rows = await this.db
+      .select({
+        id: questions.id,
+        detection: questions.detection,
+        answer: questions.answer,
+      })
+      .from(questions)
+      .where(and(
+        eq(questions.status, 'answered'),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+        sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+      ))
+      .orderBy(desc(questions.createdAt))
+      .limit(10);
+
+    return rows.flatMap((row) => {
+      const detection = row.detection as AdapterQuestionDetection;
+      const selected = (row.answer as AdapterQuestionAnswer | null)?.selectedOptions?.[0];
+      const discriminator = detection.pool?.discriminator;
+      if (!selected || !discriminator) return [];
+      const chosenSide = discriminator.sides.find(
+        (side) => side === selected || side.startsWith(selected) || selected.startsWith(side),
+      );
+      if (!chosenSide) return [];
+      return [{ questionId: row.id, label: discriminator.label, chosenSide }];
+    });
   }
 
   /**

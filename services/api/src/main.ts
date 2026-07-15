@@ -72,7 +72,8 @@ import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
-import { chainPoolQuestionFactory } from './events/handlers/question.answer.pool';
+import { handlePoolAnswerFactory } from './events/handlers/question.answer.pool';
+import { beatTwoMessage } from './queues/pool/answer.shared';
 import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
@@ -231,6 +232,48 @@ const profileAnswerPremiseGraph = new PremiseGraphFactory(
 ).createGraph();
 
 const answerQuestionerAdapter = new QuestionerAdapter(db);
+
+const appendPoolNarration = async (input: {
+  userId: string;
+  intentId: string;
+  message: string;
+}): Promise<void> => {
+  const resolved = await chatSessionService.resolveNegotiatorIntentSession(input.userId, input.intentId);
+  if ('error' in resolved) {
+    log.job.from('PoolAnswerNarration').warn('Intent negotiator session unavailable', {
+      userId: input.userId,
+      intentId: input.intentId,
+      error: resolved.error,
+    });
+    return;
+  }
+  await chatSessionService.addMessage({
+    sessionId: resolved.session.id,
+    role: 'assistant',
+    content: input.message,
+  });
+};
+
+// The delayed Tier-1 worker reads every valid answer after the debounce window,
+// so a burst coalesces into one run without dropping later preferences.
+fromIntentQueue.setRuntimeDeps({
+  getPoolAnswerContext: async (userId, intentId) => {
+    const preferences = await answerQuestionerAdapter.listAnsweredPoolPreferences(userId, intentId);
+    if (preferences.length === 0) return '';
+    return [
+      'User-stated matching preferences (apply when finding fresh candidates):',
+      ...preferences.map((preference) => `- ${preference.label}: ${preference.chosenSide}`),
+    ].join('\n');
+  },
+  narratePoolRerun: async ({ userId, intentId, newCandidates }) => {
+    await appendPoolNarration({
+      userId,
+      intentId,
+      message: beatTwoMessage(newCandidates),
+    });
+  },
+});
+
 // Intent graph for answer-driven refinements — same update path as the chat
 // update_intent tool. The graph owns merge, verification, sanitization,
 // re-embedding, persistence, and HyDE regeneration.
@@ -318,7 +361,12 @@ const questionAnswerDeps = {
   }) => {
     emitChatQuestionResolution({ questionId, status: 'answered', answer });
   },
-  chainPoolQuestion: chainPoolQuestionFactory({ adapter: answerQuestionerAdapter }),
+  handlePoolAnswer: handlePoolAnswerFactory({
+    adapter: answerQuestionerAdapter,
+    narrateBeatOne: async ({ userId, intentId, message }) => {
+      await appendPoolNarration({ userId, intentId, message });
+    },
+  }),
 };
 
 QuestionEvents.onAnswered = (payload) => {

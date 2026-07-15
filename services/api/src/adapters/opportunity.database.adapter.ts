@@ -283,6 +283,63 @@ export class OpportunityDatabaseAdapter {
     await db.update(opportunities).set({ metadata, updatedAt: new Date() }).where(eq(opportunities.id, id));
   }
 
+  /**
+   * Atomically append/replace every answer-driven pool adjustment and matching
+   * presentation-safe signal. All rows lock and commit together: a crash or
+   * write failure cannot leave half the pool re-ranked (IND-419).
+   *
+   * @param writes - Opportunity patches keyed by questionId.
+   */
+  async applyOpportunityPoolAdjustments(writes: Array<{
+    opportunityId: string;
+    adjustment: {
+      questionId: string;
+      label: string;
+      side: string;
+      factor: number;
+      detail?: string;
+      appliedAt: string;
+    };
+    signal: schema.OpportunitySignal;
+  }>): Promise<void> {
+    if (writes.length === 0) return;
+    await db.transaction(async (tx) => {
+      const writeById = new Map(writes.map((write) => [write.opportunityId, write]));
+      const lockedRows = await tx
+        .select({ id: opportunities.id, metadata: opportunities.metadata, interpretation: opportunities.interpretation })
+        .from(opportunities)
+        .where(inArray(opportunities.id, [...writeById.keys()]))
+        .for('update');
+
+      for (const locked of lockedRows) {
+        const write = writeById.get(locked.id);
+        if (!write) continue;
+        const rawAdjustments = locked.metadata?.poolAdjustments;
+        const existingAdjustments = Array.isArray(rawAdjustments)
+          ? rawAdjustments.filter((entry) =>
+              typeof entry === 'object' &&
+              entry !== null &&
+              (entry as { questionId?: unknown }).questionId !== write.adjustment.questionId,
+            )
+          : [];
+        const existingSignals = (locked.interpretation.signals ?? []).filter(
+          (entry) => !(entry.type === 'pool_discriminator' && entry.questionId === write.adjustment.questionId),
+        );
+
+        await tx
+          .update(opportunities)
+          .set({
+            metadata: { ...(locked.metadata ?? {}), poolAdjustments: [...existingAdjustments, write.adjustment] },
+            interpretation: { ...locked.interpretation, signals: [...existingSignals, write.signal] },
+            // Ranking metadata is presentation state, not a lifecycle event.
+            // Preserve updatedAt so POOL_QUESTIONS_RANKING=off remains
+            // byte-identical to the pre-adjustment newest-first ordering.
+          })
+          .where(eq(opportunities.id, locked.id));
+      }
+    });
+  }
+
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,

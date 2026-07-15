@@ -16,9 +16,9 @@
  *              via the run-existing continuation (P3.2 ask_user loop)
  * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
  *              tool call resumes the paused chat turn with the answer
- * - pool_discovery: interview-mode chaining — synthesize the next pool
- *              question from the answered question's stored alternates
- *              (IND-418; re-rank + reactive re-discovery land in P3)
+ * - pool_discovery: deterministically re-rank the live pool, narrate the
+ *              delta, enqueue answer-conditioned re-discovery, and chain the
+ *              next stored discriminator (IND-418/419)
  */
 
 import { log } from '../../lib/log';
@@ -92,15 +92,12 @@ export interface QuestionAnswerHandlerDeps {
     answer: QuestionAnsweredPayload['answer'];
   }) => void;
 
-  /**
-   * Interview-mode chaining for pool_discovery answers: persist the next
-   * pool question from the answered question's stored alternates (no-op when
-   * POOL_QUESTIONS_MODE is off or no fresh alternate remains).
-   */
-  chainPoolQuestion: (input: {
+  /** Complete pool_discovery answer reaction (Tier 0 + Tier 1 + chaining). */
+  handlePoolAnswer: (input: {
     userId: string;
     questionId: string;
     intentId: string;
+    selectedOptions: string[];
   }) => Promise<void>;
 }
 
@@ -168,10 +165,11 @@ export async function handleQuestionAnswered(
         break;
 
       case 'pool_discovery':
-        await deps.chainPoolQuestion({
+        await deps.handlePoolAnswer({
           userId,
           questionId,
           intentId: sourceId,
+          selectedOptions: answer.selectedOptions,
         });
         break;
 

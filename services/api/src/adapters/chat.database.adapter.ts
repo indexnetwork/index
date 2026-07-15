@@ -2359,7 +2359,7 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string; scopeType?: 'intent'; scopeId?: string }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForUser(userId, options);
   }
@@ -2385,6 +2385,11 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
+  }
+  async applyOpportunityPoolAdjustments(
+    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[0],
+  ): Promise<void> {
+    await this.opportunityAdapter.applyOpportunityPoolAdjustments(writes);
   }
   async stampOpportunityActorAction(
     id: string,

@@ -26,6 +26,8 @@ export interface HomeCardItem {
   viewerRole?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Template-only explanation for a pool-answer demotion (never evaluator reasoning). */
+  deprioritizedReason?: string;
   /** Second party in introducer arrow layout. Present when viewerRole is 'introducer'. */
   secondParty?: { name: string; avatar?: string | null; userId?: string };
   /**

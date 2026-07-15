@@ -167,6 +167,27 @@ describe("synthesizePoolQuestion", () => {
     expect(out.pool.intentText).toBeUndefined();
   });
 
+  it("rewrites 'this user' / 'the client' variants into second person", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        questionSeed: "Does this user want a hands-on builder, or is the client seeking an advisor",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe("Do you want a hands-on builder, or are you seeking an advisor?");
+  });
+
+  it("falls back to the two-sided template when a third-person reference survives normalization", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        // 'a user' is not rewritten — the catch-all must route to the template.
+        questionSeed: "Would a user like this prefer a hands-on builder or an advisor",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe("Which matters more here: Hands-on builder or Advisor?");
+  });
+
   it("rewrites first-person miner seeds into second person", () => {
     const out = synthesizePoolQuestion({
       ...base,

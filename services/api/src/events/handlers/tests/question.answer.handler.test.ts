@@ -8,6 +8,7 @@ function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswe
     storeNegotiationContext: mock(async () => {}),
     resumeInflightNegotiation: mock(async () => {}),
     resolveChatQuestionWait: mock(() => {}),
+    handlePoolAnswer: mock(async () => {}),
     ...overrides,
   };
 }
@@ -142,6 +143,20 @@ describe("handleQuestionAnswered", () => {
       deps,
     );
     expect(deps.resumeInflightNegotiation).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes pool_discovery through the complete pool-answer reaction", async () => {
+    await handleQuestionAnswered(
+      { ...basePayload, mode: "pool_discovery", sourceType: "intent", sourceId: "intent-1" },
+      deps,
+    );
+    expect(deps.handlePoolAnswer).toHaveBeenCalledTimes(1);
+    expect((deps.handlePoolAnswer as ReturnType<typeof mock>).mock.calls[0]?.[0]).toEqual({
+      userId: "u-1",
+      questionId: "q-1",
+      intentId: "intent-1",
+      selectedOptions: ["Option A"],
+    });
   });
 
   it("handles unknown mode gracefully", async () => {

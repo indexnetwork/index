@@ -27,6 +27,8 @@ import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
+import { adjustedConfidence, latestPoolDemotionDetail } from '../discriminator/discriminator.adjustments.js';
+import { poolQuestionsRanking } from '../discriminator/discriminator.env.js';
 
 const logger = protocolLogger('HomeGraph');
 const checkCategorizerCacheLog = protocolLogger('HomeGraph:checkCategorizerCache');
@@ -139,7 +141,7 @@ const safeParseDate = (value: unknown): number => {
 };
 
 /** Confidence score for sorting (interpretation.confidence or opportunity.confidence). */
-const getConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
+const getRawConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
   const fromInterp = opp.interpretation?.confidence;
   if (typeof fromInterp === 'number' && !Number.isNaN(fromInterp)) return fromInterp;
   if (typeof fromInterp === 'string') {
@@ -153,6 +155,18 @@ const getConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]
     if (!Number.isNaN(n)) return n;
   }
   return 0;
+};
+
+/**
+ * Sort confidence, optionally pool-adjusted (IND-419): when
+ * POOL_QUESTIONS_RANKING=on, answered discriminators multiply confidence by
+ * their stored factors (floor 0.3) so the user's answers re-rank the feed.
+ * Flag off → identical to raw confidence (adjustments are write-only).
+ */
+const getConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
+  const raw = getRawConfidence(opp);
+  if (poolQuestionsRanking() !== 'on') return raw;
+  return adjustedConfidence(raw, (opp as { metadata?: Record<string, unknown> | null }).metadata);
 };
 
 /** Unique non-introducer, non-viewer userIds for an opportunity (actors can repeat). */
@@ -262,7 +276,19 @@ export class HomeGraphFactory {
               for (const id of counterpartIds) seenIds.add(id);
               return true;
             });
-            return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
+            // Preserve byte-identical newest-first behavior while the flag is
+            // off. When on, re-order the already-deduped lifecycle set by
+            // adjusted confidence so each client-side radar bucket reflects
+            // pool answers immediately.
+            if (poolQuestionsRanking() !== 'on') {
+              return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
+            }
+            const adjustedOrder = [...dedupedByCounterpart].sort((a, b) => {
+              const confidenceDelta = getConfidence(b) - getConfidence(a);
+              if (confidenceDelta !== 0) return confidenceDelta;
+              return safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt);
+            });
+            return { opportunities: adjustedOrder.slice(0, state.limit) };
           }
           const sorted = [...visibleForFeed].sort((a, b) => {
             // Connections before connector-flow so dedup claims counterpart IDs
@@ -332,7 +358,15 @@ export class HomeGraphFactory {
               const originalIndex = opportunities.indexOf(cacheable[i]);
               // Stamp the live status: pre-status cache entries lack the field,
               // and the key already guarantees it matches the current status.
-              cachedCards.set(cacheable[i].id, { ...cached, status: cacheable[i].status, _cardIndex: originalIndex });
+              const deprioritizedReason = poolQuestionsRanking() === 'on'
+                ? latestPoolDemotionDetail((cacheable[i] as { metadata?: Record<string, unknown> | null }).metadata)
+                : undefined;
+              cachedCards.set(cacheable[i].id, {
+                ...cached,
+                status: cacheable[i].status,
+                deprioritizedReason,
+                _cardIndex: originalIndex,
+              });
             } else {
               uncachedOpportunities.push(cacheable[i]);
             }
@@ -405,7 +439,6 @@ export class HomeGraphFactory {
             const viewerActor = opportunity.actors.find((a) => a.userId === state.userId);
             const viewerRole = viewerActor?.role ?? 'party';
             const isIntroducer = viewerRole === 'introducer';
-            const isPendingIntroducer = isIntroducer && opportunity.status === 'pending';
             const preferredActor = pickDisplayCounterpartActor(opportunity, state.userId)
               ?? opportunity.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
             const actorWithProfile = opportunity.actors.find(
@@ -613,9 +646,17 @@ export class HomeGraphFactory {
     const cachePresenterResultsNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.cachePresenterResults", async () => {
         const { cards, cachedCards, userId, opportunities } = state;
+        const liveById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
+        const cardsWithAdjustments = cards.map((card) => {
+          const opportunity = liveById.get(card.opportunityId);
+          const deprioritizedReason = poolQuestionsRanking() === 'on'
+            ? latestPoolDemotionDetail((opportunity as { metadata?: Record<string, unknown> | null } | undefined)?.metadata)
+            : undefined;
+          return { ...card, deprioritizedReason };
+        });
 
         // Only cache cards that weren't already from cache
-        const newCards = cards.filter((card) => !cachedCards.has(card.opportunityId));
+        const newCards = cardsWithAdjustments.filter((card) => !cachedCards.has(card.opportunityId));
         const statusById = new Map(opportunities.map((opp) => [opp.id, opp.status]));
 
         try {
@@ -642,9 +683,9 @@ export class HomeGraphFactory {
         }
 
         // Merge cached cards into full card list
-        const allCards: HomeCardItem[] = [...cards];
+        const allCards: HomeCardItem[] = [...cardsWithAdjustments];
         for (const [oppId, cachedCard] of cachedCards) {
-          if (!cards.some((c) => c.opportunityId === oppId)) {
+          if (!cardsWithAdjustments.some((card) => card.opportunityId === oppId)) {
             allCards.push(cachedCard);
           }
         }
@@ -671,12 +712,14 @@ export class HomeGraphFactory {
         }
 
         // Skeleton runs never categorize (some cards have no text to categorize
-        // and the response must stay LLM-free): emit flat sections and mark the
-        // categorizer as "hit" so the generate node and the cache write are both
-        // skipped. Chunked by MAX_ITEMS_PER_SECTION because normalizeAndSort
-        // caps every section — one giant section would silently drop cards that
-        // the follow-up full request (multiple sections) does return.
-        if (state.presentation === 'skeleton') {
+        // and the response must stay LLM-free). Ranking-enabled lifecycle views
+        // also stay flat: the intent Radar flattens sections and buckets by
+        // status, so dynamic categorization would erase the adjusted order on
+        // the full second-phase response. Flag off retains the legacy path.
+        // Chunk by MAX_ITEMS_PER_SECTION because normalizeAndSort caps sections.
+        const preserveAdjustedLifecycleOrder =
+          (state.statuses?.length ?? 0) > 0 && poolQuestionsRanking() === 'on';
+        if (state.presentation === 'skeleton' || preserveAdjustedLifecycleOrder) {
           const sectionProposals: HomeSectionProposal[] = [];
           for (let start = 0; start < state.cards.length; start += MAX_ITEMS_PER_SECTION) {
             sectionProposals.push({
