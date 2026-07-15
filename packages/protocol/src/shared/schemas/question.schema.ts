@@ -3,10 +3,10 @@
  * elicitation dispatch. Mirrors the brainstorming AskUserQuestion skill so a
  * Question can be rendered identically across surfaces.
  *
- * `QuestionWithStrategy` extends the public shape with an internal `strategy`
- * tag used by the generator's guardrails (dedup/diversity) and recorded in
- * `debugMeta`. The tag is stripped before the public payload leaves the
- * generator — users never see it.
+ * `QuestionWithStrategy` extends the public shape with internal `strategy`
+ * and QUD underspecification tags used by generator guardrails and persisted
+ * metadata. Both tags are stripped before the public payload leaves the
+ * generator — users never see them.
  */
 import { z } from "zod";
 
@@ -34,6 +34,13 @@ export const QuestionSchema = z.object({
   evidence: z.string().min(1).max(160).optional(),
 });
 
+/** Canonical QUD repair categories for underspecified intents/questions. */
+export const UnderspecificationTypeSchema = z.enum([
+  "missing_constituent",
+  "missing_constraint",
+  "open_alternative_set",
+]);
+
 export const QuestionStrategySchema = z.enum([
   "refine_intent",
   "surface_missing_detail",
@@ -44,6 +51,8 @@ export const QuestionStrategySchema = z.enum([
 
 export const QuestionWithStrategySchema = QuestionSchema.extend({
   strategy: QuestionStrategySchema,
+  /** QUD repair category, or null when the question is not an underspecification repair. */
+  underspecificationType: UnderspecificationTypeSchema.nullable(),
 });
 
 export const QuestionGeneratorResponseSchema = z.object({
@@ -52,18 +61,20 @@ export const QuestionGeneratorResponseSchema = z.object({
 
 export type QuestionOption = z.infer<typeof QuestionOptionSchema>;
 export type Question = z.infer<typeof QuestionSchema>;
+export type UnderspecificationType = z.infer<typeof UnderspecificationTypeSchema>;
 export type QuestionStrategy = z.infer<typeof QuestionStrategySchema>;
 export type QuestionWithStrategy = z.infer<typeof QuestionWithStrategySchema>;
 export type QuestionGeneratorResponse = z.infer<typeof QuestionGeneratorResponseSchema>;
 
 /**
- * Internal generator output: public questions plus a parallel strategies
- * array for debug-only consumption. The generator emits this; callers
- * forward `questions` to renderers and `strategies` to `debugMeta` only.
+ * Internal generator output: public questions plus parallel strategy and QUD
+ * taxonomy arrays for metadata-only consumption. The generator emits this;
+ * callers forward only `questions` to renderers.
  */
 export interface QuestionGenerationResult {
   questions: Question[];
   strategies: QuestionStrategy[];
+  underspecificationTypes: Array<UnderspecificationType | null>;
 }
 
 // ─── Persistence types (opportunity-style composable jsonb) ──────────────────
@@ -133,6 +144,10 @@ export const QuestionDetectionSchema = z.object({
   triggeredBy: z.string().optional(),
   /** ISO-8601 timestamp of generation. */
   timestamp: z.string().min(1),
+  /** Generation strategy persisted as internal metadata. */
+  strategy: QuestionStrategySchema.optional(),
+  /** QUD repair category persisted as internal metadata. */
+  underspecificationType: UnderspecificationTypeSchema.nullable().optional(),
   /** ID of the assistant message that triggered this question. Used by the frontend to anchor the question card inline. */
   messageId: z.string().optional(),
   /**

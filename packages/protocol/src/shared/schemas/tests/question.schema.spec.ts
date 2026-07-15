@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { QuestionOptionSchema, QuestionSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
+import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
 const okOption = { label: "Stay focused", description: "Higher risk but cleaner narrative" };
 
@@ -74,6 +74,17 @@ describe("QuestionSchema", () => {
   });
 });
 
+describe("UnderspecificationTypeSchema", () => {
+  it.each(["missing_constituent", "missing_constraint", "open_alternative_set"])(
+    "accepts '%s'",
+    (type) => expect(UnderspecificationTypeSchema.safeParse(type).success).toBe(true),
+  );
+
+  it("rejects values outside the canonical taxonomy", () => {
+    expect(UnderspecificationTypeSchema.safeParse("missing_context").success).toBe(false);
+  });
+});
+
 describe("QuestionStrategySchema", () => {
   const strategies = [
     "refine_intent",
@@ -96,10 +107,26 @@ describe("QuestionStrategySchema", () => {
 
 describe("QuestionWithStrategySchema", () => {
   it("accepts a question with a valid strategy", () => {
-    expect(() => QuestionWithStrategySchema.parse({ ...okQuestion, strategy: "refine_intent" })).not.toThrow();
+    expect(() => QuestionWithStrategySchema.parse({
+      ...okQuestion,
+      strategy: "refine_intent",
+      underspecificationType: "missing_constraint",
+    })).not.toThrow();
   });
   it("rejects a question with an invalid strategy", () => {
-    expect(() => QuestionWithStrategySchema.parse({ ...okQuestion, strategy: "bogus" })).toThrow();
+    expect(() => QuestionWithStrategySchema.parse({
+      ...okQuestion,
+      strategy: "bogus",
+      underspecificationType: null,
+    })).toThrow();
+  });
+  it("requires nullable internal underspecification metadata", () => {
+    expect(() => QuestionWithStrategySchema.parse({ ...okQuestion, strategy: "refine_intent" })).toThrow();
+    expect(() => QuestionWithStrategySchema.parse({
+      ...okQuestion,
+      strategy: "open_adjacent_thread",
+      underspecificationType: null,
+    })).not.toThrow();
   });
 });
 
@@ -112,6 +139,7 @@ describe("QuestionGeneratorResponseSchema", () => {
       ...okQuestion,
       title: `T${i}`,
       strategy: "refine_intent" as const,
+      underspecificationType: null,
     }));
     expect(() => QuestionGeneratorResponseSchema.parse({ questions: three })).not.toThrow();
   });
@@ -120,6 +148,7 @@ describe("QuestionGeneratorResponseSchema", () => {
       ...okQuestion,
       title: `T${i}`,
       strategy: "refine_intent" as const,
+      underspecificationType: null,
     }));
     expect(() => QuestionGeneratorResponseSchema.parse({ questions: four })).toThrow();
   });

@@ -505,7 +505,9 @@ export interface QuestionDetection {
   triggeredBy?: string;
   timestamp: string;
   /** Generation strategy — persisted as metadata, not exposed on read. */
-  strategy?: string;
+  strategy?: import('@indexnetwork/protocol').QuestionStrategy;
+  /** QUD repair category — persisted as metadata, not exposed on read. */
+  underspecificationType?: import('@indexnetwork/protocol').UnderspecificationType | null;
   /** ID of the assistant message that triggered this question. */
   messageId?: string;
   /**

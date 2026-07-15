@@ -15,7 +15,7 @@ describe('IntentClarifier', () => {
       '',
     );
     expect(result.needsClarification).toBe(false);
-    expect(result.suggestedDescription).toBeTruthy();
+    expect(result.underspecificationType).toBeNull();
   }, 60000);
 
   it('returns needsClarification=true for a vague, unactionable intent', async () => {
@@ -26,6 +26,7 @@ describe('IntentClarifier', () => {
     );
     expect(result.needsClarification).toBe(true);
     expect(result.clarificationMessage).toBeTruthy();
+    expect(result.underspecificationType).not.toBeNull();
   }, 60000);
 
   it('returns suggestedDescription for any intent', async () => {

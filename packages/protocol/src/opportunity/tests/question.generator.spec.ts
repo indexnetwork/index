@@ -39,6 +39,7 @@ function makeQuestion(overrides: Record<string, unknown> = {}) {
     options: [okOption, { label: "B", description: "desc-b" }],
     multiSelect: false,
     strategy: "refine_intent",
+    underspecificationType: null,
     ...overrides,
   };
 }

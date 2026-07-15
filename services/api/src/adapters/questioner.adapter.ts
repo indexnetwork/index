@@ -33,6 +33,10 @@ export interface AdapterQuestionDetection {
   sourceId: string;
   triggeredBy?: string;
   timestamp: string;
+  /** Generation strategy persisted as internal metadata. */
+  strategy?: import('@indexnetwork/protocol').QuestionStrategy;
+  /** QUD repair category persisted as internal metadata. */
+  underspecificationType?: import('@indexnetwork/protocol').UnderspecificationType | null;
   /** ID of the assistant message that triggered this question. */
   messageId?: string;
   /**
@@ -73,12 +77,9 @@ export interface AdapterPersistableQuestion {
   detection: AdapterQuestionDetection;
   actors: AdapterQuestionActor[];
   payload: AdapterQuestionPayload;
-  strategy:
-    | 'refine_intent'
-    | 'surface_missing_detail'
-    | 'open_adjacent_thread'
-    | 'reflective_summary'
-    | 'surface_emergent_knowledge';
+  strategy: import('@indexnetwork/protocol').QuestionStrategy;
+  /** Internal QUD repair category; null when no underspecification is repaired. */
+  underspecificationType?: import('@indexnetwork/protocol').UnderspecificationType | null;
   /** Conversation ID — set when the question originates from a chat session. */
   conversationId?: string;
 }
@@ -144,7 +145,11 @@ export class QuestionerAdapter {
   async persist(batch: AdapterPersistableQuestion[]): Promise<string[]> {
     if (batch.length === 0) return [];
     const rows = batch.map((q) => ({
-      detection: { ...q.detection, strategy: q.strategy } satisfies QuestionDetection,
+      detection: {
+        ...q.detection,
+        strategy: q.strategy,
+        underspecificationType: q.underspecificationType ?? null,
+      } satisfies QuestionDetection,
       actors: q.actors as QuestionActor[],
       payload: q.payload,
       status: 'pending' as const,

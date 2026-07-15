@@ -1,22 +1,32 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
-import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import { Timed } from "../shared/observability/performance.js";
-
 import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { Timed } from "../shared/observability/performance.js";
+import { UnderspecificationTypeSchema, type UnderspecificationType } from "../shared/schemas/question.schema.js";
 
 const logger = protocolLogger("IntentClarifier");
 
 type ClarifierStructuredModel = ReturnType<typeof createStructuredModel>;
 
-const clarificationSchema = z.object({
-  needsClarification: z.boolean(),
-  reason: z.string(),
-  suggestedDescription: z.string().nullable(),
-  clarificationMessage: z.string().nullable(),
-});
+const clarificationSchema = z.discriminatedUnion("needsClarification", [
+  z.object({
+    needsClarification: z.literal(false),
+    reason: z.string(),
+    suggestedDescription: z.string().nullable(),
+    clarificationMessage: z.string().nullable(),
+    underspecificationType: z.null(),
+  }),
+  z.object({
+    needsClarification: z.literal(true),
+    reason: z.string(),
+    suggestedDescription: z.string().nullable(),
+    clarificationMessage: z.string().nullable(),
+    underspecificationType: UnderspecificationTypeSchema,
+  }),
+]);
 const suggestionSchema = z.object({
   suggestedDescription: z.string(),
 });
@@ -39,6 +49,12 @@ Do NOT ask for clarification when the user has already given:
 - Any other concrete detail that makes the intent actionable
 
 Default to needsClarification=false when in doubt. Only clarify when the intent is so broad that persisting it as-is would be unhelpful (e.g. literally "a job" or "something" with no other signal).
+
+Classify the Question Under Discussion (QUD) repair in underspecificationType:
+- missing_constituent: an absent core participant, entity, or outcome (who/what).
+- missing_constraint: the core target exists, but a ranking boundary is missing (where/when/how/how much).
+- open_alternative_set: an unresolved choice among materially different interpretations or scopes.
+When needsClarification=false, underspecificationType MUST be null. When true, it MUST be exactly one category above.
 
 Rules when needsClarification=true:
 - User Profile is the primary source for suggestedDescription; Active Intents are secondary.
@@ -66,6 +82,7 @@ Rules:
   2) clarificationMessage (single short message to the user)
 - clarificationMessage must include the suggestion naturally and ask for confirmation.
 - Use this shape: ` + "`Did you mean: \"<suggestedDescription>\"?`" + ` followed by a brief confirmation instruction.
+- Target the question specifically to the QUD repair category supplied in the user prompt.
 - Keep it short. No bullet lists. No JSON.
 `;
 
@@ -123,7 +140,12 @@ ${activeIntentsContext || "none"}
 
       if (parsed.needsClarification) {
         // Always prefer a dedicated rewrite pass for vague inputs so we avoid generic follow-up text.
-        const draft = await this.generateClarificationDraft(description, profileContext, activeIntentsContext);
+        const draft = await this.generateClarificationDraft(
+          description,
+          profileContext,
+          activeIntentsContext,
+          parsed.underspecificationType,
+        );
         if (draft) {
           return {
             ...parsed,
@@ -141,6 +163,7 @@ ${activeIntentsContext || "none"}
         reason: "fallback_on_model_error",
         suggestedDescription: null,
         clarificationMessage: null,
+        underspecificationType: null,
       };
     }
   }
@@ -168,10 +191,15 @@ ${activeIntentsContext || "none"}
   private async generateClarificationDraft(
     description: string,
     profileContext: string,
-    activeIntentsContext: string
+    activeIntentsContext: string,
+    underspecificationType: UnderspecificationType,
   ): Promise<{ suggestedDescription: string; clarificationMessage: string } | null> {
     try {
-      const prompt = this.buildPrompt(description, profileContext, activeIntentsContext);
+      const prompt = [
+        this.buildPrompt(description, profileContext, activeIntentsContext),
+        "# QUD Repair Category",
+        underspecificationType,
+      ].join("\n");
       const output = await invokeWithAbortSignal(this.clarificationDraftModel, [
         new SystemMessage(clarificationDraftPrompt),
         new HumanMessage(prompt),

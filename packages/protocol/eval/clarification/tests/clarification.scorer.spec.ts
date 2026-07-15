@@ -1,0 +1,66 @@
+import { describe, expect, it } from "bun:test";
+
+import { CASES } from "../clarification.cases.js";
+import { runCase } from "../clarification.runner.js";
+import { scoreCase } from "../clarification.scorer.js";
+import type { ClarifierLike } from "../clarification.types.js";
+
+const baseOutput = {
+  needsClarification: true as const,
+  reason: "test",
+  suggestedDescription: "specific intent",
+  clarificationMessage: "Did you mean this?",
+  underspecificationType: "missing_constituent" as const,
+};
+
+describe("clarification corpus", () => {
+  it("covers all exact taxonomy values plus null", () => {
+    expect(new Set(CASES.map((c) => c.expectedType))).toEqual(new Set([
+      "missing_constituent",
+      "missing_constraint",
+      "open_alternative_set",
+      null,
+    ]));
+  });
+});
+
+describe("clarification scorer", () => {
+  it("passes only an exact type match", () => {
+    const c = CASES[0];
+    expect(scoreCase(c, baseOutput).passed).toBe(true);
+    expect(scoreCase(c, {
+      ...baseOutput,
+      underspecificationType: "missing_constraint",
+    }).passed).toBe(false);
+  });
+
+  it("exact-matches null for sufficiently specific inputs", () => {
+    const c = CASES.find((candidate) => candidate.expectedType === null)!;
+    const output = {
+      needsClarification: false as const,
+      reason: "specific",
+      suggestedDescription: null,
+      clarificationMessage: null,
+      underspecificationType: null,
+    };
+    expect(scoreCase(c, output).passed).toBe(true);
+  });
+});
+
+describe("clarification runner", () => {
+  it("passes fixture context to the clarifier", async () => {
+    let args: string[] = [];
+    const clarifier: ClarifierLike = {
+      invoke: async (...values) => {
+        args = values;
+        return baseOutput;
+      },
+    };
+    await runCase(clarifier, CASES[0]);
+    expect(args).toEqual([
+      CASES[0].input,
+      CASES[0].profileContext,
+      CASES[0].activeIntentsContext,
+    ]);
+  });
+});

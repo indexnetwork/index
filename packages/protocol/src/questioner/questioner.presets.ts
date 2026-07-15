@@ -17,6 +17,12 @@ import type { ChatContext, IntentContext, NegotiationContext, NegotiationInfligh
  * surfaced in digest audits ("…with these builders?", "the previous
  * negotiation stalled because the counterparty didn't mention …").
  */
+export const QUD_UNDERSPECIFICATION_RULES = `QUD underspecification taxonomy. For every structured question, emit a required \`underspecificationType\` field. Use exactly one category only when the question repairs that kind of underspecification:
+- missing_constituent: an absent core participant, entity, or outcome (who/what).
+- missing_constraint: the core target exists, but a ranking boundary is missing (where/when/how/how much).
+- open_alternative_set: an unresolved choice among materially different interpretations or scopes.
+Use null for adjacent, reflective, emergent, or any other question that does not repair underspecification. Strategy and underspecification type are orthogonal: \`strategy\` describes the conversational move; \`underspecificationType\` describes the QUD defect repaired. Never infer one mechanically from the other.`;
+
 const REFERENTIAL_CLOSURE_RULES = `Referential closure. The prompt must resolve entirely on its own, with no dangling references. The reader sees ONLY the question text — never the people you reviewed, the counterparty, the events on their calendar, or this conversation. Do not use demonstratives or definite anaphora that point at things the reader cannot see: "these builders", "those founders", "these researchers", "these conversations", "this lunch", "the speaker". If you reference a person, name them. If you reference a group, restate the concrete shared attribute inside the question itself ("founders working on decentralized identity"), never "these founders". Never imply a list, set, or prior exchange the reader is not currently looking at.
 - Bad: "What kind of collaboration are you looking for with these builders?"
 - Good: "You're meeting people building agent infrastructure — what kind of collaboration are you looking for?"
@@ -61,6 +67,8 @@ Standalone prompt rule. Every generated \`prompt\` must be understandable outsid
 - Good: "For your decentralized identity protocol-design search, what kind of collaboration are you looking for?"
 
 ${REFERENTIAL_CLOSURE_RULES}
+
+${QUD_UNDERSPECIFICATION_RULES}
 
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ (different titles).
 
@@ -389,7 +397,7 @@ function buildChatPrompt(ctx: ChatContext): string {
  */
 const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   discovery: {
-    systemPrompt: DISCOVERY_SYSTEM_PROMPT,
+    systemPrompt: `${DISCOVERY_SYSTEM_PROMPT}\n\n${QUD_UNDERSPECIFICATION_RULES}`,
     buildPrompt: (context: unknown) =>
       buildDiscoveryPrompt(context as Parameters<typeof buildDiscoveryPrompt>[0]),
   },

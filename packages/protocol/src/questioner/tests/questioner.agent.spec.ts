@@ -15,6 +15,7 @@ function makeQuestion(overrides: Record<string, unknown> = {}) {
     options: [okOption, { label: "B", description: "desc-b" }],
     multiSelect: false,
     strategy: "refine_intent",
+    underspecificationType: null,
     ...overrides,
   };
 }
@@ -132,15 +133,22 @@ describe("QuestionerAgent", () => {
     expect(result!.questions).toHaveLength(1);
     expect(result!.questions[0].title).toBe("Stage");
     expect(result!.strategies).toEqual(["refine_intent"]);
+    expect(result!.underspecificationTypes).toEqual([null]);
   });
 
-  it("strips the strategy field from the public questions array", async () => {
+  it("propagates QUD types in parallel and strips internal metadata publicly", async () => {
     const agent = makeAgent(async () => ({
-      questions: [makeQuestion({ title: "Stage" })],
+      questions: [makeQuestion({
+        title: "Stage",
+        underspecificationType: "missing_constraint",
+      })],
     }));
     const result = await agent.invoke(makeDiscoveryInput());
     expect(result).not.toBeNull();
-    expect("strategy" in (result!.questions[0] as Record<string, unknown>)).toBe(false);
+    expect(result!.underspecificationTypes).toEqual(["missing_constraint"]);
+    const publicQuestion = result!.questions[0] as Record<string, unknown>;
+    expect("strategy" in publicQuestion).toBe(false);
+    expect("underspecificationType" in publicQuestion).toBe(false);
   });
 
   it("dedupes questions by title, keeping the first occurrence", async () => {

@@ -115,7 +115,7 @@ afterEach(() => {
 
 describe("ask_user_question", () => {
   it("generates, persists, streams, waits, and returns the answers", async () => {
-    const { agent, calls } = makeAgentStub({ questions: [generatedQuestion], strategies: ['surface_missing_detail'] });
+    const { agent, calls } = makeAgentStub({ questions: [generatedQuestion], strategies: ['surface_missing_detail'], underspecificationTypes: [null] });
     setQuestionerAgentForTesting(agent);
     const { host, persistCalls } = makeHost();
     const { defineTool, call } = makeDefineTool();
@@ -189,7 +189,7 @@ describe("ask_user_question", () => {
   });
 
   it("reports timeout outcomes with guidance and keeps questions pending", async () => {
-    const { agent } = makeAgentStub({ questions: [generatedQuestion], strategies: ['surface_missing_detail'] });
+    const { agent } = makeAgentStub({ questions: [generatedQuestion], strategies: ['surface_missing_detail'], underspecificationTypes: [null] });
     setQuestionerAgentForTesting(agent);
     const { host } = makeHost({
       outcomes: (ids) => ids.map((id) => ({ questionId: id, status: 'timeout' as const })),
@@ -208,7 +208,7 @@ describe("ask_user_question", () => {
   });
 
   it("errors when no streaming trace emitter is available", async () => {
-    const { agent } = makeAgentStub({ questions: [generatedQuestion], strategies: ['surface_missing_detail'] });
+    const { agent } = makeAgentStub({ questions: [generatedQuestion], strategies: ['surface_missing_detail'], underspecificationTypes: [null] });
     setQuestionerAgentForTesting(agent);
     const { host } = makeHost();
     const { defineTool, call } = makeDefineTool();
@@ -221,7 +221,7 @@ describe("ask_user_question", () => {
   });
 
   it("errors for MCP contexts and missing sessions", async () => {
-    const { agent } = makeAgentStub({ questions: [generatedQuestion], strategies: ['surface_missing_detail'] });
+    const { agent } = makeAgentStub({ questions: [generatedQuestion], strategies: ['surface_missing_detail'], underspecificationTypes: [null] });
     setQuestionerAgentForTesting(agent);
     const { host } = makeHost();
     const { defineTool, call } = makeDefineTool();
