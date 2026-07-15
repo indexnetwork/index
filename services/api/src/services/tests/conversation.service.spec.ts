@@ -14,15 +14,15 @@ const taskService = new TaskService();
 const cleanupIds: string[] = [];
 
 afterAll(async () => {
-  for (const id of cleanupIds) {
+  const { conversationDatabaseAdapter } = await import('../../adapters/database.adapter');
+  await Promise.all(cleanupIds.map(async (id) => {
     try {
-      const { conversationDatabaseAdapter } = await import('../../adapters/database.adapter');
       await conversationDatabaseAdapter.deleteConversation(id);
     } catch {
       // Best-effort cleanup; test assertions have already completed.
     }
-  }
-});
+  }));
+}, 30000);
 
 describe('ConversationService', () => {
   it('creates conversation and sends message', async () => {
