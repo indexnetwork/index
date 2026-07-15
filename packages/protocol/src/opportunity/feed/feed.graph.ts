@@ -27,6 +27,8 @@ import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
+import { adjustedConfidence } from '../discriminator/discriminator.adjustments.js';
+import { poolQuestionsRanking } from '../discriminator/discriminator.env.js';
 
 const logger = protocolLogger('HomeGraph');
 const checkCategorizerCacheLog = protocolLogger('HomeGraph:checkCategorizerCache');
@@ -139,7 +141,7 @@ const safeParseDate = (value: unknown): number => {
 };
 
 /** Confidence score for sorting (interpretation.confidence or opportunity.confidence). */
-const getConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
+const getRawConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
   const fromInterp = opp.interpretation?.confidence;
   if (typeof fromInterp === 'number' && !Number.isNaN(fromInterp)) return fromInterp;
   if (typeof fromInterp === 'string') {
@@ -153,6 +155,18 @@ const getConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]
     if (!Number.isNaN(n)) return n;
   }
   return 0;
+};
+
+/**
+ * Sort confidence, optionally pool-adjusted (IND-419): when
+ * POOL_QUESTIONS_RANKING=on, answered discriminators multiply confidence by
+ * their stored factors (floor 0.3) so the user's answers re-rank the feed.
+ * Flag off → identical to raw confidence (adjustments are write-only).
+ */
+const getConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
+  const raw = getRawConfidence(opp);
+  if (poolQuestionsRanking() !== 'on') return raw;
+  return adjustedConfidence(raw, (opp as { metadata?: Record<string, unknown> | null }).metadata);
 };
 
 /** Unique non-introducer, non-viewer userIds for an opportunity (actors can repeat). */
