@@ -7,21 +7,23 @@
  *  3. enqueue one debounced answer-conditioned from-intent run (Tier 1),
  *  4. chain the next eligible stored discriminator for interview cadence.
  *
- * "Both matter" records the answer and chains normally, but produces no
- * adjustments and no Tier-1 run because it expresses no ranking preference.
+ * "Both matter" alone records the answer and chains normally without
+ * adjustments or Tier-1; substantive free text may still refine and rerun.
  */
-import { POOL_QUESTION_MIN_VOI, poolQuestionsMode, poolQuestionsRanking } from '@indexnetwork/protocol';
+import { BOTH_MATTER_LABEL, POOL_QUESTION_MIN_VOI, poolQuestionsMode, poolQuestionsRanking } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
+import { buildFullIntentText, buildIntentSnippet, computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import type { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from '../../queues/pool/question.shared';
 import { applyPoolAnswer, beatOneMessage, enqueuePoolRerun } from '../../queues/pool/answer.shared';
 import type { PoolAnswerOutcome, PoolLifecycleAdmission } from '../../queues/pool/answer.shared';
+import type { IntentRefinementResult } from './question.answer.intent';
 
 const logger = log.service.from('PoolQuestionAnswer');
 
 export interface HandlePoolAnswerDeps {
-  adapter: Pick<QuestionerAdapter, 'getById' | 'persist' | 'listPoolQuestionLabels'>;
+  adapter: Pick<QuestionerAdapter, 'getById' | 'persist' | 'listPoolQuestionLabels' | 'updateAnsweredPoolIntentFingerprint'>;
   applyAnswer?: typeof applyPoolAnswer;
   narrateBeatOne?: (input: {
     userId: string;
@@ -30,6 +32,14 @@ export interface HandlePoolAnswerDeps {
     outcome: PoolAnswerOutcome;
   }) => Promise<void>;
   enqueueRerun?: typeof enqueuePoolRerun;
+  /** Canonical intent-graph refinement callback shared with intent-mode answers. */
+  refineIntent: (input: {
+    userId: string;
+    intentId: string;
+    questionId: string;
+    selectedOptions: string[];
+    freeText?: string;
+  }) => Promise<IntentRefinementResult>;
   /** Lifecycle admission check performed after Tier 0 and before new work. */
   getIntentAdmission: (userId: string, intentId: string) => Promise<PoolLifecycleAdmission>;
 }
@@ -41,6 +51,7 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
     questionId: string;
     intentId: string;
     selectedOptions: string[];
+    freeText?: string;
   }): Promise<void> {
     if (poolQuestionsMode() !== 'on') return;
 
@@ -101,8 +112,58 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
       return;
     }
 
-    // A stale preference still shapes fresh candidates; "Both matter" does not.
-    if (outcome.kind !== 'none') {
+    let currentIntentFingerprint = pool.intentFingerprint;
+    let currentIntentText = pool.intentText;
+    let refinementApplied = false;
+    const substantiveSelection = input.selectedOptions.some(
+      (option) => option.trim().length > 0 && option !== BOTH_MATTER_LABEL,
+    );
+    const shouldRefine = substantiveSelection || Boolean(input.freeText?.trim());
+    if (shouldRefine) {
+      try {
+        const refinement = await deps.refineIntent({
+          userId: input.userId,
+          intentId: input.intentId,
+          questionId: input.questionId,
+          selectedOptions: input.selectedOptions,
+          ...(input.freeText !== undefined ? { freeText: input.freeText } : {}),
+        });
+        refinementApplied = refinement.applied;
+        if (refinement.applied) {
+          const fullIntentText = buildFullIntentText(refinement.payload, refinement.summary);
+          currentIntentFingerprint = computeIntentFingerprint(refinement.payload, refinement.summary);
+          currentIntentText = buildIntentSnippet(fullIntentText);
+          try {
+            const stamped = await deps.adapter.updateAnsweredPoolIntentFingerprint(
+              input.questionId,
+              input.userId,
+              currentIntentFingerprint,
+            );
+            if (!stamped) {
+              logger.warn('Post-refinement pool fingerprint was not persisted', {
+                questionId: input.questionId,
+                intentId: input.intentId,
+              });
+            }
+          } catch (error) {
+            logger.warn('Post-refinement pool fingerprint persistence failed; continuing answer reaction', {
+              questionId: input.questionId,
+              intentId: input.intentId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      } catch (error) {
+        logger.warn('Pool answer intent refinement failed; continuing answer reaction', {
+          questionId: input.questionId,
+          intentId: input.intentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // A local preference or an applied free-text refinement shapes fresh candidates.
+    if (outcome.kind !== 'none' || refinementApplied) {
       try {
         await (deps.enqueueRerun ?? enqueuePoolRerun)({
           userId: input.userId,
@@ -121,7 +182,10 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
       return;
     }
 
-    const askedLabels = await deps.adapter.listPoolQuestionLabels(input.userId, input.intentId);
+    const askedLabels = await deps.adapter.listPoolQuestionLabels(input.userId, input.intentId, {
+      currentIntentFingerprint,
+      currentIntentText,
+    });
     const fresh = dedupDiscriminators(pool.alternates, askedLabels)
       .filter((discriminator) => discriminator.voi >= POOL_QUESTION_MIN_VOI);
     if (fresh.length === 0) {
@@ -135,7 +199,8 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
       poolSize: pool.poolSize,
       minedAt: pool.minedAt,
       ...(pool.runId ? { runId: pool.runId } : {}),
-      ...(pool.intentText ? { intentText: pool.intentText } : {}),
+      ...(currentIntentText ? { intentText: currentIntentText } : {}),
+      ...(currentIntentFingerprint ? { intentFingerprint: currentIntentFingerprint } : {}),
       discriminators: fresh,
     });
     if (!question) return;

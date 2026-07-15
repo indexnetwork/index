@@ -63,6 +63,42 @@ function makePersistable(
   };
 }
 
+function makePoolPersistable(
+  label: string,
+  intentFingerprint?: string,
+  intentText = 'Find collaborators',
+  intentId = SELECTED_INTENT_ID,
+): AdapterPersistableQuestion {
+  return makePersistable({
+    detection: {
+      mode: 'pool_discovery',
+      sourceType: 'intent',
+      sourceId: intentId,
+      triggeredBy: intentId,
+      timestamp: new Date().toISOString(),
+      pool: {
+        poolSize: 12,
+        minedAt: new Date().toISOString(),
+        intentText,
+        ...(intentFingerprint ? { intentFingerprint } : {}),
+        discriminator: {
+          label,
+          questionSeed: `${label}?`,
+          sides: ['Side A', 'Side B'],
+          sideCounts: { 'Side A': 6, 'Side B': 6 },
+          voi: 0.5,
+          evidenceRate: 1,
+          embedding: [0.2, 0.8],
+          embeddingModel: 'model-v1',
+          assignments: [],
+        },
+        alternates: [],
+      },
+    },
+    actors: [{ userId: 'test-user-1', role: 'subject' }],
+  });
+}
+
 describe('QuestionerAdapter', () => {
   it('persists a batch of questions with internal QUD metadata', async () => {
     const batch = [
@@ -246,5 +282,91 @@ describe('QuestionerAdapter', () => {
     expect(scopedIds.has(insertedIds[0])).toBe(true);
     expect(scopedIds.has(insertedIds[1])).toBe(true);
     expect(scopedIds.has(insertedIds[2])).toBe(false);
+  });
+
+  it('applies fingerprint and boundary-safe legacy freshness', async () => {
+    const cappedLegacyText = 'x'.repeat(160);
+    const ids = await adapter.persist([
+      makePoolPersistable('pending-old', 'fingerprint-v1'),
+      makePoolPersistable('answered-fresh', 'fingerprint-v2'),
+      makePoolPersistable('dismissed-fresh', 'fingerprint-v2'),
+      makePoolPersistable('answered-stale', 'fingerprint-v1'),
+      makePoolPersistable('legacy-fresh', undefined, 'Find collaborators for local prototypes'),
+      makePoolPersistable('legacy-short-prefix-stale', undefined, 'Find collaborators'),
+      makePoolPersistable('legacy-capped-fresh', undefined, cappedLegacyText),
+    ]);
+    const answer = (selectedOptions: string[]) => ({
+      selectedOptions,
+      answeredBy: 'test-user-1',
+      answeredAt: new Date().toISOString(),
+    });
+    expect(await adapter.answer(ids[1], 'test-user-1', answer(['Both matter']))).toBe(true);
+    expect(await adapter.dismiss(ids[2], 'test-user-1')).toBe(true);
+    expect(await adapter.answer(ids[3], 'test-user-1', answer(['Side A']))).toBe(true);
+    expect(await adapter.answer(ids[4], 'test-user-1', answer(['Side B']))).toBe(true);
+    expect(await adapter.dismiss(ids[5], 'test-user-1')).toBe(true);
+    expect(await adapter.answer(ids[6], 'test-user-1', answer(['Side A']))).toBe(true);
+
+    const freshness = {
+      currentIntentFingerprint: 'fingerprint-v2',
+      currentIntentText: 'Find collaborators for local prototypes',
+    };
+    expect((await adapter.listPoolQuestionLabels('test-user-1', SELECTED_INTENT_ID, freshness)).sort())
+      .toEqual(['answered-fresh', 'dismissed-fresh', 'legacy-fresh', 'pending-old'].sort());
+    expect((await adapter.listResolvedPoolAxes('test-user-1', SELECTED_INTENT_ID, freshness))
+      .map((axis) => axis.label).sort())
+      .toEqual(['answered-fresh', 'dismissed-fresh', 'legacy-fresh'].sort());
+
+    // Backward-compatible callers without freshness context still see every status.
+    expect((await adapter.listPoolQuestionLabels('test-user-1', SELECTED_INTENT_ID)).sort())
+      .toEqual([
+        'pending-old',
+        'answered-fresh',
+        'dismissed-fresh',
+        'answered-stale',
+        'legacy-fresh',
+        'legacy-short-prefix-stale',
+        'legacy-capped-fresh',
+      ].sort());
+
+    const cappedFreshAxes = await adapter.listResolvedPoolAxes('test-user-1', SELECTED_INTENT_ID, {
+      currentIntentFingerprint: 'different-fingerprint',
+      currentIntentText: `${cappedLegacyText} with uncapped suffix`,
+    });
+    expect(cappedFreshAxes.map((axis) => axis.label)).toEqual(['legacy-capped-fresh']);
+  });
+
+  it('filters freshness before capping resolved axes at 24', async () => {
+    const fresh = Array.from({ length: 25 }, (_, index) =>
+      makePoolPersistable(`fresh-${index}`, 'current', 'Current intent', OTHER_INTENT_ID));
+    const stale = Array.from({ length: 24 }, (_, index) =>
+      makePoolPersistable(`newer-stale-${index}`, 'stale', 'Stale intent', OTHER_INTENT_ID));
+    const freshIds = await adapter.persist(fresh);
+    await Bun.sleep(5);
+    const staleIds = await adapter.persist(stale);
+    const answer = {
+      selectedOptions: ['Side A'],
+      answeredBy: 'test-user-1',
+      answeredAt: new Date().toISOString(),
+    };
+    await Promise.all([...freshIds, ...staleIds].map((id) => adapter.answer(id, 'test-user-1', answer)));
+
+    const axes = await adapter.listResolvedPoolAxes('test-user-1', OTHER_INTENT_ID, {
+      currentIntentFingerprint: 'current',
+      currentIntentText: 'Current intent',
+    });
+    expect(axes).toHaveLength(24);
+    expect(axes.every((axis) => axis.label.startsWith('fresh-'))).toBe(true);
+  });
+
+  it('updates an answered pool question fingerprint after refinement', async () => {
+    const [id] = await adapter.persist([makePoolPersistable('stamp-after-refinement', 'before')]);
+    expect(await adapter.answer(id, 'test-user-1', {
+      selectedOptions: ['Side A'],
+      answeredBy: 'test-user-1',
+      answeredAt: new Date().toISOString(),
+    })).toBe(true);
+    expect(await adapter.updateAnsweredPoolIntentFingerprint(id, 'test-user-1', 'after')).toBe(true);
+    expect((await adapter.getById(id))?.detection.pool?.intentFingerprint).toBe('after');
   });
 });

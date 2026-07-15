@@ -22,6 +22,7 @@
  */
 
 import { log } from '../../lib/log';
+import type { IntentRefinementResult } from './question.answer.intent';
 
 const logger = log.service.from('QuestionAnswerHandler');
 
@@ -58,7 +59,7 @@ export interface QuestionAnswerHandlerDeps {
     questionId: string;
     selectedOptions: string[];
     freeText?: string;
-  }) => Promise<void>;
+  }) => Promise<IntentRefinementResult>;
 
   /** Store the answer as negotiation context for the next turn. */
   storeNegotiationContext: (input: {
@@ -98,6 +99,7 @@ export interface QuestionAnswerHandlerDeps {
     questionId: string;
     intentId: string;
     selectedOptions: string[];
+    freeText?: string;
   }) => Promise<void>;
 }
 
@@ -170,6 +172,7 @@ export async function handleQuestionAnswered(
           questionId,
           intentId: sourceId,
           selectedOptions: answer.selectedOptions,
+          freeText: answer.freeText,
         });
         break;
 

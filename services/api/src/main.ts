@@ -297,39 +297,56 @@ const storeNegotiationContext = storeNegotiationContextFactory({
   },
 });
 
+const enqueueIntentRefinement = enqueueIntentRefinementFactory({
+  getQuestionPrompt: async (questionId) => {
+    const question = await answerQuestionerAdapter.getById(questionId);
+    return question?.payload.prompt ?? null;
+  },
+  getUserProfile: async (userId) => {
+    const profile = await chatDatabaseAdapter.getProfile(userId);
+    return profile ? JSON.stringify(profile) : '';
+  },
+  runIntentUpdate: async ({ userId, userProfile, inputContent, targetIntentIds }) => {
+    const result = await answerIntentGraph.invoke(
+      { userId, userProfile, operationMode: 'update' as const, inputContent, targetIntentIds },
+      { recursionLimit: 100 },
+    );
+    const executionResults = (result as {
+      executionResults?: Array<{
+        actionType: 'create' | 'update' | 'expire';
+        success: boolean;
+        intentId?: string;
+        payload?: string;
+      }>;
+    }).executionResults;
+    const targetIds = new Set(targetIntentIds);
+    const appliedUpdate = executionResults?.find((execution) =>
+      execution.success
+      && execution.actionType === 'update'
+      && execution.intentId !== undefined
+      && targetIds.has(execution.intentId));
+    if (!appliedUpdate || appliedUpdate.payload === undefined) return { applied: false };
+    return { applied: true, payload: appliedUpdate.payload };
+  },
+  getIntent: async (intentId) => {
+    const intent = await chatDatabaseAdapter.getIntent(intentId);
+    if (!intent) return null;
+    return {
+      id: intent.id,
+      userId: intent.userId,
+      description: intent.payload,
+      summary: intent.summary,
+      status: (intent.status ?? 'ACTIVE').toLowerCase(),
+    };
+  },
+});
+
 const questionAnswerDeps = {
   createPremiseFromAnswer: createPremiseFromAnswerFactory({
     runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
     emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
   }),
-  enqueueIntentRefinement: enqueueIntentRefinementFactory({
-    getQuestionPrompt: async (questionId) => {
-      const question = await answerQuestionerAdapter.getById(questionId);
-      return question?.payload.prompt ?? null;
-    },
-    getUserProfile: async (userId) => {
-      const profile = await chatDatabaseAdapter.getProfile(userId);
-      return profile ? JSON.stringify(profile) : '';
-    },
-    runIntentUpdate: async ({ userId, userProfile, inputContent, targetIntentIds }) => {
-      const result = await answerIntentGraph.invoke(
-        { userId, userProfile, operationMode: 'update' as const, inputContent, targetIntentIds },
-        { recursionLimit: 100 },
-      );
-      const executionResults = (result as { executionResults?: Array<{ success: boolean }> }).executionResults;
-      return { applied: !!executionResults?.some((r) => r.success) };
-    },
-    getIntent: async (intentId) => {
-      const intent = await chatDatabaseAdapter.getIntent(intentId);
-      if (!intent) return null;
-      return {
-        id: intent.id,
-        userId: intent.userId,
-        description: intent.payload,
-        status: (intent.status ?? 'ACTIVE').toLowerCase(),
-      };
-    },
-  }),
+  enqueueIntentRefinement,
   storeNegotiationContext,
   resumeInflightNegotiation: resumeInflightNegotiationFactory({
     storeNegotiationContext,
@@ -363,6 +380,7 @@ const questionAnswerDeps = {
   },
   handlePoolAnswer: handlePoolAnswerFactory({
     adapter: answerQuestionerAdapter,
+    refineIntent: enqueueIntentRefinement,
     getIntentAdmission: async (userId, intentId) => {
       const intent = await chatDatabaseAdapter.getIntentForIndexing(intentId);
       if (!intent || intent.userId !== userId || intent.archivedAt) return 'unavailable';

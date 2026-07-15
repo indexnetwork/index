@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach } from 'bun:test';
 import type { QuestionPoolDiscriminator, QuestionerInput } from '@indexnetwork/protocol';
 
 import { QuestionerQueue } from '../questioner.queue';
-import type { AdapterPersistableQuestion, AdapterPersistedQuestion } from '../../adapters/questioner.adapter';
+import type { AdapterPersistableQuestion, AdapterPersistedQuestion, PoolQuestionFreshnessOptions } from '../../adapters/questioner.adapter';
 
 function discriminator(label: string, voi = 0.5): QuestionPoolDiscriminator {
   return {
@@ -46,6 +46,7 @@ function poolInput(discriminators: QuestionPoolDiscriminator[]): QuestionerInput
     context: {
       intentId: 'intent-1',
       intentText: 'find collaborators',
+      intentFingerprint: 'fingerprint-v1',
       poolSize: 21,
       runId: 'run-1',
       minedAt: '2026-07-14T14:00:00.000Z',
@@ -58,6 +59,7 @@ interface Harness {
   queue: QuestionerQueue;
   persisted: AdapterPersistableQuestion[][];
   agentInvocations: number;
+  freshnessCalls: Array<PoolQuestionFreshnessOptions | undefined>;
   setPending(rows: AdapterPersistedQuestion[]): void;
   setAskedLabels(labels: string[]): void;
 }
@@ -66,7 +68,10 @@ function makeHarness(intentStatus: 'ACTIVE' | 'PAUSED' = 'ACTIVE'): Harness {
   const persisted: AdapterPersistableQuestion[][] = [];
   let pending: AdapterPersistedQuestion[] = [];
   let askedLabels: string[] = [];
-  const state = { agentInvocations: 0 };
+  const state = {
+    agentInvocations: 0,
+    freshnessCalls: [] as Array<PoolQuestionFreshnessOptions | undefined>,
+  };
   const queue = new QuestionerQueue({
     adapter: {
       persist: async (batch: AdapterPersistableQuestion[]) => {
@@ -74,7 +79,10 @@ function makeHarness(intentStatus: 'ACTIVE' | 'PAUSED' = 'ACTIVE'): Harness {
         return batch.map((_, i) => `id-${persisted.length}-${i}`);
       },
       findPending: async () => pending,
-      listPoolQuestionLabels: async () => askedLabels,
+      listPoolQuestionLabels: async (_userId, _intentId, freshness) => {
+        state.freshnessCalls.push(freshness);
+        return askedLabels;
+      },
     },
     agent: {
       invoke: async () => {
@@ -89,6 +97,9 @@ function makeHarness(intentStatus: 'ACTIVE' | 'PAUSED' = 'ACTIVE'): Harness {
     persisted,
     get agentInvocations() {
       return state.agentInvocations;
+    },
+    get freshnessCalls() {
+      return state.freshnessCalls;
     },
     setPending: (rows) => {
       pending = rows;
@@ -119,6 +130,21 @@ describe('QuestionerQueue pool_discovery arm', () => {
     // Evidence names the intent (context.intentText) so the card self-identifies on any surface.
     expect(q.payload.evidence).toBe('based on 21 people matching \u201cfind collaborators\u201d');
     expect(q.detection.pool?.intentText).toBe('find collaborators');
+    expect(q.detection.pool?.intentFingerprint).toBe('fingerprint-v1');
+    expect(h.freshnessCalls).toEqual([{
+      currentIntentFingerprint: 'fingerprint-v1',
+      currentIntentText: 'find collaborators',
+    }]);
+  });
+
+  it('preserves legacy pool jobs without an intent fingerprint', async () => {
+    const input = poolInput([discriminator('legacy')]);
+    delete (input.context as { intentFingerprint?: string }).intentFingerprint;
+    await h.queue.processJob('generate_questions', input);
+
+    expect(h.persisted).toHaveLength(1);
+    expect(h.persisted[0][0].detection.pool?.intentFingerprint).toBeUndefined();
+    expect(h.freshnessCalls).toEqual([{ currentIntentText: 'find collaborators' }]);
   });
 
   it('skips before persistence when the tied intent is paused', async () => {

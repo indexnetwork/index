@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import type { QuestionPoolDiscriminator } from '@indexnetwork/protocol';
 
 import { handlePoolAnswerFactory } from '../question.answer.pool';
-import type { AdapterPersistableQuestion, AdapterPersistedQuestion } from '../../../adapters/questioner.adapter';
+import type { AdapterPersistableQuestion, AdapterPersistedQuestion, PoolQuestionFreshnessOptions } from '../../../adapters/questioner.adapter';
 import type { PoolAnswerOutcome, PoolLifecycleAdmission } from '../../../queues/pool/answer.shared';
 
 function discriminator(label: string, voi = 0.5): QuestionPoolDiscriminator {
@@ -34,6 +34,8 @@ function answeredQuestion(alternates: QuestionPoolDiscriminator[]): AdapterPersi
         poolSize: 21,
         minedAt: '2026-07-14T14:00:00.000Z',
         runId: 'run-1',
+        intentText: 'Find collaborators',
+        intentFingerprint: 'initial-fingerprint',
         discriminator: discriminator('asked'),
         alternates,
       },
@@ -53,11 +55,33 @@ function makeHarness(
   askedLabels: string[] = ['asked'],
   outcome: PoolAnswerOutcome = { kind: 'applied', promoted: 1, demoted: 2, unknownAdjusted: 0 },
   admission: PoolLifecycleAdmission | Error = 'active',
+  refinementError?: Error,
+  refinementApplied = true,
+  fingerprintError?: Error,
 ) {
   const persisted: AdapterPersistableQuestion[][] = [];
+  const callOrder: string[] = [];
+  const freshnessCalls: Array<PoolQuestionFreshnessOptions | undefined> = [];
   const applyAnswer = mock(async () => outcome);
   const narrateBeatOne = mock(async () => {});
-  const enqueueRerun = mock(async () => {});
+  const refineIntent = mock(async () => {
+    callOrder.push('refine');
+    if (refinementError) throw refinementError;
+    return refinementApplied
+      ? {
+          applied: true,
+          payload: 'Find collaborators who build prototypes',
+          summary: 'Hands-on collaborators',
+        }
+      : { applied: false };
+  });
+  const enqueueRerun = mock(async () => {
+    callOrder.push('rerun');
+  });
+  const updateAnsweredPoolIntentFingerprint = mock(async () => {
+    if (fingerprintError) throw fingerprintError;
+    return true;
+  });
   const handle = handlePoolAnswerFactory({
     adapter: {
       getById: async () => row,
@@ -65,17 +89,32 @@ function makeHarness(
         persisted.push(batch);
         return batch.map((_, index) => `chained-${index}`);
       },
-      listPoolQuestionLabels: async () => askedLabels,
+      listPoolQuestionLabels: async (_userId, _intentId, freshness) => {
+        freshnessCalls.push(freshness);
+        return askedLabels;
+      },
+      updateAnsweredPoolIntentFingerprint,
     },
     applyAnswer,
     narrateBeatOne,
+    refineIntent,
     enqueueRerun,
     getIntentAdmission: async () => {
       if (admission instanceof Error) throw admission;
       return admission;
     },
   });
-  return { handle, persisted, applyAnswer, narrateBeatOne, enqueueRerun };
+  return {
+    handle,
+    persisted,
+    applyAnswer,
+    narrateBeatOne,
+    refineIntent,
+    enqueueRerun,
+    updateAnsweredPoolIntentFingerprint,
+    callOrder,
+    freshnessCalls,
+  };
 }
 
 const input = {
@@ -103,19 +142,92 @@ describe('handlePoolAnswer', () => {
     expect(harness.narrateBeatOne).toHaveBeenCalledTimes(1);
     expect((harness.narrateBeatOne.mock.calls[0]?.[0] as { message: string }).message)
       .toContain('1 match prioritized, 2 deprioritized');
+    expect(harness.refineIntent).toHaveBeenCalledTimes(1);
     expect(harness.enqueueRerun).toHaveBeenCalledTimes(1);
+    expect(harness.callOrder).toEqual(['refine', 'rerun']);
+    expect(harness.updateAnsweredPoolIntentFingerprint).toHaveBeenCalledTimes(1);
     expect(harness.persisted).toHaveLength(1);
     const [question] = harness.persisted[0];
     expect(question.detection.mode).toBe('pool_discovery');
     expect(question.detection.pool?.discriminator.label).toBe('next');
     expect(question.detection.pool?.alternates.map((alternate) => alternate.label)).toEqual(['later']);
     expect(question.detection.pool?.runId).toBe('run-1');
+    expect(question.detection.pool?.intentFingerprint).not.toBe('initial-fingerprint');
+    expect(harness.freshnessCalls).toEqual([{
+      currentIntentFingerprint: question.detection.pool?.intentFingerprint,
+      currentIntentText: question.detection.pool?.intentText,
+    }]);
+  });
+
+  it('uses nonempty free text to refine even with Both matter selected', async () => {
+    const harness = makeHarness(answeredQuestion([]), ['asked'], { kind: 'none' });
+    await harness.handle({
+      ...input,
+      selectedOptions: ['Both matter'],
+      freeText: 'Only people available this month',
+    });
+    expect(harness.refineIntent).toHaveBeenCalledWith({
+      ...input,
+      selectedOptions: ['Both matter'],
+      freeText: 'Only people available this month',
+    });
+    expect(harness.updateAnsweredPoolIntentFingerprint).toHaveBeenCalledTimes(1);
+    expect(harness.enqueueRerun).toHaveBeenCalledTimes(1);
+    expect(harness.callOrder).toEqual(['refine', 'rerun']);
+  });
+
+  it('isolates refinement failure and still runs Tier 1 and chaining', async () => {
+    const harness = makeHarness(
+      answeredQuestion([discriminator('next')]),
+      ['asked'],
+      { kind: 'applied', promoted: 1, demoted: 2, unknownAdjusted: 0 },
+      'active',
+      new Error('intent graph unavailable'),
+    );
+    await harness.handle(input);
+    expect(harness.refineIntent).toHaveBeenCalledTimes(1);
+    expect(harness.enqueueRerun).toHaveBeenCalledTimes(1);
+    expect(harness.persisted).toHaveLength(1);
+    expect(harness.updateAnsweredPoolIntentFingerprint).not.toHaveBeenCalled();
+  });
+
+  it('does not stamp when refinement is a no-op, but still runs Tier 1 and chaining', async () => {
+    const harness = makeHarness(
+      answeredQuestion([discriminator('next')]),
+      ['asked'],
+      { kind: 'applied', promoted: 1, demoted: 2, unknownAdjusted: 0 },
+      'active',
+      undefined,
+      false,
+    );
+    await harness.handle(input);
+    expect(harness.updateAnsweredPoolIntentFingerprint).not.toHaveBeenCalled();
+    expect(harness.enqueueRerun).toHaveBeenCalledTimes(1);
+    expect(harness.persisted).toHaveLength(1);
+    expect(harness.persisted[0][0].detection.pool?.intentFingerprint).toBe('initial-fingerprint');
+  });
+
+  it('isolates fingerprint persistence failure after an applied refinement', async () => {
+    const harness = makeHarness(
+      answeredQuestion([discriminator('next')]),
+      ['asked'],
+      { kind: 'applied', promoted: 1, demoted: 2, unknownAdjusted: 0 },
+      'active',
+      undefined,
+      true,
+      new Error('question write unavailable'),
+    );
+    await harness.handle(input);
+    expect(harness.updateAnsweredPoolIntentFingerprint).toHaveBeenCalledTimes(1);
+    expect(harness.enqueueRerun).toHaveBeenCalledTimes(1);
+    expect(harness.persisted).toHaveLength(1);
   });
 
   it('narrates but does not enqueue Tier 1 for Both matter', async () => {
     const harness = makeHarness(answeredQuestion([]), ['asked'], { kind: 'none' });
     await harness.handle({ ...input, selectedOptions: ['Both matter'] });
     expect(harness.narrateBeatOne).toHaveBeenCalledTimes(1);
+    expect(harness.refineIntent).not.toHaveBeenCalled();
     expect(harness.enqueueRerun).not.toHaveBeenCalled();
   });
 
@@ -137,6 +249,7 @@ describe('handlePoolAnswer', () => {
     await harness.handle(input);
 
     expect(harness.applyAnswer).toHaveBeenCalledTimes(1);
+    expect(harness.refineIntent).not.toHaveBeenCalled();
     expect(harness.enqueueRerun).not.toHaveBeenCalled();
     expect(harness.persisted).toHaveLength(0);
     const narration = harness.narrateBeatOne.mock.calls[0]?.[0] as { message: string };
@@ -157,6 +270,7 @@ describe('handlePoolAnswer', () => {
     );
     await harness.handle(input);
 
+    expect(harness.refineIntent).not.toHaveBeenCalled();
     expect(harness.enqueueRerun).not.toHaveBeenCalled();
     expect(harness.persisted).toHaveLength(0);
     const narration = harness.narrateBeatOne.mock.calls[0]?.[0] as { message: string };
@@ -169,6 +283,7 @@ describe('handlePoolAnswer', () => {
     const harness = makeHarness(answeredQuestion([discriminator('next')]));
     await harness.handle(input);
     expect(harness.applyAnswer).not.toHaveBeenCalled();
+    expect(harness.refineIntent).not.toHaveBeenCalled();
     expect(harness.persisted).toHaveLength(0);
   });
 

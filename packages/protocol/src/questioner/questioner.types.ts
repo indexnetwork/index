@@ -96,8 +96,10 @@ export interface ChatContext {
  */
 export interface PoolDiscoveryContext {
   intentId: string;
-  /** Intent payload (+ summary) used for the question's grounding. */
+  /** Truncated intent payload (+ summary) display snippet. */
   intentText: string;
+  /** Stable hash of the full normalized payload + summary used for freshness. */
+  intentFingerprint?: string;
   poolSize: number;
   /** Discovery run that produced the pool. */
   runId?: string;

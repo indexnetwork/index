@@ -37,6 +37,8 @@ export interface BuildPoolQuestionInput {
   runId?: string;
   /** Intent payload snippet — folds into the evidence chip so the card self-identifies on any surface. */
   intentText?: string;
+  /** Stable hash of the full normalized intent payload + summary. */
+  intentFingerprint?: string;
   /** VoI-descending, deduped: first entry is asked, the rest become alternates. */
   discriminators: QuestionPoolDiscriminator[];
 }
@@ -52,6 +54,7 @@ export function buildPoolQuestion(input: BuildPoolQuestionInput): AdapterPersist
     minedAt: input.minedAt,
     ...(input.runId ? { runId: input.runId } : {}),
     ...(input.intentText ? { intentText: input.intentText } : {}),
+    ...(input.intentFingerprint ? { intentFingerprint: input.intentFingerprint } : {}),
   });
   if (!synthesized) return null;
   return {

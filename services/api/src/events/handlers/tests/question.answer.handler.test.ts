@@ -4,7 +4,7 @@ import { handleQuestionAnswered, type QuestionAnswerHandlerDeps } from "../quest
 function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswerHandlerDeps {
   return {
     createPremiseFromAnswer: mock(async () => {}),
-    enqueueIntentRefinement: mock(async () => {}),
+    enqueueIntentRefinement: mock(async () => ({ applied: true })),
     storeNegotiationContext: mock(async () => {}),
     resumeInflightNegotiation: mock(async () => {}),
     resolveChatQuestionWait: mock(() => {}),
@@ -147,7 +147,13 @@ describe("handleQuestionAnswered", () => {
 
   it("routes pool_discovery through the complete pool-answer reaction", async () => {
     await handleQuestionAnswered(
-      { ...basePayload, mode: "pool_discovery", sourceType: "intent", sourceId: "intent-1" },
+      {
+        ...basePayload,
+        mode: "pool_discovery",
+        sourceType: "intent",
+        sourceId: "intent-1",
+        answer: { ...basePayload.answer, freeText: "Prefer a short engagement" },
+      },
       deps,
     );
     expect(deps.handlePoolAnswer).toHaveBeenCalledTimes(1);
@@ -156,6 +162,7 @@ describe("handleQuestionAnswered", () => {
       questionId: "q-1",
       intentId: "intent-1",
       selectedOptions: ["Option A"],
+      freeText: "Prefer a short engagement",
     });
   });
 

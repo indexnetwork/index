@@ -4,6 +4,7 @@ import { ExplicitIntentInferrer } from "./intent.inferrer.js";
 import { SemanticVerifier } from "./intent.verifier.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "./intent.specificity.js";
 import { IntentReconciler } from "./intent.reconciler.js";
+import type { NormalizedIntentAction } from "./intent.reconciler.js";
 import { IntentGraphDatabase } from "../shared/interfaces/database.interface.js";
 import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../shared/interfaces/embedder.interface.js";
@@ -15,6 +16,22 @@ import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 
 const logger = protocolLogger("IntentGraphFactory");
+
+/**
+ * Enforce write-mode constraints on reconciler output before any action can
+ * reach persistence. Update mode is deliberately fail-closed: only updates
+ * whose id is one of the caller-provided targets survive.
+ */
+export function enforceIntentActionBoundary(
+  operationMode: 'create' | 'update' | 'delete' | 'read' | 'propose',
+  targetIntentIds: string[] | undefined,
+  actions: NormalizedIntentAction[],
+): NormalizedIntentAction[] {
+  if (operationMode !== 'update') return actions;
+  const targets = new Set(targetIntentIds ?? []);
+  return actions.filter((action) => action.type === 'update' && targets.has(action.id));
+}
+
 const MAX_PERMISSIBLE_ENTROPY = 0.75;
 const MIN_CLEAR_INTENT_SCORE = 40;
 const GENERIC_JOB_PHRASE = /\b(?:a|any|some)\s+job\b/i;
@@ -439,19 +456,25 @@ export class IntentGraphFactory {
         agentTimingsAccum.push({ name: 'intent.reconciler', durationMs: Date.now() - reconcilerStart });
         _traceEmitterReconciler?.({ type: "agent_end", name: "intent-reconciler", durationMs: Date.now() - reconcilerStart, summary: `Reconciled ${result.actions.length} action(s)` });
 
+        const actions = enforceIntentActionBoundary(
+          state.operationMode,
+          state.targetIntentIds,
+          result.actions,
+        );
         logger.verbose("Reconciliation complete", {
-          actionCount: result.actions.length,
+          actionCount: actions.length,
+          droppedActionCount: result.actions.length - actions.length,
           operationMode: state.operationMode
         });
 
-        // Count actions by type
+        // Count actions by type after enforcing the operation boundary.
         const counts = { create: 0, update: 0, expire: 0 };
-        for (const a of result.actions) {
+        for (const a of actions) {
           if (a.type in counts) counts[a.type as keyof typeof counts]++;
         }
 
         return {
-          actions: result.actions,
+          actions,
           agentTimings: agentTimingsAccum,
           trace: [{
             node: "reconciler",
@@ -508,8 +531,12 @@ export class IntentGraphFactory {
      */
     const executorNode = async (state: typeof IntentGraphState.State) => {
       return timed("IntentGraph.executor", async () => {
-        const actions = state.actions;
-        if (!actions || actions.length === 0) {
+        const actions = enforceIntentActionBoundary(
+          state.operationMode,
+          state.targetIntentIds,
+          state.actions ?? [],
+        );
+        if (actions.length === 0) {
           return { executionResults: [] };
         }
 

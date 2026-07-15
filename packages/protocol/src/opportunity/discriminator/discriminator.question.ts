@@ -42,6 +42,8 @@ export function toQuestionDiscriminator(d: ScoredDiscriminator): QuestionPoolDis
     sideCounts,
     voi: d.voi,
     evidenceRate: d.evidenceRate,
+    ...(d.embedding ? { embedding: d.embedding } : {}),
+    ...(d.embeddingModel ? { embeddingModel: d.embeddingModel } : {}),
     assignments,
   };
 }
@@ -138,6 +140,8 @@ export interface SynthesizePoolQuestionInput {
    * self-identifies on any surface ("based on 16 people matching ‘…’").
    */
   intentText?: string;
+  /** Stable hash of the full normalized intent payload + summary. */
+  intentFingerprint?: string;
 }
 
 /** Synthesized question: client payload + server-side snapshot. */
@@ -188,6 +192,7 @@ export function synthesizePoolQuestion(input: SynthesizePoolQuestionInput): Synt
       minedAt: input.minedAt,
       ...(input.runId ? { runId: input.runId } : {}),
       ...(snippet.length > 0 ? { intentText: snippet.slice(0, 160) } : {}),
+      ...(input.intentFingerprint ? { intentFingerprint: input.intentFingerprint } : {}),
       discriminator: d,
       alternates: input.alternates,
     },
