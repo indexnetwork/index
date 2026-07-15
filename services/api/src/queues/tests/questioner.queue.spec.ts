@@ -53,7 +53,7 @@ describe('QuestionerQueue', () => {
     });
 
     expect(captured).toHaveLength(1);
-    expect(captured[0].detection.underspecificationType).toBe('missing_constraint');
+    expect(captured[0].detection.underspecificationType).toBeUndefined();
     expect(captured[0].underspecificationType).toBe('missing_constraint');
     expect(captured[0].actors).toEqual([
       { userId: 'user-1', role: 'subject', networkId: 'network-1' },

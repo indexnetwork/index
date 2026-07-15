@@ -230,7 +230,6 @@ export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDep
           sourceType: "conversation",
           sourceId: sessionId,
           timestamp,
-          underspecificationType: underspecificationTypes[i] ?? null,
         },
         actors: [{ userId: context.userId, role: "subject" as const }],
         payload,

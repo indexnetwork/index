@@ -190,6 +190,7 @@ export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
 export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, NegotiationInflightContext, ChatContext, PoolDiscoveryContext } from "./questioner/questioner.types.js";
 export { getPreset } from "./questioner/questioner.presets.js";
+export { QUD_UNDERSPECIFICATION_RULES } from "./questioner/questioner.qud.js";
 export { isQuestionerEnabled, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs } from "./questioner/questioner.env.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
 export { PoolDiscriminatorMiner } from "./opportunity/discriminator/discriminator.miner.js";

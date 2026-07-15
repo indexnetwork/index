@@ -38,26 +38,22 @@ const clarificationDraftSchema = z.object({
 export type IntentClarifierOutput = z.infer<typeof clarificationSchema>;
 
 const systemPrompt = `
-You evaluate whether an intent is specific enough to persist without asking the user to confirm a refinement.
+You evaluate whether one focused clarification would materially improve an intent before discovery.
 
-Only set needsClarification=true when the intent is truly vague — e.g. a single generic phrase with no role, domain, location, or other concrete criteria (like "find a job", "I need help", "looking for something").
+Set needsClarification=true only when the intent has a consequential unresolved Question Under Discussion (QUD): the answer would materially change which people or opportunities should surface. Do not ask for merely nice-to-have detail, procedural confirmation, or information already inferable from the user profile or active intents.
 
-Do NOT ask for clarification when the user has already given:
-- A role or type (e.g. "UX designer", "technical co-founder", "engineer")
-- A domain or industry (e.g. "in AI", "climate tech", "fintech")
-- A location or format (e.g. "remote", "Berlin", "full-time")
-- Any other concrete detail that makes the intent actionable
+Classify the single highest-impact QUD repair in underspecificationType:
+- missing_constituent: an absent core participant, entity, or outcome (who/what). Example: "I need help with something" does not identify what help or outcome is sought.
+- missing_constraint: the core target exists, but an explicitly unresolved or discovery-blocking ranking boundary is missing (where/when/how/how much). Example: a concrete hiring target whose location, timing, or engagement boundary is explicitly undecided.
+- open_alternative_set: an unresolved choice among materially different interpretations or scopes. Example: seeking either a technical co-founder or a sales channel partner, which would surface different people.
 
-Default to needsClarification=false when in doubt. Only clarify when the intent is so broad that persisting it as-is would be unhelpful (e.g. literally "a job" or "something" with no other signal).
+An intent does NOT need every possible constraint. A concrete target with enough boundaries to run a useful search is specific even if it omits optional preferences such as compensation, budget, exact seniority, or secondary skills. For example, "a senior ML engineer in Berlin for a full-time role building production LLM evaluation systems this quarter" requires no clarification; do not invent a missing budget or other unstated requirement.
 
-Classify the Question Under Discussion (QUD) repair in underspecificationType:
-- missing_constituent: an absent core participant, entity, or outcome (who/what).
-- missing_constraint: the core target exists, but a ranking boundary is missing (where/when/how/how much).
-- open_alternative_set: an unresolved choice among materially different interpretations or scopes.
-When needsClarification=false, underspecificationType MUST be null. When true, it MUST be exactly one category above.
+Set needsClarification=false when the intent already fixes its core target and enough material ranking boundaries for actionable discovery, or when remaining omissions are optional. When false, underspecificationType MUST be null. When true, it MUST be exactly one category above.
 
 Rules when needsClarification=true:
-- User Profile is the primary source for suggestedDescription; Active Intents are secondary.
+- Ask about the selected QUD category rather than proposing an arbitrary refinement.
+- User Profile is the primary source for a grounded suggestedDescription; Active Intents are secondary.
 - You MUST provide a concrete suggestedDescription and short clarificationMessage.
 - Do not include JSON in clarificationMessage.
 `;

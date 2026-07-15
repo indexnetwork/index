@@ -7,6 +7,7 @@
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
 import { SYSTEM_PROMPT as DISCOVERY_SYSTEM_PROMPT, buildQuestionPrompt as buildDiscoveryPrompt } from "../opportunity/question.prompt.js";
 
+import { QUD_UNDERSPECIFICATION_RULES } from "./questioner.qud.js";
 import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, ProfileContext } from "./questioner.types.js";
 
 /**
@@ -17,12 +18,6 @@ import type { ChatContext, IntentContext, NegotiationContext, NegotiationInfligh
  * surfaced in digest audits ("…with these builders?", "the previous
  * negotiation stalled because the counterparty didn't mention …").
  */
-export const QUD_UNDERSPECIFICATION_RULES = `QUD underspecification taxonomy. For every structured question, emit a required \`underspecificationType\` field. Use exactly one category only when the question repairs that kind of underspecification:
-- missing_constituent: an absent core participant, entity, or outcome (who/what).
-- missing_constraint: the core target exists, but a ranking boundary is missing (where/when/how/how much).
-- open_alternative_set: an unresolved choice among materially different interpretations or scopes.
-Use null for adjacent, reflective, emergent, or any other question that does not repair underspecification. Strategy and underspecification type are orthogonal: \`strategy\` describes the conversational move; \`underspecificationType\` describes the QUD defect repaired. Never infer one mechanically from the other.`;
-
 const REFERENTIAL_CLOSURE_RULES = `Referential closure. The prompt must resolve entirely on its own, with no dangling references. The reader sees ONLY the question text — never the people you reviewed, the counterparty, the events on their calendar, or this conversation. Do not use demonstratives or definite anaphora that point at things the reader cannot see: "these builders", "those founders", "these researchers", "these conversations", "this lunch", "the speaker". If you reference a person, name them. If you reference a group, restate the concrete shared attribute inside the question itself ("founders working on decentralized identity"), never "these founders". Never imply a list, set, or prior exchange the reader is not currently looking at.
 - Bad: "What kind of collaboration are you looking for with these builders?"
 - Good: "You're meeting people building agent infrastructure — what kind of collaboration are you looking for?"
@@ -67,8 +62,6 @@ Standalone prompt rule. Every generated \`prompt\` must be understandable outsid
 - Good: "For your decentralized identity protocol-design search, what kind of collaboration are you looking for?"
 
 ${REFERENTIAL_CLOSURE_RULES}
-
-${QUD_UNDERSPECIFICATION_RULES}
 
 Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ (different titles).
 
@@ -395,30 +388,34 @@ function buildChatPrompt(ctx: ChatContext): string {
  * QuestionerAgent. `getPreset("pool_discovery")` therefore throws — the
  * QuestionerQueue branches on the mode before invoking the agent.
  */
+function withQudMetadataRules(systemPrompt: string): string {
+  return `${systemPrompt}\n\n${QUD_UNDERSPECIFICATION_RULES}`;
+}
+
 const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   discovery: {
-    systemPrompt: `${DISCOVERY_SYSTEM_PROMPT}\n\n${QUD_UNDERSPECIFICATION_RULES}`,
+    systemPrompt: withQudMetadataRules(DISCOVERY_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) =>
       buildDiscoveryPrompt(context as Parameters<typeof buildDiscoveryPrompt>[0]),
   },
   intent: {
-    systemPrompt: INTENT_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(INTENT_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildIntentPrompt(context as IntentContext),
   },
   enrichment: {
-    systemPrompt: PROFILE_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(PROFILE_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildProfilePrompt(context as ProfileContext),
   },
   negotiation: {
-    systemPrompt: NEGOTIATION_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(NEGOTIATION_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildNegotiationPrompt(context as NegotiationContext),
   },
   negotiation_inflight: {
-    systemPrompt: NEGOTIATION_INFLIGHT_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(NEGOTIATION_INFLIGHT_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildNegotiationInflightPrompt(context as NegotiationInflightContext),
   },
   chat: {
-    systemPrompt: CHAT_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(CHAT_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildChatPrompt(context as ChatContext),
   },
 };

@@ -57,7 +57,7 @@ describe("standalone prompt contract", () => {
 });
 
 describe("QUD taxonomy contract", () => {
-  it.each(["intent", "discovery"] as const)("mode '%s' receives the canonical taxonomy", (mode) => {
+  it.each(ALL_MODES)("mode '%s' receives the required structured-output metadata contract", (mode) => {
     const prompt = getPreset(mode).systemPrompt;
     expect(prompt).toContain("QUD underspecification taxonomy");
     expect(prompt).toContain("missing_constituent");

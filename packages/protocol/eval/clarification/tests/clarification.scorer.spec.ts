@@ -45,6 +45,30 @@ describe("clarification scorer", () => {
     };
     expect(scoreCase(c, output).passed).toBe(true);
   });
+
+  it("does not count the model-error fallback as a correct null classification", () => {
+    const c = CASES.find((candidate) => candidate.expectedType === null)!;
+    const fallback = {
+      needsClarification: false as const,
+      reason: "fallback_on_model_error",
+      suggestedDescription: null,
+      clarificationMessage: null,
+      underspecificationType: null,
+    };
+    expect(scoreCase(c, fallback).passed).toBe(false);
+  });
+
+  it("requires the clarification decision to agree with the expected type", () => {
+    const c = CASES[0];
+    const contradictory = {
+      needsClarification: false as const,
+      reason: "specific",
+      suggestedDescription: null,
+      clarificationMessage: null,
+      underspecificationType: null,
+    };
+    expect(scoreCase(c, contradictory).passed).toBe(false);
+  });
 });
 
 describe("clarification runner", () => {
