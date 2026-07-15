@@ -10,7 +10,7 @@ type OpportunityActor = OpportunityRow['actors'][number];
 
 export interface UptakeQuestionServiceDeps {
   getOpportunity: (id: string) => Promise<OpportunityRow | null>;
-  getIntent: (id: string) => Promise<UptakeIntentRow | null>;
+  getIntent: (id: string, networkId: string) => Promise<UptakeIntentRow | null>;
   getPublicUserHint: (userId: string) => Promise<UptakePublicUserHint | null>;
   resolveSafeCommonNetwork: (
     recipientUserId: string,
@@ -65,7 +65,7 @@ function publicCounterpartyHint(hint: UptakePublicUserHint | null): string {
 export class UptakeQuestionService {
   constructor(private readonly deps: UptakeQuestionServiceDeps = {
     getOpportunity: (id) => uptakeQuestionDatabaseAdapter.getOpportunity(id),
-    getIntent: (id) => uptakeQuestionDatabaseAdapter.getIntent(id),
+    getIntent: (id, networkId) => uptakeQuestionDatabaseAdapter.getIntent(id, networkId),
     getPublicUserHint: (userId) => uptakeQuestionDatabaseAdapter.getPublicUserHint(userId),
     resolveSafeCommonNetwork: (recipient, counterparty, networks) =>
       uptakeQuestionDatabaseAdapter.resolveSafeCommonNetwork(recipient, counterparty, networks),
@@ -110,7 +110,14 @@ export class UptakeQuestionService {
     const intentId = exactActorIntent(counterparty);
     if (!intentId) return;
 
-    const intent = await this.deps.getIntent(intentId);
+    const networkIds = sharedActorNetworks(recipient, counterparty);
+    const networkId = networkIds[0];
+    if (!networkId) return;
+
+    // Resolve the exact actor intent through its network assignment. A stale
+    // or malformed actor intent must never pull private payload from another
+    // network into the recipient's question.
+    const intent = await this.deps.getIntent(intentId, networkId);
     if (
       !intent
       || intent.userId !== counterparty.userId
@@ -120,7 +127,6 @@ export class UptakeQuestionService {
       || intent.felicityAuthority >= authorityThreshold()
     ) return;
 
-    const networkIds = sharedActorNetworks(recipient, counterparty);
     const network = await this.deps.resolveSafeCommonNetwork(
       recipient.userId,
       counterparty.userId,

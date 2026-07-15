@@ -66,9 +66,19 @@ afterEach(() => {
 });
 
 describe('UptakeQuestionService', () => {
-  it('is disabled by default and only enqueues low-authority exact counterparty intent', async () => {
-    const { service, enqueue } = makeDeps();
+  it('is disabled by default and only enqueues a network-scoped low-authority counterparty intent', async () => {
+    const getIntent = mock(async () => ({
+      id: INTENT,
+      userId: COUNTERPARTY,
+      payload: 'Host a hands-on TypeScript workshop',
+      summary: 'Host a TypeScript workshop',
+      status: 'ACTIVE',
+      archivedAt: null,
+      felicityAuthority: 45,
+    }));
+    const { service, enqueue } = makeDeps({ getIntent });
     await service.handlePending(OPPORTUNITY);
+    expect(getIntent).toHaveBeenCalledWith(INTENT, NETWORK);
     expect(enqueue).toHaveBeenCalledTimes(1);
     const [input, jobId] = enqueue.mock.calls[0];
     expect(input).toMatchObject({

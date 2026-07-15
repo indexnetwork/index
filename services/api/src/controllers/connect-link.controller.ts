@@ -76,7 +76,7 @@ export class ConnectLinkController {
    */
   @Get('/:code/go')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async go(_req: Request, user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
+  async go(req: Request, user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
     const code = params?.code;
     if (!code) return jsonError('Missing code', 400);
     if (!CODE_PATTERN.test(code)) return notFoundJson();
@@ -101,8 +101,14 @@ export class ConnectLinkController {
     // statuses; the semantic difference lives in the matrix that picked `kind`.
     if (link.kind === 'connect' || link.kind === 'send_direct') {
       const greeting = await greetingForRecipient();
-      const result = await opportunityService.startChat(link.opportunityId, user.id);
-      if ('error' in result) return jsonError(result.error, result.status);
+      const rawAcknowledged = new URL(req.url).searchParams.get('acknowledgedUptakeQuestionIds');
+      const acknowledgedUptakeQuestionIds = rawAcknowledged
+        ? [...new Set(rawAcknowledged.split(',').map((id) => id.trim()).filter(Boolean))]
+        : undefined;
+      const result = await opportunityService.startChat(link.opportunityId, user.id, {
+        acknowledgedUptakeQuestionIds,
+      });
+      if ('error' in result) return Response.json(result, { status: result.status });
 
       if (link.preferredSurface === 'telegram') {
         const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);

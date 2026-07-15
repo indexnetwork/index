@@ -104,6 +104,14 @@ describe("handleQuestionAnswered", () => {
     });
   });
 
+  it("keeps uptake answers private to the question row", async () => {
+    await handleQuestionAnswered(
+      { ...basePayload, mode: "negotiation", purpose: "uptake", sourceType: "opportunity", sourceId: "opp-1" },
+      deps,
+    );
+    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
+  });
+
   it("swallows errors from handlers without rethrowing", async () => {
     const failDeps = makeDeps({
       createPremiseFromAnswer: mock(async () => { throw new Error("DB down"); }),

@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
 
 import { db, type OpportunityRow, toOpportunityRow } from './database.shared';
-import { intents, networkMembers, networks, opportunities, questions, users } from '../schemas/database.schema';
+import { intentNetworks, intents, networkMembers, networks, opportunities, questions, users } from '../schemas/database.schema';
 
 export interface UptakeIntentRow {
   id: string;
@@ -25,7 +25,7 @@ export class UptakeQuestionDatabaseAdapter {
     return rows[0] ? toOpportunityRow(rows[0]) : null;
   }
 
-  async getIntent(id: string): Promise<UptakeIntentRow | null> {
+  async getIntent(id: string, networkId: string): Promise<UptakeIntentRow | null> {
     const rows = await db.select({
       id: intents.id,
       userId: intents.userId,
@@ -34,7 +34,14 @@ export class UptakeQuestionDatabaseAdapter {
       status: intents.status,
       archivedAt: intents.archivedAt,
       felicityAuthority: intents.felicityAuthority,
-    }).from(intents).where(eq(intents.id, id)).limit(1);
+    })
+      .from(intents)
+      .innerJoin(intentNetworks, and(
+        eq(intentNetworks.intentId, intents.id),
+        eq(intentNetworks.networkId, networkId),
+      ))
+      .where(eq(intents.id, id))
+      .limit(1);
     return rows[0] ?? null;
   }
 

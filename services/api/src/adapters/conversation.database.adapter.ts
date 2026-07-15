@@ -1,4 +1,5 @@
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
+import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 
 /**
  * Persona value for the user's negotiator DM session (P4.1 / IND-402).
@@ -2077,6 +2078,7 @@ export class ConversationDatabaseAdapter {
       .set(updates)
       .where(eq(opportunities.id, id))
       .returning({ id: opportunities.id, status: opportunities.status });
+    if (row) emitOpportunityPendingBestEffort(row);
     return row ?? null;
   }
 

@@ -32,6 +32,8 @@ interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
   mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
+  /** Internal generation purpose; uptake answers must not enter shared opportunity metadata. */
+  purpose?: 'uptake';
   sourceType: string;
   sourceId: string;
   answer: {
@@ -143,6 +145,10 @@ export async function handleQuestionAnswered(
         break;
 
       case 'negotiation':
+        // Uptake answers are private acceptance-decision context. Persisting
+        // them in shared opportunity.metadata.userAnswers would expose them to
+        // the counterparty through opportunity reads.
+        if (payload.purpose === 'uptake') break;
         await deps.storeNegotiationContext({
           userId,
           opportunityId: sourceId,

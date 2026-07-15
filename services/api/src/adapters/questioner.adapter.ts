@@ -524,6 +524,7 @@ export class QuestionerAdapter {
       questionId,
       userId,
       mode: detection.mode,
+      ...(detection.purpose ? { purpose: detection.purpose } : {}),
       sourceType: detection.sourceType,
       sourceId: detection.sourceId,
       answer,

@@ -26,6 +26,30 @@ const INTRODUCTION_APPROVED_HTML = `<!DOCTYPE html><html><head><meta charset="ut
 <p style="color:#666">You approved the introduction. Both parties will be connected shortly.</p>
 </div></body></html>`;
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[char] ?? char);
+}
+
+function renderLegacyUptakeAdvisory(
+  advisory: { questions: Array<{ id: string; title: string; prompt: string }> },
+  continueUrl: string,
+): string {
+  const questions = advisory.questions.map((question) => `
+    <section style="border:1px solid #ddd;border-radius:8px;padding:16px;margin:12px 0;text-align:left">
+      <strong>${escapeHtml(question.title)}</strong>
+      <p>${escapeHtml(question.prompt)}</p>
+    </section>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Questions before connecting</title></head>
+  <body style="font-family:system-ui;max-width:640px;margin:48px auto;padding:0 20px">
+    <h1>Questions before connecting</h1>
+    <p>Review these preparatory questions in Index before accepting, or explicitly continue anyway.</p>
+    ${questions}
+    <a href="${escapeHtml(continueUrl)}" style="display:inline-block;background:#041729;color:white;padding:10px 16px;border-radius:4px;text-decoration:none">Continue anyway</a>
+  </body></html>`;
+}
+
 const discoverBodySchema = z.object({
   query: z.string().min(1),
   limit: z.number().int().positive().optional(),
@@ -475,8 +499,25 @@ export class OpportunityController {
       return new Response('Token does not match opportunity', { status: 403 });
     }
 
-    const result = await opportunityService.startChat(payload.opp, payload.sub);
+    const rawAcknowledged = url.searchParams.get('acknowledgedUptakeQuestionIds');
+    const acknowledgedUptakeQuestionIds = rawAcknowledged
+      ? [...new Set(rawAcknowledged.split(',').map((questionId) => questionId.trim()).filter(Boolean))]
+      : undefined;
+    const result = await opportunityService.startChat(payload.opp, payload.sub, {
+      acknowledgedUptakeQuestionIds,
+    });
     if ('error' in result) {
+      if ('advisory' in result && result.advisory.code === 'unresolved_uptake_questions') {
+        const continueUrl = new URL(url);
+        continueUrl.searchParams.set(
+          'acknowledgedUptakeQuestionIds',
+          result.advisory.acknowledgedUptakeQuestionIds.join(','),
+        );
+        return new Response(renderLegacyUptakeAdvisory(result.advisory, continueUrl.toString()), {
+          status: 409,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      }
       return new Response(result.error, { status: result.status });
     }
 

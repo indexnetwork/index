@@ -19,6 +19,8 @@ interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
   mode: QuestionMode;
+  /** Internal generation purpose; uptake answers remain private to the question row. */
+  purpose?: 'uptake';
   sourceType: string;
   sourceId: string;
   answer: QuestionAnswer;
