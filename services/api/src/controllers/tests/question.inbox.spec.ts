@@ -116,6 +116,31 @@ describe("Pending question inbox (IND-404)", () => {
     expect(row.status).toBe('pending');
   });
 
+  test("excludeModes drops pool_discovery from the non-scoped inbox but keeps other modes (IND-418 surfaces fix)", async () => {
+    const poolQuestionId = await persistQuestion({
+      detection: {
+        mode: 'pool_discovery',
+        sourceType: 'intent',
+        sourceId: crypto.randomUUID(),
+        triggeredBy: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    });
+    const negotiationQuestionId = await persistQuestion();
+
+    // Non-scoped surfaces (global chat, questions inbox) exclude pool questions.
+    const excluded = await questionService.findPending(testUserId, {
+      noConversation: true,
+      excludeModes: ['pool_discovery'],
+    });
+    expect(excluded.map((q) => q.id)).not.toContain(poolQuestionId);
+    expect(excluded.map((q) => q.id)).toContain(negotiationQuestionId);
+
+    // Without the exclusion the pool question is still reachable (intent page path).
+    const all = await questionService.findPending(testUserId, { noConversation: true });
+    expect(all.map((q) => q.id)).toContain(poolQuestionId);
+  });
+
   test("conversation-bound questions stay out of the DM inbox", async () => {
     const questionId = await persistQuestion({
       detection: {

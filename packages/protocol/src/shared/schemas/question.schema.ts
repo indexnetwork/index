@@ -114,6 +114,8 @@ export const QuestionPoolSnapshotSchema = z.object({
   minedAt: z.string().min(1),
   /** Discovery run that produced the pool, when known. */
   runId: z.string().optional(),
+  /** Intent payload snippet (≤160 chars) — reused by chained questions' evidence chips. */
+  intentText: z.string().optional(),
   /** The discriminator this question asks about. */
   discriminator: QuestionPoolDiscriminatorSchema,
   /** Remaining ranked discriminators for interview-mode chaining. */

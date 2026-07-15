@@ -130,6 +130,43 @@ describe("synthesizePoolQuestion", () => {
     expect(out.payload.prompt).toBe("Do you want someone hands-on builder style, or advisor style?");
   });
 
+  it("rewrites third-person miner seeds ('the user') into second person", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        questionSeed: "Is the user primarily seeking a hands-on builder, or does the user prefer an advisor",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe(
+      "Are you primarily seeking a hands-on builder, or do you prefer an advisor?",
+    );
+  });
+
+  it("names the intent in the evidence chip and stores it in the snapshot for chaining", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      intentText: "Explore the use of LLMs for procedural video game narration",
+    })!;
+    expect(out.payload.evidence).toBe(
+      "based on 21 people matching \u201cExplore the use of LLMs for procedural video game narration\u201d",
+    );
+    expect(out.pool.intentText).toBe("Explore the use of LLMs for procedural video game narration");
+  });
+
+  it("truncates long intent snippets and keeps evidence within the 160-char schema cap", () => {
+    const long = "Collaborate with partners, advisors, technical professionals, agent builders, and protocol engineers on long-horizon coordination infrastructure for cities";
+    const out = synthesizePoolQuestion({ ...base, intentText: long })!;
+    expect(out.payload.evidence!.length).toBeLessThanOrEqual(160);
+    expect(out.payload.evidence).toContain("\u2026\u201d");
+    expect(() => QuestionSchema.parse(out.payload)).not.toThrow();
+  });
+
+  it("falls back to the generic evidence line without intentText", () => {
+    const out = synthesizePoolQuestion(base)!;
+    expect(out.payload.evidence).toBe("based on 21 people matching this intent");
+    expect(out.pool.intentText).toBeUndefined();
+  });
+
   it("rewrites first-person miner seeds into second person", () => {
     const out = synthesizePoolQuestion({
       ...base,

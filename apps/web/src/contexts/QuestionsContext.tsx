@@ -34,7 +34,7 @@ export function QuestionsProvider({ children }: { children: ReactNode }) {
   const fetchQuestions = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const pending = await questionsService.getPending({ noConversation: true });
+      const pending = await questionsService.getPending({ noConversation: true, excludeModes: ['pool_discovery'] });
       setQuestions(pending);
     } catch (err) {
       logger.error('Failed to fetch pending questions', { error: err });

@@ -74,7 +74,13 @@ function toSecondPerson(seed: string): string {
     .replace(/\b(do|should|would|could|can|will) I\b/gi, (_, verb: string) => `${verb.toLowerCase()} you`)
     .replace(/\bam I\b/gi, "are you")
     .replace(/\bI\b/g, "you")
-    .replace(/\bmy\b/gi, "your");
+    .replace(/\bmy\b/gi, "your")
+    // Third-person seeds ("Is the user primarily involved…") — the question is
+    // asked TO the owner, never ABOUT them.
+    .replace(/\b(is|was) the (user|owner|discoverer)\b/gi, "are you")
+    .replace(/\bdoes the (user|owner|discoverer)\b/gi, "do you")
+    .replace(/\bthe (user|owner|discoverer)'s\b/gi, "your")
+    .replace(/\bthe (user|owner|discoverer)\b/gi, "you");
 }
 
 /**
@@ -117,6 +123,11 @@ export interface SynthesizePoolQuestionInput {
   minedAt: string;
   /** Discovery run id, when known. */
   runId?: string;
+  /**
+   * Intent payload snippet — folded into the evidence chip so the question
+   * self-identifies on any surface ("based on 16 people matching ‘…’").
+   */
+  intentText?: string;
 }
 
 /** Synthesized question: client payload + server-side snapshot. */
@@ -134,6 +145,13 @@ export function synthesizePoolQuestion(input: SynthesizePoolQuestionInput): Synt
   const { discriminator: d, poolSize } = input;
   if (poolSize < POOL_DISCRIMINATOR_MIN_POOL_SIZE) return null;
   if (d.sides.length < 2 || d.sides.length > 3) return null;
+
+  // Evidence chip: aggregate count + the intent it belongs to, so the card is
+  // self-identifying on every surface (QuestionSchema caps evidence at 160).
+  const snippet = input.intentText?.trim().replace(/\s+/g, " ") ?? "";
+  const evidence = snippet.length > 0
+    ? `based on ${poolSize} people matching “${snippet.slice(0, 110)}${snippet.length > 110 ? "…" : ""}”`
+    : `based on ${poolSize} people matching this intent`;
 
   const sideOptions: QuestionOption[] = d.sides.map((side) => ({
     label: chipLabel(side),
@@ -153,12 +171,13 @@ export function synthesizePoolQuestion(input: SynthesizePoolQuestionInput): Synt
       prompt: toPrompt(d.questionSeed, d.sides),
       options,
       multiSelect: false,
-      evidence: `based on ${poolSize} people matching this intent`,
+      evidence,
     },
     pool: {
       poolSize,
       minedAt: input.minedAt,
       ...(input.runId ? { runId: input.runId } : {}),
+      ...(snippet.length > 0 ? { intentText: snippet.slice(0, 160) } : {}),
       discriminator: d,
       alternates: input.alternates,
     },

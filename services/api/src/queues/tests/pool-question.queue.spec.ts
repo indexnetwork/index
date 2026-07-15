@@ -115,7 +115,9 @@ describe('QuestionerQueue pool_discovery arm', () => {
     expect(q.detection.pool?.discriminator.label).toBe('top');
     expect(q.detection.pool?.alternates.map((a) => a.label)).toEqual(['second']);
     expect(q.payload.options.map((o) => o.label)).toEqual(['Side A', 'Side B', 'Both matter']);
-    expect(q.payload.evidence).toBe('based on 21 people matching this intent');
+    // Evidence names the intent (context.intentText) so the card self-identifies on any surface.
+    expect(q.payload.evidence).toBe('based on 21 people matching \u201cfind collaborators\u201d');
+    expect(q.detection.pool?.intentText).toBe('find collaborators');
   });
 
   it('skips when a pool_discovery question is already pending for the intent', async () => {
