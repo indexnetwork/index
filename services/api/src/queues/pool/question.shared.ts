@@ -35,6 +35,8 @@ export interface BuildPoolQuestionInput {
   /** ISO-8601 timestamp of the mining pass. */
   minedAt: string;
   runId?: string;
+  /** Intent payload snippet — folds into the evidence chip so the card self-identifies on any surface. */
+  intentText?: string;
   /** VoI-descending, deduped: first entry is asked, the rest become alternates. */
   discriminators: QuestionPoolDiscriminator[];
 }
@@ -49,6 +51,7 @@ export function buildPoolQuestion(input: BuildPoolQuestionInput): AdapterPersist
     poolSize: input.poolSize,
     minedAt: input.minedAt,
     ...(input.runId ? { runId: input.runId } : {}),
+    ...(input.intentText ? { intentText: input.intentText } : {}),
   });
   if (!synthesized) return null;
   return {

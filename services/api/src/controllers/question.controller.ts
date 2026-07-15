@@ -76,6 +76,7 @@ export class QuestionController {
     const sourceId = url.searchParams.get('sourceId');
     const conversationId = url.searchParams.get('conversationId');
     const noConversation = url.searchParams.get('noConversation');
+    const rawExcludeModes = url.searchParams.get('excludeModes');
     const scope = parseIntentScopeFromUrl(url);
     if (scope instanceof Response) return scope;
 
@@ -106,6 +107,16 @@ export class QuestionController {
         );
       }
       filters.mode = modeResult.data;
+    }
+    if (rawExcludeModes) {
+      const parsed = rawExcludeModes.split(',').map((m) => modeQuerySchema.safeParse(m.trim()));
+      if (parsed.some((r) => !r.success)) {
+        return Response.json(
+          { error: 'Invalid excludeModes; use a comma-separated list of: discovery, intent, enrichment, negotiation, negotiation_inflight, chat, pool_discovery' },
+          { status: 400 },
+        );
+      }
+      filters.excludeModes = parsed.map((r) => (r as { success: true; data: AdapterQuestionFilters['mode'] & string }).data);
     }
     if (sourceType) filters.sourceType = sourceType;
     if (sourceId) filters.sourceId = sourceId;

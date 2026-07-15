@@ -59,6 +59,7 @@ export function chainPoolQuestionFactory(deps: ChainPoolQuestionDeps) {
       poolSize: pool.poolSize,
       minedAt: pool.minedAt,
       ...(pool.runId ? { runId: pool.runId } : {}),
+      ...(pool.intentText ? { intentText: pool.intentText } : {}),
       discriminators: fresh,
     });
     if (!question) return;

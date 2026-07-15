@@ -231,6 +231,7 @@ export class QuestionerQueue {
       poolSize: context.poolSize,
       minedAt: context.minedAt,
       ...(context.runId ? { runId: context.runId } : {}),
+      ...(context.intentText ? { intentText: context.intentText } : {}),
       discriminators: fresh,
     });
     if (!question) {

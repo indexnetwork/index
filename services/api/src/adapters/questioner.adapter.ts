@@ -117,6 +117,12 @@ export interface AdapterQuestionFilters {
   noConversation?: boolean;
   /** Restrict to questions whose detection mode is in this set. */
   modes?: AdapterQuestionMode[];
+  /**
+   * Drop questions whose detection mode is in this set. Used by non-scoped
+   * surfaces (global chat, questions inbox) to hide intent-scoped
+   * pool_discovery questions until the P5 push channel ships (IND-418/421).
+   */
+  excludeModes?: AdapterQuestionMode[];
   /** Maximum rows to return (applied as a SQL LIMIT). */
   limit?: number;
 }
@@ -225,6 +231,11 @@ export class QuestionerAdapter {
         (mode) => sql`${questions.detection}->>'mode' = ${mode}`,
       );
       conditions.push(or(...modeConditions)!);
+    }
+    if (filters?.excludeModes && filters.excludeModes.length > 0) {
+      for (const mode of filters.excludeModes) {
+        conditions.push(sql`${questions.detection}->>'mode' <> ${mode}`);
+      }
     }
 
     const baseQuery = this.db
