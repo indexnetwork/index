@@ -395,7 +395,7 @@ describe("update_opportunity — uptake soft interlock", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  test("uses the caller actor's network for exact lookup even without a network-scoped context", async () => {
+  test("does not pick an arbitrary duplicate actor network for unscoped lookup", async () => {
     enableUptakeGuard();
     const { deps, findPendingQuestions } = makeGuardDeps();
     const result = JSON.parse(await captureTool(deps).handler({
@@ -404,7 +404,8 @@ describe("update_opportunity — uptake soft interlock", () => {
     }));
 
     expect(result.success).toBe(false);
-    expect(findPendingQuestions).toHaveBeenCalledWith(CALLER_ID, expect.objectContaining({ networkId: NETWORK_ID }));
+    const filters = findPendingQuestions.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(filters.networkId).toBeUndefined();
   });
 
   test("keeps other-network questions private even when the host ignores filters", async () => {

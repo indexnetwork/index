@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
-import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
+import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
 import { AuthGuard } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -330,8 +330,12 @@ export class OpportunityController {
 
     const scope = parseIntentScopeFromBody(body);
     if (scope instanceof Response) return scope;
+    const { networkScopeId } = await withAgentScope(req, user);
 
-    const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, scope);
+    const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, {
+      ...scope,
+      ...(networkScopeId ? { networkScopeId } : {}),
+    });
 
     if (result && 'error' in result) {
       return Response.json(
@@ -379,8 +383,12 @@ export class OpportunityController {
     }
     const scope = parseIntentScopeFromBody(body);
     if (scope instanceof Response) return scope;
+    const { networkScopeId } = await withAgentScope(req, user);
 
-    const result = await opportunityService.startChat(resolved.id, user.id, scope);
+    const result = await opportunityService.startChat(resolved.id, user.id, {
+      ...scope,
+      ...(networkScopeId ? { networkScopeId } : {}),
+    });
     if ('error' in result) {
       return Response.json(
         'advisory' in result ? { error: result.error, advisory: result.advisory } : { error: result.error },

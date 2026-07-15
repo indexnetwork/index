@@ -1,4 +1,5 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { withAgentScope } from '../guards/agent-scope.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
 import { resolveConnectLinkForUser } from '../services/connect-link.service';
@@ -105,8 +106,10 @@ export class ConnectLinkController {
       const acknowledgedUptakeQuestionIds = rawAcknowledged
         ? [...new Set(rawAcknowledged.split(',').map((id) => id.trim()).filter(Boolean))]
         : undefined;
+      const { networkScopeId } = await withAgentScope(req, user);
       const result = await opportunityService.startChat(link.opportunityId, user.id, {
         acknowledgedUptakeQuestionIds,
+        ...(networkScopeId ? { networkScopeId } : {}),
       });
       if ('error' in result) return Response.json(result, { status: result.status });
 

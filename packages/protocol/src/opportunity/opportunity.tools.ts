@@ -2387,9 +2387,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // The caller actor's own network is the exact question lookup boundary,
       // even for an otherwise unscoped request. A focused network may only be
       // equal to this after the guard above.
-      const uptakeNetworkId = scopedNetworkId ?? opportunity.actors.find(
-        (actor) => actor.userId === context.userId,
-      )?.networkId;
+      // Unscoped callers query all of their exact opportunity questions; a
+      // network-scoped caller is clamped to the bound network. Selecting the
+      // first duplicate actor row would miss a valid question on another
+      // shared network.
+      const uptakeNetworkId = scopedNetworkId;
 
       // Soft uptake interlock: only acceptance is advisory-gated. All existing
       // actor/scope/privacy guards run first so the question lookup cannot be

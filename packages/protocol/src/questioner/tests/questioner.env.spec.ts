@@ -77,7 +77,7 @@ describe("uptake guard env", () => {
     process.env.QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD = "-4";
     expect(uptakeAuthorityThreshold()).toBe(0);
     process.env.QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD = "72.5";
-    expect(uptakeAuthorityThreshold()).toBe(72.5);
+    expect(uptakeAuthorityThreshold()).toBe(70);
     process.env.QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD = "101";
     expect(uptakeAuthorityThreshold()).toBe(100);
   });

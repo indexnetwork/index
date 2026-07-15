@@ -93,7 +93,7 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     const result = await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A);
 
     expect(result).toMatchObject({ status: 409, advisory: { code: "unresolved_uptake_questions" } });
-    expect(guard.check).toHaveBeenCalledWith({ opportunityId: OPP_ID, userId: USER_A, networkId: "idx-1", acknowledgedUptakeQuestionIds: undefined });
+    expect(guard.check).toHaveBeenCalledWith({ opportunityId: OPP_ID, userId: USER_A, networkId: undefined, acknowledgedUptakeQuestionIds: undefined });
     expect(db.getOrCreateDM).not.toHaveBeenCalled();
     expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
     expect(db.upsertContactMembership).not.toHaveBeenCalled();
@@ -219,6 +219,24 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(result).toHaveProperty("error");
     expect((result as { status: number }).status).toBe(500);
     expect(db.updateOpportunityStatus).not.toHaveBeenCalled();
+  });
+
+  it("rejects a network-scoped accept unless every participant is anchored in scope", async () => {
+    const crossNetwork = {
+      ...twoActorOpportunity,
+      actors: [
+        { networkId: "idx-1", userId: USER_A, role: "patient" },
+        { networkId: "idx-2", userId: USER_B, role: "agent" },
+      ],
+    };
+    const db = createMockDb(crossNetwork);
+    const service = new OpportunityService(db);
+
+    const result = await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, { networkScopeId: "idx-1" });
+
+    expect(result).toMatchObject({ error: "Opportunity not found", status: 404 });
+    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+    expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
   });
 
   it("returns 403 when user is not an actor", async () => {

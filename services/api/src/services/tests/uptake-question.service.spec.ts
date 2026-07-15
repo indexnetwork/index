@@ -132,6 +132,23 @@ describe('UptakeQuestionService', () => {
     }
   });
 
+  it('handles duplicate actor rows for the same two participants', async () => {
+    const { service, enqueue } = makeDeps({
+      getOpportunity: async () => opportunity({
+        actors: [
+          { userId: RECIPIENT, networkId: 'other-network', role: 'patient' },
+          { userId: RECIPIENT, networkId: NETWORK, role: 'patient' },
+          { userId: COUNTERPARTY, networkId: 'other-network', role: 'peer' },
+          { userId: COUNTERPARTY, networkId: NETWORK, role: 'peer', intent: INTENT },
+        ],
+      }),
+    });
+
+    await service.handlePending(OPPORTUNITY);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0]?.[0]).toMatchObject({ userId: RECIPIENT, scopeId: NETWORK });
+  });
+
   it('skips unsafe network anchors, introducers, acted recipients, and duplicates', async () => {
     const unsafe = makeDeps({ resolveSafeCommonNetwork: async () => null });
     await unsafe.service.handlePending(OPPORTUNITY);

@@ -6,6 +6,7 @@ import type { AdapterQuestionFilters } from '../services/question.service';
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
+import { resolveAgentNetworkScope } from '../guards/agent-scope.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
@@ -99,6 +100,13 @@ export class QuestionController {
     }
 
     const filters: AdapterQuestionFilters = {};
+    const networkScopeId = await resolveAgentNetworkScope(req);
+    if (networkScopeId) {
+      filters.networkId = networkScopeId;
+      // Match MCP scope policy: negotiation questions can contain context from
+      // another user/network and are not listable through network-scoped keys.
+      filters.modes = ['enrichment', 'intent', 'discovery'];
+    }
 
     if (rawMode) {
       const modeResult = modeQuerySchema.safeParse(rawMode);
@@ -168,6 +176,10 @@ export class QuestionController {
       return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
+    if (await resolveAgentNetworkScope(req)) {
+      return Response.json({ error: 'Network-scoped API keys cannot answer pending questions' }, { status: 403 });
+    }
+
     const parsed = answerBodySchema.safeParse(body);
     if (!parsed.success) {
       return Response.json(
@@ -204,10 +216,14 @@ export class QuestionController {
    */
   @Post('/:id/dismiss')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async dismiss(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async dismiss(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const questionId = params?.id;
     if (!questionId) {
       return Response.json({ error: 'Question ID is required' }, { status: 400 });
+    }
+
+    if (await resolveAgentNetworkScope(req)) {
+      return Response.json({ error: 'Network-scoped API keys cannot dismiss pending questions' }, { status: 403 });
     }
 
     const updated = await questionService.dismiss(questionId, user.id);

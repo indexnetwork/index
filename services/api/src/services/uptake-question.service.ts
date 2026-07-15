@@ -1,10 +1,11 @@
+import { isUptakeGuardEnabled, uptakeAuthorityThreshold } from '@indexnetwork/protocol';
+
 import type { OpportunityRow } from '../adapters/database.shared';
 import { uptakeQuestionDatabaseAdapter, type UptakeIntentRow, type UptakePublicUserHint } from '../adapters/uptake-question.database.adapter';
 import { log } from '../lib/log';
 import { questionerQueue } from '../queues/questioner.queue';
 
 const logger = log.service.from('UptakeQuestionService');
-const DEFAULT_AUTHORITY_THRESHOLD = 70;
 
 type OpportunityActor = OpportunityRow['actors'][number];
 
@@ -24,16 +25,6 @@ export interface UptakeQuestionServiceDeps {
     purpose: 'uptake',
   ) => Promise<boolean>;
   enqueue: (input: import('@indexnetwork/protocol').UptakeQuestionerInput, jobId: string) => Promise<void>;
-}
-
-function uptakeEnabled(): boolean {
-  return process.env.QUESTIONER_ENABLED === 'true'
-    && process.env.QUESTIONER_UPTAKE_ENABLED === 'true';
-}
-
-function authorityThreshold(): number {
-  const parsed = Number(process.env.QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD);
-  return Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : DEFAULT_AUTHORITY_THRESHOLD;
 }
 
 function isRecipient(actor: OpportunityActor): boolean {
@@ -78,15 +69,16 @@ export class UptakeQuestionService {
 
   /** Evaluate a committed pending opportunity and enqueue eligible questions. */
   async handlePending(opportunityId: string): Promise<void> {
-    if (!uptakeEnabled()) return;
+    if (!isUptakeGuardEnabled()) return;
     try {
       const opportunity = await this.deps.getOpportunity(opportunityId);
       if (!opportunity || opportunity.status !== 'pending') return;
-      for (const recipient of opportunity.actors.filter(isRecipient)) {
-        await this.enqueueForRecipient(opportunity, recipient).catch((error) => {
+      const recipientIds = new Set(opportunity.actors.filter(isRecipient).map((actor) => actor.userId));
+      for (const recipientUserId of recipientIds) {
+        await this.enqueueForRecipient(opportunity, recipientUserId).catch((error) => {
           logger.warn('Uptake recipient evaluation failed open', {
             opportunityId,
-            recipientUserId: recipient.userId,
+            recipientUserId,
             error,
           });
         });
@@ -98,69 +90,79 @@ export class UptakeQuestionService {
 
   private async enqueueForRecipient(
     opportunity: OpportunityRow,
-    recipient: OpportunityActor,
+    recipientUserId: string,
   ): Promise<void> {
-    const counterparties = opportunity.actors.filter((actor) =>
-      actor.role !== 'introducer' && actor.userId !== recipient.userId,
+    const recipientActors = opportunity.actors.filter((actor) =>
+      actor.role !== 'introducer' && actor.userId === recipientUserId && !actor.actedAt,
     );
-    // Ambiguous multi-counterparty opportunities are skipped rather than risk
-    // selecting the wrong private intent or leaking across participants.
-    if (counterparties.length !== 1) return;
-    const counterparty = counterparties[0];
-    const intentId = exactActorIntent(counterparty);
-    if (!intentId) return;
-
-    const networkIds = sharedActorNetworks(recipient, counterparty);
-    const networkId = networkIds[0];
-    if (!networkId) return;
-
-    // Resolve the exact actor intent through its network assignment. A stale
-    // or malformed actor intent must never pull private payload from another
-    // network into the recipient's question.
-    const intent = await this.deps.getIntent(intentId, networkId);
-    if (
-      !intent
-      || intent.userId !== counterparty.userId
-      || intent.archivedAt !== null
-      || intent.status !== 'ACTIVE'
-      || intent.felicityAuthority === null
-      || intent.felicityAuthority >= authorityThreshold()
-    ) return;
-
-    const network = await this.deps.resolveSafeCommonNetwork(
-      recipient.userId,
-      counterparty.userId,
-      networkIds,
+    const counterpartyIds = new Set(opportunity.actors
+      .filter((actor) => actor.role !== 'introducer' && actor.userId !== recipientUserId)
+      .map((actor) => actor.userId));
+    // Ambiguous multi-party opportunities are skipped, but duplicate actor rows
+    // for the same two users are valid and must not disable the guard.
+    if (counterpartyIds.size !== 1) return;
+    const counterpartyUserId = [...counterpartyIds][0];
+    const counterpartyActors = opportunity.actors.filter((actor) =>
+      actor.role !== 'introducer' && actor.userId === counterpartyUserId,
     );
-    if (!network) return;
 
-    if (await this.deps.hasQuestionForRecipientSourcePurpose(
-      recipient.userId,
-      'opportunity',
-      opportunity.id,
-      'uptake',
-    )) return;
+    for (const recipient of recipientActors) {
+      for (const counterparty of counterpartyActors) {
+        const intentId = exactActorIntent(counterparty);
+        const networkIds = sharedActorNetworks(recipient, counterparty);
+        const networkId = networkIds[0];
+        if (!intentId || !networkId) continue;
 
-    const publicHint = await this.deps.getPublicUserHint(counterparty.userId);
-    const proposedActivity = intent.summary?.trim() || intent.payload.trim();
-    if (!proposedActivity) return;
+        // Resolve the exact actor intent through its network assignment. A stale
+        // or malformed actor intent must never pull private payload from another
+        // network into the recipient's question.
+        const intent = await this.deps.getIntent(intentId, networkId);
+        if (
+          !intent
+          || intent.userId !== counterpartyUserId
+          || intent.archivedAt !== null
+          || intent.status !== 'ACTIVE'
+          || intent.felicityAuthority === null
+          || intent.felicityAuthority >= uptakeAuthorityThreshold()
+        ) continue;
 
-    await this.deps.enqueue({
-      mode: 'negotiation',
-      purpose: 'uptake',
-      userId: recipient.userId,
-      sourceType: 'opportunity',
-      sourceId: opportunity.id,
-      scopeType: 'network',
-      scopeId: network.id,
-      context: {
-        purpose: 'uptake',
-        negotiationId: opportunity.id,
-        counterpartyHint: publicCounterpartyHint(publicHint),
-        indexContext: network.title,
-        proposedActivity,
-      },
-    }, `uptake-${recipient.userId}-${opportunity.id}`);
+        const network = await this.deps.resolveSafeCommonNetwork(
+          recipientUserId,
+          counterpartyUserId,
+          networkIds,
+        );
+        if (!network) continue;
+
+        if (await this.deps.hasQuestionForRecipientSourcePurpose(
+          recipientUserId,
+          'opportunity',
+          opportunity.id,
+          'uptake',
+        )) return;
+
+        const publicHint = await this.deps.getPublicUserHint(counterpartyUserId);
+        const proposedActivity = intent.summary?.trim() || intent.payload.trim();
+        if (!proposedActivity) continue;
+
+        await this.deps.enqueue({
+          mode: 'negotiation',
+          purpose: 'uptake',
+          userId: recipientUserId,
+          sourceType: 'opportunity',
+          sourceId: opportunity.id,
+          scopeType: 'network',
+          scopeId: network.id,
+          context: {
+            purpose: 'uptake',
+            negotiationId: opportunity.id,
+            counterpartyHint: publicCounterpartyHint(publicHint),
+            indexContext: network.title,
+            proposedActivity,
+          },
+        }, `uptake-${recipientUserId}-${opportunity.id}`);
+        return;
+      }
+    }
   }
 }
 

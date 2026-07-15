@@ -106,7 +106,7 @@ describe('OpportunityService.startChat', () => {
     expect('error' in result).toBe(false);
     expect(guard.check).toHaveBeenCalledWith(expect.objectContaining({
       acknowledgedUptakeQuestionIds: ['q-1'],
-      networkId: 'idx-1',
+      networkId: undefined,
     }));
     expect(db.stampOpportunityActorAction).toHaveBeenCalled();
   });

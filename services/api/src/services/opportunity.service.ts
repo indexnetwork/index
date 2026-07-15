@@ -52,6 +52,8 @@ interface IntentScopeOptions {
   scopeType?: 'intent';
   scopeId?: string;
   acknowledgedUptakeQuestionIds?: string[];
+  /** Internal clamp derived from a network-scoped API-key principal. */
+  networkScopeId?: string;
 }
 
 function matchesSelectedIntentScope(
@@ -62,6 +64,22 @@ function matchesSelectedIntentScope(
   if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
   if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
   return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === scope.scopeId);
+}
+
+function matchesAgentNetworkScope(
+  opportunity: Pick<Opportunity, 'actors'>,
+  userId: string,
+  networkScopeId?: string,
+): boolean {
+  if (!networkScopeId) return true;
+  const callerAnchored = opportunity.actors.some(
+    (actor) => actor.userId === userId && actor.networkId === networkScopeId,
+  );
+  if (!callerAnchored) return false;
+  const participantIds = new Set(opportunity.actors.map((actor) => actor.userId));
+  return [...participantIds].every((participantId) => opportunity.actors.some(
+    (actor) => actor.userId === participantId && actor.networkId === networkScopeId,
+  ));
 }
 
 
@@ -531,6 +549,9 @@ export class OpportunityService {
     if (!matchesSelectedIntentScope(opp, userId, options)) {
       return { error: 'Opportunity not found', status: 404 };
     }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
 
     // Self-accept guard: if the caller has already committed (actedAt is set)
     // and they are trying to accept, block them — the other party must accept.
@@ -542,7 +563,7 @@ export class OpportunityService {
       const advisory = await this.uptakeGuard.check({
         opportunityId,
         userId,
-        networkId: callerActor.networkId,
+        networkId: options?.networkScopeId,
         acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
       });
       if (advisory) return advisory;
@@ -566,7 +587,7 @@ export class OpportunityService {
       }
     }
 
-    let updated: Awaited<ReturnType<typeof this.db.updateOpportunityStatus>>;
+    let updated: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
     if (status === 'accepted') {
       updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
     } else if (status === 'pending') {
@@ -728,6 +749,9 @@ export class OpportunityService {
       if (!matchesSelectedIntentScope(opp, userId, options)) {
         return { error: 'Opportunity not found', status: 404 };
       }
+      if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+        return { error: 'Opportunity not found', status: 404 };
+      }
       const counterpart = resolveCounterpart(opp.actors, userId);
       if (!counterpart) {
         return { error: 'Opportunity has no counterpart to chat with', status: 400 };
@@ -761,6 +785,9 @@ export class OpportunityService {
     if (!matchesSelectedIntentScope(opp, userId, options)) {
       return { error: 'Opportunity not found', status: 404 };
     }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
 
     // Self-accept guard: if the caller already committed (actedAt is set) they
     // cannot accept again — the other party must be the one to accept.
@@ -771,7 +798,7 @@ export class OpportunityService {
     const advisory = await this.uptakeGuard.check({
       opportunityId,
       userId,
-      networkId: callerActor.networkId,
+      networkId: options?.networkScopeId,
       acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
     });
     if (advisory) return advisory;

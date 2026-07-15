@@ -72,8 +72,8 @@ export function isUptakeGuardEnabled(): boolean {
 export function uptakeAuthorityThreshold(): number {
   const raw = process.env.QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD;
   if (!raw?.trim()) return UPTAKE_AUTHORITY_THRESHOLD_DEFAULT;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return UPTAKE_AUTHORITY_THRESHOLD_DEFAULT;
+  if (!/^-?\d+$/.test(raw.trim())) return UPTAKE_AUTHORITY_THRESHOLD_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
   return Math.min(100, Math.max(0, parsed));
 }
 
