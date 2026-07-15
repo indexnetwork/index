@@ -1,4 +1,4 @@
-import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
+import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
@@ -64,6 +64,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(schema.intents.userId, userId),
           isNull(schema.intents.archivedAt),
+          activeIntentLifecycleWhere(),
           or(ilike(schema.intents.payload, pattern), ilike(schema.intents.summary, pattern)),
         ),
       )
@@ -128,7 +129,8 @@ export class ChatDatabaseAdapter {
           and(
             eq(schema.intentNetworks.networkId, networkId),
             eq(schema.intents.userId, userId),
-            isNull(schema.intents.archivedAt)
+            isNull(schema.intents.archivedAt),
+            activeIntentLifecycleWhere(),
           )
         );
       return result;
@@ -772,6 +774,8 @@ export class ChatDatabaseAdapter {
         userId: intents.userId,
         sourceType: intents.sourceType,
         sourceId: intents.sourceId,
+        status: intents.status,
+        archivedAt: intents.archivedAt,
       })
       .from(intents)
       .where(eq(intents.id, intentId))
@@ -1043,7 +1047,12 @@ export class ChatDatabaseAdapter {
           .select({ count: count() })
           .from(intentNetworks)
           .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
-          .where(and(eq(intentNetworks.networkId, networkId), eq(intents.userId, m.userId), isNull(intents.archivedAt)));
+          .where(and(
+            eq(intentNetworks.networkId, networkId),
+            eq(intents.userId, m.userId),
+            isNull(intents.archivedAt),
+            activeIntentLifecycleWhere(),
+          ));
         const email = m.userId === requestingUserId ? (requestingUserEmailRow?.email ?? undefined) : undefined;
         return {
           userId: m.userId,
@@ -1105,7 +1114,12 @@ export class ChatDatabaseAdapter {
           .select({ userId: intents.userId, count: count() })
           .from(intentNetworks)
           .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
-          .where(and(eq(intentNetworks.networkId, networkId), inArray(intents.userId, memberUserIds), isNull(intents.archivedAt)))
+          .where(and(
+            eq(intentNetworks.networkId, networkId),
+            inArray(intents.userId, memberUserIds),
+            isNull(intents.archivedAt),
+            activeIntentLifecycleWhere(),
+          ))
           .groupBy(intents.userId)
       : [];
     const intentCountMap = new Map(intentCountRows.map((r) => [r.userId, Number(r.count)]));
@@ -1188,7 +1202,11 @@ export class ChatDatabaseAdapter {
       .from(intentNetworks)
       .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
       .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(eq(intentNetworks.networkId, networkId), isNull(intents.archivedAt)))
+      .where(and(
+        eq(intentNetworks.networkId, networkId),
+        isNull(intents.archivedAt),
+        activeIntentLifecycleWhere(),
+      ))
       .orderBy(desc(intents.createdAt))
       .limit(limit)
       .offset(offset);
@@ -1268,7 +1286,11 @@ export class ChatDatabaseAdapter {
       .from(intentNetworks)
       .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
       .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(eq(intentNetworks.networkId, networkId), isNull(intents.archivedAt)))
+      .where(and(
+        eq(intentNetworks.networkId, networkId),
+        isNull(intents.archivedAt),
+        activeIntentLifecycleWhere(),
+      ))
       .orderBy(desc(intents.createdAt))
       .limit(limit)
       .offset(offset);
@@ -3122,6 +3144,7 @@ export class ChatDatabaseAdapter {
           and(
             eq(schema.intents.userId, schema.networkMembers.userId),
             isNull(schema.intents.archivedAt),
+            activeIntentLifecycleWhere(),
           ),
         )
         .where(
@@ -3488,7 +3511,7 @@ export class ChatDatabaseAdapter {
         1 - (i.embedding <=> ${vectorStr}::vector) AS similarity
       FROM ${schema.intents} i
       WHERE i.user_id = ${userId}
-        AND i.status = 'ACTIVE'
+        AND (i.status = 'ACTIVE' OR i.status IS NULL)
         AND i.archived_at IS NULL
         AND i.embedding IS NOT NULL
         AND 1 - (i.embedding <=> ${vectorStr}::vector) >= ${minSimilarity}
@@ -3668,7 +3691,8 @@ export class ChatDatabaseAdapter {
       JOIN ${schema.users} u ON i.user_id = u.id
       WHERE ine.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}])
         AND i.user_id != ${excludeUserId}
-        AND i.status = 'ACTIVE'
+        AND (i.status = 'ACTIVE' OR i.status IS NULL)
+        AND i.archived_at IS NULL
         AND i.embedding IS NOT NULL
         AND u.deleted_at IS NULL
         AND 1 - (i.embedding <=> ${vectorStr}::vector) >= ${minScore}

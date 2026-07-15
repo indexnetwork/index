@@ -153,6 +153,38 @@ describe('QuestionerQueue', () => {
     ]);
   });
 
+  it('skips a standalone intent-scoped job before agent invocation and persistence when paused', async () => {
+    let invoked = false;
+    let persisted = false;
+    const queue = new QuestionerQueue({
+      adapter: {
+        persist: async () => {
+          persisted = true;
+          return ['question-1'];
+        },
+      },
+      agent: {
+        invoke: async () => {
+          invoked = true;
+          return null;
+        },
+      },
+      getIntentLifecycle: async (intentId) => ({ id: intentId, status: 'PAUSED', archivedAt: null }),
+    });
+    queues.push(queue);
+
+    await queue.processJob('generate_questions', {
+      mode: 'intent',
+      userId: 'user-1',
+      sourceType: 'intent',
+      sourceId: 'intent-1',
+      context: {} as never,
+    });
+
+    expect(invoked).toBe(false);
+    expect(persisted).toBe(false);
+  });
+
   it('omits actor networkId for unscoped question jobs', async () => {
     let captured: PersistableQuestion[] = [];
     const queue = new QuestionerQueue({

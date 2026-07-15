@@ -48,6 +48,7 @@ async function main() {
     join personal_networks pn on pn.user_id = i.user_id
     join networks n on n.id = pn.network_id and n.deleted_at is null
     where i.archived_at is null
+      and (i.status = 'ACTIVE' or i.status is null)
       and (n.prompt is null or n.prompt = ${BOILERPLATE})
       and not exists (
         select 1 from intent_networks inn
@@ -82,6 +83,7 @@ async function main() {
     join personal_networks pn on pn.user_id = i.user_id
     join networks n on n.id = pn.network_id and n.deleted_at is null
     where i.archived_at is null
+      and (i.status = 'ACTIVE' or i.status is null)
       and n.prompt is null
       and not exists (
         select 1 from intent_networks inn

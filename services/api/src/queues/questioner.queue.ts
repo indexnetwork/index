@@ -23,6 +23,8 @@ export type QuestionerJobData = QuestionerInput;
 export interface QuestionerQueueDeps {
   adapter?: Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>;
   agent?: Pick<QuestionerAgent, 'invoke'>;
+  /** Lifecycle lookup used to gate intent-scoped jobs before generation. */
+  getIntentLifecycle?: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
 }
 
 /**
@@ -43,6 +45,7 @@ export class QuestionerQueue {
   private readonly logger = log.job.from('QuestionerJob');
   private readonly queueLogger = log.queue.from('QuestionerQueue');
   private readonly adapter: Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>;
+  private readonly getIntentLifecycle: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
 
@@ -50,7 +53,12 @@ export class QuestionerQueue {
    * @param deps - Optional overrides for adapter and agent (for tests).
    */
   constructor(deps?: QuestionerQueueDeps) {
-    this.adapter = deps?.adapter ?? new QuestionerAdapter(db);
+    const defaultAdapter = new QuestionerAdapter(db);
+    this.adapter = deps?.adapter ?? defaultAdapter;
+    this.getIntentLifecycle = deps?.getIntentLifecycle
+      ?? (deps
+        ? async (intentId) => ({ id: intentId, status: 'ACTIVE' as const, archivedAt: null })
+        : defaultAdapter.getIntentLifecycle.bind(defaultAdapter));
     this.agent = deps?.agent ?? null; // lazy — created on first job
   }
 
@@ -132,6 +140,25 @@ export class QuestionerQueue {
   }
 
   private async handleGenerateQuestions(data: QuestionerJobData): Promise<void> {
+    const intentId = data.triggeredByIntentId?.trim()
+      || (data.scopeType === 'intent' ? data.scopeId?.trim() : undefined)
+      || (data.mode === 'intent' ? data.sourceId?.trim() : undefined)
+      || (data.mode === 'pool_discovery'
+        ? (data.context as PoolDiscoveryContext).intentId?.trim()
+        : undefined);
+    if (intentId) {
+      const lifecycle = await this.getIntentLifecycle(intentId, data.userId);
+      if (!lifecycle || lifecycle.archivedAt || (lifecycle.status != null && lifecycle.status !== 'ACTIVE')) {
+        this.logger.info('Intent-scoped question generation skipped at admission', {
+          intentId,
+          userId: data.userId,
+          status: lifecycle?.status ?? (lifecycle ? 'ACTIVE' : 'missing'),
+          archived: Boolean(lifecycle?.archivedAt),
+        });
+        return;
+      }
+    }
+
     this.logger.info('Starting question generation', {
       mode: data.mode,
       userId: data.userId,

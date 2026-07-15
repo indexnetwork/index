@@ -7,7 +7,7 @@ import type { QuestionPoolDiscriminator } from '@indexnetwork/protocol';
 
 import { handlePoolAnswerFactory } from '../question.answer.pool';
 import type { AdapterPersistableQuestion, AdapterPersistedQuestion } from '../../../adapters/questioner.adapter';
-import type { PoolAnswerOutcome } from '../../../queues/pool/answer.shared';
+import type { PoolAnswerOutcome, PoolLifecycleAdmission } from '../../../queues/pool/answer.shared';
 
 function discriminator(label: string, voi = 0.5): QuestionPoolDiscriminator {
   return {
@@ -52,6 +52,7 @@ function makeHarness(
   row: AdapterPersistedQuestion | null,
   askedLabels: string[] = ['asked'],
   outcome: PoolAnswerOutcome = { kind: 'applied', promoted: 1, demoted: 2, unknownAdjusted: 0 },
+  admission: PoolLifecycleAdmission | Error = 'active',
 ) {
   const persisted: AdapterPersistableQuestion[][] = [];
   const applyAnswer = mock(async () => outcome);
@@ -69,6 +70,10 @@ function makeHarness(
     applyAnswer,
     narrateBeatOne,
     enqueueRerun,
+    getIntentAdmission: async () => {
+      if (admission instanceof Error) throw admission;
+      return admission;
+    },
   });
   return { handle, persisted, applyAnswer, narrateBeatOne, enqueueRerun };
 }
@@ -120,6 +125,43 @@ describe('handlePoolAnswer', () => {
     expect(harness.enqueueRerun).toHaveBeenCalledTimes(1);
     const narration = harness.narrateBeatOne.mock.calls[0]?.[0] as { message: string };
     expect(narration.message).toContain("didn't reshuffle");
+  });
+
+  it('keeps Tier 0 answerable while paused but skips Tier 1 and chaining', async () => {
+    const harness = makeHarness(
+      answeredQuestion([discriminator('next')]),
+      ['asked'],
+      { kind: 'applied', promoted: 1, demoted: 2, unknownAdjusted: 0 },
+      'paused',
+    );
+    await harness.handle(input);
+
+    expect(harness.applyAnswer).toHaveBeenCalledTimes(1);
+    expect(harness.enqueueRerun).not.toHaveBeenCalled();
+    expect(harness.persisted).toHaveLength(0);
+    const narration = harness.narrateBeatOne.mock.calls[0]?.[0] as { message: string };
+    expect(narration.message).toContain('paused');
+    expect(narration.message).not.toContain('re-searching');
+    expect(narration.message).not.toContain('about to find');
+  });
+
+  it.each([
+    ['missing intent', 'unavailable' as const],
+    ['lookup error', new Error('database unavailable')],
+  ])('uses neutral narration and fails closed for %s', async (_name, admission) => {
+    const harness = makeHarness(
+      answeredQuestion([discriminator('next')]),
+      ['asked'],
+      { kind: 'applied', promoted: 1, demoted: 2, unknownAdjusted: 0 },
+      admission,
+    );
+    await harness.handle(input);
+
+    expect(harness.enqueueRerun).not.toHaveBeenCalled();
+    expect(harness.persisted).toHaveLength(0);
+    const narration = harness.narrateBeatOne.mock.calls[0]?.[0] as { message: string };
+    expect(narration.message).toBe("Preference saved, but I couldn't start a fresh search right now.");
+    expect(narration.message).not.toContain('paused');
   });
 
   it('is a no-op when POOL_QUESTIONS_MODE is off', async () => {

@@ -13,7 +13,7 @@
 
 import { eq, and, sql, or, isNull, desc } from 'drizzle-orm/sql';
 
-import { questions, opportunities } from '../schemas/database.schema';
+import { intents, questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
@@ -135,6 +135,26 @@ export interface AdapterQuestionFilters {
  */
 export class QuestionerAdapter {
   constructor(private readonly db: DrizzleDB) {}
+
+  /**
+   * Read the lifecycle fields needed to admit intent-scoped question work.
+   *
+   * @param intentId - Intent tied to the queued question job.
+   * @param userId - Expected intent owner.
+   * @returns Lifecycle row, or null for missing/foreign intents.
+   */
+  async getIntentLifecycle(intentId: string, userId: string): Promise<{
+    id: string;
+    status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null;
+    archivedAt: Date | null;
+  } | null> {
+    const rows = await this.db
+      .select({ id: intents.id, status: intents.status, archivedAt: intents.archivedAt })
+      .from(intents)
+      .where(and(eq(intents.id, intentId), eq(intents.userId, userId)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
 
   /**
    * Persist a batch of generated questions.

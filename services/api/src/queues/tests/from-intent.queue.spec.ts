@@ -105,6 +105,43 @@ describe('FromIntentQueue', () => {
       await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
     });
 
+    it('discover: skips paused, archived, and wrong-owner jobs at admission', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const minePoolDiscriminators = mock((_trigger: unknown) => {});
+      const rows = [
+        { id: 'paused', payload: 'P', userId: 'u1', sourceType: null, sourceId: null, status: 'PAUSED' as const, archivedAt: null },
+        { id: 'archived', payload: 'P', userId: 'u1', sourceType: null, sourceId: null, status: 'ACTIVE' as const, archivedAt: new Date() },
+        { id: 'foreign', payload: 'P', userId: 'u2', sourceType: null, sourceId: null, status: 'ACTIVE' as const, archivedAt: null },
+      ];
+      for (const row of rows) {
+        const queue = new FromIntentQueue({
+          database: asDb({ getIntentForIndexing: async () => row }),
+          invokeOpportunityGraph,
+          minePoolDiscriminators,
+        });
+        await queue.processJob('discover_opportunities', { intentId: row.id, userId: 'u1' });
+      }
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+      expect(minePoolDiscriminators).not.toHaveBeenCalled();
+    });
+
+    it('intent-resume follows the ordinary discovery and mining path', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const minePoolDiscriminators = mock((_trigger: unknown) => {});
+      const db = {
+        getIntentForIndexing: async () => ({
+          id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null,
+          status: 'ACTIVE' as const, archivedAt: null,
+        }),
+      };
+      const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph, minePoolDiscriminators });
+      await queue.processJob('discover_opportunities', {
+        intentId: 'i1', userId: 'u1', trigger: 'intent_resume',
+      });
+      expect(invokeOpportunityGraph).toHaveBeenCalledTimes(1);
+      expect(minePoolDiscriminators).toHaveBeenCalledTimes(1);
+    });
+
     it('discover: fires the pool-mining hook after discovery completes (IND-418 web coverage)', async () => {
       const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
       const minePoolDiscriminators = mock((_trigger: unknown) => {});

@@ -1,4 +1,4 @@
-import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentListRow, UpdateIntentInput, UserIdentity, activeOwnIntentsWhere, and, buildProfileFromUser, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
+import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
 
 
 export class IntentDatabaseAdapter {
@@ -98,6 +98,174 @@ export class IntentDatabaseAdapter {
     }
   }
 
+  /**
+   * Atomically transition an owned intent between ACTIVE and PAUSED.
+   * The row is locked for the transaction, terminal/archived records are
+   * rejected, and an optional network scope is enforced again in the UPDATE.
+   * Idempotent calls preserve `updatedAt`; real transitions advance it
+   * monotonically so the timestamp is a stable resume-dedup lifecycle version.
+   *
+   * @param input - Owner, intent, target status, and optional bound network.
+   * @returns The transition outcome and stable lifecycle version on success.
+   */
+  async transitionIntentLifecycle(input: {
+    intentId: string;
+    userId: string;
+    status: 'ACTIVE' | 'PAUSED';
+    networkScopeId?: string | null;
+  }): Promise<
+    | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
+    | { kind: 'not_found' }
+    | { kind: 'scope_violation' }
+    | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean }
+  > {
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .select({
+          id: schema.intents.id,
+          status: schema.intents.status,
+          archivedAt: schema.intents.archivedAt,
+          updatedAt: schema.intents.updatedAt,
+        })
+        .from(schema.intents)
+        .where(and(
+          eq(schema.intents.id, input.intentId),
+          eq(schema.intents.userId, input.userId),
+        ))
+        .limit(1)
+        .for('update');
+      const current = rows[0];
+      if (!current) return { kind: 'not_found' } as const;
+
+      if (input.networkScopeId) {
+        const scoped = await tx
+          .select({ intentId: schema.intentNetworks.intentId })
+          .from(schema.intentNetworks)
+          .where(and(
+            eq(schema.intentNetworks.intentId, input.intentId),
+            eq(schema.intentNetworks.networkId, input.networkScopeId),
+          ))
+          .limit(1);
+        if (scoped.length === 0) return { kind: 'scope_violation' } as const;
+      }
+
+      if (current.archivedAt || current.status === 'FULFILLED' || current.status === 'EXPIRED') {
+        return {
+          kind: 'conflict',
+          status: current.status,
+          archived: current.archivedAt !== null,
+        } as const;
+      }
+
+      const normalizedCurrent = current.status ?? 'ACTIVE';
+      if (normalizedCurrent === input.status) {
+        return {
+          kind: 'success',
+          id: current.id,
+          status: input.status,
+          changed: false,
+          lifecycleVersionMs: current.updatedAt.getTime(),
+        } as const;
+      }
+
+      const updatedAt = new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1));
+      const scopeCondition = input.networkScopeId
+        ? sql`EXISTS (
+            SELECT 1 FROM ${schema.intentNetworks} lifecycle_scope
+            WHERE lifecycle_scope.intent_id = ${schema.intents.id}
+              AND lifecycle_scope.network_id = ${input.networkScopeId}
+          )`
+        : sql`true`;
+      const [updated] = await tx
+        .update(schema.intents)
+        .set({ status: input.status, updatedAt })
+        .where(and(
+          eq(schema.intents.id, input.intentId),
+          eq(schema.intents.userId, input.userId),
+          isNull(schema.intents.archivedAt),
+          scopeCondition,
+        ))
+        .returning({
+          id: schema.intents.id,
+          status: schema.intents.status,
+          updatedAt: schema.intents.updatedAt,
+        });
+      if (!updated) {
+        return input.networkScopeId
+          ? { kind: 'scope_violation' } as const
+          : { kind: 'not_found' } as const;
+      }
+      return {
+        kind: 'success',
+        id: updated.id,
+        status: updated.status as 'ACTIVE' | 'PAUSED',
+        changed: true,
+        lifecycleVersionMs: updated.updatedAt.getTime(),
+      } as const;
+    });
+  }
+
+  /**
+   * Compare-and-set a resume made by this request back to PAUSED when its
+   * enqueue acknowledgement fails. The lifecycle version makes this a narrow
+   * compensation: a concurrent lifecycle write is never overwritten.
+   *
+   * @param input - Resume owner, scope, and exact lifecycle version to undo.
+   * @returns The authoritative visible lifecycle state, or null if no longer visible.
+   */
+  async compensateFailedResume(input: {
+    intentId: string;
+    userId: string;
+    lifecycleVersionMs: number;
+    networkScopeId?: string | null;
+  }): Promise<{ status: IntentLifecycleStatus; lifecycleVersionMs: number } | null> {
+    const scopeCondition = input.networkScopeId
+      ? sql`EXISTS (
+          SELECT 1 FROM ${schema.intentNetworks} lifecycle_scope
+          WHERE lifecycle_scope.intent_id = ${schema.intents.id}
+            AND lifecycle_scope.network_id = ${input.networkScopeId}
+        )`
+      : sql`true`;
+    const expectedUpdatedAt = new Date(input.lifecycleVersionMs);
+    const compensatedAt = new Date(Math.max(Date.now(), input.lifecycleVersionMs + 1));
+    const [compensated] = await db
+      .update(schema.intents)
+      .set({ status: 'PAUSED', updatedAt: compensatedAt })
+      .where(and(
+        eq(schema.intents.id, input.intentId),
+        eq(schema.intents.userId, input.userId),
+        eq(schema.intents.status, 'ACTIVE'),
+        isNull(schema.intents.archivedAt),
+        eq(schema.intents.updatedAt, expectedUpdatedAt),
+        scopeCondition,
+      ))
+      .returning({
+        status: schema.intents.status,
+        updatedAt: schema.intents.updatedAt,
+      });
+    if (compensated) {
+      return {
+        status: compensated.status as IntentLifecycleStatus,
+        lifecycleVersionMs: compensated.updatedAt.getTime(),
+      };
+    }
+
+    const [current] = await db
+      .select({ status: schema.intents.status, updatedAt: schema.intents.updatedAt })
+      .from(schema.intents)
+      .where(and(
+        eq(schema.intents.id, input.intentId),
+        eq(schema.intents.userId, input.userId),
+        scopeCondition,
+      ))
+      .limit(1);
+    if (!current) return null;
+    return {
+      status: current.status ?? 'ACTIVE',
+      lifecycleVersionMs: current.updatedAt.getTime(),
+    };
+  }
+
   async archiveIntent(intentId: string): Promise<ArchiveResultShape> {
     try {
       const [archived] = await db.update(schema.intents)
@@ -191,7 +359,8 @@ export class IntentDatabaseAdapter {
           and(
             eq(schema.intentNetworks.networkId, networkId),
             eq(schema.intents.userId, userId),
-            isNull(schema.intents.archivedAt)
+            isNull(schema.intents.archivedAt),
+            activeIntentLifecycleWhere(),
           )
         );
       return result.map((r) => ({
@@ -304,17 +473,29 @@ export class IntentDatabaseAdapter {
    * @param userId - The owning user's ID (for ownership scoping)
    * @returns Object with resolved id, or null/ambiguous status
    */
-  async resolveIntentId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
+  async resolveIntentId(
+    idOrPrefix: string,
+    userId: string,
+    networkScopeId?: string | null,
+  ): Promise<{ id: string } | { ambiguous: true } | null> {
     const normalized = idOrPrefix.trim().toLowerCase();
     const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized);
     if (isFullUuid) {
       return { id: normalized };
     }
+    const scopeCondition = networkScopeId
+      ? sql`EXISTS (
+          SELECT 1 FROM ${schema.intentNetworks} resolve_scope
+          WHERE resolve_scope.intent_id = ${schema.intents.id}
+            AND resolve_scope.network_id = ${networkScopeId}
+        )`
+      : sql`true`;
     const rows = await db.select({ id: schema.intents.id })
       .from(schema.intents)
       .where(and(
         sql`${schema.intents.id} LIKE ${normalized + '%'}`,
         eq(schema.intents.userId, userId),
+        scopeCondition,
       ))
       .limit(2);
     if (rows.length === 0) return null;
@@ -484,7 +665,8 @@ export class IntentDatabaseAdapter {
       .where(
         and(
           eq(schema.intentNetworks.networkId, networkId),
-          isNull(schema.intents.archivedAt)
+          isNull(schema.intents.archivedAt),
+          activeIntentLifecycleWhere(),
         )
       )
       .orderBy(desc(schema.intents.createdAt))

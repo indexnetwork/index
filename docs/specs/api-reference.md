@@ -2440,12 +2440,53 @@ Get a single intent by ID.
     "id": "...",
     "payload": "...",
     "summary": "...",
+    "status": "ACTIVE | PAUSED | FULFILLED | EXPIRED",
     "createdAt": "...",
     "updatedAt": "...",
     "archivedAt": "... | null"
   }
 }
 ```
+
+### PATCH /api/intents/:id/status
+
+Pause or resume an intent. The transition is idempotent.
+
+**Auth**: AuthGuard. The intent must belong to the authenticated user. A network-scoped agent may update it only when the intent is assigned to the agent's bound network; scope violations return `403`.
+
+**Path params**:
+- `id` — Intent UUID or unambiguous short prefix
+
+**Request body** (Zod-validated):
+```json
+{ "status": "PAUSED" }
+```
+
+Use `PAUSED` to pause or `ACTIVE` to resume. No other lifecycle status is accepted. Archived intents and terminal `FULFILLED` or `EXPIRED` intents return `409`.
+
+**Response 200**:
+```json
+{
+  "success": true,
+  "intent": {
+    "id": "...",
+    "status": "ACTIVE | PAUSED",
+    "lifecycleVersionMs": 1784102400000
+  },
+  "changed": true
+}
+```
+
+`changed` is `false` when the requested status is already effective. A null legacy status is normalized to `ACTIVE`. On resume, the service immediately enqueues a from-intent discovery job deduplicated by the intent lifecycle version; the response waits for the queue's enqueue acknowledgement before returning success. If enqueue fails after this request changed `PAUSED` to `ACTIVE`, the service compare-and-sets that exact lifecycle version back to `PAUSED` without overwriting concurrent lifecycle changes. An idempotent `ACTIVE` request is never paused by compensation.
+
+Pause is non-destructive: existing opportunities and Radar cards, pending questions, conversations, intent-network assignments, and HyDE documents remain available. It blocks admission of not-yet-started intent-driven discovery, candidate matching against the intent, new pool mining/questions, and answer-triggered Tier-1 reruns. Work already admitted may finish. Existing pending questions remain answerable, and their deterministic Tier-0 re-ranking can still apply. After resume, ordinary pool mining and question generation follow the newly enqueued discovery run.
+
+**Errors**:
+- `400` — invalid request body or unsupported status
+- `403` — network-scoped agent is not allowed to act on the intent
+- `404` — intent not found or not owned by the authenticated user
+- `409` — ambiguous short prefix, archived intent, or terminal intent
+- `503` — resume enqueue was not acknowledged; returns `{ "error": "Failed to enqueue intent resume", "code": "enqueue_failed", "retryable": true, "intent": { "id": "...", "status": "ACTIVE | PAUSED" } }`. `PAUSED` means compensation succeeded; `ACTIVE` is the authoritative status when compensation did not apply or the request was idempotent.
 
 ### PATCH /api/intents/:id/archive
 

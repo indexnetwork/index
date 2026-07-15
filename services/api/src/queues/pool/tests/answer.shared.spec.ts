@@ -109,6 +109,10 @@ describe('pool answer narration', () => {
     expect(beatOneMessage({ kind: 'applied', promoted: 2, demoted: 1, unknownAdjusted: 3 }, false))
       .toBe('Noted — I saved your preference. It will shape the fresh matches I am searching for now.');
     expect(beatOneMessage({ kind: 'stale', staleRatio: 0.5 })).toContain("didn't reshuffle");
+    expect(beatOneMessage({ kind: 'applied', promoted: 1, demoted: 0, unknownAdjusted: 0 }, true, 'paused'))
+      .toContain('paused');
+    expect(beatOneMessage({ kind: 'applied', promoted: 1, demoted: 0, unknownAdjusted: 0 }, true, 'unavailable'))
+      .toBe("Preference saved, but I couldn't start a fresh search right now.");
     expect(beatOneMessage({ kind: 'none' })).toContain('keeping your matches ranked as they are');
   });
 

@@ -16,7 +16,7 @@ import { log } from '../../lib/log';
 import type { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from '../../queues/pool/question.shared';
 import { applyPoolAnswer, beatOneMessage, enqueuePoolRerun } from '../../queues/pool/answer.shared';
-import type { PoolAnswerOutcome } from '../../queues/pool/answer.shared';
+import type { PoolAnswerOutcome, PoolLifecycleAdmission } from '../../queues/pool/answer.shared';
 
 const logger = log.service.from('PoolQuestionAnswer');
 
@@ -30,6 +30,8 @@ export interface HandlePoolAnswerDeps {
     outcome: PoolAnswerOutcome;
   }) => Promise<void>;
   enqueueRerun?: typeof enqueuePoolRerun;
+  /** Lifecycle admission check performed after Tier 0 and before new work. */
+  getIntentAdmission: (userId: string, intentId: string) => Promise<PoolLifecycleAdmission>;
 }
 
 /** Factory for the complete `pool_discovery` answer reaction. */
@@ -61,12 +63,23 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
       selectedOption,
     });
 
+    let admission: PoolLifecycleAdmission = 'unavailable';
+    try {
+      admission = await deps.getIntentAdmission(input.userId, input.intentId);
+    } catch (error) {
+      logger.warn('Intent lifecycle lookup failed; skipping new pool work', {
+        questionId: input.questionId,
+        intentId: input.intentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     if (deps.narrateBeatOne) {
       try {
         await deps.narrateBeatOne({
           userId: input.userId,
           intentId: input.intentId,
-          message: beatOneMessage(outcome, poolQuestionsRanking() === 'on'),
+          message: beatOneMessage(outcome, poolQuestionsRanking() === 'on', admission),
           outcome,
         });
       } catch (error) {
@@ -75,6 +88,17 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    // Existing questions stay answerable and Tier 0 remains valid while paused,
+    // but no Tier-1 discovery or chained question may start.
+    if (admission !== 'active') {
+      logger.info('Intent paused or unavailable; skipped Tier-1 and question chaining', {
+        questionId: input.questionId,
+        intentId: input.intentId,
+        admission,
+      });
+      return;
     }
 
     // A stale preference still shapes fresh candidates; "Both matter" does not.

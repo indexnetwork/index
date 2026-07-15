@@ -251,6 +251,8 @@ export interface IntentRecord extends CreatedIntent {
   sourceType?: string | null;
   /** Source ID for provenance */
   sourceId?: string | null;
+  /** Lifecycle admission state; null is a legacy ACTIVE row. */
+  status?: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null;
 }
 
 /**

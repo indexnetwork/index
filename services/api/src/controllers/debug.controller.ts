@@ -6,7 +6,7 @@ import { canUserSeeOpportunity, isActionableForViewer } from '@indexnetwork/prot
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { intents, hydeDocuments, intentNetworks, networks, networkMembers, opportunities } from '../schemas/database.schema';
 import { conversations, conversationParticipants, conversationMetadata, messages, tasks } from '../schemas/conversation.schema';
-import { debugService } from '../services/debug.service';
+import { DebugIntentDiscoveryBlockedError, debugService } from '../services/debug.service';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { DebugGuard } from '../guards/debug.guard';
@@ -457,6 +457,12 @@ export class DebugController {
     }
 
     const { preflight, intentPayload, userIndexIds } = preflightResult;
+    if (preflight.intent.isArchived || preflight.intent.status !== 'ACTIVE') {
+      return Response.json({
+        error: 'Debug discovery requires an active, non-archived intent',
+        intent: { id: intentId, status: preflight.intent.status },
+      }, { status: 409 });
+    }
 
     // ── 2. Bail early if no candidate pool ──────────────────────────────
     if (userIndexIds.length === 0) {
@@ -486,6 +492,12 @@ export class DebugController {
         result,
       });
     } catch (err) {
+      if (err instanceof DebugIntentDiscoveryBlockedError) {
+        return Response.json({
+          error: 'Debug discovery requires an active, non-archived intent',
+          intent: { id: intentId, status: err.status },
+        }, { status: 409 });
+      }
       logger.error('Intent discovery debug failed', { intentId, error: err });
       return Response.json({
         exportedAt: new Date().toISOString(),

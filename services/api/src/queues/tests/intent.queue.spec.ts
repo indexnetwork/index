@@ -161,6 +161,30 @@ describe('IntentQueue', () => {
       // No throw, handler exits early
     });
 
+    it('generate_hyde: paused intent skips before assignment, HyDE, and discovery', async () => {
+      const invokeHyde = mock(async () => {});
+      const addOpportunityJob = mock(async () => ({}));
+      const assignIntentToNetwork = mock(async () => {});
+      const db = {
+        getIntentForIndexing: async () => ({
+          id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null,
+          status: 'PAUSED' as const, archivedAt: null,
+        }),
+        getUserIndexIds: async () => ['idx1'],
+        assignIntentToNetwork,
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new IntentQueue({
+        database: asIntentDb(db),
+        invokeHyde,
+        addOpportunityJob,
+      });
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
+      expect(assignIntentToNetwork).not.toHaveBeenCalled();
+      expect(invokeHyde).not.toHaveBeenCalled();
+      expect(addOpportunityJob).not.toHaveBeenCalled();
+    });
+
     it('generate_hyde: intent found, invokeHyde and addOpportunityJob called', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => ({}));
