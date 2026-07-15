@@ -54,6 +54,25 @@ describe('UptakeQuestionsModal', () => {
     await waitFor(() => expect(onAnswer).toHaveBeenCalledWith('q-1', { selectedOptions: ['Yes'] }));
   });
 
+  it('retries normally after resolving every question', async () => {
+    const onDismiss = vi.fn(async () => {});
+    const onContinue = vi.fn(async () => {});
+    render(
+      <UptakeQuestionsModal
+        advisory={advisory}
+        onAnswer={vi.fn(async () => {})}
+        onDismiss={onDismiss}
+        onContinue={onContinue}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(onDismiss).toHaveBeenCalledWith('q-1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Accept now' }));
+    await waitFor(() => expect(onContinue).toHaveBeenCalledWith([]));
+  });
+
   it('cancels without accepting', () => {
     const onCancel = vi.fn();
     render(

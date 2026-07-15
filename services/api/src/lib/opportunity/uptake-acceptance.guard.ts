@@ -91,9 +91,6 @@ export class UptakeAcceptanceGuard implements UptakeAcceptanceGuardLike {
       const acknowledged = new Set(input.acknowledgedUptakeQuestionIds ?? []);
       if (exactRows.every((row) => acknowledged.has(row.id))) return null;
 
-      const acknowledgedCurrentIds = exactRows
-        .map((row) => row.id)
-        .filter((id) => acknowledged.has(id));
       return {
         error: 'Resolve the pending uptake questions or explicitly continue anyway.',
         status: 409,
@@ -102,7 +99,7 @@ export class UptakeAcceptanceGuard implements UptakeAcceptanceGuardLike {
           advisoryOnly: true,
           opportunityId: input.opportunityId,
           questions: exactRows.map(toPublicQuestion),
-          acknowledgedUptakeQuestionIds: acknowledgedCurrentIds,
+          acknowledgedUptakeQuestionIds: exactRows.map((row) => row.id),
         },
       };
     } catch (error) {

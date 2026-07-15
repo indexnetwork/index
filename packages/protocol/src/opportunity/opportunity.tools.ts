@@ -238,13 +238,16 @@ function publicUptakeQuestion(question: PendingQuestionSummary): PublicUptakeQue
   };
 }
 
-function uptakeAdvisory(questions: PublicUptakeQuestion[]): string {
+function uptakeAdvisory(opportunityId: string, questions: PublicUptakeQuestion[]): string {
   return JSON.stringify({
     success: false,
+    error: "Resolve the pending uptake questions or explicitly continue anyway.",
     advisory: {
-      code: "uptake_questions_pending",
-      message: "Review these preparatory questions before accepting. To continue after surfacing them, retry with every listed id in acknowledgedUptakeQuestionIds.",
+      code: "unresolved_uptake_questions",
+      advisoryOnly: true,
+      opportunityId,
       questions,
+      acknowledgedUptakeQuestionIds: questions.map((question) => question.id),
     },
   });
 }
@@ -2421,7 +2424,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           });
           const acknowledged = new Set(query.acknowledgedUptakeQuestionIds ?? []);
           if (exactPending.some((question) => !acknowledged.has(question.id))) {
-            return uptakeAdvisory(exactPending.map(publicUptakeQuestion));
+            return uptakeAdvisory(opportunityId, exactPending.map(publicUptakeQuestion));
           }
         } catch (err) {
           logger.warn("update_opportunity: uptake question lookup failed open", {

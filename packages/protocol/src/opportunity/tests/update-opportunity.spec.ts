@@ -312,7 +312,13 @@ describe("update_opportunity — uptake soft interlock", () => {
       networkId: NETWORK_ID,
     });
     expect(result.success).toBe(false);
-    expect(result.advisory.code).toBe("uptake_questions_pending");
+    expect(result.error).toContain("uptake questions");
+    expect(result.advisory).toMatchObject({
+      code: "unresolved_uptake_questions",
+      advisoryOnly: true,
+      opportunityId: OPP_ID,
+      acknowledgedUptakeQuestionIds: [QUESTION_ID],
+    });
     expect(result.advisory.questions).toEqual([{
       id: QUESTION_ID,
       title: "Capacity",

@@ -28,16 +28,17 @@ export default function UptakeQuestionsModal({
   const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [continuing, setContinuing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     titleRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !continuing && !submittingId) onCancel();
+      if (event.key === "Escape" && !continuing && !retrying && !submittingId) onCancel();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [continuing, onCancel, submittingId]);
+  }, [continuing, onCancel, retrying, submittingId]);
 
   const allIds = useMemo(() => advisory.questions.map((question) => question.id), [advisory]);
 
@@ -124,12 +125,30 @@ export default function UptakeQuestionsModal({
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-gray-100 p-5">
-          <button type="button" onClick={onCancel} disabled={continuing || !!submittingId} className="rounded-sm border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+          <button type="button" onClick={onCancel} disabled={continuing || retrying || !!submittingId} className="rounded-sm border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
             Cancel
           </button>
+          {resolvedIds.size === allIds.length && allIds.length > 0 ? (
+            <button
+              type="button"
+              disabled={continuing || retrying || !!submittingId}
+              onClick={() => {
+                setRetrying(true);
+                setError(null);
+                void onContinue([]).catch((cause) => {
+                  setError(cause instanceof Error ? cause.message : "Could not retry acceptance.");
+                  setRetrying(false);
+                });
+              }}
+              className="flex items-center gap-2 rounded-sm border border-[#041729] px-4 py-2 text-sm font-medium text-[#041729] hover:bg-gray-50 disabled:opacity-50"
+            >
+              {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Accept now
+            </button>
+          ) : null}
           <button
             type="button"
-            disabled={continuing || !!submittingId}
+            disabled={continuing || retrying || !!submittingId}
             onClick={() => {
               setContinuing(true);
               setError(null);
