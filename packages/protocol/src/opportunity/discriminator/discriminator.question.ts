@@ -77,10 +77,20 @@ function toSecondPerson(seed: string): string {
     .replace(/\bmy\b/gi, "your")
     // Third-person seeds ("Is the user primarily involved…") — the question is
     // asked TO the owner, never ABOUT them.
-    .replace(/\b(is|was) the (user|owner|discoverer)\b/gi, "are you")
-    .replace(/\bdoes the (user|owner|discoverer)\b/gi, "do you")
-    .replace(/\bthe (user|owner|discoverer)'s\b/gi, "your")
-    .replace(/\bthe (user|owner|discoverer)\b/gi, "you");
+    .replace(/\b(is|was) (?:the|this) (user|owner|discoverer|client)\b/gi, "are you")
+    .replace(/\bdoes (?:the|this) (user|owner|discoverer|client)\b/gi, "do you")
+    .replace(/\b(?:the|this) (user|owner|discoverer|client)'s\b/gi, "your")
+    .replace(/\b(?:the|this) (user|owner|discoverer|client)\b/gi, "you");
+}
+
+/**
+ * Catch-all: after normalization the prompt must be second-person. Any
+ * residual third-person reference to the owner means an unanticipated seed
+ * shape slipped through — the deterministic two-sided template (always
+ * second-person) is the safe fallback.
+ */
+function isStillThirdPerson(prompt: string): boolean {
+  return /\b(?:the|this|a) (?:user|owner|discoverer|client)\b/i.test(prompt);
 }
 
 /**
@@ -101,7 +111,7 @@ function mentionsSide(seed: string, side: string): boolean {
 function toPrompt(questionSeed: string, sides: string[]): string {
   let p = toSecondPerson(questionSeed.trim().replace(/\s+/g, " "));
   const sidesMentioned = sides.filter((s) => mentionsSide(p, s)).length;
-  if (sidesMentioned < 2) {
+  if (sidesMentioned < 2 || isStillThirdPerson(p)) {
     const last = sides[sides.length - 1];
     const head = sides.slice(0, -1).join(", ");
     p = `Which matters more here: ${head} or ${last}`;
