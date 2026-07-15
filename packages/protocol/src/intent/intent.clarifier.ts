@@ -22,8 +22,8 @@ const clarificationSchema = z.discriminatedUnion("needsClarification", [
   z.object({
     needsClarification: z.literal(true),
     reason: z.string(),
-    suggestedDescription: z.string().min(1),
-    clarificationMessage: z.string().min(1),
+    suggestedDescription: z.string().trim().min(1),
+    clarificationMessage: z.string().trim().min(1),
     underspecificationType: UnderspecificationTypeSchema,
   }),
 ]);
@@ -218,7 +218,7 @@ ${activeIntentsContext || "none"}
           case "missing_constraint":
             return "Which location, timing, format, or range should constrain this intent?";
           case "open_alternative_set":
-            return "Which of the materially different interpretations or scopes should this intent pursue?";
+            return `Which alternative should this intent pursue instead: ${suggestion}?`;
         }
       })();
       return {

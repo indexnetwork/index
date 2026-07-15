@@ -9,6 +9,8 @@ export interface ClarificationCase {
   profileContext: string;
   activeIntentsContext: string;
   expectedType: UnderspecificationType | null;
+  /** Terms that must appear in the clarification question to resolve this QUD. */
+  expectedQuestionTerms?: string[];
 }
 
 /** Minimal live clarifier surface required by the runner. */

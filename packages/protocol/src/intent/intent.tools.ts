@@ -23,6 +23,30 @@ function getIntentClarifier(): IntentClarifierLike {
   return intentClarifier;
 }
 
+async function buildTypedClarificationResult(params: {
+  description: string;
+  userProfile: string;
+  activeIntentsContext?: string;
+  debugSteps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
+}): Promise<string | null> {
+  const clarification = await getIntentClarifier().invoke(
+    params.description,
+    params.userProfile,
+    params.activeIntentsContext ?? "",
+  );
+  if (!clarification.needsClarification) return null;
+  return JSON.stringify({
+    success: false,
+    needsClarification: true,
+    underspecificationType: clarification.underspecificationType,
+    suggestedDescription: clarification.suggestedDescription,
+    clarificationMessage: clarification.clarificationMessage,
+    missingFields: [clarification.underspecificationType],
+    message: clarification.clarificationMessage,
+    debugSteps: params.debugSteps,
+  });
+}
+
 /** Replace the lazy clarifier in deterministic tool tests. */
 export function setIntentClarifierForTesting(clarifier: IntentClarifierLike | null): void {
   intentClarifier = clarifier ?? undefined;
@@ -349,34 +373,23 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         // runs — so we check inference trace first.
         const verificationTrace = debugSteps.find((s: { step: string; detail?: string }) => s.step === "verification");
 
+        const typedClarification = await buildTypedClarificationResult({
+          description: query.description,
+          userProfile,
+          activeIntentsContext: result.activeIntents,
+          debugSteps,
+        });
+        if (typedClarification) return typedClarification;
+
         if (!verificationTrace) {
           const inferenceHint =
             debugSteps.find((s: { step: string; detail?: string }) => s.step === "inference")?.detail
             ?? "no intents extracted";
           return error(
             `No actionable intent was extracted (${inferenceHint}). ` +
-            `Please retry with a more specific goal (what kind, what for, and/or timeframe), ` +
-            `or ask the user to clarify.`,
+            `Please retry with an explicit goal or ask the user what outcome they want.`,
             debugSteps,
           );
-        }
-
-        const clarification = await getIntentClarifier().invoke(
-          query.description,
-          userProfile,
-          "",
-        );
-        if (clarification.needsClarification) {
-          return JSON.stringify({
-            success: false,
-            needsClarification: true,
-            underspecificationType: clarification.underspecificationType,
-            suggestedDescription: clarification.suggestedDescription,
-            clarificationMessage: clarification.clarificationMessage,
-            missingFields: [clarification.underspecificationType],
-            message: clarification.clarificationMessage,
-            debugSteps,
-          });
         }
 
         const rejectionHint =
@@ -393,6 +406,14 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (shouldAutoApprove) {
         const broadIntents = (verified as VerifiedIntent[]).filter(isBroadAttributiveIntent);
         if (broadIntents.length > 0) {
+          const typedClarification = await buildTypedClarificationResult({
+            description: broadIntents[0].description,
+            userProfile,
+            activeIntentsContext: result.activeIntents,
+            debugSteps,
+          });
+          if (typedClarification) return typedClarification;
+
           const first = broadIntents[0];
           const missing = first.verification?.missing_selectional_constraints ?? [];
           const missingHint = missing.length > 0

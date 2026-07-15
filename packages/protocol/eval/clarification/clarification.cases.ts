@@ -25,6 +25,7 @@ export const CASES: ClarificationCase[] = [
     profileContext: "I am launching a B2B analytics product.",
     activeIntentsContext: "none",
     expectedType: "open_alternative_set",
+    expectedQuestionTerms: ["technical co-founder", "channel partner"],
   },
   {
     id: "specific/null",

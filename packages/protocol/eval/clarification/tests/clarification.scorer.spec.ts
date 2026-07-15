@@ -79,6 +79,20 @@ describe("clarification scorer", () => {
     };
     expect(scoreCase(c, incomplete).passed).toBe(false);
   });
+
+  it("requires open-alternative questions to name the fixture alternatives", () => {
+    const c = CASES.find((candidate) => candidate.expectedType === "open_alternative_set")!;
+    const generic = {
+      ...baseOutput,
+      underspecificationType: "open_alternative_set" as const,
+      clarificationMessage: "Which option do you prefer?",
+    };
+    expect(scoreCase(c, generic).passed).toBe(false);
+    expect(scoreCase(c, {
+      ...generic,
+      clarificationMessage: "Do you need a technical co-founder or a channel partner?",
+    }).passed).toBe(true);
+  });
 });
 
 describe("clarification runner", () => {

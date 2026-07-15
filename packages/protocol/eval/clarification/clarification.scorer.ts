@@ -13,11 +13,19 @@ export function scoreCase(
   const contentComplete = output.needsClarification
     ? output.suggestedDescription.trim().length > 0 && output.clarificationMessage.trim().length > 0
     : true;
+  const normalizedMessage = output.clarificationMessage?.toLowerCase() ?? "";
+  const expectedTermsPresent = (c.expectedQuestionTerms ?? []).every((term) =>
+    normalizedMessage.includes(term.toLowerCase()),
+  );
   return {
     caseId: c.id,
     expectedType: c.expectedType,
     actualType: output.underspecificationType,
-    passed: classificationMatches && clarificationDecisionMatches && !fallbackFailure && contentComplete,
+    passed: classificationMatches
+      && clarificationDecisionMatches
+      && !fallbackFailure
+      && contentComplete
+      && expectedTermsPresent,
     output,
   };
 }
