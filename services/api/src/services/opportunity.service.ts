@@ -654,6 +654,7 @@ export class OpportunityService {
   async approveIntroduction(
     opportunityId: string,
     userId: string,
+    options?: Pick<IntentScopeOptions, 'networkScopeId'>,
   ): Promise<{ success: true } | { error: string; status: number }> {
     const opp = await this.db.getOpportunity(opportunityId);
     if (!opp) {
@@ -663,6 +664,9 @@ export class OpportunityService {
     const actor = opp.actors.find((a) => a.userId === userId);
     if (!actor || actor.role !== 'introducer') {
       return { error: 'Not authorized — user is not an introducer on this opportunity', status: 403 };
+    }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
     }
 
     const TERMINAL_STATUSES = new Set(['pending', 'negotiating', 'accepted', 'rejected', 'expired']);

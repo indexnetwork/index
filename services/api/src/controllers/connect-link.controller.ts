@@ -84,6 +84,7 @@ export class ConnectLinkController {
 
     const link = await resolveConnectLinkForUser(code, user.id);
     if (!link) return notFoundJson();
+    const { networkScopeId } = await withAgentScope(req, user);
 
     const frontendUrl = getFrontendUrl();
     const greetingForRecipient = async () => (
@@ -91,7 +92,9 @@ export class ConnectLinkController {
     );
 
     if (link.kind === 'approve_introduction') {
-      const result = await opportunityService.approveIntroduction(link.opportunityId, user.id);
+      const result = await opportunityService.approveIntroduction(link.opportunityId, user.id, {
+        ...(networkScopeId ? { networkScopeId } : {}),
+      });
       if ('error' in result) return jsonError(result.error, result.status);
       return Response.json({ kind: 'approve_introduction' } satisfies ConnectLinkGoResponse);
     }
@@ -106,7 +109,6 @@ export class ConnectLinkController {
       const acknowledgedUptakeQuestionIds = rawAcknowledged
         ? [...new Set(rawAcknowledged.split(',').map((id) => id.trim()).filter(Boolean))]
         : undefined;
-      const { networkScopeId } = await withAgentScope(req, user);
       const result = await opportunityService.startChat(link.opportunityId, user.id, {
         acknowledgedUptakeQuestionIds,
         ...(networkScopeId ? { networkScopeId } : {}),
