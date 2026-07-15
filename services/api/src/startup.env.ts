@@ -99,6 +99,8 @@ const envSchema = z.object({
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
   QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
+  QUESTIONER_UPTAKE_ENABLED: optionalBoolean,
+  QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: optionalInt,
   QUESTIONER_DISCOVERY_INPUT_MODE: z.string().optional(),
   QUESTIONER_DISCOVERY_TIMEOUT_MS: optionalInt,
   QUESTIONER_CHAT_WAIT_TIMEOUT_MS: optionalInt,

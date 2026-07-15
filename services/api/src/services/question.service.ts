@@ -26,11 +26,12 @@ const logger = log.service.from('QuestionService');
 export function stripInternalDetection(question: AdapterPersistedQuestion): AdapterPersistedQuestion {
   const {
     pool: _pool,
+    purpose: _purpose,
     strategy: _strategy,
     underspecificationType: _underspecificationType,
     ...detection
   } = question.detection;
-  if (!_pool && !_strategy && _underspecificationType === undefined) return question;
+  if (!_pool && !_purpose && !_strategy && _underspecificationType === undefined) return question;
   return { ...question, detection };
 }
 

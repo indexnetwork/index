@@ -71,6 +71,8 @@ import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
+import { OpportunityEvents } from './events/opportunity.event';
+import { uptakeQuestionService } from './services/uptake-question.service';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
 import { handlePoolAnswerFactory } from './events/handlers/question.answer.pool';
 import { beatTwoMessage } from './queues/pool/answer.shared';
@@ -158,6 +160,10 @@ negotiationRunExistingQueue.setRuntimeDeps({
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
+OpportunityEvents.onPending = async ({ opportunity }) => {
+  await uptakeQuestionService.handlePending(opportunity.id);
+};
+
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
     log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, networkId, error: err });

@@ -16,12 +16,24 @@ export const QUEUE_NAME = 'questioner-queue';
 /** Job data for question generation. Identical to QuestionerInput from protocol. */
 export type QuestionerJobData = QuestionerInput;
 
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { code?: unknown; cause?: unknown };
+  if (candidate.code === '23505') return true;
+  return typeof candidate.cause === 'object'
+    && candidate.cause !== null
+    && (candidate.cause as { code?: unknown }).code === '23505';
+}
+
 /**
  * Optional dependencies for testing. Use abstractions so tests can inject
  * stubs without touching real DB or LLM.
  */
+type QuestionerQueueAdapter = Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>
+  & Partial<Pick<QuestionerAdapter, 'existsForRecipientSourcePurpose'>>;
+
 export interface QuestionerQueueDeps {
-  adapter?: Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>;
+  adapter?: QuestionerQueueAdapter;
   agent?: Pick<QuestionerAgent, 'invoke'>;
   /** Lifecycle lookup used to gate intent-scoped jobs before generation. */
   getIntentLifecycle?: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
@@ -44,7 +56,7 @@ export class QuestionerQueue {
 
   private readonly logger = log.job.from('QuestionerJob');
   private readonly queueLogger = log.queue.from('QuestionerQueue');
-  private readonly adapter: Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>;
+  private readonly adapter: QuestionerQueueAdapter;
   private readonly getIntentLifecycle: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
@@ -75,8 +87,11 @@ export class QuestionerQueue {
    * @param data - The QuestionerInput payload (mode, userId, sourceType, sourceId, context).
    * @returns The BullMQ job.
    */
-  addGenerateJob(data: QuestionerJobData): Promise<Job<QuestionerJobData>> {
-    return this.addJob('generate_questions', data);
+  addGenerateJob(
+    data: QuestionerJobData,
+    options?: { jobId?: string; priority?: number },
+  ): Promise<Job<QuestionerJobData>> {
+    return this.addJob('generate_questions', data, options);
   }
 
   /**
@@ -166,6 +181,30 @@ export class QuestionerQueue {
       sourceId: data.sourceId,
     });
 
+    // Re-check exact uptake dedup at worker time before invoking the LLM. This
+    // covers retries and events racing after a question has already persisted.
+    if (data.purpose === 'uptake') {
+      const existing = this.adapter.existsForRecipientSourcePurpose
+        ? await this.adapter.existsForRecipientSourcePurpose(
+            data.userId,
+            data.sourceType,
+            data.sourceId,
+            'uptake',
+          )
+        : (await this.adapter.findPending(data.userId, {
+            purpose: 'uptake',
+            sourceType: data.sourceType,
+            sourceId: data.sourceId,
+          })).length > 0;
+      if (existing) {
+        this.logger.info('Uptake question skipped: exact question already exists', {
+          userId: data.userId,
+          sourceId: data.sourceId,
+        });
+        return;
+      }
+    }
+
     // pool_discovery questions are synthesized deterministically from mined
     // discriminators — no generator LLM (IND-418). Budget + dedup live here
     // so every producer (mining hook, future paths) hits one choke point.
@@ -190,9 +229,13 @@ export class QuestionerQueue {
     const triggeredByIntentId = data.triggeredByIntentId?.trim()
       || (data.scopeType === 'intent' && data.scopeId?.trim() ? data.scopeId.trim() : undefined);
 
-    const batch: PersistableQuestion[] = result.questions.map((question, i) => ({
+    const generatedQuestions = data.purpose === 'uptake'
+      ? result.questions.slice(0, 1)
+      : result.questions;
+    const batch: PersistableQuestion[] = generatedQuestions.map((question, i) => ({
       detection: {
         mode: data.mode,
+        ...(data.purpose ? { purpose: data.purpose } : {}),
         sourceType: data.sourceType,
         sourceId: data.sourceId,
         timestamp: new Date().toISOString(),
@@ -206,7 +249,21 @@ export class QuestionerQueue {
       conversationId: data.conversationId,
     }));
 
-    const ids = await this.adapter.persist(batch);
+    let ids: string[];
+    try {
+      ids = await this.adapter.persist(batch);
+    } catch (error) {
+      // The expression unique index is the final race guard. A competing
+      // worker winning persistence is success-equivalent and must not retry.
+      if (data.purpose === 'uptake' && isUniqueViolation(error)) {
+        this.logger.info('Uptake question skipped: concurrent persist won', {
+          userId: data.userId,
+          sourceId: data.sourceId,
+        });
+        return;
+      }
+      throw error;
+    }
 
     this.logger.info('Persisted questions', {
       mode: data.mode,
