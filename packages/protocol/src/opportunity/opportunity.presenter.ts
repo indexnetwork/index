@@ -30,7 +30,6 @@ export type PresenterDatabase = Pick<
   "getProfile" | "getActiveIntents" | "getNetwork" | "getPremisesForUser"
 >;
 
-const logger = protocolLogger("OpportunityPresenter");
 const presentLog = protocolLogger("OpportunityPresenter:present");
 const presentHomeCardLog = protocolLogger("OpportunityPresenter:presentHomeCard");
 const LLM_TIMEOUT_MS = 20_000;
