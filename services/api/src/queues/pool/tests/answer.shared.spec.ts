@@ -97,6 +97,8 @@ describe('pool answer narration', () => {
   it('uses deterministic count-only Beat-1 templates', () => {
     expect(beatOneMessage({ kind: 'applied', promoted: 2, demoted: 1, unknownAdjusted: 3 }))
       .toContain('2 matches prioritized, 1 deprioritized');
+    expect(beatOneMessage({ kind: 'applied', promoted: 2, demoted: 1, unknownAdjusted: 3 }, false))
+      .toBe('Noted — I saved your preference. It will shape the fresh matches I am searching for now.');
     expect(beatOneMessage({ kind: 'stale', staleRatio: 0.5 })).toContain("didn't reshuffle");
     expect(beatOneMessage({ kind: 'none' })).toContain('keeping your matches ranked as they are');
   });

@@ -10,7 +10,7 @@
  * "Both matter" records the answer and chains normally, but produces no
  * adjustments and no Tier-1 run because it expresses no ranking preference.
  */
-import { POOL_QUESTION_MIN_VOI, poolQuestionsMode } from '@indexnetwork/protocol';
+import { POOL_QUESTION_MIN_VOI, poolQuestionsMode, poolQuestionsRanking } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import type { QuestionerAdapter } from '../../adapters/questioner.adapter';
@@ -66,7 +66,7 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
         await deps.narrateBeatOne({
           userId: input.userId,
           intentId: input.intentId,
-          message: beatOneMessage(outcome),
+          message: beatOneMessage(outcome, poolQuestionsRanking() === 'on'),
           outcome,
         });
       } catch (error) {

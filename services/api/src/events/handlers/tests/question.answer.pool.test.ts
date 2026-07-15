@@ -83,9 +83,11 @@ const input = {
 describe('handlePoolAnswer', () => {
   beforeEach(() => {
     process.env.POOL_QUESTIONS_MODE = 'on';
+    process.env.POOL_QUESTIONS_RANKING = 'on';
   });
   afterEach(() => {
     delete process.env.POOL_QUESTIONS_MODE;
+    delete process.env.POOL_QUESTIONS_RANKING;
   });
 
   it('applies, narrates, enqueues Tier 1, and persists the next alternate', async () => {
@@ -94,6 +96,8 @@ describe('handlePoolAnswer', () => {
 
     expect(harness.applyAnswer).toHaveBeenCalledTimes(1);
     expect(harness.narrateBeatOne).toHaveBeenCalledTimes(1);
+    expect((harness.narrateBeatOne.mock.calls[0]?.[0] as { message: string }).message)
+      .toContain('1 match prioritized, 2 deprioritized');
     expect(harness.enqueueRerun).toHaveBeenCalledTimes(1);
     expect(harness.persisted).toHaveLength(1);
     const [question] = harness.persisted[0];

@@ -143,9 +143,12 @@ export async function applyPoolAnswer(input: {
 }
 
 /** Beat-1 template (never LLM text; counts + the user's own choice only). */
-export function beatOneMessage(outcome: PoolAnswerOutcome): string {
+export function beatOneMessage(outcome: PoolAnswerOutcome, rankingEnabled = true): string {
   switch (outcome.kind) {
     case 'applied': {
+      if (!rankingEnabled) {
+        return 'Noted — I saved your preference. It will shape the fresh matches I am searching for now.';
+      }
       const parts = [`Applied your answer — ${outcome.promoted} match${outcome.promoted === 1 ? '' : 'es'} prioritized`];
       if (outcome.demoted > 0) parts.push(`${outcome.demoted} deprioritized`);
       return `${parts.join(', ')}. I'm also re-searching with this in mind — new matches land here in about a minute.`;
