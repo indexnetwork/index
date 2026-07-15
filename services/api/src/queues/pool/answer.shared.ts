@@ -31,6 +31,9 @@ const logger = log.service.from('PoolAnswerApply');
 /** Statuses that make an opportunity part of the viewer's live candidate pool. */
 const POOL_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
 
+/** Keep Tier 0 fast without exhausting the database pool on a 100-row pool. */
+const ADJUSTMENT_WRITE_CONCURRENCY = 10;
+
 /** Outcome of one answer application (drives the Beat-1 template). */
 export type PoolAnswerOutcome =
   | { kind: 'none' }
@@ -92,15 +95,16 @@ export async function applyPoolAnswer(input: {
   let demoted = 0;
   const patched = new Set<string>();
   const chosenSide = plan.find((entry) => entry.adjustment.factor === 1)?.adjustment.side ?? input.selectedOption;
+  const writes: Array<() => Promise<void>> = [];
   for (const entry of plan) {
     if (!liveById.has(entry.opportunityId)) continue; // Left the pool since mining — nothing to patch.
     const isChosen = entry.adjustment.factor === 1;
-    await deps.applyAdjustment(entry.opportunityId, entry.adjustment, {
+    writes.push(() => deps.applyAdjustment(entry.opportunityId, entry.adjustment, {
       type: 'pool_discriminator',
       weight: isChosen ? 1 : -1,
       detail: `${entry.adjustment.label}: ${chosenSide}`,
       questionId: input.questionId,
-    });
+    }));
     patched.add(entry.opportunityId);
     if (isChosen) promoted++;
     else demoted++;
@@ -118,13 +122,17 @@ export async function applyPoolAnswer(input: {
       factor: POOL_ADJUSTMENT_FACTOR_UNKNOWN,
       appliedAt: now,
     };
-    await deps.applyAdjustment(row.id, adjustment, {
+    writes.push(() => deps.applyAdjustment(row.id, adjustment, {
       type: 'pool_discriminator',
       weight: 0,
       detail: `${label}: unassigned`,
       questionId: input.questionId,
-    });
+    }));
     unknownAdjusted++;
+  }
+
+  for (let index = 0; index < writes.length; index += ADJUSTMENT_WRITE_CONCURRENCY) {
+    await Promise.all(writes.slice(index, index + ADJUSTMENT_WRITE_CONCURRENCY).map((write) => write()));
   }
 
   logger.info('Pool answer applied', {
