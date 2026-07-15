@@ -3020,6 +3020,10 @@ Trigger a discovery negotiation between the authenticated viewer and the target 
 {
   "negotiation": {
     "id": "...",
+    "segments": 1,
+    "state": "completed",
+    "statusMessage": null,
+    "statusTimestamp": "...",
     "counterparty": { "id": "...", "name": "...", "avatar": null },
     "outcome": {
       "hasOpportunity": true,
@@ -3030,14 +3034,15 @@ Trigger a discovery negotiation between the authenticated viewer and the target 
     "turns": [
       { "speaker": { "id": "...", "name": "...", "avatar": null }, "action": "propose", "reasoning": "...", "suggestedRoles": null, "createdAt": "..." }
     ],
-    "createdAt": "..."
+    "createdAt": "...",
+    "updatedAt": "..."
   }
 }
 ```
 
 ### GET /api/users/:userId/negotiations
 
-List past negotiations for a user. When the viewer differs from the profile owner, only mutual negotiations are returned.
+List past negotiation threads for a user. Tasks sharing `metadata.opportunityId` are stitched into one thread; tasks without an opportunity ID remain independent. Messages are merged chronologically across all segments, while the newest segment supplies the response ID, state, status, outcome, and timestamps. When the viewer differs from the profile owner, only mutual negotiations are returned.
 
 **Auth**: AuthGuard
 
@@ -3045,8 +3050,8 @@ List past negotiations for a user. When the viewer differs from the profile owne
 - `userId` — User ID
 
 **Query params**:
-- `limit` — Max results (default: 20, max: 50)
-- `offset` — Pagination offset (default: 0)
+- `limit` — Max threads (default: 20, max: 50)
+- `offset` — Thread offset (default: 0)
 - `result` — Filter by result: `has_opportunity`, `no_opportunity`, `in_progress` (optional)
 
 **Response**:
@@ -3055,10 +3060,13 @@ List past negotiations for a user. When the viewer differs from the profile owne
   "negotiations": [
     {
       "id": "...",
+      "segments": 2,
+      "state": "completed",
+      "statusMessage": null,
+      "statusTimestamp": "...",
       "counterparty": { "id": "...", "name": "...", "avatar": "..." },
       "outcome": {
         "hasOpportunity": true,
-        "finalScore": 0.85,
         "role": "...",
         "turnCount": 3,
         "reason": "..."
@@ -3067,13 +3075,13 @@ List past negotiations for a user. When the viewer differs from the profile owne
         {
           "speaker": { "id": "...", "name": "...", "avatar": "..." },
           "action": "...",
-          "fitScore": 0.8,
           "reasoning": "...",
           "suggestedRoles": { ... },
           "createdAt": "..."
         }
       ],
-      "createdAt": "..."
+      "createdAt": "...",
+      "updatedAt": "..."
     }
   ]
 }
