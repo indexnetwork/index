@@ -40,10 +40,7 @@ export type PoolAnswerOutcome =
   | { kind: 'stale'; staleRatio: number }
   | { kind: 'applied'; promoted: number; demoted: number; unknownAdjusted: number };
 
-type LivePoolOpportunity = {
-  id: string;
-  metadata: Record<string, unknown> | null;
-};
+type LivePoolOpportunity = { id: string };
 
 export interface PoolAnswerApplyDeps {
   listLivePool: (userId: string, intentId: string) => Promise<LivePoolOpportunity[]>;
