@@ -57,6 +57,11 @@ type OpportunityInvokeOptions = Parameters<ReturnType<typeof buildOpportunityGra
  * `result.error` handling, and the candidates/opportunities (and optional trace)
  * completion logging. Per-queue variation is passed in via `errorLabel`/`logContext`/`logTrace`.
  */
+export interface OpportunityDiscoverySummary {
+  candidatesFound: number;
+  opportunitiesCreated: number;
+}
+
 export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOptions>(params: {
   graphDb: OpportunityGraphDb;
   deps?: OpportunityDiscoveryDeps & { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
@@ -74,12 +79,12 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
   logContext: Record<string, unknown>;
   /** Whether to emit the verbose graph-trace line (from-enrichment opts out). Defaults to true. */
   logTrace?: boolean;
-}): Promise<void> {
+}): Promise<OpportunityDiscoverySummary | null> {
   const { graphDb, deps, invokeOpts, logger, label, errorLabel = label, logContext, logTrace = true } = params;
 
   if (deps?.invokeOpportunityGraph) {
     await deps.invokeOpportunityGraph(invokeOpts);
-    return;
+    return null;
   }
 
   const opportunityGraph = buildOpportunityGraph(graphDb, deps);
@@ -109,4 +114,9 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
       })),
     });
   }
+
+  return {
+    candidatesFound: candidates.length,
+    opportunitiesCreated: opportunitiesArr.length,
+  };
 }

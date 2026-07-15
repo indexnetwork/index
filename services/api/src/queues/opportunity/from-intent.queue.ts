@@ -15,6 +15,12 @@ export interface FromIntentJobData {
   intentId: string;
   userId: string;
   networkIds?: string[];
+  /**
+   * What enqueued this run. 'pool_answer' marks Tier-1 answer-triggered
+   * re-discovery (IND-419): its completion writes the Beat-2 narration line
+   * into the intent's negotiator session. Absent for intent-creation/cron.
+   */
+  trigger?: 'pool_answer';
 }
 
 export type FromIntentDatabase = Pick<ChatDatabaseAdapter, 'getIntentForIndexing'>;
@@ -35,6 +41,10 @@ export interface FromIntentDeps {
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   /** Pool-discriminator mining hook (IND-417/418). Defaults to the shared fire-and-forget implementation; injectable for tests. */
   minePoolDiscriminators?: (trigger: PoolMiningTrigger) => void;
+  /** Answer context appended to Tier-1 discovery input after the debounce window. */
+  getPoolAnswerContext?: (userId: string, intentId: string) => Promise<string>;
+  /** Beat-2 narration for pool-answer re-runs (IND-419); injectable for tests. */
+  narratePoolRerun?: (input: { userId: string; intentId: string; newCandidates: number | null }) => Promise<void>;
 }
 
 export class FromIntentQueue {
@@ -55,21 +65,30 @@ export class FromIntentQueue {
     this.graphDb = createOpportunityGraphDb(this.database);
   }
 
-  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
+  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher' | 'getPoolAnswerContext' | 'narratePoolRerun'>): void {
     this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
   async addJob(
     data: FromIntentJobData,
-    options?: { jobId?: string; priority?: number },
+    options?: {
+      jobId?: string;
+      priority?: number;
+      delay?: number;
+      removeOnComplete?: boolean;
+      removeOnFail?: boolean;
+    },
   ): Promise<Job<FromIntentJobData>> {
     return this.queue.add('discover_opportunities', data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: { age: 24 * 60 * 60 },
-      removeOnFail: { age: 24 * 60 * 60 },
+      removeOnComplete: options?.removeOnComplete ?? { age: 24 * 60 * 60 },
+      removeOnFail: options?.removeOnFail ?? { age: 24 * 60 * 60 },
       jobId: options?.jobId,
       priority: options?.priority,
+      // Tier-1 debounce (IND-419): pool-answer re-runs are delayed and share
+      // one active job id per intent; removal on settle frees the next window.
+      delay: options?.delay,
     });
   }
 
@@ -103,16 +122,32 @@ export class FromIntentQueue {
     }
     this.logger.info('Starting discovery', { intentId, userId, networkIds });
 
+    let searchQuery = intent.payload;
+    if (data.trigger === 'pool_answer' && this.deps?.getPoolAnswerContext) {
+      try {
+        const answerContext = await this.deps.getPoolAnswerContext(userId, intentId);
+        if (answerContext.trim()) searchQuery = `${searchQuery}\n\n${answerContext.trim()}`;
+      } catch (error) {
+        // The run still provides a useful pool refresh if answer-context lookup
+        // fails; Tier 0 already applied the deterministic preference locally.
+        this.logger.warn('Pool answer context unavailable; running base intent', {
+          intentId,
+          userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     const invokeOpts: FromIntentGraphInvokeOptions = {
       userId: userId as Id<'users'>,
-      searchQuery: intent.payload,
+      searchQuery,
       operationMode: 'create',
       networkId: networkIds?.[0] as Id<'networks'> | undefined,
       triggerIntentId: intentId,
       options: { initialStatus: 'latent' },
     };
 
-    await runOpportunityDiscovery({
+    const summary = await runOpportunityDiscovery({
       graphDb: this.graphDb,
       deps: this.deps,
       invokeOpts,
@@ -131,6 +166,14 @@ export class FromIntentQueue {
       userId,
       intentId,
     });
+
+    if (data.trigger === 'pool_answer' && this.deps?.narratePoolRerun) {
+      await this.deps.narratePoolRerun({
+        userId,
+        intentId,
+        newCandidates: summary?.opportunitiesCreated ?? null,
+      });
+    }
   }
 
   startWorker(): void {

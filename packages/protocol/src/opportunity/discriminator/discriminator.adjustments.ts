@@ -15,7 +15,7 @@
  *   ("Hands-on builders vs advisors: you chose Advisor") — never LLM
  *   reasoning (opportunity-presentation-safety).
  */
-import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
+import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
 import type { QuestionPoolDiscriminator } from "../../shared/schemas/question.schema.js";
 
 /** One applied adjustment on an opportunity (stored in metadata.poolAdjustments). */
@@ -89,9 +89,7 @@ export function planPoolAdjustments(
   if (!chosen) return []; // "Both matter" or unrecognized option → no adjustments.
 
   const plan: PoolAdjustmentPlanEntry[] = [];
-  const assignedIds = new Set<string>();
   for (const a of discriminator.assignments) {
-    assignedIds.add(a.opportunityId);
     const isChosen = a.side === chosen;
     plan.push({
       opportunityId: a.opportunityId,
@@ -119,6 +117,16 @@ export function mergePoolAdjustment(
 ): Record<string, unknown> {
   const existing = readPoolAdjustments(metadata).filter((a) => a.questionId !== adjustment.questionId);
   return { ...(metadata ?? {}), poolAdjustments: [...existing, adjustment] };
+}
+
+/** Latest user-explainable demotion detail for card presentation, if any. */
+export function latestPoolDemotionDetail(
+  metadata: Record<string, unknown> | null | undefined,
+): string | undefined {
+  return [...readPoolAdjustments(metadata)]
+    .reverse()
+    .find((adjustment) => adjustment.factor < 1 && typeof adjustment.detail === 'string' && adjustment.detail.length > 0)
+    ?.detail;
 }
 
 /** Removes all adjustments for a questionId (dismissal/withdrawal reversal). */

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "bun:test";
 
-import { adjustedConfidence, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readPoolAdjustments, removePoolAdjustment } from "../discriminator.adjustments.js";
+import { adjustedConfidence, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readPoolAdjustments, removePoolAdjustment } from "../discriminator.adjustments.js";
 import type { PoolAdjustment } from "../discriminator.adjustments.js";
 import type { QuestionPoolDiscriminator } from "../../../shared/schemas/question.schema.js";
 
@@ -90,6 +90,18 @@ describe("merge/remove/read", () => {
     expect(readPoolAdjustments(null)).toEqual([]);
     expect(readPoolAdjustments({ poolAdjustments: "junk" })).toEqual([]);
     expect(readPoolAdjustments({ poolAdjustments: [{ nonsense: 1 }] })).toEqual([]);
+  });
+
+  it("returns only the latest explainable demotion detail for card UI", () => {
+    const metadata = {
+      poolAdjustments: [
+        adjustment({ questionId: "q-1", factor: 0.6, detail: "First: you chose A" }),
+        adjustment({ questionId: "q-2", factor: 0.9 }),
+        adjustment({ questionId: "q-3", factor: 0.6, detail: "Latest: you chose B" }),
+      ],
+    };
+    expect(latestPoolDemotionDetail(metadata)).toBe("Latest: you chose B");
+    expect(latestPoolDemotionDetail({})).toBeUndefined();
   });
 });
 

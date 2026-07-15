@@ -283,6 +283,61 @@ export class OpportunityDatabaseAdapter {
     await db.update(opportunities).set({ metadata, updatedAt: new Date() }).where(eq(opportunities.id, id));
   }
 
+  /**
+   * Atomically append/replace one answer-driven pool adjustment and its
+   * presentation-safe interpretation signal. The row lock prevents rapid
+   * answers from reading the same metadata snapshot and losing each other's
+   * adjustments (IND-419).
+   *
+   * @param id - Opportunity id to patch.
+   * @param adjustment - Adjustment keyed by questionId.
+   * @param signal - Matching interpretation signal keyed by questionId.
+   */
+  async applyOpportunityPoolAdjustment(
+    id: string,
+    adjustment: {
+      questionId: string;
+      label: string;
+      side: string;
+      factor: number;
+      detail?: string;
+      appliedAt: string;
+    },
+    signal: schema.OpportunitySignal,
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ metadata: opportunities.metadata, interpretation: opportunities.interpretation })
+        .from(opportunities)
+        .where(eq(opportunities.id, id))
+        .for('update');
+      if (!locked) return;
+
+      const rawAdjustments = locked.metadata?.poolAdjustments;
+      const existingAdjustments = Array.isArray(rawAdjustments)
+        ? rawAdjustments.filter((entry) =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            (entry as { questionId?: unknown }).questionId !== adjustment.questionId,
+          )
+        : [];
+      const existingSignals = (locked.interpretation.signals ?? []).filter(
+        (entry) => !(entry.type === 'pool_discriminator' && entry.questionId === adjustment.questionId),
+      );
+
+      await tx
+        .update(opportunities)
+        .set({
+          metadata: { ...(locked.metadata ?? {}), poolAdjustments: [...existingAdjustments, adjustment] },
+          interpretation: { ...locked.interpretation, signals: [...existingSignals, signal] },
+          // Ranking metadata is presentation state, not a lifecycle event.
+          // Preserve updatedAt so POOL_QUESTIONS_RANKING=off remains
+          // byte-identical to the pre-adjustment newest-first ordering.
+        })
+        .where(eq(opportunities.id, id));
+    });
+  }
+
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,

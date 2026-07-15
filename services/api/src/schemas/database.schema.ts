@@ -423,6 +423,8 @@ export interface OpportunitySignal {
   type: string;
   weight: number;
   detail?: string;
+  /** Question provenance for reversible pool-discriminator signals (IND-419). */
+  questionId?: string;
 }
 
 export interface OpportunityInterpretation {

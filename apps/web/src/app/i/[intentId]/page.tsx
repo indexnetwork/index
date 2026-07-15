@@ -185,12 +185,16 @@ export default function IntentDetailPage() {
   // backend may synchronously persist a follow-up — show a typing indicator,
   // refetch once, and append any new pool_discovery card.
   const [questionChainPending, setQuestionChainPending] = useState(false);
+  /** Bumps make the intent negotiator reload its stable session on pool beats. */
+  const [negotiatorRefreshVersion, setNegotiatorRefreshVersion] = useState(0);
   /** Every question id ever displayed — so a chain refetch only appends new cards. */
   const seenQuestionIdsRef = useRef<Set<string>>(new Set());
   const chainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   useEffect(
     () => () => {
       if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
+      for (const timer of reactionTimersRef.current) clearTimeout(timer);
     },
     [],
   );
@@ -325,6 +329,19 @@ export default function IntentDetailPage() {
       // Chain once per answer: a pool_discovery answer may have synchronously
       // produced a follow-up question — refetch shortly and append it.
       if (answered?.detection?.mode === "pool_discovery" && intentId) {
+        // The answer endpoint persists first and dispatches reactions
+        // asynchronously. Refresh now, shortly for Beat 1, and only at bounded
+        // Tier-1 checkpoints (65s/90s) for Beat 2 — no permanent polling.
+        setNegotiatorRefreshVersion((version) => version + 1);
+        void loadOpportunities();
+        for (const timer of reactionTimersRef.current) clearTimeout(timer);
+        reactionTimersRef.current = [1_500, 65_000, 90_000].map((delay) =>
+          setTimeout(() => {
+            setNegotiatorRefreshVersion((version) => version + 1);
+            void loadOpportunities();
+          }, delay),
+        );
+
         setQuestionChainPending(true);
         if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
         chainTimerRef.current = setTimeout(async () => {
@@ -350,7 +367,7 @@ export default function IntentDetailPage() {
         }, 1200);
       }
     },
-    [questions, questionsService, intentId],
+    [questions, questionsService, intentId, loadOpportunities],
   );
 
   const handleDismiss = useCallback(
@@ -517,6 +534,7 @@ export default function IntentDetailPage() {
                       onAnswerQuestion={handleAnswer}
                       onDismissQuestion={handleDismiss}
                       questionChainPending={questionChainPending}
+                      refreshVersion={negotiatorRefreshVersion}
                       opportunityStatusMap={opportunityStatusMap}
                       opportunityActionLoading={opportunityActionLoading}
                       onOpportunityAction={(id, action, userId, role, name) =>

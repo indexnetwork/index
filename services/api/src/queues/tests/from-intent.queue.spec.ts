@@ -63,13 +63,22 @@ describe('FromIntentQueue', () => {
       );
     });
 
-    it('supports jobId and priority options', async () => {
+    it('supports debounce and removal options', async () => {
       const queue = new FromIntentQueue();
-      await queue.addJob({ intentId: 'i1', userId: 'u1' }, { jobId: 'custom', priority: 1 });
+      await queue.addJob(
+        { intentId: 'i1', userId: 'u1', trigger: 'pool_answer' },
+        { jobId: 'custom', priority: 1, delay: 60_000, removeOnComplete: true, removeOnFail: true },
+      );
       expect(mockAdd).toHaveBeenCalledWith(
         'discover_opportunities',
-        { intentId: 'i1', userId: 'u1' },
-        expect.objectContaining({ jobId: 'custom', priority: 1 })
+        { intentId: 'i1', userId: 'u1', trigger: 'pool_answer' },
+        expect.objectContaining({
+          jobId: 'custom',
+          priority: 1,
+          delay: 60_000,
+          removeOnComplete: true,
+          removeOnFail: true,
+        }),
       );
     });
   });
@@ -136,6 +145,47 @@ describe('FromIntentQueue', () => {
           options: { initialStatus: 'latent' },
         })
       );
+    });
+
+    it('pool-answer discovery appends all durable answer context and narrates after mining', async () => {
+      const callOrder: string[] = [];
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {
+        callOrder.push('discover');
+      });
+      const getPoolAnswerContext = mock(async () => 'User-stated matching preferences:\n- Builders vs advisors: Builders');
+      const minePoolDiscriminators = mock(() => {
+        callOrder.push('mine');
+      });
+      const narratePoolRerun = mock(async () => {
+        callOrder.push('narrate');
+      });
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
+      };
+      const queue = new FromIntentQueue({
+        database: asDb(db),
+        invokeOpportunityGraph,
+        getPoolAnswerContext,
+        minePoolDiscriminators,
+        narratePoolRerun,
+      });
+
+      await queue.processJob('discover_opportunities', {
+        intentId: 'i1',
+        userId: 'u1',
+        trigger: 'pool_answer',
+      });
+
+      expect(getPoolAnswerContext).toHaveBeenCalledWith('u1', 'i1');
+      expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({
+        searchQuery: 'Build a SaaS\n\nUser-stated matching preferences:\n- Builders vs advisors: Builders',
+      }));
+      expect(narratePoolRerun).toHaveBeenCalledWith({
+        userId: 'u1',
+        intentId: 'i1',
+        newCandidates: null,
+      });
+      expect(callOrder).toEqual(['discover', 'mine', 'narrate']);
     });
 
     it('discover: uses networkIds[0] as networkId', async () => {
