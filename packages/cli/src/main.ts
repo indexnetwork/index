@@ -387,6 +387,7 @@ async function main(): Promise<void> {
         positionals: args.positionals,
         target: args.target,
         introduce: args.introduce,
+        acknowledgeUptake: args.acknowledgeUptake,
       });
       return;
     case "negotiation":

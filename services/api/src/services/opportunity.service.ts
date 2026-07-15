@@ -13,6 +13,7 @@ import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue
 import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
+import { uptakeAcceptanceGuard, type UptakeAcceptanceAdvisoryResult, type UptakeAcceptanceGuardLike } from '../lib/opportunity/uptake-acceptance.guard';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
@@ -50,6 +51,7 @@ interface OpportunityStatusUpdateResult {
 interface IntentScopeOptions {
   scopeType?: 'intent';
   scopeId?: string;
+  acknowledgedUptakeQuestionIds?: string[];
 }
 
 function matchesSelectedIntentScope(
@@ -124,6 +126,7 @@ export class OpportunityService {
   private readonly presenter: OpportunityPresenter;
   private readonly presenterDb: PresenterDatabase;
   private readonly deliveryCache: RedisCacheAdapter;
+  private readonly uptakeGuard: UptakeAcceptanceGuardLike;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
@@ -133,12 +136,14 @@ export class OpportunityService {
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
+    acceptanceGuard: UptakeAcceptanceGuardLike = uptakeAcceptanceGuard,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
     this.presenter = new OpportunityPresenter();
     this.presenterDb = chatDatabaseAdapter as unknown as PresenterDatabase;
     this.deliveryCache = new RedisCacheAdapter();
+    this.uptakeGuard = acceptanceGuard;
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -505,7 +510,7 @@ export class OpportunityService {
     status: OpportunityStatus,
     userId: string,
     options?: IntentScopeOptions,
-  ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
+  ): Promise<OpportunityStatusUpdateResult | UptakeAcceptanceAdvisoryResult | { error: string; status: number }> {
     logger.verbose('Updating opportunity status', {
       opportunityId,
       status,
@@ -531,6 +536,16 @@ export class OpportunityService {
     // and they are trying to accept, block them — the other party must accept.
     if (status === 'accepted' && callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
+    }
+
+    if (status === 'accepted') {
+      const advisory = await this.uptakeGuard.check({
+        opportunityId,
+        userId,
+        networkId: callerActor.networkId,
+        acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
+      });
+      if (advisory) return advisory;
     }
 
     const counterpart = status === 'accepted'
@@ -698,6 +713,7 @@ export class OpportunityService {
     options?: IntentScopeOptions,
   ): Promise<
     | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
+    | UptakeAcceptanceAdvisoryResult
     | { error: string; status: number }
   > {
     const opp = await this.db.getOpportunity(opportunityId);
@@ -751,6 +767,14 @@ export class OpportunityService {
     if (callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
+
+    const advisory = await this.uptakeGuard.check({
+      opportunityId,
+      userId,
+      networkId: callerActor.networkId,
+      acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
+    });
+    if (advisory) return advisory;
 
     const counterpart = resolveCounterpart(opp.actors, userId);
     if (!counterpart) {
