@@ -125,7 +125,9 @@ export default function IntentNegotiatorChat({
   useEffect(() => {
     if (!ready || !sessionId || refreshVersion <= appliedRefreshVersionRef.current) return;
     appliedRefreshVersionRef.current = refreshVersion;
-    void loadSession(sessionId);
+    void loadSession(sessionId).catch((error) => {
+      logger.warn("Failed to refresh intent negotiator session", { error, intentId });
+    });
   }, [loadSession, ready, refreshVersion, sessionId]);
 
   // Follow the stream.
