@@ -712,12 +712,14 @@ export class HomeGraphFactory {
         }
 
         // Skeleton runs never categorize (some cards have no text to categorize
-        // and the response must stay LLM-free): emit flat sections and mark the
-        // categorizer as "hit" so the generate node and the cache write are both
-        // skipped. Chunked by MAX_ITEMS_PER_SECTION because normalizeAndSort
-        // caps every section — one giant section would silently drop cards that
-        // the follow-up full request (multiple sections) does return.
-        if (state.presentation === 'skeleton') {
+        // and the response must stay LLM-free). Ranking-enabled lifecycle views
+        // also stay flat: the intent Radar flattens sections and buckets by
+        // status, so dynamic categorization would erase the adjusted order on
+        // the full second-phase response. Flag off retains the legacy path.
+        // Chunk by MAX_ITEMS_PER_SECTION because normalizeAndSort caps sections.
+        const preserveAdjustedLifecycleOrder =
+          (state.statuses?.length ?? 0) > 0 && poolQuestionsRanking() === 'on';
+        if (state.presentation === 'skeleton' || preserveAdjustedLifecycleOrder) {
           const sectionProposals: HomeSectionProposal[] = [];
           for (let start = 0; start < state.cards.length; start += MAX_ITEMS_PER_SECTION) {
             sectionProposals.push({

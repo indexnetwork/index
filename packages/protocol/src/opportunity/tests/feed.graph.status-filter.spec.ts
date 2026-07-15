@@ -18,6 +18,30 @@ function createMockCache(): OpportunityCache {
   };
 }
 
+/** Presenter-hit cache: lets full lifecycle tests prove ordering without LLM calls. */
+function createPresenterHitCache(): OpportunityCache {
+  return {
+    get: async () => null,
+    set: async () => {},
+    mget: async <T>(keys: string[]) => keys.map((key, index) => {
+      const opportunityId = key.split(':')[2] ?? `opportunity-${index}`;
+      return {
+        opportunityId,
+        status: 'draft',
+        userId: `counterpart-${index}`,
+        name: `Counterpart ${index}`,
+        avatar: null,
+        mainText: 'Cached safe summary.',
+        cta: 'Review this match.',
+        primaryActionLabel: 'Connect',
+        secondaryActionLabel: 'Skip',
+        mutualIntentsLabel: 'Shared interests',
+        _cardIndex: index,
+      } as T;
+    }),
+  };
+}
+
 function createMockDb(
   captured: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string },
   rows: Opportunity[] = [],
@@ -143,5 +167,12 @@ describe('home graph status filter', () => {
     const onItems = on.sections.flatMap((section) => section.items);
     expect(onItems.map((item) => item.opportunityId)).toEqual(['older-prioritized', 'newer-demoted']);
     expect(onItems[1]?.deprioritizedReason).toBe('Builders vs advisors: you chose Builders');
+
+    // The full second phase must preserve that order too; otherwise the
+    // categorizer can reshuffle sections before the intent page flattens them.
+    const fullGraph = new HomeGraphFactory(createMockDb({}, rows), createPresenterHitCache()).createGraph();
+    const full = await fullGraph.invoke({ userId: 'u1', statuses: ['draft'] });
+    expect(full.sections.flatMap((section) => section.items).map((item) => item.opportunityId))
+      .toEqual(['older-prioritized', 'newer-demoted']);
   });
 });
