@@ -139,6 +139,8 @@ export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";
 export { NetworkMembershipGraphFactory } from "./network/membership/membership.graph.js";
 export { IntentGraphFactory } from "./intent/intent.graph.js";
+export { SemanticVerifier } from "./intent/intent.verifier.js";
+export type { SemanticVerifierOutput } from "./intent/intent.verifier.js";
 export { IntentNetworkGraphFactory } from "./network/indexer/indexer.graph.js";
 export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";

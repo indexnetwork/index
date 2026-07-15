@@ -10,6 +10,8 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 
 ## 1. Premise dependency graph with revocation cascade — **M/L**
 
+> **Status: shipped (IND-423).** `handlePremiseCascade` now expires only opportunities whose provenance cites the lapsed premise (`metadata.evidence` `sourcePremiseId`/`candidatePremiseId` or actor-level grounding `premise`), and re-verifies the user's intents grounded on it (embedding-proximity heuristic, capped) via `SemanticVerifier`, refreshing their felicity scores. No new schema was needed — the evidence recorded by `buildCandidateEvidence` was already persisted on the opportunity row. An explicit premise→intent provenance edge remains future work.
+
 **Theory:** Schlangen & Skantze (2009), Incremental Unit model — grounded-in (`G`) links with confidence-propagation revocation. *(Report rank #1, Ch. 7.)*
 
 **The real gap it fixes (corrected after code verification):** a retract cascade already exists, but it is **blanket, not dependency-targeted**. `retract_premise` (`premise/premise.tools.ts`) fires `PremiseEvents.onRetracted` (`services/api/src/adapters/chat.database.adapter.ts`), which `handlePremiseCascade` (`services/api/src/queues/premise.queue.ts`) resolves by expiring **all** of the user's `draft`/`latent`/`pending`/`negotiating` opportunities — “regardless of how far along they were” — even those grounded entirely in *other* premises. Context regeneration is likewise wholesale (`userContextQueue.addRegenJob`). Intents are never re-verified at all. So the problem is twofold: **over-invalidation** of unrelated in-flight opportunities and **under-invalidation** of intents whose felicity rested on the retracted premise.

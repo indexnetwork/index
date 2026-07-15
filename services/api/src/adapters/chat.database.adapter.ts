@@ -3457,6 +3457,43 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Find a user's own ACTIVE intents whose embeddings sit close to the given
+   * embedding. Used by the premise retract/expire cascade as the "grounded on"
+   * heuristic: no explicit premise→intent edge exists in the schema, so
+   * cosine proximity in the shared embedding space (text-embedding-3-large,
+   * 2000 dims — same space as premises) is the best available proxy for which
+   * intents were grounded on a lapsed premise and need re-verification (IND-423).
+   * @param params.userId - Owner of the intents (own intents only)
+   * @param params.embedding - The premise embedding to compare against
+   * @param params.minSimilarity - Cosine similarity floor (default 0.5)
+   * @param params.limit - Max intents to return (default 5)
+   */
+  async getIntentsGroundedOnEmbedding(params: {
+    userId: string;
+    embedding: number[];
+    minSimilarity?: number;
+    limit?: number;
+  }): Promise<Array<{ id: string; payload: string; similarity: number }>> {
+    const { userId, embedding, minSimilarity = 0.5, limit = 5 } = params;
+    const vectorStr = `[${embedding.join(',')}]`;
+    const rows = await db.execute<{ id: string; payload: string; similarity: number }>(sql`
+      SELECT
+        i.id,
+        i.payload,
+        1 - (i.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.intents} i
+      WHERE i.user_id = ${userId}
+        AND i.status = 'ACTIVE'
+        AND i.archived_at IS NULL
+        AND i.embedding IS NOT NULL
+        AND 1 - (i.embedding <=> ${vectorStr}::vector) >= ${minSimilarity}
+      ORDER BY i.embedding <=> ${vectorStr}::vector
+      LIMIT ${limit}
+    `);
+    return rows as Array<{ id: string; payload: string; similarity: number }>;
+  }
+
+  /**
    * Find ACTIVE premises whose validity.validUntil has passed.
    * Uses a JSONB text extraction cast to timestamptz for the comparison.
    * @returns Minimal rows: id and userId for each expired premise
