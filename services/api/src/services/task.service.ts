@@ -156,8 +156,18 @@ export class TaskService {
       includeScreenedOut: true,
     });
     const grouped = new Map<string, NegotiationRow[]>();
-
+    // The schema permits multiple artifacts with the same task/name. Keep one
+    // task segment and prefer its newest outcome artifact so a duplicate write
+    // cannot inflate segment/turn counts.
+    const uniqueRows = new Map<string, NegotiationRow>();
     for (const row of rows) {
+      const existing = uniqueRows.get(row.id);
+      const existingArtifactTime = existing?.artifact?.createdAt.getTime() ?? -1;
+      const rowArtifactTime = row.artifact?.createdAt.getTime() ?? -1;
+      if (!existing || rowArtifactTime > existingArtifactTime) uniqueRows.set(row.id, row);
+    }
+
+    for (const row of uniqueRows.values()) {
       const opportunityId = getOpportunityId(row);
       // Namespace both key types so a fallback task id cannot collide with an
       // unrelated opportunity id (both are UUID-shaped in production).

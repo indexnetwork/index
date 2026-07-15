@@ -83,9 +83,17 @@ function mapNegotiationThread(
   const outcomeData = outcomePart?.data;
   const viewerRole = outcomeData?.agreedRoles?.find((r) => r.userId === selfId)?.role ?? null;
 
-  const rawMessages = thread.segmentRows
+  const oldestSegments = [...thread.segmentRows].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
+  );
+  const segmentOrder = new Map(oldestSegments.map((segment, index) => [segment.id, index]));
+  const rawMessages = oldestSegments
     .flatMap((segment) => messagesMap.get(segment.id) ?? [])
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+    .sort((a, b) =>
+      a.createdAt.getTime() - b.createdAt.getTime()
+      || (segmentOrder.get(a.taskId ?? '') ?? 0) - (segmentOrder.get(b.taskId ?? '') ?? 0)
+      || a.id.localeCompare(b.id),
+    );
   const turns = rawMessages.map((msg) => {
     const agentUserId = msg.senderId.replace(/^agent:/, '');
     const speakerUser = userMap.get(agentUserId);

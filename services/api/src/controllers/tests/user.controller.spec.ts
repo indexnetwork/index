@@ -85,6 +85,7 @@ describe("UserController Integration", () => {
       const currentCreatedAt = new Date("2026-01-05T10:00:00.000Z");
       const currentUpdatedAt = new Date("2026-01-05T11:00:00.000Z");
       const currentStatusTimestamp = new Date("2026-01-05T10:30:00.000Z");
+      const tiedMessageCreatedAt = new Date("2026-01-05T10:05:00.000Z");
       const metadata = {
         type: "negotiation",
         sourceUserId: testUserId,
@@ -144,7 +145,7 @@ describe("UserController Integration", () => {
             senderId: `agent:${counterparty.id}`,
             role: "agent",
             parts: [{ kind: "data", data: { action: "accept", assessment: { reasoning: "Accepted after resuming" } } }],
-            createdAt: new Date("2026-01-05T10:05:00.000Z"),
+            createdAt: tiedMessageCreatedAt,
           },
           {
             conversationId: conversation.id,
@@ -152,7 +153,7 @@ describe("UserController Integration", () => {
             senderId: `agent:${testUserId}`,
             role: "agent",
             parts: [{ kind: "data", data: { action: "outreach", assessment: { reasoning: "Original outreach opener" } } }],
-            createdAt: new Date("2026-01-01T10:05:00.000Z"),
+            createdAt: tiedMessageCreatedAt,
           },
         ]);
 
@@ -165,7 +166,14 @@ describe("UserController Integration", () => {
           {
             taskId: currentTaskId,
             name: "negotiation-outcome",
+            parts: [{ kind: "data", data: { hasOpportunity: false, turnCount: 1, reason: "duplicate_older_artifact" } }],
+            createdAt: new Date("2026-01-05T10:10:00.000Z"),
+          },
+          {
+            taskId: currentTaskId,
+            name: "negotiation-outcome",
             parts: [{ kind: "data", data: { hasOpportunity: true, turnCount: 2, reason: "accepted_after_resume" } }],
+            createdAt: new Date("2026-01-05T10:20:00.000Z"),
           },
         ]);
 
