@@ -54,7 +54,6 @@ export interface PoolAnswerApplyDeps {
 const defaultApplyDeps: PoolAnswerApplyDeps = {
   listLivePool: (userId, intentId) => chatDatabaseAdapter.getOpportunitiesForUser(userId, {
     statuses: [...POOL_STATUSES],
-    limit: 100,
     scopeType: 'intent',
     scopeId: intentId,
   }),
