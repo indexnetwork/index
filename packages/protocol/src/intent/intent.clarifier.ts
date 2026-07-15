@@ -22,8 +22,8 @@ const clarificationSchema = z.discriminatedUnion("needsClarification", [
   z.object({
     needsClarification: z.literal(true),
     reason: z.string(),
-    suggestedDescription: z.string().nullable(),
-    clarificationMessage: z.string().nullable(),
+    suggestedDescription: z.string().min(1),
+    clarificationMessage: z.string().min(1),
     underspecificationType: UnderspecificationTypeSchema,
   }),
 ]);
@@ -70,16 +70,18 @@ Rules:
 `;
 
 const clarificationDraftPrompt = `
-You draft a concise clarification response for a vague intent.
+You draft one concise clarification response for an underspecified intent.
 
-Rules:
-- Return both:
-  1) suggestedDescription (specific rewritten intent)
-  2) clarificationMessage (single short message to the user)
-- clarificationMessage must include the suggestion naturally and ask for confirmation.
-- Use this shape: ` + "`Did you mean: \"<suggestedDescription>\"?`" + ` followed by a brief confirmation instruction.
-- Target the question specifically to the QUD repair category supplied in the user prompt.
-- Keep it short. No bullet lists. No JSON.
+Return both:
+1) suggestedDescription: one concrete rewrite representing a plausible interpretation.
+2) clarificationMessage: one direct question that resolves the supplied QUD category.
+
+Question rules by category:
+- missing_constituent: ask which participant, entity, or outcome the user means.
+- missing_constraint: ask for the unresolved ranking boundary (where/when/how/how much).
+- open_alternative_set: name the materially different alternatives and ask the user to choose; never collapse them into a generic yes/no confirmation.
+
+The question may mention suggestedDescription when useful, but do not force every category into "Did you mean...?". Keep it short. No bullet lists. No JSON.
 `;
 
 export class IntentClarifier {
@@ -209,7 +211,16 @@ ${activeIntentsContext || "none"}
       logger.warn("generateClarificationDraft: failed", { error });
       const suggestion = await this.generateSuggestion(description, profileContext, activeIntentsContext);
       if (!suggestion) return null;
-      const clarificationMessage = `Do you mean: ${suggestion}?`;
+      const clarificationMessage = (() => {
+        switch (underspecificationType) {
+          case "missing_constituent":
+            return "Who or what should this intent focus on?";
+          case "missing_constraint":
+            return "Which location, timing, format, or range should constrain this intent?";
+          case "open_alternative_set":
+            return "Which of the materially different interpretations or scopes should this intent pursue?";
+        }
+      })();
       return {
         suggestedDescription: suggestion,
         clarificationMessage,

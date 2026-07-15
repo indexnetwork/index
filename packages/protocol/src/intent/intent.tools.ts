@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { IntentClarifier } from "./intent.clarifier.js";
 import type { ExecutionResult, VerifiedIntent } from "./intent.state.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "./intent.specificity.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -12,6 +13,20 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
 
 const logger = protocolLogger("ChatTools:Intent");
+
+type IntentClarifierLike = Pick<IntentClarifier, "invoke">;
+
+let intentClarifier: IntentClarifierLike | undefined;
+
+function getIntentClarifier(): IntentClarifierLike {
+  intentClarifier ??= new IntentClarifier();
+  return intentClarifier;
+}
+
+/** Replace the lazy clarifier in deterministic tool tests. */
+export function setIntentClarifierForTesting(clarifier: IntentClarifierLike | null): void {
+  intentClarifier = clarifier ?? undefined;
+}
 
 /**
  * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
@@ -346,13 +361,30 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
+        const clarification = await getIntentClarifier().invoke(
+          query.description,
+          userProfile,
+          "",
+        );
+        if (clarification.needsClarification) {
+          return JSON.stringify({
+            success: false,
+            needsClarification: true,
+            underspecificationType: clarification.underspecificationType,
+            suggestedDescription: clarification.suggestedDescription,
+            clarificationMessage: clarification.clarificationMessage,
+            missingFields: [clarification.underspecificationType],
+            message: clarification.clarificationMessage,
+            debugSteps,
+          });
+        }
+
         const rejectionHint =
           verificationTrace.detail ?? "all candidate intents were filtered as invalid or too vague";
         return error(
           `Intent verification failed (${rejectionHint}). ` +
-          `The description may be too vague or was classified as a statement rather than a goal. ` +
-          `Either retry with a more specific description (e.g. include what kind, what for, or a timeframe) ` +
-          `or ask the user to clarify what exactly they are looking for.`,
+          `The description may have been classified as a statement rather than a goal. ` +
+          `Retry with an explicit goal or ask the user what outcome they want.`,
           debugSteps,
         );
       }

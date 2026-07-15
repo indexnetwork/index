@@ -10,11 +10,14 @@ export function scoreCase(
   const classificationMatches = output.underspecificationType === c.expectedType;
   const clarificationDecisionMatches = output.needsClarification === (c.expectedType !== null);
   const fallbackFailure = output.reason === "fallback_on_model_error";
+  const contentComplete = output.needsClarification
+    ? output.suggestedDescription.trim().length > 0 && output.clarificationMessage.trim().length > 0
+    : true;
   return {
     caseId: c.id,
     expectedType: c.expectedType,
     actualType: output.underspecificationType,
-    passed: classificationMatches && clarificationDecisionMatches && !fallbackFailure,
+    passed: classificationMatches && clarificationDecisionMatches && !fallbackFailure && contentComplete,
     output,
   };
 }

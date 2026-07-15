@@ -69,6 +69,16 @@ describe("clarification scorer", () => {
     };
     expect(scoreCase(c, contradictory).passed).toBe(false);
   });
+
+  it("requires non-empty clarification content", () => {
+    const c = CASES[0];
+    const incomplete = {
+      ...baseOutput,
+      suggestedDescription: "",
+      clarificationMessage: "",
+    };
+    expect(scoreCase(c, incomplete).passed).toBe(false);
+  });
 });
 
 describe("clarification runner", () => {

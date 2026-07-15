@@ -25,7 +25,10 @@ describe('IntentClarifier', () => {
       '',
     );
     expect(result.needsClarification).toBe(true);
-    expect(result.clarificationMessage).toBeTruthy();
+    if (!result.needsClarification) throw new Error('expected clarification');
+    expect(result.clarificationMessage.length).toBeGreaterThan(0);
+    expect(result.suggestedDescription.length).toBeGreaterThan(0);
+    expect(result.underspecificationType).not.toBeNull();
     expect(result.underspecificationType).not.toBeNull();
   }, 60000);
 
