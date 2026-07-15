@@ -94,7 +94,7 @@ export { SYSTEM_AGENT_IDS } from './shared/interfaces/agent.interface.js';
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
 export { ChatContextDigestSchema, type ChatContextDigest } from "./shared/schemas/chat-context.schema.js";
-export { QuestionOptionSchema, QuestionSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema, type Question, type QuestionOption, type QuestionStrategy, type QuestionWithStrategy, type QuestionGeneratorResponse, type QuestionGenerationResult, type QuestionMode, type QuestionDetection, type QuestionActor, type QuestionAnswer } from "./shared/schemas/question.schema.js";
+export { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema, type Question, type QuestionOption, type UnderspecificationType, type QuestionStrategy, type QuestionWithStrategy, type QuestionGeneratorResponse, type QuestionGenerationResult, type QuestionMode, type QuestionDetection, type QuestionActor, type QuestionAnswer } from "./shared/schemas/question.schema.js";
 export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 export type { McpAuthInput } from "./shared/schemas/mcp-auth.schema.js";
 export { UserIdentitySchema, type UserIdentity } from "./shared/schemas/identity.schema.js";
@@ -105,6 +105,10 @@ export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, classifyPromptPresence, resolveAs
 export type { PromptPresenceInput, ResolveAssignmentNetworkScopeArgs, AssignmentScopeMembership, BuildNetworkAssignmentDecisionArgs, NetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
 export { buildCandidateEvidence, withCandidateEvidence, mergeOpportunityEvidence, withMatchedStrategies, renderOpportunityEvidenceForPrompt } from "./opportunity/opportunity.evidence.js";
 export type { EvidenceCandidateInput } from "./opportunity/opportunity.evidence.js";
+
+// ─── Intent clarification ─────────────────────────────────────────────────────
+
+export { IntentClarifier, type IntentClarifierOutput } from "./intent/intent.clarifier.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
@@ -186,6 +190,7 @@ export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
 export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, NegotiationInflightContext, ChatContext, PoolDiscoveryContext } from "./questioner/questioner.types.js";
 export { getPreset } from "./questioner/questioner.presets.js";
+export { QUD_UNDERSPECIFICATION_RULES } from "./questioner/questioner.qud.js";
 export { isQuestionerEnabled, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs } from "./questioner/questioner.env.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
 export { PoolDiscriminatorMiner } from "./opportunity/discriminator/discriminator.miner.js";

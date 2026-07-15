@@ -20,11 +20,17 @@ const logger = log.service.from('QuestionService');
 /**
  * Removes server-only detection fields before a question leaves the API.
  * `detection.pool` carries pool_discovery candidate assignments + chain
- * alternates — k-anonymity requires they never reach a client (IND-418).
+ * alternates (IND-418); strategy and QUD type are generation/debug metadata
+ * rather than client rendering contracts (IND-425).
  */
 export function stripInternalDetection(question: AdapterPersistedQuestion): AdapterPersistedQuestion {
-  if (!question.detection.pool) return question;
-  const { pool: _pool, ...detection } = question.detection;
+  const {
+    pool: _pool,
+    strategy: _strategy,
+    underspecificationType: _underspecificationType,
+    ...detection
+  } = question.detection;
+  if (!_pool && !_strategy && _underspecificationType === undefined) return question;
   return { ...question, detection };
 }
 

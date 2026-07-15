@@ -58,19 +58,26 @@ function makePersistable(
       multiSelect: false,
     },
     strategy: 'refine_intent',
+    underspecificationType: 'missing_constraint',
     ...overrides,
   };
 }
 
 describe('QuestionerAdapter', () => {
-  it('persists a batch of questions', async () => {
+  it('persists a batch of questions with internal QUD metadata', async () => {
     const batch = [
       makePersistable(),
-      makePersistable({ strategy: 'surface_missing_detail' }),
+      makePersistable({
+        strategy: 'surface_missing_detail',
+        underspecificationType: null,
+      }),
     ];
-    await adapter.persist(batch);
+    const ids = await adapter.persist(batch);
     const pending = await adapter.findPending('test-user-1');
     expect(pending.length).toBeGreaterThanOrEqual(2);
+    const inserted = ids.map((id) => pending.find((question) => question.id === id));
+    expect(inserted[0]?.detection.underspecificationType).toBe('missing_constraint');
+    expect(inserted[1]?.detection.underspecificationType).toBeNull();
   });
 
   it('findPending returns only pending questions for the given user', async () => {

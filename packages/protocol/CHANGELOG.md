@@ -12,6 +12,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+### Added
+- QUD-typed intent clarification (`missing_constituent`, `missing_constraint`, and `open_alternative_set`) across the live intent elaboration and Questioner flows, with internal detection metadata and exact-match eval coverage (IND-425).
+
 ### Changed
 - Reframed `README.md` as the public-facing Index Network Protocol document and moved package integration details into `IMPLEMENTATION.md`.
 - Included protocol documentation files in the published package tarball so README links remain available to package consumers.

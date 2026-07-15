@@ -33,7 +33,9 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 - Extend the existing `negotiation` Questioner preset to target **preparatory conditions** of the counterparty ("can they actually do this?") when an opportunity reaches `pending` and the counterparty intent's `felicityAuthority` is low.
 - In `update_opportunity`'s accept path, check for unresolved uptake questions and have the agent present them before offering the accept action. Keep it advisory — a hard new `pre-uptake` state is **not** needed; the existing `negotiating` status is the natural host for unresolved-uptake dwell time.
 
-## 3. QUD-typed clarification in the elaboration loop — **S**
+## 3. QUD-typed clarification in the elaboration loop — **S** — **SHIPPED (IND-425)**
+
+Implemented a canonical three-value QUD taxonomy across IntentClarifier and the live intent/discovery Questioner presets, persisted it as internal question detection metadata, and added exact-match clarification evaluations.
 
 **Theory:** Ginzburg (2012) QUD; Purver's clarification-request typology. *(Ch. 2; not in the report's top-6 but highest value-per-effort.)*
 

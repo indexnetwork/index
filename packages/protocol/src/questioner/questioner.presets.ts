@@ -7,6 +7,7 @@
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
 import { SYSTEM_PROMPT as DISCOVERY_SYSTEM_PROMPT, buildQuestionPrompt as buildDiscoveryPrompt } from "../opportunity/question.prompt.js";
 
+import { QUD_UNDERSPECIFICATION_RULES } from "./questioner.qud.js";
 import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, ProfileContext } from "./questioner.types.js";
 
 /**
@@ -387,30 +388,34 @@ function buildChatPrompt(ctx: ChatContext): string {
  * QuestionerAgent. `getPreset("pool_discovery")` therefore throws — the
  * QuestionerQueue branches on the mode before invoking the agent.
  */
+function withQudMetadataRules(systemPrompt: string): string {
+  return `${systemPrompt}\n\n${QUD_UNDERSPECIFICATION_RULES}`;
+}
+
 const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   discovery: {
-    systemPrompt: DISCOVERY_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(DISCOVERY_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) =>
       buildDiscoveryPrompt(context as Parameters<typeof buildDiscoveryPrompt>[0]),
   },
   intent: {
-    systemPrompt: INTENT_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(INTENT_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildIntentPrompt(context as IntentContext),
   },
   enrichment: {
-    systemPrompt: PROFILE_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(PROFILE_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildProfilePrompt(context as ProfileContext),
   },
   negotiation: {
-    systemPrompt: NEGOTIATION_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(NEGOTIATION_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildNegotiationPrompt(context as NegotiationContext),
   },
   negotiation_inflight: {
-    systemPrompt: NEGOTIATION_INFLIGHT_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(NEGOTIATION_INFLIGHT_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildNegotiationInflightPrompt(context as NegotiationInflightContext),
   },
   chat: {
-    systemPrompt: CHAT_SYSTEM_PROMPT,
+    systemPrompt: withQudMetadataRules(CHAT_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildChatPrompt(context as ChatContext),
   },
 };

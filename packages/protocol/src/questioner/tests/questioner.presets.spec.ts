@@ -56,6 +56,18 @@ describe("standalone prompt contract", () => {
   });
 });
 
+describe("QUD taxonomy contract", () => {
+  it.each(ALL_MODES)("mode '%s' receives the required structured-output metadata contract", (mode) => {
+    const prompt = getPreset(mode).systemPrompt;
+    expect(prompt).toContain("QUD underspecification taxonomy");
+    expect(prompt).toContain("missing_constituent");
+    expect(prompt).toContain("missing_constraint");
+    expect(prompt).toContain("open_alternative_set");
+    expect(prompt).toContain("Strategy and underspecification type are orthogonal");
+    expect(prompt).toContain("Use null");
+  });
+});
+
 describe("getPreset", () => {
   it("returns the discovery preset with systemPrompt and buildPrompt", () => {
     const preset = getPreset("discovery");

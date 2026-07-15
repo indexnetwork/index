@@ -28,6 +28,7 @@ describe('QuestionerQueue', () => {
         },
       ],
       strategies: ['surface_missing_detail'],
+      underspecificationTypes: ['missing_constraint'],
     };
     const queue = new QuestionerQueue({
       adapter: {
@@ -52,6 +53,8 @@ describe('QuestionerQueue', () => {
     });
 
     expect(captured).toHaveLength(1);
+    expect(captured[0].detection.underspecificationType).toBeUndefined();
+    expect(captured[0].underspecificationType).toBe('missing_constraint');
     expect(captured[0].actors).toEqual([
       { userId: 'user-1', role: 'subject', networkId: 'network-1' },
     ]);
@@ -80,6 +83,7 @@ describe('QuestionerQueue', () => {
             },
           ],
           strategies: ['surface_missing_detail'],
+          underspecificationTypes: ['missing_constraint'],
         }),
       },
     });
@@ -123,6 +127,7 @@ describe('QuestionerQueue', () => {
             },
           ],
           strategies: ['surface_missing_detail'],
+          underspecificationTypes: ['missing_constraint'],
         }),
       },
     });
@@ -171,6 +176,7 @@ describe('QuestionerQueue', () => {
             },
           ],
           strategies: ['surface_missing_detail'],
+          underspecificationTypes: ['missing_constraint'],
         }),
       },
     });

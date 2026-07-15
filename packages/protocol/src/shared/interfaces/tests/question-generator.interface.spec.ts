@@ -27,7 +27,7 @@ describe("QuestionGeneratorReader contract", () => {
   it("permits implementations that return a non-null QuestionGenerationResult", async () => {
     const q: Question = { title: "T", prompt: "P?", options: [{ label: "a", description: "x" }, { label: "b", description: "y" }], multiSelect: false };
     const s: QuestionStrategy[] = ["refine_intent"];
-    const ok: QuestionGeneratorReader = { generate: async () => ({ questions: [q], strategies: s }) };
+    const ok: QuestionGeneratorReader = { generate: async () => ({ questions: [q], strategies: s, underspecificationTypes: [null] }) };
     const r = await ok.generate({ query: "x", userContext: "", negotiationDigests: [], summary: { totalCandidates: 0, opportunitiesFound: 0, noOpportunityCount: 0, timeoutCount: 0, roleDistribution: {} }, now: "" });
     expect(r?.questions).toHaveLength(1);
   });

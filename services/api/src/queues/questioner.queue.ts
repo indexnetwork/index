@@ -175,6 +175,7 @@ export class QuestionerQueue {
       actors: [{ userId: data.userId, ...(actorNetworkId ? { networkId: actorNetworkId } : {}), role: 'subject' as const }],
       payload: question,
       strategy: result.strategies[i],
+      underspecificationType: result.underspecificationTypes[i],
       conversationId: data.conversationId,
     }));
 
