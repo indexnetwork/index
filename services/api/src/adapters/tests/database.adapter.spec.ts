@@ -1735,3 +1735,163 @@ describe('Network overview member reads (EDG-53)', () => {
     expect(rows.every((r) => r.userId === fixture.userAId)).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Premise cascade targeting (IND-423)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Premise cascade targeting (IND-423)', () => {
+  const oppAdapter = new OpportunityDatabaseAdapter();
+  const chatAdapter = new ChatDatabaseAdapter();
+
+  const premiseAId = uuidv4();
+  const premiseBId = uuidv4();
+  const createdOppIds: string[] = [];
+  const createdIntentIds: string[] = [];
+
+  const CASCADE_STATUSES = ['draft', 'latent', 'pending', 'negotiating'];
+
+  const detection = () => ({
+    source: 'opportunity_graph' as const,
+    createdBy: 'agent-opportunity-finder',
+    timestamp: new Date().toISOString(),
+  });
+  const interpretation = { category: 'collaboration', reasoning: 'IND-423 fixture', confidence: 0.8 };
+
+  const makeOpp = async (opts: {
+    status: 'draft' | 'latent' | 'pending' | 'negotiating' | 'accepted';
+    evidence?: Array<Record<string, unknown>>;
+    actorPremise?: string;
+  }) => {
+    const created = await oppAdapter.createOpportunity({
+      detection: detection(),
+      actors: [
+        {
+          networkId: fixture.networkId,
+          userId: fixture.userAId,
+          role: 'agent',
+          ...(opts.actorPremise ? { premise: opts.actorPremise } : {}),
+        },
+        { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+      ],
+      interpretation,
+      context: { networkId: fixture.networkId },
+      confidence: '0.8',
+      status: opts.status,
+      ...(opts.evidence !== undefined ? { metadata: { evidence: opts.evidence } } : {}),
+    });
+    createdOppIds.push(created.id);
+    return created;
+  };
+
+  afterAll(async () => {
+    if (createdOppIds.length) await db.delete(opportunities).where(inArray(opportunities.id, createdOppIds));
+    await db.delete(premises).where(inArray(premises.id, [premiseAId, premiseBId]));
+    if (createdIntentIds.length) await db.delete(intents).where(inArray(intents.id, createdIntentIds));
+  });
+
+  describe('getOpportunitiesCitingPremise', () => {
+    let citedViaSource: string;
+    let citedViaCandidate: string;
+    let citedViaActor: string;
+    let citesOtherPremise: string;
+    let noProvenance: string;
+    let citedButAccepted: string;
+
+    beforeAll(async () => {
+      citedViaSource = (await makeOpp({
+        status: 'pending',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.8, sourcePremiseId: premiseAId }],
+      })).id;
+      citedViaCandidate = (await makeOpp({
+        status: 'negotiating',
+        evidence: [{ kind: 'query_premise', networkId: fixture.networkId, score: 0.7, candidatePremiseId: premiseAId }],
+      })).id;
+      citedViaActor = (await makeOpp({ status: 'draft', actorPremise: premiseAId })).id;
+      citesOtherPremise = (await makeOpp({
+        status: 'pending',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.9, sourcePremiseId: premiseBId }],
+      })).id;
+      noProvenance = (await makeOpp({ status: 'pending' })).id;
+      citedButAccepted = (await makeOpp({
+        status: 'accepted',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.8, sourcePremiseId: premiseAId }],
+      })).id;
+    });
+
+    it('returns opportunities citing the premise via evidence or actor grounding', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citedViaSource)).toBe(true);
+      expect(ids.has(citedViaCandidate)).toBe(true);
+      expect(ids.has(citedViaActor)).toBe(true);
+    });
+
+    it('does not return opportunities evidenced solely by other premises (no collateral)', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citesOtherPremise)).toBe(false);
+      expect(ids.has(noProvenance)).toBe(false);
+    });
+
+    it('respects the status filter: accepted opportunities stay out of cascade scope', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citedButAccepted)).toBe(false);
+    });
+
+    it('scopes to the requesting user via the actors guard', async () => {
+      const otherUserId = uuidv4();
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(otherUserId, premiseAId, { statuses: CASCADE_STATUSES });
+      expect(rows.length).toBe(0);
+    });
+  });
+
+  describe('getIntentsGroundedOnEmbedding', () => {
+    // Orthogonal unit vectors so cosine similarity is exactly 1 (aligned) or 0 (orthogonal).
+    const dim = 2000;
+    const premiseEmbedding = new Array(dim).fill(0).map((_, i) => (i === 0 ? 1 : 0));
+    const orthogonalEmbedding = new Array(dim).fill(0).map((_, i) => (i === 1 ? 1 : 0));
+
+    const alignedIntentId = uuidv4();
+    const orthogonalIntentId = uuidv4();
+    const alignedOtherUserIntentId = uuidv4();
+    const alignedArchivedIntentId = uuidv4();
+
+    beforeAll(async () => {
+      createdIntentIds.push(alignedIntentId, orthogonalIntentId, alignedOtherUserIntentId, alignedArchivedIntentId);
+      await db.insert(intents).values([
+        { id: alignedIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'aligned intent', embedding: premiseEmbedding, status: 'ACTIVE' },
+        { id: orthogonalIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'orthogonal intent', embedding: orthogonalEmbedding, status: 'ACTIVE' },
+        { id: alignedOtherUserIntentId, userId: fixture.userBId, payload: TEST_PREFIX + 'other user aligned', embedding: premiseEmbedding, status: 'ACTIVE' },
+        { id: alignedArchivedIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'archived aligned', embedding: premiseEmbedding, status: 'ACTIVE', archivedAt: new Date() },
+      ]);
+    });
+
+    it('returns only the user own ACTIVE non-archived intents above the similarity floor', async () => {
+      const rows = await chatAdapter.getIntentsGroundedOnEmbedding({
+        userId: fixture.userAId,
+        embedding: premiseEmbedding,
+        minSimilarity: 0.5,
+        limit: 5,
+      });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(alignedIntentId)).toBe(true);
+      expect(ids.has(orthogonalIntentId)).toBe(false);      // below similarity floor
+      expect(ids.has(alignedOtherUserIntentId)).toBe(false); // other user's intent
+      expect(ids.has(alignedArchivedIntentId)).toBe(false);  // archived
+      const aligned = rows.find((r) => r.id === alignedIntentId);
+      expect(aligned!.similarity).toBeGreaterThan(0.99);
+      expect(aligned!.payload).toBe(TEST_PREFIX + 'aligned intent');
+    });
+
+    it('respects the limit cap', async () => {
+      const rows = await chatAdapter.getIntentsGroundedOnEmbedding({
+        userId: fixture.userAId,
+        embedding: premiseEmbedding,
+        minSimilarity: 0.5,
+        limit: 1,
+      });
+      expect(rows.length).toBeLessThanOrEqual(1);
+    });
+  });
+});

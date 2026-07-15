@@ -164,6 +164,46 @@ export class OpportunityDatabaseAdapter {
     return rows.map(toOpportunityRow);
   }
 
+  /**
+   * Retrieve opportunities for a user that cite a specific premise in their
+   * provenance. An opportunity "cites" the premise when:
+   *  - any `metadata.evidence` entry references it as `sourcePremiseId` or
+   *    `candidatePremiseId` (recorded by `buildCandidateEvidence` at discovery
+   *    time), or
+   *  - any actor row carries it as the grounding `premise` (set when
+   *    discoverySource is 'premise-similarity').
+   *
+   * Used by the premise retract/expire cascade so that only opportunities
+   * actually motivated by the lapsed premise are invalidated — opportunities
+   * evidenced solely by other premises are left untouched (IND-423).
+   * @param userId - The user whose opportunities to inspect (must be an actor)
+   * @param premiseId - The retracted/expired premise
+   * @param options - Optional status filter (e.g. cascade-eligible statuses)
+   */
+  async getOpportunitiesCitingPremise(
+    userId: string,
+    premiseId: string,
+    options?: { statuses?: string[] },
+  ): Promise<OpportunityRow[]> {
+    const conditions = [
+      sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`,
+      sql`(
+        ${opportunities.metadata}->'evidence' @> ${JSON.stringify([{ sourcePremiseId: premiseId }])}::jsonb
+        OR ${opportunities.metadata}->'evidence' @> ${JSON.stringify([{ candidatePremiseId: premiseId }])}::jsonb
+        OR ${opportunities.actors} @> ${JSON.stringify([{ premise: premiseId }])}::jsonb
+      )`,
+    ];
+    if (options?.statuses?.length) {
+      conditions.push(inArray(opportunities.status, options.statuses as Array<typeof opportunities.$inferSelect.status>));
+    }
+    const rows = await db
+      .select()
+      .from(opportunities)
+      .where(and(...conditions))
+      .orderBy(desc(opportunities.createdAt));
+    return rows.map(toOpportunityRow);
+  }
+
   async getOpportunitiesForNetwork(
     networkId: string,
     options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
