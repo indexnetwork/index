@@ -18,7 +18,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.11.5",
+      "version": "0.13.2",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
@@ -100,7 +100,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.33.0",
+      "version": "0.33.1",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

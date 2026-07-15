@@ -1066,7 +1066,15 @@ export class ConversationDatabaseAdapter {
    */
   async getNegotiationsByUser(
     userId: string,
-    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'has_opportunity' | 'no_opportunity' | 'in_progress'; since?: Date },
+    opts?: {
+      limit?: number;
+      offset?: number;
+      mutualWithUserId?: string;
+      result?: 'has_opportunity' | 'no_opportunity' | 'in_progress';
+      since?: Date;
+      unpaginated?: boolean;
+      includeScreenedOut?: boolean;
+    },
   ): Promise<Array<Task & { artifact: Artifact | null }>> {
     const limit = opts?.limit ?? 10;
     const offset = opts?.offset ?? 0;
@@ -1109,7 +1117,7 @@ export class ConversationDatabaseAdapter {
     // decisions — zero turns, no counterparty involvement. They stay visible
     // to the owner (self view) but are excluded from the mutual (non-self
     // viewer) list so the counterparty never learns a gate decision was made.
-    const screenedOutFilter = opts?.mutualWithUserId
+    const screenedOutFilter = opts?.mutualWithUserId && !opts.includeScreenedOut
       ? or(
           isNull(schema.artifacts.id),
           sql`coalesce(${schema.artifacts.parts}->0->'data'->>'reason', '') <> 'screened_out'`,
@@ -1119,7 +1127,7 @@ export class ConversationDatabaseAdapter {
     const allFilters = [userFilter, resultFilter, sinceFilter, screenedOutFilter].filter(Boolean);
     const combinedFilter = allFilters.length > 1 ? and(...allFilters) : allFilters[0];
 
-    const rows = await db
+    const query = db
       .select({
         task: schema.tasks,
         artifact: schema.artifacts,
@@ -1133,9 +1141,13 @@ export class ConversationDatabaseAdapter {
         ),
       )
       .where(combinedFilter)
-      .orderBy(desc(schema.tasks.createdAt))
-      .limit(limit)
-      .offset(offset);
+      .orderBy(desc(schema.tasks.createdAt));
+
+    // Thread pagination must see every continuation segment before grouping.
+    // The ordinary row-oriented callers retain the existing SQL pagination.
+    const rows = opts?.unpaginated
+      ? await query
+      : await query.limit(limit).offset(offset);
 
     return rows.map((r) => ({ ...r.task, artifact: r.artifact }));
   }
