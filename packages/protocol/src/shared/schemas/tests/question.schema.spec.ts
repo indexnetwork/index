@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
+import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
 const okOption = { label: "Stay focused", description: "Higher risk but cleaner narrative" };
 
@@ -154,6 +154,13 @@ describe("QuestionGeneratorResponseSchema", () => {
   });
 });
 
+describe("QuestionPurpose", () => {
+  it("accepts only the internal uptake discriminator", () => {
+    expect(QuestionPurposeSchema.parse("uptake")).toBe("uptake");
+    expect(QuestionPurposeSchema.safeParse("negotiation").success).toBe(false);
+  });
+});
+
 describe("QuestionDetection", () => {
   it("accepts a valid detection object", () => {
     const result = QuestionDetectionSchema.safeParse({
@@ -161,6 +168,18 @@ describe("QuestionDetection", () => {
       sourceType: "opportunity",
       sourceId: "abc-123",
       timestamp: "2026-05-24T12:00:00.000Z",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts optional purpose independently from QUD metadata", () => {
+    const result = QuestionDetectionSchema.safeParse({
+      mode: "negotiation",
+      purpose: "uptake",
+      sourceType: "opportunity",
+      sourceId: "opp-1",
+      timestamp: new Date().toISOString(),
+      underspecificationType: null,
     });
     expect(result.success).toBe(true);
   });

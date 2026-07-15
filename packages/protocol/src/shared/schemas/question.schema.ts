@@ -79,6 +79,9 @@ export interface QuestionGenerationResult {
 
 // ─── Persistence types (opportunity-style composable jsonb) ──────────────────
 
+/** Internal reason a question was generated, orthogonal to mode and QUD metadata. */
+export const QuestionPurposeSchema = z.enum(["uptake"]);
+
 export const QuestionModeSchema = z.enum([
   "discovery",
   "intent",
@@ -142,6 +145,8 @@ export const QuestionPoolSnapshotSchema = z.object({
 export const QuestionDetectionSchema = z.object({
   /** Which preset mode generated this question. */
   mode: QuestionModeSchema,
+  /** Internal reason for generation; independent of mode and QUD repair metadata. */
+  purpose: QuestionPurposeSchema.optional(),
   /** Entity type that triggered generation (e.g. "opportunity", "intent", "profile"). */
   sourceType: z.string().min(1),
   /** ID of the triggering entity. */
@@ -183,6 +188,7 @@ export const QuestionAnswerSchema = z.object({
   answeredAt: z.string().min(1),
 });
 
+export type QuestionPurpose = z.infer<typeof QuestionPurposeSchema>;
 export type QuestionMode = z.infer<typeof QuestionModeSchema>;
 export type QuestionDetection = z.infer<typeof QuestionDetectionSchema>;
 export type QuestionActor = z.infer<typeof QuestionActorSchema>;
