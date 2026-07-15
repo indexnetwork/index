@@ -1,5 +1,6 @@
 // services/api/src/queues/opportunity/from-intent.queue.ts
 import { Job } from 'bullmq';
+import type { DeduplicationOptions } from 'bullmq';
 import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { Id } from '../../types/common.types';
@@ -77,6 +78,7 @@ export class FromIntentQueue {
       delay?: number;
       removeOnComplete?: boolean;
       removeOnFail?: boolean;
+      deduplication?: DeduplicationOptions;
     },
   ): Promise<Job<FromIntentJobData>> {
     return this.queue.add('discover_opportunities', data, {
@@ -84,10 +86,11 @@ export class FromIntentQueue {
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: options?.removeOnComplete ?? { age: 24 * 60 * 60 },
       removeOnFail: options?.removeOnFail ?? { age: 24 * 60 * 60 },
+      deduplication: options?.deduplication,
       jobId: options?.jobId,
       priority: options?.priority,
-      // Tier-1 debounce (IND-419): pool-answer re-runs are delayed and share
-      // one active job id per intent; removal on settle frees the next window.
+      // Tier-1 debounce (IND-419): callers use BullMQ deduplication with
+      // replace+extend+keepLastIfActive for sliding and trailing semantics.
       delay: options?.delay,
     });
   }

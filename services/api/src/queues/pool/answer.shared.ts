@@ -9,8 +9,8 @@
  *     pool, nothing is reshuffled.
  *   Beat 1: template assistant message into the intent's negotiator session
  *     (counts only — never LLM reasoning).
- *   Tier 1 (~15–60s): debounced from-intent re-discovery (one active BullMQ
- *     job id per intent so an answer burst coalesces into one run); the run's
+ *   Tier 1 (~15–60s): debounced from-intent re-discovery (one BullMQ
+ *     deduplication key per intent so an answer burst coalesces); the run's
  *     completion re-mines via the shared hook (P2.1), staging the next
  *     question, and writes Beat 2.
  *
@@ -178,10 +178,10 @@ export interface PoolRerunEnqueueDeps {
 }
 
 /**
- * Fixed per-intent job id gives a real sliding debounce: BullMQ ignores later
- * adds while the first job is delayed/active, including bursts that cross a
- * wall-clock minute boundary. Removal on settle frees the id for the next
- * answer after this run.
+ * BullMQ debounce mode (`replace` + `extend`) gives a real sliding window
+ * across wall-clock boundaries. `keepLastIfActive` preserves one trailing run
+ * when an answer arrives after the worker has already started, so no durable
+ * preference is omitted by active-job deduplication.
  */
 export async function enqueuePoolRerun(
   input: { userId: string; intentId: string },
@@ -190,10 +190,16 @@ export async function enqueuePoolRerun(
   await deps.addJob(
     { intentId: input.intentId, userId: input.userId, trigger: 'pool_answer' },
     {
-      jobId: `pool-rerun-${input.intentId}`,
       delay: POOL_RERUN_DEBOUNCE_MS,
       removeOnComplete: true,
       removeOnFail: true,
+      deduplication: {
+        id: `pool-rerun-${input.intentId}`,
+        ttl: POOL_RERUN_DEBOUNCE_MS,
+        extend: true,
+        replace: true,
+        keepLastIfActive: true,
+      },
     },
   );
 }

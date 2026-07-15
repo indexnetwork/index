@@ -67,17 +67,23 @@ describe('FromIntentQueue', () => {
       const queue = new FromIntentQueue();
       await queue.addJob(
         { intentId: 'i1', userId: 'u1', trigger: 'pool_answer' },
-        { jobId: 'custom', priority: 1, delay: 60_000, removeOnComplete: true, removeOnFail: true },
+        {
+          priority: 1,
+          delay: 60_000,
+          removeOnComplete: true,
+          removeOnFail: true,
+          deduplication: { id: 'intent-i1', ttl: 60_000, extend: true, replace: true, keepLastIfActive: true },
+        },
       );
       expect(mockAdd).toHaveBeenCalledWith(
         'discover_opportunities',
         { intentId: 'i1', userId: 'u1', trigger: 'pool_answer' },
         expect.objectContaining({
-          jobId: 'custom',
           priority: 1,
           delay: 60_000,
           removeOnComplete: true,
           removeOnFail: true,
+          deduplication: { id: 'intent-i1', ttl: 60_000, extend: true, replace: true, keepLastIfActive: true },
         }),
       );
     });

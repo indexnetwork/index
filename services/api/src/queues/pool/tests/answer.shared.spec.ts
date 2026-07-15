@@ -3,6 +3,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import type { QuestionPoolSnapshot } from '@indexnetwork/protocol';
 
 import { applyPoolAnswer, beatOneMessage, beatTwoMessage, enqueuePoolRerun } from '../answer.shared';
+import type { PoolAdjustmentWrite } from '../answer.shared';
 
 function pool(assignments: Array<{ opportunityId: string; side: string }>): QuestionPoolSnapshot {
   return {
@@ -31,6 +32,15 @@ const baseInput = {
 describe('applyPoolAnswer', () => {
   it('applies chosen, other, and live-unassigned factors with safe signals', async () => {
     const writes: Array<{ id: string; factor: number; side: string; weight: number; detail: string }> = [];
+    const applyAdjustments = mock(async (batch: PoolAdjustmentWrite[]) => {
+      writes.push(...batch.map(({ opportunityId, adjustment, signal }) => ({
+        id: opportunityId,
+        factor: adjustment.factor,
+        side: adjustment.side,
+        weight: signal.weight,
+        detail: signal.detail,
+      })));
+    });
     const outcome = await applyPoolAnswer({
       ...baseInput,
       pool: pool([
@@ -43,18 +53,11 @@ describe('applyPoolAnswer', () => {
         { id: 'opp-b', metadata: {} },
         { id: 'opp-unknown', metadata: {} },
       ],
-      applyAdjustments: async (batch) => {
-        writes.push(...batch.map(({ opportunityId, adjustment, signal }) => ({
-          id: opportunityId,
-          factor: adjustment.factor,
-          side: adjustment.side,
-          weight: signal.weight,
-          detail: signal.detail,
-        })));
-      },
+      applyAdjustments,
     });
 
     expect(outcome).toEqual({ kind: 'applied', promoted: 1, demoted: 1, unknownAdjusted: 1 });
+    expect(applyAdjustments).toHaveBeenCalledTimes(1);
     expect(writes).toEqual([
       { id: 'opp-a', factor: 1, side: 'Builders', weight: 1, detail: 'Builders vs advisors: Builders' },
       { id: 'opp-b', factor: 0.6, side: 'Advisors', weight: -1, detail: 'Builders vs advisors: Builders' },
@@ -117,10 +120,10 @@ describe('pool answer narration', () => {
 });
 
 describe('enqueuePoolRerun', () => {
-  it('uses one active job id for every answer in the debounce window', async () => {
-    const uniqueJobs = new Set<string>();
+  it('uses one sliding deduplication key and retains a trailing active-job answer', async () => {
+    const deduplicationIds = new Set<string>();
     const addJob = mock(async (_data, options) => {
-      if (options?.jobId) uniqueJobs.add(options.jobId);
+      if (options?.deduplication?.id) deduplicationIds.add(options.deduplication.id);
       return {} as never;
     });
 
@@ -131,8 +134,19 @@ describe('enqueuePoolRerun', () => {
     ]);
 
     expect(addJob).toHaveBeenCalledTimes(3);
-    expect(uniqueJobs).toEqual(new Set(['pool-rerun-intent-1']));
+    expect(deduplicationIds).toEqual(new Set(['pool-rerun-intent-1']));
     const options = addJob.mock.calls[0]?.[1];
-    expect(options).toMatchObject({ delay: 60_000, removeOnComplete: true, removeOnFail: true });
+    expect(options).toMatchObject({
+      delay: 60_000,
+      removeOnComplete: true,
+      removeOnFail: true,
+      deduplication: {
+        id: 'pool-rerun-intent-1',
+        ttl: 60_000,
+        extend: true,
+        replace: true,
+        keepLastIfActive: true,
+      },
+    });
   });
 });
