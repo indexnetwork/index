@@ -140,6 +140,13 @@ export type {
 } from "./shared/interfaces/negotiator-memory.interface.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
+export type { HydeGraphOptions, HydeLensInferrerLike, HydeGeneratorLike, HydeValidatorLike } from "./shared/hyde/hyde.graph.js";
+export { getHydeGenerationMode, HYDE_FRAME_GENERATION_VERSION } from "./shared/hyde/hyde.env.js";
+export type { HydeGenerationMode } from "./shared/hyde/hyde.env.js";
+export { sanitizeHydeSourceFrame } from "./shared/hyde/hyde.frame.js";
+export type { HydeSourceFrame, HydeFrameRole, HydeFrameHardConstraint, HydeFrameNamedEntity, HydeFrameVocabulary, HydeHardConstraintType, HydeNamedEntityType } from "./shared/hyde/hyde.frame.js";
+export { HydeValidator } from "./shared/hyde/hyde.validator.js";
+export type { HydeValidationInput, HydeValidationDocument, HydeValidationOutput, HydeValidationVerdict } from "./shared/hyde/hyde.validator.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";
 export { NetworkMembershipGraphFactory } from "./network/membership/membership.graph.js";
 export { IntentGraphFactory } from "./intent/intent.graph.js";
@@ -164,6 +171,7 @@ export type { ClassifyInterruptInput } from "./chat/chat.interrupt.classifier.js
 export { ChatSummarizer } from "./chat/chat.summarizer.js";
 export type { ChatSummarizerInput, ChatSummarizerMessage } from "./chat/chat.summarizer.js";
 export { HydeGenerator } from "./shared/hyde/hyde.generator.js";
+export type { HydeGenerateInput, HydeGeneratorOutput } from "./shared/hyde/hyde.generator.js";
 export { SuggestionGenerator } from "./chat/chat.suggester.js";
 export type { SuggestionGeneratorInput } from "./chat/chat.suggester.js";
 export { generateInviteMessage } from "./contact/contact.inviter.js";
@@ -177,6 +185,7 @@ export type { PremiseDecomposerOutput, DecomposedPremise } from "./premise/premi
 export { PremiseIndexer } from "./premise/premise.indexer.js";
 export type { PremiseIndexerOutput } from "./premise/premise.indexer.js";
 export { LensInferrer } from "./shared/hyde/lens.inferrer.js";
+export type { Lens, LensInferenceInput, LensInferenceOutput, HydeTargetCorpus } from "./shared/hyde/lens.inferrer.js";
 export { NegotiationInsightsGenerator } from "./negotiation/insight.generator.js";
 export type { NegotiationDigest } from "./negotiation/insight.generator.js";
 export { IndexNegotiator } from "./negotiation/negotiation.agent.js";

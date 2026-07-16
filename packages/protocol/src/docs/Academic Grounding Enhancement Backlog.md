@@ -46,17 +46,20 @@ Implemented a canonical three-value QUD taxonomy across IntentClarifier and the 
 - Reuse the typology in the Questioner agent's discovery mode — **not** `opportunity/question.generator.ts`, which is `@deprecated` in favor of `QuestionerAgent`.
 - Eval hook: extend `eval/premise` / `eval/matching` fixtures (case files + runners exist on both sides) with under-specified inputs and assert question type.
 
-## 4. Frame-constrained HyDE generation — **M**
+## 4. Frame-constrained HyDE generation — **M** — Implemented (IND-426)
 
 **Theory:** Fillmore frame semantics; report's "Frame-Constrained Generation Filter" against embedding drift. *(Ch. 4.)*
 
-**Correction from code verification:** the hardcoded Mirror/Reciprocal/Neighborhood strategies described in the report (and in `src/README.md`) were **retired** — `shared/hyde/hyde.strategies.ts` states the system now uses free-text, LLM-inferred *lenses*. The report's Ch. 4 analysis applies to the M/R/N taxonomy as a conceptual layer only. The no-validation half of the claim held: `hyde.graph.ts` feeds generated text straight into embedding with no entity/constraint check.
+**Correction from code verification:** the hardcoded Mirror/Reciprocal/Neighborhood strategies described in the report (and in `src/README.md`) were **retired** — `shared/hyde/hyde.strategies.ts` states the system now uses free-text, LLM-inferred *lenses*. The report's Ch. 4 analysis applies to the M/R/N taxonomy as a conceptual layer only. Before IND-426, generated text went directly to embedding with no entity/constraint check.
 
-**Work items:**
-- Constrain **lens-based** generation (`shared/hyde/hyde.generator.ts` + `lens.inferrer.ts`) to frame elements extracted from the source intent (roles, constraints, domain vocabulary) — prompt-side slot discipline instead of free hallucination.
-- Add a post-generation check in `hyde.graph.ts` (between generate and embed nodes) that rejects docs introducing entities/constraints absent from the source frame (cheap LLM check or lexical overlap heuristic).
-- Measure on `eval/matching` before/after — this is the one item with an existing regression harness, so do it behind a flag and compare.
+**Implemented:**
+- Frame-v1 constrains **lens-based** generation (`shared/hyde/hyde.generator.ts` + `lens.inferrer.ts`) with source-only roles, explicit constraints, named entities, and domain vocabulary. Optional profile context may shape lenses but cannot become frame evidence.
+- `hyde.graph.ts` now has a frame-v1 batch validator between generation and embedding. It supports per-document partial rejection and all-rejection-with-empty-output. Validator/provider/shape failures fail open only for the current invocation; failed-open documents are embedded ephemerally but never cached or persisted.
+- Legacy cache identities are preserved. Frame-v1 uses fingerprinted Redis keys and validated context provenance with stable versioned DB lens identities; source revisions upsert rather than accumulate, and bulk reads select only the active mode/current source/newest generation group.
+- `eval/hyde` is the paired retrieval diagnostic: real legacy/frame-v1 LensInferrer, HydeGenerator, HydeValidator, and HydeGraphFactory plus equivalent OpenRouter request configuration and the same embedding model/dimensions rank a small drift-focused in-memory corpus. The scorer approximates production's `0.40` cutoff and `0.1` additional-match bonus and reports Recall@K/MRR plus generation, overwrite, key-resolved rejection, and fail-open diagnostics. It deliberately excludes SQL per-lens limits, network scope, cross-row user grouping beyond one candidate row per user, PostgreSQL execution, and opportunity evaluation. `eval/matching` calls `OpportunityEvaluator` directly and remains only a secondary evaluator-regression check.
 - ~~Housekeeping: update `src/README.md`, which still describes the retired M/R/N strategy registry.~~ Done in the same PR that introduced this backlog.
+
+**Rollout status:** `HYDE_FRAME_CONSTRAINTS_ENABLED` is strict and default-off; only literal `true` selects frame-v1. Implementation is complete, but enabling it is a separate rollout decision after reviewing full-corpus, multi-run paired retrieval output and the separately labeled matching regression check. Filtered or single runs must not establish a canonical baseline.
 
 ## 5. Dowty proto-role scoring in the evaluator — **M**
 
