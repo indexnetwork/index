@@ -29,11 +29,12 @@ export function stripInternalDetection(question: AdapterPersistedQuestion): Adap
     purpose: _purpose,
     strategy: _strategy,
     underspecificationType: _underspecificationType,
+    pushRequestedAt: _pushRequestedAt,
     push: _push,
     pushedAt: _pushedAt,
     ...detection
   } = question.detection;
-  if (!_pool && !_purpose && !_strategy && _underspecificationType === undefined && !_push && !_pushedAt) return question;
+  if (!_pool && !_purpose && !_strategy && _underspecificationType === undefined && !_pushRequestedAt && !_push && !_pushedAt) return question;
   return { ...question, detection };
 }
 

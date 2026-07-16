@@ -452,6 +452,7 @@ if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
 poolQuestionPushQueue.startWorker();
+poolQuestionPushQueue.startRecoveryScheduler();
 premiseQueue.startWorker();
 userContextQueue.startWorker();
 premiseQueue.startCrons();
@@ -908,6 +909,7 @@ const shutdown = async () => {
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
     questionerQueue.close(),
+    poolQuestionPushQueue.close(),
     premiseQueue.close(),
     userContextQueue.close(),
     frameDriftQueue.close(),

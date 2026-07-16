@@ -63,6 +63,8 @@ export interface AdapterQuestionDetection {
    * payload leaves the server.
    */
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
+  /** Durable request marker written before Redis enqueue. Never exposed publicly. */
+  pushRequestedAt?: string;
   /** Internal proactive push state. Never exposed publicly. */
   push?: import('@indexnetwork/protocol').QuestionPoolPush;
   /** Authoritative successful-delivery ledger timestamp. */
@@ -156,6 +158,17 @@ export interface PoolPushClaim {
 export type PoolPushClaimResult = PoolPushClaim
   | { kind: 'ineligible'; reason: string }
   | { kind: 'delivered' };
+
+export interface RecoverablePoolPushRequest {
+  questionId: string;
+  userId: string;
+  claimed: boolean;
+}
+
+export interface PoolPushClaimOptions {
+  /** Whether an eligible unclaimed row may consume budget and create a claim. */
+  allowNewClaim: boolean;
+}
 
 export interface AdapterQuestionFilters {
   mode?: AdapterQuestionMode;
@@ -371,6 +384,80 @@ export class QuestionerAdapter {
   }
 
   /**
+   * Durably request proactive delivery before the Redis job is added.
+   * The marker is neither a claim nor a budget ledger entry.
+   *
+   * @param questionId - Newly persisted pool question.
+   * @param userId - Expected actor[0] recipient.
+   * @returns Whether an eligible request marker exists after the transaction.
+   */
+  async markPoolQuestionPushRequested(questionId: string, userId: string): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
+      const [question] = await tx.select()
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .limit(1)
+        .for('update');
+      if (!question) return false;
+      const detection = question.detection as AdapterQuestionDetection;
+      const actors = question.actors as AdapterQuestionActor[];
+      if (
+        question.status !== 'pending'
+        || (question.expiresAt !== null && question.expiresAt <= clock.now)
+        || question.conversationId !== null
+        || detection.mode !== 'pool_discovery'
+        || actors[0]?.userId !== userId
+        || actors[0]?.role !== 'subject'
+        || detection.pushedAt
+      ) return false;
+      if (detection.pushRequestedAt) return true;
+      await tx.update(questions)
+        .set({
+          detection: {
+            ...detection,
+            pushRequestedAt: clock.now.toISOString(),
+          } satisfies QuestionDetection,
+        })
+        .where(eq(questions.id, questionId));
+      return true;
+    });
+  }
+
+  /**
+   * List a bounded batch of durable requests that can be re-enqueued.
+   * Terminal delivered, suppressed, and failed rows are excluded.
+   *
+   * @param limit - Maximum oldest requests returned per sweep.
+   * @returns Deterministic question/actor[0] job payloads.
+   */
+  async listRecoverablePoolQuestionPushRequests(limit = 100): Promise<RecoverablePoolPushRequest[]> {
+    const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 500));
+    const rows = await this.db.select({
+      questionId: questions.id,
+      userId: sql<string>`${questions.actors}->0->>'userId'`,
+      claimed: sql<boolean>`COALESCE(${questions.detection}->'push'->>'deliveryStatus' = 'claimed', false)`,
+    })
+      .from(questions)
+      .where(and(
+        eq(questions.status, 'pending'),
+        isNull(questions.conversationId),
+        or(isNull(questions.expiresAt), sql`${questions.expiresAt} > transaction_timestamp()`),
+        sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+        sql`${questions.detection}->>'pushRequestedAt' IS NOT NULL`,
+        sql`${questions.detection}->>'pushedAt' IS NULL`,
+        sql`(
+          ${questions.detection}->'push' IS NULL
+          OR ${questions.detection}->'push'->>'deliveryStatus' = 'claimed'
+        )`,
+        sql`${questions.actors}->0->>'userId' IS NOT NULL`,
+      ))
+      .orderBy(sql`(${questions.detection}->>'pushRequestedAt')::timestamptz`, questions.createdAt)
+      .limit(boundedLimit);
+    return rows;
+  }
+
+  /**
    * Atomically claim one eligible proactive pool-question delivery.
    * A per-recipient advisory transaction lock serializes the UTC budget and
    * cycle checks across workers; row locks close lifecycle/visit races.
@@ -379,9 +466,15 @@ export class QuestionerAdapter {
    * @param userId - Expected recipient and intent owner.
    * @returns Claimed public delivery inputs, or an ineligible reason.
    */
-  async claimPoolQuestionPush(questionId: string, userId: string): Promise<PoolPushClaimResult> {
+  async claimPoolQuestionPush(
+    questionId: string,
+    userId: string,
+    options: PoolPushClaimOptions = { allowNewClaim: true },
+  ): Promise<PoolPushClaimResult> {
     return this.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
+      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now;
 
       const [question] = await tx
         .select()
@@ -395,38 +488,56 @@ export class QuestionerAdapter {
       const actors = question.actors as AdapterQuestionActor[];
       const pool = detection.pool;
       const intentId = detection.triggeredBy ?? detection.sourceId;
+      const existingPush = detection.push;
+      const suppressExistingClaim = async (reason: string): Promise<PoolPushClaimResult> => {
+        if (existingPush?.deliveryStatus !== 'claimed' || existingPush.recipientId !== userId) {
+          return { kind: 'ineligible', reason } as const;
+        }
+        await tx.update(questions)
+          .set({
+            detection: {
+              ...detection,
+              push: {
+                ...existingPush,
+                deliveryStatus: 'suppressed',
+                suppressedAt: transactionNow.toISOString(),
+              },
+            } satisfies QuestionDetection,
+          })
+          .where(eq(questions.id, questionId));
+        return { kind: 'ineligible', reason } as const;
+      };
+
+      if (detection.pushedAt || existingPush?.deliveryStatus === 'delivered') {
+        return { kind: 'delivered' } as const;
+      }
+      if (existingPush && (
+        existingPush.recipientId !== userId
+        || existingPush.intentId !== intentId
+        || existingPush.cycleKey !== (pool ? poolPushCycleKey(pool) : '')
+        || existingPush.messageId !== questionId
+      )) {
+        return suppressExistingClaim('conflicting_claim');
+      }
+      if (existingPush && existingPush.deliveryStatus !== 'claimed') {
+        return { kind: 'ineligible', reason: existingPush.deliveryStatus } as const;
+      }
+
       if (
         question.status !== 'pending'
-        || (question.expiresAt !== null && question.expiresAt.getTime() <= Date.now())
+        || (question.expiresAt !== null && question.expiresAt <= transactionNow)
         || question.conversationId !== null
         || detection.mode !== 'pool_discovery'
         || detection.sourceType !== 'intent'
         || detection.sourceId !== intentId
-        || !actors.some((actor) => actor.userId === userId && actor.role === 'subject')
+        || actors[0]?.userId !== userId
+        || actors[0]?.role !== 'subject'
         || !pool
       ) {
-        return { kind: 'ineligible', reason: 'question_lifecycle' } as const;
+        return suppressExistingClaim('question_lifecycle');
       }
 
       const cycleKey = poolPushCycleKey(pool);
-      const existingPush = detection.push;
-      if (detection.pushedAt || existingPush?.deliveryStatus === 'delivered') {
-        return { kind: 'delivered' } as const;
-      }
-      if (existingPush) {
-        if (
-          existingPush.recipientId !== userId
-          || existingPush.intentId !== intentId
-          || existingPush.cycleKey !== cycleKey
-          || existingPush.messageId !== questionId
-        ) {
-          return { kind: 'ineligible', reason: 'conflicting_claim' } as const;
-        }
-        if (existingPush.deliveryStatus !== 'claimed') {
-          return { kind: 'ineligible', reason: existingPush.deliveryStatus } as const;
-        }
-      }
-
       const [intent] = await tx
         .select({
           id: intents.id,
@@ -447,22 +558,27 @@ export class QuestionerAdapter {
         || intent.archivedAt !== null
         || (intent.status !== null && intent.status !== 'ACTIVE')
       ) {
-        return { kind: 'ineligible', reason: 'intent_lifecycle' } as const;
+        return suppressExistingClaim('intent_lifecycle');
       }
-      if (pool.poolSize < POOL_QUESTION_PUSH_MIN_POOL_SIZE) {
-        return { kind: 'ineligible', reason: 'pool_size' } as const;
-      }
-      if (intent.lastVisitedAt && intent.lastVisitedAt.getTime() > question.createdAt.getTime()) {
-        return { kind: 'ineligible', reason: 'visited' } as const;
+      if (intent.lastVisitedAt && intent.lastVisitedAt > question.createdAt) {
+        return suppressExistingClaim('visited');
       }
 
       if (!existingPush) {
+        if (!options.allowNewClaim) {
+          return { kind: 'ineligible', reason: 'new_claim_disabled' } as const;
+        }
+        if (pool.poolSize < POOL_QUESTION_PUSH_MIN_POOL_SIZE) {
+          return { kind: 'ineligible', reason: 'pool_size' } as const;
+        }
+
+        const recipientExpression = sql`${questions.actors}->0->>'userId' = ${userId}`;
         const [latestAnswer] = await tx
           .select({ createdAt: questions.createdAt })
           .from(questions)
           .where(and(
             eq(questions.status, 'answered'),
-            sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+            recipientExpression,
             sql`${questions.detection}->>'mode' = 'pool_discovery'`,
             sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
           ))
@@ -470,7 +586,7 @@ export class QuestionerAdapter {
           .limit(1);
         const dismissalConditions = [
           eq(questions.status, 'dismissed'),
-          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+          recipientExpression,
           sql`${questions.detection}->>'mode' = 'pool_discovery'`,
           sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
         ];
@@ -479,8 +595,7 @@ export class QuestionerAdapter {
           .select({ value: count() })
           .from(questions)
           .where(and(...dismissalConditions));
-        const dismissalStreak = Number(dismissalRow?.value ?? 0);
-        if (pool.discriminator.voi <= poolPushThreshold(dismissalStreak)) {
+        if (pool.discriminator.voi <= poolPushThreshold(Number(dismissalRow?.value ?? 0))) {
           return { kind: 'ineligible', reason: 'voi' } as const;
         }
 
@@ -488,7 +603,7 @@ export class QuestionerAdapter {
           .select({ id: questions.id })
           .from(questions)
           .where(and(
-            sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+            recipientExpression,
             sql`${questions.detection}->>'mode' = 'pool_discovery'`,
             sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
             sql`${questions.detection}->'push'->>'cycleKey' = ${cycleKey}`,
@@ -497,23 +612,19 @@ export class QuestionerAdapter {
           .limit(1);
         if (cycleClaim) return { kind: 'ineligible', reason: 'cycle_budget' } as const;
 
-        const now = new Date();
-        const utcDayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-        const utcDayEnd = new Date(utcDayStart.getTime() + 24 * 60 * 60 * 1000);
         const [dailyRow] = await tx
           .select({ value: count() })
           .from(questions)
           .where(and(
-            sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+            recipientExpression,
             sql`${questions.detection}->'push'->>'claimedAt' IS NOT NULL`,
-            sql`(${questions.detection}->'push'->>'claimedAt')::timestamptz >= ${utcDayStart}`,
-            sql`(${questions.detection}->'push'->>'claimedAt')::timestamptz < ${utcDayEnd}`,
+            sql`${questions.detection}->'push'->>'claimedAt' >= to_char(date_trunc('day', transaction_timestamp() AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+            sql`${questions.detection}->'push'->>'claimedAt' < to_char(date_trunc('day', transaction_timestamp() AT TIME ZONE 'UTC') + interval '1 day', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
           ));
         if (Number(dailyRow?.value ?? 0) >= POOL_QUESTION_PUSH_DAILY_CAP) {
           return { kind: 'ineligible', reason: 'daily_budget' } as const;
         }
 
-        const claimedAt = now.toISOString();
         const push = {
           version: 1,
           source: 'pool_discovery',
@@ -522,7 +633,7 @@ export class QuestionerAdapter {
           cycleKey,
           messageId: questionId,
           surfaces: ['personal_agent_badge', 'negotiator_dm'],
-          claimedAt,
+          claimedAt: transactionNow.toISOString(),
           deliveryStatus: 'claimed',
         } satisfies import('@indexnetwork/protocol').QuestionPoolPush;
         const [claimed] = await tx
@@ -554,28 +665,32 @@ export class QuestionerAdapter {
    * @param failure - Bounded diagnostic string.
    */
   async markPoolQuestionPushFailed(questionId: string, userId: string, failure: string): Promise<void> {
-    const [row] = await this.db.select({ detection: questions.detection })
-      .from(questions)
-      .where(eq(questions.id, questionId))
-      .limit(1);
-    const detection = row?.detection as AdapterQuestionDetection | undefined;
-    if (!detection?.push || detection.push.recipientId !== userId || detection.pushedAt) return;
-    await this.db.update(questions)
-      .set({
-        detection: {
-          ...detection,
-          push: {
-            ...detection.push,
-            deliveryStatus: 'failed',
-            failure: failure.slice(0, 500),
-          },
-        } satisfies QuestionDetection,
-      })
-      .where(and(
-        eq(questions.id, questionId),
-        sql`${questions.detection}->'push'->>'recipientId' = ${userId}`,
-        sql`${questions.detection}->>'pushedAt' IS NULL`,
-      ));
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select({ detection: questions.detection })
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .limit(1)
+        .for('update');
+      const detection = row?.detection as AdapterQuestionDetection | undefined;
+      if (
+        !detection?.push
+        || detection.push.recipientId !== userId
+        || detection.push.deliveryStatus !== 'claimed'
+        || detection.pushedAt
+      ) return;
+      await tx.update(questions)
+        .set({
+          detection: {
+            ...detection,
+            push: {
+              ...detection.push,
+              deliveryStatus: 'failed',
+              failure: failure.slice(0, 500),
+            },
+          } satisfies QuestionDetection,
+        })
+        .where(eq(questions.id, questionId));
+    });
   }
 
   /**

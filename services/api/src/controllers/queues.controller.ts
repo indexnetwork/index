@@ -22,6 +22,7 @@ import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing
 import { enrichmentQueue } from '../queues/enrichment.queue';
 import { emailQueue } from '../queues/email.queue';
 import { integrationSyncQueue } from '../queues/integration.queue';
+import { poolQuestionPushQueue } from '../queues/pool/questionpush.queue';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('dev/queues');
@@ -46,6 +47,7 @@ createBullBoard({
     new BullMQAdapter(enrichmentQueue.queue),
     new BullMQAdapter(emailQueue.queue),
     new BullMQAdapter(integrationSyncQueue.queue),
+    new BullMQAdapter(poolQuestionPushQueue.queue),
   ],
   serverAdapter,
 });

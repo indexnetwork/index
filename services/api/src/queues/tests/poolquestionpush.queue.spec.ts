@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { PoolPushClaimResult } from '../../adapters/questioner.adapter';
-import { PoolQuestionPushQueue, poolQuestionPushJobId } from '../pool/questionpush.queue';
+import type { PoolPushClaimResult, RecoverablePoolPushRequest } from '../../adapters/questioner.adapter';
+import { PoolQuestionPushQueue, poolQuestionPushJobId, requestPoolQuestionPush } from '../pool/questionpush.queue';
 
 function claim(): PoolPushClaimResult {
   return {
@@ -21,19 +21,26 @@ function harness(overrides?: {
   available?: boolean;
   claim?: PoolPushClaimResult;
   deliveryError?: Error;
+  recoverable?: RecoverablePoolPushRequest[];
 }) {
-  const claimed: string[] = [];
+  const claims: Array<{ questionId: string; allowNewClaim: boolean }> = [];
   const delivered: Array<Record<string, unknown>> = [];
+  const enqueued: Array<{ questionId: string; userId: string }> = [];
   const sessionTitles: string[] = [];
   const queue = new PoolQuestionPushQueue({
     pushEnabled: () => overrides?.enabled ?? true,
     negotiatorAvailable: async () => overrides?.available ?? true,
     questioner: {
-      claimPoolQuestionPush: async (questionId) => {
-        claimed.push(questionId);
+      claimPoolQuestionPush: async (questionId, _userId, options) => {
+        claims.push({ questionId, allowNewClaim: options.allowNewClaim });
         return overrides?.claim ?? claim();
       },
       markPoolQuestionPushFailed: async () => {},
+      markPoolQuestionPushRequested: async () => true,
+      listRecoverablePoolQuestionPushRequests: async () => overrides?.recoverable ?? [],
+    },
+    enqueuePush: async (data) => {
+      enqueued.push(data);
     },
     resolveSession: (async (_userId: string, title?: string) => {
       sessionTitles.push(title ?? '');
@@ -45,7 +52,7 @@ function harness(overrides?: {
       return { status: 'delivered', inserted: delivered.length === 1 };
     }) as never,
   });
-  return { queue, claimed, delivered, sessionTitles };
+  return { queue, claims, delivered, enqueued, sessionTitles };
 }
 
 describe('PoolQuestionPushQueue', () => {
@@ -54,17 +61,24 @@ describe('PoolQuestionPushQueue', () => {
     expect(poolQuestionPushJobId('abc')).not.toContain(':');
   });
 
-  it('settles without claiming when the push flag is off', async () => {
-    const h = harness({ enabled: false });
+  it('always reaches the claim gate but disallows new claims when flags are off', async () => {
+    const h = harness({ enabled: false, claim: { kind: 'ineligible', reason: 'new_claim_disabled' } });
     await h.queue.processJob({ questionId: 'question-1', userId: 'user-1' });
-    expect(h.claimed).toEqual([]);
+    expect(h.claims).toEqual([{ questionId: 'question-1', allowNewClaim: false }]);
     expect(h.delivered).toEqual([]);
   });
 
-  it('requires negotiator availability before consuming a claim', async () => {
-    const h = harness({ available: false });
+  it('always reaches the claim gate but disallows new claims without a negotiator', async () => {
+    const h = harness({ available: false, claim: { kind: 'ineligible', reason: 'new_claim_disabled' } });
     await h.queue.processJob({ questionId: 'question-1', userId: 'user-1' });
-    expect(h.claimed).toEqual([]);
+    expect(h.claims[0]?.allowNewClaim).toBe(false);
+  });
+
+  it('resumes and delivers an existing claim while current flags are off', async () => {
+    const h = harness({ enabled: false, claim: claim() });
+    await h.queue.processJob({ questionId: 'question-1', userId: 'user-1' });
+    expect(h.claims[0]?.allowNewClaim).toBe(false);
+    expect(h.delivered).toHaveLength(1);
   });
 
   it('delivers exactly one deterministic public template to the stable unscoped DM', async () => {
@@ -99,6 +113,49 @@ describe('PoolQuestionPushQueue', () => {
       expect(h.sessionTitles).toEqual([]);
       expect(h.delivered).toEqual([]);
     }
+  });
+
+  it('retains the durable request marker when Redis enqueue fails', async () => {
+    const calls: string[] = [];
+    await expect(requestPoolQuestionPush('question-1', 'user-1', {
+      pushEnabled: () => true,
+      markRequested: async () => {
+        calls.push('marked');
+        return true;
+      },
+      enqueue: async () => {
+        calls.push('enqueue');
+        throw new Error('redis unavailable');
+      },
+    })).rejects.toThrow('redis unavailable');
+    expect(calls).toEqual(['marked', 'enqueue']);
+  });
+
+  it('writes no request marker when push creation is disabled', async () => {
+    const calls: string[] = [];
+    await requestPoolQuestionPush('question-1', 'user-1', {
+      pushEnabled: () => false,
+      markRequested: async () => {
+        calls.push('marked');
+        return true;
+      },
+      enqueue: async () => calls.push('enqueue'),
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('recovers requested rows and only existing claims while flags are off', async () => {
+    const recoverable: RecoverablePoolPushRequest[] = [
+      { questionId: 'unclaimed', userId: 'user-1', claimed: false },
+      { questionId: 'claimed', userId: 'user-1', claimed: true },
+    ];
+    const enabled = harness({ enabled: true, recoverable });
+    expect(await enabled.queue.recoverRequestedPushes()).toBe(2);
+    expect(enabled.enqueued.map((row) => row.questionId)).toEqual(['unclaimed', 'claimed']);
+
+    const disabled = harness({ enabled: false, recoverable });
+    expect(await disabled.queue.recoverRequestedPushes()).toBe(1);
+    expect(disabled.enqueued.map((row) => row.questionId)).toEqual(['claimed']);
   });
 
   it('fails loudly on deterministic delivery conflicts so BullMQ can retry', async () => {

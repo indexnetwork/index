@@ -5,7 +5,7 @@ import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard } from '../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import { resolveAgentNetworkScope } from '../guards/agent-scope.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -67,7 +67,7 @@ export class QuestionController {
    * @returns Global inbox, pushed-pool, and Personal Agent counts.
    */
   @Get('/counts')
-  @UseGuards(RateLimit('read'), AuthGuard)
+  @UseGuards(RateLimit('read'), SessionOnlyGuard)
   async counts(_req: Request, user: AuthenticatedUser) {
     return Response.json(await questionService.countPending(user.id));
   }

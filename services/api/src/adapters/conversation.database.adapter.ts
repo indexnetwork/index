@@ -29,6 +29,27 @@ const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } a
  */
 const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
 
+function isExactPoolPushParts(parts: unknown, expectedText: string): boolean {
+  if (!Array.isArray(parts) || parts.length !== 1) return false;
+  const part = parts[0];
+  if (typeof part !== 'object' || part === null || Array.isArray(part)) return false;
+  const record = part as Record<string, unknown>;
+  return Object.keys(record).sort().join(',') === 'text,type'
+    && record.type === 'text'
+    && record.text === expectedText;
+}
+
+function isExactPoolPushMetadata(
+  metadata: unknown,
+  expected: Record<string, string>,
+): boolean {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return false;
+  const record = metadata as Record<string, unknown>;
+  const keys = Object.keys(expected).sort();
+  return Object.keys(record).sort().join(',') === keys.join(',')
+    && keys.every((key) => record[key] === expected[key]);
+}
+
 export class ConversationDatabaseAdapter {
   /**
    * Retrieve a single user_context row (global when networkId is null), or null.
@@ -448,6 +469,8 @@ export class ConversationDatabaseAdapter {
     messageText: string;
   }): Promise<{ status: 'delivered'; inserted: boolean } | { status: 'suppressed' }> {
     return db.transaction(async (tx) => {
+      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now;
       const [question] = await tx
         .select()
         .from(schema.questions)
@@ -467,24 +490,50 @@ export class ConversationDatabaseAdapter {
       ) {
         throw new Error(`Pool push claim conflict for question ${input.questionId}`);
       }
-
-      if (
-        question.status !== 'pending'
-        || (question.expiresAt !== null && question.expiresAt.getTime() <= Date.now())
-      ) {
+      if (push.deliveryStatus === 'suppressed' || push.deliveryStatus === 'failed') {
+        return { status: 'suppressed' } as const;
+      }
+      const suppress = async (): Promise<{ status: 'suppressed' }> => {
         if (!detection.pushedAt && push.deliveryStatus !== 'delivered') {
-          const suppressedAt = new Date().toISOString();
           await tx.update(schema.questions)
             .set({
               detection: {
                 ...detection,
-                push: { ...push, deliveryStatus: 'suppressed', suppressedAt },
+                push: {
+                  ...push,
+                  deliveryStatus: 'suppressed',
+                  suppressedAt: transactionNow.toISOString(),
+                },
               },
             })
             .where(eq(schema.questions.id, input.questionId));
         }
-        return { status: 'suppressed' } as const;
-      }
+        return { status: 'suppressed' };
+      };
+
+      if (
+        question.status !== 'pending'
+        || (question.expiresAt !== null && question.expiresAt <= transactionNow)
+      ) return suppress();
+
+      const [intent] = await tx
+        .select({
+          userId: schema.intents.userId,
+          status: schema.intents.status,
+          archivedAt: schema.intents.archivedAt,
+          lastVisitedAt: schema.intents.lastVisitedAt,
+        })
+        .from(schema.intents)
+        .where(eq(schema.intents.id, input.intentId))
+        .limit(1)
+        .for('update');
+      if (
+        !intent
+        || intent.userId !== input.recipientId
+        || intent.archivedAt !== null
+        || (intent.status !== null && intent.status !== 'ACTIVE')
+        || (intent.lastVisitedAt !== null && intent.lastVisitedAt > question.createdAt)
+      ) return suppress();
 
       const [session] = await tx
         .select({
@@ -517,7 +566,7 @@ export class ConversationDatabaseAdapter {
         .from(schema.messages)
         .where(eq(schema.messages.id, input.questionId))
         .limit(1);
-      const messageMetadata = {
+      const messageMetadata: Record<string, string> = {
         source: 'pool_question_push',
         questionId: input.questionId,
         recipientId: input.recipientId,
@@ -527,22 +576,16 @@ export class ConversationDatabaseAdapter {
       let inserted = false;
       const expectedParts = [{ type: 'text', text: input.messageText }];
       if (existing) {
-        const metadata = existing.metadata as Record<string, unknown> | null;
         if (
           existing.conversationId !== input.conversationId
           || existing.senderId !== SYSTEM_AGENT_ID
           || existing.role !== 'agent'
-          || metadata?.source !== messageMetadata.source
-          || metadata?.recipientId !== input.recipientId
-          || metadata?.questionId !== input.questionId
-          || metadata?.intentId !== input.intentId
-          || metadata?.cycleKey !== input.cycleKey
-          || JSON.stringify(existing.parts) !== JSON.stringify(expectedParts)
+          || !isExactPoolPushMetadata(existing.metadata, messageMetadata)
+          || !isExactPoolPushParts(existing.parts, input.messageText)
         ) {
           throw new Error(`Deterministic pool push message ${input.questionId} conflicts with existing data`);
         }
       } else {
-        const now = new Date();
         await tx.insert(schema.messages).values({
           id: input.questionId,
           conversationId: input.conversationId,
@@ -550,15 +593,21 @@ export class ConversationDatabaseAdapter {
           role: 'agent',
           parts: expectedParts,
           metadata: messageMetadata,
-          createdAt: now,
+          createdAt: transactionNow,
         });
         await tx.update(schema.conversations)
-          .set({ lastMessageAt: now })
+          .set({ lastMessageAt: transactionNow, updatedAt: transactionNow })
           .where(eq(schema.conversations.id, input.conversationId));
+        await tx.update(schema.conversationParticipants)
+          .set({ hiddenAt: null })
+          .where(and(
+            eq(schema.conversationParticipants.conversationId, input.conversationId),
+            eq(schema.conversationParticipants.participantId, input.recipientId),
+          ));
         inserted = true;
       }
 
-      const deliveredAt = detection.pushedAt ?? new Date().toISOString();
+      const deliveredAt = detection.pushedAt ?? transactionNow.toISOString();
       await tx.update(schema.questions)
         .set({
           detection: {

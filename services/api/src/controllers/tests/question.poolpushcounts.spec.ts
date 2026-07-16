@@ -10,7 +10,8 @@ import { QuestionController } from '../question.controller';
 import { QuestionService } from '../../services/question.service';
 import db from '../../lib/drizzle/drizzle';
 import { questions } from '../../schemas/database.schema';
-import type { AuthenticatedUser } from '../../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../../guards/auth.guard';
+import { RouteRegistry } from '../../lib/router/router.decorators';
 
 const EMAIL = 'test-pool-push-counts@example.com';
 
@@ -92,6 +93,15 @@ describe('pool push count and read isolation', () => {
   afterAll(async () => {
     await db.delete(questions).where(sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`).catch(() => {});
     await users.deleteById(userId).catch(() => {});
+  });
+
+  test('counts is web-only and guarded by SessionOnlyGuard rather than AuthGuard', () => {
+    const route = RouteRegistry.getRoutes(QuestionController).find((candidate) => candidate.methodName === 'counts');
+    expect(route).toMatchObject({ method: 'GET', path: '/counts' });
+    const guards = RouteRegistry.getGuards(QuestionController, 'counts');
+    expect(guards[0]?.name).toBe('RateLimit(read)');
+    expect(guards).toContain(SessionOnlyGuard);
+    expect(guards).not.toContain(AuthGuard);
   });
 
   test('only delivered pool rows join the Personal Agent count and never the global list', async () => {

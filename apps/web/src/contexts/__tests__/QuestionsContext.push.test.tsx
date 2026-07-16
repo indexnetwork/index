@@ -1,25 +1,34 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { QuestionsProvider, useQuestions } from '../QuestionsContext';
 
-const mocks = vi.hoisted(() => ({
-  getPending: vi.fn(async () => [{
-    id: 'global-1',
-    detection: { mode: 'intent', sourceType: 'intent', sourceId: 'i-1', timestamp: 'now' },
-    actors: [{ userId: 'user-1', role: 'subject' }],
+function pending(id: string, userId = 'user-1') {
+  return {
+    id,
+    detection: { mode: 'intent' as const, sourceType: 'intent', sourceId: 'i-1', timestamp: 'now' },
+    actors: [{ userId, role: 'subject' as const }],
     payload: { title: 'Role', prompt: 'Which?', options: [], multiSelect: false },
-    status: 'pending',
+    status: 'pending' as const,
     answer: null,
     expiresAt: null,
     createdAt: 'now',
     conversationId: null,
-  }]),
-  getPendingCounts: vi.fn(async () => ({
-    globalPending: 1,
-    pushedPoolPending: 2,
-    personalAgentPending: 3,
-  })),
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+const mocks = vi.hoisted(() => ({
+  user: { id: 'user-1' } as { id: string } | null,
+  getPending: vi.fn(),
+  getPendingCounts: vi.fn(),
   answer: vi.fn(async () => ({ success: true })),
   dismiss: vi.fn(async () => {}),
 }));
@@ -29,22 +38,36 @@ vi.mock('@/contexts/APIContext', () => ({
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuthContext: () => ({ user: { id: 'user-1' } }),
+  useAuthContext: () => ({ user: mocks.user }),
 }));
 
 function Probe() {
   const questions = useQuestions();
   return (
     <div>
+      <span data-testid="rows">{questions.questions.map((question) => question.id).join(',')}</span>
       <span data-testid="global">{questions.globalPending}</span>
       <span data-testid="pushed">{questions.pushedPoolPending}</span>
       <span data-testid="personal">{questions.personalAgentPending}</span>
       <span data-testid="legacy">{questions.count}</span>
       <button onClick={() => void questions.answer('global-1', { selectedOptions: ['A'] })}>answer</button>
       <button onClick={() => void questions.dismiss('global-1')}>dismiss</button>
+      <button onClick={() => void questions.refresh()}>refresh</button>
     </div>
   );
 }
+
+beforeEach(() => {
+  mocks.user = { id: 'user-1' };
+  mocks.getPending.mockReset().mockResolvedValue([pending('global-1')]);
+  mocks.getPendingCounts.mockReset().mockResolvedValue({
+    globalPending: 1,
+    pushedPoolPending: 2,
+    personalAgentPending: 3,
+  });
+  mocks.answer.mockClear();
+  mocks.dismiss.mockClear();
+});
 
 describe('QuestionsContext proactive pool counts', () => {
   it('keeps global and Personal Agent counts separate', async () => {
@@ -60,7 +83,6 @@ describe('QuestionsContext proactive pool counts', () => {
   });
 
   it('refreshes canonical counts after answer and dismiss', async () => {
-    mocks.getPendingCounts.mockClear();
     render(<QuestionsProvider><Probe /></QuestionsProvider>);
     await waitFor(() => expect(mocks.getPendingCounts).toHaveBeenCalledTimes(1));
 
@@ -71,5 +93,54 @@ describe('QuestionsContext proactive pool counts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'dismiss' }));
     await waitFor(() => expect(mocks.getPendingCounts).toHaveBeenCalledTimes(3));
     expect(mocks.dismiss).toHaveBeenCalledWith('global-1');
+  });
+
+  it('does not let user A responses overwrite reset or user B state', async () => {
+    const aRows = deferred<ReturnType<typeof pending>[]>();
+    const aCounts = deferred<{ globalPending: number; pushedPoolPending: number; personalAgentPending: number }>();
+    mocks.getPending.mockReset()
+      .mockImplementationOnce(() => aRows.promise)
+      .mockResolvedValueOnce([pending('user-b-row', 'user-2')]);
+    mocks.getPendingCounts.mockReset()
+      .mockImplementationOnce(() => aCounts.promise)
+      .mockResolvedValueOnce({ globalPending: 4, pushedPoolPending: 5, personalAgentPending: 9 });
+
+    const view = render(<QuestionsProvider><Probe /></QuestionsProvider>);
+    await waitFor(() => expect(mocks.getPending).toHaveBeenCalledTimes(1));
+    mocks.user = { id: 'user-2' };
+    view.rerender(<QuestionsProvider><Probe /></QuestionsProvider>);
+
+    await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('user-b-row'));
+    expect(screen.getByTestId('personal')).toHaveTextContent('9');
+
+    aRows.resolve([pending('stale-user-a-row')]);
+    aCounts.resolve({ globalPending: 7, pushedPoolPending: 7, personalAgentPending: 14 });
+    await Promise.resolve();
+    expect(screen.getByTestId('rows')).toHaveTextContent('user-b-row');
+    expect(screen.getByTestId('rows')).not.toHaveTextContent('stale-user-a-row');
+    expect(screen.getByTestId('personal')).toHaveTextContent('9');
+  });
+
+  it('keeps only the newest same-user refresh generation', async () => {
+    render(<QuestionsProvider><Probe /></QuestionsProvider>);
+    await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('global-1'));
+
+    const oldRows = deferred<ReturnType<typeof pending>[]>();
+    const oldCounts = deferred<{ globalPending: number; pushedPoolPending: number; personalAgentPending: number }>();
+    mocks.getPending.mockImplementationOnce(() => oldRows.promise)
+      .mockResolvedValueOnce([pending('newest-row')]);
+    mocks.getPendingCounts.mockImplementationOnce(() => oldCounts.promise)
+      .mockResolvedValueOnce({ globalPending: 2, pushedPoolPending: 1, personalAgentPending: 3 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+    fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+    await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('newest-row'));
+
+    oldRows.resolve([pending('stale-row')]);
+    oldCounts.resolve({ globalPending: 8, pushedPoolPending: 8, personalAgentPending: 16 });
+    await Promise.resolve();
+    expect(screen.getByTestId('rows')).toHaveTextContent('newest-row');
+    expect(screen.getByTestId('rows')).not.toHaveTextContent('stale-row');
+    expect(screen.getByTestId('personal')).toHaveTextContent('3');
   });
 });

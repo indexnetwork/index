@@ -214,6 +214,7 @@ describe("QuestionDetection", () => {
       sourceType: "intent",
       sourceId: "intent-1",
       timestamp: "2026-07-16T12:00:00.000Z",
+      pushRequestedAt: "2026-07-16T11:59:00.000Z",
       push,
       pushedAt: "2026-07-16T12:00:01.000Z",
     }).success).toBe(true);

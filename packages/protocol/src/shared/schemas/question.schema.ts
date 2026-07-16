@@ -186,6 +186,8 @@ export const QuestionDetectionSchema = z.object({
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool: QuestionPoolSnapshotSchema.optional(),
+  /** Durable request marker written before enqueueing proactive delivery. Internal only. */
+  pushRequestedAt: z.string().min(1).optional(),
   /** Internal proactive delivery state. Never serialize to public clients. */
   push: QuestionPoolPushSchema.optional(),
   /** Authoritative successful-delivery ledger timestamp. Internal only. */

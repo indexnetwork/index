@@ -2,13 +2,13 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
-import { eq, sql } from 'drizzle-orm/sql';
+import { and, eq, sql } from 'drizzle-orm/sql';
 
 import { conversationDatabaseAdapter, UserDatabaseAdapter } from '../database.adapter';
 import { QuestionerAdapter, type AdapterPersistableQuestion, type PoolPushClaim } from '../questioner.adapter';
 import { chatSessionService } from '../../services/chat.service';
 import db from '../../lib/drizzle/drizzle';
-import { conversations, messages } from '../../schemas/conversation.schema';
+import { conversationParticipants, conversations, messages } from '../../schemas/conversation.schema';
 import { intents, questions } from '../../schemas/database.schema';
 
 const EMAIL = 'test-conversation-pool-push@example.com';
@@ -107,9 +107,36 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
       messageText: 'Quick one about [Find a collaborator](/i/' + intentId + '): Builder or advisor?',
     };
 
+    await db.update(conversationParticipants)
+      .set({ hiddenAt: new Date() })
+      .where(and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.participantId, userId),
+      ));
     expect(await conversationDatabaseAdapter.deliverClaimedPoolQuestionPush(input)).toEqual({ status: 'delivered', inserted: true });
-    const [afterFirst] = await db.select({ lastMessageAt: conversations.lastMessageAt })
-      .from(conversations).where(eq(conversations.id, conversationId));
+    const [afterFirst] = await db.select({
+      lastMessageAt: conversations.lastMessageAt,
+      updatedAt: conversations.updatedAt,
+    }).from(conversations).where(eq(conversations.id, conversationId));
+    expect(afterFirst.updatedAt?.toISOString()).toBe(afterFirst.lastMessageAt?.toISOString());
+    const [participant] = await db.select({ hiddenAt: conversationParticipants.hiddenAt })
+      .from(conversationParticipants)
+      .where(and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.participantId, userId),
+      ));
+    expect(participant.hiddenAt).toBeNull();
+
+    await db.update(messages).set({
+      parts: [{ text: input.messageText, type: 'text' }],
+      metadata: {
+        cycleKey: claim.cycleKey,
+        intentId: claim.intentId,
+        recipientId: claim.recipientId,
+        questionId: claim.questionId,
+        source: 'pool_question_push',
+      },
+    }).where(eq(messages.id, claim.questionId));
     expect(await conversationDatabaseAdapter.deliverClaimedPoolQuestionPush(input)).toEqual({ status: 'delivered', inserted: false });
     const [afterRetry] = await db.select({ lastMessageAt: conversations.lastMessageAt })
       .from(conversations).where(eq(conversations.id, conversationId));
@@ -146,6 +173,31 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
     const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, claim.questionId));
     expect(row.detection.pushedAt).toBeUndefined();
     expect(row.detection.push?.deliveryStatus).toBe('suppressed');
+  }, 30_000);
+
+  test('suppresses when the intent becomes paused or is visited after question creation', async () => {
+    for (const invalidation of ['paused', 'visited'] as const) {
+      const claim = await createClaim();
+      const conversationId = await stableDm();
+      if (invalidation === 'paused') {
+        await db.update(intents).set({ status: 'PAUSED' }).where(eq(intents.id, intentId));
+      } else {
+        await db.update(intents).set({ lastVisitedAt: new Date(Date.now() + 60_000) }).where(eq(intents.id, intentId));
+      }
+      expect(await conversationDatabaseAdapter.deliverClaimedPoolQuestionPush({
+        questionId: claim.questionId,
+        recipientId: claim.recipientId,
+        intentId: claim.intentId,
+        cycleKey: claim.cycleKey,
+        conversationId,
+        messageText: 'must not send',
+      })).toEqual({ status: 'suppressed' });
+      expect(await db.select().from(messages).where(eq(messages.id, claim.questionId))).toHaveLength(0);
+      const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, claim.questionId));
+      expect(row.detection.push?.deliveryStatus).toBe('suppressed');
+      await db.delete(questions).where(eq(questions.id, claim.questionId));
+      await db.update(intents).set({ status: 'ACTIVE', lastVisitedAt: null }).where(eq(intents.id, intentId));
+    }
   }, 30_000);
 
   test('fails loudly when the deterministic message id belongs to another session/source', async () => {

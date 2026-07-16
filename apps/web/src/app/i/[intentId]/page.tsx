@@ -490,6 +490,7 @@ export default function IntentDetailPage() {
           } catch {
             // Best-effort — the follow-up will surface on the next visit.
           } finally {
+            await refreshQuestionCounts();
             setQuestionChainPending(false);
           }
         }, 1200);

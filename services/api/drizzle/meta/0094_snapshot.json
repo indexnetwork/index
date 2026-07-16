@@ -4116,6 +4116,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "questions_pool_push_recipient_claimed_at_idx": {
+          "name": "questions_pool_push_recipient_claimed_at_idx",
+          "columns": [
+            {
+              "expression": "(\"actors\"->0->>'userId')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "(\"detection\"->'push'->>'claimedAt')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"questions\".\"detection\"->'push'->>'claimedAt' IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},

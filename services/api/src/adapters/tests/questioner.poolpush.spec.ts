@@ -181,6 +181,67 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     }
   }, 30_000);
 
+  test('allowNewClaim=false resumes an existing claim but never creates one', async () => {
+    const unclaimed = await createPoolQuestion({ voi: 0.9 });
+    expect(reason(await adapter.claimPoolQuestionPush(unclaimed, userId, { allowNewClaim: false }))).toBe('new_claim_disabled');
+    const [before] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, unclaimed));
+    expect(before.detection.push).toBeUndefined();
+
+    expect((await adapter.claimPoolQuestionPush(unclaimed, userId, { allowNewClaim: true })).kind).toBe('claimed');
+    expect((await adapter.claimPoolQuestionPush(unclaimed, userId, { allowNewClaim: false })).kind).toBe('claimed');
+  }, 30_000);
+
+  test('existing claims become durably suppressed when lifecycle eligibility changes', async () => {
+    const assertSuppressed = async (mutate: (questionId: string) => Promise<void>) => {
+      const questionId = await createPoolQuestion({ voi: 0.9 });
+      expect((await adapter.claimPoolQuestionPush(questionId, userId)).kind).toBe('claimed');
+      await mutate(questionId);
+      expect((await adapter.claimPoolQuestionPush(questionId, userId, { allowNewClaim: false })).kind).toBe('ineligible');
+      const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, questionId));
+      expect(row.detection.push?.deliveryStatus).toBe('suppressed');
+      expect(row.detection.push?.suppressedAt).toBeString();
+      await db.delete(questions).where(eq(questions.id, questionId));
+    };
+
+    await assertSuppressed(async (questionId) => {
+      await db.update(questions).set({ status: 'dismissed' }).where(eq(questions.id, questionId));
+    });
+    await assertSuppressed(async (questionId) => {
+      await db.update(questions).set({ expiresAt: new Date(0) }).where(eq(questions.id, questionId));
+    });
+    await assertSuppressed(async () => {
+      await db.update(intents).set({ status: 'PAUSED' }).where(eq(intents.id, intentId));
+    });
+    await db.update(intents).set({ status: 'ACTIVE' }).where(eq(intents.id, intentId));
+    await assertSuppressed(async () => {
+      await db.update(intents).set({ lastVisitedAt: new Date(Date.now() + 60_000) }).where(eq(intents.id, intentId));
+    });
+    await db.update(intents).set({ lastVisitedAt: null }).where(eq(intents.id, intentId));
+    await assertSuppressed(async () => {
+      await db.update(intents).set({ userId: otherUserId }).where(eq(intents.id, intentId));
+    });
+  }, 30_000);
+
+  test('durable request markers recover only pending nonterminal rows', async () => {
+    const requested = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(requested, userId)).toBe(true);
+    expect(await adapter.listRecoverablePoolQuestionPushRequests()).toContainEqual({
+      questionId: requested,
+      userId,
+      claimed: false,
+    });
+
+    expect((await adapter.claimPoolQuestionPush(requested, userId)).kind).toBe('claimed');
+    expect(await adapter.listRecoverablePoolQuestionPushRequests()).toContainEqual({
+      questionId: requested,
+      userId,
+      claimed: true,
+    });
+
+    await adapter.markPoolQuestionPushFailed(requested, userId, 'terminal');
+    expect((await adapter.listRecoverablePoolQuestionPushRequests()).some((row) => row.questionId === requested)).toBe(false);
+  }, 30_000);
+
   test('resolved claims count toward the UTC daily cap across intents', async () => {
     for (const status of ['answered', 'dismissed'] as const) {
       const tiedIntent = await createIntent();

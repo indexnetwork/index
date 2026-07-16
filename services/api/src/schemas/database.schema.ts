@@ -519,6 +519,8 @@ export interface QuestionDetection {
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
+  /** Durable proactive-delivery request marker. Never exposed publicly. */
+  pushRequestedAt?: string;
   /** Internal proactive push claim/delivery state. Never exposed publicly. */
   push?: import('@indexnetwork/protocol').QuestionPoolPush;
   /** Authoritative successful-delivery ledger timestamp. Never exposed publicly. */
@@ -571,6 +573,14 @@ export const questions = pgTable('questions', {
       sql`(${table.detection}->'push'->>'cycleKey')`,
     )
     .where(sql`${table.detection}->>'mode' = 'pool_discovery' AND ${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
+  // Supports the strict UTC daily budget ledger, including claims whose
+  // question lifecycle later resolves.
+  poolPushRecipientClaimedAtIndex: index('questions_pool_push_recipient_claimed_at_idx')
+    .on(
+      sql`(${table.actors}->0->>'userId')`,
+      sql`(${table.detection}->'push'->>'claimedAt')`,
+    )
+    .where(sql`${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
 }));
 
 export type QuestionRow = typeof questions.$inferSelect;

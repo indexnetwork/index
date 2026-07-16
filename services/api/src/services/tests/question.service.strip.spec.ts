@@ -19,6 +19,7 @@ function poolQuestion(): AdapterPersistedQuestion {
       timestamp: 'now',
       strategy: 'surface_missing_detail',
       underspecificationType: 'missing_constraint',
+      pushRequestedAt: '2026-07-16T11:58:00.000Z',
       pushedAt: '2026-07-16T12:00:00.000Z',
       push: {
         version: 1,
@@ -69,6 +70,7 @@ describe('stripInternalDetection', () => {
     expect(stripped.detection.purpose).toBeUndefined();
     expect(stripped.detection.strategy).toBeUndefined();
     expect(stripped.detection.underspecificationType).toBeUndefined();
+    expect(stripped.detection.pushRequestedAt).toBeUndefined();
     expect(stripped.detection.push).toBeUndefined();
     expect(stripped.detection.pushedAt).toBeUndefined();
     expect(stripped.detection.mode).toBe('pool_discovery');
@@ -93,6 +95,7 @@ describe('stripInternalDetection', () => {
     delete (q.detection as { purpose?: unknown }).purpose;
     delete (q.detection as { strategy?: unknown }).strategy;
     delete (q.detection as { underspecificationType?: unknown }).underspecificationType;
+    delete (q.detection as { pushRequestedAt?: unknown }).pushRequestedAt;
     delete (q.detection as { push?: unknown }).push;
     delete (q.detection as { pushedAt?: unknown }).pushedAt;
     expect(stripInternalDetection(q)).toBe(q);
@@ -112,6 +115,7 @@ describe('QuestionService.findPending', () => {
       expect(row.detection.purpose).toBeUndefined();
       expect(row.detection.strategy).toBeUndefined();
       expect(row.detection.underspecificationType).toBeUndefined();
+      expect(row.detection.pushRequestedAt).toBeUndefined();
       expect(row.detection.push).toBeUndefined();
       expect(row.detection.pushedAt).toBeUndefined();
     }
