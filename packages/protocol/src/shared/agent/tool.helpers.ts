@@ -26,7 +26,7 @@ import type { ChatQuestionsHost, QuestionerDatabase } from "../interfaces/questi
 import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
-import type { QuestionMode } from "../schemas/question.schema.js";
+import type { QuestionMode, QuestionPurpose } from "../schemas/question.schema.js";
 import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
 
@@ -192,6 +192,7 @@ export interface ToolContext {
       scopeId?: string;
       networkId?: string;
       modes?: QuestionMode[];
+      purpose?: QuestionPurpose;
       limit?: number;
     },
   ) => Promise<PendingQuestionSummary[]>;
@@ -562,6 +563,8 @@ export interface ToolDeps {
       networkId?: string;
       /** Restrict to questions whose detection mode is in this set. */
       modes?: QuestionMode[];
+      /** Restrict to an internal generation purpose. */
+      purpose?: QuestionPurpose;
       /** Maximum rows to return; hosts should apply this in the query. */
       limit?: number;
     },

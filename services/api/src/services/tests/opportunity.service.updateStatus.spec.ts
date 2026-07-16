@@ -6,6 +6,7 @@ import { describe, it, expect, mock } from "bun:test";
 
 import type { Opportunity, OpportunityControllerDatabase } from '@indexnetwork/protocol';
 import { OpportunityService } from "../opportunity.service";
+import type { UptakeAcceptanceGuardLike } from "../../lib/opportunity/uptake-acceptance.guard";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test data
@@ -72,6 +73,56 @@ function createMockDb(opportunity: Opportunity | null) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("OpportunityService.updateOpportunityStatus", () => {
+  it("returns the uptake advisory before creating a DM, mutating status, or adding contacts", async () => {
+    const db = createMockDb(twoActorOpportunity);
+    const guard = {
+      check: mock(async () => ({
+        error: "Resolve the pending uptake questions or explicitly continue anyway.",
+        status: 409 as const,
+        advisory: {
+          code: "unresolved_uptake_questions" as const,
+          advisoryOnly: true as const,
+          opportunityId: OPP_ID,
+          questions: [{ id: "q-1", title: "Capacity", prompt: "Can they deliver?", options: [], multiSelect: false }],
+          acknowledgedUptakeQuestionIds: [],
+        },
+      })),
+    } satisfies UptakeAcceptanceGuardLike;
+    const service = new OpportunityService(db, undefined, guard);
+
+    const result = await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A);
+
+    expect(result).toMatchObject({ status: 409, advisory: { code: "unresolved_uptake_questions" } });
+    expect(guard.check).toHaveBeenCalledWith({ opportunityId: OPP_ID, userId: USER_A, networkId: undefined, acknowledgedUptakeQuestionIds: undefined });
+    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+    expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
+    expect(db.upsertContactMembership).not.toHaveBeenCalled();
+  });
+
+  it("passes acknowledgement IDs into the acceptance guard", async () => {
+    const db = createMockDb(twoActorOpportunity);
+    const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;
+    const service = new OpportunityService(db, undefined, guard);
+
+    await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, {
+      acknowledgedUptakeQuestionIds: ["q-1", "q-2"],
+    });
+
+    expect(guard.check).toHaveBeenCalledWith(expect.objectContaining({
+      acknowledgedUptakeQuestionIds: ["q-1", "q-2"],
+    }));
+    expect(db.stampOpportunityActorAction).toHaveBeenCalled();
+  });
+
+  it("does not run the uptake guard for non-accepted status changes", async () => {
+    const db = createMockDb(twoActorOpportunity);
+    const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;
+    const service = new OpportunityService(db, undefined, guard);
+
+    await service.updateOpportunityStatus(OPP_ID, "rejected", USER_A);
+
+    expect(guard.check).not.toHaveBeenCalled();
+  });
   it("creates DM and adds contacts both ways when accepting a 2-actor opportunity", async () => {
     const db = createMockDb(twoActorOpportunity);
     const service = new OpportunityService(db);
@@ -168,6 +219,24 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(result).toHaveProperty("error");
     expect((result as { status: number }).status).toBe(500);
     expect(db.updateOpportunityStatus).not.toHaveBeenCalled();
+  });
+
+  it("rejects a network-scoped accept unless every participant is anchored in scope", async () => {
+    const crossNetwork = {
+      ...twoActorOpportunity,
+      actors: [
+        { networkId: "idx-1", userId: USER_A, role: "patient" },
+        { networkId: "idx-2", userId: USER_B, role: "agent" },
+      ],
+    };
+    const db = createMockDb(crossNetwork);
+    const service = new OpportunityService(db);
+
+    const result = await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, { networkScopeId: "idx-1" });
+
+    expect(result).toMatchObject({ error: "Opportunity not found", status: 404 });
+    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+    expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
   });
 
   it("returns 403 when user is not an actor", async () => {

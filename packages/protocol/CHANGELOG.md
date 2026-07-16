@@ -15,6 +15,8 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ### Added
 - Durable pool-discriminator semantic novelty metadata: current axis embeddings and embedding-model ids now survive deterministic question snapshot conversion, alongside full-intent freshness fingerprints (IND-420 P4a).
 - Additive `IntentRecord.status` lifecycle contract (`ACTIVE | PAUSED | FULFILLED | EXPIRED | null`), with null legacy rows treated as active and paused intents excluded from candidate matching.
+- Advisory uptake guard for opportunity acceptance: low-authority counterparty intents can generate preparatory-condition questions, and `update_opportunity` now returns a structured, non-mutating advisory until the questions are resolved or their IDs are explicitly acknowledged (IND-424).
+- Public `QuestionPurpose` / uptake Questioner context contracts and `acknowledgedUptakeQuestionIds` acceptance input.
 - QUD-typed intent clarification (`missing_constituent`, `missing_constraint`, and `open_alternative_set`) across the live intent elaboration and Questioner flows, with internal detection metadata and exact-match eval coverage (IND-425).
 
 ### Changed

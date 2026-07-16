@@ -502,6 +502,8 @@ export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
 
 export interface QuestionDetection {
   mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
+  /** Internal generation purpose; stripped from public API responses. */
+  purpose?: import('@indexnetwork/protocol').QuestionPurpose;
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -545,6 +547,17 @@ export const questions = pgTable('questions', {
 }, (table) => ({
   statusIdx: index('questions_status_idx').on(table.status),
   conversationIdx: index('questions_conversation_id_idx').on(table.conversationId),
+  // One uptake question per recipient and opportunity across every status.
+  // actors is a single subject for generated questions; the expression keeps
+  // dedup race-free without adding public columns for internal metadata.
+  uptakeRecipientSourceUnique: uniqueIndex('questions_uptake_recipient_source_uniq')
+    .on(
+      sql`(${table.actors}->0->>'userId')`,
+      sql`(${table.detection}->>'sourceType')`,
+      sql`(${table.detection}->>'sourceId')`,
+      sql`(${table.detection}->>'purpose')`,
+    )
+    .where(sql`${table.detection}->>'purpose' = 'uptake'`),
 }));
 
 export type QuestionRow = typeof questions.$inferSelect;

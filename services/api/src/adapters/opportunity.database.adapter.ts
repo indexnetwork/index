@@ -1,4 +1,5 @@
 import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, sql, toOpportunityRow, traceAppOperation } from './database.shared';
+import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 
 export class OpportunityDatabaseAdapter {
   async getProfile(userId: string): Promise<UserIdentity | null> {
@@ -20,7 +21,9 @@ export class OpportunityDatabaseAdapter {
       })
       .returning();
     if (!row) throw new Error('OpportunityDatabaseAdapter.createOpportunity: no row returned');
-    return toOpportunityRow(row);
+    const created = toOpportunityRow(row);
+    emitOpportunityPendingBestEffort(created);
+    return created;
   }
 
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
@@ -250,7 +253,9 @@ export class OpportunityDatabaseAdapter {
       .set(updates)
       .where(eq(opportunities.id, id))
       .returning();
-    return row ? toOpportunityRow(row) : null;
+    const updated = row ? toOpportunityRow(row) : null;
+    if (updated) emitOpportunityPendingBestEffort(updated);
+    return updated;
   }
 
   async updateOpportunityActorApproval(
@@ -349,7 +354,7 @@ export class OpportunityDatabaseAdapter {
     if (status === 'accepted' && !acceptedBy) {
       throw new Error('acceptedBy is required when status is accepted');
     }
-    return db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [locked] = await tx
         .select({ actors: opportunities.actors })
         .from(opportunities)
@@ -379,13 +384,15 @@ export class OpportunityDatabaseAdapter {
         .returning();
       return row ? toOpportunityRow(row) : null;
     });
+    if (updated) emitOpportunityPendingBestEffort(updated);
+    return updated;
   }
 
   async createOpportunityAndExpireIds(
     data: CreateOpportunityInput,
     expireIds: string[]
   ): Promise<{ created: OpportunityRow; expired: OpportunityRow[] }> {
-    return traceAppOperation(
+    const result = await traceAppOperation(
       {
         name: 'db create opportunity and expire ids',
         op: 'db.transaction',
@@ -425,6 +432,8 @@ export class OpportunityDatabaseAdapter {
       return { created, expired };
     }),
     );
+    emitOpportunityPendingBestEffort(result.created);
+    return result;
   }
 
   /** Condition: opportunity actors contain both userId and counterpartUserId. */

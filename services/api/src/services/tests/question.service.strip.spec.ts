@@ -12,6 +12,7 @@ function poolQuestion(): AdapterPersistedQuestion {
     id: 'q-1',
     detection: {
       mode: 'pool_discovery',
+      purpose: 'uptake',
       sourceType: 'intent',
       sourceId: 'intent-1',
       triggeredBy: 'intent-1',
@@ -53,6 +54,7 @@ describe('stripInternalDetection', () => {
   it('removes detection.pool and keeps everything else', () => {
     const stripped = stripInternalDetection(poolQuestion());
     expect(stripped.detection.pool).toBeUndefined();
+    expect(stripped.detection.purpose).toBeUndefined();
     expect(stripped.detection.strategy).toBeUndefined();
     expect(stripped.detection.underspecificationType).toBeUndefined();
     expect(stripped.detection.mode).toBe('pool_discovery');
@@ -74,6 +76,7 @@ describe('stripInternalDetection', () => {
   it('leaves questions without internal detection metadata untouched', () => {
     const q = poolQuestion();
     delete (q.detection as { pool?: unknown }).pool;
+    delete (q.detection as { purpose?: unknown }).purpose;
     delete (q.detection as { strategy?: unknown }).strategy;
     delete (q.detection as { underspecificationType?: unknown }).underspecificationType;
     expect(stripInternalDetection(q)).toBe(q);
@@ -90,6 +93,7 @@ describe('QuestionService.findPending', () => {
     expect(rows).toHaveLength(2);
     for (const row of rows) {
       expect(row.detection.pool).toBeUndefined();
+      expect(row.detection.purpose).toBeUndefined();
       expect(row.detection.strategy).toBeUndefined();
       expect(row.detection.underspecificationType).toBeUndefined();
     }

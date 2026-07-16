@@ -30,6 +30,8 @@ export type AdapterQuestionMode = 'discovery' | 'intent' | 'enrichment' | 'negot
 /** Detection context describing how/where a question was generated. */
 export interface AdapterQuestionDetection {
   mode: AdapterQuestionMode;
+  /** Internal generation purpose, orthogonal to mode and QUD metadata. */
+  purpose?: import('@indexnetwork/protocol').QuestionPurpose;
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -108,6 +110,8 @@ export interface PoolQuestionFreshnessOptions {
 
 export interface AdapterQuestionFilters {
   mode?: AdapterQuestionMode;
+  /** Exact internal generation purpose. */
+  purpose?: import('@indexnetwork/protocol').QuestionPurpose;
   sourceType?: string;
   sourceId?: string;
   /**
@@ -216,6 +220,9 @@ export class QuestionerAdapter {
     if (filters?.mode) {
       conditions.push(sql`${questions.detection}->>'mode' = ${filters.mode}`);
     }
+    if (filters?.purpose) {
+      conditions.push(sql`${questions.detection}->>'purpose' = ${filters.purpose}`);
+    }
     if (filters?.sourceType) {
       conditions.push(sql`${questions.detection}->>'sourceType' = ${filters.sourceType}`);
     }
@@ -282,6 +289,28 @@ export class QuestionerAdapter {
       : await baseQuery;
 
     return rows.map(toPersistedQuestion);
+  }
+
+  /**
+   * Exact recipient/source/purpose lookup across every question status. Used
+   * for generation dedup; unlike findPending it deliberately ignores expiry.
+   */
+  async existsForRecipientSourcePurpose(
+    userId: string,
+    sourceType: string,
+    sourceId: string,
+    purpose: import('@indexnetwork/protocol').QuestionPurpose,
+  ): Promise<boolean> {
+    const rows = await this.db.select({ id: questions.id })
+      .from(questions)
+      .where(and(
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        sql`${questions.detection}->>'sourceType' = ${sourceType}`,
+        sql`${questions.detection}->>'sourceId' = ${sourceId}`,
+        sql`${questions.detection}->>'purpose' = ${purpose}`,
+      ))
+      .limit(1);
+    return rows.length > 0;
   }
 
   /**
@@ -495,6 +524,7 @@ export class QuestionerAdapter {
       questionId,
       userId,
       mode: detection.mode,
+      ...(detection.purpose ? { purpose: detection.purpose } : {}),
       sourceType: detection.sourceType,
       sourceId: detection.sourceId,
       answer,

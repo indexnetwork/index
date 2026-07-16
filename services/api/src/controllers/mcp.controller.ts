@@ -672,6 +672,7 @@ function createMcpServerInstance(): McpServer {
       filters?: {
         sourceType?: string;
         sourceId?: string;
+        purpose?: import('@indexnetwork/protocol').QuestionPurpose;
         networkId?: string;
         scopeType?: 'intent';
         scopeId?: string;
@@ -687,6 +688,7 @@ function createMcpServerInstance(): McpServer {
         options: row.payload.options,
         multiSelect: row.payload.multiSelect,
         mode: row.detection.mode,
+        ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
         sourceType: row.detection.sourceType,
         sourceId: row.detection.sourceId,
         createdAt: row.createdAt,

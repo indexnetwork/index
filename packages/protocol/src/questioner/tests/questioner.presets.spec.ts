@@ -227,6 +227,35 @@ describe("negotiation preset", () => {
     expect(result).toContain("Alice");
   });
 
+  it("builds the discriminated uptake prompt without breaking post-stall input compatibility", () => {
+    const preset = getPreset("negotiation");
+    const result = preset.buildPrompt({
+      purpose: "uptake",
+      negotiationId: "neg-uptake",
+      counterpartyHint: "a climate founder with manufacturing partnerships",
+      indexContext: "climate builders",
+      proposedActivity: "manufacture a pilot run of low-carbon panels",
+      preparatoryEvidence: "They have described supplier relationships but not production capacity.",
+      userContext: "Mina develops low-carbon construction projects.",
+    });
+
+    expect(result).toContain("UPTAKE");
+    expect(result).toContain("manufacture a pilot run");
+    expect(result).toContain("manufacturing partnerships");
+    expect(result).toContain("production capacity");
+    expect(result).not.toContain("authority score");
+  });
+
+  it("instructs uptake generation to emit one neutral, referentially closed question with orthogonal QUD metadata", () => {
+    const prompt = getPreset("negotiation").systemPrompt;
+    expect(prompt).toContain("exactly ONE neutral question");
+    expect(prompt).toContain("return exactly one question");
+    expect(prompt).toContain("Never reveal a numeric authority score");
+    expect(prompt).toContain("QUD metadata is orthogonal to uptake purpose");
+    expect(prompt).toContain("usually not an underspecification repair");
+    expect(prompt).toContain("Referential closure");
+  });
+
   it("requires negotiation prompts to anchor on the user's goal, not the match mechanics", () => {
     const preset = getPreset("negotiation");
     expect(preset.systemPrompt).toContain("Standalone prompt rule");

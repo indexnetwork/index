@@ -35,16 +35,33 @@ export interface ProfileContext {
   existingPremises?: string[];
 }
 
-/** Negotiation context — data from a stalled or capped negotiation. */
-export interface NegotiationContext {
+/** Shared context fields for negotiation-mode questions. */
+interface NegotiationContextBase {
   negotiationId: string;
   counterpartyHint: string;
   indexContext: string;
-  outcomeReason: "turn_cap" | "timeout" | "stalled";
-  keyTake: string;
   /** The user's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
 }
+
+/** Post-stall negotiation context. Preserves the existing source shape. */
+export interface PostStallNegotiationContext extends NegotiationContextBase {
+  purpose?: undefined;
+  outcomeReason: "turn_cap" | "timeout" | "stalled";
+  keyTake: string;
+}
+
+/** Pre-accept uptake context targeting a counterparty's preparatory conditions. */
+export interface UptakeNegotiationContext extends NegotiationContextBase {
+  purpose: "uptake";
+  /** Plain-language activity or commitment whose feasibility needs clarification. */
+  proposedActivity: string;
+  /** Public evidence already available about capability, resources, or authority. */
+  preparatoryEvidence?: string;
+}
+
+/** Negotiation context discriminated by internal question purpose. */
+export type NegotiationContext = PostStallNegotiationContext | UptakeNegotiationContext;
 
 /**
  * Negotiation-inflight context — a negotiator mid-negotiation wants to ask its
@@ -130,7 +147,7 @@ export type QuestionerEnqueuePayload = QuestionerInput;
 export type QuestionerEnqueueFn = (input: QuestionerEnqueuePayload) => Promise<void>;
 
 /** Top-level input envelope for QuestionerAgent.invoke(). */
-export interface QuestionerInput {
+interface QuestionerInputBase {
   /** Selects the preset (system prompt + builder). */
   mode: QuestionMode;
   /** User the questions are generated for. */
@@ -139,8 +156,6 @@ export interface QuestionerInput {
   sourceType: string;
   /** ID of the triggering entity. */
   sourceId: string;
-  /** Mode-specific context. Must align with the selected mode. */
-  context: QuestionerContext;
   /** Scoped question context. Network scopes persist as QuestionActor.networkId. */
   scopeType?: ToolScopeType;
   /** Scoped question id. When scopeType is `network`, this is the actor networkId. */
@@ -157,3 +172,20 @@ export interface QuestionerInput {
   /** Assistant message ID — set when we know which message triggered the question. Stored in detection.messageId for inline anchoring. */
   messageId?: string;
 }
+
+/** Existing question inputs, including post-stall negotiation source compatibility. */
+interface StandardQuestionerInput extends QuestionerInputBase {
+  purpose?: undefined;
+  /** Mode-specific context. Must align with the selected mode. */
+  context: Exclude<QuestionerContext, UptakeNegotiationContext>;
+}
+
+/** Negotiation-mode uptake generation input. */
+export interface UptakeQuestionerInput extends QuestionerInputBase {
+  mode: "negotiation";
+  purpose: "uptake";
+  context: UptakeNegotiationContext;
+}
+
+/** Top-level input discriminated by the internal purpose. */
+export type QuestionerInput = StandardQuestionerInput | UptakeQuestionerInput;

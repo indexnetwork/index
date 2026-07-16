@@ -118,6 +118,29 @@ export interface OpportunityStatusUpdateResponse {
   counterpartUserId?: string;
 }
 
+/** Public question projection embedded in an acceptance advisory. */
+export interface UptakeQuestion {
+  id: string;
+  title: string;
+  prompt: string;
+  options: Array<{ label: string; description: string }>;
+  multiSelect: boolean;
+}
+
+/** Structured 409 soft interlock returned before opportunity acceptance. */
+export interface UptakeAcceptanceAdvisory {
+  code: 'unresolved_uptake_questions';
+  advisoryOnly: true;
+  opportunityId: string;
+  questions: UptakeQuestion[];
+  acknowledgedUptakeQuestionIds: string[];
+}
+
+export interface UptakeAcceptanceErrorBody {
+  error: string;
+  advisory: UptakeAcceptanceAdvisory;
+}
+
 export interface OpportunityPresentation {
   title: string;
   description: string;
@@ -219,10 +242,11 @@ export const createOpportunitiesService = (
     opportunityId: string,
     status: OpportunityStatus,
     scope?: { scopeType: 'intent'; scopeId: string },
+    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<OpportunityStatusUpdateResponse> => {
     return api.patch<OpportunityStatusUpdateResponse>(
       `/opportunities/${opportunityId}/status`,
-      { status, ...(scope ?? {}) }
+      { status, ...(scope ?? {}), ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}) }
     );
   },
 
@@ -246,6 +270,7 @@ export const createOpportunitiesService = (
   startChat: async (
     opportunityId: string,
     scope?: { scopeType: 'intent'; scopeId: string },
+    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<{
     conversationId: string;
     counterpartUserId: string;
@@ -255,7 +280,10 @@ export const createOpportunitiesService = (
       conversationId: string;
       counterpartUserId: string;
       opportunity: { id: string; status: OpportunityStatus };
-    }>(`/opportunities/${opportunityId}/start-chat`, scope ?? {});
+    }>(`/opportunities/${opportunityId}/start-chat`, {
+      ...(scope ?? {}),
+      ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}),
+    });
   },
 
   /**

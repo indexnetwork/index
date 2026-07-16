@@ -12,6 +12,7 @@ config({ path: '.env.test', override: true });
 import { describe, it, expect, mock } from 'bun:test';
 import type { Opportunity, OpportunityControllerDatabase } from '@indexnetwork/protocol';
 import { OpportunityService } from '../opportunity.service';
+import type { UptakeAcceptanceGuardLike } from '../../lib/opportunity/uptake-acceptance.guard';
 
 const VIEWER_ID = 'user-viewer-001';
 const PEER_ID = 'user-peer-002';
@@ -46,7 +47,11 @@ function makeOpportunity(overrides: Partial<Opportunity> = {}): Opportunity {
 
 type DbStubOverrides = Partial<Record<keyof OpportunityControllerDatabase, unknown>>;
 
-function makeServiceWithDb(opp: Opportunity, overrides: DbStubOverrides = {}) {
+function makeServiceWithDb(
+  opp: Opportunity,
+  overrides: DbStubOverrides = {},
+  guard: UptakeAcceptanceGuardLike = { check: async () => null },
+) {
   const updated = { ...opp, status: 'accepted' as const };
   const db = {
     getOpportunity: mock(async () => opp),
@@ -59,10 +64,62 @@ function makeServiceWithDb(opp: Opportunity, overrides: DbStubOverrides = {}) {
     ...overrides,
   } as unknown as OpportunityControllerDatabase;
 
-  return { service: new OpportunityService(db), db };
+  return { service: new OpportunityService(db, undefined, guard), db };
 }
 
 describe('OpportunityService.startChat', () => {
+  it('returns uptake advisory before any DM, status, contact, or unhide side effect', async () => {
+    const opp = makeOpportunity({ status: 'pending' });
+    const guard = {
+      check: mock(async () => ({
+        error: 'Resolve the pending uptake questions or explicitly continue anyway.',
+        status: 409 as const,
+        advisory: {
+          code: 'unresolved_uptake_questions' as const,
+          advisoryOnly: true as const,
+          opportunityId: OPP_ID,
+          questions: [{ id: 'q-1', title: 'Timing', prompt: 'Can they start now?', options: [], multiSelect: false }],
+          acknowledgedUptakeQuestionIds: [],
+        },
+      })),
+    } satisfies UptakeAcceptanceGuardLike;
+    const { service, db } = makeServiceWithDb(opp, {}, guard);
+
+    const result = await service.startChat(OPP_ID, VIEWER_ID);
+
+    expect(result).toMatchObject({ status: 409, advisory: { code: 'unresolved_uptake_questions' } });
+    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+    expect(db.unhideConversation).not.toHaveBeenCalled();
+    expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
+    expect(db.upsertContactMembership).not.toHaveBeenCalled();
+  });
+
+  it('passes acknowledgement IDs and proceeds when the current exact set is acknowledged', async () => {
+    const opp = makeOpportunity({ status: 'pending' });
+    const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;
+    const { service, db } = makeServiceWithDb(opp, {}, guard);
+
+    const result = await service.startChat(OPP_ID, VIEWER_ID, {
+      acknowledgedUptakeQuestionIds: ['q-1'],
+    });
+
+    expect('error' in result).toBe(false);
+    expect(guard.check).toHaveBeenCalledWith(expect.objectContaining({
+      acknowledgedUptakeQuestionIds: ['q-1'],
+      networkId: undefined,
+    }));
+    expect(db.stampOpportunityActorAction).toHaveBeenCalled();
+  });
+
+  it('does not gate an already accepted opportunity', async () => {
+    const opp = makeOpportunity({ status: 'accepted' });
+    const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;
+    const { service } = makeServiceWithDb(opp, {}, guard);
+
+    await service.startChat(OPP_ID, VIEWER_ID);
+
+    expect(guard.check).not.toHaveBeenCalled();
+  });
   it('flips pending → accepted and returns the conversation from getOrCreateDM', async () => {
     const opp = makeOpportunity({ status: 'pending' });
     const { service, db } = makeServiceWithDb(opp);

@@ -66,9 +66,10 @@ export async function mergePendingQuestions(
   // Deduplicate against already-surfaced IDs in this session
   const fresh = pending.filter((q) => !input.surfacedQuestionIds.has(q.id));
   const capped = fresh.slice(0, MAX_PENDING_QUESTIONS);
+  const publicQuestions = capped.map(({ actors: _actors, purpose: _purpose, ...question }) => question);
 
   return {
-    questions: capped,
+    questions: publicQuestions,
     surfacedIds: capped.map((q) => q.id),
   };
 }

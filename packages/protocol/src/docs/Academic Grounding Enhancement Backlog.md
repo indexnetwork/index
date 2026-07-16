@@ -23,7 +23,9 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 
 **Note:** do **not** import the full IU formalism (`⟨I, L, G, T, C, S, P⟩`); the useful core is the dependency edge + targeted revocation walk. This is closer to a truth-maintenance system than to incremental dialogue processing — the report's framing is a loan, not a law.
 
-## 2. Uptake transition guard (pre-accept clarification) — **S/M**
+## 2. Uptake transition guard (pre-accept clarification) — **S/M** — **SHIPPED (IND-424)**
+
+Implemented low-authority preparatory-condition questions when opportunities enter `pending`, an internal `uptake` detection purpose, and a flag-gated soft acceptance interlock across MCP, REST, web, connect links, CLI, and Hermes. The first accept attempt remains non-mutating until the user answers/dismisses the questions or explicitly acknowledges the current question IDs to continue anyway. No new lifecycle state was added.
 
 **Theory:** Schlöder & Fernández (2014), clarification requests at the level of uptake; Clark (1996) joint-action ladder — verify *understanding* before *commitment*. *(Report rank #4, Ch. 10.)*
 

@@ -42,6 +42,23 @@ describe("mergePendingQuestions", () => {
     expect(result.surfacedIds).toEqual(["pq-1"]);
   });
 
+  it("strips internal actor and purpose fields from attached questions", async () => {
+    const fn = mock(async () => [{
+      ...baseSummary,
+      purpose: "uptake" as const,
+      actors: [{ userId: "u1", networkId: "net-1" }],
+    }]);
+    const result = await mergePendingQuestions({
+      findPendingQuestions: fn,
+      userId: "u1",
+      surfacedQuestionIds: new Set(),
+    });
+
+    expect(result.questions[0]).toEqual(baseSummary);
+    expect(result.questions[0].purpose).toBeUndefined();
+    expect(result.questions[0].actors).toBeUndefined();
+  });
+
   it("deduplicates questions already surfaced in this session", async () => {
     const fn = mock(async () => [baseSummary]);
     const result = await mergePendingQuestions({

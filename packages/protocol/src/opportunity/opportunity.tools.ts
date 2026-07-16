@@ -9,7 +9,7 @@ import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LA
 import { narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.safe-presentation.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
-import { isDiscoveryQuestionsEnabled } from "../questioner/questioner.env.js";
+import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../questioner/questioner.env.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 
@@ -36,6 +36,7 @@ function stripLeadingNarratorName(remark: string, narratorName: string): string 
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
+import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
 import type { DiscoveryRunInput } from "../shared/interfaces/discovery-run.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
 import { selectByComposition, deduplicateByPerson, selectDigestCandidates, type DigestDeliveredRow } from "./opportunity.utils.js";
@@ -218,6 +219,38 @@ const UPDATE_OPPORTUNITY_BLOCKED_STATUSES = new Set<OpportunityStatus>([
   "expired",
   "negotiating",
 ]);
+
+interface PublicUptakeQuestion {
+  id: string;
+  title: string;
+  prompt: string;
+  options: Array<{ label: string; description: string }>;
+  multiSelect: boolean;
+}
+
+function publicUptakeQuestion(question: PendingQuestionSummary): PublicUptakeQuestion {
+  return {
+    id: question.id,
+    title: question.title,
+    prompt: question.prompt,
+    options: question.options,
+    multiSelect: question.multiSelect,
+  };
+}
+
+function uptakeAdvisory(opportunityId: string, questions: PublicUptakeQuestion[]): string {
+  return JSON.stringify({
+    success: false,
+    error: "Resolve the pending uptake questions or explicitly continue anyway.",
+    advisory: {
+      code: "unresolved_uptake_questions",
+      advisoryOnly: true,
+      opportunityId,
+      questions,
+      acknowledgedUptakeQuestionIds: questions.map((question) => question.id),
+    },
+  });
+}
 
 function matchesSelectedIntentScope(
   opportunity: Opportunity,
@@ -2261,8 +2294,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "- `rejected`: Decline a received opportunity.\n" +
       "- `expired`: Mark as expired (typically done by the system after timeout).\n\n" +
       "**When to use:** After discover_opportunities or list_opportunities returns opportunity cards. " +
-      "The user clicks 'Send' (pending), 'Accept', or 'Reject' on the card, and the agent calls this tool.\n\n" +
-      "**Returns:** Confirmation with the new status and notification details (who was notified).",
+      "The user clicks 'Send' (pending), 'Accept', or 'Reject' on the card, and the agent calls this tool. " +
+      "An accepted transition may first return a non-success uptake advisory with preparatory questions. Surface those questions, then retry with all returned question ids in acknowledgedUptakeQuestionIds; acknowledgement confirms presentation, not an answer.\n\n" +
+      "**Returns:** Confirmation with the new status and notification details (who was notified), or a structured uptake advisory without mutation.",
     querySchema: z.object({
       opportunityId: z
         .string()
@@ -2273,6 +2307,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           "New status: 'pending' = send the draft to the other party, 'accepted' = accept the connection, " +
           "'rejected' = decline, 'expired' = mark as timed out.",
         ),
+      acknowledgedUptakeQuestionIds: z
+        .array(z.string().min(1))
+        .optional()
+        .describe("On an acknowledged retry after an uptake advisory, include every question id returned by that advisory."),
       scopeType: z
         .enum(['intent'])
         .optional()
@@ -2344,6 +2382,65 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       if (!matchesSelectedIntentScope(opportunity, context.userId, effectiveIntentScope)) {
         return error("Opportunity not found.");
+      }
+
+      // The caller actor's own network is the exact question lookup boundary,
+      // even for an otherwise unscoped request. A focused network may only be
+      // equal to this after the guard above.
+      // Unscoped callers query all of their exact opportunity questions; a
+      // network-scoped caller is clamped to the bound network. Selecting the
+      // first duplicate actor row would miss a valid question on another
+      // shared network.
+      const uptakeNetworkId = scopedNetworkId;
+
+      // Soft uptake interlock: only acceptance is advisory-gated. All existing
+      // actor/scope/privacy guards run first so the question lookup cannot be
+      // used to probe opportunities or networks the caller cannot access.
+      if (query.status === "accepted" && isUptakeGuardEnabled() && deps.findPendingQuestions) {
+        try {
+          const pending = await deps.findPendingQuestions(context.userId, {
+            sourceType: "opportunity",
+            sourceId: opportunityId,
+            modes: ["negotiation"],
+            purpose: "uptake",
+            ...(uptakeNetworkId ? { networkId: uptakeNetworkId } : {}),
+          });
+          // Defense in depth if a host overlooks one or more filters. Actor
+          // internals are checked here and never serialized into the advisory.
+          const exactPending = pending.filter((question) => {
+            if (
+              question.sourceType !== "opportunity" ||
+              question.sourceId !== opportunityId ||
+              question.mode !== "negotiation" ||
+              question.purpose !== "uptake"
+            ) {
+              return false;
+            }
+            if (!question.actors?.some((actor) => actor.userId === context.userId)) return false;
+            if (uptakeNetworkId && !question.actors.some(
+              (actor) => actor.userId === context.userId && actor.networkId === uptakeNetworkId,
+            )) {
+              return false;
+            }
+            return true;
+          });
+          const acknowledged = new Set(query.acknowledgedUptakeQuestionIds ?? []);
+          if (exactPending.some((question) => !acknowledged.has(question.id))) {
+            return uptakeAdvisory(opportunityId, exactPending.map(publicUptakeQuestion));
+          }
+        } catch (err) {
+          logger.warn("update_opportunity: uptake question lookup failed open", {
+            opportunityId,
+            userId: context.userId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          deps.reportToolError?.(err, {
+            subsystem: "opportunity",
+            operation: "opportunity.uptake_lookup",
+            toolName: "update_opportunity",
+            userId: context.userId,
+          });
+        }
       }
 
       const isSend = query.status === "pending";

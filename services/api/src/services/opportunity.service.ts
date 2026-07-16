@@ -13,6 +13,7 @@ import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue
 import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
+import { uptakeAcceptanceGuard, type UptakeAcceptanceAdvisoryResult, type UptakeAcceptanceGuardLike } from '../lib/opportunity/uptake-acceptance.guard';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
@@ -50,6 +51,9 @@ interface OpportunityStatusUpdateResult {
 interface IntentScopeOptions {
   scopeType?: 'intent';
   scopeId?: string;
+  acknowledgedUptakeQuestionIds?: string[];
+  /** Internal clamp derived from a network-scoped API-key principal. */
+  networkScopeId?: string;
 }
 
 function matchesSelectedIntentScope(
@@ -60,6 +64,22 @@ function matchesSelectedIntentScope(
   if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
   if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
   return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === scope.scopeId);
+}
+
+function matchesAgentNetworkScope(
+  opportunity: Pick<Opportunity, 'actors'>,
+  userId: string,
+  networkScopeId?: string,
+): boolean {
+  if (!networkScopeId) return true;
+  const callerAnchored = opportunity.actors.some(
+    (actor) => actor.userId === userId && actor.networkId === networkScopeId,
+  );
+  if (!callerAnchored) return false;
+  const participantIds = new Set(opportunity.actors.map((actor) => actor.userId));
+  return [...participantIds].every((participantId) => opportunity.actors.some(
+    (actor) => actor.userId === participantId && actor.networkId === networkScopeId,
+  ));
 }
 
 
@@ -124,6 +144,7 @@ export class OpportunityService {
   private readonly presenter: OpportunityPresenter;
   private readonly presenterDb: PresenterDatabase;
   private readonly deliveryCache: RedisCacheAdapter;
+  private readonly uptakeGuard: UptakeAcceptanceGuardLike;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
@@ -133,12 +154,14 @@ export class OpportunityService {
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
+    acceptanceGuard: UptakeAcceptanceGuardLike = uptakeAcceptanceGuard,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
     this.presenter = new OpportunityPresenter();
     this.presenterDb = chatDatabaseAdapter as unknown as PresenterDatabase;
     this.deliveryCache = new RedisCacheAdapter();
+    this.uptakeGuard = acceptanceGuard;
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -505,7 +528,7 @@ export class OpportunityService {
     status: OpportunityStatus,
     userId: string,
     options?: IntentScopeOptions,
-  ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
+  ): Promise<OpportunityStatusUpdateResult | UptakeAcceptanceAdvisoryResult | { error: string; status: number }> {
     logger.verbose('Updating opportunity status', {
       opportunityId,
       status,
@@ -526,11 +549,24 @@ export class OpportunityService {
     if (!matchesSelectedIntentScope(opp, userId, options)) {
       return { error: 'Opportunity not found', status: 404 };
     }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
 
     // Self-accept guard: if the caller has already committed (actedAt is set)
     // and they are trying to accept, block them — the other party must accept.
     if (status === 'accepted' && callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
+    }
+
+    if (status === 'accepted') {
+      const advisory = await this.uptakeGuard.check({
+        opportunityId,
+        userId,
+        networkId: options?.networkScopeId,
+        acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
+      });
+      if (advisory) return advisory;
     }
 
     const counterpart = status === 'accepted'
@@ -551,7 +587,7 @@ export class OpportunityService {
       }
     }
 
-    let updated: Awaited<ReturnType<typeof this.db.updateOpportunityStatus>>;
+    let updated: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
     if (status === 'accepted') {
       updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
     } else if (status === 'pending') {
@@ -618,6 +654,7 @@ export class OpportunityService {
   async approveIntroduction(
     opportunityId: string,
     userId: string,
+    options?: Pick<IntentScopeOptions, 'networkScopeId'>,
   ): Promise<{ success: true } | { error: string; status: number }> {
     const opp = await this.db.getOpportunity(opportunityId);
     if (!opp) {
@@ -627,6 +664,9 @@ export class OpportunityService {
     const actor = opp.actors.find((a) => a.userId === userId);
     if (!actor || actor.role !== 'introducer') {
       return { error: 'Not authorized — user is not an introducer on this opportunity', status: 403 };
+    }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
     }
 
     const TERMINAL_STATUSES = new Set(['pending', 'negotiating', 'accepted', 'rejected', 'expired']);
@@ -698,6 +738,7 @@ export class OpportunityService {
     options?: IntentScopeOptions,
   ): Promise<
     | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
+    | UptakeAcceptanceAdvisoryResult
     | { error: string; status: number }
   > {
     const opp = await this.db.getOpportunity(opportunityId);
@@ -710,6 +751,9 @@ export class OpportunityService {
         return { error: 'Not authorized to start chat for this opportunity', status: 403 };
       }
       if (!matchesSelectedIntentScope(opp, userId, options)) {
+        return { error: 'Opportunity not found', status: 404 };
+      }
+      if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
         return { error: 'Opportunity not found', status: 404 };
       }
       const counterpart = resolveCounterpart(opp.actors, userId);
@@ -745,12 +789,23 @@ export class OpportunityService {
     if (!matchesSelectedIntentScope(opp, userId, options)) {
       return { error: 'Opportunity not found', status: 404 };
     }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
 
     // Self-accept guard: if the caller already committed (actedAt is set) they
     // cannot accept again — the other party must be the one to accept.
     if (callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
+
+    const advisory = await this.uptakeGuard.check({
+      opportunityId,
+      userId,
+      networkId: options?.networkScopeId,
+      acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
+    });
+    if (advisory) return advisory;
 
     const counterpart = resolveCounterpart(opp.actors, userId);
     if (!counterpart) {

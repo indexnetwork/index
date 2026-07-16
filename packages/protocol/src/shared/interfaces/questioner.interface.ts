@@ -3,7 +3,7 @@
  * the QuestionerAgent. Implementations live in the backend and are injected
  * into ProtocolDeps.
  */
-import type { Question, QuestionMode, QuestionStrategy, QuestionDetection, QuestionActor, QuestionAnswer, UnderspecificationType } from "../schemas/question.schema.js";
+import type { Question, QuestionMode, QuestionPurpose, QuestionStrategy, QuestionDetection, QuestionActor, QuestionAnswer, UnderspecificationType } from "../schemas/question.schema.js";
 
 /** Shape accepted by `persist()` — everything needed to insert a question row. */
 export interface PersistableQuestion {
@@ -31,6 +31,7 @@ export interface PersistedQuestion {
 /** Optional filters for `findPending()`. */
 export interface QuestionFilters {
   mode?: QuestionMode;
+  purpose?: QuestionPurpose;
   sourceType?: string;
   sourceId?: string;
   /** Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected intent id. */

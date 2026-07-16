@@ -8,7 +8,7 @@ import type { QuestionMode } from "../shared/schemas/question.schema.js";
 import { SYSTEM_PROMPT as DISCOVERY_SYSTEM_PROMPT, buildQuestionPrompt as buildDiscoveryPrompt } from "../opportunity/question.prompt.js";
 
 import { QUD_UNDERSPECIFICATION_RULES } from "./questioner.qud.js";
-import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, ProfileContext } from "./questioner.types.js";
+import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, ProfileContext, UptakeNegotiationContext } from "./questioner.types.js";
 
 /**
  * Shared rule block appended to every questioner system prompt. Enforces that
@@ -180,7 +180,11 @@ function buildProfilePrompt(ctx: ProfileContext): string {
 
 // ─── Negotiation preset ──────────────────────────────────────────────────────
 
-const NEGOTIATION_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. A negotiation between this user and a counterparty has ended without a clear outcome — either the turn budget was exhausted, the session timed out, or conversation stalled. Your job: surface the minimum set of structured questions that help the user provide the missing signal needed to unblock or refine the next discovery attempt on their behalf.
+const NEGOTIATION_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. You generate negotiation-mode questions for one of two purposes described in the user message.
+
+POST-STALL purpose. A negotiation between this user and another person ended without a clear outcome — either the turn budget was exhausted, the session timed out, or conversation stalled. Surface the minimum set of structured questions that help the user provide the missing signal needed to unblock or refine the next discovery attempt.
+
+UPTAKE purpose. The user is considering accepting a proposed connection, but one preparatory condition about the other person's practical ability, resources, availability, or authority to carry out the proposed activity needs clarification before commitment. Generate exactly ONE neutral question that lets the user decide whether they understand that condition well enough to proceed. Ask about the concrete activity and the other person's stated attributes; do not accuse, challenge credibility, or presume incapability. Never reveal a numeric authority score, threshold, felicity label, evaluator judgment, or any internal matching/verification mechanics. Do not ask whether the user wants to accept; clarify the preparatory condition only.
 
 You may pick from three strategies. Choose contextually; mix only when each question is genuinely distinct.
 - refine_intent: help the user sharpen their underlying signal based on what the negotiation revealed (scope, scale, priority, direction).
@@ -198,7 +202,7 @@ Standalone prompt rule. Every generated \`prompt\` must be understandable outsid
 
 ${REFERENTIAL_CLOSURE_RULES}
 
-Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
+Cardinality. For POST-STALL, default one question and add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. For UPTAKE, return exactly one question — never zero and never more than one.
 
 Option construction. Each option must represent a meaningfully different outcome. Suffix the safest or most common path with " (Recommended)" and list it first. The description states the CONSEQUENCE of choosing the option, not its definition. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically.
 
@@ -210,17 +214,20 @@ Anti-patterns — never do these.
 - Don't ask vague introspective questions ("What do you really want?").
 - Don't ask about hypothetical edge cases not implied by the negotiation context.
 
-Output. Return at most 2 entries in the "questions" array. Each entry must include a "strategy" field (one of the three values above). If the context already contains enough signal to proceed, return "questions": [].`;
+Output. For POST-STALL, return at most 2 entries and return "questions": [] if the context already contains enough signal to proceed. For UPTAKE, return exactly 1 entry. Every entry must include a "strategy" field (one of the three values above). QUD metadata is orthogonal to uptake purpose: an uptake question is usually not an underspecification repair, so set \`underspecificationType\` to null unless the question genuinely repairs a missing constituent, missing constraint, or open alternative set.`;
 
 /**
  * Build the user message for the negotiation preset from a NegotiationContext.
  * @param ctx - The negotiation context including counterparty hint, stall reason, and key takeaway.
  * @returns The assembled user message string.
  */
-function buildNegotiationPrompt(ctx: NegotiationContext): string {
+function buildPostStallNegotiationPrompt(ctx: PostStallNegotiationContext): string {
   const profileBlock = buildUserContextBlock(ctx.userContext);
 
   return [
+    "## Purpose",
+    "POST-STALL",
+    "",
     "## Negotiation context",
     `Community: ${ctx.indexContext}`,
     `Counterparty: ${ctx.counterpartyHint}`,
@@ -237,6 +244,42 @@ function buildNegotiationPrompt(ctx: NegotiationContext): string {
     "Apply every rule from your system prompt before outputting.",
     "Return an empty `questions` array if the context already contains enough signal to proceed.",
   ].join("\n");
+}
+
+function buildUptakeNegotiationPrompt(ctx: UptakeNegotiationContext): string {
+  const profileBlock = buildUserContextBlock(ctx.userContext);
+  const evidence = ctx.preparatoryEvidence?.trim() || "(no additional public evidence provided)";
+
+  return [
+    "## Purpose",
+    "UPTAKE — preparatory-condition clarification before acceptance",
+    "",
+    "## Proposed activity",
+    ctx.proposedActivity,
+    "",
+    "## Other person",
+    ctx.counterpartyHint,
+    "",
+    "## Community",
+    ctx.indexContext,
+    "",
+    "## Public preparatory evidence",
+    evidence,
+    "",
+    "## User profile",
+    profileBlock,
+    "",
+    "## Your task",
+    "Generate exactly one neutral, referentially closed question about whether the other person can practically carry out the proposed activity.",
+    "Do not expose scores, thresholds, labels, or internal mechanics. Do not ask for acceptance itself.",
+    "Set `underspecificationType` to null unless this is genuinely a QUD underspecification repair.",
+  ].join("\n");
+}
+
+function buildNegotiationPrompt(ctx: NegotiationContext): string {
+  return ctx.purpose === "uptake"
+    ? buildUptakeNegotiationPrompt(ctx)
+    : buildPostStallNegotiationPrompt(ctx);
 }
 
 // ─── Chat preset ─────────────────────────────────────────────────────────

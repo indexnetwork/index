@@ -27,7 +27,7 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.10.12";
+const VERSION = "0.11.0";
 
 /** Unicode box-drawing (rounded), same style as Honcho CLI. */
 const BOX = { tl: "\u256d", tr: "\u256e", bl: "\u2570", br: "\u256f", h: "\u2500", v: "\u2502" } as const;
@@ -387,6 +387,7 @@ async function main(): Promise<void> {
         positionals: args.positionals,
         target: args.target,
         introduce: args.introduce,
+        acknowledgeUptake: args.acknowledgeUptake,
       });
       return;
     case "negotiation":

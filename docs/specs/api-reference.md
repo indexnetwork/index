@@ -2689,7 +2689,8 @@ Update opportunity status.
   "status": "latent | draft | negotiating | pending | stalled | accepted | rejected | expired",
   "scopeType": "intent (optional)",
   "scopeId": "selected intent UUID when scopeType=intent (optional)",
-  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId> (optional)"
+  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId> (optional)",
+  "acknowledgedUptakeQuestionIds": ["question UUIDs from the latest advisory (optional)"]
 }
 ```
 
@@ -2701,6 +2702,7 @@ When selected-intent scope is supplied, an `accepted` update affects only this o
 - `403` — Caller is not an actor on the opportunity
 - `404` — Opportunity not found
 - `409` — Self-accept blocked. Caller's actor already has `actedAt` set (they advanced the opportunity earlier) and is attempting to accept it. The other party must accept. See `docs/domain/opportunities.md#bilateral-acceptance`.
+- `409` — Uptake soft interlock. When the feature is enabled and unresolved preparatory questions exist, the response contains `advisory.code = "unresolved_uptake_questions"`, public question payloads, and `acknowledgedUptakeQuestionIds`. No DM, status, sibling, or contact mutation has occurred. Answer/dismiss the questions and retry normally, or retry with the complete current ID list to continue anyway.
 
 ---
 
@@ -2720,7 +2722,8 @@ Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling
 {
   "scopeType": "intent",
   "scopeId": "selected intent UUID",
-  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId>"
+  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId>",
+  "acknowledgedUptakeQuestionIds": ["question UUIDs from the latest advisory"]
 }
 ```
 
@@ -2740,6 +2743,7 @@ When selected-intent scope is supplied, sibling acceptance is skipped. Unscoped 
 - `403` — Caller is not an actor on the opportunity
 - `404` — Opportunity not found
 - `409` — Self-accept blocked. Caller's actor already has `actedAt` set. See `docs/domain/opportunities.md#bilateral-acceptance`.
+- `409` — Uptake soft interlock with the same structured advisory and no side effects as the status endpoint. The authenticated `/c/:code` continuation flow preserves this advisory; legacy token links render a review page with an explicit continue-anyway link.
 - `500` — Status update or DM resolution failed
 
 ---
@@ -3286,7 +3290,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_network_membership` | Network | Remove a member from a network |
 | `discover_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
 | `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
-| `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. Accepting returns a `conversationId` |
+| `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. With the uptake guard enabled, a first accept can return `success:false` plus `advisory.code="unresolved_uptake_questions"` without mutation; retry with the current `acknowledgedUptakeQuestionIds` only after explicit user approval to continue anyway. Successful acceptance returns a `conversationId`. |
 | `list_contacts` | Contact | List user's contacts |
 | `add_contact` | Contact | Add a contact by email |
 | `remove_contact` | Contact | Remove a contact |

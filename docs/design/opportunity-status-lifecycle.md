@@ -164,10 +164,13 @@ Init writes `negotiating` (`negotiation.graph.ts:102-105`). Finalize maps the la
 stateDiagram-v2
     latent --> accepted: Start Chat
     draft --> accepted: Start Chat
-    pending --> accepted: human accept
+    pending --> pending: unresolved uptake advisory (no mutation)
+    pending --> accepted: questions resolved or explicit override
 ```
 
-Every `accepted` write is a **compound transition** (order matters): self-accept guard → resolve/create DM → write `accepted` + set `acceptedBy` → sibling-accept + contact upserts. Three code paths all write status `accepted` after resolving a DM first:
+When the flag-gated uptake guard finds unresolved preparatory-condition questions for the accepting actor, the first accept request is a **non-transition**: it returns a structured advisory and performs no DM, status, sibling, or contact write. Answer/dismiss removes questions from the pending set; an explicit retry may instead acknowledge the complete current question-ID set. No `pre-uptake` state is introduced—the opportunity remains `pending`, and lookup failures fail open.
+
+Every actual `accepted` write is a **compound transition** (order matters): self-accept guard → uptake preflight → resolve/create DM → write `accepted` + set `acceptedBy` → sibling-accept + contact upserts. Three code paths all write status `accepted` after resolving a DM first:
 
 - **REST** `updateOpportunityStatus()` (`services/api/src/services/opportunity.service.ts:459-508`): self-accept guard (`:477-480`), DM resolve before flip (`:489`), accepted write (`:501-504`), sibling accept + contact upserts (`:517-540`).
 - **`startChat()`** (`opportunity.service.ts:632-732`): already-accepted idempotent branch (`:644-674`), allowed source `pending | draft | latent` (`:676-682`), self-accept guard (`:691-693`), DM resolve (`:705-714`), accepted write (`:728-732`).
