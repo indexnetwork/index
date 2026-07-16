@@ -169,6 +169,7 @@ export async function createChatTools(
     negotiationGraph,
     deps.agentDispatcher,
     deps.queueNegotiateExisting,
+    deps.stampNewbornOpportunities,
   ).createGraph();
   const networkGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
@@ -205,6 +206,7 @@ export async function createChatTools(
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     agentDispatcher: deps.agentDispatcher,
+    stampNewbornOpportunities: deps.stampNewbornOpportunities,
     deliveryLedger: deps.deliveryLedger,
     discoveryRuns: deps.discoveryRuns,
     discoveryRunQueue: deps.discoveryRunQueue,

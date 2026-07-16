@@ -15,6 +15,7 @@ import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
@@ -68,6 +69,7 @@ export class ToolService {
       enricher: { enrichUserProfile },
       getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
+      stampNewbornOpportunities,
       findPendingQuestions: async (
         userId: string,
         filters?: {
@@ -274,6 +276,8 @@ export class ToolService {
       undefined,
       negotiationGraph,
       noOpDispatcher,
+      undefined,
+      stampNewbornOpportunities,
     ).createGraph();
     const indexGraph = new NetworkGraphFactory(database).createGraph();
     const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();

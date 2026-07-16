@@ -15,7 +15,7 @@ process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
-import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
+import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../opportunity.graph.js';
 import type { Id } from '../../types/common.types.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
@@ -26,6 +26,7 @@ import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 
 const USER_A = 'a0000000-0000-4000-8000-000000000001' as Id<'users'>;
 const USER_B = 'b0000000-0000-4000-8000-000000000002' as Id<'users'>;
+const USER_C = 'c0000000-0000-4000-8000-000000000003' as Id<'users'>;
 const NET_ID = 'n0000000-0000-4000-8000-000000000001' as Id<'networks'>;
 const OPP_ID = 'op000000-0000-4000-8000-000000000001' as Id<'opportunities'>;
 
@@ -153,13 +154,21 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
   return { ...base, ...overrides };
 }
 
-function buildGraph(db: OpportunityGraphDatabase) {
+function buildGraph(
+  db: OpportunityGraphDatabase,
+  stamper?: StampNewbornOpportunitiesFn,
+  overrides?: { embedder?: Embedder; evaluator?: OpportunityEvaluatorLike },
+) {
   return new OpportunityGraphFactory(
     db,
-    dummyEmbedder,
+    overrides?.embedder ?? dummyEmbedder,
     dummyHyde,
-    mockEvaluator,
+    overrides?.evaluator ?? mockEvaluator,
     async () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    stamper,
   ).createGraph();
 }
 
@@ -173,6 +182,134 @@ const discoveryInput = {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe('opportunity graph — newborn stamping seam', () => {
+  const intentInput = {
+    userId: USER_A,
+    operationMode: 'create' as const,
+    searchQuery: 'co-founder',
+    triggerIntentId: 'intent-1' as Id<'intents'>,
+    options: { initialStatus: 'latent' as const },
+  };
+
+  test('calls after candidate construction/dedup and stamps reach create INSERT', async () => {
+    let dedupFinished = false;
+    let inserted: Parameters<OpportunityGraphDatabase['createOpportunity']>[0] | undefined;
+    const db = buildDb({
+      findOpportunitiesByActors: async () => {
+        dedupFinished = true;
+        return [];
+      },
+      createOpportunity: async (data) => {
+        inserted = data;
+        return { ...data, id: 'opp-new', status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+      },
+    });
+    const graph = buildGraph(db, async ({ items }) => {
+      expect(dedupFinished).toBe(true);
+      return items.map((item) => ({
+        ...item,
+        metadata: { ...(item.metadata ?? {}), stamped: true },
+        interpretation: {
+          ...item.interpretation,
+          signals: [...(item.interpretation.signals ?? []), { type: 'pool_discriminator', weight: 1, detail: 'Style: Hands-on', questionId: 'q-1' }],
+        },
+      }));
+    });
+    await graph.invoke(intentInput);
+    expect(inserted?.metadata).toMatchObject({ stamped: true });
+    expect(inserted?.interpretation.signals?.at(-1)?.questionId).toBe('q-1');
+  });
+
+  test('callback error and length mismatch fail open with original items', async () => {
+    for (const stamper of [
+      async () => { throw new Error('classifier down'); },
+      async () => [],
+    ] satisfies StampNewbornOpportunitiesFn[]) {
+      let inserted: Parameters<OpportunityGraphDatabase['createOpportunity']>[0] | undefined;
+      const db = buildDb({
+        createOpportunity: async (data) => {
+          inserted = data;
+          return { ...data, id: 'opp-new', status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+        },
+      });
+      await buildGraph(db, stamper).invoke(intentInput);
+      expect(inserted?.metadata?.stamped).toBeUndefined();
+      expect(inserted?.interpretation.signals?.some((signal) => signal.type === 'pool_discriminator')).toBe(false);
+    }
+  });
+
+  test('rejects reordered callback output and preserves original INSERT order', async () => {
+    const twoCandidateEmbedder = {
+      ...dummyEmbedder,
+      searchWithHydeEmbeddings: async () => [
+        { type: 'intent' as const, id: 'intent-bob' as Id<'intents'>, userId: USER_B, score: 0.9, matchedVia: 'mirror' as const, networkId: NET_ID },
+        { type: 'intent' as const, id: 'intent-carol' as Id<'intents'>, userId: USER_C, score: 0.8, matchedVia: 'mirror' as const, networkId: NET_ID },
+      ],
+    } as unknown as Embedder;
+    const twoCandidateEvaluator: OpportunityEvaluatorLike = {
+      invokeEntityBundle: async () => [
+        {
+          reasoning: 'Bob match', score: 90,
+          actors: [{ userId: USER_A, role: 'patient', intentId: null }, { userId: USER_B, role: 'agent', intentId: null }],
+        },
+        {
+          reasoning: 'Carol match', score: 80,
+          actors: [{ userId: USER_A, role: 'patient', intentId: null }, { userId: USER_C, role: 'agent', intentId: null }],
+        },
+      ],
+    };
+    const inserted: Array<Parameters<OpportunityGraphDatabase['createOpportunity']>[0]> = [];
+    const db = buildDb({
+      createOpportunity: async (data) => {
+        inserted.push(data);
+        return { ...data, id: `opp-new-${inserted.length}`, status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+      },
+    });
+
+    await buildGraph(
+      db,
+      async ({ items }) => [...items].reverse(),
+      { embedder: twoCandidateEmbedder, evaluator: twoCandidateEvaluator },
+    ).invoke(intentInput);
+
+    expect(inserted).toHaveLength(2);
+    expect(inserted.map((entry) => entry.actors.find((actor) => actor.userId !== USER_A)?.userId)).toEqual([USER_B, USER_C]);
+    expect(inserted.every((entry) => entry.metadata?.stamped === undefined)).toBe(true);
+  });
+
+  test('does not call for non-intent create, reactivation, or on-behalf-of introducer paths', async () => {
+    let calls = 0;
+    const stamper: StampNewbornOpportunitiesFn = async ({ items }) => { calls++; return items; };
+
+    await buildGraph(buildDb({}), stamper).invoke({
+      userId: USER_A,
+      operationMode: 'create' as const,
+      searchQuery: 'ad hoc query',
+      options: { initialStatus: 'latent' as const },
+    });
+
+    const stalled = makeOpportunity({ status: 'stalled', createdAt: new Date() });
+    await buildGraph(buildDb({
+      findOpportunitiesByActors: async () => [stalled],
+      updateOpportunityStatus: async () => ({ ...stalled, status: 'latent' }),
+    }), stamper).invoke(intentInput);
+
+    await buildGraph(buildDb({}), stamper).invoke({
+      ...intentInput,
+      userId: USER_B,
+      onBehalfOfUserId: USER_A,
+      networkId: NET_ID,
+    });
+
+    await buildGraph(buildDb({}), stamper).invoke({
+      ...intentInput,
+      targetUserId: USER_B,
+    });
+
+    expect(calls).toBe(0);
+  });
+});
 
 describe('opportunity graph — time-based dedup (Persist node)', () => {
   test('parallel job dedup: recent existing opp skips creation (IND-166 regression)', async () => {

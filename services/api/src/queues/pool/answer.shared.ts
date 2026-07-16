@@ -19,7 +19,7 @@
  * hashes the ORDERED id set, so a reorder is structurally a fresh cache key —
  * no explicit invalidation needed (verified IND-419 recon).
  */
-import { POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_RERUN_DEBOUNCE_MS, POOL_STALENESS_THRESHOLD, planPoolAdjustments } from '@indexnetwork/protocol';
+import { POOL_RERUN_DEBOUNCE_MS, POOL_STALENESS_THRESHOLD, buildPoolAdjustment, planPoolAdjustments } from '@indexnetwork/protocol';
 import type { PoolAdjustment, QuestionPoolSnapshot } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
@@ -100,12 +100,7 @@ export async function applyPoolAnswer(input: {
     writes.push({
       opportunityId: entry.opportunityId,
       adjustment: entry.adjustment,
-      signal: {
-        type: 'pool_discriminator',
-        weight: isChosen ? 1 : -1,
-        detail: `${entry.adjustment.label}: ${chosenSide}`,
-        questionId: input.questionId,
-      },
+      signal: entry.signal,
     });
     patched.add(entry.opportunityId);
     if (isChosen) promoted++;
@@ -117,23 +112,14 @@ export async function applyPoolAnswer(input: {
   const label = input.pool.discriminator.label;
   for (const row of live) {
     if (patched.has(row.id)) continue;
-    const adjustment: PoolAdjustment = {
+    const write = buildPoolAdjustment({
       questionId: input.questionId,
       label,
-      side: 'unknown',
-      factor: POOL_ADJUSTMENT_FACTOR_UNKNOWN,
+      assignedSide: null,
+      chosenSide,
       appliedAt: now,
-    };
-    writes.push({
-      opportunityId: row.id,
-      adjustment,
-      signal: {
-        type: 'pool_discriminator',
-        weight: 0,
-        detail: `${label}: unassigned`,
-        questionId: input.questionId,
-      },
     });
+    writes.push({ opportunityId: row.id, ...write });
     unknownAdjusted++;
   }
 

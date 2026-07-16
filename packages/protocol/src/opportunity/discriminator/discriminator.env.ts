@@ -34,6 +34,17 @@ export function poolQuestionsMode(): PoolQuestionsMode {
   return process.env.POOL_QUESTIONS_MODE?.trim() === "on" ? "on" : "off";
 }
 
+/** Newborn-opportunity stamping mode (IND-420 P4b). */
+export type PoolQuestionsStampNewbornMode = "off" | "on";
+
+/**
+ * Current POOL_QUESTIONS_STAMP_NEWBORN mode (default off). Effective callers
+ * additionally require {@link poolQuestionsMode} to be on.
+ */
+export function poolQuestionsStampNewborn(): PoolQuestionsStampNewbornMode {
+  return process.env.POOL_QUESTIONS_STAMP_NEWBORN?.trim() === "on" ? "on" : "off";
+}
+
 /** Minimum VoI for a discriminator to become (or chain) a question. */
 export const POOL_QUESTION_MIN_VOI = 0.2;
 

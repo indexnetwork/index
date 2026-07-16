@@ -76,6 +76,8 @@ import { uptakeQuestionService } from './services/uptake-question.service';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
 import { handlePoolAnswerFactory } from './events/handlers/question.answer.pool';
 import { beatTwoMessage } from './queues/pool/answer.shared';
+import { stampNewbornOpportunities } from './queues/pool/newborn.shared';
+import { computeIntentFingerprint } from './lib/intent/intent.fingerprint';
 import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
@@ -141,6 +143,7 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
+  stampNewbornOpportunities,
 });
 fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -153,6 +156,7 @@ fromEnrichmentQueue.setRuntimeDeps({
 discoveryRunQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
+  stampNewbornOpportunities,
 });
 negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -264,7 +268,10 @@ const appendPoolNarration = async (input: {
 // so a burst coalesces into one run without dropping later preferences.
 fromIntentQueue.setRuntimeDeps({
   getPoolAnswerContext: async (userId, intentId) => {
-    const preferences = await answerQuestionerAdapter.listAnsweredPoolPreferences(userId, intentId);
+    const intent = await chatDatabaseAdapter.getIntent(intentId);
+    if (!intent || intent.userId !== userId) return '';
+    const fingerprint = computeIntentFingerprint(intent.payload, intent.summary);
+    const preferences = await answerQuestionerAdapter.listAnsweredPoolPreferences(userId, intentId, fingerprint);
     if (preferences.length === 0) return '';
     return [
       'User-stated matching preferences (apply when finding fresh candidates):',

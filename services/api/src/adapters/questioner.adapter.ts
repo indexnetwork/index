@@ -101,6 +101,13 @@ export interface AdapterPersistedQuestion {
 }
 
 /** Optional filters for the `findPending` query. */
+export interface AnsweredPoolPreference {
+  questionId: string;
+  label: string;
+  sides: string[];
+  chosenSide: string;
+}
+
 export interface PoolQuestionFreshnessOptions {
   /** Fingerprint of the full current intent payload + summary. */
   currentIntentFingerprint?: string;
@@ -443,39 +450,52 @@ export class QuestionerAdapter {
    *
    * @param userId - Owner of the answered questions.
    * @param intentId - Intent whose pool questions were answered.
-   * @returns Latest valid side choices, newest first.
+   * @param currentIntentFingerprint - Exact current full payload+summary fingerprint.
+   * @returns Latest strict fresh side choices, newest first.
    */
   async listAnsweredPoolPreferences(
     userId: string,
     intentId: string,
-  ): Promise<Array<{ questionId: string; label: string; chosenSide: string }>> {
+    currentIntentFingerprint: string,
+  ): Promise<AnsweredPoolPreference[]> {
     const rows = await this.db
       .select({
         id: questions.id,
         detection: questions.detection,
+        actors: questions.actors,
         answer: questions.answer,
       })
       .from(questions)
       .where(and(
         eq(questions.status, 'answered'),
-        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId, role: 'subject' }])}::jsonb`,
         sql`${questions.detection}->>'mode' = 'pool_discovery'`,
         sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+        sql`${questions.detection}->'pool'->>'intentFingerprint' = ${currentIntentFingerprint}`,
       ))
-      .orderBy(desc(questions.createdAt))
-      .limit(10);
+      .orderBy(desc(questions.createdAt));
 
     return rows.flatMap((row) => {
       const detection = row.detection as AdapterQuestionDetection;
-      const selected = (row.answer as AdapterQuestionAnswer | null)?.selectedOptions?.[0];
-      const discriminator = detection.pool?.discriminator;
-      if (!selected || !discriminator) return [];
+      const answer = row.answer as AdapterQuestionAnswer | null;
+      const discriminator = parseAnsweredPoolDiscriminator(detection.pool?.discriminator);
+      const actorOwned = (row.actors as AdapterQuestionActor[]).some(
+        (actor) => actor.userId === userId && actor.role === 'subject',
+      );
+      if (!actorOwned || answer?.answeredBy !== userId || answer.selectedOptions.length !== 1 || !discriminator) return [];
+      const selected = answer.selectedOptions[0]?.trim();
+      if (!selected) return [];
       const chosenSide = discriminator.sides.find(
         (side) => side === selected || side.startsWith(selected) || selected.startsWith(side),
       );
-      if (!chosenSide) return [];
-      return [{ questionId: row.id, label: discriminator.label, chosenSide }];
-    });
+      if (!chosenSide) return []; // Both matter, free-text-only, or malformed option.
+      return [{
+        questionId: row.id,
+        label: discriminator.label,
+        sides: discriminator.sides,
+        chosenSide,
+      }];
+    }).slice(0, 10);
   }
 
   /**
@@ -572,6 +592,16 @@ export class QuestionerAdapter {
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
+
+/** Validate the minimal fixed-axis shape used by newborn stamping. */
+function parseAnsweredPoolDiscriminator(raw: unknown): { label: string; sides: string[] } | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const candidate = raw as { label?: unknown; sides?: unknown };
+  if (typeof candidate.label !== 'string' || candidate.label.trim().length === 0) return null;
+  if (!Array.isArray(candidate.sides) || candidate.sides.length < 2 || candidate.sides.length > 3) return null;
+  if (!candidate.sides.every((side): side is string => typeof side === 'string' && side.trim().length > 0)) return null;
+  return { label: candidate.label, sides: [...candidate.sides] };
+}
 
 /** Whether a pool snapshot still belongs to the current material intent. */
 function isPoolQuestionFresh(

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "bun:test";
 
-import { adjustedConfidence, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readPoolAdjustments, removePoolAdjustment } from "../discriminator.adjustments.js";
+import { adjustedConfidence, buildPoolAdjustment, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readPoolAdjustments, removePoolAdjustment } from "../discriminator.adjustments.js";
 import type { PoolAdjustment } from "../discriminator.adjustments.js";
 import type { QuestionPoolDiscriminator } from "../../../shared/schemas/question.schema.js";
 
@@ -34,6 +34,23 @@ function adjustment(overrides: Partial<PoolAdjustment> = {}): PoolAdjustment {
   };
 }
 
+describe("buildPoolAdjustment", () => {
+  it("preserves exact chosen, other, and unknown P3 semantics", () => {
+    expect(buildPoolAdjustment({ questionId: "q-1", label: "Style", assignedSide: "Hands-on", chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
+      adjustment: { questionId: "q-1", label: "Style", side: "Hands-on", factor: 1, appliedAt: NOW },
+      signal: { type: "pool_discriminator", weight: 1, detail: "Style: Hands-on", questionId: "q-1" },
+    });
+    expect(buildPoolAdjustment({ questionId: "q-1", label: "Style", assignedSide: "Advisory", chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
+      adjustment: { questionId: "q-1", label: "Style", side: "Advisory", factor: 0.6, detail: "Style: you chose Hands-on", appliedAt: NOW },
+      signal: { type: "pool_discriminator", weight: -1, detail: "Style: Hands-on", questionId: "q-1" },
+    });
+    expect(buildPoolAdjustment({ questionId: "q-1", label: "Style", assignedSide: null, chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
+      adjustment: { questionId: "q-1", label: "Style", side: "unknown", factor: 0.9, appliedAt: NOW },
+      signal: { type: "pool_discriminator", weight: 0, detail: "Style: unassigned", questionId: "q-1" },
+    });
+  });
+});
+
 describe("planPoolAdjustments", () => {
   it("factors chosen side 1.0 and other side 0.6 with a demotion detail from the user's own words", () => {
     const plan = planPoolAdjustments(discriminator(), "Hands-on builder", "q-1", NOW);
@@ -46,6 +63,12 @@ describe("planPoolAdjustments", () => {
       detail: "Hands-on builders vs advisors: you chose Hands-on builder",
     });
     expect(byId.get("opp-3")?.factor).toBe(1);
+    expect(plan.find((entry) => entry.opportunityId === "opp-2")?.signal).toEqual({
+      type: "pool_discriminator",
+      weight: -1,
+      detail: "Hands-on builders vs advisors: Hands-on builder",
+      questionId: "q-1",
+    });
   });
 
   it("returns an empty plan for 'Both matter' (label not a side)", () => {

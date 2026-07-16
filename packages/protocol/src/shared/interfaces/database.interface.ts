@@ -95,6 +95,8 @@ export interface OpportunitySignal {
   type: string;
   weight: number;
   detail?: string;
+  /** Optional source question for reversible pool-preference provenance. */
+  questionId?: string;
 }
 
 /** LLM-generated interpretation of an opportunity's category and confidence. */

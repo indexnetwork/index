@@ -5,7 +5,7 @@ import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { Id } from '../../types/common.types';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
+import type { NegotiationGraphLike, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 import { maybeMinePoolDiscriminators, minePoolDiscriminatorsOnCompletion, type PoolMiningTrigger } from '../pool/mining.shared';
@@ -40,6 +40,7 @@ export interface FromIntentDeps {
   invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
+  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Pool-discriminator mining hook (IND-417/418). Defaults to the shared fire-and-forget implementation; injectable for tests. */
   minePoolDiscriminators?: (trigger: PoolMiningTrigger) => void | Promise<void>;
   /** Answer context appended to Tier-1 discovery input after the debounce window. */
@@ -66,7 +67,7 @@ export class FromIntentQueue {
     this.graphDb = createOpportunityGraphDb(this.database);
   }
 
-  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher' | 'getPoolAnswerContext' | 'narratePoolRerun'>): void {
+  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher' | 'stampNewbornOpportunities' | 'getPoolAnswerContext' | 'narratePoolRerun'>): void {
     this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
