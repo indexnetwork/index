@@ -60,8 +60,10 @@ interface Harness {
   persisted: AdapterPersistableQuestion[][];
   agentInvocations: number;
   freshnessCalls: Array<PoolQuestionFreshnessOptions | undefined>;
+  pushEnqueues: Array<{ questionId: string; userId: string }>;
   setPending(rows: AdapterPersistedQuestion[]): void;
   setAskedLabels(labels: string[]): void;
+  setPushEnqueueFailure(error: Error | null): void;
 }
 
 function makeHarness(intentStatus: 'ACTIVE' | 'PAUSED' = 'ACTIVE'): Harness {
@@ -71,6 +73,8 @@ function makeHarness(intentStatus: 'ACTIVE' | 'PAUSED' = 'ACTIVE'): Harness {
   const state = {
     agentInvocations: 0,
     freshnessCalls: [] as Array<PoolQuestionFreshnessOptions | undefined>,
+    pushEnqueues: [] as Array<{ questionId: string; userId: string }>,
+    pushEnqueueFailure: null as Error | null,
   };
   const queue = new QuestionerQueue({
     adapter: {
@@ -91,6 +95,10 @@ function makeHarness(intentStatus: 'ACTIVE' | 'PAUSED' = 'ACTIVE'): Harness {
       },
     },
     getIntentLifecycle: async (intentId) => ({ id: intentId, status: intentStatus, archivedAt: null }),
+    poolQuestionPostPersist: async (questionId, userId) => {
+      if (state.pushEnqueueFailure) throw state.pushEnqueueFailure;
+      state.pushEnqueues.push({ questionId, userId });
+    },
   });
   return {
     queue,
@@ -101,11 +109,17 @@ function makeHarness(intentStatus: 'ACTIVE' | 'PAUSED' = 'ACTIVE'): Harness {
     get freshnessCalls() {
       return state.freshnessCalls;
     },
+    get pushEnqueues() {
+      return state.pushEnqueues;
+    },
     setPending: (rows) => {
       pending = rows;
     },
     setAskedLabels: (labels) => {
       askedLabels = labels;
+    },
+    setPushEnqueueFailure: (error) => {
+      state.pushEnqueueFailure = error;
     },
   };
 }
@@ -135,6 +149,31 @@ describe('QuestionerQueue pool_discovery arm', () => {
       currentIntentFingerprint: 'fingerprint-v1',
       currentIntentText: 'find collaborators',
     }]);
+    expect(h.pushEnqueues).toEqual([{ questionId: 'id-1-0', userId: 'user-1' }]);
+  });
+
+  it('persists before enqueue failure and safely re-enqueues the same-cycle row on retry', async () => {
+    h.setPushEnqueueFailure(new Error('redis unavailable'));
+    await expect(h.queue.processJob('generate_questions', poolInput([discriminator('top')]))).rejects.toThrow('redis unavailable');
+    expect(h.persisted).toHaveLength(1);
+    expect(h.pushEnqueues).toEqual([]);
+
+    const persisted = h.persisted[0][0];
+    h.setPending([{
+      id: 'id-1-0',
+      detection: persisted.detection,
+      actors: persisted.actors,
+      payload: persisted.payload,
+      status: 'pending',
+      answer: null,
+      expiresAt: null,
+      createdAt: 'now',
+      conversationId: null,
+    }]);
+    h.setPushEnqueueFailure(null);
+    await h.queue.processJob('generate_questions', poolInput([discriminator('top')]));
+    expect(h.persisted).toHaveLength(1);
+    expect(h.pushEnqueues).toEqual([{ questionId: 'id-1-0', userId: 'user-1' }]);
   });
 
   it('preserves legacy pool jobs without an intent fingerprint', async () => {
@@ -154,10 +193,29 @@ describe('QuestionerQueue pool_discovery arm', () => {
     expect(h.persisted).toHaveLength(0);
   });
 
-  it('skips when a pool_discovery question is already pending for the intent', async () => {
+  it('skips a different-cycle pending pool question without enqueueing it', async () => {
     h.setPending([pendingRow('pool_discovery')]);
     await h.queue.processJob('generate_questions', poolInput([discriminator('top')]));
     expect(h.persisted).toHaveLength(0);
+    expect(h.pushEnqueues).toEqual([]);
+  });
+
+  it('re-enqueues the existing same-cycle pending question on Questioner retry', async () => {
+    const existing = pendingRow('pool_discovery');
+    existing.id = 'same-cycle-question';
+    existing.detection.triggeredBy = 'intent-1';
+    existing.detection.pool = {
+      poolSize: 21,
+      runId: 'run-1',
+      minedAt: '2026-07-14T14:00:00.000Z',
+      discriminator: discriminator('top'),
+      alternates: [],
+    };
+    h.setPending([existing]);
+
+    await h.queue.processJob('generate_questions', poolInput([discriminator('top')]));
+    expect(h.persisted).toHaveLength(0);
+    expect(h.pushEnqueues).toEqual([{ questionId: 'same-cycle-question', userId: 'user-1' }]);
   });
 
   it('skips when the intent already has 3 pending questions of any mode', async () => {

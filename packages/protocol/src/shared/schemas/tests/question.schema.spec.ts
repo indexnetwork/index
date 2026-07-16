@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
+import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolPushSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
 const okOption = { label: "Stay focused", description: "Higher risk but cleaner narrative" };
 
@@ -194,6 +194,29 @@ describe("QuestionDetection", () => {
     });
     expect(result.success).toBe(true);
     expect(result.data!.triggeredBy).toBe("intent-456");
+  });
+
+  it("accepts the complete internal proactive push ledger", () => {
+    const push = {
+      version: 1,
+      source: "pool_discovery",
+      recipientId: "user-1",
+      intentId: "intent-1",
+      cycleKey: "run:run-1",
+      messageId: "question-1",
+      surfaces: ["personal_agent_badge", "negotiator_dm"],
+      claimedAt: "2026-07-16T12:00:00.000Z",
+      deliveryStatus: "claimed",
+    };
+    expect(QuestionPoolPushSchema.safeParse(push).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+      push,
+      pushedAt: "2026-07-16T12:00:01.000Z",
+    }).success).toBe(true);
   });
 
   it("rejects an invalid mode", () => {

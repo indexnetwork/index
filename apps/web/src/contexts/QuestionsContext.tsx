@@ -9,8 +9,14 @@ const logger = log.context.from('QuestionsContext');
 interface QuestionsContextType {
   /** All pending questions for the current user. */
   questions: PendingQuestion[];
-  /** Number of pending questions (badge count). */
+  /** Legacy/global inbox count (pool pushes excluded). */
   count: number;
+  /** Pending rows shown on the global Questions page. */
+  globalPending: number;
+  /** Delivered pool rows shown only through the Personal Agent surfaces. */
+  pushedPoolPending: number;
+  /** Sum used by the Personal Agent sidebar badge. */
+  personalAgentPending: number;
   /** Whether the initial fetch is in progress. */
   loading: boolean;
   /** Submit an answer for a question and remove it from the list. */
@@ -29,13 +35,22 @@ export function QuestionsProvider({ children }: { children: ReactNode }) {
   const questionsService = useQuestionsService();
   const { user } = useAuthContext();
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
+  const [counts, setCounts] = useState({
+    globalPending: 0,
+    pushedPoolPending: 0,
+    personalAgentPending: 0,
+  });
   const [loading, setLoading] = useState(false);
 
   const fetchQuestions = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const pending = await questionsService.getPending({ noConversation: true, excludeModes: ['pool_discovery'] });
+      const [pending, pendingCounts] = await Promise.all([
+        questionsService.getPending({ noConversation: true, excludeModes: ['pool_discovery'] }),
+        questionsService.getPendingCounts(),
+      ]);
       setQuestions(pending);
+      setCounts(pendingCounts);
     } catch (err) {
       logger.error('Failed to fetch pending questions', { error: err });
     }
@@ -45,6 +60,7 @@ export function QuestionsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user?.id) {
       setQuestions([]);
+      setCounts({ globalPending: 0, pushedPoolPending: 0, personalAgentPending: 0 });
       setLoading(false);
       return;
     }
@@ -72,18 +88,23 @@ export function QuestionsProvider({ children }: { children: ReactNode }) {
   const answer = useCallback(async (questionId: string, body: AnswerBody) => {
     await questionsService.answer(questionId, body);
     setQuestions((prev) => prev.filter((q) => q.id !== questionId));
-  }, [questionsService]);
+    await fetchQuestions();
+  }, [fetchQuestions, questionsService]);
 
   const dismiss = useCallback(async (questionId: string) => {
     await questionsService.dismiss(questionId);
     setQuestions((prev) => prev.filter((q) => q.id !== questionId));
-  }, [questionsService]);
+    await fetchQuestions();
+  }, [fetchQuestions, questionsService]);
 
   return (
     <QuestionsContext.Provider
       value={{
         questions,
-        count: questions.length,
+        count: counts.globalPending,
+        globalPending: counts.globalPending,
+        pushedPoolPending: counts.pushedPoolPending,
+        personalAgentPending: counts.personalAgentPending,
         loading,
         answer,
         dismiss,

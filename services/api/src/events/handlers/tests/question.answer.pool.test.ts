@@ -62,6 +62,7 @@ function makeHarness(
   const persisted: AdapterPersistableQuestion[][] = [];
   const callOrder: string[] = [];
   const freshnessCalls: Array<PoolQuestionFreshnessOptions | undefined> = [];
+  const pushEnqueues: Array<{ questionId: string; userId: string }> = [];
   const applyAnswer = mock(async () => outcome);
   const narrateBeatOne = mock(async () => {});
   const refineIntent = mock(async () => {
@@ -99,6 +100,9 @@ function makeHarness(
     narrateBeatOne,
     refineIntent,
     enqueueRerun,
+    poolQuestionPostPersist: async (questionId, userId) => {
+      pushEnqueues.push({ questionId, userId });
+    },
     getIntentAdmission: async () => {
       if (admission instanceof Error) throw admission;
       return admission;
@@ -114,6 +118,7 @@ function makeHarness(
     updateAnsweredPoolIntentFingerprint,
     callOrder,
     freshnessCalls,
+    pushEnqueues,
   };
 }
 
@@ -157,6 +162,7 @@ describe('handlePoolAnswer', () => {
       currentIntentFingerprint: question.detection.pool?.intentFingerprint,
       currentIntentText: question.detection.pool?.intentText,
     }]);
+    expect(harness.pushEnqueues).toEqual([{ questionId: 'chained-0', userId: 'user-1' }]);
   });
 
   it('uses nonempty free text to refine even with Both matter selected', async () => {

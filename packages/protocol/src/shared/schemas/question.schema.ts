@@ -142,6 +142,26 @@ export const QuestionPoolSnapshotSchema = z.object({
   alternates: z.array(QuestionPoolDiscriminatorSchema),
 });
 
+/** Internal delivery ledger for proactive pool-question pushes (IND-421). */
+export const QuestionPoolPushSchema = z.object({
+  version: z.literal(1),
+  source: z.literal("pool_discovery"),
+  recipientId: z.string().min(1),
+  intentId: z.string().min(1),
+  cycleKey: z.string().min(1),
+  messageId: z.string().min(1),
+  surfaces: z.tuple([
+    z.literal("personal_agent_badge"),
+    z.literal("negotiator_dm"),
+  ]),
+  claimedAt: z.string().min(1),
+  deliveryStatus: z.enum(["claimed", "delivered", "suppressed", "failed"]),
+  conversationId: z.string().min(1).optional(),
+  deliveredAt: z.string().min(1).optional(),
+  suppressedAt: z.string().min(1).optional(),
+  failure: z.string().min(1).max(500).optional(),
+});
+
 export const QuestionDetectionSchema = z.object({
   /** Which preset mode generated this question. */
   mode: QuestionModeSchema,
@@ -166,6 +186,10 @@ export const QuestionDetectionSchema = z.object({
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool: QuestionPoolSnapshotSchema.optional(),
+  /** Internal proactive delivery state. Never serialize to public clients. */
+  push: QuestionPoolPushSchema.optional(),
+  /** Authoritative successful-delivery ledger timestamp. Internal only. */
+  pushedAt: z.string().min(1).optional(),
 });
 
 export const QuestionActorSchema = z.object({
@@ -196,3 +220,4 @@ export type QuestionAnswer = z.infer<typeof QuestionAnswerSchema>;
 export type QuestionPoolAssignment = z.infer<typeof QuestionPoolAssignmentSchema>;
 export type QuestionPoolDiscriminator = z.infer<typeof QuestionPoolDiscriminatorSchema>;
 export type QuestionPoolSnapshot = z.infer<typeof QuestionPoolSnapshotSchema>;
+export type QuestionPoolPush = z.infer<typeof QuestionPoolPushSchema>;

@@ -11,7 +11,7 @@
  * alignment spec.
  */
 
-import { eq, and, sql, or, isNull, desc } from 'drizzle-orm/sql';
+import { eq, and, sql, or, isNull, desc, count, gt } from 'drizzle-orm/sql';
 
 import { intents, questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
@@ -21,6 +21,21 @@ import { normalizeIntentText } from '../lib/intent/intent.fingerprint';
 
 /** Default question TTL in milliseconds (7 days). */
 const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Locally aligned with protocol discriminator policy; adapters cannot import
+// protocol runtime values under the strict layering rule.
+const POOL_QUESTION_PUSH_BASE_VOI = 0.6;
+const POOL_QUESTION_PUSH_DISMISSAL_DECAY = 1.15;
+const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
+const POOL_QUESTION_PUSH_DAILY_CAP = 2;
+
+function poolPushCycleKey(pool: Pick<import('@indexnetwork/protocol').QuestionPoolSnapshot, 'runId' | 'minedAt'>): string {
+  const runId = pool.runId?.trim();
+  return runId ? `run:${runId}` : `mined:${pool.minedAt}`;
+}
+
+function poolPushThreshold(consecutiveDismissals: number): number {
+  return POOL_QUESTION_PUSH_BASE_VOI * POOL_QUESTION_PUSH_DISMISSAL_DECAY ** Math.max(0, Math.floor(consecutiveDismissals));
+}
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
 
@@ -48,6 +63,10 @@ export interface AdapterQuestionDetection {
    * payload leaves the server.
    */
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
+  /** Internal proactive push state. Never exposed publicly. */
+  push?: import('@indexnetwork/protocol').QuestionPoolPush;
+  /** Authoritative successful-delivery ledger timestamp. */
+  pushedAt?: string;
 }
 
 /** An actor targeted by a question (typically the user who should answer). */
@@ -114,6 +133,29 @@ export interface PoolQuestionFreshnessOptions {
   /** Current intent text used for conservative legacy-prefix freshness. */
   currentIntentText?: string;
 }
+
+/** Canonical pending counts used by the two allowed question surfaces. */
+export interface PendingQuestionCounts {
+  globalPending: number;
+  pushedPoolPending: number;
+  personalAgentPending: number;
+}
+
+/** Successful claim data required by the deterministic delivery worker. */
+export interface PoolPushClaim {
+  kind: 'claimed';
+  questionId: string;
+  recipientId: string;
+  intentId: string;
+  cycleKey: string;
+  messageId: string;
+  intentTitle: string;
+  questionPrompt: string;
+}
+
+export type PoolPushClaimResult = PoolPushClaim
+  | { kind: 'ineligible'; reason: string }
+  | { kind: 'delivered' };
 
 export interface AdapterQuestionFilters {
   mode?: AdapterQuestionMode;
@@ -296,6 +338,244 @@ export class QuestionerAdapter {
       : await baseQuery;
 
     return rows.map(toPersistedQuestion);
+  }
+
+  /**
+   * Return canonical pending counts for the global inbox and Personal Agent.
+   * Delivered pool questions remain counted after a flag rollback because
+   * `detection.pushedAt` is the authoritative ledger.
+   *
+   * @param userId - Recipient whose pending counts are requested.
+   * @returns Split global, pushed-pool, and Personal Agent counts.
+   */
+  async countPending(userId: string): Promise<PendingQuestionCounts> {
+    const [row] = await this.db
+      .select({
+        globalPending: sql<number>`count(*) FILTER (WHERE ${questions.detection}->>'mode' <> 'pool_discovery')`,
+        pushedPoolPending: sql<number>`count(*) FILTER (WHERE ${questions.detection}->>'mode' = 'pool_discovery' AND ${questions.detection}->>'pushedAt' IS NOT NULL)`,
+      })
+      .from(questions)
+      .where(and(
+        eq(questions.status, 'pending'),
+        isNull(questions.conversationId),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
+      ));
+    const globalPending = Number(row?.globalPending ?? 0);
+    const pushedPoolPending = Number(row?.pushedPoolPending ?? 0);
+    return {
+      globalPending,
+      pushedPoolPending,
+      personalAgentPending: globalPending + pushedPoolPending,
+    };
+  }
+
+  /**
+   * Atomically claim one eligible proactive pool-question delivery.
+   * A per-recipient advisory transaction lock serializes the UTC budget and
+   * cycle checks across workers; row locks close lifecycle/visit races.
+   *
+   * @param questionId - Pending pool question to claim.
+   * @param userId - Expected recipient and intent owner.
+   * @returns Claimed public delivery inputs, or an ineligible reason.
+   */
+  async claimPoolQuestionPush(questionId: string, userId: string): Promise<PoolPushClaimResult> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
+
+      const [question] = await tx
+        .select()
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .limit(1)
+        .for('update');
+      if (!question) return { kind: 'ineligible', reason: 'missing_question' } as const;
+
+      const detection = question.detection as AdapterQuestionDetection;
+      const actors = question.actors as AdapterQuestionActor[];
+      const pool = detection.pool;
+      const intentId = detection.triggeredBy ?? detection.sourceId;
+      if (
+        question.status !== 'pending'
+        || (question.expiresAt !== null && question.expiresAt.getTime() <= Date.now())
+        || question.conversationId !== null
+        || detection.mode !== 'pool_discovery'
+        || detection.sourceType !== 'intent'
+        || detection.sourceId !== intentId
+        || !actors.some((actor) => actor.userId === userId && actor.role === 'subject')
+        || !pool
+      ) {
+        return { kind: 'ineligible', reason: 'question_lifecycle' } as const;
+      }
+
+      const cycleKey = poolPushCycleKey(pool);
+      const existingPush = detection.push;
+      if (detection.pushedAt || existingPush?.deliveryStatus === 'delivered') {
+        return { kind: 'delivered' } as const;
+      }
+      if (existingPush) {
+        if (
+          existingPush.recipientId !== userId
+          || existingPush.intentId !== intentId
+          || existingPush.cycleKey !== cycleKey
+          || existingPush.messageId !== questionId
+        ) {
+          return { kind: 'ineligible', reason: 'conflicting_claim' } as const;
+        }
+        if (existingPush.deliveryStatus !== 'claimed') {
+          return { kind: 'ineligible', reason: existingPush.deliveryStatus } as const;
+        }
+      }
+
+      const [intent] = await tx
+        .select({
+          id: intents.id,
+          userId: intents.userId,
+          payload: intents.payload,
+          summary: intents.summary,
+          status: intents.status,
+          archivedAt: intents.archivedAt,
+          lastVisitedAt: intents.lastVisitedAt,
+        })
+        .from(intents)
+        .where(eq(intents.id, intentId))
+        .limit(1)
+        .for('update');
+      if (
+        !intent
+        || intent.userId !== userId
+        || intent.archivedAt !== null
+        || (intent.status !== null && intent.status !== 'ACTIVE')
+      ) {
+        return { kind: 'ineligible', reason: 'intent_lifecycle' } as const;
+      }
+      if (pool.poolSize < POOL_QUESTION_PUSH_MIN_POOL_SIZE) {
+        return { kind: 'ineligible', reason: 'pool_size' } as const;
+      }
+      if (intent.lastVisitedAt && intent.lastVisitedAt.getTime() > question.createdAt.getTime()) {
+        return { kind: 'ineligible', reason: 'visited' } as const;
+      }
+
+      if (!existingPush) {
+        const [latestAnswer] = await tx
+          .select({ createdAt: questions.createdAt })
+          .from(questions)
+          .where(and(
+            eq(questions.status, 'answered'),
+            sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+            sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+            sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+          ))
+          .orderBy(desc(questions.createdAt))
+          .limit(1);
+        const dismissalConditions = [
+          eq(questions.status, 'dismissed'),
+          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+          sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+          sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+        ];
+        if (latestAnswer) dismissalConditions.push(gt(questions.createdAt, latestAnswer.createdAt));
+        const [dismissalRow] = await tx
+          .select({ value: count() })
+          .from(questions)
+          .where(and(...dismissalConditions));
+        const dismissalStreak = Number(dismissalRow?.value ?? 0);
+        if (pool.discriminator.voi <= poolPushThreshold(dismissalStreak)) {
+          return { kind: 'ineligible', reason: 'voi' } as const;
+        }
+
+        const [cycleClaim] = await tx
+          .select({ id: questions.id })
+          .from(questions)
+          .where(and(
+            sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+            sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+            sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+            sql`${questions.detection}->'push'->>'cycleKey' = ${cycleKey}`,
+            sql`${questions.detection}->'push'->>'claimedAt' IS NOT NULL`,
+          ))
+          .limit(1);
+        if (cycleClaim) return { kind: 'ineligible', reason: 'cycle_budget' } as const;
+
+        const now = new Date();
+        const utcDayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const utcDayEnd = new Date(utcDayStart.getTime() + 24 * 60 * 60 * 1000);
+        const [dailyRow] = await tx
+          .select({ value: count() })
+          .from(questions)
+          .where(and(
+            sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+            sql`${questions.detection}->'push'->>'claimedAt' IS NOT NULL`,
+            sql`(${questions.detection}->'push'->>'claimedAt')::timestamptz >= ${utcDayStart}`,
+            sql`(${questions.detection}->'push'->>'claimedAt')::timestamptz < ${utcDayEnd}`,
+          ));
+        if (Number(dailyRow?.value ?? 0) >= POOL_QUESTION_PUSH_DAILY_CAP) {
+          return { kind: 'ineligible', reason: 'daily_budget' } as const;
+        }
+
+        const claimedAt = now.toISOString();
+        const push = {
+          version: 1,
+          source: 'pool_discovery',
+          recipientId: userId,
+          intentId,
+          cycleKey,
+          messageId: questionId,
+          surfaces: ['personal_agent_badge', 'negotiator_dm'],
+          claimedAt,
+          deliveryStatus: 'claimed',
+        } satisfies import('@indexnetwork/protocol').QuestionPoolPush;
+        const [claimed] = await tx
+          .update(questions)
+          .set({ detection: { ...detection, push } satisfies QuestionDetection })
+          .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
+          .returning({ id: questions.id });
+        if (!claimed) return { kind: 'ineligible', reason: 'claim_race' } as const;
+      }
+
+      return {
+        kind: 'claimed',
+        questionId,
+        recipientId: userId,
+        intentId,
+        cycleKey,
+        messageId: questionId,
+        intentTitle: intent.summary?.trim() || intent.payload.trim(),
+        questionPrompt: (question.payload as AdapterQuestionPayload).prompt,
+      } as const;
+    });
+  }
+
+  /**
+   * Mark a terminal delivery failure while preserving the claim ledger.
+   *
+   * @param questionId - Claimed question whose retries were exhausted.
+   * @param userId - Expected claim recipient.
+   * @param failure - Bounded diagnostic string.
+   */
+  async markPoolQuestionPushFailed(questionId: string, userId: string, failure: string): Promise<void> {
+    const [row] = await this.db.select({ detection: questions.detection })
+      .from(questions)
+      .where(eq(questions.id, questionId))
+      .limit(1);
+    const detection = row?.detection as AdapterQuestionDetection | undefined;
+    if (!detection?.push || detection.push.recipientId !== userId || detection.pushedAt) return;
+    await this.db.update(questions)
+      .set({
+        detection: {
+          ...detection,
+          push: {
+            ...detection.push,
+            deliveryStatus: 'failed',
+            failure: failure.slice(0, 500),
+          },
+        } satisfies QuestionDetection,
+      })
+      .where(and(
+        eq(questions.id, questionId),
+        sql`${questions.detection}->'push'->>'recipientId' = ${userId}`,
+        sql`${questions.detection}->>'pushedAt' IS NULL`,
+      ));
   }
 
   /**

@@ -68,6 +68,7 @@ import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
+import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
@@ -394,6 +395,7 @@ const questionAnswerDeps = {
   },
   handlePoolAnswer: handlePoolAnswerFactory({
     adapter: answerQuestionerAdapter,
+    poolQuestionPostPersist: enqueuePoolQuestionPush,
     refineIntent: enqueueIntentRefinement,
     getIntentAdmission: async (userId, intentId) => {
       const intent = await chatDatabaseAdapter.getIntentForIndexing(intentId);
@@ -449,6 +451,7 @@ integrationSyncQueue.startWorker();
 if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
+poolQuestionPushQueue.startWorker();
 premiseQueue.startWorker();
 userContextQueue.startWorker();
 premiseQueue.startCrons();

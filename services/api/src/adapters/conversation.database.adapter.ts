@@ -430,6 +430,154 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Deliver a claimed pool-question push atomically with its message ledger.
+   * The question row is locked before lifecycle recheck, so answer/dismiss and
+   * message insertion cannot cross. The question ID is the deterministic
+   * message ID and retries verify, rather than duplicate, an existing insert.
+   *
+   * @param input - Claimed question, stable negotiator DM, and public template.
+   * @returns Whether a message was freshly delivered or delivery was suppressed.
+   * @throws When the session or deterministic message conflicts with the claim.
+   */
+  async deliverClaimedPoolQuestionPush(input: {
+    questionId: string;
+    recipientId: string;
+    intentId: string;
+    cycleKey: string;
+    conversationId: string;
+    messageText: string;
+  }): Promise<{ status: 'delivered'; inserted: boolean } | { status: 'suppressed' }> {
+    return db.transaction(async (tx) => {
+      const [question] = await tx
+        .select()
+        .from(schema.questions)
+        .where(eq(schema.questions.id, input.questionId))
+        .limit(1)
+        .for('update');
+      if (!question) throw new Error(`Pool push question ${input.questionId} is missing`);
+
+      const detection = question.detection as import('../schemas/database.schema').QuestionDetection;
+      const push = detection.push;
+      if (
+        !push
+        || push.recipientId !== input.recipientId
+        || push.intentId !== input.intentId
+        || push.cycleKey !== input.cycleKey
+        || push.messageId !== input.questionId
+      ) {
+        throw new Error(`Pool push claim conflict for question ${input.questionId}`);
+      }
+
+      if (
+        question.status !== 'pending'
+        || (question.expiresAt !== null && question.expiresAt.getTime() <= Date.now())
+      ) {
+        if (!detection.pushedAt && push.deliveryStatus !== 'delivered') {
+          const suppressedAt = new Date().toISOString();
+          await tx.update(schema.questions)
+            .set({
+              detection: {
+                ...detection,
+                push: { ...push, deliveryStatus: 'suppressed', suppressedAt },
+              },
+            })
+            .where(eq(schema.questions.id, input.questionId));
+        }
+        return { status: 'suppressed' } as const;
+      }
+
+      const [session] = await tx
+        .select({
+          conversationId: schema.chatSessionScopes.conversationId,
+          userId: schema.chatSessionScopes.userId,
+          scopeType: schema.chatSessionScopes.scopeType,
+          scopeId: schema.chatSessionScopes.scopeId,
+          persona: schema.conversations.persona,
+        })
+        .from(schema.chatSessionScopes)
+        .innerJoin(
+          schema.conversations,
+          eq(schema.conversations.id, schema.chatSessionScopes.conversationId),
+        )
+        .where(eq(schema.chatSessionScopes.conversationId, input.conversationId))
+        .limit(1)
+        .for('update');
+      if (
+        !session
+        || session.userId !== input.recipientId
+        || session.scopeType !== NEGOTIATOR_SCOPE.scopeType
+        || session.scopeId !== NEGOTIATOR_SCOPE.scopeId
+        || session.persona !== NEGOTIATOR_PERSONA
+      ) {
+        throw new Error(`Pool push requires the recipient's stable unscoped negotiator DM`);
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(schema.messages)
+        .where(eq(schema.messages.id, input.questionId))
+        .limit(1);
+      const messageMetadata = {
+        source: 'pool_question_push',
+        questionId: input.questionId,
+        recipientId: input.recipientId,
+        intentId: input.intentId,
+        cycleKey: input.cycleKey,
+      };
+      let inserted = false;
+      const expectedParts = [{ type: 'text', text: input.messageText }];
+      if (existing) {
+        const metadata = existing.metadata as Record<string, unknown> | null;
+        if (
+          existing.conversationId !== input.conversationId
+          || existing.senderId !== SYSTEM_AGENT_ID
+          || existing.role !== 'agent'
+          || metadata?.source !== messageMetadata.source
+          || metadata?.recipientId !== input.recipientId
+          || metadata?.questionId !== input.questionId
+          || metadata?.intentId !== input.intentId
+          || metadata?.cycleKey !== input.cycleKey
+          || JSON.stringify(existing.parts) !== JSON.stringify(expectedParts)
+        ) {
+          throw new Error(`Deterministic pool push message ${input.questionId} conflicts with existing data`);
+        }
+      } else {
+        const now = new Date();
+        await tx.insert(schema.messages).values({
+          id: input.questionId,
+          conversationId: input.conversationId,
+          senderId: SYSTEM_AGENT_ID,
+          role: 'agent',
+          parts: expectedParts,
+          metadata: messageMetadata,
+          createdAt: now,
+        });
+        await tx.update(schema.conversations)
+          .set({ lastMessageAt: now })
+          .where(eq(schema.conversations.id, input.conversationId));
+        inserted = true;
+      }
+
+      const deliveredAt = detection.pushedAt ?? new Date().toISOString();
+      await tx.update(schema.questions)
+        .set({
+          detection: {
+            ...detection,
+            pushedAt: deliveredAt,
+            push: {
+              ...push,
+              deliveryStatus: 'delivered',
+              conversationId: input.conversationId,
+              deliveredAt,
+            },
+          },
+        })
+        .where(eq(schema.questions.id, input.questionId));
+      return { status: 'delivered', inserted } as const;
+    });
+  }
+
+  /**
    * Retrieves messages for a conversation, ordered by creation time ascending.
    * @param conversationId - Conversation ID
    * @param opts - Optional limit, cursor (before), or taskId filter

@@ -2448,6 +2448,14 @@ Get a single intent by ID.
 }
 ```
 
+### POST /api/intents/:id/visit
+
+Explicitly records that the owner mounted the intent page. This endpoint is session-only: API keys are rejected with `403`. The timestamp is monotonic, does not modify `intent.updatedAt`, and is used only to suppress proactive pool-question delivery when the visit is later than the question. `GET /api/intents/:id` never stamps a visit.
+
+**Auth**: SessionOnlyGuard; owner-only
+
+**Response**: `{ "success": true, "lastVisitedAt": "<ISO-8601>" }` (200), or `404` for missing/foreign intents.
+
 ### PATCH /api/intents/:id/status
 
 Pause or resume an intent. The transition is idempotent.
@@ -3315,7 +3323,7 @@ List pending questions for the authenticated user.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `status` | `pending` \| `answered` \| `dismissed` | `pending` | Only `pending` is currently supported |
-| `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `chat` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
+| `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `negotiation_inflight` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
 | `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
@@ -3324,7 +3332,25 @@ List pending questions for the authenticated user.
 | `conversationId` | string | — | Filter to questions linked to a specific chat session |
 | `noConversation` | `true` | — | Exclude questions that have a `conversationId` (sidebar badge use) |
 
+Unscoped/global reads always exclude `pool_discovery`; those rows are available only with an explicit intent scope. Public rows strip internal pool snapshots, assignments, embeddings, push claims/status, cycle keys, and the authoritative `pushedAt` ledger.
+
 **Response:** `{ questions: PersistedQuestion[] }`
+
+### GET /api/questions/counts
+
+Returns the canonical count split used by the two allowed surfaces. Counts require pending, unexpired, conversation-unbound rows. They are independent of the current push flag, so a delivered row is not hidden if the flag later turns off.
+
+**Auth**: Required (session or API key)
+
+```json
+{
+  "globalPending": 2,
+  "pushedPoolPending": 1,
+  "personalAgentPending": 3
+}
+```
+
+`globalPending` excludes every `pool_discovery` row and remains the Questions-page count. `pushedPoolPending` includes only `pool_discovery` rows with a successful internal `pushedAt` stamp. `personalAgentPending` is their sum and drives the Personal Agent badge.
 
 ### POST /api/questions/:id/answer
 

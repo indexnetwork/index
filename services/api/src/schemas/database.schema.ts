@@ -519,6 +519,10 @@ export interface QuestionDetection {
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
+  /** Internal proactive push claim/delivery state. Never exposed publicly. */
+  push?: import('@indexnetwork/protocol').QuestionPoolPush;
+  /** Authoritative successful-delivery ledger timestamp. Never exposed publicly. */
+  pushedAt?: string;
 }
 
 export interface QuestionActor {
@@ -558,6 +562,15 @@ export const questions = pgTable('questions', {
       sql`(${table.detection}->>'purpose')`,
     )
     .where(sql`${table.detection}->>'purpose' = 'uptake'`),
+  // One claim per recipient + intent + pool refresh cycle. The advisory lock
+  // enforces budgets; this expression index is the final cross-worker guard.
+  poolPushRecipientIntentCycleUnique: uniqueIndex('questions_pool_push_recipient_intent_cycle_uniq')
+    .on(
+      sql`(${table.actors}->0->>'userId')`,
+      sql`(${table.detection}->>'triggeredBy')`,
+      sql`(${table.detection}->'push'->>'cycleKey')`,
+    )
+    .where(sql`${table.detection}->>'mode' = 'pool_discovery' AND ${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
 }));
 
 export type QuestionRow = typeof questions.$inferSelect;
@@ -571,6 +584,7 @@ export const intents = pgTable('intents', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
+  lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   userId: text('user_id').notNull().references(() => users.id),
   sourceId: text('source_id'),
   sourceType: sourceType('source_type'),

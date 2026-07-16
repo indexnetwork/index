@@ -12,7 +12,9 @@ import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useQuestions } from "@/contexts/QuestionsContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
+import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import type { AnswerBody, PendingQuestion } from "@/services/questions";
@@ -190,6 +192,8 @@ export default function IntentDetailPage() {
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
   const questionsService = useQuestionsService();
+  useIntentVisitPing(intentId);
+  const { refresh: refreshQuestionCounts } = useQuestions();
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
 
@@ -456,6 +460,7 @@ export default function IntentDetailPage() {
       const answered = questions.find((q) => q.id === questionId);
       await questionsService.answer(questionId, body);
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      void refreshQuestionCounts();
       // Chain once per answer: a pool_discovery answer may have synchronously
       // produced a follow-up question — refetch shortly and append it.
       if (answered?.detection?.mode === "pool_discovery" && intentId) {
@@ -490,15 +495,16 @@ export default function IntentDetailPage() {
         }, 1200);
       }
     },
-    [questions, questionsService, intentId, scheduleBoundedWorkspaceRefresh],
+    [questions, questionsService, intentId, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
   );
 
   const handleDismiss = useCallback(
     async (questionId: string) => {
       await questionsService.dismiss(questionId);
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      void refreshQuestionCounts();
     },
-    [questionsService],
+    [questionsService, refreshQuestionCounts],
   );
 
   const bucketOf = useCallback(

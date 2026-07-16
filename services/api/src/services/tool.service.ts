@@ -83,7 +83,9 @@ export class ToolService {
           limit?: number;
         },
       ) => {
-        const rows = await questionerAdapter.findPending(userId, filters);
+        const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
+          ? filters
+          : { ...filters, excludeModes: ['pool_discovery'] });
         return rows.map((row): PendingQuestionSummary => ({
           id: row.id,
           title: row.payload.title,

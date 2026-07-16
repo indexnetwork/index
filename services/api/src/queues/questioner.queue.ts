@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled } from '@indexnetwork/protocol';
+import { POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled, poolQuestionCycleKey } from '@indexnetwork/protocol';
 import type { PersistableQuestion, PoolDiscoveryContext, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -9,6 +9,8 @@ import db from '../lib/drizzle/drizzle';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { QuestionEvents } from '../events/question.event';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool/question.shared';
+import type { PoolQuestionPostPersist } from './pool/question.shared';
+import { enqueuePoolQuestionPush } from './pool/questionpush.queue';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
@@ -37,6 +39,8 @@ export interface QuestionerQueueDeps {
   agent?: Pick<QuestionerAgent, 'invoke'>;
   /** Lifecycle lookup used to gate intent-scoped jobs before generation. */
   getIntentLifecycle?: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
+  /** Post-persist delivery enqueue; injected so tests never touch Redis. */
+  poolQuestionPostPersist?: PoolQuestionPostPersist;
 }
 
 /**
@@ -58,6 +62,7 @@ export class QuestionerQueue {
   private readonly queueLogger = log.queue.from('QuestionerQueue');
   private readonly adapter: QuestionerQueueAdapter;
   private readonly getIntentLifecycle: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
+  private readonly poolQuestionPostPersist?: PoolQuestionPostPersist;
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
 
@@ -71,6 +76,9 @@ export class QuestionerQueue {
       ?? (deps
         ? async (intentId) => ({ id: intentId, status: 'ACTIVE' as const, archivedAt: null })
         : defaultAdapter.getIntentLifecycle.bind(defaultAdapter));
+    this.poolQuestionPostPersist = deps
+      ? deps.poolQuestionPostPersist
+      : enqueuePoolQuestionPush;
     this.agent = deps?.agent ?? null; // lazy — created on first job
   }
 
@@ -296,8 +304,20 @@ export class QuestionerQueue {
       scopeType: 'intent',
       scopeId: intentId,
     });
-    if (pending.some((q) => q.detection.mode === 'pool_discovery')) {
-      this.logger.info('Pool question skipped: one already pending for intent', { intentId });
+    const existingPoolQuestion = pending.find((q) => q.detection.mode === 'pool_discovery');
+    if (existingPoolQuestion) {
+      const existingPool = existingPoolQuestion.detection.pool;
+      const incomingCycle = poolQuestionCycleKey({ runId: context.runId, minedAt: context.minedAt });
+      if (existingPool && poolQuestionCycleKey(existingPool) === incomingCycle && this.poolQuestionPostPersist) {
+        await this.poolQuestionPostPersist(existingPoolQuestion.id, data.userId);
+        this.logger.info('Re-enqueued existing same-cycle pool question', {
+          intentId,
+          questionId: existingPoolQuestion.id,
+          cycleKey: incomingCycle,
+        });
+      } else {
+        this.logger.info('Pool question skipped: one already pending for intent', { intentId });
+      }
       return;
     }
     if (pending.length >= POOL_QUESTION_MAX_PENDING_PER_INTENT) {
@@ -328,7 +348,12 @@ export class QuestionerQueue {
       return;
     }
 
-    const id = await persistPoolQuestion(this.adapter, question, data.userId);
+    const id = await persistPoolQuestion(
+      this.adapter,
+      question,
+      data.userId,
+      this.poolQuestionPostPersist,
+    );
     this.logger.info('Persisted pool question', { intentId, questionId: id });
   }
 }

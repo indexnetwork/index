@@ -19,6 +19,18 @@ function poolQuestion(): AdapterPersistedQuestion {
       timestamp: 'now',
       strategy: 'surface_missing_detail',
       underspecificationType: 'missing_constraint',
+      pushedAt: '2026-07-16T12:00:00.000Z',
+      push: {
+        version: 1,
+        source: 'pool_discovery',
+        recipientId: 'user-1',
+        intentId: 'intent-1',
+        cycleKey: 'run:private-run',
+        messageId: 'q-1',
+        surfaces: ['personal_agent_badge', 'negotiator_dm'],
+        claimedAt: '2026-07-16T11:59:00.000Z',
+        deliveryStatus: 'delivered',
+      },
       pool: {
         poolSize: 21,
         minedAt: 'now',
@@ -57,6 +69,8 @@ describe('stripInternalDetection', () => {
     expect(stripped.detection.purpose).toBeUndefined();
     expect(stripped.detection.strategy).toBeUndefined();
     expect(stripped.detection.underspecificationType).toBeUndefined();
+    expect(stripped.detection.push).toBeUndefined();
+    expect(stripped.detection.pushedAt).toBeUndefined();
     expect(stripped.detection.mode).toBe('pool_discovery');
     expect(stripped.detection.triggeredBy).toBe('intent-1');
     expect(stripped.payload.evidence).toBe('based on 21 people matching this intent');
@@ -79,6 +93,8 @@ describe('stripInternalDetection', () => {
     delete (q.detection as { purpose?: unknown }).purpose;
     delete (q.detection as { strategy?: unknown }).strategy;
     delete (q.detection as { underspecificationType?: unknown }).underspecificationType;
+    delete (q.detection as { push?: unknown }).push;
+    delete (q.detection as { pushedAt?: unknown }).pushedAt;
     expect(stripInternalDetection(q)).toBe(q);
   });
 });
@@ -96,7 +112,10 @@ describe('QuestionService.findPending', () => {
       expect(row.detection.purpose).toBeUndefined();
       expect(row.detection.strategy).toBeUndefined();
       expect(row.detection.underspecificationType).toBeUndefined();
+      expect(row.detection.push).toBeUndefined();
+      expect(row.detection.pushedAt).toBeUndefined();
     }
     expect(JSON.stringify(rows)).not.toContain('assignments');
+    expect(JSON.stringify(rows)).not.toContain('private-run');
   });
 });

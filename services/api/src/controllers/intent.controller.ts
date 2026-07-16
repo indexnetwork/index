@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { assertAgentNetworkScope, ScopeViolationError, withAgentScope } from '../guards/agent-scope.guard';
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -146,6 +146,30 @@ export class IntentController {
     const statuses = await intentService.getProposalStatuses(user.id, proposalIds);
 
     return Response.json({ statuses });
+  }
+
+  /**
+   * POST /intents/:id/visit — explicit human intent-page visit ping.
+   * Session-only, owner-only, monotonic, and intentionally independent from
+   * the generic GET so API reads never suppress proactive delivery.
+   *
+   * @param _req - Session-authenticated request.
+   * @param user - Authenticated owner from SessionOnlyGuard.
+   * @param params - Intent UUID or short prefix.
+   * @returns The authoritative monotonic visit timestamp.
+   */
+  @Post('/:id/visit')
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async visit(_req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const lastVisitedAt = await intentService.visit(resolved.id, user.id);
+    if (!lastVisitedAt) {
+      return Response.json({ error: 'Intent not found' }, { status: 404 });
+    }
+    return Response.json({ success: true, lastVisitedAt: lastVisitedAt.toISOString() });
   }
 
   /**

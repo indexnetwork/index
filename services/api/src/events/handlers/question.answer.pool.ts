@@ -16,6 +16,7 @@ import { log } from '../../lib/log';
 import { buildFullIntentText, buildIntentSnippet, computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import type { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from '../../queues/pool/question.shared';
+import type { PoolQuestionPostPersist } from '../../queues/pool/question.shared';
 import { applyPoolAnswer, beatOneMessage, enqueuePoolRerun } from '../../queues/pool/answer.shared';
 import type { PoolAnswerOutcome, PoolLifecycleAdmission } from '../../queues/pool/answer.shared';
 import type { IntentRefinementResult } from './question.answer.intent';
@@ -42,6 +43,8 @@ export interface HandlePoolAnswerDeps {
   }) => Promise<IntentRefinementResult>;
   /** Lifecycle admission check performed after Tier 0 and before new work. */
   getIntentAdmission: (userId: string, intentId: string) => Promise<PoolLifecycleAdmission>;
+  /** Shared post-persist proactive-delivery enqueue callback. */
+  poolQuestionPostPersist?: PoolQuestionPostPersist;
 }
 
 /** Factory for the complete `pool_discovery` answer reaction. */
@@ -205,7 +208,12 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
     });
     if (!question) return;
 
-    const id = await persistPoolQuestion(deps.adapter, question, input.userId);
+    const id = await persistPoolQuestion(
+      deps.adapter,
+      question,
+      input.userId,
+      deps.poolQuestionPostPersist,
+    );
     logger.info('Chained next pool question', {
       answeredQuestionId: input.questionId,
       nextQuestionId: id,

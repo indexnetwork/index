@@ -53,7 +53,7 @@ export default function Sidebar() {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
-  const { count: pendingQuestionsCount } = useQuestions();
+  const { globalPending, personalAgentPending } = useQuestions();
 
   // Pinned negotiator DM (IND-411). Flag-gated: the entry renders only when
   // the backend reports the negotiator chat feature enabled on /auth/me.
@@ -298,14 +298,14 @@ export default function Sidebar() {
           >
             <BotMessageSquare className="w-5 h-5" />
             <span className="flex-1 text-left truncate">{negotiatorLabel}</span>
-            {/* Pending question inbox count (IND-404) — the DM surfaces the
-                same open questions the Questions page lists. */}
-            {pendingQuestionsCount > 0 && (
+            {/* Personal Agent combines the global inbox with successfully
+                delivered pool pushes; the Questions row remains global-only. */}
+            {personalAgentPending > 0 && (
               <span
                 data-testid="negotiator-question-badge"
                 className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center"
               >
-                {pendingQuestionsCount > 99 ? '99+' : pendingQuestionsCount}
+                {personalAgentPending > 99 ? '99+' : personalAgentPending}
               </span>
             )}
           </button>
@@ -372,8 +372,8 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* Questions — links to the dedicated Questions page. */}
-        {pendingQuestionsCount > 0 && (
+        {/* Questions — links to the dedicated global Questions page. */}
+        {globalPending > 0 && (
           <button
             type="button"
             onClick={() => navigate('/questions')}
@@ -385,8 +385,11 @@ export default function Sidebar() {
           >
             <CircleHelp className="w-5 h-5" />
             <span className="flex-1 text-left">Questions</span>
-            <span className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
-              {pendingQuestionsCount > 99 ? '99+' : pendingQuestionsCount}
+            <span
+              data-testid="global-question-badge"
+              className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center"
+            >
+              {globalPending > 99 ? '99+' : globalPending}
             </span>
           </button>
         )}

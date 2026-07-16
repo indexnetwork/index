@@ -1,0 +1,2 @@
+ALTER TABLE "intents" ADD COLUMN "last_visited_at" timestamp with time zone;--> statement-breakpoint
+CREATE UNIQUE INDEX "questions_pool_push_recipient_intent_cycle_uniq" ON "questions" USING btree (("actors"->0->>'userId'),("detection"->>'triggeredBy'),("detection"->'push'->>'cycleKey')) WHERE "questions"."detection"->>'mode' = 'pool_discovery' AND "questions"."detection"->'push'->>'claimedAt' IS NOT NULL;
