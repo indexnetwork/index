@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
+import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolPushSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
 const okOption = { label: "Stay focused", description: "Higher risk but cleaner narrative" };
 
@@ -194,6 +194,97 @@ describe("QuestionDetection", () => {
     });
     expect(result.success).toBe(true);
     expect(result.data!.triggeredBy).toBe("intent-456");
+  });
+
+  it("accepts the complete internal proactive push ledger", () => {
+    const push = {
+      version: 1,
+      source: "pool_discovery",
+      recipientId: "user-1",
+      intentId: "intent-1",
+      cycleKey: "run:run-1",
+      messageId: "question-1",
+      surfaces: ["personal_agent_badge", "negotiator_dm"],
+      claimedAt: "2026-07-16T12:00:00.000Z",
+      deliveryStatus: "claimed",
+    };
+    expect(QuestionPoolPushSchema.safeParse(push).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+      pushRequestedAt: "2026-07-16T11:59:00.000Z",
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
+      pushRequestStatus: "requested",
+      push,
+      pushedAt: "2026-07-16T12:00:01.000Z",
+    }).success).toBe(true);
+  });
+
+  it("requires pool intent identity to be explicit and exact", () => {
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+    };
+    expect(QuestionDetectionSchema.safeParse(base).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-2" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-1" }).success).toBe(true);
+  });
+
+  it("accepts the internal recovery-attempt timestamp only as a non-empty string", () => {
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+      pushRequestedAt: "2026-07-16T11:59:00.000Z",
+      pushRequestStatus: "requested",
+    };
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
+    }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRecoveryAttemptedAt: "",
+    }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRequestedAt: undefined,
+      pushRequestStatus: undefined,
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
+    }).success).toBe(false);
+  });
+
+  it("bounds suppressed request outcomes to permanent reasons with timestamps", () => {
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+      pushRequestedAt: "2026-07-16T11:59:00.000Z",
+      pushRequestStatus: "suppressed",
+    };
+    expect(QuestionPoolPushRequestReasonSchema.safeParse("visited").success).toBe(true);
+    expect(QuestionPoolPushRequestReasonSchema.safeParse("database_unavailable").success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRequestedAt: undefined,
+      pushRequestStatus: "requested",
+    }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse(base).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRequestReason: "visited",
+      pushRequestSuppressedAt: "2026-07-16T12:00:01.000Z",
+    }).success).toBe(true);
   });
 
   it("rejects an invalid mode", () => {

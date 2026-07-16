@@ -161,6 +161,17 @@ export class IntentService {
   }
 
   /**
+   * Record an explicit human visit to an owned intent page.
+   *
+   * @param intentId - Full intent ID.
+   * @param userId - Authenticated owner.
+   * @returns Monotonic visit time, or null when missing/foreign.
+   */
+  async visit(intentId: string, userId: string): Promise<Date | null> {
+    return this.adapter.visitIntent(intentId, userId);
+  }
+
+  /**
    * Pause or resume an owned intent without using the generic content update
    * path. Resume emission is awaited on every idempotent success so a caller
    * can retry a failed enqueue; the lifecycle-version job id deduplicates

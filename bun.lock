@@ -18,7 +18,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
@@ -84,7 +84,7 @@
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "4.14.0",
+      "version": "4.15.0",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
@@ -100,7 +100,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.36.0",
+      "version": "0.38.0",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

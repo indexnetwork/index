@@ -28,6 +28,24 @@ export class IntentDatabaseAdapter {
     }
   }
 
+  /**
+   * Monotonically record an explicit owner visit without touching updatedAt.
+   *
+   * @param intentId - Intent being viewed.
+   * @param userId - Expected owner.
+   * @returns The authoritative visit timestamp, or null for missing/foreign rows.
+   */
+  async visitIntent(intentId: string, userId: string): Promise<Date | null> {
+    const [visited] = await db
+      .update(schema.intents)
+      .set({
+        lastVisitedAt: sql`GREATEST(COALESCE(${schema.intents.lastVisitedAt}, '-infinity'::timestamptz), NOW())`,
+      })
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .returning({ lastVisitedAt: schema.intents.lastVisitedAt });
+    return visited?.lastVisitedAt ?? null;
+  }
+
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
     try {
       const [created] = await db.insert(schema.intents)

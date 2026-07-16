@@ -1,12 +1,12 @@
 import { log } from '../lib/log';
 
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion } from '../adapters/questioner.adapter';
+import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion, PendingQuestionCounts } from '../adapters/questioner.adapter';
 import db from '../lib/drizzle/drizzle';
 
 // Re-export adapter types so the controller layer can reference them without
 // importing from the adapters directory directly (enforced by layer boundaries).
-export type { AdapterQuestionFilters, AdapterPersistedQuestion, AdapterQuestionAnswer };
+export type { AdapterQuestionFilters, AdapterPersistedQuestion, AdapterQuestionAnswer, PendingQuestionCounts };
 
 const logger = log.service.from('QuestionService');
 
@@ -29,9 +29,28 @@ export function stripInternalDetection(question: AdapterPersistedQuestion): Adap
     purpose: _purpose,
     strategy: _strategy,
     underspecificationType: _underspecificationType,
+    pushRequestedAt: _pushRequestedAt,
+    pushRecoveryAttemptedAt: _pushRecoveryAttemptedAt,
+    pushRequestStatus: _pushRequestStatus,
+    pushRequestReason: _pushRequestReason,
+    pushRequestSuppressedAt: _pushRequestSuppressedAt,
+    push: _push,
+    pushedAt: _pushedAt,
     ...detection
   } = question.detection;
-  if (!_pool && !_purpose && !_strategy && _underspecificationType === undefined) return question;
+  if (
+    !_pool
+    && !_purpose
+    && !_strategy
+    && _underspecificationType === undefined
+    && !_pushRequestedAt
+    && !_pushRecoveryAttemptedAt
+    && !_pushRequestStatus
+    && !_pushRequestReason
+    && !_pushRequestSuppressedAt
+    && !_push
+    && !_pushedAt
+  ) return question;
   return { ...question, detection };
 }
 
@@ -59,6 +78,16 @@ export class QuestionService {
     logger.verbose('Finding pending questions', { userId, filters });
     const rows = await this.adapter.findPending(userId, filters);
     return rows.map(stripInternalDetection);
+  }
+
+  /**
+   * Return canonical split counts for global and Personal Agent surfaces.
+   *
+   * @param userId - Authenticated recipient.
+   * @returns Global, delivered-pool, and summed Personal Agent counts.
+   */
+  async countPending(userId: string): Promise<PendingQuestionCounts> {
+    return this.adapter.countPending(userId);
   }
 
   /**

@@ -69,6 +69,11 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     return response.intent;
   },
 
+  // Best-effort explicit human visit ping; generic GET intentionally does not stamp.
+  visitIntent: async (id: string): Promise<void> => {
+    await api.post(`/intents/${id}/visit`, {});
+  },
+
   // Archive intent
   archiveIntent: async (id: string): Promise<void> => {
     await api.patch(`/intents/${id}/archive`);

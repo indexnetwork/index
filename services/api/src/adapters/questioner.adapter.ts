@@ -11,7 +11,7 @@
  * alignment spec.
  */
 
-import { eq, and, sql, or, isNull, desc } from 'drizzle-orm/sql';
+import { eq, and, sql, or, isNull, desc, count, gt } from 'drizzle-orm/sql';
 
 import { intents, questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
@@ -21,6 +21,36 @@ import { normalizeIntentText } from '../lib/intent/intent.fingerprint';
 
 /** Default question TTL in milliseconds (7 days). */
 const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Locally aligned with protocol discriminator policy; adapters cannot import
+// protocol runtime values under the strict layering rule.
+const POOL_QUESTION_PUSH_BASE_VOI = 0.6;
+const POOL_QUESTION_PUSH_DISMISSAL_DECAY = 1.15;
+const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
+const POOL_QUESTION_PUSH_DAILY_CAP = 2;
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isValidPoolPushPool(value: unknown): value is import('@indexnetwork/protocol').QuestionPoolSnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const pool = value as { poolSize?: unknown; discriminator?: { voi?: unknown } };
+  return Number.isInteger(pool.poolSize)
+    && Number(pool.poolSize) >= 0
+    && Boolean(pool.discriminator)
+    && Number.isFinite(pool.discriminator?.voi);
+}
+
+function poolPushCycleKey(pool: Pick<import('@indexnetwork/protocol').QuestionPoolSnapshot, 'runId' | 'minedAt'>): string | null {
+  const runId = pool.runId?.trim();
+  if (runId) return `run:${runId}`;
+  const minedAt = pool.minedAt?.trim();
+  return minedAt ? `mined:${minedAt}` : null;
+}
+
+function poolPushThreshold(consecutiveDismissals: number): number {
+  return POOL_QUESTION_PUSH_BASE_VOI * POOL_QUESTION_PUSH_DISMISSAL_DECAY ** Math.max(0, Math.floor(consecutiveDismissals));
+}
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
 
@@ -48,6 +78,20 @@ export interface AdapterQuestionDetection {
    * payload leaves the server.
    */
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
+  /** Durable request marker written before Redis enqueue. Never exposed publicly. */
+  pushRequestedAt?: string;
+  /** Last bounded recovery sweep that selected this request. Never exposed publicly. */
+  pushRecoveryAttemptedAt?: string;
+  /** Durable request outcome. Never exposed publicly. */
+  pushRequestStatus?: import('@indexnetwork/protocol').QuestionPoolPushRequestStatus;
+  /** Permanent suppression reason for an unclaimed request. Never exposed publicly. */
+  pushRequestReason?: import('@indexnetwork/protocol').QuestionPoolPushRequestReason;
+  /** Timestamp at which an unclaimed request was suppressed. Never exposed publicly. */
+  pushRequestSuppressedAt?: string;
+  /** Internal proactive push state. Never exposed publicly. */
+  push?: import('@indexnetwork/protocol').QuestionPoolPush;
+  /** Authoritative successful-delivery ledger timestamp. */
+  pushedAt?: string;
 }
 
 /** An actor targeted by a question (typically the user who should answer). */
@@ -113,6 +157,109 @@ export interface PoolQuestionFreshnessOptions {
   currentIntentFingerprint?: string;
   /** Current intent text used for conservative legacy-prefix freshness. */
   currentIntentText?: string;
+}
+
+/** Canonical pending counts used by the two allowed question surfaces. */
+export interface PendingQuestionCounts {
+  globalPending: number;
+  pushedPoolPending: number;
+  personalAgentPending: number;
+}
+
+/** Successful claim data required by the deterministic delivery worker. */
+export interface PoolPushClaim {
+  kind: 'claimed';
+  questionId: string;
+  recipientId: string;
+  intentId: string;
+  cycleKey: string;
+  messageId: string;
+  intentTitle: string;
+  questionPrompt: string;
+}
+
+export type PoolPushClaimResult = PoolPushClaim
+  | { kind: 'ineligible'; reason: string }
+  | { kind: 'delivered' };
+
+export interface RecoverablePoolPushRequest {
+  questionId: string;
+  userId: string;
+  claimed: boolean;
+}
+
+export interface PoolPushClaimOptions {
+  /** Whether an eligible unclaimed row may consume budget and create a claim. */
+  allowNewClaim: boolean;
+}
+
+export type PoolPushRecipientEvaluation =
+  | { kind: 'valid'; recipientId: string }
+  | { kind: 'permanent'; reason: 'malformed_actor' }
+  | { kind: 'suppress_claim'; reason: 'conflicting_claim' }
+  | { kind: 'ineligible'; reason: 'recipient_mismatch' };
+
+/** Establish actor[0] authority without trusting the queued job recipient. */
+export function evaluatePoolPushRecipient(
+  actors: AdapterQuestionActor[],
+  push: import('@indexnetwork/protocol').QuestionPoolPush | undefined,
+  jobUserId: string,
+): PoolPushRecipientEvaluation {
+  const actor = actors[0];
+  const recipientId = isNonEmptyString(actor?.userId) && actor.role === 'subject'
+    ? actor.userId
+    : null;
+  if (!recipientId) return { kind: 'permanent', reason: 'malformed_actor' };
+  if (push?.deliveryStatus === 'claimed' && push.recipientId !== recipientId) {
+    return { kind: 'suppress_claim', reason: 'conflicting_claim' };
+  }
+  if (jobUserId !== recipientId) return { kind: 'ineligible', reason: 'recipient_mismatch' };
+  return { kind: 'valid', recipientId };
+}
+
+/** Apply the durable terminal state for one permanent eligibility rejection. */
+export function terminalizePoolPushRequestDetection(
+  detection: AdapterQuestionDetection,
+  reason: import('@indexnetwork/protocol').QuestionPoolPushRequestReason,
+  timestamp: string,
+): AdapterQuestionDetection {
+  if (detection.push?.deliveryStatus === 'claimed') {
+    return {
+      ...detection,
+      push: {
+        ...detection.push,
+        deliveryStatus: 'suppressed',
+        suppressedAt: timestamp,
+      },
+    };
+  }
+  if (!detection.push && detection.pushRequestStatus === 'requested') {
+    return {
+      ...detection,
+      pushRequestStatus: 'suppressed',
+      pushRequestReason: reason,
+      pushRequestSuppressedAt: timestamp,
+    };
+  }
+  return detection;
+}
+
+/** Pure mirror of the recovery query's internal request-state predicate. */
+export function isRecoverablePoolPushDetection(detection: AdapterQuestionDetection): boolean {
+  return detection.pushRequestStatus === 'requested'
+    && !detection.pushedAt
+    && (!detection.push || detection.push.deliveryStatus === 'claimed');
+}
+
+/** Exact predicate shared by the runtime lookup and its claim-ledger invariant test. */
+export function poolPushCycleClaimPredicate(recipientId: string, intentId: string, cycleKey: string) {
+  return and(
+    sql`${questions.detection}->'push'->>'recipientId' = ${recipientId}`,
+    sql`${questions.detection}->'push'->>'intentId' = ${intentId}`,
+    sql`${questions.detection}->'push'->>'cycleKey' = ${cycleKey}`,
+    sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+    sql`${questions.detection}->'push'->>'claimedAt' IS NOT NULL`,
+  )!;
 }
 
 export interface AdapterQuestionFilters {
@@ -296,6 +443,409 @@ export class QuestionerAdapter {
       : await baseQuery;
 
     return rows.map(toPersistedQuestion);
+  }
+
+  /**
+   * Return canonical pending counts for the global inbox and Personal Agent.
+   * Delivered pool questions remain counted after a flag rollback because
+   * `detection.pushedAt` is the authoritative ledger.
+   *
+   * @param userId - Recipient whose pending counts are requested.
+   * @returns Split global, pushed-pool, and Personal Agent counts.
+   */
+  async countPending(userId: string): Promise<PendingQuestionCounts> {
+    const [row] = await this.db
+      .select({
+        globalPending: sql<number>`count(*) FILTER (WHERE ${questions.detection}->>'mode' <> 'pool_discovery')`,
+        pushedPoolPending: sql<number>`count(*) FILTER (WHERE ${questions.detection}->>'mode' = 'pool_discovery' AND ${questions.detection}->>'pushedAt' IS NOT NULL)`,
+      })
+      .from(questions)
+      .where(and(
+        eq(questions.status, 'pending'),
+        isNull(questions.conversationId),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
+      ));
+    const globalPending = Number(row?.globalPending ?? 0);
+    const pushedPoolPending = Number(row?.pushedPoolPending ?? 0);
+    return {
+      globalPending,
+      pushedPoolPending,
+      personalAgentPending: globalPending + pushedPoolPending,
+    };
+  }
+
+  /**
+   * Durably request proactive delivery before the Redis job is added.
+   * The marker is neither a claim nor a budget ledger entry.
+   *
+   * @param questionId - Newly persisted pool question.
+   * @param userId - Expected actor[0] recipient.
+   * @returns Whether an eligible request marker exists after the transaction.
+   */
+  async markPoolQuestionPushRequested(questionId: string, userId: string): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
+      const [question] = await tx.select()
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .limit(1)
+        .for('update');
+      if (!question) return false;
+      const detection = question.detection as AdapterQuestionDetection;
+      const actors = question.actors as AdapterQuestionActor[];
+      const pool = detection.pool;
+      if (
+        question.status !== 'pending'
+        || (question.expiresAt !== null && question.expiresAt <= clock.now)
+        || question.conversationId !== null
+        || detection.mode !== 'pool_discovery'
+        || detection.sourceType !== 'intent'
+        || !isNonEmptyString(detection.sourceId)
+        || !isNonEmptyString(detection.triggeredBy)
+        || detection.triggeredBy !== detection.sourceId
+        || actors[0]?.userId !== userId
+        || actors[0]?.role !== 'subject'
+        || !isValidPoolPushPool(pool)
+        || !poolPushCycleKey(pool)
+        || detection.pushedAt
+        || detection.pushRequestStatus === 'suppressed'
+      ) return false;
+      if (detection.pushRequestStatus === 'requested' && detection.pushRequestedAt) return true;
+      await tx.update(questions)
+        .set({
+          detection: {
+            ...detection,
+            pushRequestedAt: detection.pushRequestedAt ?? clock.now.toISOString(),
+            pushRequestStatus: 'requested',
+          } satisfies QuestionDetection,
+        })
+        .where(eq(questions.id, questionId));
+      return true;
+    });
+  }
+
+  /**
+   * Atomically select and stamp a bounded batch of durable requests for recovery.
+   * Never-attempted requests sort first, then least-recently-attempted requests,
+   * so transiently blocked rows move behind newer work instead of monopolizing
+   * every sweep. SKIP LOCKED lets concurrent sweepers claim disjoint batches.
+   * Lifecycle and malformed rows are intentionally returned so the locked claim
+   * transaction can terminalize them.
+   *
+   * @param limit - Maximum requests selected and stamped per sweep.
+   * @returns Deterministic question/authoritative actor job payloads.
+   */
+  async listRecoverablePoolQuestionPushRequests(limit = 100): Promise<RecoverablePoolPushRequest[]> {
+    const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 500));
+    const rows = await this.db.execute<{
+      questionId: string;
+      userId: string;
+      claimed: boolean;
+      [key: string]: unknown;
+    }>(sql`
+      WITH selected AS (
+        SELECT recovery_candidate.id
+        FROM questions AS recovery_candidate
+        WHERE recovery_candidate.detection->>'pushRequestStatus' = 'requested'
+          AND recovery_candidate.detection->>'pushedAt' IS NULL
+          AND (
+            recovery_candidate.detection->'push' IS NULL
+            OR recovery_candidate.detection->'push'->>'deliveryStatus' = 'claimed'
+          )
+        ORDER BY
+          recovery_candidate.detection->>'pushRecoveryAttemptedAt' ASC NULLS FIRST,
+          recovery_candidate.detection->>'pushRequestedAt' ASC NULLS FIRST,
+          recovery_candidate.created_at ASC,
+          recovery_candidate.id ASC
+        LIMIT ${boundedLimit}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE questions AS recovery_question
+      SET detection = jsonb_set(
+        recovery_question.detection,
+        '{pushRecoveryAttemptedAt}',
+        to_jsonb(to_char(transaction_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+        true
+      )
+      FROM selected
+      WHERE recovery_question.id = selected.id
+      RETURNING
+        recovery_question.id AS "questionId",
+        COALESCE(
+          NULLIF(recovery_question.actors->0->>'userId', ''),
+          NULLIF(recovery_question.detection->'push'->>'recipientId', ''),
+          ''
+        ) AS "userId",
+        COALESCE(recovery_question.detection->'push'->>'deliveryStatus' = 'claimed', false) AS claimed
+    `);
+    return Array.from(rows, (row) => ({
+      questionId: row.questionId,
+      userId: row.userId,
+      claimed: row.claimed,
+    }));
+  }
+
+  /**
+   * Atomically claim one eligible proactive pool-question delivery.
+   * The locked row establishes actor[0] as the authoritative recipient before
+   * any mutation. A per-recipient advisory transaction lock then serializes
+   * UTC budget and cycle checks across workers.
+   *
+   * @param questionId - Pending pool question to claim.
+   * @param userId - Expected recipient and intent owner.
+   * @returns Claimed public delivery inputs, or an ineligible reason.
+   */
+  async claimPoolQuestionPush(
+    questionId: string,
+    userId: string,
+    options: PoolPushClaimOptions = { allowNewClaim: true },
+  ): Promise<PoolPushClaimResult> {
+    return this.db.transaction(async (tx) => {
+      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now;
+
+      const [question] = await tx
+        .select()
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .limit(1)
+        .for('update');
+      if (!question) return { kind: 'ineligible', reason: 'missing_question' } as const;
+
+      const detection = question.detection as AdapterQuestionDetection;
+      const actors = question.actors as AdapterQuestionActor[];
+      const existingPush = detection.push;
+      const suppressExistingClaim = async (reason: string): Promise<PoolPushClaimResult> => {
+        if (existingPush?.deliveryStatus !== 'claimed') {
+          return { kind: 'ineligible', reason } as const;
+        }
+        await tx.update(questions)
+          .set({
+            detection: {
+              ...detection,
+              push: {
+                ...existingPush,
+                deliveryStatus: 'suppressed',
+                suppressedAt: transactionNow.toISOString(),
+              },
+            } satisfies QuestionDetection,
+          })
+          .where(eq(questions.id, questionId));
+        return { kind: 'ineligible', reason } as const;
+      };
+      const terminalizePermanentRequest = async (
+        reason: import('@indexnetwork/protocol').QuestionPoolPushRequestReason,
+      ): Promise<PoolPushClaimResult> => {
+        const terminalDetection = terminalizePoolPushRequestDetection(
+          detection,
+          reason,
+          transactionNow.toISOString(),
+        );
+        if (terminalDetection !== detection) {
+          await tx.update(questions)
+            .set({ detection: terminalDetection satisfies QuestionDetection })
+            .where(eq(questions.id, questionId));
+        }
+        return { kind: 'ineligible', reason } as const;
+      };
+
+      if (detection.pushedAt || existingPush?.deliveryStatus === 'delivered') {
+        return { kind: 'delivered' } as const;
+      }
+
+      // A malformed claim is suppressed from the locked row even when the job
+      // was forged/stale. A valid claim is never mutated by a non-recipient job.
+      const recipient = evaluatePoolPushRecipient(actors, existingPush, userId);
+      if (recipient.kind === 'suppress_claim') return suppressExistingClaim(recipient.reason);
+      if (recipient.kind === 'permanent') return terminalizePermanentRequest(recipient.reason);
+      if (recipient.kind === 'ineligible') return recipient;
+      const authoritativeRecipient = recipient.recipientId;
+
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${authoritativeRecipient}, 0))`);
+
+      if (existingPush && existingPush.deliveryStatus !== 'claimed') {
+        return { kind: 'ineligible', reason: existingPush.deliveryStatus } as const;
+      }
+      if (
+        question.status !== 'pending'
+        || (question.expiresAt !== null && question.expiresAt <= transactionNow)
+        || question.conversationId !== null
+        || (detection.pushRequestStatus === 'requested' && !isNonEmptyString(detection.pushRequestedAt))
+      ) {
+        return terminalizePermanentRequest('question_lifecycle');
+      }
+      if (
+        detection.mode !== 'pool_discovery'
+        || detection.sourceType !== 'intent'
+        || !isNonEmptyString(detection.sourceId)
+        || !isNonEmptyString(detection.triggeredBy)
+        || detection.triggeredBy !== detection.sourceId
+      ) {
+        return terminalizePermanentRequest('malformed_source');
+      }
+
+      const intentId = detection.triggeredBy;
+      const pool = detection.pool;
+      if (!isValidPoolPushPool(pool)) return terminalizePermanentRequest('malformed_pool');
+      const cycleKey = poolPushCycleKey(pool);
+      if (!cycleKey) return terminalizePermanentRequest('malformed_cycle');
+
+      if (existingPush && (
+        existingPush.intentId !== intentId
+        || existingPush.cycleKey !== cycleKey
+        || existingPush.messageId !== questionId
+      )) {
+        return suppressExistingClaim('conflicting_claim');
+      }
+
+      const [intent] = await tx
+        .select({
+          id: intents.id,
+          userId: intents.userId,
+          payload: intents.payload,
+          summary: intents.summary,
+          status: intents.status,
+          archivedAt: intents.archivedAt,
+          lastVisitedAt: intents.lastVisitedAt,
+        })
+        .from(intents)
+        .where(eq(intents.id, intentId))
+        .limit(1)
+        .for('update');
+      if (
+        !intent
+        || intent.userId !== authoritativeRecipient
+        || intent.archivedAt !== null
+        || (intent.status !== null && intent.status !== 'ACTIVE')
+      ) {
+        return terminalizePermanentRequest('intent_lifecycle');
+      }
+      if (intent.lastVisitedAt && intent.lastVisitedAt > question.createdAt) {
+        return terminalizePermanentRequest('visited');
+      }
+
+      if (!existingPush) {
+        if (pool.poolSize < POOL_QUESTION_PUSH_MIN_POOL_SIZE) {
+          return terminalizePermanentRequest('pool_size');
+        }
+
+        const recipientExpression = sql`${questions.actors}->0->>'userId' = ${authoritativeRecipient}`;
+        const [latestAnswer] = await tx
+          .select({ createdAt: questions.createdAt })
+          .from(questions)
+          .where(and(
+            eq(questions.status, 'answered'),
+            recipientExpression,
+            sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+            sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+          ))
+          .orderBy(desc(questions.createdAt))
+          .limit(1);
+        const dismissalConditions = [
+          eq(questions.status, 'dismissed'),
+          recipientExpression,
+          sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+          sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+        ];
+        if (latestAnswer) dismissalConditions.push(gt(questions.createdAt, latestAnswer.createdAt));
+        const [dismissalRow] = await tx
+          .select({ value: count() })
+          .from(questions)
+          .where(and(...dismissalConditions));
+        if (pool.discriminator.voi <= poolPushThreshold(Number(dismissalRow?.value ?? 0))) {
+          return terminalizePermanentRequest('voi');
+        }
+
+        const [cycleClaim] = await tx
+          .select({ id: questions.id })
+          .from(questions)
+          .where(poolPushCycleClaimPredicate(authoritativeRecipient, intentId, cycleKey))
+          .limit(1);
+        if (cycleClaim) return terminalizePermanentRequest('cycle_budget');
+
+        const [dailyRow] = await tx
+          .select({ value: count() })
+          .from(questions)
+          .where(and(
+            recipientExpression,
+            sql`${questions.detection}->'push'->>'claimedAt' IS NOT NULL`,
+            sql`${questions.detection}->'push'->>'claimedAt' >= to_char(date_trunc('day', transaction_timestamp() AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+            sql`${questions.detection}->'push'->>'claimedAt' < to_char(date_trunc('day', transaction_timestamp() AT TIME ZONE 'UTC') + interval '1 day', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+          ));
+        if (Number(dailyRow?.value ?? 0) >= POOL_QUESTION_PUSH_DAILY_CAP) {
+          return { kind: 'ineligible', reason: 'daily_budget' } as const;
+        }
+        if (!options.allowNewClaim) {
+          return { kind: 'ineligible', reason: 'new_claim_disabled' } as const;
+        }
+
+        const push = {
+          version: 1,
+          source: 'pool_discovery',
+          recipientId: authoritativeRecipient,
+          intentId,
+          cycleKey,
+          messageId: questionId,
+          surfaces: ['personal_agent_badge', 'negotiator_dm'],
+          claimedAt: transactionNow.toISOString(),
+          deliveryStatus: 'claimed',
+        } satisfies import('@indexnetwork/protocol').QuestionPoolPush;
+        const [claimed] = await tx
+          .update(questions)
+          .set({ detection: { ...detection, push } satisfies QuestionDetection })
+          .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
+          .returning({ id: questions.id });
+        if (!claimed) return { kind: 'ineligible', reason: 'claim_race' } as const;
+      }
+
+      return {
+        kind: 'claimed',
+        questionId,
+        recipientId: authoritativeRecipient,
+        intentId,
+        cycleKey,
+        messageId: questionId,
+        intentTitle: intent.summary?.trim() || intent.payload.trim(),
+        questionPrompt: (question.payload as AdapterQuestionPayload).prompt,
+      } as const;
+    });
+  }
+
+  /**
+   * Mark a terminal delivery failure while preserving the claim ledger.
+   *
+   * @param questionId - Claimed question whose retries were exhausted.
+   * @param userId - Expected claim recipient.
+   * @param failure - Bounded diagnostic string.
+   */
+  async markPoolQuestionPushFailed(questionId: string, userId: string, failure: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select({ detection: questions.detection })
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .limit(1)
+        .for('update');
+      const detection = row?.detection as AdapterQuestionDetection | undefined;
+      if (
+        !detection?.push
+        || detection.push.recipientId !== userId
+        || detection.push.deliveryStatus !== 'claimed'
+        || detection.pushedAt
+      ) return;
+      await tx.update(questions)
+        .set({
+          detection: {
+            ...detection,
+            push: {
+              ...detection.push,
+              deliveryStatus: 'failed',
+              failure: failure.slice(0, 500),
+            },
+          } satisfies QuestionDetection,
+        })
+        .where(eq(questions.id, questionId));
+    });
   }
 
   /**

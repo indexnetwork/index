@@ -119,6 +119,7 @@ const envSchema = z.object({
   QUESTIONER_ENABLED: optionalBoolean,
   POOL_QUESTIONS_MINING: z.union([z.literal(''), z.enum(['off', 'shadow'])]).optional(),
   POOL_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
+  POOL_QUESTIONS_PUSH: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   POOL_QUESTIONS_RANKING: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   POOL_QUESTIONS_STAMP_NEWBORN: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
 

@@ -72,11 +72,19 @@ export function buildPoolQuestion(input: BuildPoolQuestionInput): AdapterPersist
   };
 }
 
-/** Persists one pool question and fires the created event. Returns the id. */
+/** Callback invoked only after a pool question is durably persisted. */
+export type PoolQuestionPostPersist = (questionId: string, userId: string) => Promise<void>;
+
+/**
+ * Persists one pool question, fires the created event, then enqueues optional
+ * post-persist work. Enqueue errors deliberately propagate: the Questioner
+ * job retry can re-enqueue the same-cycle pending row without a second insert.
+ */
 export async function persistPoolQuestion(
   adapter: Pick<QuestionerAdapter, 'persist'>,
   question: AdapterPersistableQuestion,
   userId: string,
+  postPersist?: PoolQuestionPostPersist,
 ): Promise<string | null> {
   const [id] = await adapter.persist([question]);
   if (!id) return null;
@@ -87,5 +95,6 @@ export async function persistPoolQuestion(
     sourceType: question.detection.sourceType,
     sourceId: question.detection.sourceId,
   });
+  if (postPersist) await postPersist(id, userId);
   return id;
 }

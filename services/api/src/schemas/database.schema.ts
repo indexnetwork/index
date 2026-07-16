@@ -519,6 +519,20 @@ export interface QuestionDetection {
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
+  /** Durable proactive-delivery request marker. Never exposed publicly. */
+  pushRequestedAt?: string;
+  /** Last bounded recovery sweep that selected this request. Never exposed publicly. */
+  pushRecoveryAttemptedAt?: string;
+  /** Durable request outcome. Never exposed publicly. */
+  pushRequestStatus?: import('@indexnetwork/protocol').QuestionPoolPushRequestStatus;
+  /** Permanent suppression reason for an unclaimed request. Never exposed publicly. */
+  pushRequestReason?: import('@indexnetwork/protocol').QuestionPoolPushRequestReason;
+  /** Timestamp at which an unclaimed request was suppressed. Never exposed publicly. */
+  pushRequestSuppressedAt?: string;
+  /** Internal proactive push claim/delivery state. Never exposed publicly. */
+  push?: import('@indexnetwork/protocol').QuestionPoolPush;
+  /** Authoritative successful-delivery ledger timestamp. Never exposed publicly. */
+  pushedAt?: string;
 }
 
 export interface QuestionActor {
@@ -558,6 +572,23 @@ export const questions = pgTable('questions', {
       sql`(${table.detection}->>'purpose')`,
     )
     .where(sql`${table.detection}->>'purpose' = 'uptake'`),
+  // One claim per recipient + intent + pool refresh cycle. The advisory lock
+  // enforces budgets; this expression index is the final cross-worker guard.
+  poolPushRecipientIntentCycleUnique: uniqueIndex('questions_pool_push_recipient_intent_cycle_uniq')
+    .on(
+      sql`(${table.detection}->'push'->>'recipientId')`,
+      sql`(${table.detection}->'push'->>'intentId')`,
+      sql`(${table.detection}->'push'->>'cycleKey')`,
+    )
+    .where(sql`${table.detection}->>'mode' = 'pool_discovery' AND ${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
+  // Supports the strict UTC daily budget ledger, including claims whose
+  // question lifecycle later resolves.
+  poolPushRecipientClaimedAtIndex: index('questions_pool_push_recipient_claimed_at_idx')
+    .on(
+      sql`(${table.actors}->0->>'userId')`,
+      sql`(${table.detection}->'push'->>'claimedAt')`,
+    )
+    .where(sql`${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
 }));
 
 export type QuestionRow = typeof questions.$inferSelect;
@@ -571,6 +602,7 @@ export const intents = pgTable('intents', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
+  lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   userId: text('user_id').notNull().references(() => users.id),
   sourceId: text('source_id'),
   sourceType: sourceType('source_type'),

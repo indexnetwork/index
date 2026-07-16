@@ -5,7 +5,7 @@ import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard } from '../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import { resolveAgentNetworkScope } from '../guards/agent-scope.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -59,6 +59,19 @@ function parseIntentScopeFromUrl(url: URL): { scopeType?: 'intent'; scopeId?: st
  */
 @Controller('/questions')
 export class QuestionController {
+  /**
+   * GET /questions/counts — canonical split pending counts.
+   *
+   * @param _req - Incoming authenticated request.
+   * @param user - Authenticated recipient.
+   * @returns Global inbox, pushed-pool, and Personal Agent counts.
+   */
+  @Get('/counts')
+  @UseGuards(RateLimit('read'), SessionOnlyGuard)
+  async counts(_req: Request, user: AuthenticatedUser) {
+    return Response.json(await questionService.countPending(user.id));
+  }
+
   /**
    * GET /questions — list questions for the authenticated user.
    *
@@ -143,6 +156,12 @@ export class QuestionController {
     }
     if (conversationId) filters.conversationId = conversationId;
     if (noConversation === 'true') filters.noConversation = true;
+
+    // Pool questions are intent-page-only rows. Even delivered pushes affect
+    // only the Personal Agent count and DM line, never the global inbox/list.
+    if (scope.scopeType !== 'intent' && !conversationId) {
+      filters.excludeModes = [...new Set([...(filters.excludeModes ?? []), 'pool_discovery' as const])];
+    }
 
     const hasFilters = Object.keys(filters).length > 0;
     const questions = await questionService.findPending(user.id, hasFilters ? filters : undefined);

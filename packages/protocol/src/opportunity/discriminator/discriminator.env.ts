@@ -34,6 +34,17 @@ export function poolQuestionsMode(): PoolQuestionsMode {
   return process.env.POOL_QUESTIONS_MODE?.trim() === "on" ? "on" : "off";
 }
 
+/** Push delivery mode for high-VoI pool questions (IND-421). */
+export type PoolQuestionsPushMode = "off" | "on";
+
+/**
+ * Current POOL_QUESTIONS_PUSH mode (default off). Callers must additionally
+ * require pool-question mode and negotiator availability before delivery.
+ */
+export function poolQuestionsPushMode(): PoolQuestionsPushMode {
+  return process.env.POOL_QUESTIONS_PUSH?.trim() === "on" ? "on" : "off";
+}
+
 /** Newborn-opportunity stamping mode (IND-420 P4b). */
 export type PoolQuestionsStampNewbornMode = "off" | "on";
 
@@ -56,6 +67,18 @@ export const POOL_QUESTION_MAX_DISCRIMINATORS = 3;
 
 /** Unattended budget: max pending questions of ANY mode per intent. */
 export const POOL_QUESTION_MAX_PENDING_PER_INTENT = 3;
+
+/** Initial internal VoI threshold for proactive push delivery. */
+export const POOL_QUESTION_PUSH_BASE_VOI = 0.6;
+
+/** Multiplicative VoI threshold increase per consecutive dismissal. */
+export const POOL_QUESTION_PUSH_DISMISSAL_DECAY = 1.15;
+
+/** Minimum pool size for proactive delivery (stricter than mining). */
+export const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
+
+/** Maximum claimed proactive pool pushes per recipient per UTC day. */
+export const POOL_QUESTION_PUSH_DAILY_CAP = 2;
 
 /** Ranking mode for pool adjustments (IND-419). */
 export type PoolQuestionsRankingMode = "off" | "on";

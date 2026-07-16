@@ -65,6 +65,12 @@ export interface QuestionsListResponse {
   questions: PendingQuestion[];
 }
 
+export interface PendingQuestionCounts {
+  globalPending: number;
+  pushedPoolPending: number;
+  personalAgentPending: number;
+}
+
 export interface AnswerBody {
   selectedOptions: string[];
   freeText?: string;
@@ -106,6 +112,11 @@ export const createQuestionsService = (
     if (filters?.excludeModes?.length) params.set('excludeModes', filters.excludeModes.join(','));
     const res = await api.get<QuestionsListResponse>(`/questions?${params}`);
     return res.questions ?? [];
+  },
+
+  /** Fetch canonical split counts for global and Personal Agent surfaces. */
+  getPendingCounts: async (): Promise<PendingQuestionCounts> => {
+    return api.get<PendingQuestionCounts>('/questions/counts');
   },
 
   /** Fetch pending questions linked to a specific conversation. */
