@@ -251,7 +251,10 @@ export class QuestionerQueue {
       return;
     }
 
-    const askedLabels = await this.adapter.listPoolQuestionLabels(data.userId, intentId);
+    const askedLabels = await this.adapter.listPoolQuestionLabels(data.userId, intentId, {
+      ...(context.intentFingerprint ? { currentIntentFingerprint: context.intentFingerprint } : {}),
+      currentIntentText: context.intentText,
+    });
     const fresh = dedupDiscriminators(context.discriminators, askedLabels);
     const question = buildPoolQuestion({
       userId: data.userId,
@@ -260,6 +263,7 @@ export class QuestionerQueue {
       minedAt: context.minedAt,
       ...(context.runId ? { runId: context.runId } : {}),
       ...(context.intentText ? { intentText: context.intentText } : {}),
+      ...(context.intentFingerprint ? { intentFingerprint: context.intentFingerprint } : {}),
       discriminators: fresh,
     });
     if (!question) {

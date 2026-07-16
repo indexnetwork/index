@@ -21,6 +21,8 @@ function scored(overrides: Partial<ScoredDiscriminator> = {}): ScoredDiscriminat
     coverage: 0.8,
     novelty: 0.7,
     voi: 0.5,
+    embedding: [0.1, 0.2],
+    embeddingModel: "test/model-v1",
     ...overrides,
   };
 }
@@ -33,6 +35,8 @@ function questionDiscriminator(overrides: Partial<QuestionPoolDiscriminator> = {
     sideCounts: { "Hands-on builder": 8, "Advisor": 6 },
     voi: 0.5,
     evidenceRate: 0.9,
+    embedding: [0.1, 0.2],
+    embeddingModel: "test/model-v1",
     assignments: [{ opportunityId: "opp-1", side: "Hands-on builder" }],
     ...overrides,
   };
@@ -46,6 +50,8 @@ describe("toQuestionDiscriminator", () => {
       { opportunityId: "opp-2", side: "Advisor" },
     ]);
     expect(d.sideCounts).toEqual({ "Hands-on builder": 1, "Advisor": 1 });
+    expect(d.embedding).toEqual([0.1, 0.2]);
+    expect(d.embeddingModel).toBe("test/model-v1");
   });
 });
 
@@ -69,6 +75,7 @@ describe("synthesizePoolQuestion", () => {
     poolSize: 21,
     minedAt: "2026-07-14T14:00:00.000Z",
     runId: "run-1",
+    intentFingerprint: "fingerprint-v1",
   };
 
   it("produces a schema-valid question: sides as chip options + Both matter", () => {
@@ -92,7 +99,10 @@ describe("synthesizePoolQuestion", () => {
     const out = synthesizePoolQuestion(base)!;
     expect(out.pool.poolSize).toBe(21);
     expect(out.pool.runId).toBe("run-1");
+    expect(out.pool.intentFingerprint).toBe("fingerprint-v1");
     expect(out.pool.discriminator.label).toBe("Hands-on builders vs advisors");
+    expect(out.pool.discriminator.embedding).toEqual([0.1, 0.2]);
+    expect(out.pool.discriminator.embeddingModel).toBe("test/model-v1");
     expect(out.pool.alternates.map((a) => a.label)).toEqual(["alt-1"]);
   });
 

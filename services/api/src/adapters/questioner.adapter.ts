@@ -17,6 +17,7 @@ import { intents, questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
+import { normalizeIntentText } from '../lib/intent/intent.fingerprint';
 
 /** Default question TTL in milliseconds (7 days). */
 const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -98,6 +99,13 @@ export interface AdapterPersistedQuestion {
 }
 
 /** Optional filters for the `findPending` query. */
+export interface PoolQuestionFreshnessOptions {
+  /** Fingerprint of the full current intent payload + summary. */
+  currentIntentFingerprint?: string;
+  /** Current intent text used for conservative legacy-prefix freshness. */
+  currentIntentText?: string;
+}
+
 export interface AdapterQuestionFilters {
   mode?: AdapterQuestionMode;
   sourceType?: string;
@@ -277,20 +285,126 @@ export class QuestionerAdapter {
   }
 
   /**
-   * Discriminator labels of every pool_discovery question (any status) for
-   * one user+intent — the dedup set that prevents re-asking an axis the user
-   * already saw, answered, or dismissed (IND-418).
+   * Discriminator labels used for exact dedup. Pending labels always count;
+   * resolved labels count only while their intent snapshot is fresh when
+   * freshness options are supplied. Omitting options preserves the legacy
+   * any-status behavior.
+   *
+   * @param userId - Owner of the pool questions.
+   * @param intentId - Intent tied to the questions.
+   * @param freshness - Optional current-intent freshness context.
+   * @returns Exact discriminator labels that should be deduplicated.
    */
-  async listPoolQuestionLabels(userId: string, intentId: string): Promise<string[]> {
+  async listPoolQuestionLabels(
+    userId: string,
+    intentId: string,
+    freshness?: PoolQuestionFreshnessOptions,
+  ): Promise<string[]> {
     const rows = await this.db
-      .select({ label: sql<string | null>`${questions.detection}->'pool'->'discriminator'->>'label'` })
+      .select({
+        status: questions.status,
+        label: sql<string | null>`${questions.detection}->'pool'->'discriminator'->>'label'`,
+        intentFingerprint: sql<string | null>`${questions.detection}->'pool'->>'intentFingerprint'`,
+        intentText: sql<string | null>`${questions.detection}->'pool'->>'intentText'`,
+      })
       .from(questions)
       .where(and(
         sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
         sql`${questions.detection}->>'mode' = 'pool_discovery'`,
         sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
       ));
-    return rows.map((r) => r.label).filter((l): l is string => typeof l === 'string' && l.length > 0);
+    return rows.flatMap((row) => {
+      const poolFreshness = {
+        ...(row.intentFingerprint ? { intentFingerprint: row.intentFingerprint } : {}),
+        ...(row.intentText ? { intentText: row.intentText } : {}),
+      };
+      if (!row.label || !isPoolQuestionFresh(row.status, poolFreshness, freshness)) return [];
+      return [row.label];
+    });
+  }
+
+  /**
+   * Read fresh answered or dismissed axes for durable semantic novelty.
+   * "Both matter" answers and dismissals intentionally remain references;
+   * they resolve the axis even though they do not create a ranking preference.
+   *
+   * @param userId - Owner of the resolved questions.
+   * @param intentId - Intent tied to the questions.
+   * @param freshness - Current full-intent fingerprint and text.
+   * @returns Fresh resolved discriminator snapshots, newest first.
+   */
+  async listResolvedPoolAxes(
+    userId: string,
+    intentId: string,
+    freshness: PoolQuestionFreshnessOptions,
+  ): Promise<import('@indexnetwork/protocol').QuestionPoolDiscriminator[]> {
+    const storedFingerprint = sql<string | null>`${questions.detection}->'pool'->>'intentFingerprint'`;
+    const storedIntentText = sql<string | null>`${questions.detection}->'pool'->>'intentText'`;
+    const normalizedStoredIntentText = sql<string>`regexp_replace(btrim(normalize(COALESCE(${storedIntentText}, ''), NFKC)), '[[:space:]]+', ' ', 'g')`;
+    const normalizedCurrentIntentText = freshness.currentIntentText
+      ? normalizeIntentText(freshness.currentIntentText)
+      : undefined;
+    const freshnessPredicate = or(
+      freshness.currentIntentFingerprint
+        ? sql`${storedFingerprint} = ${freshness.currentIntentFingerprint}`
+        : undefined,
+      normalizedCurrentIntentText
+        ? and(
+            sql`${storedFingerprint} IS NULL`,
+            sql`${storedIntentText} IS NOT NULL`,
+            sql`(
+              (char_length(${normalizedStoredIntentText}) < 160 AND ${normalizedStoredIntentText} = ${normalizedCurrentIntentText})
+              OR
+              (char_length(${normalizedStoredIntentText}) = 160 AND left(${normalizedCurrentIntentText}, 160) = ${normalizedStoredIntentText})
+            )`,
+          )
+        : undefined,
+    ) ?? sql`false`;
+
+    const rows = await this.db
+      .select({
+        discriminator: sql<import('@indexnetwork/protocol').QuestionPoolDiscriminator | null>`${questions.detection}->'pool'->'discriminator'`,
+      })
+      .from(questions)
+      .where(and(
+        or(eq(questions.status, 'answered'), eq(questions.status, 'dismissed')),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+        sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+        freshnessPredicate,
+      ))
+      .orderBy(desc(questions.createdAt))
+      .limit(24);
+    return rows.flatMap((row) => row.discriminator ? [row.discriminator] : []);
+  }
+
+  /**
+   * Stamp an answered pool question with the post-refinement intent fingerprint.
+   *
+   * @param questionId - Answered pool question to update.
+   * @param userId - Expected question actor.
+   * @param intentFingerprint - Fingerprint computed from the applied update result.
+   * @returns Whether the answered pool snapshot was updated.
+   */
+  async updateAnsweredPoolIntentFingerprint(
+    questionId: string,
+    userId: string,
+    intentFingerprint: string,
+  ): Promise<boolean> {
+    const [updated] = await this.db
+      .update(questions)
+      .set({
+        detection: sql`jsonb_set(${questions.detection}::jsonb, '{pool,intentFingerprint}', to_jsonb(${intentFingerprint}::text), true)`,
+      })
+      .where(and(
+        eq(questions.id, questionId),
+        eq(questions.status, 'answered'),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+        sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+        sql`${questions.detection}->'pool' IS NOT NULL`,
+      ))
+      .returning({ id: questions.id });
+    return Boolean(updated);
   }
 
   /**
@@ -428,6 +542,28 @@ export class QuestionerAdapter {
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
+
+/** Whether a pool snapshot still belongs to the current material intent. */
+function isPoolQuestionFresh(
+  status: AdapterPersistedQuestion['status'],
+  pool: Pick<import('@indexnetwork/protocol').QuestionPoolSnapshot, 'intentFingerprint' | 'intentText'>,
+  freshness?: PoolQuestionFreshnessOptions,
+): boolean {
+  if (!freshness || status === 'pending') return true;
+  if (
+    pool.intentFingerprint
+    && freshness.currentIntentFingerprint
+  ) {
+    return pool.intentFingerprint === freshness.currentIntentFingerprint;
+  }
+  if (!pool.intentFingerprint && pool.intentText && freshness.currentIntentText) {
+    const storedIntentText = normalizeIntentText(pool.intentText);
+    const currentIntentText = normalizeIntentText(freshness.currentIntentText);
+    if (storedIntentText.length < 160) return storedIntentText === currentIntentText;
+    return storedIntentText.length === 160 && currentIntentText.startsWith(storedIntentText);
+  }
+  return false;
+}
 
 /** Map a raw Drizzle row into the adapter's persisted-question shape. */
 function toPersistedQuestion(

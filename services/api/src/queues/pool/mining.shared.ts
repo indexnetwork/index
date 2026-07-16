@@ -22,9 +22,14 @@ import { POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEX
 import type { PoolCandidate } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
+import db from '../../lib/drizzle/drizzle';
+import { OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../../lib/embedding/embedding.config';
+import { buildFullIntentText, buildIntentSnippet, computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { embedderAdapter } from '../../adapters/embedder.adapter';
+import { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { questionerEnqueueIfEnabled } from '../questioner.queue';
+import { resolvePoolAxisNoveltyReferences } from './novelty.shared';
 
 /** Greppable logger (IND-417): search deploy logs for "PoolDiscriminatorMiner". */
 const logger = log.job.from('PoolDiscriminatorMiner');
@@ -37,6 +42,9 @@ const POOL_FIELD_MAX_CHARS = 100;
 
 /** Lazily constructed so importing this module never requires OPENROUTER_API_KEY. */
 let poolDiscriminatorMiner: PoolDiscriminatorMiner | null = null;
+
+/** Durable question metadata reader used by every mining completion path. */
+const poolMiningQuestionerAdapter = new QuestionerAdapter(db);
 
 /** One discovery-completion event, normalized across trigger sources. */
 export interface PoolMiningTrigger {
@@ -95,6 +103,7 @@ export async function minePoolDiscriminatorsOnCompletion(trigger: PoolMiningTrig
 
 async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void> {
   const { userId, intentId } = trigger;
+  const questionsEnabled = poolQuestionsMode() === 'on';
   const pool = await chatDatabaseAdapter.getOpportunitiesForUser(userId, {
     statuses: [...POOL_STATUSES],
     limit: 50,
@@ -160,11 +169,17 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
     return { id: c.opportunity.id, publicContext, score: c.opportunity.interpretation?.confidence ?? 0 };
   });
 
-  // Intent text: prefer the triggering intent record; fall back to the ad-hoc query.
+  // Intent text: prefer the triggering owned intent record; fall back to the
+  // ad-hoc query for shadow-only pools. Questions carry only a display snippet
+  // plus a fingerprint of the full payload + summary.
   let intentText = trigger.searchQuery ?? '';
+  let intentFingerprint: string | undefined;
   if (intentId) {
     const intent = await chatDatabaseAdapter.getIntent(intentId);
-    if (intent) intentText = `${intent.payload}${intent.summary ? ` (${intent.summary})` : ''}`;
+    if (intent?.userId === userId) {
+      intentText = buildFullIntentText(intent.payload, intent.summary);
+      intentFingerprint = computeIntentFingerprint(intent.payload, intent.summary);
+    }
   }
 
   // Novelty references: the owner's own intent sentences + active premises —
@@ -177,13 +192,36 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
   } catch {
     // Novelty degrades gracefully without references.
   }
-  const referenceTexts = [...toReferenceSentences(intentText), ...ownerPremises];
+  let resolvedAxes: import('@indexnetwork/protocol').QuestionPoolDiscriminator[] = [];
+  if (questionsEnabled && intentId && intentFingerprint) {
+    try {
+      resolvedAxes = await poolMiningQuestionerAdapter.listResolvedPoolAxes(userId, intentId, {
+        currentIntentFingerprint: intentFingerprint,
+        currentIntentText: intentText,
+      });
+    } catch {
+      // Durable semantic references are fail-open enrichment for mining.
+    }
+  }
+  const axisReferences = resolvePoolAxisNoveltyReferences(
+    resolvedAxes,
+    OPENROUTER_EMBEDDING_MODEL,
+    OPENROUTER_EMBEDDING_DIMENSIONS,
+  );
+  const referenceTexts = [
+    ...toReferenceSentences(intentText),
+    ...ownerPremises,
+  ];
 
   poolDiscriminatorMiner ??= new PoolDiscriminatorMiner();
   const shadow = await runPoolDiscriminatorShadow({
     intentText,
     candidates,
     referenceTexts,
+    priorReferenceTexts: axisReferences.referenceTexts,
+    priorReferenceEmbeddings: axisReferences.referenceEmbeddings,
+    embeddingModel: OPENROUTER_EMBEDDING_MODEL,
+    retainEmbeddings: questionsEnabled,
     miner: poolDiscriminatorMiner,
     embedder: embedderAdapter,
   });
@@ -210,7 +248,7 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
   // IND-418: turn the top eligible discriminator into a pool_discovery
   // question. QUESTIONER_ENABLED gates via questionerEnqueueIfEnabled;
   // budget + dedup enforcement lives in the QuestionerQueue worker.
-  if (poolQuestionsMode() !== 'on' || !intentId) return;
+  if (!questionsEnabled || !intentId || !intentFingerprint) return;
   const enqueue = questionerEnqueueIfEnabled();
   if (!enqueue) return;
   const eligible = selectQuestionDiscriminators(shadow.discriminators);
@@ -230,7 +268,8 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
     triggeredByIntentId: intentId,
     context: {
       intentId,
-      intentText,
+      intentText: buildIntentSnippet(intentText),
+      intentFingerprint,
       poolSize: shadow.poolSize,
       ...(trigger.runId ? { runId: trigger.runId } : {}),
       minedAt: new Date().toISOString(),

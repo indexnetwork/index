@@ -114,6 +114,10 @@ export const QuestionPoolDiscriminatorSchema = z.object({
   sideCounts: z.record(z.string(), z.number()),
   voi: z.number(),
   evidenceRate: z.number(),
+  /** Discriminator embedding retained for durable semantic novelty checks. */
+  embedding: z.array(z.number().finite()).min(1).max(4096).optional(),
+  /** Model that generated `embedding`; mismatches must fall back to text. */
+  embeddingModel: z.string().min(1).optional(),
   /** Verified assignments only — the P3 re-rank input. */
   assignments: z.array(QuestionPoolAssignmentSchema),
 });
@@ -127,6 +131,8 @@ export const QuestionPoolSnapshotSchema = z.object({
   runId: z.string().optional(),
   /** Intent payload snippet (≤160 chars) — reused by chained questions' evidence chips. */
   intentText: z.string().optional(),
+  /** Stable hash of the full normalized payload + summary used for freshness. */
+  intentFingerprint: z.string().min(1).optional(),
   /** The discriminator this question asks about. */
   discriminator: QuestionPoolDiscriminatorSchema,
   /** Remaining ranked discriminators for interview-mode chaining. */
