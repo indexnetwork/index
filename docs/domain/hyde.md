@@ -136,20 +136,77 @@ merges multi-lens candidates, and then passes them to `OpportunityEvaluator`. Hy
 and opportunity evaluation are separate stages: an evaluator-only regression suite cannot
 show that a hypothetical document retrieved the right candidate.
 
-IND-426 therefore includes a paired drift-focused eval in
-`packages/protocol/eval/hyde/`. It runs the real legacy and frame-v1 HyDE pipelines against
-a small in-memory candidate corpus using equivalent OpenRouter request configuration and
-the same embedding model/dimensions. Its scorer approximates production's `0.40` cosine
-floor and `0.1` additional-match bonus, but does not reproduce SQL per-lens limits, network
-scope, or cross-row user grouping beyond one candidate row per user. PostgreSQL and
-opportunity evaluation remain excluded. The existing matching eval remains a secondary
-evaluator-regression check.
+IND-426 therefore includes the evidence-v2 paired retrieval study in
+`packages/protocol/eval/hyde/`. Its frozen local corpus has 90 cases and 900 candidates
+under the existing five drift strata: profile-context contamination, entity/location
+substitution, time/numeric scale, credential/organization/exclusivity, and role/polarity
+controls. Every stratum retains at least 15 cases. The primary 75-case cohort represents
+stored intents processed asynchronously by background discovery. The secondary 15-case
+cohort represents premise-derived, network-scoped user-context paragraphs matched against
+other users' active intents. There is no synchronous direct-search cohort. Every case has
+10 candidates: two authored graded positives, four linked minimal-pair hard negatives, and
+four distractors. Authored
+grades are construction labels only; resolved, blinded judgments from two independent
+humans define canonical retrieval and grounding truth.
+
+The harness invokes the unchanged production agents and graph with empty cache/database
+ports and embeds each case's candidate pool once for all modes/runs. To match the current
+`FromIntentQueue` and `OpportunityGraph`, it privately maps `saved-intent` to graph
+`sourceType: 'query'`; `query` is an internal background-branch label fed a stored intent,
+not a direct user request. `user-context` maps to `sourceType: 'context'` with a stable
+synthetic source ID. Collection provenance and paired blocks record both names, while the
+blind public batch exposes neither. Removing or refactoring the direct-search product must
+preserve this saved-intent background branch or intentionally migrate the mapping and eval
+contract. Canonical execution
+fixes the cosine cutoff at `0.40`, additional-lens bonus at `0.1`, maximum lenses at 3,
+and uses four paired runs counterbalanced by a fixed case/run hash. Provenance pins are
+configured **primary** model/embedding IDs. Production retries/fallbacks remain enabled,
+but per-call fallback provider/model identity is unavailable and not recorded. Failures
+are explicit: there are no eval-level retries or success-only selection. Failed concurrent
+generation waits for every started generator call to settle before resource capture;
+frame extraction cannot be observed separately through the injected lens-inferrer port.
+The public adjudication batch contains only opaque IDs, rubrics, `sourceText`, and judged
+text; it excludes background source, internal graph source, mode/run, production validator
+output, and map/return status.
+`profileContext` is not grounding support. The private mapping is written mode 0600 and
+must remain hidden from adjudicators/resolver. Production `HydeValidator` output is
+diagnostic only, and optional LLM triage can never replace the two human judgments or make
+evidence canonical. Resolver decisions are valid only for disagreement/`unable` items;
+any surplus or otherwise unused decision makes resolution incomplete and noncanonical.
+
+Evidence-v2 reports tie-fractional Precision@5, graded nDCG@5, linked-hard-negative FPR@5,
+raw-cosine positive-to-nearest-linked-negative margin, unsupported-generation and returned
+exposure/grounding-error rates, all-rejected/failed-open/incomplete-pair rates, and
+resource timing. It also reports non-gating coverage and point estimates for all eight
+metrics by saved-intent versus user-context cohort. Per-call fallback identity and
+separate frame-extraction resource data are explicitly unavailable. A no-return run has zero exposure, but retrieval and
+all-rejected metrics guard that case separately. Confidence intervals use a deterministic 10,000-replicate,
+fixed-seed, 95% percentile hierarchical paired bootstrap: cases within each stratum and
+paired runs within case are resampled, then run -> case -> stratum means receive equal
+weight in a five-stratum macro average.
+
+The only release gates are: grounding-error delta CI upper `< 0`; frame grounding CI upper
+`<= 0.05`; Precision@5 delta CI lower `>= -0.05`; nDCG@5 delta CI lower `>= -0.05`; margin
+delta CI lower `>= -0.03`; hard-negative FPR@5 delta CI upper `<= 0.02`; frame all-rejected
+CI upper `<= 0.05`; and frame failed-open CI upper `<= 0.02`. Incomplete or noncanonical
+evidence makes every gate and the overall result `INSUFFICIENT`.
 
 ## Limitations and rollout
 
 Frame constraints reduce unsupported entity/constraint drift; they do not prove factual
-truth, guarantee semantic relevance, or replace downstream candidate evaluation. The live
-eval corpus is intentionally small and provider-variable. Frame-v1 remains default-off
-until full paired multi-run retrieval evidence and the separately labeled matching
-regression check are reviewed. Filtered or single runs must not establish a canonical
-baseline.
+truth, guarantee semantic relevance, or replace downstream candidate evaluation. The eval
+uses a frozen local corpus and an in-memory adapter approximation without SQL limits or
+cross-row grouping. It does not execute BullMQ, network scoping, database persistence or
+reuse, raw-context fallback, candidate merging, negotiation, or delivery; it tests only
+the HyDE generation/retrieval component used inside those background jobs. It intentionally scores both intent and premise
+candidates for every lens, matching production's cross-corpus search; target corpus is a
+preference/limit-allocation hint rather than a filter. Provider variance and a heavy
+human-judgment burden remain. It does not establish production opportunity precision,
+recall, fairness, or external validity; canonical token/cost accounting is unavailable.
+Artifacts are unsigned, so coordinated parent edits require trusted custody/fingerprint
+review. Each export file is atomically replaced, but the public/private/template set is
+not transactional and `--force` regenerates opaque IDs; preserve it as one set. Run
+artifacts are gitignored and there is no committed baseline. Frame-v1 remains default-off
+until full canonical evidence is reviewed. The matching eval remains only a secondary evaluator-only
+check. See the [HyDE eval README](../../packages/protocol/eval/hyde/README.md) for the
+staged CLI, adjudication rubrics, exact metrics, and artifact handling.
