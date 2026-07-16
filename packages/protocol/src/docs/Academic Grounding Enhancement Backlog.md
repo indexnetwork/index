@@ -86,13 +86,13 @@ Implemented a canonical three-value QUD taxonomy across IntentClarifier and the 
 - First: capture the signals — contact source (import channel), interaction recency — as schema additions owned by `services/api`; only then classify tie strength (feeds `opportunity/opportunity.introducer.ts` routing too).
 - Exposure preview at premise→network assignment time (`shared/assignment/network-assignment.policy.ts`, threshold 0.7): "assigning this premise makes it discoverable by ~N members of X."
 
-## 8. Frame-drift monitoring — **S to start**
+## 8. Frame-drift monitoring — **Shipped (IND-430)**
 
 **Theory:** the report's own "Index Frame Drift Problem" — its most original contribution. Real even in the centralized implementation: per-network prompts, vocabularies, and embedding-model versions drift independently.
 
 **Work items:**
-- Start with measurement, not mechanism: a metric tracking per-network embedding centroid drift over time and cross-network match-rate decay. Note the maintenance graph (`maintenance/maintenance.graph.ts`) is **feed-view-triggered**, not periodic — a drift metric needs the cron infrastructure in `services/api/src/queues/premise.queue.ts` (`startCrons`) or a new scheduled job. Verified: no drift/centroid metric exists anywhere in `packages/protocol/src` today.
-- Only if drift is observed: consider periodic vocabulary/prompt re-alignment. Evolutionary-game machinery is premature.
+- ~~Start with measurement, not mechanism: a metric tracking per-network embedding centroid drift over time and cross-network match-rate decay.~~ Shipped in IND-430 as a disabled-by-default backend BullMQ scheduler, repeatable-read PostgreSQL measurement, and daily metric snapshot tables. See `docs/design/frame-drift-monitoring.md` in the monorepo.
+- Only if drift is observed: consider periodic vocabulary/prompt re-alignment. Evolutionary-game machinery remains premature; IND-430 intentionally adds no realignment mechanism.
 
 ---
 
