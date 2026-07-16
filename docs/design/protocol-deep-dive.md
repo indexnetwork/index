@@ -203,17 +203,22 @@ Premise-based candidates carry `candidatePremiseId` in the persist node for acto
 ### 3.5 HyDE Graph
 
 **File:** `shared/hyde/hyde.graph.ts`
-**Purpose:** Cache-aware hypothetical document generation with dynamic lens inference.
-**Nodes:** `infer_lenses`, `check_cache`, `generate_missing`, `embed`, `cache_results`
-**State:** `HydeGraphState` (sourceType, sourceId, sourceText, profileContext, lenses, hydeDocuments, hydeEmbeddings, etc.)
+**Purpose:** Cache-aware hypothetical document generation with dynamic lens inference and an opt-in source-grounded validation path.
+**Nodes:** legacy uses `infer_lenses`, `check_cache`, `generate_missing`, `embed`, `cache_results`; frame-v1 inserts `validate_generated` between generation and embedding.
+**State:** `HydeGraphState` (sourceType, sourceId, sourceText, profileContext, lenses, optional sourceFrame/frameFingerprint, hydeDocuments, hydeEmbeddings, etc.)
 **Conditional edges:**
-- After `check_cache`: routes to `generate_missing` (cache misses) or `embed` (all cached)
+- After `check_cache`: routes to `generate_missing` (cache misses) or `embed` (all cached).
+- In frame-v1, generated documents route through one batch validator; cache/DB hits already marked valid skip validation.
 
-**Flow:** `START -> infer_lenses -> check_cache -> [generate_missing if needed] -> embed -> cache_results -> END`
+**Legacy flow:** `START -> infer_lenses -> check_cache -> [generate_missing] -> embed -> cache_results -> END`
 
-The graph is designed for efficiency: it checks both Redis cache and PostgreSQL before generating any HyDE documents, and only generates documents for lenses that had cache misses.
+**Frame-v1 flow:** `START -> infer_lenses+frame -> check_versioned_cache -> [generate_missing -> validate_generated] -> embed -> cache_results -> END`
 
-**Dependencies:** `HydeGraphDatabase`, `EmbeddingGenerator`, `HydeCache`, `LensInferrer`, `HydeGenerator`
+`HYDE_FRAME_CONSTRAINTS_ENABLED=true` selects frame-v1; every other value preserves the default legacy path. Frame extraction uses only `sourceText`. Optional `profileContext` remains lens-selection context and is never frame evidence or validator input. A partial rejection removes only invalid siblings. If every generated document is rejected, the graph returns no HyDE embeddings. Validator errors and malformed/missing/contradictory verdicts fail open per document: those documents are embedded and returned ephemerally, but `cache_results` never writes them.
+
+Legacy Redis keys and DB strategy hashes remain untouched. Frame-v1 Redis keys include the version plus a fingerprint of exact source text and sanitized frame; frame-v1 DB strategies are stable versioned lens/corpus hashes so revisions upsert rather than append. Persisted context carries source/frame fingerprints, a generation marker, and `validationStatus: valid`. Bulk context discovery filters to the active mode, current source-text hash, and newest generation-marker group, so changed content cannot reuse stale frame documents and disabling the flag returns to legacy rows only.
+
+**Dependencies:** `HydeGraphDatabase`, `EmbeddingGenerator`, `HydeCache`, `LensInferrer`, `HydeGenerator`, and frame-v1 `HydeValidator`
 
 ### 3.6 Network Graph
 
@@ -416,22 +421,24 @@ Scoring bands:
 ### 4.11 HyDE Generator
 
 **File:** `hyde.generator.ts`
-**Role:** Generates hypothetical documents in a target corpus voice for semantic search. Takes a source text and a lens label, produces text that would match the ideal counterpart.
-**Model:** `google/gemini-2.5-flash`
-**Input:** `HydeGenerateInput` (sourceText, lens label, target corpus)
+**Role:** Generates hypothetical documents in a target corpus voice for semantic search. Legacy takes source text plus a lens. Frame-v1 also takes the sanitized source frame, allows generic reciprocal-role/domain elaboration, and forbids new named entities or hard location/time/numeric/credential/organization/exclusivity constraints.
+**Model:** configured `hydeGenerator` model
+**Input:** `HydeGenerateInput` (sourceText, lens label, target corpus, optional sourceFrame)
 **Output:** `HydeGeneratorOutput` (text)
-**Used by:** HyDE Graph (generate_missing node)
+**Used by:** HyDE Graph (`generate_missing` node)
 
 ### 4.12 Lens Inferrer
 
 **File:** `lens.inferrer.ts`
-**Role:** Analyzes source text with optional profile context and infers 1-5 search lenses, each tagged with a target corpus (profiles, intents, or premises).
-**Model:** `google/gemini-2.5-flash`
-**Input:** Source text, optional profile context, optional max lenses
-**Output:** Array of lenses with label, corpus, reasoning
-**Used by:** HyDE Graph (infer_lenses node)
+**Role:** Analyzes source text with optional profile context and infers 1-5 search lenses tagged `profiles`, `intents`, or `premises`. In frame-v1 it also extracts a source-grounded frame whose evidence spans must come only from `sourceText`; `profileContext` can shape lens selection but cannot supply frame facts.
+**Model:** configured `lensInferrer` model
+**Input:** Source text, optional profile context, optional max lenses, frame-constrained mode
+**Output:** Lenses with label/corpus/reasoning plus an optional sanitized source frame
+**Used by:** HyDE Graph (`infer_lenses` node)
 
-Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with dynamic, LLM-inferred lenses. This allows the system to generate contextually appropriate search perspectives for any domain.
+Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with dynamic, LLM-inferred lenses. The `profiles` value is now a preference hint: the API remaps it to premise retrieval because profile-vector discovery was retired.
+
+**Post-generation validator:** `shared/hyde/hyde.validator.ts` performs one structured frame-v1 batch check after generation. It rejects only unsupported named entities or hard constraints; generic elaboration and reciprocal/target voice are valid. The graph owns partial/all-rejection and fail-open persistence behavior rather than the agent.
 
 ### 4.13 Home Categorizer
 
@@ -669,32 +676,20 @@ Agents claim turns via the HTTP pickup endpoint rather than an MCP tool — the 
 
 ## 6. HyDE System
 
-HyDE (Hypothetical Document Embeddings) is the core semantic search technique. Instead of searching directly with a user's intent text, the system generates hypothetical documents that describe what an ideal match would look like, then embeds those documents for vector similarity search.
+HyDE (Hypothetical Document Embeddings) bridges source-side wording and counterpart-side documents before vector search. Source types are `intent`, `query`, and `context`; there is no profile source. Presentation identity lives on `users`, and the retired profile-vector corpus is not read. A lens tagged `profiles` is treated by the API as a preference for premise retrieval.
 
-### How it works
+### Legacy and frame-v1
 
-1. **Lens inference:** The `LensInferrer` agent analyzes the source text (intent or query) and user profile context, producing 1-5 search lenses. Each lens is a specific search perspective (e.g., "early-stage crypto infrastructure VC") tagged with a target corpus (`profiles` or `intents`).
+1. **Lens inference:** Both modes infer 1-5 dynamic lenses from `sourceText` and optional `profileContext`. Frame-v1 additionally extracts roles, hard constraints, named entities, and domain vocabulary. Every frame value must have exact evidence in `sourceText`; profile context can specialize lenses but is never frame evidence.
+2. **Version-aware cache check:** Legacy reads its unchanged Redis/DB identities. Frame-v1 reads only validated entries carrying `frame-v1`, the lens, matching source/frame fingerprints, and a valid generation marker; its stable DB lens identities are overwritten on source revisions rather than accumulated.
+3. **Generation:** Legacy uses the existing corpus-specific source+lens prompt. Frame-v1 generates from the sanitized frame with slot discipline: target voice and generic reciprocal/domain elaboration are allowed; unsupported named entities and hard constraints are forbidden.
+4. **Validation (frame-v1 only):** One batch validator checks newly generated documents before embedding. Partial rejection preserves valid siblings; all rejection returns no HyDE embeddings. Provider/shape failures fail open per document for the current run, but failed-open documents are not cached or persisted.
+5. **Embedding and retrieval:** Returned texts use the configured OpenRouter embedding model (default `openai/text-embedding-3-large`, 2000 dimensions). Every lens searches intents and premises within scope, preferring its hinted corpus, and candidate results are merged before `OpportunityEvaluator` runs.
+6. **Caching:** Legacy output follows existing cache behavior. Frame-v1 persists only `valid` documents under versioned Redis keys and DB strategies/context, preventing cross-mode or changed-frame reuse.
 
-2. **Cache check:** For each lens, the system checks Redis cache and PostgreSQL `hyde_documents` table. Only lenses with cache misses proceed to generation.
+`HYDE_FRAME_CONSTRAINTS_ENABLED` is strict and default-off: only the literal `true` enables frame-v1. IND-426's `eval/hyde` suite pairs the real two graph modes against a hand-authored in-memory candidate corpus using equivalent OpenRouter request configuration and the same embedding model/dimensions. Its scorer approximates the adapter's `0.40` cosine floor and `0.1` additional-match bonus, but has no SQL per-lens limits, network scope, or cross-row user grouping beyond one candidate row per user. It excludes PostgreSQL and opportunity evaluation so its Recall@K/MRR remain retrieval evidence. `eval/matching` invokes `OpportunityEvaluator` directly and is only a separately labeled secondary regression check.
 
-3. **HyDE generation:** The `HydeGenerator` agent takes each uncached lens and generates a hypothetical document in the target corpus voice:
-   - **Intents corpus:** Generates a goal/aspiration statement from the complementary perspective
-   - **Premises corpus:** Generates an identity assertion matching the ideal person's values or expertise
-
-4. **Embedding:** Generated texts are embedded using the same embedding model (text-embedding-3-large, 2000 dimensions) as the stored intents and premises.
-
-5. **Caching:** Results are cached in Redis (1-hour TTL) and persisted to PostgreSQL for entity sources (intents, premises).
-
-### Dynamic lenses vs. hardcoded strategies
-
-The system previously used hardcoded strategy names (mirror, reciprocal, mentor, investor, collaborator, hiree). These have been replaced by LLM-inferred lenses that adapt to any domain. The `LensInferrer` is location-aware and domain-specific -- a DePIN founder searching for "investors" gets "SF-based early-stage crypto infra VC" rather than generic "investor".
-
-### Corpus-specific prompt templates
-
-The `HYDE_CORPUS_PROMPTS` in `hyde.strategies.ts` define how source text and lens labels are combined into prompts:
-
-- **Profiles:** "Write a professional biography for someone who could fulfill this need: [source]. Focus on the specific expertise described by: [lens]."
-- **Intents:** "Write a goal or aspiration statement for someone who is: [lens]. This person's needs would complement: [source]."
+See [`../domain/hyde.md`](../domain/hyde.md) for cache identities, rejection semantics, source/profile boundaries, and eval limitations.
 
 ## 7. Opportunity Pipeline
 

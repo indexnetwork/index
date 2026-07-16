@@ -1,8 +1,12 @@
 # Matching Quality Eval Harness
 
 Measures whether the opportunity evaluator (`invokeEntityBundle`) makes the right
-matching judgments, against a curated golden set. Standalone and opt-in — NOT part of
-`bun test`.
+matching judgments, against a curated golden set. The harness invokes
+`OpportunityEvaluator` **directly**; it does not run `LensInferrer`, HyDE generation,
+validation, embedding, or vector retrieval. For IND-426 it is therefore only a
+**secondary evaluator-regression check**, not evidence that frame-v1 improves HyDE
+retrieval. Use the separately labeled [`eval/hyde`](../hyde/README.md) paired eval for
+retrieval evidence. Standalone and opt-in — NOT part of `bun test`.
 
 ## Run
 

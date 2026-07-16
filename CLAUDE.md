@@ -338,6 +338,10 @@ All agents are first-class database entities backed by `agents`, `agent_transpor
 
 Negotiation-specific events (`negotiation_session_start/end`, `negotiation_turn`, `negotiation_outcome`) carry per-candidate turn and outcome data for orchestrator-inline negotiations. They are persisted into `debugMeta.orchestratorNegotiations.opportunityIds` for later hydration by the debug endpoint. `debugMeta` also now tracks `llm.{calls,totalDurationMs,resets,hallucinations}` accumulated from `llm_start/end`, `response_reset`, and `hallucination_detected` events.
 
+### HyDE Generation Modes
+
+IND-426 adds a default-off frame-v1 path behind `HYDE_FRAME_CONSTRAINTS_ENABLED=true` (strict literal). Legacy remains `infer → cache → generate → embed → persist`; frame-v1 extracts a source-only frame in a separate model call (profile context is lens-selection context only), uses fingerprinted Redis/context provenance plus stable versioned DB lens identities, validates generated documents before embedding, supports partial/all rejection, and treats validator failures as ephemeral failed-open output that is never cached or persisted. Bulk context discovery filters persisted HyDE rows to the active mode, current source-text hash, and newest generation marker. The paired `packages/protocol/eval/hyde` suite provides retrieval diagnostics; `eval/matching` invokes `OpportunityEvaluator` directly and is only a secondary regression check.
+
 ### OpenRouter Configuration
 
 Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental), `NEGOTIATION_MAX_TURNS_CHAT` (default 4, chat-path negotiations), `NEGOTIATION_MAX_TURNS_AMBIENT` (default 6, ambient/background negotiations). Use `ToolContext.modelConfig` to inject config per-request via `ChatAgent.create`; only `ChatAgent` reads `ModelConfig` from `ToolContext` — most other protocol agents rely on `OPENROUTER_API_KEY` in the environment (some accept an explicit `ModelConfig` as a direct parameter to `createModel()`).

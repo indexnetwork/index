@@ -12,28 +12,34 @@ equivalent env) — harnesses call real models.
 
 | Harness    | Script                  | Agent(s) under test                                              |
 | :--------- | :---------------------- | :-------------------------------------------------------------- |
-| `matching`    | `bun run eval:matching`    | `OpportunityEvaluator.invokeEntityBundle` (which people get surfaced + scored) |
+| `matching`    | `bun run eval:matching`    | `OpportunityEvaluator.invokeEntityBundle` (secondary evaluator-only regression check) |
+| `hyde`        | `bun run eval:hyde`        | Paired real legacy/frame-v1 HyDE generation, validation, embedding, and in-memory retrieval |
 | `premise`     | `bun run eval:premise`     | `PremiseDecomposer.invoke`, `PremiseAnalyzer.invoke`                           |
 | `profile`     | `bun run eval:profile`     | `ProfileGenerator.invoke` (incl. the PII-redaction guarantee)                 |
 | `opportunity` | `bun run eval:opportunity` | `OpportunityPresenter.present` (the user-facing card: headline/summary/greeting) |
 
 Each harness has its own README with full flag docs:
-[`matching`](./matching/README.md) · [`premise`](./premise/README.md) ·
-[`profile`](./profile/README.md) · [`opportunity`](./opportunity/README.md).
+[`matching`](./matching/README.md) · [`hyde`](./hyde/README.md) ·
+[`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
+[`opportunity`](./opportunity/README.md).
+
+The IND-426 `hyde` harness is intentionally retrieval-only and has no committed baseline;
+its full multi-run paired report is reviewed directly. The `matching` harness calls
+`OpportunityEvaluator` without HyDE and is not retrieval evidence.
 
 `matching` scores *which* people get surfaced; `opportunity` judges the *card a person
 actually reads* once a match exists — complementary surfaces of the same feature.
 
-Common flags (all harnesses): `--runs N`, `--rule R`, `--case ID`, `--tier N`,
+Common flags (most baseline-backed harnesses): `--runs N`, `--rule R`, `--case ID`, `--tier N`,
 `--list-cases`, `--no-judge`, `--update-baseline`, `--report [path]`, `--html [path]`,
 `--rolling-baseline [days]`, `--alpha P`, `--no-save`. The `premise` harness additionally
 takes `--component decompose|analyze`.
 
 ## Architecture: shared lib + thin harnesses
 
-The harness-agnostic machinery lives in [`eval/shared/`](./shared) and is reused by every
-harness, so a new harness only authors its corpus, scorer, and CLI — never the statistics,
-baseline math, or reporting again.
+The harness-agnostic machinery lives in [`eval/shared/`](./shared) and is reused by the
+baseline-backed scorecard harnesses. HyDE is deliberately smaller and standalone because
+it reports paired retrieval ranks/diagnostics and has no canonical baseline.
 
 ```
 eval/
@@ -50,6 +56,7 @@ eval/
 │   ├── index.ts            # barrel export — import everything from "../shared/index.js"
 │   └── tests/              # unit tests for the shared lib
 ├── matching/               # matching corpus, scorer, bespoke HTML renderer
+├── hyde/                   # paired retrieval eval; intentionally no canonical baseline
 ├── premise/                # premise corpus, scorer, reporter (shared HTML shell)
 ├── profile/                # profile corpus, scorer, PII detectors, reporter
 └── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
@@ -138,6 +145,10 @@ These are standard `bun test` specs — they do NOT invoke live agents; they val
 scoring logic, runner wiring, reporter math, and baseline handling.
 
 ## Baseline contract
+
+The drift-focused `hyde` harness is the exception: it rejects `--update-baseline` and must
+not turn filtered/single runs into canonical evidence. The contract below applies to the
+baseline-backed harnesses.
 
 - **Committed baseline** (`baselines/<name>.baseline.json`): the scorecard with per-run
   `detail` stripped (via the harness's `leanCase`). Kept lean so diffs are meaningful.
