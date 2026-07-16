@@ -79,6 +79,7 @@ export function createNewbornOpportunityStamper(
 
       const bounded = items
         .map((item, index) => ({ item, index }))
+        .filter(({ item }) => item.detection.triggeredBy === intentId)
         .sort((a, b) => (b.item.interpretation.confidence ?? 0) - (a.item.interpretation.confidence ?? 0))
         .slice(0, POOL_DISCRIMINATOR_MAX_CANDIDATES);
       const candidates = await deps.buildCandidateContexts(
@@ -123,6 +124,8 @@ export function createNewbornOpportunityStamper(
           if (itemIndex === undefined) continue;
           const write = buildPoolAdjustment({
             questionId: preference.questionId,
+            recipientUserId: ownerUserId,
+            intentId,
             label: preference.label,
             assignedSide: assignment.side,
             chosenSide: preference.chosenSide,
@@ -134,7 +137,12 @@ export function createNewbornOpportunityStamper(
             ...item.interpretation,
             signals: [
               ...(item.interpretation.signals ?? []).filter(
-                (signal) => !(signal.type === 'pool_discriminator' && signal.questionId === preference.questionId),
+                (signal) => !(
+                  signal.type === 'pool_discriminator' &&
+                  signal.questionId === preference.questionId &&
+                  signal.recipientUserId === ownerUserId &&
+                  signal.intentId === intentId
+                ),
               ),
               write.signal,
             ],

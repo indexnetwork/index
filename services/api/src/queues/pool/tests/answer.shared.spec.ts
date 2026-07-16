@@ -31,15 +31,24 @@ const baseInput = {
 
 describe('applyPoolAnswer', () => {
   it('applies chosen, other, and live-unassigned factors with safe signals', async () => {
-    const writes: Array<{ id: string; factor: number; side: string; weight: number; detail: string }> = [];
-    const applyAdjustments = mock(async (batch: PoolAdjustmentWrite[]) => {
-      writes.push(...batch.map(({ opportunityId, adjustment, signal }) => ({
-        id: opportunityId,
-        factor: adjustment.factor,
-        side: adjustment.side,
-        weight: signal.weight,
-        detail: signal.detail,
-      })));
+    const writes: Array<{ id: string; factor: number; side: string; weight: number; detail: string; recipientUserId: string; intentId: string }> = [];
+    const applyAdjustments = mock(async (recipientUserId: string, intentId: string, batch: PoolAdjustmentWrite[]) => {
+      expect(recipientUserId).toBe(baseInput.userId);
+      expect(intentId).toBe(baseInput.intentId);
+      writes.push(...batch.map(({ opportunityId, adjustment, signal }) => {
+        expect(signal.recipientUserId).toBe(adjustment.recipientUserId);
+        expect(signal.intentId).toBe(adjustment.intentId);
+        return {
+          id: opportunityId,
+          factor: adjustment.factor,
+          side: adjustment.side,
+          weight: signal.weight,
+          detail: signal.detail,
+          recipientUserId: adjustment.recipientUserId,
+          intentId: adjustment.intentId,
+        };
+      }));
+      return batch.map((write) => write.opportunityId);
     });
     const outcome = await applyPoolAnswer({
       ...baseInput,
@@ -59,14 +68,14 @@ describe('applyPoolAnswer', () => {
     expect(outcome).toEqual({ kind: 'applied', promoted: 1, demoted: 1, unknownAdjusted: 1 });
     expect(applyAdjustments).toHaveBeenCalledTimes(1);
     expect(writes).toEqual([
-      { id: 'opp-a', factor: 1, side: 'Builders', weight: 1, detail: 'Builders vs advisors: Builders' },
-      { id: 'opp-b', factor: 0.6, side: 'Advisors', weight: -1, detail: 'Builders vs advisors: Builders' },
-      { id: 'opp-unknown', factor: 0.9, side: 'unknown', weight: 0, detail: 'Builders vs advisors: unassigned' },
+      { id: 'opp-a', factor: 1, side: 'Builders', weight: 1, detail: 'Builders vs advisors: Builders', recipientUserId: 'user-1', intentId: 'intent-1' },
+      { id: 'opp-b', factor: 0.6, side: 'Advisors', weight: -1, detail: 'Builders vs advisors: Builders', recipientUserId: 'user-1', intentId: 'intent-1' },
+      { id: 'opp-unknown', factor: 0.9, side: 'unknown', weight: 0, detail: 'Builders vs advisors: unassigned', recipientUserId: 'user-1', intentId: 'intent-1' },
     ]);
   });
 
   it('skips every write when more than 30% of assignments left the live pool', async () => {
-    const applyAdjustments = mock(async () => {});
+    const applyAdjustments = mock(async () => [] as string[]);
     const outcome = await applyPoolAnswer({
       ...baseInput,
       pool: pool([
@@ -89,7 +98,7 @@ describe('applyPoolAnswer', () => {
 
   it('does not read or write the pool for Both matter', async () => {
     const listLivePool = mock(async () => [{ id: 'opp-a', metadata: {} }]);
-    const applyAdjustments = mock(async () => {});
+    const applyAdjustments = mock(async () => [] as string[]);
     const outcome = await applyPoolAnswer({
       ...baseInput,
       selectedOption: 'Both matter',
@@ -99,6 +108,25 @@ describe('applyPoolAnswer', () => {
     expect(outcome).toEqual({ kind: 'none' });
     expect(listLivePool).not.toHaveBeenCalled();
     expect(applyAdjustments).not.toHaveBeenCalled();
+  });
+
+  it('counts only rows the transaction still found eligible after locking', async () => {
+    const outcome = await applyPoolAnswer({
+      ...baseInput,
+      pool: pool([
+        { opportunityId: 'opp-a', side: 'Builders' },
+        { opportunityId: 'opp-b', side: 'Advisors' },
+      ]),
+    }, {
+      listLivePool: async () => [
+        { id: 'opp-a' },
+        { id: 'opp-b' },
+        { id: 'opp-unknown' },
+      ],
+      applyAdjustments: async () => ['opp-b', 'opp-unknown'],
+    });
+
+    expect(outcome).toEqual({ kind: 'applied', promoted: 0, demoted: 1, unknownAdjusted: 1 });
   });
 });
 

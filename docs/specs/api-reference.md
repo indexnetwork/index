@@ -2605,7 +2605,7 @@ List opportunities for the authenticated user.
 - `status` — Filter by status: `pending`, `stalled`, `accepted`, `rejected`, `expired` (optional)
 - `networkId` — Filter by network (optional)
 - `scopeType` — Optional selected scope type. Use `intent` for selected-intent scope.
-- `scopeId` — Required when `scopeType=intent`; selected intent UUID. Composes with `networkId`; it never broadens network visibility.
+- `scopeId` — Required when `scopeType=intent`; viewer-owned selected intent UUID. Composes with `networkId`; it never broadens network visibility. Rows are returned only when every participant retains an active anchor in the intent's current `intent_networks ∩ viewer memberships` scope (paused-intent history is allowed).
 - `intentId` — Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`.
 - `limit` — Max results (optional)
 - `offset` — Pagination offset (optional)
@@ -2616,6 +2616,8 @@ List opportunities for the authenticated user.
   "opportunities": [...]
 }
 ```
+
+`interpretation.reasoning` in this user-facing list is safety-normalized. Unsupported attendance, network/community membership, residence, acquaintance, shared-session, and same-place/time claims are removed rather than returned as raw evaluator text.
 
 ### GET /api/opportunities/chat-context
 
@@ -2637,12 +2639,12 @@ Home view with dynamic sections including LLM-categorized opportunities, present
 **Query params**:
 - `networkId` — Scope to a specific network (optional)
 - `scopeType` — Optional selected scope type. Use `intent` for selected-intent scope.
-- `scopeId` — Required when `scopeType=intent`; selected intent UUID. Applied before home visibility filtering, sorting, and counterpart dedupe.
+- `scopeId` — Required when `scopeType=intent`; viewer-owned selected intent UUID. Applied before home visibility filtering, sorting, and counterpart dedupe. Pool-answer factors and deprioritization reasons apply only when their `recipientUserId + intentId` provenance exactly matches this viewer and selected intent; global Home and legacy unscoped adjustments ignore them.
 - `intentId` — Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`.
 - `limit` — Max results (optional)
 - `noCache` — Bypass home cache when `true` or `1` (optional)
 
-**Response**: JSON with categorized home sections.
+**Response**: JSON with categorized home sections. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
 
 ### POST /api/opportunities/discover
 
@@ -2658,7 +2660,7 @@ Discover opportunities via HyDE graph.
 }
 ```
 
-**Response**: JSON with discovered opportunities.
+**Response**: JSON with discovered opportunities. Public card prose and `matchReason` are safety-normalized; network/event metadata alone is never presented as attendance, membership, residence, acquaintance, or shared presence.
 
 ### GET /api/opportunities/:id
 
@@ -2781,6 +2783,8 @@ List opportunities for an index. Requires membership.
 }
 ```
 
+User-facing `interpretation.reasoning` is safety-normalized using the same deterministic affiliation/presence guard as the per-user list.
+
 ### POST /api/networks/:indexId/opportunities
 
 Create a manual opportunity (curator). Requires owner or member permission.
@@ -2804,7 +2808,7 @@ Create a manual opportunity (curator). Requires owner or member permission.
 
 `parties` must contain at least 2 entries.
 
-**Response** (`201`): JSON with created opportunity.
+**Response** (`201`): JSON with the created opportunity. The response reasoning is safety-normalized; persistence-boundary validation rejects unsupported attendance/membership/residence/shared-presence claims.
 
 ---
 

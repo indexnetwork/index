@@ -44,7 +44,7 @@ describe('buildPoolCandidateContexts', () => {
 
     expect(result.map((candidate) => candidate.id)).toEqual(['newborn-4', 'newborn-2']);
     expect(result[0].publicContext).toContain('Name candidate-b');
-    expect(result[0].publicContext).toContain('Match: Second match');
+    expect(result[0].publicContext).not.toContain('Second match');
     expect(result[0].publicContext).toContain('Premise candidate-b');
     expect(result[0].publicContext).not.toContain('introducer-1');
   });
@@ -57,7 +57,23 @@ describe('buildPoolCandidateContexts', () => {
       getPremisesForUser: async () => { throw new Error('premises unavailable'); },
     }));
 
-    expect(result).toEqual([{ id: 'newborn-0', publicContext: 'Match: Safe bounded match', score: 0.8 }]);
+    expect(result).toEqual([{ id: 'newborn-0', publicContext: '', score: 0.8 }]);
+  });
+
+  it('omits legacy evaluator reasoning from discriminator evidence context', async () => {
+    const result = await buildPoolCandidateContexts(owner, [
+      {
+        id: 'legacy-unsafe',
+        opportunity: opportunity(
+          'candidate-a',
+          'Alice attended Edge Esmeralda. Their technical skills complement each other.',
+        ),
+      },
+    ], deps());
+
+    expect(result[0].publicContext).not.toContain('attended Edge Esmeralda');
+    expect(result[0].publicContext).not.toContain('technical skills complement');
+    expect(result[0].publicContext).not.toContain('Match:');
   });
 
   it('omits entries without a counterpart instead of changing neighboring ids', async () => {

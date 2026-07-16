@@ -313,6 +313,7 @@ export class ChatDatabaseAdapter {
         .where(
           and(
             eq(schema.networkMembers.userId, userId),
+            isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt),
             or(
               eq(schema.networks.isPersonal, false),
@@ -349,6 +350,7 @@ export class ChatDatabaseAdapter {
           and(
             eq(schema.networkMembers.networkId, networkId),
             eq(schema.networkMembers.userId, userId),
+            isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt)
           )
         )
@@ -358,6 +360,33 @@ export class ChatDatabaseAdapter {
       logger.error('ChatDatabaseAdapter.getNetworkMembership error', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
+  }
+
+  async getActiveNetworkMembershipPairs(
+    pairs: Array<{ userId: string; networkId: string }>,
+  ): Promise<Array<{ userId: string; networkId: string }>> {
+    if (pairs.length === 0) return [];
+    const uniquePairs = [...new Map(
+      pairs.map((pair) => [`${pair.userId}\u0000${pair.networkId}`, pair] as const),
+    ).values()];
+    const pairPredicates = uniquePairs.map((pair) => and(
+      eq(schema.networkMembers.userId, pair.userId),
+      eq(schema.networkMembers.networkId, pair.networkId),
+    ));
+    const rows = await db
+      .select({
+        userId: schema.networkMembers.userId,
+        networkId: schema.networkMembers.networkId,
+      })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+      .where(and(
+        or(...pairPredicates),
+        isNull(schema.networkMembers.deletedAt),
+        isNull(schema.networks.deletedAt),
+      ));
+    return rows.sort((a, b) =>
+      a.userId.localeCompare(b.userId) || a.networkId.localeCompare(b.networkId));
   }
 
   async getNetwork(networkId: string): Promise<{
@@ -2354,11 +2383,24 @@ export class ChatDatabaseAdapter {
   async createOpportunity(data: CreateOpportunityInput): Promise<OpportunityRow> {
     return this.opportunityAdapter.createOpportunity(data);
   }
+  async createOpportunityIfNetworkEligible(
+    data: CreateOpportunityInput,
+    eligibility: Parameters<OpportunityDatabaseAdapter['createOpportunityIfNetworkEligible']>[1],
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.createOpportunityIfNetworkEligible(data, eligibility);
+  }
   async createOpportunityAndExpireIds(
     data: CreateOpportunityInput,
     expireIds: string[]
   ): Promise<{ created: OpportunityRow; expired: OpportunityRow[] }> {
     return this.opportunityAdapter.createOpportunityAndExpireIds(data, expireIds);
+  }
+  async createOpportunityAndExpireIdsIfNetworkEligible(
+    data: CreateOpportunityInput,
+    expireIds: string[],
+    eligibility: Parameters<OpportunityDatabaseAdapter['createOpportunityAndExpireIdsIfNetworkEligible']>[2],
+  ): Promise<{ created: OpportunityRow; expired: OpportunityRow[] } | null> {
+    return this.opportunityAdapter.createOpportunityAndExpireIdsIfNetworkEligible(data, expireIds, eligibility);
   }
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.getOpportunity(id);
@@ -2385,6 +2427,12 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForUser(userId, options);
   }
+  async getLivePoolOpportunitiesForIntent(
+    recipientUserId: string,
+    intentId: string,
+  ): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.getLivePoolOpportunitiesForIntent(recipientUserId, intentId);
+  }
   async getOpportunitiesForNetwork(
     networkId: string,
     options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
@@ -2398,6 +2446,14 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy);
   }
+  async updateOpportunityStatusIfNetworkEligible(
+    id: string,
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    actors: Array<{ userId: string; networkId: string }>,
+    eligibility: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[3],
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.updateOpportunityStatusIfNetworkEligible(id, status, actors, eligibility);
+  }
   async updateOpportunityActorApproval(
     id: string,
     introducerUserId: string,
@@ -2409,9 +2465,11 @@ export class ChatDatabaseAdapter {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
   }
   async applyOpportunityPoolAdjustments(
-    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[0],
-  ): Promise<void> {
-    await this.opportunityAdapter.applyOpportunityPoolAdjustments(writes);
+    recipientUserId: string,
+    intentId: string,
+    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[2],
+  ): Promise<string[]> {
+    return this.opportunityAdapter.applyOpportunityPoolAdjustments(recipientUserId, intentId, writes);
   }
   async stampOpportunityActorAction(
     id: string,
@@ -3688,9 +3746,14 @@ export class ChatDatabaseAdapter {
         1 - (i.embedding <=> ${vectorStr}::vector) AS similarity
       FROM ${schema.intents} i
       JOIN ${schema.intentNetworks} ine ON i.id = ine.intent_id
+      JOIN ${schema.networkMembers} nm
+        ON nm.user_id = i.user_id AND nm.network_id = ine.network_id
+      JOIN ${schema.networks} n ON n.id = ine.network_id
       JOIN ${schema.users} u ON i.user_id = u.id
       WHERE ine.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}])
         AND i.user_id != ${excludeUserId}
+        AND nm.deleted_at IS NULL
+        AND n.deleted_at IS NULL
         AND (i.status = 'ACTIVE' OR i.status IS NULL)
         AND i.archived_at IS NULL
         AND i.embedding IS NOT NULL

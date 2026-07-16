@@ -24,13 +24,17 @@ export interface FromIntentJobData {
   trigger?: 'pool_answer' | 'intent_resume';
 }
 
-export type FromIntentDatabase = Pick<ChatDatabaseAdapter, 'getIntentForIndexing'>;
+export type FromIntentDatabase = Pick<
+  ChatDatabaseAdapter,
+  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser'
+>;
 
 export interface FromIntentGraphInvokeOptions {
   userId: string;
   searchQuery: string;
   operationMode: 'create';
   networkId?: string;
+  indexScope?: string[];
   triggerIntentId: string;
   options: { initialStatus: 'latent' };
 }
@@ -133,15 +137,33 @@ export class FromIntentQueue {
       return;
     }
 
-    if (networkIds && networkIds.length === 0) {
-      this.logger.warn('Empty scoped networkIds provided, skipping fail-closed', { intentId, userId });
+    const [assignedNetworkIds, ownerMemberships] = await Promise.all([
+      this.database.getNetworkIdsForIntent(intentId),
+      this.database.getAssignmentNetworkMembershipsForUser(userId),
+    ]);
+    const activeOwnerNetworkIds = new Set(ownerMemberships.map((membership) => membership.networkId));
+    const explicitNetworkIds = networkIds == null ? null : new Set(networkIds);
+    const validNetworkIds = [...new Set(assignedNetworkIds)]
+      .filter((networkId) => activeOwnerNetworkIds.has(networkId))
+      .filter((networkId) => explicitNetworkIds == null || explicitNetworkIds.has(networkId))
+      .sort();
+
+    // A trigger intent is authoritative for admission: omitted scope means all
+    // of its still-valid assignments, never all owner memberships. Explicit
+    // scope is narrowing-only. Any empty intersection must stop before the graph,
+    // pool mining, or narration can observe an unscoped run.
+    if (validNetworkIds.length === 0) {
+      this.logger.warn('Intent has no valid discovery networks, skipping fail-closed', {
+        intentId,
+        userId,
+        assignedNetworkCount: assignedNetworkIds.length,
+        activeOwnerMembershipCount: activeOwnerNetworkIds.size,
+        explicitNetworkCount: explicitNetworkIds?.size,
+      });
       return;
     }
 
-    if (networkIds && networkIds.length > 1) {
-      this.logger.warn('Multiple networkIds provided, only first used', { intentId, networkIds });
-    }
-    this.logger.info('Starting discovery', { intentId, userId, networkIds });
+    this.logger.info('Starting discovery', { intentId, userId, networkIds: validNetworkIds });
 
     let searchQuery = intent.payload;
     if (data.trigger === 'pool_answer' && this.deps?.getPoolAnswerContext) {
@@ -163,7 +185,9 @@ export class FromIntentQueue {
       userId: userId as Id<'users'>,
       searchQuery,
       operationMode: 'create',
-      networkId: networkIds?.[0] as Id<'networks'> | undefined,
+      ...(validNetworkIds.length === 1
+        ? { networkId: validNetworkIds[0] as Id<'networks'> }
+        : { indexScope: validNetworkIds as Id<'networks'>[] }),
       triggerIntentId: intentId,
       options: { initialStatus: 'latent' },
     };

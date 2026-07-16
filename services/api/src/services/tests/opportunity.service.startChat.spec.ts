@@ -94,6 +94,43 @@ describe('OpportunityService.startChat', () => {
     expect(db.upsertContactMembership).not.toHaveBeenCalled();
   });
 
+  it('sanitizes unsafe reasoning in start-chat responses', async () => {
+    const opp = makeOpportunity({
+      interpretation: {
+        category: 'collaboration',
+        reasoning: 'Yusuf, an attendee of the Edge Esmeralda network, is a strong match.',
+        confidence: 0.85,
+        signals: [],
+      },
+    });
+    const { service } = makeServiceWithDb(opp);
+
+    const result = await service.startChat(OPP_ID, VIEWER_ID);
+
+    expect('error' in result).toBe(false);
+    if ('error' in result) throw new Error(result.error);
+    expect(result.opportunity.interpretation.reasoning).toBe('Connection opportunity');
+  });
+
+  it('sanitizes unsafe reasoning when an already-accepted chat is reopened', async () => {
+    const opp = makeOpportunity({
+      status: 'accepted',
+      interpretation: {
+        category: 'collaboration',
+        reasoning: 'Yusuf, an attendee of the Edge Esmeralda network, is a strong match.',
+        confidence: 0.85,
+        signals: [],
+      },
+    });
+    const { service } = makeServiceWithDb(opp);
+
+    const result = await service.startChat(OPP_ID, VIEWER_ID);
+
+    expect('error' in result).toBe(false);
+    if ('error' in result) throw new Error(result.error);
+    expect(result.opportunity.interpretation.reasoning).toBe('Connection opportunity');
+  });
+
   it('passes acknowledgement IDs and proceeds when the current exact set is acknowledged', async () => {
     const opp = makeOpportunity({ status: 'pending' });
     const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;

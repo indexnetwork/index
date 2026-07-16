@@ -99,17 +99,40 @@ export async function minePoolDiscriminatorsOnCompletion(trigger: PoolMiningTrig
   }
 }
 
+type PoolSelectionDatabase = Pick<
+  typeof chatDatabaseAdapter,
+  'getLivePoolOpportunitiesForIntent' | 'getOpportunitiesForUser'
+>;
+
+/** Select the mining pool using exact trigger provenance for owned intents. */
+export async function selectPoolForMining(
+  userId: string,
+  intentId: string | undefined,
+  sessionId: string | undefined,
+  database: PoolSelectionDatabase = chatDatabaseAdapter,
+) {
+  // Intent pools must use the same exact-trigger selector as Tier-0 reads and
+  // row-locked writes. Selected-intent Radar is intentionally broader for
+  // historical display (`actors[].intent`) and must never shape a question.
+  const selectedPool = intentId
+    ? await database.getLivePoolOpportunitiesForIntent(userId, intentId)
+    : await database.getOpportunitiesForUser(userId, {
+        statuses: [...POOL_STATUSES],
+        limit: 50,
+        // Chat-scoped MCP discovery creates this session's candidates as drafts;
+        // passing the session id includes them in the ad-hoc pool.
+        ...(sessionId ? { conversationId: sessionId } : {}),
+      });
+  return selectedPool
+    .filter((opportunity) => !sessionId
+      || opportunity.context?.conversationId === sessionId)
+    .slice(0, 50);
+}
+
 async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void> {
   const { userId, intentId } = trigger;
   const questionsEnabled = poolQuestionsMode() === 'on';
-  const pool = await chatDatabaseAdapter.getOpportunitiesForUser(userId, {
-    statuses: [...POOL_STATUSES],
-    limit: 50,
-    ...(intentId ? { scopeType: 'intent' as const, scopeId: intentId } : {}),
-    // Chat-scoped MCP discovery creates this session's candidates as drafts;
-    // passing the session id includes them in the pool.
-    ...(trigger.sessionId ? { conversationId: trigger.sessionId } : {}),
-  });
+  const pool = await selectPoolForMining(userId, intentId, trigger.sessionId);
 
   const withCounterpart = pool
     .map((o) => ({

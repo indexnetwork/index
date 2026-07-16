@@ -23,11 +23,13 @@ import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } fro
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../../shared/ui/lucide.icon-catalog.js';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../opportunity.labels.js';
 import { safeFallbackSummary } from '../opportunity.safe-presentation.js';
+import { buildHomeCardPresentationCacheKey, buildHomeCategoryPresentationCacheKey } from '../opportunity.presentation-cache.js';
 import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
-import { adjustedConfidence, latestPoolDemotionDetail } from '../discriminator/discriminator.adjustments.js';
+import { adjustedConfidence, latestPoolDemotionDetail, readPoolAdjustments } from '../discriminator/discriminator.adjustments.js';
+import type { PoolAdjustmentProvenance } from '../discriminator/discriminator.adjustments.js';
 import { poolQuestionsRanking } from '../discriminator/discriminator.env.js';
 
 const logger = protocolLogger('HomeGraph');
@@ -98,11 +100,26 @@ const PRESENTATION_CONCURRENCY = 50;
 const MAX_REASONING_SNIPPET_LENGTH = 240;
 const HOME_CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
 
+/** Pure cache policy for presenter cards; degraded current-request copy retries later. */
+export function isHomePresentationCacheable(
+  card: Pick<HomeCardItem, 'presentationPending' | '_presentationFallback' | 'name'>,
+  status: OpportunityStatus | undefined,
+): boolean {
+  return Boolean(
+    status &&
+    status !== 'negotiating' &&
+    !card.presentationPending &&
+    !card._presentationFallback &&
+    card.name &&
+    card.name !== 'Unknown',
+  );
+}
+
 /** Redis key for the categorizer cache, derived from the user and the ordered opportunity-id set. */
 function buildCategorizerCacheKey(userId: string, cards: HomeCardItem[]): string {
   const oppIds = cards.map((c) => c.opportunityId).join(',');
   const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
-  return `home:categories:${userId}:${hash}`;
+  return buildHomeCategoryPresentationCacheKey(userId, hash);
 }
 
 /**
@@ -163,10 +180,37 @@ const getRawConfidence = (opp: typeof HomeGraphState.State['opportunities'][numb
  * their stored factors (floor 0.3) so the user's answers re-rank the feed.
  * Flag off → identical to raw confidence (adjustments are write-only).
  */
-const getConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
+const getPoolRankingProvenance = (
+  state: typeof HomeGraphState.State,
+): PoolAdjustmentProvenance | null => {
+  if (
+    poolQuestionsRanking() !== 'on' ||
+    !state.userId ||
+    state.scopeType !== 'intent' ||
+    !state.scopeId
+  ) return null;
+  return { recipientUserId: state.userId, intentId: state.scopeId };
+};
+
+const hasPoolAdjustment = (
+  opp: typeof HomeGraphState.State['opportunities'][number],
+  provenance: PoolAdjustmentProvenance,
+): boolean => readPoolAdjustments(
+  (opp as { metadata?: Record<string, unknown> | null }).metadata,
+  provenance,
+).length > 0;
+
+const getConfidence = (
+  opp: typeof HomeGraphState.State['opportunities'][number],
+  provenance: PoolAdjustmentProvenance | null,
+): number => {
   const raw = getRawConfidence(opp);
-  if (poolQuestionsRanking() !== 'on') return raw;
-  return adjustedConfidence(raw, (opp as { metadata?: Record<string, unknown> | null }).metadata);
+  if (!provenance) return raw;
+  return adjustedConfidence(
+    raw,
+    (opp as { metadata?: Record<string, unknown> | null }).metadata,
+    provenance,
+  );
 };
 
 /** Unique non-introducer, non-viewer userIds for an opportunity (actors can repeat). */
@@ -229,6 +273,7 @@ export class HomeGraphFactory {
           // its soft targets, even after visibility filtering and dedup.
           const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
           const statuses = state.statuses ?? DEFAULT_HOME_STATUSES;
+          const poolRankingProvenance = getPoolRankingProvenance(state);
           const options: { limit?: number; networkId?: string; scopeType?: 'intent'; scopeId?: string; statuses?: OpportunityStatus[] } = {
             limit: fetchLimit,
             statuses,
@@ -280,11 +325,14 @@ export class HomeGraphFactory {
             // off. When on, re-order the already-deduped lifecycle set by
             // adjusted confidence so each client-side radar bucket reflects
             // pool answers immediately.
-            if (poolQuestionsRanking() !== 'on') {
+            if (
+              !poolRankingProvenance ||
+              !dedupedByCounterpart.some((opportunity) => hasPoolAdjustment(opportunity, poolRankingProvenance))
+            ) {
               return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
             }
             const adjustedOrder = [...dedupedByCounterpart].sort((a, b) => {
-              const confidenceDelta = getConfidence(b) - getConfidence(a);
+              const confidenceDelta = getConfidence(b, poolRankingProvenance) - getConfidence(a, poolRankingProvenance);
               if (confidenceDelta !== 0) return confidenceDelta;
               return safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt);
             });
@@ -297,8 +345,8 @@ export class HomeGraphFactory {
             const aIsIntroducer = a.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
             const bIsIntroducer = b.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
             if (aIsIntroducer !== bIsIntroducer) return aIsIntroducer ? 1 : -1;
-            const confA = getConfidence(a);
-            const confB = getConfidence(b);
+            const confA = getConfidence(a, poolRankingProvenance);
+            const confB = getConfidence(b, poolRankingProvenance);
             if (confB !== confA) return confB - confA;
             const aTime = safeParseDate(a.updatedAt);
             const bTime = safeParseDate(b.updatedAt);
@@ -324,6 +372,7 @@ export class HomeGraphFactory {
     const checkPresenterCacheNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.checkPresenterCache", async () => {
         const { opportunities, userId } = state;
+        const poolRankingProvenance = getPoolRankingProvenance(state);
         if (opportunities.length === 0) {
           return { cachedCards: new Map(), uncachedOpportunities: [] };
         }
@@ -344,8 +393,8 @@ export class HomeGraphFactory {
           const cacheable = opportunities.filter((opp) => opp.status !== 'negotiating');
           const liveNegotiating = opportunities.filter((opp) => opp.status === 'negotiating');
 
-          const keys = cacheable.map(
-            (opp) => `home:card:${opp.id}:${opp.status}:${userId}`
+          const keys = cacheable.map((opp) =>
+            buildHomeCardPresentationCacheKey(opp.id, opp.status, userId)
           );
           const results = keys.length > 0 ? await this.cache.mget<HomeCardItem>(keys) : [];
 
@@ -358,8 +407,11 @@ export class HomeGraphFactory {
               const originalIndex = opportunities.indexOf(cacheable[i]);
               // Stamp the live status: pre-status cache entries lack the field,
               // and the key already guarantees it matches the current status.
-              const deprioritizedReason = poolQuestionsRanking() === 'on'
-                ? latestPoolDemotionDetail((cacheable[i] as { metadata?: Record<string, unknown> | null }).metadata)
+              const deprioritizedReason = poolRankingProvenance
+                ? latestPoolDemotionDetail(
+                    (cacheable[i] as { metadata?: Record<string, unknown> | null }).metadata,
+                    poolRankingProvenance,
+                  )
                 : undefined;
               cachedCards.set(cacheable[i].id, {
                 ...cached,
@@ -564,6 +616,7 @@ export class HomeGraphFactory {
               viewerRole,
               isGhost: isCounterpartGhost,
               ...(secondPartyData ? { secondParty: secondPartyData } : {}),
+              _presentationFallback: true,
               _cardIndex: cardIndex,
             });
 
@@ -590,6 +643,9 @@ export class HomeGraphFactory {
               const _presenterDuration = Date.now() - presenterStart;
               agentTimingsAccum.push({ name: 'opportunity.presenter', durationMs: _presenterDuration });
               _traceEmitterPresenter?.({ type: "agent_end", name: "opportunity-presenter", durationMs: _presenterDuration, summary: `Presented: ${userName}` });
+              if (presentation.isFallback) {
+                return fallbackCard();
+              }
               let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
               // Only show a person as narrator when they are the introducer and not the display counterpart
               // (bad data can have same user as introducer and party, e.g. "Amina introduced you to Amina")
@@ -646,11 +702,15 @@ export class HomeGraphFactory {
     const cachePresenterResultsNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.cachePresenterResults", async () => {
         const { cards, cachedCards, userId, opportunities } = state;
+        const poolRankingProvenance = getPoolRankingProvenance(state);
         const liveById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
         const cardsWithAdjustments = cards.map((card) => {
           const opportunity = liveById.get(card.opportunityId);
-          const deprioritizedReason = poolQuestionsRanking() === 'on'
-            ? latestPoolDemotionDetail((opportunity as { metadata?: Record<string, unknown> | null } | undefined)?.metadata)
+          const deprioritizedReason = poolRankingProvenance
+            ? latestPoolDemotionDetail(
+                (opportunity as { metadata?: Record<string, unknown> | null } | undefined)?.metadata,
+                poolRankingProvenance,
+              )
             : undefined;
           return { ...card, deprioritizedReason };
         });
@@ -663,16 +723,11 @@ export class HomeGraphFactory {
           await Promise.all(
             newCards.map((card) => {
               const status = statusById.get(card.opportunityId);
-              // Skip persisting negotiating cards — see read-side note.
-              if (!status || status === 'negotiating') return Promise.resolve();
-              // Never cache skeleton cards — they carry no presenter text and
-              // would otherwise be served as "complete" for the full TTL.
-              if (card.presentationPending) return Promise.resolve();
-              // Skip caching cards with unresolved names — transient DB failures
-              // would persist "Unknown" placeholders for the full TTL.
-              if (!card.name || card.name === 'Unknown') return Promise.resolve();
+              // Negotiating, skeleton, fallback, and unresolved-name cards are
+              // safe for the current response but must not become 24h entries.
+              if (!status || !isHomePresentationCacheable(card, status)) return Promise.resolve();
               return this.cache.set(
-                `home:card:${card.opportunityId}:${status}:${userId}`,
+                buildHomeCardPresentationCacheKey(card.opportunityId, status, userId),
                 card,
                 { ttl: HOME_CACHE_TTL }
               );
@@ -717,8 +772,11 @@ export class HomeGraphFactory {
         // status, so dynamic categorization would erase the adjusted order on
         // the full second-phase response. Flag off retains the legacy path.
         // Chunk by MAX_ITEMS_PER_SECTION because normalizeAndSort caps sections.
+        const poolRankingProvenance = getPoolRankingProvenance(state);
         const preserveAdjustedLifecycleOrder =
-          (state.statuses?.length ?? 0) > 0 && poolQuestionsRanking() === 'on';
+          (state.statuses?.length ?? 0) > 0 &&
+          poolRankingProvenance !== null &&
+          state.opportunities.some((opportunity) => hasPoolAdjustment(opportunity, poolRankingProvenance));
         if (state.presentation === 'skeleton' || preserveAdjustedLifecycleOrder) {
           const sectionProposals: HomeSectionProposal[] = [];
           for (let start = 0; start < state.cards.length; start += MAX_ITEMS_PER_SECTION) {
@@ -796,7 +854,11 @@ export class HomeGraphFactory {
 
     const cacheCategorizerResultsNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.cacheCategorizerResults", async () => {
-        if (state.categoryCacheHit || state.sectionProposals.length === 0) {
+        if (
+          state.categoryCacheHit ||
+          state.sectionProposals.length === 0 ||
+          state.cards.some((card) => card._presentationFallback)
+        ) {
           return {};
         }
 
@@ -834,7 +896,7 @@ export class HomeGraphFactory {
             .map((i) => {
               usedIndices.add(i);
               const card = cards[i];
-              const { _cardIndex, ...rest } = card;
+              const { _cardIndex, _presentationFallback, ...rest } = card;
               return rest;
             });
           return {

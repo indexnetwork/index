@@ -37,6 +37,8 @@ export interface HomeCardItem {
    * full view. Skeleton cards are never written to the presenter cache.
    */
   presentationPending?: boolean;
+  /** Internal marker: safe deterministic fallback rendered, but must not be cached. */
+  _presentationFallback?: boolean;
   /** For section assignment from LLM */
   _cardIndex: number;
 }
@@ -53,7 +55,7 @@ export interface HomeSectionProposal {
 }
 
 /** Card item as returned in API (no internal _cardIndex). */
-export type HomeSectionItem = Omit<HomeCardItem, '_cardIndex'>;
+export type HomeSectionItem = Omit<HomeCardItem, '_cardIndex' | '_presentationFallback'>;
 
 /**
  * Final section for API response.

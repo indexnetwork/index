@@ -5,6 +5,7 @@ import type { PoolAdjustment } from "../discriminator.adjustments.js";
 import type { QuestionPoolDiscriminator } from "../../../shared/schemas/question.schema.js";
 
 const NOW = "2026-07-15T13:00:00.000Z";
+const PROVENANCE = { recipientUserId: "user-1", intentId: "intent-1" };
 
 function discriminator(overrides: Partial<QuestionPoolDiscriminator> = {}): QuestionPoolDiscriminator {
   return {
@@ -26,6 +27,7 @@ function discriminator(overrides: Partial<QuestionPoolDiscriminator> = {}): Ques
 function adjustment(overrides: Partial<PoolAdjustment> = {}): PoolAdjustment {
   return {
     questionId: "q-1",
+    ...PROVENANCE,
     label: "axis",
     side: "A",
     factor: 0.6,
@@ -36,24 +38,24 @@ function adjustment(overrides: Partial<PoolAdjustment> = {}): PoolAdjustment {
 
 describe("buildPoolAdjustment", () => {
   it("preserves exact chosen, other, and unknown P3 semantics", () => {
-    expect(buildPoolAdjustment({ questionId: "q-1", label: "Style", assignedSide: "Hands-on", chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
-      adjustment: { questionId: "q-1", label: "Style", side: "Hands-on", factor: 1, appliedAt: NOW },
-      signal: { type: "pool_discriminator", weight: 1, detail: "Style: Hands-on", questionId: "q-1" },
+    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: "Hands-on", chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
+      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "Hands-on", factor: 1, appliedAt: NOW },
+      signal: { type: "pool_discriminator", weight: 1, ...PROVENANCE, detail: "Style: Hands-on", questionId: "q-1" },
     });
-    expect(buildPoolAdjustment({ questionId: "q-1", label: "Style", assignedSide: "Advisory", chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
-      adjustment: { questionId: "q-1", label: "Style", side: "Advisory", factor: 0.6, detail: "Style: you chose Hands-on", appliedAt: NOW },
-      signal: { type: "pool_discriminator", weight: -1, detail: "Style: Hands-on", questionId: "q-1" },
+    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: "Advisory", chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
+      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "Advisory", factor: 0.6, detail: "Style: you chose Hands-on", appliedAt: NOW },
+      signal: { type: "pool_discriminator", weight: -1, ...PROVENANCE, detail: "Style: Hands-on", questionId: "q-1" },
     });
-    expect(buildPoolAdjustment({ questionId: "q-1", label: "Style", assignedSide: null, chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
-      adjustment: { questionId: "q-1", label: "Style", side: "unknown", factor: 0.9, appliedAt: NOW },
-      signal: { type: "pool_discriminator", weight: 0, detail: "Style: unassigned", questionId: "q-1" },
+    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: null, chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
+      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "unknown", factor: 0.9, appliedAt: NOW },
+      signal: { type: "pool_discriminator", weight: 0, ...PROVENANCE, detail: "Style: unassigned", questionId: "q-1" },
     });
   });
 });
 
 describe("planPoolAdjustments", () => {
   it("factors chosen side 1.0 and other side 0.6 with a demotion detail from the user's own words", () => {
-    const plan = planPoolAdjustments(discriminator(), "Hands-on builder", "q-1", NOW);
+    const plan = planPoolAdjustments(discriminator(), "Hands-on builder", "q-1", PROVENANCE.recipientUserId, PROVENANCE.intentId, NOW);
     expect(plan).toHaveLength(3);
     const byId = new Map(plan.map((p) => [p.opportunityId, p.adjustment]));
     expect(byId.get("opp-1")).toMatchObject({ factor: 1, questionId: "q-1" });
@@ -68,11 +70,12 @@ describe("planPoolAdjustments", () => {
       weight: -1,
       detail: "Hands-on builders vs advisors: Hands-on builder",
       questionId: "q-1",
+      ...PROVENANCE,
     });
   });
 
   it("returns an empty plan for 'Both matter' (label not a side)", () => {
-    expect(planPoolAdjustments(discriminator(), "Both matter", "q-1", NOW)).toEqual([]);
+    expect(planPoolAdjustments(discriminator(), "Both matter", "q-1", PROVENANCE.recipientUserId, PROVENANCE.intentId, NOW)).toEqual([]);
   });
 
   it("matches word-capped chip labels against longer side labels", () => {
@@ -81,7 +84,7 @@ describe("planPoolAdjustments", () => {
       assignments: [{ opportunityId: "opp-1", side: "one two three four five six" }],
     });
     // Chip label was capped at 5 words in synthesis.
-    const plan = planPoolAdjustments(d, "one two three four five", "q-1", NOW);
+    const plan = planPoolAdjustments(d, "one two three four five", "q-1", PROVENANCE.recipientUserId, PROVENANCE.intentId, NOW);
     expect(plan).toHaveLength(1);
     expect(plan[0].adjustment.factor).toBe(1);
   });
@@ -97,22 +100,32 @@ describe("merge/remove/read", () => {
     expect(m2.other).toBe(true);
   });
 
-  it("merge keeps entries from other questions", () => {
+  it("merge keeps entries from other questions and provenance", () => {
     const m1 = mergePoolAdjustment(undefined, adjustment({ questionId: "q-1" }));
     const m2 = mergePoolAdjustment(m1, adjustment({ questionId: "q-2" }));
-    expect(readPoolAdjustments(m2)).toHaveLength(2);
+    const m3 = mergePoolAdjustment(m2, adjustment({ questionId: "q-1", recipientUserId: "user-2" }));
+    expect(readPoolAdjustments(m3)).toHaveLength(3);
   });
 
-  it("remove deletes all entries for a questionId and preserves the rest", () => {
-    const m = mergePoolAdjustment(mergePoolAdjustment(undefined, adjustment({ questionId: "q-1" })), adjustment({ questionId: "q-2" }));
-    const removed = removePoolAdjustment(m, "q-1");
-    expect(readPoolAdjustments(removed).map((a) => a.questionId)).toEqual(["q-2"]);
+  it("remove deletes only exact question provenance and preserves the rest", () => {
+    const m = mergePoolAdjustment(
+      mergePoolAdjustment(undefined, adjustment({ questionId: "q-1" })),
+      adjustment({ questionId: "q-1", recipientUserId: "user-2" }),
+    );
+    const removed = removePoolAdjustment(m, "q-1", PROVENANCE);
+    expect(readPoolAdjustments(removed)).toEqual([
+      adjustment({ questionId: "q-1", recipientUserId: "user-2" }),
+    ]);
   });
 
-  it("read tolerates malformed metadata", () => {
+  it("read tolerates malformed metadata and ignores legacy entries without provenance", () => {
     expect(readPoolAdjustments(null)).toEqual([]);
     expect(readPoolAdjustments({ poolAdjustments: "junk" })).toEqual([]);
     expect(readPoolAdjustments({ poolAdjustments: [{ nonsense: 1 }] })).toEqual([]);
+    expect(readPoolAdjustments({ poolAdjustments: [
+      { questionId: "legacy", factor: 0.6 },
+      { questionId: "half-legacy", recipientUserId: "user-1", factor: 0.6 },
+    ] })).toEqual([]);
   });
 
   it("returns only the latest explainable demotion detail for card UI", () => {
@@ -123,8 +136,8 @@ describe("merge/remove/read", () => {
         adjustment({ questionId: "q-3", factor: 0.6, detail: "Latest: you chose B" }),
       ],
     };
-    expect(latestPoolDemotionDetail(metadata)).toBe("Latest: you chose B");
-    expect(latestPoolDemotionDetail({})).toBeUndefined();
+    expect(latestPoolDemotionDetail(metadata, PROVENANCE)).toBe("Latest: you chose B");
+    expect(latestPoolDemotionDetail({}, PROVENANCE)).toBeUndefined();
   });
 });
 
@@ -139,17 +152,17 @@ describe("multiplier + adjustedConfidence", () => {
     let m: Record<string, unknown> = {};
     for (let i = 0; i < 4; i++) m = mergePoolAdjustment(m, adjustment({ questionId: `q-${i}`, factor: 0.6 }));
     // 0.6^4 = 0.1296 → floored at 0.3
-    expect(poolAdjustmentMultiplier(m)).toBe(0.3);
-    expect(adjustedConfidence(0.9, m)).toBeCloseTo(0.27, 6);
+    expect(poolAdjustmentMultiplier(m, PROVENANCE)).toBe(0.3);
+    expect(adjustedConfidence(0.9, m, PROVENANCE)).toBeCloseTo(0.27, 6);
   });
 
   it("returns 1 with no adjustments (raw confidence preserved)", () => {
-    expect(poolAdjustmentMultiplier({})).toBe(1);
-    expect(adjustedConfidence(0.87, null)).toBe(0.87);
+    expect(poolAdjustmentMultiplier({}, PROVENANCE)).toBe(1);
+    expect(adjustedConfidence(0.87, null, PROVENANCE)).toBe(0.87);
   });
 
   it("ignores non-positive/invalid factors defensively", () => {
     const m = { poolAdjustments: [adjustment({ factor: Number.NaN }), adjustment({ questionId: "q-2", factor: 0.6 })] };
-    expect(poolAdjustmentMultiplier(m)).toBeCloseTo(0.6, 6);
+    expect(poolAdjustmentMultiplier(m, PROVENANCE)).toBeCloseTo(0.6, 6);
   });
 });

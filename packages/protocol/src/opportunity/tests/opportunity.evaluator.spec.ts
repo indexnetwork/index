@@ -79,11 +79,61 @@ describe('OpportunityEvaluator', () => {
       // Verify the system prompt contains same-side matching rule
       const systemMsg = capturedMessages[0] as { content: string };
       expect(systemMsg.content).toContain('SAME-SIDE MATCHING');
+      expect(systemMsg.content).toContain('retrieval context only');
+      expect(systemMsg.content).not.toContain('CO-ATTENDANCE SIGNAL');
+      expect(systemMsg.content).not.toContain('CO-ATTENDANCE ROLE');
 
       // Verify the human message contains same-side check in discovery query rules
       const humanMsg = capturedMessages[1] as { content: string };
       expect(humanMsg.content).toContain('SAME-SIDE CHECK');
     }, 10000);
+
+    it('rejects unsupported presence claims before score filtering and returnAll', async () => {
+      const mockEntityBundleModel = {
+        invoke: async () => ({
+          opportunities: [
+            {
+              reasoning: 'The source and candidate attended the same event.',
+              score: 99,
+              actors: [
+                { userId: 'user-1', role: 'peer', intentId: null },
+                { userId: 'user-2', role: 'peer', intentId: null },
+              ],
+            },
+            {
+              reasoning: 'The candidate builds privacy tools that match the source goal.',
+              score: 40,
+              actors: [
+                { userId: 'user-1', role: 'patient', intentId: null },
+                { userId: 'user-2', role: 'agent', intentId: null },
+              ],
+            },
+          ],
+        }),
+      } as unknown as Runnable;
+      const evaluatorWithMock = new OpportunityEvaluator({
+        entityBundleModel: mockEntityBundleModel,
+      });
+      const input: EvaluatorInput = {
+        discovererId: 'user-1',
+        entities: [
+          { userId: 'user-1', profile: { name: 'Alice' }, networkId: 'event-1' },
+          { userId: 'user-2', profile: { name: 'Bob' }, networkId: 'event-1' },
+        ],
+      };
+
+      const returnAll = await evaluatorWithMock.invokeEntityBundle(input, {
+        minScore: 70,
+        returnAll: true,
+      });
+      expect(returnAll).toHaveLength(1);
+      expect(returnAll[0].reasoning).toContain('privacy tools');
+
+      const scoreFiltered = await evaluatorWithMock.invokeEntityBundle(input, {
+        minScore: 70,
+      });
+      expect(scoreFiltered).toHaveLength(0);
+    });
 
     it.skip('returns no opportunity when entities clearly already know each other (e.g. co-founders) [integration: live LLM]', async () => {
       const input: EvaluatorInput = {

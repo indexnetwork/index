@@ -97,6 +97,10 @@ export interface OpportunitySignal {
   detail?: string;
   /** Optional source question for reversible pool-preference provenance. */
   questionId?: string;
+  /** Recipient provenance for pool-discriminator signals. */
+  recipientUserId?: string;
+  /** Intent-pool provenance for pool-discriminator signals. */
+  intentId?: string;
 }
 
 /** LLM-generated interpretation of an opportunity's category and confidence. */
@@ -289,6 +293,11 @@ export interface SimilarIntentSearchOptions {
  * Represents a user's membership in an index with full details.
  * Used for displaying network memberships in chat (index_query).
  */
+export interface ActiveNetworkMembershipPair {
+  userId: string;
+  networkId: string;
+}
+
 export interface NetworkMembership {
   /** Unique identifier of the index */
   networkId: string;
@@ -503,6 +512,15 @@ export interface Opportunity {
   updatedAt: Date;
   expiresAt: Date | null;
   metadata?: Record<string, unknown> | null;
+}
+
+export interface OpportunityNetworkEligibility {
+  /** User whose active memberships define the discovery boundary. */
+  ownerUserId: string;
+  /** Request/intent-authorized networks after the latest graph-side recomputation. */
+  allowedNetworkIds: string[];
+  /** When present, each actor network must remain assigned to this intent through commit. */
+  triggerIntentId?: string;
 }
 
 export interface CreateOpportunityData {
@@ -787,6 +805,15 @@ export interface Database {
    * @returns The membership or null if not found
    */
   getNetworkMembership(networkId: string, userId: string): Promise<NetworkMembership | null>;
+
+  /**
+   * Return only requested user/network pairs backed by a live membership row
+   * and a non-deleted network. Permissions are intentionally not filtered:
+   * personal-network contacts are valid discovery participants.
+   */
+  getActiveNetworkMembershipPairs(
+    pairs: ActiveNetworkMembershipPair[],
+  ): Promise<ActiveNetworkMembershipPair[]>;
 
   /**
    * Get index by ID with core fields. Used for opportunity presentation and context rendering.
@@ -1236,6 +1263,27 @@ export interface Database {
   createOpportunity(data: CreateOpportunityData): Promise<Opportunity>;
 
   /**
+   * Atomically create only while every actor still has an active membership on
+   * the actor's network. Implementations lock the membership rows through the
+   * insert commit so concurrent removal cannot race opportunity creation.
+   */
+  createOpportunityIfNetworkEligible?(
+    data: CreateOpportunityData,
+    eligibility: OpportunityNetworkEligibility,
+  ): Promise<Opportunity | null>;
+
+  /**
+   * Atomically update status only while the supplied participant anchors remain
+   * active. Used for discovery dedup reactivation races.
+   */
+  updateOpportunityStatusIfNetworkEligible?(
+    id: string,
+    status: OpportunityStatus,
+    actors: OpportunityActor[],
+    eligibility: OpportunityNetworkEligibility,
+  ): Promise<Opportunity | null>;
+
+  /**
    * Get a single opportunity by ID.
    *
    * @param id - Opportunity ID
@@ -1282,6 +1330,16 @@ export interface Database {
   getOpportunitiesForUser(
     userId: string,
     options?: OpportunityQueryOptions
+  ): Promise<Opportunity[]>;
+
+  /**
+   * Get the live candidate pool created exactly by one intent and visible to
+   * its recipient. Unlike selected-intent reads, this never falls back to an
+   * actor.intent match.
+   */
+  getLivePoolOpportunitiesForIntent(
+    recipientUserId: string,
+    intentId: string,
   ): Promise<Opportunity[]>;
 
   /**
@@ -1355,6 +1413,13 @@ export interface Database {
     data: CreateOpportunityData,
     expireIds: string[]
   ): Promise<{ created: Opportunity; expired: Opportunity[] }>;
+
+  /** Eligibility-locked variant of create+expire for discovery persistence. */
+  createOpportunityAndExpireIdsIfNetworkEligible?(
+    data: CreateOpportunityData,
+    expireIds: string[],
+    eligibility: OpportunityNetworkEligibility,
+  ): Promise<{ created: Opportunity; expired: Opportunity[] } | null>;
 
   /**
    * Check if an opportunity already exists between the given actors in the index (deduplication).
@@ -2084,6 +2149,9 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'archiveIntent'
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
+  | 'createOpportunityIfNetworkEligible'
+  | 'createOpportunityAndExpireIdsIfNetworkEligible'
+  | 'updateOpportunityStatusIfNetworkEligible'
   | 'getOpportunity'
   | 'getOpportunitiesByIds'
   | 'opportunityExistsBetweenActors'
@@ -2105,6 +2173,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getAssignmentNetworkIdsForUser'
   | 'getNetworkMemberships'
   | 'getNetworkMembership'
+  | 'getActiveNetworkMembershipPairs'
   | 'getNetwork'
   | 'getNetworkWithPermissions'
   | 'getIntentForIndexing'
@@ -2170,10 +2239,14 @@ export type OpportunityGraphDatabase = Pick<
   Database,
   | 'getProfile'
   | 'createOpportunity'
+  | 'createOpportunityIfNetworkEligible'
+  | 'createOpportunityAndExpireIdsIfNetworkEligible'
+  | 'updateOpportunityStatusIfNetworkEligible'
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'
   | 'getUserIndexIds'
   | 'getNetworkMemberships'
+  | 'getActiveNetworkMembershipPairs'
   | 'getActiveIntents'
   | 'getNetworkIdsForIntent'
   | 'getNetwork'

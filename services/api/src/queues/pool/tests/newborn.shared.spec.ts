@@ -146,27 +146,89 @@ describe('newborn opportunity stamper', () => {
 
     const firstAdjustments = stamped[0].metadata?.poolAdjustments as Array<Record<string, unknown>>;
     expect(firstAdjustments).toEqual([
-      { questionId: 'q-stage', label: 'Company stage', side: 'unknown', factor: 0.9, appliedAt: NOW },
-      { questionId: 'q-style', label: 'Working style', side: 'Hands-on', factor: 1, appliedAt: NOW },
+      { questionId: 'q-stage', recipientUserId: owner, intentId, label: 'Company stage', side: 'unknown', factor: 0.9, appliedAt: NOW },
+      { questionId: 'q-style', recipientUserId: owner, intentId, label: 'Working style', side: 'Hands-on', factor: 1, appliedAt: NOW },
     ]);
     const secondAdjustments = stamped[1].metadata?.poolAdjustments as Array<Record<string, unknown>>;
     expect(secondAdjustments).toEqual([
-      { questionId: 'q-stage', label: 'Company stage', side: 'Growth', factor: 1, appliedAt: NOW },
-      { questionId: 'q-style', label: 'Working style', side: 'Advisory', factor: 0.6, detail: 'Working style: you chose Hands-on', appliedAt: NOW },
+      { questionId: 'q-stage', recipientUserId: owner, intentId, label: 'Company stage', side: 'Growth', factor: 1, appliedAt: NOW },
+      { questionId: 'q-style', recipientUserId: owner, intentId, label: 'Working style', side: 'Advisory', factor: 0.6, detail: 'Working style: you chose Hands-on', appliedAt: NOW },
     ]);
     expect(stamped[0].interpretation.signals?.slice(-2)).toEqual([
-      { type: 'pool_discriminator', weight: 0, detail: 'Company stage: unassigned', questionId: 'q-stage' },
-      { type: 'pool_discriminator', weight: 1, detail: 'Working style: Hands-on', questionId: 'q-style' },
+      { type: 'pool_discriminator', weight: 0, recipientUserId: owner, intentId, detail: 'Company stage: unassigned', questionId: 'q-stage' },
+      { type: 'pool_discriminator', weight: 1, recipientUserId: owner, intentId, detail: 'Working style: Hands-on', questionId: 'q-style' },
     ]);
     expect(stamped[1].interpretation.signals?.slice(-2)).toEqual([
-      { type: 'pool_discriminator', weight: 1, detail: 'Company stage: Growth', questionId: 'q-stage' },
-      { type: 'pool_discriminator', weight: -1, detail: 'Working style: Hands-on', questionId: 'q-style' },
+      { type: 'pool_discriminator', weight: 1, recipientUserId: owner, intentId, detail: 'Company stage: Growth', questionId: 'q-stage' },
+      { type: 'pool_discriminator', weight: -1, recipientUserId: owner, intentId, detail: 'Working style: Hands-on', questionId: 'q-style' },
     ]);
 
     const serialized = JSON.stringify(stamped);
     expect(serialized).not.toContain('verbatim secret evidence');
     expect(serialized).not.toContain('another secret evidence');
     expect(serialized).not.toContain('secret growth evidence');
+  });
+
+  it('re-answer stamping preserves same-question adjustments and signals from other provenance', async () => {
+    const original = item('candidate-1');
+    original.metadata = {
+      ...original.metadata,
+      poolAdjustments: [{
+        questionId: 'q-style',
+        recipientUserId: 'other-user',
+        intentId,
+        label: 'Working style',
+        side: 'Advisory',
+        factor: 0.6,
+        appliedAt: NOW,
+      }],
+    };
+    original.interpretation.signals = [
+      ...(original.interpretation.signals ?? []),
+      {
+        type: 'pool_discriminator',
+        weight: -1,
+        questionId: 'q-style',
+        recipientUserId: 'other-user',
+        intentId,
+        detail: 'Working style: Hands-on',
+      },
+    ];
+    const h = harness({ assign: async () => [{
+      questionId: 'q-style',
+      assignments: [{ candidateId: 'newborn-0', side: 'Hands-on', evidence: 'verified' }],
+    }] });
+
+    const [stamped] = await h.stamp({ ownerUserId: owner, intentId, items: [original] });
+    const adjustments = stamped.metadata?.poolAdjustments as Array<Record<string, unknown>>;
+    expect(adjustments.map((entry) => entry.recipientUserId)).toEqual(['other-user', owner]);
+    const signals = stamped.interpretation.signals?.filter(
+      (signal) => signal.type === 'pool_discriminator' && signal.questionId === 'q-style',
+    );
+    expect(signals?.map((signal) => signal.recipientUserId)).toEqual(['other-user', owner]);
+  });
+
+  it('stamps only exact triggeredBy items and leaves mismatched originals unchanged', async () => {
+    const eligible = item('candidate-1');
+    const mismatched = item('candidate-2');
+    mismatched.detection.triggeredBy = 'intent-other' as never;
+    let candidateIds: string[] = [];
+    const h = harness({
+      buildCandidateContexts: async (_ownerUserId, input) => {
+        candidateIds = input.map((entry) => entry.id);
+        return input.map((entry) => ({
+          id: entry.id,
+          publicContext: entry.id,
+          score: entry.opportunity.interpretation.confidence,
+        }));
+      },
+    });
+
+    const stamped = await h.stamp({ ownerUserId: owner, intentId, items: [eligible, mismatched] });
+    expect(candidateIds).toEqual(['newborn-0']);
+    expect(stamped[0].metadata?.poolAdjustments).toBeDefined();
+    expect(stamped[1]).toEqual(mismatched);
+    expect(stamped[1].metadata?.poolAdjustments).toBeUndefined();
   });
 
   it('preserves input length and order while stamping copied items', async () => {
