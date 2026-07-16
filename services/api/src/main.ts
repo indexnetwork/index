@@ -55,6 +55,7 @@ import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
+import { frameDriftQueue } from './queues/frame-drift.queue';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
@@ -430,6 +431,12 @@ enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
+void frameDriftQueue.start().catch((error) => {
+  log.queue.from('FrameDriftQueue').error('Frame-drift queue startup failed', {
+    event: 'frame_drift_monitoring_startup_failed',
+    error,
+  });
+});
 notificationQueue.startWorker();
 enrichmentQueue.startWorker();
 hydeQueue.startCrons();
@@ -900,6 +907,7 @@ const shutdown = async () => {
     questionerQueue.close(),
     premiseQueue.close(),
     userContextQueue.close(),
+    frameDriftQueue.close(),
   ]);
   logger.info('Workers closed');
   await Sentry.close(2000);

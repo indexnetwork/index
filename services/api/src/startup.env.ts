@@ -159,6 +159,13 @@ const envSchema = z.object({
   CHECKPOINT_RETENTION_DAYS: z.string().optional(), // whole days, or 0/off/none to disable pruning
   CHECKPOINT_PRUNE_BATCH_SIZE: optionalInt,
 
+  // 12c. Frame-drift measurement (disabled by default)
+  FRAME_DRIFT_MONITORING_ENABLED: optionalBoolean,
+  FRAME_DRIFT_MONITORING_SCHEDULE: z.string().optional(),
+  FRAME_DRIFT_MONITORING_MAX_NETWORKS: optionalInt,
+  FRAME_DRIFT_MONITORING_MAX_PAIRS: optionalInt,
+  FRAME_DRIFT_MONITORING_MIN_USERS: optionalInt,
+
   // 13. Platform-provided metadata
   RAILWAY_ENVIRONMENT: z.string().optional(),
   RAILWAY_ENVIRONMENT_NAME: z.string().optional(),

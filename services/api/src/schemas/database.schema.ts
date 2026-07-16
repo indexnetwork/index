@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, real } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, bigint, boolean, check, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, real } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm/relations';
 import { sql } from 'drizzle-orm/sql';
@@ -608,6 +608,75 @@ export const networks = pgTable('networks', {
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
   indexesKeyUnique: uniqueIndex('indexes_key_unique').on(table.key),
+}));
+
+export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
+
+export const frameDriftObservationRuns = pgTable('frame_drift_observation_runs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
+  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+  configuredEmbeddingModel: text('configured_embedding_model').notNull(),
+  maxNetworks: integer('max_networks').notNull(),
+  maxPairs: integer('max_pairs').notNull(),
+  minUsers: integer('min_users').notNull(),
+  stableCohortHash: text('stable_cohort_hash'),
+  aggregateDiagnostics: jsonb('aggregate_diagnostics').$type<Record<string, unknown>>().notNull().default({}),
+}, (table) => ({
+  bucketStartUnique: uniqueIndex('frame_drift_observation_runs_bucket_start_uniq').on(table.bucketStart),
+  bucketCheck: check('frame_drift_observation_runs_bucket_check', sql`${table.bucketEnd} = ${table.bucketStart} + interval '1 day' AND ${table.capturedAt} >= ${table.bucketEnd}`),
+  configuredEmbeddingModelCheck: check('frame_drift_observation_runs_configured_embedding_model_check', sql`length(btrim(${table.configuredEmbeddingModel})) > 0`),
+  maxNetworksCheck: check('frame_drift_observation_runs_max_networks_check', sql`${table.maxNetworks} BETWEEN 1 AND 200`),
+  maxPairsCheck: check('frame_drift_observation_runs_max_pairs_check', sql`${table.maxPairs} BETWEEN 1 AND 10000`),
+  minUsersCheck: check('frame_drift_observation_runs_min_users_check', sql`${table.minUsers} BETWEEN 2 AND 100`),
+  stableCohortHashCheck: check('frame_drift_observation_runs_stable_cohort_hash_check', sql`${table.stableCohortHash} IS NULL OR ${table.stableCohortHash} ~ '^[0-9a-f]{64}$'`),
+  aggregateDiagnosticsCheck: check('frame_drift_observation_runs_aggregate_diagnostics_check', sql`jsonb_typeof(${table.aggregateDiagnostics}) = 'object'`),
+}));
+
+export const frameCentroidSnapshots = pgTable('frame_centroid_snapshots', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  runId: text('run_id').notNull().references(() => frameDriftObservationRuns.id, { onDelete: 'cascade' }),
+  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  corpus: text('corpus').$type<FrameCentroidCorpus>().notNull(),
+  centroid: vector('centroid', { dimensions: 2000 }).notNull(),
+  sampleCount: integer('sample_count').notNull(),
+  configuredEmbeddingModel: text('configured_embedding_model').notNull(),
+  cosineDrift: doublePrecision('cosine_drift'),
+  priorBucketStart: timestamp('prior_bucket_start', { withTimezone: true }),
+  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
+  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  corpusCheck: check('frame_centroid_snapshots_corpus_check', sql`${table.corpus} IN ('premise', 'intent', 'user_context')`),
+  sampleCountCheck: check('frame_centroid_snapshots_sample_count_check', sql`${table.sampleCount} > 0`),
+  cosineDriftCheck: check('frame_centroid_snapshots_cosine_drift_check', sql`${table.cosineDrift} IS NULL OR (${table.cosineDrift} >= 0 AND ${table.cosineDrift} <= 2)`),
+  bucketRangeCheck: check('frame_centroid_snapshots_bucket_range_check', sql`${table.bucketEnd} > ${table.bucketStart}`),
+  dailyUnique: uniqueIndex('frame_centroid_snapshots_daily_uniq')
+    .on(table.networkId, table.corpus, table.configuredEmbeddingModel, table.bucketStart),
+}));
+
+export const crossNetworkYieldSnapshots = pgTable('cross_network_yield_snapshots', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  runId: text('run_id').notNull().references(() => frameDriftObservationRuns.id, { onDelete: 'cascade' }),
+  networkAId: text('network_a_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  networkBId: text('network_b_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  opportunityCount: bigint('opportunity_count', { mode: 'number' }).notNull(),
+  potentialIntentPairCount: bigint('potential_active_intent_pair_count', { mode: 'number' }).notNull(),
+  yieldRate: doublePrecision('yield_rate').notNull(),
+  yieldRateDelta: doublePrecision('yield_rate_delta'),
+  priorBucketStart: timestamp('prior_bucket_start', { withTimezone: true }),
+  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
+  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  canonicalPairCheck: check('cross_network_yield_snapshots_canonical_pair_check', sql`${table.networkAId} < ${table.networkBId}`),
+  opportunityCountCheck: check('cross_network_yield_snapshots_opportunity_count_check', sql`${table.opportunityCount} >= 0`),
+  potentialPairCountCheck: check('cross_network_yield_snapshots_potential_pair_count_check', sql`${table.potentialIntentPairCount} > 0`),
+  yieldRateCheck: check('cross_network_yield_snapshots_yield_rate_check', sql`${table.yieldRate} >= 0`),
+  bucketRangeCheck: check('cross_network_yield_snapshots_bucket_range_check', sql`${table.bucketEnd} > ${table.bucketStart}`),
+  dailyUnique: uniqueIndex('cross_network_yield_snapshots_daily_uniq')
+    .on(table.networkAId, table.networkBId, table.bucketStart),
 }));
 
 export const networkMembers = pgTable('network_members', {

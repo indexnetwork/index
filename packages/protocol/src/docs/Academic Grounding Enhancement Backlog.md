@@ -86,13 +86,14 @@ Implemented a canonical three-value QUD taxonomy across IntentClarifier and the 
 - First: capture the signals — contact source (import channel), interaction recency — as schema additions owned by `services/api`; only then classify tie strength (feeds `opportunity/opportunity.introducer.ts` routing too).
 - Exposure preview at premise→network assignment time (`shared/assignment/network-assignment.policy.ts`, threshold 0.7): "assigning this premise makes it discoverable by ~N members of X."
 
-## 8. Frame-drift monitoring — **S to start**
+## 8. Frame-drift monitoring — **Observation shipped; causal provenance pending (IND-430)**
 
 **Theory:** the report's own "Index Frame Drift Problem" — its most original contribution. Real even in the centralized implementation: per-network prompts, vocabularies, and embedding-model versions drift independently.
 
 **Work items:**
-- Start with measurement, not mechanism: a metric tracking per-network embedding centroid drift over time and cross-network match-rate decay. Note the maintenance graph (`maintenance/maintenance.graph.ts`) is **feed-view-triggered**, not periodic — a drift metric needs the cron infrastructure in `services/api/src/queues/premise.queue.ts` (`startCrons`) or a new scheduled job. Verified: no drift/centroid metric exists anywhere in `packages/protocol/src` today.
-- Only if drift is observed: consider periodic vocabulary/prompt re-alignment. Evolutionary-game machinery is premature.
+- ~~Start with measurement, not mechanism: track privacy-thresholded per-network embedding-centroid movement.~~ Shipped in IND-430 as atomically claimed, immutable capture-time observations through a disabled-by-default BullMQ scheduler and repeatable-read PostgreSQL transaction. Centroids weight users equally and require the privacy threshold; historical qualifying aggregates are not recomputed after later user deletion. See `docs/design/frame-drift-monitoring.md` in the monorepo.
+- The initial S-sized cross-network metric is only a **non-causal intent-assignment-pair normalized opportunity-yield proxy**. Each pair side must independently meet the same privacy threshold. It is not causal match provenance or an exposure probability; multi-assignment attribution is inferred from current independent `intent_networks` rows. Immutable per-discovery frame-pair/attempt provenance remains future work and is required before causal diagnosis.
+- Only after that provenance exists and actual drift/decay is observed should periodic vocabulary/prompt realignment be considered. Evolutionary-game machinery remains premature; IND-430 intentionally adds no realignment mechanism.
 
 ---
 
