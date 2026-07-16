@@ -73,6 +73,10 @@ const candidateScoreSchema = z.object({
   corpus: z.enum(['intents', 'premises']),
   hardNegativeOf: hardNegativeLinkSchema.optional(),
   score: finiteNumberSchema.min(0).max(1),
+  lensMatches: z.array(z.object({
+    lensId: z.string().min(1),
+    cosine: finiteNumberSchema.min(-1).max(1),
+  }).strict()),
   maxCosine: finiteNumberSchema.min(-1).max(1),
   qualifyingMatchCount: nonnegativeIntegerSchema,
   matchedLensIds: z.array(z.string().min(1)),

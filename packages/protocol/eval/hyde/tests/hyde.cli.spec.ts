@@ -150,7 +150,11 @@ describe('staged HyDE eval CLI arguments', () => {
     ], output.deps)).toBe(2);
     expect(output.stderr[output.stderr.length - 1]).toContain('at least twice');
 
-    expect(await runHydeEvalCli(['report', '--analysis', '/tmp/analysis'], output.deps)).toBe(2);
+    expect(await runHydeEvalCli([
+      'report', '--analysis', '/tmp/analysis', '--collection', '/tmp/collection',
+      '--private-key', '/tmp/private', '--resolved', '/tmp/resolved',
+      '--judgment', '/tmp/one', '--judgment', '/tmp/two',
+    ], output.deps)).toBe(2);
     expect(output.stderr[output.stderr.length - 1]).toContain('at least one');
     expect(await runHydeEvalCli(['validate-corpus', '--force'], output.deps)).toBe(2);
   });
@@ -297,6 +301,7 @@ describe('staged HyDE eval CLI files', () => {
       '--template', path.join(directory, 'template.json'),
     ], output.deps)).toBe(2);
     const message = output.stderr.join('\n');
+    expect(message).toContain('max cosine does not match retained per-lens cosines');
     expect(message).toContain('score formula mismatch');
     expect(message).toContain('exact stable qualified score subset');
 
@@ -324,6 +329,23 @@ describe('staged HyDE eval CLI files', () => {
       exported.batch.items.length,
     );
     expect((await stat(exported.privatePath)).mode & 0o777).toBe(0o600);
+  });
+
+  it('rejects input/output path collisions even when overwrite is forced', async () => {
+    const directory = await tempDirectory();
+    const collectionPath = path.join(directory, 'collection.json');
+    const original = buildExportableCollectionFixture();
+    await writeJson(collectionPath, original);
+    const output = capture();
+    expect(await runHydeEvalCli([
+      'export', '--collection', collectionPath,
+      '--public', collectionPath,
+      '--private-key', path.join(directory, 'private.json'),
+      '--template', path.join(directory, 'template.json'),
+      '--force',
+    ], output.deps)).toBe(2);
+    expect(output.stderr.join('\n')).toContain('must not overwrite an input artifact');
+    expect(JSON.parse(await readFile(collectionPath, 'utf8')).artifactType).toBe(original.artifactType);
   });
 
   it('resolves repeated independent judgments, always writes incomplete output, and analyzes it as insufficient', async () => {
@@ -368,7 +390,7 @@ describe('staged HyDE eval CLI files', () => {
     expect(JSON.parse(await readFile(analysisPath, 'utf8')).gates.overall).toBe('insufficient');
   });
 
-  it('maps report pass, fail, and insufficient statuses and produces byte-stable outputs', async () => {
+  it('recomputes report evidence from parent artifacts and produces byte-stable output', async () => {
     const directory = await tempDirectory();
     const exported = await exportedFixture(directory);
     const judgmentOnePath = path.join(directory, 'one.json');
@@ -391,33 +413,34 @@ describe('staged HyDE eval CLI files', () => {
     const insufficient = parseHydeAnalysisArtifact(
       JSON.parse(await readFile(analysisPath, 'utf8')) as unknown,
     );
-    const tampered = structuredClone(insufficient) as HydeAnalysisArtifact;
-    tampered.canonicality = { status: 'canonical', reasons: [] };
-    tampered.gates.overall = 'pass';
-    tampered.gates.records.forEach((record) => { record.status = 'pass'; });
+    const parentArgs = [
+      '--collection', exported.collectionPath,
+      '--private-key', exported.privatePath,
+      '--resolved', resolvedPath,
+      '--judgment', judgmentOnePath,
+      '--judgment', judgmentTwoPath,
+    ];
     const tamperedPath = path.join(directory, 'tampered-pass.json');
-    await writeJson(tamperedPath, tampered);
+    await writeJson(tamperedPath, withGateStatus(insufficient, 'pass'));
     const tamperedOutput = capture();
     expect(await runHydeEvalCli([
-      'report', '--analysis', tamperedPath, '--json', path.join(directory, 'tampered-report.json'),
+      'report', '--analysis', tamperedPath, ...parentArgs,
+      '--json', path.join(directory, 'tampered-report.json'),
     ], tamperedOutput.deps)).toBe(2);
-    expect(tamperedOutput.stderr.join('\n')).toContain('Invalid artifact');
+    expect(tamperedOutput.stderr.join('\n')).toContain('does not match recomputation');
 
-    for (const [status, expectedCode] of [['pass', 0], ['fail', 1], ['insufficient', 3]] as const) {
-      const sourcePath = path.join(directory, `${status}.json`);
-      const jsonOne = path.join(directory, `${status}-one.json`);
-      const jsonTwo = path.join(directory, `${status}-two.json`);
-      const markdownPath = path.join(directory, `${status}.md`);
-      await writeJson(sourcePath, withGateStatus(insufficient, status));
-      expect(await runHydeEvalCli([
-        'report', '--analysis', sourcePath, '--json', jsonOne, '--markdown', markdownPath,
-      ], capture().deps)).toBe(expectedCode);
-      expect(await runHydeEvalCli([
-        'report', '--analysis', sourcePath, '--json', jsonTwo,
-      ], capture().deps)).toBe(expectedCode);
-      expect(await readFile(jsonOne, 'utf8')).toBe(await readFile(jsonTwo, 'utf8'));
-      expect((await readFile(markdownPath, 'utf8')).startsWith(`# ${status.toUpperCase()}`)).toBeTrue();
-    }
+    const jsonOne = path.join(directory, 'insufficient-one.json');
+    const jsonTwo = path.join(directory, 'insufficient-two.json');
+    const markdownPath = path.join(directory, 'insufficient.md');
+    expect(await runHydeEvalCli([
+      'report', '--analysis', analysisPath, ...parentArgs,
+      '--json', jsonOne, '--markdown', markdownPath,
+    ], capture().deps)).toBe(3);
+    expect(await runHydeEvalCli([
+      'report', '--analysis', analysisPath, ...parentArgs, '--json', jsonTwo,
+    ], capture().deps)).toBe(3);
+    expect(await readFile(jsonOne, 'utf8')).toBe(await readFile(jsonTwo, 'utf8'));
+    expect((await readFile(markdownPath, 'utf8')).startsWith('# INSUFFICIENT')).toBeTrue();
   });
 
   it('refuses overwrites unless forced and reports malformed JSON with its path', async () => {
@@ -429,7 +452,10 @@ describe('staged HyDE eval CLI files', () => {
 
     const malformed = capture();
     expect(await runHydeEvalCli([
-      'report', '--analysis', malformedPath, '--json', path.join(directory, 'unused.json'),
+      'report', '--analysis', malformedPath,
+      '--collection', '/tmp/collection', '--private-key', '/tmp/private', '--resolved', '/tmp/resolved',
+      '--judgment', '/tmp/one', '--judgment', '/tmp/two',
+      '--json', path.join(directory, 'unused.json'),
     ], malformed.deps)).toBe(2);
     expect(malformed.stderr.join('\n')).toContain(`Malformed JSON at ${malformedPath}`);
 
@@ -452,15 +478,23 @@ describe('staged HyDE eval CLI files', () => {
       '--out', insufficientPath,
     ], capture().deps);
 
+    const reportParentArgs = [
+      '--collection', exported.collectionPath,
+      '--private-key', exported.privatePath,
+      '--resolved', resolvedPath,
+      '--judgment', judgmentOnePath,
+      '--judgment', judgmentTwoPath,
+    ];
     const refused = capture();
     expect(await runHydeEvalCli([
-      'report', '--analysis', insufficientPath, '--json', outputPath,
+      'report', '--analysis', insufficientPath, ...reportParentArgs, '--json', outputPath,
     ], refused.deps)).toBe(2);
     expect(refused.stderr.join('\n')).toContain('Refusing to overwrite');
     expect(await readFile(outputPath, 'utf8')).toBe('existing');
 
     expect(await runHydeEvalCli([
-      'report', '--analysis', insufficientPath, '--json', outputPath, '--force',
+      'report', '--analysis', insufficientPath, ...reportParentArgs,
+      '--json', outputPath, '--force',
     ], capture().deps)).toBe(3);
     expect(JSON.parse(await readFile(outputPath, 'utf8')).artifactType).toBe('hyde-evidence-analysis');
   });

@@ -371,13 +371,27 @@ export function sourceIdForHydeCase(c: HydeEvalCase): string {
   return `hyde-eval/${c.backgroundSource}/${c.id}`;
 }
 
+/**
+ * Reproduce the saved-intent background path's discoverer-context shape.
+ * The trigger intent is always one of the active intents in production; an
+ * authored profile sentence represents the global user-context paragraph.
+ */
+export function discovererContextForHydeCase(c: HydeEvalCase): string | undefined {
+  if (c.backgroundSource !== 'saved-intent') return undefined;
+  const lines: string[] = [];
+  if (c.profileContext) lines.push(`Context: ${c.profileContext}`);
+  lines.push('', 'Active intents:', `- ${c.sourceText}`);
+  return lines.join('\n');
+}
+
 /** Build the source identity passed to the production graph by one eval case. */
 export function hydeGraphInputForCase(c: HydeEvalCase, maxLenses: number) {
+  const profileContext = discovererContextForHydeCase(c);
   return {
     sourceType: graphSourceTypeForHydeCase(c),
     sourceId: sourceIdForHydeCase(c),
     sourceText: c.sourceText,
-    ...(c.backgroundSource === 'saved-intent' && c.profileContext ? { profileContext: c.profileContext } : {}),
+    ...(profileContext ? { profileContext } : {}),
     maxLenses,
     forceRegenerate: true as const,
   };

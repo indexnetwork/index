@@ -94,6 +94,7 @@ function result(
     corpus: candidate.corpus,
     ...(candidate.hardNegativeOf ? { hardNegativeOf: candidate.hardNegativeOf } : {}),
     score: returnedLens ? 0.9 - index / 100 : 0,
+    lensMatches: returnedLens ? [{ lensId: returnedLens, cosine: 0.9 - index / 100 }] : [],
     maxCosine: returnedLens ? 0.9 - index / 100 : 0,
     qualifyingMatchCount: returnedLens ? 1 : 0,
     matchedLensIds: returnedLens ? [returnedLens] : [],
@@ -480,7 +481,7 @@ describe('canonical HyDE evidence analysis', () => {
     lensScore.matchedLensIds = [lensScore.matchedLensIds[0], lensScore.matchedLensIds[0]];
     lensScore.score = Math.min(lensScore.maxCosine + HYDE_LENS_BONUS, 1);
     const lensAnalysis = analyze(bundle(HydeCollectionArtifactSchema.parse(lensTampered)));
-    expect(firstReasonIncludes(lensAnalysis, 'matched-lens IDs are not unique')).toBeTrue();
+    expect(firstReasonIncludes(lensAnalysis, 'matched-lens IDs do not match retained per-lens cosines')).toBeTrue();
     expect(firstReasonIncludes(lensAnalysis, 'exceeds available lenses/documents')).toBeTrue();
 
     const unknownLens = structuredClone(buildCanonicalCollection()) as HydeCollectionArtifact;
@@ -488,7 +489,7 @@ describe('canonical HyDE evidence analysis', () => {
     if (unknownLensSlot.status !== 'completed') throw new Error('Expected completed synthetic slot');
     unknownLensSlot.result.allCandidateScores[0].matchedLensIds = ['not-a-returned-document'];
     const unknownLensAnalysis = analyze(bundle(HydeCollectionArtifactSchema.parse(unknownLens)));
-    expect(firstReasonIncludes(unknownLensAnalysis, 'does not identify a returned generated document')).toBeTrue();
+    expect(firstReasonIncludes(unknownLensAnalysis, 'matched-lens IDs do not match retained per-lens cosines')).toBeTrue();
 
     const duplicateRanking = structuredClone(buildCanonicalCollection()) as HydeCollectionArtifact;
     const duplicateRankingSlot = duplicateRanking.pairedBlocks[0].legacy;

@@ -34,6 +34,7 @@ function score(
     relevanceGrade: 0,
     corpus: 'premises',
     score: adjustedScore,
+    lensMatches: adjustedScore > 0 ? [{ lensId: 'lens', cosine: maxCosine }] : [],
     maxCosine,
     qualifyingMatchCount: adjustedScore > 0 ? 1 : 0,
     matchedLensIds: adjustedScore > 0 ? ['lens'] : [],
@@ -83,13 +84,13 @@ describe('HyDE retrieval candidate scoring', () => {
     expect(() => cosineSimilarity([Number.NaN], [1])).toThrow('finite');
   });
 
-  it('preserves the exact 0.40 cutoff and 0.1 additional-lens bonus', () => {
-    expect(HYDE_EVAL_DEFAULT_MIN_SCORE).toBe(0.40);
+  it('preserves the exact 0.30 cutoff and 0.1 additional-lens bonus', () => {
+    expect(HYDE_EVAL_DEFAULT_MIN_SCORE).toBe(0.30);
     expect(HYDE_EVAL_LENS_BONUS_PER_ADDITIONAL_MATCH).toBe(0.1);
-    const exactCutoff = Math.sqrt(1 - 0.4 ** 2);
+    const exactCutoff = Math.sqrt(1 - 0.3 ** 2);
     const half = Math.sqrt(1 - 0.5 ** 2);
     const scored = scoreAllCandidates([
-      { lensId: 'cutoff', corpus: 'premises', embedding: [0.4, exactCutoff] },
+      { lensId: 'cutoff', corpus: 'premises', embedding: [0.3, exactCutoff] },
       { lensId: 'best', corpus: 'premises', embedding: [0.5, half] },
     ], [candidates[0]]);
 
@@ -140,6 +141,7 @@ describe('HyDE retrieval candidate scoring', () => {
       corpus: candidate.corpus,
       ...(candidate.hardNegativeOf ? { hardNegativeOf: candidate.hardNegativeOf } : {}),
       score: 0,
+      lensMatches: [],
       maxCosine: 0,
       qualifyingMatchCount: 0,
       matchedLensIds: [],

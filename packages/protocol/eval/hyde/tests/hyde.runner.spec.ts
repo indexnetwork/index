@@ -5,7 +5,7 @@ import type { EmbeddingGenerator } from '../../../src/shared/interfaces/embedder
 
 import { HYDE_CASES } from '../hyde.cases.js';
 import { HYDE_CANONICAL_EMBEDDING_PIN, HYDE_CANONICAL_FRAME_GENERATION_VERSION, HYDE_CANONICAL_MODEL_PINS } from '../hyde.policy.js';
-import { buildCounterbalancedSchedule, collectHydeEvidence, graphSourceTypeForHydeCase, hydeGraphInputForCase, HydeEvalRunError, RecordingGenerator, sourceIdForHydeCase, type HydeRunExecutionInput } from '../hyde.runner.js';
+import { buildCounterbalancedSchedule, collectHydeEvidence, discovererContextForHydeCase, graphSourceTypeForHydeCase, hydeGraphInputForCase, HydeEvalRunError, RecordingGenerator, sourceIdForHydeCase, type HydeRunExecutionInput } from '../hyde.runner.js';
 import type { HydeEvalRunResult } from '../hyde.types.js';
 
 const CLEAN_GIT = {
@@ -94,9 +94,24 @@ describe('collectHydeEvidence', () => {
     expect(graphSourceTypeForHydeCase(userContext)).toBe('context');
     expect(sourceIdForHydeCase(savedIntent)).toBe(`hyde-eval/saved-intent/${savedIntent.id}`);
     expect(sourceIdForHydeCase(userContext)).toBe(`hyde-eval/user-context/${userContext.id}`);
+    const savedIntentContext = discovererContextForHydeCase(savedIntent);
+    expect(savedIntentContext).toBe([
+      ...(savedIntent.profileContext ? [`Context: ${savedIntent.profileContext}`] : []),
+      '',
+      'Active intents:',
+      `- ${savedIntent.sourceText}`,
+    ].join('\n'));
     expect(hydeGraphInputForCase(savedIntent, 3)).toMatchObject({
       sourceType: 'query', sourceId: sourceIdForHydeCase(savedIntent), sourceText: savedIntent.sourceText,
+      profileContext: savedIntentContext,
     });
+    const savedWithoutAuthoredContext = HYDE_CASES.find((candidate) =>
+      candidate.backgroundSource === 'saved-intent' && candidate.profileContext === undefined);
+    if (!savedWithoutAuthoredContext) throw new Error('Expected a saved-intent case without authored context');
+    expect(discovererContextForHydeCase(savedWithoutAuthoredContext)).toBe(
+      `\nActive intents:\n- ${savedWithoutAuthoredContext.sourceText}`,
+    );
+    expect(discovererContextForHydeCase(userContext)).toBeUndefined();
     expect(hydeGraphInputForCase(userContext, 3)).toEqual({
       sourceType: 'context', sourceId: sourceIdForHydeCase(userContext), sourceText: userContext.sourceText,
       maxLenses: 3, forceRegenerate: true,
@@ -149,6 +164,7 @@ describe('collectHydeEvidence', () => {
             corpus: candidate.corpus,
             ...(candidate.hardNegativeOf ? { hardNegativeOf: candidate.hardNegativeOf } : {}),
             score: 0,
+            lensMatches: [],
             maxCosine: 0,
             qualifyingMatchCount: 0,
             matchedLensIds: [],

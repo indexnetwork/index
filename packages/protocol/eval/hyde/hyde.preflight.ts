@@ -99,32 +99,43 @@ function validateRunResult(
       || !sameJson(score.hardNegativeOf, candidate.hardNegativeOf)) {
       reasons.push(`Candidate corpus linkage or authored diagnostic metadata mismatch for ${score.candidateId} in ${result.mode} run ${result.run}`);
     }
-    if (score.qualified !== (score.qualifyingMatchCount > 0)) {
-      reasons.push(`Candidate qualification/count mismatch for ${score.candidateId} in ${result.mode} run ${result.run}`);
+    const lensMatchIds = score.lensMatches.map((match) => match.lensId);
+    if (new Set(lensMatchIds).size !== lensMatchIds.length) {
+      reasons.push(`Candidate raw lens-match IDs are not unique for ${score.candidateId} in ${result.mode} run ${result.run}`);
     }
-    if (score.matchedLensIds.length !== score.qualifyingMatchCount) {
-      reasons.push(`Candidate matched-lens count mismatch for ${score.candidateId} in ${result.mode} run ${result.run}`);
+    if (score.lensMatches.length !== result.returnedDocumentCount) {
+      reasons.push(`Candidate raw lens-match count does not cover every returned document for ${score.candidateId} in ${result.mode} run ${result.run}`);
     }
-    if (new Set(score.matchedLensIds).size !== score.matchedLensIds.length) {
-      reasons.push(`Candidate matched-lens IDs are not unique for ${score.candidateId} in ${result.mode} run ${result.run}`);
+    if (lensMatchIds.some((lensId) => !returnedLensIds.has(lensId))) {
+      reasons.push(`Candidate raw lens-match ID does not identify a returned generated document for ${score.candidateId} in ${result.mode} run ${result.run}`);
+    }
+    const recomputedMaxCosine = score.lensMatches.length === 0
+      ? 0
+      : Math.max(...score.lensMatches.map((match) => match.cosine));
+    if (score.maxCosine !== recomputedMaxCosine) {
+      reasons.push(`Candidate max cosine does not match retained per-lens cosines for ${score.candidateId} in ${result.mode} run ${result.run}`);
+    }
+    const recomputedQualifying = score.lensMatches.filter((match) => match.cosine >= cutoff);
+    const recomputedMatchedLensIds = recomputedQualifying.map((match) => match.lensId);
+    if (score.qualifyingMatchCount !== recomputedQualifying.length) {
+      reasons.push(`Candidate qualifying-match count does not match retained per-lens cosines for ${score.candidateId} in ${result.mode} run ${result.run}`);
+    }
+    if (!sameJson(score.matchedLensIds, recomputedMatchedLensIds)) {
+      reasons.push(`Candidate matched-lens IDs do not match retained per-lens cosines for ${score.candidateId} in ${result.mode} run ${result.run}`);
     }
     if (score.qualifyingMatchCount > result.lensCount
       || score.qualifyingMatchCount > result.returnedDocumentCount) {
       reasons.push(`Candidate qualifying-match count exceeds available lenses/documents for ${score.candidateId} in ${result.mode} run ${result.run}`);
     }
-    if (score.matchedLensIds.some((lensId) => !returnedLensIds.has(lensId))) {
-      reasons.push(`Candidate matched-lens ID does not identify a returned generated document for ${score.candidateId} in ${result.mode} run ${result.run}`);
+    const recomputedQualified = recomputedQualifying.length > 0;
+    if (score.qualified !== recomputedQualified) {
+      reasons.push(`Candidate qualification does not match retained per-lens cosines for ${score.candidateId} in ${result.mode} run ${result.run}`);
     }
-    if (score.qualified) {
-      const expectedScore = Math.min(score.maxCosine + lensBonus * (score.qualifyingMatchCount - 1), 1);
-      if (score.maxCosine < cutoff) {
-        reasons.push(`Qualified candidate cosine is below cutoff for ${score.candidateId} in ${result.mode} run ${result.run}`);
-      }
-      if (score.score !== expectedScore) {
-        reasons.push(`Qualified candidate score formula mismatch for ${score.candidateId} in ${result.mode} run ${result.run}`);
-      }
-    } else if (score.maxCosine >= cutoff || score.score !== 0) {
-      reasons.push(`Omitted candidate score/cosine invariant mismatch for ${score.candidateId} in ${result.mode} run ${result.run}`);
+    const recomputedScore = recomputedQualified
+      ? Math.min(recomputedMaxCosine + lensBonus * (recomputedQualifying.length - 1), 1)
+      : 0;
+    if (score.score !== recomputedScore) {
+      reasons.push(`Candidate score formula mismatch for ${score.candidateId} in ${result.mode} run ${result.run}`);
     }
   }
 

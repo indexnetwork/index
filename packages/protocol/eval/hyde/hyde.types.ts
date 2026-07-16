@@ -72,6 +72,8 @@ export interface CandidateScore {
   hardNegativeOf?: HydeHardNegativeLink;
   /** Production-approximate score after the qualifying-match bonus; zero when omitted. */
   score: number;
+  /** Raw per-lens cosines retained so score derivation can be independently revalidated. */
+  lensMatches: Array<{ lensId: string; cosine: number }>;
   /** Raw best cosine across every returned lens embedding. */
   maxCosine: number;
   qualifyingMatchCount: number;

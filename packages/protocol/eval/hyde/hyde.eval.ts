@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { parseHydeJudgmentArtifact, parseHydeResolvedAdjudicationArtifact, parseHydeResolverDecisionsArtifact, resolveAdjudications } from './hyde.adjudication.js';
 import { analyzeHydeEvidence } from './hyde.analysis.js';
-import { buildBlindExport, parseHydeAnalysisArtifact, parseHydeBlindPrivateKey, parseHydeBlindPublicBatch, parseHydeCollectionArtifact } from './hyde.artifacts.js';
+import { buildBlindExport, fingerprintHydeArtifact, parseHydeAnalysisArtifact, parseHydeBlindPrivateKey, parseHydeBlindPublicBatch, parseHydeCollectionArtifact } from './hyde.artifacts.js';
 import { assertFrozenHydeCorpus, HYDE_CASES, HYDE_CORPUS_FINGERPRINT } from './hyde.cases.js';
 import { HYDE_CANONICAL_RUNS } from './hyde.policy.js';
 import { assertCanonicalHydeCollectionPreflight } from './hyde.preflight.js';
@@ -46,7 +46,7 @@ const VALUE_OPTIONS: Readonly<Record<HydeEvalStage, readonly string[]>> = {
   export: ['--collection', '--public', '--private-key', '--template'],
   resolve: ['--batch', '--judgment', '--resolver', '--out'],
   analyze: ['--collection', '--private-key', '--resolved', '--judgment', '--resolver', '--out'],
-  report: ['--analysis', '--json', '--markdown'],
+  report: ['--analysis', '--collection', '--private-key', '--resolved', '--judgment', '--resolver', '--json', '--markdown'],
 };
 
 const FORCE_STAGES = new Set<HydeEvalStage>(['collect', 'export', 'resolve', 'analyze', 'report']);
@@ -61,7 +61,7 @@ function usage(): string {
     `  bun run eval:hyde -- export --collection PATH --public PATH --private-key PATH --template PATH [--force]\n` +
     `  bun run eval:hyde -- resolve --batch PATH --judgment PATH --judgment PATH [--resolver PATH] --out PATH [--force]\n` +
     `  bun run eval:hyde -- analyze --collection PATH --private-key PATH --resolved PATH --judgment PATH --judgment PATH [--resolver PATH] --out PATH [--force]\n` +
-    `  bun run eval:hyde -- report --analysis PATH [--json PATH] [--markdown PATH] [--force]\n\n` +
+    `  bun run eval:hyde -- report --analysis PATH --collection PATH --private-key PATH --resolved PATH --judgment PATH --judgment PATH [--resolver PATH] [--json PATH] [--markdown PATH] [--force]\n\n` +
     `Exit codes: 0 success/pass; 1 complete canonical evidence fails gates; ` +
     `2 argument/artifact/execution error; 3 incomplete, noncanonical, or insufficient evidence.\n`;
 }
@@ -143,6 +143,18 @@ async function targetExists(targetPath: string): Promise<boolean> {
   } catch (error) {
     if (isNodeError(error) && error.code === 'ENOENT') return false;
     throw error;
+  }
+}
+
+function assertNoInputOutputCollisions(
+  inputPaths: readonly string[],
+  outputPaths: readonly string[],
+): void {
+  const inputs = new Set(inputPaths.map((inputPath) => path.resolve(inputPath)));
+  for (const outputPath of outputPaths.map((candidate) => path.resolve(candidate))) {
+    if (inputs.has(outputPath)) {
+      throw new Error(`Output path must not overwrite an input artifact: ${outputPath}`);
+    }
   }
 }
 
@@ -279,6 +291,10 @@ async function runStage(parsed: ParsedArguments, deps: HydeEvalCliDeps): Promise
     const publicPath = requiredValue(parsed, '--public');
     const privatePath = requiredValue(parsed, '--private-key');
     const templatePath = requiredValue(parsed, '--template');
+    assertNoInputOutputCollisions(
+      [collectionPath],
+      [publicPath, privatePath, templatePath],
+    );
     await assertWritableTargets([publicPath, privatePath, templatePath], parsed.force);
     const collection = await readArtifact(collectionPath, parseHydeCollectionArtifact);
     assertExportableCollection(collection);
@@ -295,11 +311,15 @@ async function runStage(parsed: ParsedArguments, deps: HydeEvalCliDeps): Promise
     const judgmentPaths = valuesOf(parsed, '--judgment');
     if (judgmentPaths.length < 2) throw new Error('resolve requires --judgment PATH at least twice');
     const outputPath = requiredValue(parsed, '--out');
+    const resolverPath = optionalValue(parsed, '--resolver');
+    assertNoInputOutputCollisions(
+      [batchPath, ...judgmentPaths, ...(resolverPath ? [resolverPath] : [])],
+      [outputPath],
+    );
     await assertWritableTargets([outputPath], parsed.force);
     const batch = await readArtifact(batchPath, parseHydeBlindPublicBatch);
     const judgments = await Promise.all(judgmentPaths.map((judgmentPath) =>
       readArtifact(judgmentPath, parseHydeJudgmentArtifact)));
-    const resolverPath = optionalValue(parsed, '--resolver');
     const resolver = resolverPath
       ? await readArtifact(resolverPath, parseHydeResolverDecisionsArtifact)
       : undefined;
@@ -318,13 +338,17 @@ async function runStage(parsed: ParsedArguments, deps: HydeEvalCliDeps): Promise
     const judgmentPaths = valuesOf(parsed, '--judgment');
     if (judgmentPaths.length < 2) throw new Error('analyze requires --judgment PATH at least twice');
     const outputPath = requiredValue(parsed, '--out');
+    const resolverPath = optionalValue(parsed, '--resolver');
+    assertNoInputOutputCollisions(
+      [collectionPath, privatePath, resolvedPath, ...judgmentPaths, ...(resolverPath ? [resolverPath] : [])],
+      [outputPath],
+    );
     await assertWritableTargets([outputPath], parsed.force);
     const collection = await readArtifact(collectionPath, parseHydeCollectionArtifact);
     const privateKey = await readArtifact(privatePath, parseHydeBlindPrivateKey);
     const resolved = await readArtifact(resolvedPath, parseHydeResolvedAdjudicationArtifact);
     const judgments = await Promise.all(judgmentPaths.map((judgmentPath) =>
       readArtifact(judgmentPath, parseHydeJudgmentArtifact)));
-    const resolverPath = optionalValue(parsed, '--resolver');
     const resolver = resolverPath
       ? await readArtifact(resolverPath, parseHydeResolverDecisionsArtifact)
       : undefined;
@@ -338,13 +362,38 @@ async function runStage(parsed: ParsedArguments, deps: HydeEvalCliDeps): Promise
   }
 
   const analysisPath = requiredValue(parsed, '--analysis');
+  const collectionPath = requiredValue(parsed, '--collection');
+  const privatePath = requiredValue(parsed, '--private-key');
+  const resolvedPath = requiredValue(parsed, '--resolved');
+  const judgmentPaths = valuesOf(parsed, '--judgment');
+  if (judgmentPaths.length < 2) throw new Error('report requires --judgment PATH at least twice');
+  const resolverPath = optionalValue(parsed, '--resolver');
   const jsonPath = optionalValue(parsed, '--json');
   const markdownPath = optionalValue(parsed, '--markdown');
   if (!jsonPath && !markdownPath) throw new Error('report requires at least one of --json PATH or --markdown PATH');
   const outputs = [jsonPath, markdownPath].filter((value): value is string => value !== undefined);
+  assertNoInputOutputCollisions(
+    [analysisPath, collectionPath, privatePath, resolvedPath, ...judgmentPaths, ...(resolverPath ? [resolverPath] : [])],
+    outputs,
+  );
   await assertWritableTargets(outputs, parsed.force);
   const analysis = await readArtifact(analysisPath, parseHydeAnalysisArtifact);
-  const report = buildHydeEvidenceReport(analysis);
+  const collection = await readArtifact(collectionPath, parseHydeCollectionArtifact);
+  const privateKey = await readArtifact(privatePath, parseHydeBlindPrivateKey);
+  const resolved = await readArtifact(resolvedPath, parseHydeResolvedAdjudicationArtifact);
+  const judgments = await Promise.all(judgmentPaths.map((judgmentPath) =>
+    readArtifact(judgmentPath, parseHydeJudgmentArtifact)));
+  const resolver = resolverPath
+    ? await readArtifact(resolverPath, parseHydeResolverDecisionsArtifact)
+    : undefined;
+  const recomputed = analyzeHydeEvidence(collection, privateKey, resolved, HYDE_CASES, {
+    judgmentArtifacts: judgments,
+    ...(resolver ? { resolverDecisions: resolver } : {}),
+  });
+  if (fingerprintHydeArtifact(analysis) !== fingerprintHydeArtifact(recomputed)) {
+    throw new Error('Analysis artifact does not match recomputation from its supplied parent artifacts');
+  }
+  const report = buildHydeEvidenceReport(recomputed);
   if (jsonPath) await atomicWrite(jsonPath, jsonText(report), { force: parsed.force });
   if (markdownPath) {
     await atomicWrite(markdownPath, renderHydeEvidenceMarkdown(report), { force: parsed.force });

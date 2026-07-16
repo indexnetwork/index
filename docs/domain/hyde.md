@@ -157,8 +157,10 @@ not a direct user request. `user-context` maps to `sourceType: 'context'` with a
 synthetic source ID. Collection provenance and paired blocks record both names, while the
 blind public batch exposes neither. Removing or refactoring the direct-search product must
 preserve this saved-intent background branch or intentionally migrate the mapping and eval
-contract. Canonical execution
-fixes the cosine cutoff at `0.40`, additional-lens bonus at `0.1`, maximum lenses at 3,
+contract. Saved-intent cases always receive the production-shaped discoverer context:
+the trigger source under `Active intents:` plus an authored global `Context:` paragraph
+when the case tests profile contamination. Canonical execution fixes the live background
+cosine cutoff at `0.30`, additional-lens bonus at `0.1`, maximum lenses at 3,
 and uses four paired runs counterbalanced by a fixed case/run hash. Provenance pins are
 configured **primary** model/embedding IDs. Production retries/fallbacks remain enabled,
 but per-call fallback provider/model identity is unavailable and not recorded. Failures
@@ -203,8 +205,12 @@ candidates for every lens, matching production's cross-corpus search; target cor
 preference/limit-allocation hint rather than a filter. Provider variance and a heavy
 human-judgment burden remain. It does not establish production opportunity precision,
 recall, fairness, or external validity; canonical token/cost accounting is unavailable.
-Artifacts are unsigned, so coordinated parent edits require trusted custody/fingerprint
-review. Each export file is atomically replaced, but the public/private/template set is
+Report generation recomputes analysis from all supplied parent artifacts rather than
+trusting a standalone PASS file, and retained per-lens cosines let preflight recompute the
+score/ranking derivation. Artifacts are still unsigned and embeddings are not retained, so
+coordinated parent edits require trusted custody/fingerprint review. Human reviewer IDs
+and independence attestations likewise require external identity verification. Each export
+file is atomically replaced, but the public/private/template set is
 not transactional and `--force` regenerates opaque IDs; preserve it as one set. Run
 artifacts are gitignored and there is no committed baseline. Frame-v1 remains default-off
 until full canonical evidence is reviewed. The matching eval remains only a secondary evaluator-only

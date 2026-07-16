@@ -83,6 +83,7 @@ function result(caseId: string, run: number, mode: 'legacy' | 'frame-v1') {
       corpus: candidate.corpus,
       ...(candidate.hardNegativeOf ? { hardNegativeOf: candidate.hardNegativeOf } : {}),
       score: 0,
+      lensMatches: [{ lensId: documents.find((document) => document.returned)?.lens ?? 'fixture-lens', cosine: 0 }],
       maxCosine: 0,
       qualifyingMatchCount: 0,
       matchedLensIds: [],

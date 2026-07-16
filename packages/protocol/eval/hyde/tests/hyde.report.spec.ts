@@ -9,7 +9,7 @@ const git = {
   revisionWithDirtyMarker: 'abc123-dirty',
 } as const;
 
-function metadata(minScore = 0.4) {
+function metadata(minScore = 0.3) {
   return buildHydeEvalMetadata({
     allCases: HYDE_CASES,
     selectedCases: HYDE_CASES.slice(0, 1),
@@ -66,7 +66,7 @@ describe('HyDE report metadata', () => {
     expect(first).toMatchObject({
       git,
       generationVersion: 'frame-v1',
-      minScore: 0.4,
+      minScore: 0.3,
       lensBonus: {
         perAdditionalMatch: 0.1,
       },

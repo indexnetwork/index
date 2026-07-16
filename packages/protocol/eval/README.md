@@ -37,9 +37,12 @@ complete. Export runs a full collection-only semantic preflight before review. A
 also requires the original judgment artifacts (and resolver decisions, when used) so it
 can regenerate and revalidate the resolved parent rather than trusting a self-authored
 resolution file; its schema recomputes gates and rejects internally inconsistent PASS
-edits. Provenance pins identify configured primary IDs only: production fallback identity,
+edits. Report generation additionally recomputes the analysis from every supplied parent,
+and collection preflight recomputes score/ranking derivations from retained per-lens
+cosines. Provenance pins identify configured primary IDs only: production fallback identity,
 separate frame-extraction resources, tokens, and cost remain unavailable. The unsigned
-multi-file artifacts require external custody/fingerprint review. The `matching` harness calls `OpportunityEvaluator` without HyDE and remains
+multi-file artifacts and unauthenticated reviewer attestations require external
+custody/identity/fingerprint review. The `matching` harness calls `OpportunityEvaluator` without HyDE and remains
 only a secondary evaluator-regression check, not retrieval evidence.
 
 `matching` scores *which* people get surfaced; `opportunity` judges the *card a person

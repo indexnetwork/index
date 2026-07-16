@@ -40,7 +40,11 @@ represent a synchronous user request. Product source `user-context` maps to grap
 `sourceType: 'context'` with a stable synthetic source ID. The private collection
 provenance and every paired block record both names. Public blind adjudication records
 neither. Removing or renaming the direct-search product path must preserve this background
-saved-intent branch or intentionally migrate its mapping and this eval contract.
+saved-intent branch or intentionally migrate its mapping and this eval contract. Every
+saved-intent run receives the same context shape as the production branch: the trigger
+source appears under `Active intents:`, and an authored profile-contamination sentence,
+when present, appears as the global `Context:` paragraph. User-context cases continue to
+omit `profileContext` because the production `context` branch does not pass one.
 
 For each case, the collector embeds its candidate pool once and shares those embeddings
 across both modes and all runs. It then invokes the real production `LensInferrer`,
@@ -49,7 +53,7 @@ across both modes and all runs. It then invokes the real production `LensInferre
 agents and graph are not modified or replaced. The canonical retrieval approximation is
 fixed at:
 
-- cosine qualification cutoff: exactly `0.40`;
+- cosine qualification cutoff: exactly `0.30`, matching the live background graph;
 - score bonus: `0.1` for every additional qualifying lens match, capped at 1;
 - maximum inferred lenses: `3`;
 - configured **primary** lens-inferrer, generator, and validator model IDs pinned to
@@ -114,7 +118,10 @@ candidate disagreement and every grounding disagreement or `unable`. Production
 never rewrites human labels. An optional judgment artifact with
 `adjudicatorKind: "llm-triage"` can help triage the workload, but it is explicitly
 noncanonical and can never count as either human adjudicator or otherwise satisfy
-canonicality.
+canonicality. Adjudicator IDs and independence attestations are process assertions, not
+authenticated identities or cryptographic proof that two different people authored the
+files. The study operator must verify reviewer identity and independence outside this CLI
+and preserve that review record with the evidence artifacts.
 
 ## Staged CLI
 
@@ -185,7 +192,7 @@ production diagnostics, and saves a complete artifact such as
 ```json
 {
   "artifactType": "hyde-independent-judgment",
-  "schemaVersion": "hyde-evidence-artifact-v2",
+  "schemaVersion": "hyde-evidence-artifact-v4",
   "createdAt": "2026-01-01T00:00:00.000Z",
   "adjudicatorId": "human-a",
   "adjudicatorKind": "human",
@@ -226,7 +233,7 @@ otherwise unused item makes resolution explicitly incomplete and noncanonical:
 ```json
 {
   "artifactType": "hyde-resolver-decisions",
-  "schemaVersion": "hyde-evidence-artifact-v2",
+  "schemaVersion": "hyde-evidence-artifact-v4",
   "createdAt": "2026-01-02T00:00:00.000Z",
   "resolverId": "blind-resolver",
   "batchFingerprint": "COPY_FROM_PUBLIC_BATCH",
@@ -300,14 +307,28 @@ or canonical bootstrap provenance.
 ```bash
 bun run eval:hyde -- report \
   --analysis "$ART/analysis.json" \
+  --collection "$ART/collection.json" \
+  --private-key "$ART/private-key.json" \
+  --resolved "$ART/resolved.json" \
+  --judgment "$ART/human-a.json" \
+  --judgment "$ART/human-b.json" \
+  --judgment "$ART/llm-triage.json" \
+  --resolver "$ART/resolver.json" \
   --json "$ART/report.json" \
   --markdown "$ART/report.md"
 ```
 
-All output stages refuse to overwrite existing files unless `--force` is supplied.
-Artifacts are unsigned JSON. Parent fingerprints detect ordinary mismatch, but coordinated
-edits to all parent artifacts are outside schema verification; canonical review therefore
-depends on external custody and comparing the preserved fingerprints.
+Omit optional triage/resolver inputs exactly as for `analyze`. `report` recomputes the
+analysis from every supplied parent and refuses a standalone analysis artifact that does
+not match, so an internally consistent hand-edited PASS file cannot be rendered as
+canonical evidence. All output stages refuse to overwrite existing files unless `--force`
+is supplied, and even `--force` cannot target an input artifact path.
+
+Artifacts remain unsigned JSON. Raw per-lens cosines are retained so qualification,
+max-cosine, bonus, and ranking derivations can be recomputed, but embeddings are not stored
+and coordinated edits to all parent artifacts remain outside schema verification.
+Canonical review therefore depends on external custody, authenticated reviewer records,
+and comparing the preserved fingerprints.
 
 ### Exit codes
 
@@ -394,15 +415,16 @@ all eight gate statuses and the overall status become `INSUFFICIENT`, not pass o
   eval scoring intentionally compare every returned lens against both intent and premise
   candidates; a lens target corpus is a production preference/limit-allocation hint, not
   a corpus filter.
-- Embeddings cannot be recomputed from collection artifacts. Analysis instead enforces all
-  internal score ranges, qualification/count/cutoff/bonus invariants, frozen authored
-  diagnostic metadata, and the exact stable qualified ranking; this cannot prove the
-  underlying vectors.
+- Embeddings cannot be recomputed from collection artifacts. Collection artifacts retain
+  every per-lens cosine, allowing analysis to recompute max cosine, cutoff qualification,
+  bonus, and exact stable ranking, but they cannot prove that the retained cosines came
+  from the underlying vectors.
 - Language and embedding provider variance remains despite fixed execution/bootstrap
   schedules and configured-primary provenance pins. Production retries/fallbacks remain
   enabled, while the actual per-call provider/model identity is unavailable and unrecorded.
 - Fully blinded, independent human relevance and grounding review is expensive; LLM
-  triage cannot reduce the canonical two-human requirement. Human grades remain truth: if
+  triage cannot reduce the canonical two-human requirement. Reviewer IDs/attestations are
+  not authenticated by the CLI and require external operator verification. Human grades remain truth: if
   they show that the frozen corpus no longer has the required positives or linked hard
   negatives, evidence becomes insufficient rather than relabeling those judgments.
 - There is no synchronous direct-search cohort; `query` in private artifacts is solely the

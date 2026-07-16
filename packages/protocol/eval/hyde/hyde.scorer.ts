@@ -1,10 +1,11 @@
 import type { HydeGenerationMode } from '../../src/shared/hyde/hyde.env.js';
 
+import { HYDE_LENS_BONUS, HYDE_METRIC_K, HYDE_MIN_SCORE } from './hyde.policy.js';
 import type { CandidateScore, EmbeddedCandidate, HydeEvalRunResult, HydeModeSummary, HydeRunRetrievalMetrics, LensQueryEmbedding, RankedCandidate, RelevanceGrade, ResolvedRelevanceGrades } from './hyde.types.js';
 
-export const HYDE_EVAL_DEFAULT_MIN_SCORE = 0.40;
-export const HYDE_EVAL_LENS_BONUS_PER_ADDITIONAL_MATCH = 0.1;
-export const HYDE_EVAL_METRIC_K = 5;
+export const HYDE_EVAL_DEFAULT_MIN_SCORE = HYDE_MIN_SCORE;
+export const HYDE_EVAL_LENS_BONUS_PER_ADDITIONAL_MATCH = HYDE_LENS_BONUS;
+export const HYDE_EVAL_METRIC_K = HYDE_METRIC_K;
 export const HYDE_EVAL_SCORE_TIE_EPSILON = 1e-12;
 
 export interface HydeRankingOptions {
@@ -90,6 +91,7 @@ export function scoreAllCandidates(
       score: qualified
         ? Math.min(maxCosine + lensBonus * (qualifyingMatches.length - 1), 1)
         : 0,
+      lensMatches: matches,
       maxCosine,
       qualifyingMatchCount: qualifyingMatches.length,
       matchedLensIds: qualifyingMatches.map((match) => match.lensId),

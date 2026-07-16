@@ -1,5 +1,5 @@
 /** Versioned identifiers committed with each canonical HyDE evidence artifact. */
-export const HYDE_ARTIFACT_SCHEMA_VERSION = 'hyde-evidence-artifact-v3';
+export const HYDE_ARTIFACT_SCHEMA_VERSION = 'hyde-evidence-artifact-v4';
 export const HYDE_CORPUS_VERSION = 'hyde-frozen-corpus-v3';
 export const HYDE_RUBRIC_VERSION = 'hyde-relevance-rubric-v3';
 export const HYDE_GATE_POLICY_VERSION = 'hyde-gate-policy-v3';
@@ -36,7 +36,7 @@ export const HYDE_EXPECTED_SOURCE_PAIR_COUNTS = Object.freeze({
 export const HYDE_BOOTSTRAP_REPLICATES = 10_000;
 export const HYDE_EXECUTION_SEED = 426_202_601;
 export const HYDE_BOOTSTRAP_SEED = 426_202_602;
-export const HYDE_MIN_SCORE = 0.40;
+export const HYDE_MIN_SCORE = 0.30;
 export const HYDE_LENS_BONUS = 0.1;
 export const HYDE_MAX_LENSES = 3;
 export const HYDE_METRIC_K = 5;

@@ -106,7 +106,7 @@ describe('frozen HyDE evidence corpus', () => {
 
 describe('committed HyDE evidence policy', () => {
   it('preserves retrieval policy and canonical reproducibility constants', () => {
-    expect(HYDE_ARTIFACT_SCHEMA_VERSION).toBe('hyde-evidence-artifact-v3');
+    expect(HYDE_ARTIFACT_SCHEMA_VERSION).toBe('hyde-evidence-artifact-v4');
     expect(HYDE_CORPUS_VERSION).toBe('hyde-frozen-corpus-v3');
     expect(HYDE_RUBRIC_VERSION).toBe('hyde-relevance-rubric-v3');
     expect(HYDE_GATE_POLICY_VERSION).toBe('hyde-gate-policy-v3');
@@ -115,7 +115,7 @@ describe('committed HyDE evidence policy', () => {
     expect(HYDE_BOOTSTRAP_REPLICATES).toBe(10_000);
     expect(HYDE_EXECUTION_SEED).toBe(426_202_601);
     expect(HYDE_BOOTSTRAP_SEED).toBe(426_202_602);
-    expect(HYDE_MIN_SCORE).toBe(0.40);
+    expect(HYDE_MIN_SCORE).toBe(0.30);
     expect(HYDE_LENS_BONUS).toBe(0.1);
     expect(HYDE_MAX_LENSES).toBe(3);
     expect(HYDE_METRIC_K).toBe(5);
