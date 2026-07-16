@@ -4093,13 +4093,13 @@
           "name": "questions_pool_push_recipient_intent_cycle_uniq",
           "columns": [
             {
-              "expression": "(\"actors\"->0->>'userId')",
+              "expression": "(\"detection\"->'push'->>'recipientId')",
               "asc": true,
               "isExpression": true,
               "nulls": "last"
             },
             {
-              "expression": "(\"detection\"->>'triggeredBy')",
+              "expression": "(\"detection\"->'push'->>'intentId')",
               "asc": true,
               "isExpression": true,
               "nulls": "last"

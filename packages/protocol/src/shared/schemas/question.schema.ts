@@ -205,6 +205,8 @@ export const QuestionDetectionSchema = z.object({
   pool: QuestionPoolSnapshotSchema.optional(),
   /** Durable request marker written before enqueueing proactive delivery. Internal only. */
   pushRequestedAt: z.string().min(1).optional(),
+  /** Last bounded recovery sweep that selected this request. Internal only. */
+  pushRecoveryAttemptedAt: z.string().min(1).optional(),
   /** Durable request outcome. Internal only. */
   pushRequestStatus: QuestionPoolPushRequestStatusSchema.optional(),
   /** Permanent suppression reason for an unclaimed request. Internal only. */
@@ -231,6 +233,13 @@ export const QuestionDetectionSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["pushRequestedAt"],
       message: "push request state requires a request timestamp",
+    });
+  }
+  if (detection.pushRecoveryAttemptedAt && !detection.pushRequestedAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pushRequestedAt"],
+      message: "push recovery attempts require a request timestamp",
     });
   }
   if (detection.pushRequestStatus === "suppressed") {

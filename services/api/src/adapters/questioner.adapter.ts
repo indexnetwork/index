@@ -80,6 +80,8 @@ export interface AdapterQuestionDetection {
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
   /** Durable request marker written before Redis enqueue. Never exposed publicly. */
   pushRequestedAt?: string;
+  /** Last bounded recovery sweep that selected this request. Never exposed publicly. */
+  pushRecoveryAttemptedAt?: string;
   /** Durable request outcome. Never exposed publicly. */
   pushRequestStatus?: import('@indexnetwork/protocol').QuestionPoolPushRequestStatus;
   /** Permanent suppression reason for an unclaimed request. Never exposed publicly. */
@@ -247,6 +249,17 @@ export function isRecoverablePoolPushDetection(detection: AdapterQuestionDetecti
   return detection.pushRequestStatus === 'requested'
     && !detection.pushedAt
     && (!detection.push || detection.push.deliveryStatus === 'claimed');
+}
+
+/** Exact predicate shared by the runtime lookup and its claim-ledger invariant test. */
+export function poolPushCycleClaimPredicate(recipientId: string, intentId: string, cycleKey: string) {
+  return and(
+    sql`${questions.detection}->'push'->>'recipientId' = ${recipientId}`,
+    sql`${questions.detection}->'push'->>'intentId' = ${intentId}`,
+    sql`${questions.detection}->'push'->>'cycleKey' = ${cycleKey}`,
+    sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+    sql`${questions.detection}->'push'->>'claimedAt' IS NOT NULL`,
+  )!;
 }
 
 export interface AdapterQuestionFilters {
@@ -513,37 +526,64 @@ export class QuestionerAdapter {
   }
 
   /**
-   * List a bounded batch of durable requests that can be re-enqueued.
-   * Only explicit requested state is recoverable. Lifecycle and malformed rows
-   * are intentionally returned so the locked claim transaction can terminalize
-   * them instead of leaving a permanent minute-by-minute recovery loop.
+   * Atomically select and stamp a bounded batch of durable requests for recovery.
+   * Never-attempted requests sort first, then least-recently-attempted requests,
+   * so transiently blocked rows move behind newer work instead of monopolizing
+   * every sweep. SKIP LOCKED lets concurrent sweepers claim disjoint batches.
+   * Lifecycle and malformed rows are intentionally returned so the locked claim
+   * transaction can terminalize them.
    *
-   * @param limit - Maximum oldest requests returned per sweep.
+   * @param limit - Maximum requests selected and stamped per sweep.
    * @returns Deterministic question/authoritative actor job payloads.
    */
   async listRecoverablePoolQuestionPushRequests(limit = 100): Promise<RecoverablePoolPushRequest[]> {
     const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 500));
-    const rows = await this.db.select({
-      questionId: questions.id,
-      userId: sql<string>`COALESCE(
-        NULLIF(${questions.actors}->0->>'userId', ''),
-        NULLIF(${questions.detection}->'push'->>'recipientId', ''),
-        ''
-      )`,
-      claimed: sql<boolean>`COALESCE(${questions.detection}->'push'->>'deliveryStatus' = 'claimed', false)`,
-    })
-      .from(questions)
-      .where(and(
-        sql`${questions.detection}->>'pushRequestStatus' = 'requested'`,
-        sql`${questions.detection}->>'pushedAt' IS NULL`,
-        sql`(
-          ${questions.detection}->'push' IS NULL
-          OR ${questions.detection}->'push'->>'deliveryStatus' = 'claimed'
-        )`,
-      ))
-      .orderBy(sql`${questions.detection}->>'pushRequestedAt' NULLS FIRST`, questions.createdAt, questions.id)
-      .limit(boundedLimit);
-    return rows;
+    const rows = await this.db.execute<{
+      questionId: string;
+      userId: string;
+      claimed: boolean;
+      [key: string]: unknown;
+    }>(sql`
+      WITH selected AS (
+        SELECT recovery_candidate.id
+        FROM questions AS recovery_candidate
+        WHERE recovery_candidate.detection->>'pushRequestStatus' = 'requested'
+          AND recovery_candidate.detection->>'pushedAt' IS NULL
+          AND (
+            recovery_candidate.detection->'push' IS NULL
+            OR recovery_candidate.detection->'push'->>'deliveryStatus' = 'claimed'
+          )
+        ORDER BY
+          recovery_candidate.detection->>'pushRecoveryAttemptedAt' ASC NULLS FIRST,
+          recovery_candidate.detection->>'pushRequestedAt' ASC NULLS FIRST,
+          recovery_candidate.created_at ASC,
+          recovery_candidate.id ASC
+        LIMIT ${boundedLimit}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE questions AS recovery_question
+      SET detection = jsonb_set(
+        recovery_question.detection,
+        '{pushRecoveryAttemptedAt}',
+        to_jsonb(to_char(transaction_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+        true
+      )
+      FROM selected
+      WHERE recovery_question.id = selected.id
+      RETURNING
+        recovery_question.id AS "questionId",
+        COALESCE(
+          NULLIF(recovery_question.actors->0->>'userId', ''),
+          NULLIF(recovery_question.detection->'push'->>'recipientId', ''),
+          ''
+        ) AS "userId",
+        COALESCE(recovery_question.detection->'push'->>'deliveryStatus' = 'claimed', false) AS claimed
+    `);
+    return Array.from(rows, (row) => ({
+      questionId: row.questionId,
+      userId: row.userId,
+      claimed: row.claimed,
+    }));
   }
 
   /**
@@ -720,13 +760,7 @@ export class QuestionerAdapter {
         const [cycleClaim] = await tx
           .select({ id: questions.id })
           .from(questions)
-          .where(and(
-            recipientExpression,
-            sql`${questions.detection}->>'mode' = 'pool_discovery'`,
-            sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
-            sql`${questions.detection}->'push'->>'cycleKey' = ${cycleKey}`,
-            sql`${questions.detection}->'push'->>'claimedAt' IS NOT NULL`,
-          ))
+          .where(poolPushCycleClaimPredicate(authoritativeRecipient, intentId, cycleKey))
           .limit(1);
         if (cycleClaim) return terminalizePermanentRequest('cycle_budget');
 

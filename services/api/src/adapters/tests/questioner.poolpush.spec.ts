@@ -410,6 +410,15 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     expect((await adapter.claimPoolQuestionPush(different, userId)).kind).toBe('claimed');
   }, 30_000);
 
+  test('same-cycle lookup uses stamped push identity after outer triggeredBy mutates', async () => {
+    const first = await createPoolQuestion({ runId: 'stamped-cycle', voi: 0.9 });
+    expect((await adapter.claimPoolQuestionPush(first, userId)).kind).toBe('claimed');
+    await updateDetection(first, (detection) => ({ ...detection, triggeredBy: crypto.randomUUID() }));
+
+    const duplicate = await createPoolQuestion({ runId: 'stamped-cycle', voi: 0.9 });
+    expect(reason(await adapter.claimPoolQuestionPush(duplicate, userId))).toBe('cycle_budget');
+  }, 30_000);
+
   test('foreign, expired, resolved, and conversation-bound rows are ineligible', async () => {
     const foreignActor = await createPoolQuestion({ actorId: otherUserId, voi: 0.9 });
     expect(reason(await adapter.claimPoolQuestionPush(foreignActor, userId))).toBe('recipient_mismatch');

@@ -30,6 +30,7 @@ export function stripInternalDetection(question: AdapterPersistedQuestion): Adap
     strategy: _strategy,
     underspecificationType: _underspecificationType,
     pushRequestedAt: _pushRequestedAt,
+    pushRecoveryAttemptedAt: _pushRecoveryAttemptedAt,
     pushRequestStatus: _pushRequestStatus,
     pushRequestReason: _pushRequestReason,
     pushRequestSuppressedAt: _pushRequestSuppressedAt,
@@ -43,6 +44,7 @@ export function stripInternalDetection(question: AdapterPersistedQuestion): Adap
     && !_strategy
     && _underspecificationType === undefined
     && !_pushRequestedAt
+    && !_pushRecoveryAttemptedAt
     && !_pushRequestStatus
     && !_pushRequestReason
     && !_pushRequestSuppressedAt

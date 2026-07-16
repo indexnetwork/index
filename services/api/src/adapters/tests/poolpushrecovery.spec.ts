@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
-import { evaluatePoolPushRecipient, isRecoverablePoolPushDetection, terminalizePoolPushRequestDetection, type AdapterQuestionDetection } from '../questioner.adapter';
+import { QuestionerAdapter, evaluatePoolPushRecipient, isRecoverablePoolPushDetection, poolPushCycleClaimPredicate, terminalizePoolPushRequestDetection, type AdapterQuestionDetection } from '../questioner.adapter';
 
 const NOW = '2026-07-16T12:00:00.000Z';
 
@@ -34,6 +36,40 @@ function claimedDetection(): AdapterQuestionDetection {
 }
 
 describe('pool push request recovery state', () => {
+  test('recovery selection atomically rotates by least recent attempt with never-attempted first', async () => {
+    let captured: SQL | undefined;
+    const adapter = new QuestionerAdapter({
+      execute: async (query: SQL) => {
+        captured = query;
+        return [];
+      },
+    } as never);
+
+    expect(await adapter.listRecoverablePoolQuestionPushRequests(17)).toEqual([]);
+    const rendered = new PgDialect().sqlToQuery(captured!);
+    const query = rendered.sql.replace(/\s+/g, ' ').trim();
+
+    expect(rendered.params).toEqual([17]);
+    expect(query).toContain("WHERE recovery_candidate.detection->>'pushRequestStatus' = 'requested'");
+    expect(query).toContain("recovery_candidate.detection->'push'->>'deliveryStatus' = 'claimed'");
+    expect(query).toContain("ORDER BY recovery_candidate.detection->>'pushRecoveryAttemptedAt' ASC NULLS FIRST, recovery_candidate.detection->>'pushRequestedAt' ASC NULLS FIRST, recovery_candidate.created_at ASC, recovery_candidate.id ASC LIMIT $1 FOR UPDATE SKIP LOCKED");
+    expect(query).toContain("UPDATE questions AS recovery_question SET detection = jsonb_set( recovery_question.detection, '{pushRecoveryAttemptedAt}'");
+    expect(query).toContain('FROM selected WHERE recovery_question.id = selected.id RETURNING');
+    expect(query).not.toContain("ORDER BY recovery_candidate.detection->>'pushRequestedAt' ASC NULLS FIRST");
+  });
+
+  test('same-cycle lookup keys only authoritative stamped push metadata', () => {
+    const rendered = new PgDialect().sqlToQuery(
+      poolPushCycleClaimPredicate('user-1', 'intent-1', 'run:run-1'),
+    );
+    expect(rendered.params).toEqual(['user-1', 'intent-1', 'run:run-1']);
+    expect(rendered.sql.replace(/\s+/g, ' ').trim()).toBe(
+      '("questions"."detection"->\'push\'->>\'recipientId\' = $1 and "questions"."detection"->\'push\'->>\'intentId\' = $2 and "questions"."detection"->\'push\'->>\'cycleKey\' = $3 and "questions"."detection"->>\'mode\' = \'pool_discovery\' and "questions"."detection"->\'push\'->>\'claimedAt\' IS NOT NULL)',
+    );
+    expect(rendered.sql).not.toContain('triggeredBy');
+    expect(rendered.sql).not.toContain('actors');
+  });
+
   test('permanent unclaimed rejection becomes terminal while transient gates stay requested', () => {
     const requested = requestedDetection();
     expect(isRecoverablePoolPushDetection(requested)).toBe(true);

@@ -521,6 +521,8 @@ export interface QuestionDetection {
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
   /** Durable proactive-delivery request marker. Never exposed publicly. */
   pushRequestedAt?: string;
+  /** Last bounded recovery sweep that selected this request. Never exposed publicly. */
+  pushRecoveryAttemptedAt?: string;
   /** Durable request outcome. Never exposed publicly. */
   pushRequestStatus?: import('@indexnetwork/protocol').QuestionPoolPushRequestStatus;
   /** Permanent suppression reason for an unclaimed request. Never exposed publicly. */
@@ -574,8 +576,8 @@ export const questions = pgTable('questions', {
   // enforces budgets; this expression index is the final cross-worker guard.
   poolPushRecipientIntentCycleUnique: uniqueIndex('questions_pool_push_recipient_intent_cycle_uniq')
     .on(
-      sql`(${table.actors}->0->>'userId')`,
-      sql`(${table.detection}->>'triggeredBy')`,
+      sql`(${table.detection}->'push'->>'recipientId')`,
+      sql`(${table.detection}->'push'->>'intentId')`,
       sql`(${table.detection}->'push'->>'cycleKey')`,
     )
     .where(sql`${table.detection}->>'mode' = 'pool_discovery' AND ${table.detection}->'push'->>'claimedAt' IS NOT NULL`),

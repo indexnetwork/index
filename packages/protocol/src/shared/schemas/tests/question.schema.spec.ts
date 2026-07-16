@@ -216,6 +216,7 @@ describe("QuestionDetection", () => {
       triggeredBy: "intent-1",
       timestamp: "2026-07-16T12:00:00.000Z",
       pushRequestedAt: "2026-07-16T11:59:00.000Z",
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
       pushRequestStatus: "requested",
       push,
       pushedAt: "2026-07-16T12:00:01.000Z",
@@ -233,6 +234,32 @@ describe("QuestionDetection", () => {
     expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "" }).success).toBe(false);
     expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-2" }).success).toBe(false);
     expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-1" }).success).toBe(true);
+  });
+
+  it("accepts the internal recovery-attempt timestamp only as a non-empty string", () => {
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+      pushRequestedAt: "2026-07-16T11:59:00.000Z",
+      pushRequestStatus: "requested",
+    };
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
+    }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRecoveryAttemptedAt: "",
+    }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRequestedAt: undefined,
+      pushRequestStatus: undefined,
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
+    }).success).toBe(false);
   });
 
   it("bounds suppressed request outcomes to permanent reasons with timestamps", () => {
