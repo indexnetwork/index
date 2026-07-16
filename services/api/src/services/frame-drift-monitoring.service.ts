@@ -11,6 +11,7 @@ export interface YieldMetrics {
 }
 
 export interface FrameDriftMonitoringResult {
+  observationStatus: 'inserted' | 'duplicate';
   centroidSnapshotCount: number;
   yieldProxySnapshotCount: number;
   capturedAt: Date;
@@ -128,7 +129,7 @@ export function validateClosedUtcDailyBucket(
 
 function buildCentroidWrite(
   candidate: FrameCentroidCandidate,
-  embeddingModel: string,
+  configuredEmbeddingModel: string,
   bucketStart: Date,
   bucketEnd: Date,
   capturedAt: Date,
@@ -142,7 +143,7 @@ function buildCentroidWrite(
     corpus: candidate.corpus,
     centroid: [...candidate.centroid],
     sampleCount: candidate.sampleCount,
-    embeddingModel,
+    configuredEmbeddingModel,
     cosineDrift: calculateCosineDrift(candidate.centroid, candidate.priorCentroid),
     priorBucketStart: candidate.priorCentroid === null ? null : candidate.priorBucketStart,
     bucketStart,
@@ -207,7 +208,7 @@ export class FrameDriftMonitoringService {
       event: 'frame_drift_monitoring_started',
       bucketStart: bucketStart.toISOString(),
       bucketEnd: bucketEnd.toISOString(),
-      embeddingModel: OPENROUTER_EMBEDDING_MODEL,
+      configuredEmbeddingModel: OPENROUTER_EMBEDDING_MODEL,
       maxNetworks: config.maxNetworks,
       maxPairs: config.maxPairs,
       minUsers: config.minUsers,
@@ -215,7 +216,7 @@ export class FrameDriftMonitoringService {
 
     let capturedAt = startedAt;
     let readDiagnostics: Omit<FrameDriftMonitoringResult,
-      'centroidSnapshotCount' | 'yieldProxySnapshotCount' | 'capturedAt' | 'durationMs'> = {
+      'observationStatus' | 'centroidSnapshotCount' | 'yieldProxySnapshotCount' | 'capturedAt' | 'durationMs'> = {
         selectedNetworkCount: 0,
         eligibleNetworkCount: 0,
         stableCohortHash: '',
@@ -236,13 +237,13 @@ export class FrameDriftMonitoringService {
     const persisted = await this.store.captureAndPersist({
       bucketStart,
       bucketEnd,
+      capturedAt,
       previousBucketStart,
-      embeddingModel: OPENROUTER_EMBEDDING_MODEL,
+      configuredEmbeddingModel: OPENROUTER_EMBEDDING_MODEL,
       maxNetworks: config.maxNetworks,
       maxPairs: config.maxPairs,
       minUsers: config.minUsers,
     }, (readSet: FrameDriftReadSet): FrameDriftSnapshotWrites => {
-      capturedAt = this.clock();
       readDiagnostics = {
         selectedNetworkCount: readSet.selectedNetworkCount,
         eligibleNetworkCount: readSet.eligibleNetworkCount,
@@ -280,6 +281,26 @@ export class FrameDriftMonitoringService {
       };
       return completedWrites;
     });
+    capturedAt = persisted.capturedAt;
+    const durationMs = Math.max(0, this.clock().getTime() - startedAt.getTime());
+
+    if (persisted.observationStatus === 'duplicate') {
+      this.logger.info('Frame-drift observation duplicate; existing bucket retained', {
+        event: 'frame_drift_monitoring_completed',
+        observationStatus: persisted.observationStatus,
+        bucketStart: bucketStart.toISOString(),
+        bucketEnd: bucketEnd.toISOString(),
+        capturedAt: capturedAt.toISOString(),
+        centroidSnapshotCount: 0,
+        yieldProxySnapshotCount: 0,
+        durationMs,
+      });
+      return {
+        ...persisted,
+        ...readDiagnostics,
+        durationMs,
+      };
+    }
 
     const bucketDiagnostics = {
       bucketStart: bucketStart.toISOString(),
@@ -319,10 +340,9 @@ export class FrameDriftMonitoringService {
           yieldRateDelta: row.yieldRateDelta,
         }))
       : [];
-    const durationMs = Math.max(0, this.clock().getTime() - startedAt.getTime());
-
     this.logger.info('Frame-drift observation completed', {
       event: 'frame_drift_monitoring_completed',
+      observationStatus: persisted.observationStatus,
       ...bucketDiagnostics,
       centroidSnapshotCount: persisted.centroidSnapshotCount,
       yieldProxySnapshotCount: persisted.yieldProxySnapshotCount,

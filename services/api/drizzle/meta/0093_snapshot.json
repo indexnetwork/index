@@ -1,5 +1,5 @@
 {
-  "id": "c60d40de-7024-4ca8-9d3d-f3c549fb3a0d",
+  "id": "db2522ae-5c98-4bc0-8474-08672e5e9e97",
   "prevId": "937ce873-5088-40ba-a1f0-b827ea4302a1",
   "version": "7",
   "dialect": "postgresql",
@@ -986,6 +986,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "network_a_id": {
           "name": "network_a_id",
           "type": "text",
@@ -1078,6 +1084,19 @@
         }
       },
       "foreignKeys": {
+        "cross_network_yield_snapshots_run_id_frame_drift_observation_runs_id_fk": {
+          "name": "cross_network_yield_snapshots_run_id_frame_drift_observation_runs_id_fk",
+          "tableFrom": "cross_network_yield_snapshots",
+          "tableTo": "frame_drift_observation_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "cross_network_yield_snapshots_network_a_id_networks_id_fk": {
           "name": "cross_network_yield_snapshots_network_a_id_networks_id_fk",
           "tableFrom": "cross_network_yield_snapshots",
@@ -1431,6 +1450,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "network_id": {
           "name": "network_id",
           "type": "text",
@@ -1455,8 +1480,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "embedding_model": {
-          "name": "embedding_model",
+        "configured_embedding_model": {
+          "name": "configured_embedding_model",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -1510,7 +1535,7 @@
               "nulls": "last"
             },
             {
-              "expression": "embedding_model",
+              "expression": "configured_embedding_model",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1529,6 +1554,19 @@
         }
       },
       "foreignKeys": {
+        "frame_centroid_snapshots_run_id_frame_drift_observation_runs_id_fk": {
+          "name": "frame_centroid_snapshots_run_id_frame_drift_observation_runs_id_fk",
+          "tableFrom": "frame_centroid_snapshots",
+          "tableTo": "frame_drift_observation_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "frame_centroid_snapshots_network_id_networks_id_fk": {
           "name": "frame_centroid_snapshots_network_id_networks_id_fk",
           "tableFrom": "frame_centroid_snapshots",
@@ -1562,6 +1600,125 @@
         "frame_centroid_snapshots_bucket_range_check": {
           "name": "frame_centroid_snapshots_bucket_range_check",
           "value": "\"frame_centroid_snapshots\".\"bucket_end\" > \"frame_centroid_snapshots\".\"bucket_start\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.frame_drift_observation_runs": {
+      "name": "frame_drift_observation_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "bucket_start": {
+          "name": "bucket_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bucket_end": {
+          "name": "bucket_end",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "captured_at": {
+          "name": "captured_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "configured_embedding_model": {
+          "name": "configured_embedding_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_networks": {
+          "name": "max_networks",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_pairs": {
+          "name": "max_pairs",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "min_users": {
+          "name": "min_users",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stable_cohort_hash": {
+          "name": "stable_cohort_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aggregate_diagnostics": {
+          "name": "aggregate_diagnostics",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "frame_drift_observation_runs_bucket_start_uniq": {
+          "name": "frame_drift_observation_runs_bucket_start_uniq",
+          "columns": [
+            {
+              "expression": "bucket_start",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "frame_drift_observation_runs_bucket_check": {
+          "name": "frame_drift_observation_runs_bucket_check",
+          "value": "\"frame_drift_observation_runs\".\"bucket_end\" = \"frame_drift_observation_runs\".\"bucket_start\" + interval '1 day' AND \"frame_drift_observation_runs\".\"captured_at\" >= \"frame_drift_observation_runs\".\"bucket_end\""
+        },
+        "frame_drift_observation_runs_configured_embedding_model_check": {
+          "name": "frame_drift_observation_runs_configured_embedding_model_check",
+          "value": "length(btrim(\"frame_drift_observation_runs\".\"configured_embedding_model\")) > 0"
+        },
+        "frame_drift_observation_runs_max_networks_check": {
+          "name": "frame_drift_observation_runs_max_networks_check",
+          "value": "\"frame_drift_observation_runs\".\"max_networks\" BETWEEN 1 AND 200"
+        },
+        "frame_drift_observation_runs_max_pairs_check": {
+          "name": "frame_drift_observation_runs_max_pairs_check",
+          "value": "\"frame_drift_observation_runs\".\"max_pairs\" BETWEEN 1 AND 10000"
+        },
+        "frame_drift_observation_runs_min_users_check": {
+          "name": "frame_drift_observation_runs_min_users_check",
+          "value": "\"frame_drift_observation_runs\".\"min_users\" BETWEEN 2 AND 100"
+        },
+        "frame_drift_observation_runs_stable_cohort_hash_check": {
+          "name": "frame_drift_observation_runs_stable_cohort_hash_check",
+          "value": "\"frame_drift_observation_runs\".\"stable_cohort_hash\" IS NULL OR \"frame_drift_observation_runs\".\"stable_cohort_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "frame_drift_observation_runs_aggregate_diagnostics_check": {
+          "name": "frame_drift_observation_runs_aggregate_diagnostics_check",
+          "value": "jsonb_typeof(\"frame_drift_observation_runs\".\"aggregate_diagnostics\") = 'object'"
         }
       },
       "isRLSEnabled": false

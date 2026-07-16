@@ -612,13 +612,36 @@ export const networks = pgTable('networks', {
 
 export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
 
+export const frameDriftObservationRuns = pgTable('frame_drift_observation_runs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
+  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+  configuredEmbeddingModel: text('configured_embedding_model').notNull(),
+  maxNetworks: integer('max_networks').notNull(),
+  maxPairs: integer('max_pairs').notNull(),
+  minUsers: integer('min_users').notNull(),
+  stableCohortHash: text('stable_cohort_hash'),
+  aggregateDiagnostics: jsonb('aggregate_diagnostics').$type<Record<string, unknown>>().notNull().default({}),
+}, (table) => ({
+  bucketStartUnique: uniqueIndex('frame_drift_observation_runs_bucket_start_uniq').on(table.bucketStart),
+  bucketCheck: check('frame_drift_observation_runs_bucket_check', sql`${table.bucketEnd} = ${table.bucketStart} + interval '1 day' AND ${table.capturedAt} >= ${table.bucketEnd}`),
+  configuredEmbeddingModelCheck: check('frame_drift_observation_runs_configured_embedding_model_check', sql`length(btrim(${table.configuredEmbeddingModel})) > 0`),
+  maxNetworksCheck: check('frame_drift_observation_runs_max_networks_check', sql`${table.maxNetworks} BETWEEN 1 AND 200`),
+  maxPairsCheck: check('frame_drift_observation_runs_max_pairs_check', sql`${table.maxPairs} BETWEEN 1 AND 10000`),
+  minUsersCheck: check('frame_drift_observation_runs_min_users_check', sql`${table.minUsers} BETWEEN 2 AND 100`),
+  stableCohortHashCheck: check('frame_drift_observation_runs_stable_cohort_hash_check', sql`${table.stableCohortHash} IS NULL OR ${table.stableCohortHash} ~ '^[0-9a-f]{64}$'`),
+  aggregateDiagnosticsCheck: check('frame_drift_observation_runs_aggregate_diagnostics_check', sql`jsonb_typeof(${table.aggregateDiagnostics}) = 'object'`),
+}));
+
 export const frameCentroidSnapshots = pgTable('frame_centroid_snapshots', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  runId: text('run_id').notNull().references(() => frameDriftObservationRuns.id, { onDelete: 'cascade' }),
   networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
   corpus: text('corpus').$type<FrameCentroidCorpus>().notNull(),
   centroid: vector('centroid', { dimensions: 2000 }).notNull(),
   sampleCount: integer('sample_count').notNull(),
-  embeddingModel: text('embedding_model').notNull(),
+  configuredEmbeddingModel: text('configured_embedding_model').notNull(),
   cosineDrift: doublePrecision('cosine_drift'),
   priorBucketStart: timestamp('prior_bucket_start', { withTimezone: true }),
   bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
@@ -630,11 +653,12 @@ export const frameCentroidSnapshots = pgTable('frame_centroid_snapshots', {
   cosineDriftCheck: check('frame_centroid_snapshots_cosine_drift_check', sql`${table.cosineDrift} IS NULL OR (${table.cosineDrift} >= 0 AND ${table.cosineDrift} <= 2)`),
   bucketRangeCheck: check('frame_centroid_snapshots_bucket_range_check', sql`${table.bucketEnd} > ${table.bucketStart}`),
   dailyUnique: uniqueIndex('frame_centroid_snapshots_daily_uniq')
-    .on(table.networkId, table.corpus, table.embeddingModel, table.bucketStart),
+    .on(table.networkId, table.corpus, table.configuredEmbeddingModel, table.bucketStart),
 }));
 
 export const crossNetworkYieldSnapshots = pgTable('cross_network_yield_snapshots', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  runId: text('run_id').notNull().references(() => frameDriftObservationRuns.id, { onDelete: 'cascade' }),
   networkAId: text('network_a_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
   networkBId: text('network_b_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
   opportunityCount: bigint('opportunity_count', { mode: 'number' }).notNull(),

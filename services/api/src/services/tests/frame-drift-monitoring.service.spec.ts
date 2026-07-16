@@ -35,12 +35,14 @@ function createStore(
   onWrites?: (writes: FrameDriftSnapshotWrites) => void,
 ): FrameDriftSnapshotStore {
   return {
-    async captureAndPersist(_request, buildWrites) {
+    async captureAndPersist(request, buildWrites) {
       const writes = buildWrites(readSet);
       onWrites?.(writes);
       return {
+        observationStatus: 'inserted',
         centroidSnapshotCount: writes.centroids.length,
         yieldProxySnapshotCount: writes.yields.length,
+        capturedAt: request.capturedAt,
       };
     },
   };
@@ -164,6 +166,27 @@ describe('FrameDriftMonitoringService', () => {
     expect(captured?.centroids[0].cosineDrift).toBeNull();
   });
 
+  it('returns the original capture time without recomputing a duplicate bucket', async () => {
+    const originalCapturedAt = new Date('2026-07-15T00:15:00.000Z');
+    const store: FrameDriftSnapshotStore = {
+      async captureAndPersist() {
+        return {
+          observationStatus: 'duplicate',
+          centroidSnapshotCount: 0,
+          yieldProxySnapshotCount: 0,
+          capturedAt: originalCapturedAt,
+        };
+      },
+    };
+    const service = new FrameDriftMonitoringService(store, () => NOW);
+    const result = await service.captureDailyBucket(BUCKET_START, BUCKET_END);
+
+    expect(result.observationStatus).toBe('duplicate');
+    expect(result.capturedAt).toEqual(originalCapturedAt);
+    expect(result.centroidSnapshotCount).toBe(0);
+    expect(result.yieldProxySnapshotCount).toBe(0);
+  });
+
   it('propagates nonfinite input before any write can occur', async () => {
     const readSet = baseReadSet();
     readSet.positiveMeasuredPairCount = 1;
@@ -180,7 +203,12 @@ describe('FrameDriftMonitoringService', () => {
       async captureAndPersist(_request, buildWrites) {
         buildWrites(readSet);
         wrote = true;
-        return { centroidSnapshotCount: 0, yieldProxySnapshotCount: 0 };
+        return {
+          observationStatus: 'inserted',
+          centroidSnapshotCount: 0,
+          yieldProxySnapshotCount: 0,
+          capturedAt: NOW,
+        };
       },
     };
     const service = new FrameDriftMonitoringService(store, () => NOW);

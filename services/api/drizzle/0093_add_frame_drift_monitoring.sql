@@ -1,5 +1,6 @@
 CREATE TABLE "cross_network_yield_snapshots" (
 	"id" text PRIMARY KEY NOT NULL,
+	"run_id" text NOT NULL,
 	"network_a_id" text NOT NULL,
 	"network_b_id" text NOT NULL,
 	"opportunity_count" bigint NOT NULL,
@@ -19,11 +20,12 @@ CREATE TABLE "cross_network_yield_snapshots" (
 --> statement-breakpoint
 CREATE TABLE "frame_centroid_snapshots" (
 	"id" text PRIMARY KEY NOT NULL,
+	"run_id" text NOT NULL,
 	"network_id" text NOT NULL,
 	"corpus" text NOT NULL,
 	"centroid" vector(2000) NOT NULL,
 	"sample_count" integer NOT NULL,
-	"embedding_model" text NOT NULL,
+	"configured_embedding_model" text NOT NULL,
 	"cosine_drift" double precision,
 	"prior_bucket_start" timestamp with time zone,
 	"bucket_start" timestamp with time zone NOT NULL,
@@ -35,8 +37,31 @@ CREATE TABLE "frame_centroid_snapshots" (
 	CONSTRAINT "frame_centroid_snapshots_bucket_range_check" CHECK ("frame_centroid_snapshots"."bucket_end" > "frame_centroid_snapshots"."bucket_start")
 );
 --> statement-breakpoint
+CREATE TABLE "frame_drift_observation_runs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"bucket_start" timestamp with time zone NOT NULL,
+	"bucket_end" timestamp with time zone NOT NULL,
+	"captured_at" timestamp with time zone NOT NULL,
+	"configured_embedding_model" text NOT NULL,
+	"max_networks" integer NOT NULL,
+	"max_pairs" integer NOT NULL,
+	"min_users" integer NOT NULL,
+	"stable_cohort_hash" text,
+	"aggregate_diagnostics" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	CONSTRAINT "frame_drift_observation_runs_bucket_check" CHECK ("frame_drift_observation_runs"."bucket_end" = "frame_drift_observation_runs"."bucket_start" + interval '1 day' AND "frame_drift_observation_runs"."captured_at" >= "frame_drift_observation_runs"."bucket_end"),
+	CONSTRAINT "frame_drift_observation_runs_configured_embedding_model_check" CHECK (length(btrim("frame_drift_observation_runs"."configured_embedding_model")) > 0),
+	CONSTRAINT "frame_drift_observation_runs_max_networks_check" CHECK ("frame_drift_observation_runs"."max_networks" BETWEEN 1 AND 200),
+	CONSTRAINT "frame_drift_observation_runs_max_pairs_check" CHECK ("frame_drift_observation_runs"."max_pairs" BETWEEN 1 AND 10000),
+	CONSTRAINT "frame_drift_observation_runs_min_users_check" CHECK ("frame_drift_observation_runs"."min_users" BETWEEN 2 AND 100),
+	CONSTRAINT "frame_drift_observation_runs_stable_cohort_hash_check" CHECK ("frame_drift_observation_runs"."stable_cohort_hash" IS NULL OR "frame_drift_observation_runs"."stable_cohort_hash" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "frame_drift_observation_runs_aggregate_diagnostics_check" CHECK (jsonb_typeof("frame_drift_observation_runs"."aggregate_diagnostics") = 'object')
+);
+--> statement-breakpoint
+ALTER TABLE "cross_network_yield_snapshots" ADD CONSTRAINT "cross_network_yield_snapshots_run_id_frame_drift_observation_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."frame_drift_observation_runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cross_network_yield_snapshots" ADD CONSTRAINT "cross_network_yield_snapshots_network_a_id_networks_id_fk" FOREIGN KEY ("network_a_id") REFERENCES "public"."networks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cross_network_yield_snapshots" ADD CONSTRAINT "cross_network_yield_snapshots_network_b_id_networks_id_fk" FOREIGN KEY ("network_b_id") REFERENCES "public"."networks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "frame_centroid_snapshots" ADD CONSTRAINT "frame_centroid_snapshots_run_id_frame_drift_observation_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."frame_drift_observation_runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "frame_centroid_snapshots" ADD CONSTRAINT "frame_centroid_snapshots_network_id_networks_id_fk" FOREIGN KEY ("network_id") REFERENCES "public"."networks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "cross_network_yield_snapshots_daily_uniq" ON "cross_network_yield_snapshots" USING btree ("network_a_id","network_b_id","bucket_start");--> statement-breakpoint
-CREATE UNIQUE INDEX "frame_centroid_snapshots_daily_uniq" ON "frame_centroid_snapshots" USING btree ("network_id","corpus","embedding_model","bucket_start");
+CREATE UNIQUE INDEX "frame_centroid_snapshots_daily_uniq" ON "frame_centroid_snapshots" USING btree ("network_id","corpus","configured_embedding_model","bucket_start");--> statement-breakpoint
+CREATE UNIQUE INDEX "frame_drift_observation_runs_bucket_start_uniq" ON "frame_drift_observation_runs" USING btree ("bucket_start");

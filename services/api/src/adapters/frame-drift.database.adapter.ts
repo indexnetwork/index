@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import db, { type DrizzleDB } from '../lib/drizzle/drizzle';
 import { normalizeEmbedding } from '../lib/embedding/vector';
-import { crossNetworkYieldSnapshots, frameCentroidSnapshots, type FrameCentroidCorpus } from '../schemas/database.schema';
+import { crossNetworkYieldSnapshots, frameCentroidSnapshots, frameDriftObservationRuns, type FrameCentroidCorpus } from '../schemas/database.schema';
 
 const INSERT_CHUNK_SIZE = 500;
 const CORPUS_COUNT = 3;
@@ -48,7 +48,7 @@ export interface FrameCentroidSnapshotWrite {
   corpus: FrameCentroidCorpus;
   centroid: number[];
   sampleCount: number;
-  embeddingModel: string;
+  configuredEmbeddingModel: string;
   cosineDrift: number | null;
   priorBucketStart: Date | null;
   bucketStart: Date;
@@ -77,16 +77,19 @@ export interface FrameDriftSnapshotWrites {
 export interface FrameDriftSnapshotRequest {
   bucketStart: Date;
   bucketEnd: Date;
+  capturedAt: Date;
   previousBucketStart: Date;
-  embeddingModel: string;
+  configuredEmbeddingModel: string;
   maxNetworks: number;
   maxPairs: number;
   minUsers: number;
 }
 
 export interface FrameDriftPersistenceResult {
+  observationStatus: 'inserted' | 'duplicate';
   centroidSnapshotCount: number;
   yieldProxySnapshotCount: number;
+  capturedAt: Date;
 }
 
 export interface FrameDriftSnapshotStore {
@@ -144,6 +147,7 @@ export function normalizeFinitePgVector(value: unknown): number[] | null {
 
 async function insertCentroids(
   tx: Parameters<Parameters<DrizzleDB['transaction']>[0]>[0],
+  runId: string,
   rows: FrameCentroidSnapshotWrite[],
 ): Promise<number> {
   let insertedCount = 0;
@@ -151,7 +155,7 @@ async function insertCentroids(
     const chunk = rows.slice(offset, offset + INSERT_CHUNK_SIZE);
     if (chunk.length === 0) continue;
     const inserted = await tx.insert(frameCentroidSnapshots)
-      .values(chunk)
+      .values(chunk.map((row) => ({ ...row, runId })))
       .onConflictDoNothing()
       .returning({ id: frameCentroidSnapshots.id });
     insertedCount += inserted.length;
@@ -161,6 +165,7 @@ async function insertCentroids(
 
 async function insertYieldProxies(
   tx: Parameters<Parameters<DrizzleDB['transaction']>[0]>[0],
+  runId: string,
   rows: CrossNetworkYieldSnapshotWrite[],
 ): Promise<number> {
   let insertedCount = 0;
@@ -168,7 +173,7 @@ async function insertYieldProxies(
     const chunk = rows.slice(offset, offset + INSERT_CHUNK_SIZE);
     if (chunk.length === 0) continue;
     const inserted = await tx.insert(crossNetworkYieldSnapshots)
-      .values(chunk)
+      .values(chunk.map((row) => ({ ...row, runId })))
       .onConflictDoNothing()
       .returning({ id: crossNetworkYieldSnapshots.id });
     insertedCount += inserted.length;
@@ -181,12 +186,13 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
   constructor(private readonly database: DrizzleDB = db) {}
 
   /**
-   * Read one repeatable capture-time observation and atomically insert any
-   * previously unseen daily rows. Existing bucket rows are never rewritten.
+   * Claim one daily observation, read one repeatable capture-time state, and
+   * atomically persist its header and metric rows. A duplicate claim performs
+   * no measurement reads or writes.
    *
-   * @param request - Closed opportunity window, model, privacy, and cohort bounds.
+   * @param request - Closed opportunity window, capture configuration, and time.
    * @param buildWrites - Pure metric calculation callback owned by the service.
-   * @returns Actual inserted row counts; duplicate buckets return zero.
+   * @returns Observation status, original capture time, and inserted row counts.
    * @throws When source counts are unsafe or persistence fails.
    */
   async captureAndPersist(
@@ -197,9 +203,25 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
     const bucketEndIso = request.bucketEnd.toISOString();
     const previousBucketStartIso = request.previousBucketStart.toISOString();
 
-    return this.database.transaction(async (tx) => {
+    const transactionResult = await this.database.transaction(async (tx) => {
+      const insertedRuns = await tx.insert(frameDriftObservationRuns).values({
+        bucketStart: request.bucketStart,
+        bucketEnd: request.bucketEnd,
+        capturedAt: request.capturedAt,
+        configuredEmbeddingModel: request.configuredEmbeddingModel,
+        maxNetworks: request.maxNetworks,
+        maxPairs: request.maxPairs,
+        minUsers: request.minUsers,
+        stableCohortHash: null,
+        aggregateDiagnostics: {},
+      }).onConflictDoNothing().returning({ id: frameDriftObservationRuns.id });
+      const insertedRun = insertedRuns[0];
+      if (!insertedRun) return { observationStatus: 'duplicate' as const };
+
       const selectedRows = await tx.execute<SelectedNetworkRow>(sql`
-        SELECT id, count(*) OVER () AS total_count
+        SELECT id,
+               row_number() OVER (ORDER BY created_at ASC, id ASC) AS admission_ordinal,
+               count(*) OVER () AS total_count
         FROM networks
         WHERE deleted_at IS NULL AND is_personal = false
         ORDER BY created_at ASC, id ASC
@@ -216,28 +238,29 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
       const selectedPairCount = Math.min(totalPossibleCohortPairCount, request.maxPairs);
 
       const rawCentroids = await tx.execute<RawCentroidRow>(sql`
-        WITH selected_networks AS MATERIALIZED (
-          SELECT id
+        WITH bounded_networks AS MATERIALIZED (
+          SELECT id, created_at
           FROM networks
           WHERE deleted_at IS NULL AND is_personal = false
           ORDER BY created_at ASC, id ASC
           LIMIT ${request.maxNetworks}
-        ), corpus_centroids AS (
-          SELECT pn.network_id, 'premise'::text AS corpus,
-                 avg(p.embedding)::text AS centroid,
-                 count(*)::bigint AS sample_count,
-                 count(DISTINCT p.user_id)::bigint AS contributing_user_count
+        ), selected_networks AS MATERIALIZED (
+          SELECT id, row_number() OVER (ORDER BY created_at ASC, id ASC) AS admission_ordinal
+          FROM bounded_networks
+        ), corpus_user_centroids AS MATERIALIZED (
+          SELECT pn.network_id, p.user_id, 'premise'::text AS corpus,
+                 avg(p.embedding) AS user_centroid,
+                 count(*)::bigint AS source_row_count
           FROM premise_networks pn
           JOIN selected_networks sn ON sn.id = pn.network_id
           JOIN premises p ON p.id = pn.premise_id
           JOIN users u ON u.id = p.user_id AND u.deleted_at IS NULL
           WHERE p.deleted_at IS NULL AND p.status = 'ACTIVE' AND p.embedding IS NOT NULL
-          GROUP BY pn.network_id
+          GROUP BY pn.network_id, p.user_id
           UNION ALL
-          SELECT ino.network_id, 'intent'::text AS corpus,
-                 avg(i.embedding)::text AS centroid,
-                 count(*)::bigint AS sample_count,
-                 count(DISTINCT i.user_id)::bigint AS contributing_user_count
+          SELECT ino.network_id, i.user_id, 'intent'::text AS corpus,
+                 avg(i.embedding) AS user_centroid,
+                 count(*)::bigint AS source_row_count
           FROM intent_networks ino
           JOIN selected_networks sn ON sn.id = ino.network_id
           JOIN intents i ON i.id = ino.intent_id
@@ -245,17 +268,23 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
           WHERE i.archived_at IS NULL
             AND (i.status = 'ACTIVE' OR i.status IS NULL)
             AND i.embedding IS NOT NULL
-          GROUP BY ino.network_id
+          GROUP BY ino.network_id, i.user_id
           UNION ALL
-          SELECT uc.network_id, 'user_context'::text AS corpus,
-                 avg(uc.embedding)::text AS centroid,
-                 count(*)::bigint AS sample_count,
-                 count(DISTINCT uc.user_id)::bigint AS contributing_user_count
+          SELECT uc.network_id, uc.user_id, 'user_context'::text AS corpus,
+                 avg(uc.embedding) AS user_centroid,
+                 count(*)::bigint AS source_row_count
           FROM user_contexts uc
           JOIN selected_networks sn ON sn.id = uc.network_id
           JOIN users u ON u.id = uc.user_id AND u.deleted_at IS NULL
           WHERE uc.network_id IS NOT NULL AND uc.embedding IS NOT NULL
-          GROUP BY uc.network_id
+          GROUP BY uc.network_id, uc.user_id
+        ), corpus_centroids AS (
+          SELECT network_id, corpus,
+                 avg(user_centroid)::text AS centroid,
+                 sum(source_row_count)::bigint AS sample_count,
+                 count(*)::bigint AS contributing_user_count
+          FROM corpus_user_centroids
+          GROUP BY network_id, corpus
         )
         SELECT cc.network_id, cc.corpus, cc.centroid, cc.sample_count,
                cc.contributing_user_count,
@@ -267,7 +296,7 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
           FROM frame_centroid_snapshots f
           WHERE f.network_id = cc.network_id
             AND f.corpus = cc.corpus
-            AND f.embedding_model = ${request.embeddingModel}
+            AND f.configured_embedding_model = ${request.configuredEmbeddingModel}
             AND f.bucket_start < (${bucketStartIso})::timestamptz
           ORDER BY f.bucket_start DESC
           LIMIT 1
@@ -305,17 +334,22 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
       const emptyCentroidCount = selectedNetworkCount * CORPUS_COUNT - rawCentroids.length;
 
       const rawYields = await tx.execute<RawYieldRow>(sql`
-        WITH selected_networks AS MATERIALIZED (
-          SELECT id
+        WITH bounded_networks AS MATERIALIZED (
+          SELECT id, created_at
           FROM networks
           WHERE deleted_at IS NULL AND is_personal = false
           ORDER BY created_at ASC, id ASC
           LIMIT ${request.maxNetworks}
+        ), selected_networks AS MATERIALIZED (
+          SELECT id, row_number() OVER (ORDER BY created_at ASC, id ASC) AS admission_ordinal
+          FROM bounded_networks
         ), selected_pairs AS MATERIALIZED (
-          SELECT a.id AS network_a_id, b.id AS network_b_id
-          FROM selected_networks a
-          JOIN selected_networks b ON a.id < b.id
-          ORDER BY a.id ASC, b.id ASC
+          SELECT LEAST(earlier.id, later.id) AS network_a_id,
+                 GREATEST(earlier.id, later.id) AS network_b_id
+          FROM selected_networks earlier
+          JOIN selected_networks later
+            ON earlier.admission_ordinal < later.admission_ordinal
+          ORDER BY later.admission_ordinal ASC, earlier.admission_ordinal ASC
           LIMIT ${request.maxPairs}
         ), active_owner_counts AS MATERIALIZED (
           SELECT ino.network_id, i.user_id, count(*)::bigint AS intent_count
@@ -327,25 +361,35 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
             AND (i.status = 'ACTIVE' OR i.status IS NULL)
             AND i.embedding IS NOT NULL
           GROUP BY ino.network_id, i.user_id
+        ), privacy_eligible_networks AS MATERIALIZED (
+          SELECT network_id
+          FROM active_owner_counts
+          GROUP BY network_id
+          HAVING count(*) >= ${request.minUsers}
+        ), privacy_eligible_pairs AS MATERIALIZED (
+          SELECT sp.network_a_id, sp.network_b_id
+          FROM selected_pairs sp
+          JOIN privacy_eligible_networks a ON a.network_id = sp.network_a_id
+          JOIN privacy_eligible_networks b ON b.network_id = sp.network_b_id
         ), network_totals AS MATERIALIZED (
           SELECT network_id, sum(intent_count)::bigint AS intent_count
           FROM active_owner_counts
           GROUP BY network_id
         ), pair_denominators AS MATERIALIZED (
-          SELECT sp.network_a_id,
-                 sp.network_b_id,
+          SELECT pep.network_a_id,
+                 pep.network_b_id,
                  (
                    COALESCE(a.intent_count, 0) * COALESCE(b.intent_count, 0) - COALESCE((
                      SELECT sum(ao.intent_count * bo.intent_count)
                      FROM active_owner_counts ao
                      JOIN active_owner_counts bo ON bo.user_id = ao.user_id
-                     WHERE ao.network_id = sp.network_a_id
-                       AND bo.network_id = sp.network_b_id
+                     WHERE ao.network_id = pep.network_a_id
+                       AND bo.network_id = pep.network_b_id
                    ), 0)
                  )::bigint AS potential_intent_pair_count
-          FROM selected_pairs sp
-          LEFT JOIN network_totals a ON a.network_id = sp.network_a_id
-          LEFT JOIN network_totals b ON b.network_id = sp.network_b_id
+          FROM privacy_eligible_pairs pep
+          LEFT JOIN network_totals a ON a.network_id = pep.network_a_id
+          LEFT JOIN network_totals b ON b.network_id = pep.network_b_id
         ), positive_pairs AS MATERIALIZED (
           SELECT network_a_id, network_b_id, potential_intent_pair_count
           FROM pair_denominators
@@ -376,7 +420,7 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
           JOIN users u ON u.id = i.user_id AND u.deleted_at IS NULL
           JOIN intent_networks ino
             ON ino.intent_id = oa.intent_id
-           AND ino.created_at <= oa.opportunity_created_at
+           AND (ino.created_at AT TIME ZONE 'UTC') <= oa.opportunity_created_at
           JOIN selected_networks sn ON sn.id = ino.network_id
         ), opportunity_pairs AS MATERIALIZED (
           SELECT DISTINCT a.opportunity_id,
@@ -387,9 +431,9 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
             ON b.opportunity_id = a.opportunity_id
            AND b.user_id <> a.user_id
            AND a.network_id < b.network_id
-          JOIN selected_pairs sp
-            ON sp.network_a_id = a.network_id
-           AND sp.network_b_id = b.network_id
+          JOIN positive_pairs pp
+            ON pp.network_a_id = a.network_id
+           AND pp.network_b_id = b.network_id
         ), opportunity_counts AS MATERIALIZED (
           SELECT network_a_id, network_b_id,
                  count(DISTINCT opportunity_id)::bigint AS opportunity_count
@@ -449,7 +493,7 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
         }];
       });
 
-      const writes = buildWrites({
+      const readSet: FrameDriftReadSet = {
         centroids,
         yields,
         selectedNetworkCount,
@@ -464,12 +508,57 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
         suppressedCentroidCount,
         emptyCentroidCount,
         invalidVectorCount,
-      });
-      const centroidSnapshotCount = await insertCentroids(tx, writes.centroids);
-      const yieldProxySnapshotCount = await insertYieldProxies(tx, writes.yields);
+      };
+      const writes = buildWrites(readSet);
+      const centroidSnapshotCount = await insertCentroids(tx, insertedRun.id, writes.centroids);
+      const yieldProxySnapshotCount = await insertYieldProxies(tx, insertedRun.id, writes.yields);
+      const aggregateDiagnostics = {
+        selectedNetworkCount,
+        eligibleNetworkCount,
+        totalPossibleCohortPairCount,
+        selectedPairCount,
+        positiveMeasuredPairCount: yields.length,
+        graphOpportunityCount,
+        attributedGraphOpportunityCount,
+        unattributedGraphOpportunityCount: graphOpportunityCount - attributedGraphOpportunityCount,
+        suppressedCentroidCount,
+        emptyCentroidCount,
+        invalidVectorCount,
+        networksTruncated: eligibleNetworkCount > selectedNetworkCount,
+        pairsTruncated: totalPossibleCohortPairCount > selectedPairCount,
+        centroidSnapshotCount,
+        yieldProxySnapshotCount,
+      };
+      await tx.update(frameDriftObservationRuns).set({
+        stableCohortHash,
+        aggregateDiagnostics,
+      }).where(eq(frameDriftObservationRuns.id, insertedRun.id));
 
-      return { centroidSnapshotCount, yieldProxySnapshotCount };
+      return {
+        observationStatus: 'inserted' as const,
+        centroidSnapshotCount,
+        yieldProxySnapshotCount,
+        capturedAt: request.capturedAt,
+      };
     }, { isolationLevel: 'repeatable read' });
+
+    if (transactionResult.observationStatus === 'inserted') return transactionResult;
+
+    const [existingRun] = await this.database.select({
+      capturedAt: frameDriftObservationRuns.capturedAt,
+    }).from(frameDriftObservationRuns).where(eq(
+      frameDriftObservationRuns.bucketStart,
+      request.bucketStart,
+    )).limit(1);
+    if (!existingRun) {
+      throw new Error('Duplicate frame-drift observation run could not be loaded');
+    }
+    return {
+      observationStatus: 'duplicate',
+      centroidSnapshotCount: 0,
+      yieldProxySnapshotCount: 0,
+      capturedAt: existingRun.capturedAt,
+    };
   }
 }
 

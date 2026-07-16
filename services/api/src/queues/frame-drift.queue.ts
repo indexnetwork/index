@@ -10,6 +10,8 @@ export const FRAME_DRIFT_JOB_NAME = 'capture-daily-frame-drift';
 export const FRAME_DRIFT_SCHEDULER_ID = 'frame-drift-monitoring-daily-v1';
 
 const UTC_DAY_MS = 24 * 60 * 60 * 1000;
+const SCHEDULER_OPERATION_MAX_ATTEMPTS = 3;
+const SCHEDULER_RETRY_BASE_DELAY_MS = 50;
 
 export interface FrameDriftJobData {
   source: 'daily-scheduler';
@@ -32,6 +34,7 @@ export interface FrameDriftQueueDeps {
   ) => FrameDriftWorkerHandle;
   service?: Pick<FrameDriftMonitoringService, 'captureDailyBucket'>;
   logger?: FrameDriftLogger;
+  sleep?: (delayMs: number) => Promise<void>;
 }
 
 /** Derive the most recently closed UTC calendar day from a scheduler timestamp. */
@@ -62,6 +65,7 @@ export class FrameDriftQueue {
     processor: (job: Job<FrameDriftJobData>) => Promise<void>,
   ) => FrameDriftWorkerHandle;
   private readonly service: Pick<FrameDriftMonitoringService, 'captureDailyBucket'>;
+  private readonly sleep: (delayMs: number) => Promise<void>;
   private worker: FrameDriftWorkerHandle | null = null;
   private startPromise: Promise<void> | null = null;
   private closed = false;
@@ -73,6 +77,7 @@ export class FrameDriftQueue {
     ));
     this.service = deps.service ?? frameDriftMonitoringService;
     this.logger = deps.logger ?? log.queue.from('FrameDriftQueue');
+    this.sleep = deps.sleep ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
   }
 
   /** Register/remove the stable scheduler and start at most one local worker. */
@@ -86,11 +91,25 @@ export class FrameDriftQueue {
     return attempt;
   }
 
+  private async retrySchedulerOperation(operation: () => Promise<unknown>): Promise<void> {
+    for (let attempt = 1; attempt <= SCHEDULER_OPERATION_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        await operation();
+        return;
+      } catch (error) {
+        if (attempt === SCHEDULER_OPERATION_MAX_ATTEMPTS) throw error;
+        await this.sleep(SCHEDULER_RETRY_BASE_DELAY_MS * (2 ** (attempt - 1)));
+      }
+    }
+  }
+
   private async startInternal(): Promise<void> {
     if (this.closed) throw new Error('Frame-drift queue is closed');
     const config = resolveFrameDriftMonitoringConfig();
     if (!config.enabled) {
-      await this.queue.removeJobScheduler(FRAME_DRIFT_SCHEDULER_ID);
+      await this.retrySchedulerOperation(() => (
+        this.queue.removeJobScheduler(FRAME_DRIFT_SCHEDULER_ID)
+      ));
       this.logger.info('Frame-drift monitoring disabled', {
         event: 'frame_drift_monitoring_disabled',
         schedulerId: FRAME_DRIFT_SCHEDULER_ID,
@@ -98,7 +117,7 @@ export class FrameDriftQueue {
       return;
     }
 
-    await this.queue.upsertJobScheduler(
+    await this.retrySchedulerOperation(() => this.queue.upsertJobScheduler(
       FRAME_DRIFT_SCHEDULER_ID,
       { pattern: config.schedule, tz: 'UTC' },
       {
@@ -111,20 +130,22 @@ export class FrameDriftQueue {
           removeOnFail: { age: 7 * 24 * 3600, count: 1000 },
         },
       },
-    );
+    ));
 
     if (!this.worker) {
       this.worker = this.createWorker(async (job) => {
         const scheduledAtMs = job.opts.prevMillis ?? job.timestamp;
         const { bucketStart, bucketEnd } = deriveMostRecentlyClosedUtcDay(scheduledAtMs);
+        const attempt = job.attemptsMade + 1;
+        const maxAttempts = job.opts.attempts ?? 1;
         const jobMetadata = {
           queueName: FRAME_DRIFT_QUEUE_NAME,
           jobName: FRAME_DRIFT_JOB_NAME,
           schedulerId: FRAME_DRIFT_SCHEDULER_ID,
           jobId: job.id,
           source: job.data.source,
-          attempt: job.attemptsMade + 1,
-          maxAttempts: job.opts.attempts ?? 1,
+          attempt,
+          maxAttempts,
           bucketStart: bucketStart.toISOString(),
           bucketEnd: bucketEnd.toISOString(),
         };
@@ -139,11 +160,18 @@ export class FrameDriftQueue {
         try {
           await this.service.captureDailyBucket(bucketStart, bucketEnd);
         } catch (error) {
-          this.logger.error('Frame-drift observation failed; BullMQ will retry', {
-            event: 'frame_drift_monitoring_job_failed',
-            ...jobMetadata,
-            error,
-          });
+          const willRetry = attempt < maxAttempts;
+          this.logger.error(
+            willRetry
+              ? 'Frame-drift observation failed; BullMQ will retry'
+              : 'Frame-drift observation failed on final attempt',
+            {
+              event: 'frame_drift_monitoring_job_failed',
+              ...jobMetadata,
+              willRetry,
+              error,
+            },
+          );
           throw error;
         }
       });

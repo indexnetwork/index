@@ -47,12 +47,14 @@ function createHarness() {
   const closeWorker = mock(async () => undefined);
   const info = mock(() => undefined);
   const error = mock(() => undefined);
+  const sleep = mock(async (_delayMs: number) => undefined);
   let processor: ((job: Job<FrameDriftJobData>) => Promise<void>) | undefined;
   const createWorker = mock((handler: (job: Job<FrameDriftJobData>) => Promise<void>) => {
     processor = handler;
     return { close: closeWorker };
   });
   const captureDailyBucket = mock(async () => ({
+    observationStatus: 'inserted' as const,
     centroidSnapshotCount: 0,
     yieldProxySnapshotCount: 0,
     capturedAt: new Date('2026-07-15T00:15:00Z'),
@@ -81,6 +83,7 @@ function createHarness() {
     createWorker,
     service: { captureDailyBucket },
     logger: { info, error },
+    sleep,
   };
   return {
     queue: new FrameDriftQueue(deps),
@@ -92,6 +95,7 @@ function createHarness() {
     captureDailyBucket,
     info,
     error,
+    sleep,
     getProcessor: () => processor,
   };
 }
@@ -202,6 +206,7 @@ describe('FrameDriftQueue', () => {
         jobId: 'job-123',
         attempt: 2,
         maxAttempts: 3,
+        willRetry: true,
         bucketStart: '2026-07-14T00:00:00.000Z',
         bucketEnd: '2026-07-15T00:00:00.000Z',
         error: failure,
@@ -209,17 +214,69 @@ describe('FrameDriftQueue', () => {
     );
   });
 
-  it('can retry start after scheduler registration fails', async () => {
+  it('marks the final BullMQ attempt as non-retryable in logs', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    const failure = new Error('database unavailable');
+    harness.captureDailyBucket.mockImplementationOnce(async () => { throw failure; });
+    await harness.queue.start();
+
+    await expect(harness.getProcessor()?.(makeJob({ attemptsMade: 2 }))).rejects.toThrow(
+      'database unavailable',
+    );
+    expect(harness.error).toHaveBeenCalledWith(
+      'Frame-drift observation failed on final attempt',
+      expect.objectContaining({
+        event: 'frame_drift_monitoring_job_failed',
+        attempt: 3,
+        maxAttempts: 3,
+        willRetry: false,
+        error: failure,
+      }),
+    );
+  });
+
+  it('automatically retries scheduler registration with bounded backoff', async () => {
     process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
     const harness = createHarness();
     harness.upsertJobScheduler.mockImplementationOnce(async () => {
       throw new Error('redis unavailable');
     });
 
-    await expect(harness.queue.start()).rejects.toThrow('redis unavailable');
     await harness.queue.start();
 
     expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(2);
+    expect(harness.sleep).toHaveBeenCalledWith(50);
+    expect(harness.createWorker).toHaveBeenCalledTimes(1);
+  });
+
+  it('automatically retries scheduler removal when disabled', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'false';
+    const harness = createHarness();
+    harness.removeJobScheduler.mockImplementationOnce(async () => {
+      throw new Error('redis unavailable');
+    });
+
+    await harness.queue.start();
+
+    expect(harness.removeJobScheduler).toHaveBeenCalledTimes(2);
+    expect(harness.sleep).toHaveBeenCalledWith(50);
+  });
+
+  it('resets startup state after all automatic retries fail', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    harness.upsertJobScheduler.mockImplementation(async () => {
+      throw new Error('redis unavailable');
+    });
+
+    await expect(harness.queue.start()).rejects.toThrow('redis unavailable');
+    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(3);
+    expect(harness.sleep).toHaveBeenCalledTimes(2);
+
+    harness.upsertJobScheduler.mockImplementation(async () => ({}));
+    await harness.queue.start();
+    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(4);
     expect(harness.createWorker).toHaveBeenCalledTimes(1);
   });
 
