@@ -3,7 +3,7 @@ title: "Intents"
 type: domain
 tags: [intents, speech-acts, felicity-conditions, semantic-entropy, reconciliation, lifecycle, pool-questions]
 created: 2026-03-26
-updated: 2026-07-15
+updated: 2026-07-16
 ---
 
 # Intents
@@ -204,7 +204,11 @@ For an active intent, a substantive answer also runs through the same canonical 
 
 Resolved axes are durable semantic novelty references when `POOL_QUESTIONS_MODE=on`. Each generated question discriminator retains its internal embedding and embedding-model id, and answered or dismissed axes—including “Both matter”—suppress semantically equivalent future questions while their full normalized intent payload+summary fingerprint is current. Reuse requires both the current embedding model and vector dimensions; mismatches and legacy rows fall back to canonical axis text. Shadow-only mining neither looks up resolved axes nor retains vectors, though ordinary text-reference novelty scoring still embeds as needed. A pool answer whose canonical refinement actually applies is stamped directly from the returned updated payload plus the pre-update summary, so a concurrent external edit cannot be stamped accidentally. A later material payload/summary edit invalidates resolved-axis dedup, while pause/resume does not. For legacy snapshots without a fingerprint, normalized snippets shorter than the 160-character cap require exact equality; only snippets exactly 160 characters long may prefix-match a longer current intent. Pending exact labels always deduplicate. The Personal Agent narrates the immediate adjustment and later refresh using count-only templates; cards expose only the user's selected side in a muted deprioritization chip, never embeddings, evaluator reasoning, or internal pool snapshots.
 
-This behavior is independently gated: `POOL_QUESTIONS_MODE` controls question generation/application and `POOL_QUESTIONS_RANKING` controls whether stored adjustments affect read-time ordering. With ranking off, feed ordering remains unchanged.
+When both `POOL_QUESTIONS_MODE=on` and `POOL_QUESTIONS_STAMP_NEWBORN=on`, genuinely new opportunities from owned, active intent discovery inherit still-current answered preferences immediately before insertion. One fixed-axis classifier call batches the call-local candidates using the same bounded public context as mining; it never receives the user's chosen sides. Only answers with an exact current full payload+summary fingerprint are eligible. Verified chosen, other, and unknown assignments receive the same `1.0`, `0.6`, and `0.9` factors (cumulative floor `0.3`), deterministic template details, and `questionId` provenance. Raw classifier evidence and evaluator reasoning are not added to persisted adjustment metadata or signals. Callback failure, lifecycle/fingerprint drift, or unsafe output length/order fails open to the original insert payload. Dedup reactivations/upgrades, context-only/ad-hoc discovery, introductions, on-behalf-of, enrichment, and manual paths are excluded.
+
+Pool answers do **not** create premises. The canonical intent-refinement graph already incorporates substantive answers into the owned intent, so creating a premise would duplicate authority and trigger unrelated premise cascades.
+
+This behavior is independently gated: `POOL_QUESTIONS_MODE` controls question generation/application, `POOL_QUESTIONS_STAMP_NEWBORN` additionally controls pre-insert preference stamping (default off), and `POOL_QUESTIONS_RANKING` controls whether stored adjustments affect read-time ordering. With ranking off, feed ordering remains unchanged.
 
 ---
 

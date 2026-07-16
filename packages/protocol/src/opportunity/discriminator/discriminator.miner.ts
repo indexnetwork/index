@@ -94,7 +94,7 @@ export interface PoolDiscriminatorMinerConfig {
  * (curly quotes/apostrophes, en/em dashes, ellipsis), so evidence matching
  * tolerates formatting drift without weakening the verbatim requirement.
  */
-function normalizeForMatch(s: string): string {
+export function normalizePoolEvidenceForMatch(s: string): string {
   return s
     .toLowerCase()
     .replace(/[\u2018\u2019\u02bc]/g, "'")
@@ -110,8 +110,19 @@ function normalizeForMatch(s: string): string {
  * matching. LLMs habitually sentence-ize copied spans (append a trailing
  * period, wrap in quotes); the meaningful content must still match verbatim.
  */
-function stripEdgePunctuation(s: string): string {
+export function stripPoolEvidenceEdgePunctuation(s: string): string {
   return s.replace(/^[\s"'.,;:!?()\u2018\u2019\u201c\u201d]+/, "").replace(/[\s"'.,;:!?()\u2018\u2019\u201c\u201d]+$/, "");
+}
+
+/** Minimum normalized span that counts as meaningful verbatim evidence. */
+const MIN_POOL_EVIDENCE_CHARS = 8;
+
+/** Evidence verifier shared by mining and newborn assignment. */
+export function poolEvidenceMatches(publicContext: string, evidence: string | null): boolean {
+  if (evidence === null) return false;
+  const context = normalizePoolEvidenceForMatch(publicContext);
+  const evidenceCore = normalizePoolEvidenceForMatch(stripPoolEvidenceEdgePunctuation(evidence));
+  return evidenceCore.length >= MIN_POOL_EVIDENCE_CHARS && context.includes(evidenceCore);
 }
 
 /**
@@ -179,7 +190,7 @@ export function verifyAxis(
   axis: AxisMiningResponse["axes"][number],
   candidates: DiscriminatorMiningInput["candidates"],
 ): MinedDiscriminator {
-  const contextById = new Map(candidates.map((c) => [c.id, normalizeForMatch(c.publicContext)]));
+  const contextById = new Map(candidates.map((c) => [c.id, c.publicContext]));
   const byId = new Map<string, VerifiedAssignment>();
   let proposed = 0;
   let verified = 0;
@@ -194,8 +205,7 @@ export function verifyAxis(
     }
     proposed++;
     const sideOk = axis.sides.includes(a.side);
-    const evidenceCore = a.evidence === null ? "" : normalizeForMatch(stripEdgePunctuation(a.evidence));
-    const evidenceOk = evidenceCore.length > 0 && context.includes(evidenceCore);
+    const evidenceOk = poolEvidenceMatches(context, a.evidence);
     if (sideOk && evidenceOk) {
       verified++;
       byId.set(a.id, { id: a.id, side: a.side, evidence: a.evidence, verified: true });

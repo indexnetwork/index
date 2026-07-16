@@ -7,6 +7,7 @@ import type { ChatGraphCompositeDatabase, NetworkMembership, UserRecord, UserDat
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
 import type { CompiledOpportunityGraph } from "../../opportunity/opportunity.discover.js";
+import type { StampNewbornOpportunitiesFn } from "../../opportunity/opportunity.graph.js";
 import type { IntegrationAdapter } from "../interfaces/integration.interface.js";
 import type { ContactServiceAdapter } from "../interfaces/contact.interface.js";
 import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
@@ -259,6 +260,8 @@ export interface ToolContext {
   agentDispatcher?: AgentDispatcher;
   /** Enqueue a negotiate_existing job after introducer approval (optional). */
   queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>;
+  /** Host callback for pre-insert newborn pool-preference stamping (optional). */
+  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
   /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */
@@ -596,6 +599,8 @@ export interface ToolDeps {
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
   /** Dispatcher for routing negotiation turns to personal agents (optional — falls back to system AI). */
   agentDispatcher?: AgentDispatcher;
+  /** Host callback for pre-insert newborn pool-preference stamping (optional). */
+  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
   /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */

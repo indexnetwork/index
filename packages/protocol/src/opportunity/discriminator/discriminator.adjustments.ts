@@ -15,7 +15,7 @@
  *   ("Hands-on builders vs advisors: you chose Advisor") — never LLM
  *   reasoning (opportunity-presentation-safety).
  */
-import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
+import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
 import type { QuestionPoolDiscriminator } from "../../shared/schemas/question.schema.js";
 
 /** One applied adjustment on an opportunity (stored in metadata.poolAdjustments). */
@@ -60,10 +60,60 @@ export function adjustedConfidence(confidence: number, metadata: Record<string, 
   return confidence * poolAdjustmentMultiplier(metadata);
 }
 
+/** Deterministic provenance signal stored alongside one adjustment. */
+export interface PoolAdjustmentSignal {
+  type: "pool_discriminator";
+  weight: 1 | -1 | 0;
+  detail: string;
+  questionId: string;
+}
+
+/** Pure helper input shared by Tier-0 answers and newborn stamping. */
+export interface BuildPoolAdjustmentInput {
+  questionId: string;
+  label: string;
+  /** Verified side assignment, or null when the candidate is unassigned. */
+  assignedSide: string | null;
+  chosenSide: string;
+  appliedAt: string;
+}
+
+/**
+ * Build one P3-compatible adjustment and signal. This is the only place that
+ * defines chosen/other/unknown factors, weights, and safe template details.
+ */
+export function buildPoolAdjustment(input: BuildPoolAdjustmentInput): {
+  adjustment: PoolAdjustment;
+  signal: PoolAdjustmentSignal;
+} {
+  const isUnknown = input.assignedSide === null;
+  const isChosen = !isUnknown && input.assignedSide === input.chosenSide;
+  const factor = isUnknown ? POOL_ADJUSTMENT_FACTOR_UNKNOWN : isChosen ? 1 : POOL_ADJUSTMENT_FACTOR_OTHER;
+  const weight = isUnknown ? 0 : isChosen ? 1 : -1;
+  const side = input.assignedSide ?? "unknown";
+  return {
+    adjustment: {
+      questionId: input.questionId,
+      label: input.label,
+      side,
+      factor,
+      ...(!isChosen && !isUnknown ? { detail: `${input.label}: you chose ${input.chosenSide}` } : {}),
+      appliedAt: input.appliedAt,
+    },
+    signal: {
+      type: "pool_discriminator",
+      weight,
+      detail: isUnknown ? `${input.label}: unassigned` : `${input.label}: ${input.chosenSide}`,
+      questionId: input.questionId,
+    },
+  };
+}
+
 /** Plan entry: what to write on one opportunity for one answer. */
 export interface PoolAdjustmentPlanEntry {
   opportunityId: string;
   adjustment: PoolAdjustment;
+  signal: PoolAdjustmentSignal;
 }
 
 /**
@@ -90,17 +140,15 @@ export function planPoolAdjustments(
 
   const plan: PoolAdjustmentPlanEntry[] = [];
   for (const a of discriminator.assignments) {
-    const isChosen = a.side === chosen;
     plan.push({
       opportunityId: a.opportunityId,
-      adjustment: {
+      ...buildPoolAdjustment({
         questionId,
         label: discriminator.label,
-        side: a.side,
-        factor: isChosen ? 1 : POOL_ADJUSTMENT_FACTOR_OTHER,
-        ...(isChosen ? {} : { detail: `${discriminator.label}: you chose ${chosen}` }),
+        assignedSide: a.side,
+        chosenSide: chosen,
         appliedAt: now,
-      },
+      }),
     });
   }
   return plan;

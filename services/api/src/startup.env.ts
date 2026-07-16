@@ -107,6 +107,8 @@ const envSchema = z.object({
   NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
   NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
   NEGOTIATION_MAX_TURNS_AMBIENT: optionalInt,
+  NEGOTIATION_PROTOCOL_VERSION: z.union([z.literal(''), z.enum(['v1', 'v2'])]).optional(),
+  NEGOTIATOR_CHAT_ENABLED: optionalBoolean,
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
@@ -118,6 +120,7 @@ const envSchema = z.object({
   POOL_QUESTIONS_MINING: z.union([z.literal(''), z.enum(['off', 'shadow'])]).optional(),
   POOL_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   POOL_QUESTIONS_RANKING: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
+  POOL_QUESTIONS_STAMP_NEWBORN: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
 
   // 9. MCP / tool runtime
   MCP_MAX_REQUEST_BYTES: optionalInt,

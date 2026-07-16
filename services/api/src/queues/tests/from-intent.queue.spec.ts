@@ -26,7 +26,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import { FromIntentQueue, QUEUE_NAME, type FromIntentJobData, type FromIntentDatabase, type FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
+import { FromIntentQueue, QUEUE_NAME, type FromIntentJobData, type FromIntentDatabase, type FromIntentDeps, type FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
 
 const asDb = (db: unknown): FromIntentDatabase => db as FromIntentDatabase;
 
@@ -43,6 +43,18 @@ describe('FromIntentQueue', () => {
       const queue = new FromIntentQueue({ database: asDb(db) });
       await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
       expect(getIntentForIndexing).toHaveBeenCalledWith('i1');
+    });
+
+    it('retains the production newborn stamper supplied through runtime deps', () => {
+      const stampNewbornOpportunities: NonNullable<FromIntentDeps['stampNewbornOpportunities']> = async ({ items }) => items;
+      const queue = new FromIntentQueue({
+        database: asDb({ getIntentForIndexing: async () => null }),
+      });
+      queue.setRuntimeDeps({ stampNewbornOpportunities });
+      const deps = (queue as unknown as {
+        deps?: { stampNewbornOpportunities?: typeof stampNewbornOpportunities };
+      }).deps;
+      expect(deps?.stampNewbornOpportunities).toBe(stampNewbornOpportunities);
     });
   });
 

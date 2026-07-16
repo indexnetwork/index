@@ -359,6 +359,89 @@ describe('QuestionerAdapter', () => {
     expect(axes.every((axis) => axis.label.startsWith('fresh-'))).toBe(true);
   });
 
+  it('reads only strict fresh answered owner preferences', async () => {
+    const rows = [
+      makePoolPersistable('valid', 'current'),
+      makePoolPersistable('stale', 'old'),
+      makePoolPersistable('legacy'),
+      makePoolPersistable('both', 'current'),
+      makePoolPersistable('multi', 'current'),
+      makePoolPersistable('free-only', 'current'),
+      makePoolPersistable('wrong-intent', 'current', 'Find collaborators', OTHER_INTENT_ID),
+      makePoolPersistable('dismissed', 'current'),
+      makePoolPersistable('wrong-owner', 'current'),
+      makePoolPersistable('empty-option', 'current'),
+      makePoolPersistable('malformed-axis', 'current'),
+      makePoolPersistable('wrong-answerer', 'current'),
+    ];
+    rows[8] = {
+      ...rows[8],
+      actors: [{ userId: 'test-user-2', role: 'subject' }],
+    };
+    rows[10] = {
+      ...rows[10],
+      detection: {
+        ...rows[10].detection,
+        pool: rows[10].detection.pool
+          ? {
+              ...rows[10].detection.pool,
+              discriminator: { ...rows[10].detection.pool.discriminator, sides: [] },
+            }
+          : undefined,
+      },
+    };
+    const ids = await adapter.persist(rows);
+    const answer = (selectedOptions: string[], answeredBy = 'test-user-1', freeText?: string) => ({
+      selectedOptions,
+      ...(freeText ? { freeText } : {}),
+      answeredBy,
+      answeredAt: new Date().toISOString(),
+    });
+    expect(await adapter.answer(ids[0], 'test-user-1', answer(['Side A']))).toBe(true);
+    expect(await adapter.answer(ids[1], 'test-user-1', answer(['Side A']))).toBe(true);
+    expect(await adapter.answer(ids[2], 'test-user-1', answer(['Side A']))).toBe(true);
+    expect(await adapter.answer(ids[3], 'test-user-1', answer(['Both matter']))).toBe(true);
+    expect(await adapter.answer(ids[4], 'test-user-1', answer(['Side A', 'Side B']))).toBe(true);
+    expect(await adapter.answer(ids[5], 'test-user-1', answer([], 'test-user-1', 'Side A please'))).toBe(true);
+    expect(await adapter.answer(ids[6], 'test-user-1', answer(['Side A']))).toBe(true);
+    expect(await adapter.dismiss(ids[7], 'test-user-1')).toBe(true);
+    expect(await adapter.answer(ids[8], 'test-user-2', answer(['Side A'], 'test-user-2'))).toBe(true);
+    expect(await adapter.answer(ids[9], 'test-user-1', answer(['   ']))).toBe(true);
+    expect(await adapter.answer(ids[10], 'test-user-1', answer(['Side A']))).toBe(true);
+    expect(await adapter.answer(ids[11], 'test-user-1', answer(['Side A'], 'test-user-2'))).toBe(true);
+
+    expect(await adapter.listAnsweredPoolPreferences('test-user-1', SELECTED_INTENT_ID, 'current')).toEqual([
+      { questionId: ids[0], label: 'valid', sides: ['Side A', 'Side B'], chosenSide: 'Side A' },
+    ]);
+  });
+
+  it('caps after filtering so newer non-preferences cannot hide an older valid answer', async () => {
+    const [validId] = await adapter.persist([makePoolPersistable('older-valid', 'current')]);
+    expect(await adapter.answer(validId, 'test-user-1', {
+      selectedOptions: ['Side A'],
+      answeredBy: 'test-user-1',
+      answeredAt: new Date().toISOString(),
+    })).toBe(true);
+
+    const invalidIds = await adapter.persist(
+      Array.from({ length: 12 }, (_, index) => makePoolPersistable(`newer-both-${index}`, 'current')),
+    );
+    for (const id of invalidIds) {
+      expect(await adapter.answer(id, 'test-user-1', {
+        selectedOptions: ['Both matter'],
+        answeredBy: 'test-user-1',
+        answeredAt: new Date().toISOString(),
+      })).toBe(true);
+    }
+
+    expect(await adapter.listAnsweredPoolPreferences('test-user-1', SELECTED_INTENT_ID, 'current')).toContainEqual({
+      questionId: validId,
+      label: 'older-valid',
+      sides: ['Side A', 'Side B'],
+      chosenSide: 'Side A',
+    });
+  }, 20_000);
+
   it('updates an answered pool question fingerprint after refinement', async () => {
     const [id] = await adapter.persist([makePoolPersistable('stamp-after-refinement', 'before')]);
     expect(await adapter.answer(id, 'test-user-1', {

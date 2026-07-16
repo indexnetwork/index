@@ -22,6 +22,7 @@ import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import type { AdapterPersistableQuestion } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
+import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
@@ -145,6 +146,7 @@ const protocolDeps = {
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
+  stampNewbornOpportunities,
   mintConnectToken: signConnectToken,
   mintConnectLink,
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
@@ -218,6 +220,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     undefined, undefined, negotiationGraph,
     protocolDeps.agentDispatcher,
     protocolDeps.queueNegotiateExisting,
+    protocolDeps.stampNewbornOpportunities,
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
@@ -637,6 +640,7 @@ function createMcpServerInstance(): McpServer {
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
     agentDispatcher: protocolDeps.agentDispatcher,
+    stampNewbornOpportunities: protocolDeps.stampNewbornOpportunities,
     negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,

@@ -18,7 +18,7 @@
  * POOL_QUESTIONS_MODE=on; question enqueue additionally requires MODE=on and
  * QUESTIONER_ENABLED (via questionerEnqueueIfEnabled). All off = no-op.
  */
-import { POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_DISCRIMINATOR_MIN_POOL_SIZE, PoolDiscriminatorMiner, poolQuestionsMiningMode, poolQuestionsMode, runPoolDiscriminatorShadow, selectQuestionDiscriminators, toQuestionDiscriminator } from '@indexnetwork/protocol';
+import { POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MIN_POOL_SIZE, PoolDiscriminatorMiner, poolQuestionsMiningMode, poolQuestionsMode, runPoolDiscriminatorShadow, selectQuestionDiscriminators, toQuestionDiscriminator } from '@indexnetwork/protocol';
 import type { PoolCandidate } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
@@ -29,6 +29,7 @@ import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { embedderAdapter } from '../../adapters/embedder.adapter';
 import { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { questionerEnqueueIfEnabled } from '../questioner.queue';
+import { buildPoolCandidateContexts } from './context.shared';
 import { resolvePoolAxisNoveltyReferences } from './novelty.shared';
 
 /** Greppable logger (IND-417): search deploy logs for "PoolDiscriminatorMiner". */
@@ -36,9 +37,6 @@ const logger = log.job.from('PoolDiscriminatorMiner');
 
 /** Statuses that make an opportunity part of the viewer's live candidate pool. */
 const POOL_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
-
-/** Max chars of bio / match-reason folded into one candidate's publicContext. */
-const POOL_FIELD_MAX_CHARS = 100;
 
 /** Lazily constructed so importing this module never requires OPENROUTER_API_KEY. */
 let poolDiscriminatorMiner: PoolDiscriminatorMiner | null = null;
@@ -134,40 +132,13 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
     .sort((a, b) => (b.opportunity.interpretation?.confidence ?? 0) - (a.opportunity.interpretation?.confidence ?? 0))
     .slice(0, POOL_DISCRIMINATOR_MAX_CANDIDATES);
 
-  // Thin per-candidate context: profile name/bio + ≤3 active premise
-  // snippets — the same public corpus the presenter exposes.
-  const uniqueUserIds = [...new Set(top.map((c) => c.counterpartUserId))];
-  const profilesByUser = new Map<string, { name: string; bio: string }>();
-  await Promise.all(uniqueUserIds.map(async (uid) => {
-    try {
-      const profile = await chatDatabaseAdapter.getProfile(uid);
-      if (profile) profilesByUser.set(uid, { name: profile.identity.name, bio: profile.identity.bio });
-    } catch {
-      // Profile is enrichment only — a failed lookup never blocks mining.
-    }
-  }));
-  const premisesByUser = new Map<string, string>();
-  await Promise.all(uniqueUserIds.map(async (uid) => {
-    try {
-      const premises = await chatDatabaseAdapter.getPremisesForUser(uid, 'ACTIVE');
-      const snippets = premises.slice(0, 3).map((p) => p.assertion.text.slice(0, 90));
-      if (snippets.length > 0) premisesByUser.set(uid, snippets.join('; '));
-    } catch {
-      // Premises are enrichment only — a failed lookup never blocks mining.
-    }
-  }));
-
-  const candidates: PoolCandidate[] = top.map((c) => {
-    const profile = profilesByUser.get(c.counterpartUserId);
-    const matchReason = c.opportunity.interpretation?.reasoning?.slice(0, POOL_FIELD_MAX_CHARS);
-    const publicContext = [
-      profile?.name ? `Name: ${profile.name}.` : null,
-      profile?.bio ? `Bio: ${profile.bio.slice(0, POOL_FIELD_MAX_CHARS)}` : null,
-      matchReason ? `Match: ${matchReason}` : null,
-      premisesByUser.has(c.counterpartUserId) ? `Premises: ${premisesByUser.get(c.counterpartUserId)}` : null,
-    ].filter(Boolean).join(' ').slice(0, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS);
-    return { id: c.opportunity.id, publicContext, score: c.opportunity.interpretation?.confidence ?? 0 };
-  });
+  // Thin bounded public context is shared verbatim with newborn stamping so
+  // mining-time and insert-time classifications cannot drift.
+  const candidates: PoolCandidate[] = await buildPoolCandidateContexts(
+    userId,
+    top.map((entry) => ({ id: entry.opportunity.id, opportunity: entry.opportunity })),
+    chatDatabaseAdapter,
+  );
 
   // Intent text: prefer the triggering owned intent record; fall back to the
   // ad-hoc query for shadow-only pools. Questions carry only a display snippet
