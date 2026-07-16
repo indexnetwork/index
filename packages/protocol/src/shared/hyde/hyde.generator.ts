@@ -58,7 +58,7 @@ function renderList(items: string[]): string {
 
 /** Build the frame-v1 generation prompt from sanitized source evidence. */
 export function buildFrameHydePrompt(input: HydeGenerateInput & { sourceFrame: HydeSourceFrame }): string {
-  const { sourceText, lens, corpus, sourceFrame } = input;
+  const { sourceText, corpus, sourceFrame } = input;
   const corpusInstruction = {
     profiles: 'Write a first-person professional biography in the target profile voice.',
     intents: 'Write a first-person goal or aspiration in the target intent voice.',
@@ -68,7 +68,6 @@ export function buildFrameHydePrompt(input: HydeGenerateInput & { sourceFrame: H
   return `${corpusInstruction}
 
 Source text: "${sourceText}"
-Target lens: ${lens}
 
 Sanitized source frame:
 - Source roles: ${renderList(sourceFrame.sourceRoles.map((item) => `${item.role} [evidence: "${item.evidence}"]`))}

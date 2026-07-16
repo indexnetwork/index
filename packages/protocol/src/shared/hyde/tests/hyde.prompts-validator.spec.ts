@@ -26,7 +26,7 @@ describe('frame-constrained HyDE generation prompt', () => {
   it('renders all frame slots and the allowed/forbidden elaboration boundary', () => {
     const prompt = buildFrameHydePrompt({
       sourceText: 'Acme Labs climate founder seeks €2m seed funding for carbon removal in Berlin',
-      lens: 'climate seed investor',
+      lens: 'ProfileCorp Zurich €9m specialist',
       corpus: 'profiles',
       sourceFrame: frame,
     });
@@ -41,6 +41,8 @@ describe('frame-constrained HyDE generation prompt', () => {
     expect(prompt).toContain('reciprocal/complementary inversion');
     expect(prompt).toContain('MUST NOT introduce any new proper noun');
     expect(prompt).toContain('MUST NOT introduce any new hard location, time, numeric, credential, organization, or exclusivity constraint');
+    expect(prompt).not.toContain('ProfileCorp Zurich €9m specialist');
+    expect(prompt).not.toContain('Target lens');
   });
 
   it('retains the exact legacy corpus prompt when sourceFrame is absent', async () => {
@@ -78,8 +80,8 @@ describe('HyDE validator', () => {
       sourceText: 'climate founder seeks funding',
       sourceFrame: { ...frame, namedEntities: [], hardConstraints: [] },
       documents: {
-        'd-a': { lens: 'investor', corpus: 'profiles', text: 'I invest in climate companies.' },
-        'd-b': { lens: 'investor', corpus: 'profiles', text: 'I work at NewCo in Paris.' },
+        'd-a': { corpus: 'profiles', text: 'I invest in climate companies.' },
+        'd-b': { corpus: 'profiles', text: 'I work at NewCo in Paris.' },
       },
     });
 
@@ -100,9 +102,10 @@ describe('HyDE validator', () => {
     const prompt = buildHydeValidationPrompt({
       sourceText: 'source',
       sourceFrame: frame,
-      documents: { 'd-opaque': { lens: 'investor', corpus: 'profiles', text: 'generated' } },
+      documents: { 'd-opaque': { corpus: 'profiles', text: 'generated' } },
     });
     expect(prompt).toContain('d-opaque');
     expect(prompt).not.toContain('profileContext');
+    expect(prompt).not.toContain('specialized profile-only lens');
   });
 });

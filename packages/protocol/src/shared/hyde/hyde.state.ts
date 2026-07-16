@@ -21,6 +21,9 @@ export interface HydeDocumentState {
   origin?: HydeDocumentOrigin;
   validationStatus?: HydeValidationStatus;
   hydeGenerationVersion?: 'frame-v1';
+  frameFingerprint?: string;
+  sourceTextHash?: string;
+  generatedAt?: string;
 }
 
 /** State for the HyDE generation graph. */
@@ -67,6 +70,24 @@ export const HydeGraphState = Annotation.Root({
 
   /** Sanitized source-grounded frame produced by frame-v1 inference. */
   sourceFrame: Annotation<HydeSourceFrame | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Exact sourceText + sanitized sourceFrame identity for frame-v1 reuse. */
+  frameFingerprint: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Hash of the exact source text for persisted frame-v1 freshness checks. */
+  sourceTextHash: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Shared cohort marker assigned when this run generates any missing document. */
+  generatedAt: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

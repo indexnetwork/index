@@ -21,6 +21,8 @@ import { OpportunityEvaluator, type CandidateProfile, type EvaluatedOpportunityW
 import type { OpportunityGraphDatabase } from '../shared/interfaces/database.interface.js';
 import { IntentIndexer } from '../intent/intent.indexer.js';
 import { getModelName } from '../shared/agent/model.config.js';
+import { selectHydeDocumentsForGeneration } from '../shared/hyde/hyde.documents.js';
+import { getHydeGenerationMode } from '../shared/hyde/hyde.env.js';
 import { validateOpportunityActors } from './opportunity.utils.js';
 import { viewerCentricCardSummary } from './opportunity.presentation.js';
 
@@ -364,9 +366,10 @@ export class OpportunityGraphFactory {
               // The global row (networkId: null) is excluded here — it is not in
               // userNetworkIds — so context-to-intent discovery stays network-scoped.
               .filter((c: { id: string; networkId: string | null; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && c.networkId !== null && userNetworkIds.includes(c.networkId as Id<'networks'>))
-              .map((c: { id: string; networkId: string | null; embedding: number[] | null }) => ({
+              .map((c: { id: string; networkId: string | null; text: string; embedding: number[] | null }) => ({
                 contextId: c.id,
                 networkId: c.networkId as Id<'networks'>,
+                text: c.text,
                 embedding: c.embedding!,
               }));
             return {
@@ -1107,7 +1110,12 @@ export class OpportunityGraphFactory {
 
             for (const ctx of state.sourceContexts.filter(c => targetNetworkIds.includes(c.networkId))) {
               // Attempt HyDE-enhanced search first
-              const hydeDocs = await self.database.getHydeDocumentsForSource('context', ctx.contextId);
+              const persistedHydeDocs = await self.database.getHydeDocumentsForSource('context', ctx.contextId);
+              const hydeDocs = selectHydeDocumentsForGeneration(
+                persistedHydeDocs,
+                getHydeGenerationMode(),
+                ctx.text,
+              );
               const lensEmbeddings: LensEmbedding[] = hydeDocs
                 .filter(d => d.hydeEmbedding?.length > 0)
                 .map(d => ({

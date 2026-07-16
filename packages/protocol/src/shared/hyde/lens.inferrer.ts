@@ -58,23 +58,18 @@ Guidelines:
 - Always include at least one "profiles" perspective when the source describes a need that a specific type of professional could fulfill. Most intents benefit from profile-based discovery.
 - LOCATION AWARENESS: When the source text or user context mentions a specific location (city, region, country), incorporate it into lens descriptions. For example, "investors in San Francisco" should produce a lens like "SF-based early-stage investor" rather than just "early-stage investor". This helps the hypothetical document generator produce location-specific search documents, improving retrieval quality.`;
 
-/** Source-grounded system prompt used only by the frame-v1 path. */
-export const FRAME_LENS_SYSTEM_PROMPT = `You infer search lenses and a source-grounded frame for semantic retrieval.
-
-Lens rules:
-- Infer distinct profile, intent, or premise search perspectives.
-- You may infer reciprocal target roles and complementary roles (for example, infer "investor" from a source seeking funding).
-- profileContext may specialize which lenses are useful, but it is lens-selection context only.
+/** Source-grounded system prompt used only by frame extraction. */
+export const FRAME_SYSTEM_PROMPT = `You extract a source-grounded frame for semantic retrieval from sourceText alone.
 
 Source-frame rules:
-- Extract evidence ONLY from sourceText, never from profileContext.
+- Extract evidence ONLY from sourceText.
 - Every frame element must include an evidence field copied as an exact substring of sourceText.
 - sourceRoles describe roles held or offered by the source side.
-- counterpartRoles describe reciprocal or complementary target roles. The role may be inferred, but its evidence must be an exact sourceText span that supports the inference.
+- sourceRoles and counterpartRoles MUST use generic lower-case role labels only (for example, "founder", "investor", or "technical advisor"). Never put a person, organization, product, location, time, number, credential, or exclusivity detail in a role label.
+- counterpartRoles describe reciprocal or complementary target roles. A generic role may be inferred, but its evidence must be an exact sourceText span that supports the inference.
 - hardConstraints contain only explicit constraints and classify each as location, time, numeric, credential, organization, exclusivity, or other.
 - namedEntities contain only proper names explicitly present in sourceText and classify each as person, organization, product, location, event, or other.
-- domainVocabulary contains source domain terms worth preserving.
-- Do not use profileContext as frame evidence, even when it contains useful names or constraints.`;
+- domainVocabulary contains source domain terms worth preserving.`;
 
 const lensSchema = z.object({
   label: z.string().describe('Specific description of the search perspective'),
@@ -86,9 +81,8 @@ const responseFormat = z.object({
   lenses: z.array(lensSchema).min(1).max(5).describe('Inferred search lenses'),
 });
 
-/** Structured-output schema used only by frame-constrained inference. */
-export const FrameLensResponseSchema = z.object({
-  lenses: z.array(lensSchema).min(1).max(5).describe('Inferred search lenses'),
+/** Structured-output schema used only by source-frame extraction. */
+export const FrameResponseSchema = z.object({
   sourceFrame: HydeSourceFrameSchema,
 });
 
@@ -127,7 +121,7 @@ export class LensInferrer {
   }
 
   private getFrameModel(): LensStructuredModel {
-    this.frameModel ??= createStructuredModel("lensInferrer", FrameLensResponseSchema, {
+    this.frameModel ??= createStructuredModel("lensInferrer", FrameResponseSchema, {
       name: "lens_inferrer_frame_v1",
     });
     return this.frameModel;
@@ -152,33 +146,65 @@ export class LensInferrer {
     }
 
     const messages = [
-      new SystemMessage(frameConstrained ? FRAME_LENS_SYSTEM_PROMPT : SYSTEM_PROMPT),
+      new SystemMessage(SYSTEM_PROMPT),
       new HumanMessage(humanPrompt),
     ];
 
-    try {
-      if (frameConstrained) {
-        const result = await invokeWithAbortSignal(this.getFrameModel(), messages);
-        const parsed = FrameLensResponseSchema.parse(result);
+    if (!frameConstrained) {
+      try {
+        const result = await invokeWithAbortSignal(this.getLegacyModel(), messages);
+        const parsed = responseFormat.parse(result);
         const lenses = parsed.lenses.slice(0, maxLenses);
-        const sourceFrame = sanitizeHydeSourceFrame(sourceText, parsed.sourceFrame);
-        logger.verbose('Frame-constrained lenses inferred', { count: lenses.length });
-        return { lenses, sourceFrame };
+
+        logger.verbose('Lenses inferred', {
+          count: lenses.length,
+          lenses: lenses.map(l => ({ label: l.label, corpus: l.corpus })),
+        });
+
+        return { lenses };
+      } catch (error: unknown) {
+        logger.error('Lens inference failed', { error });
+        return { lenses: [] };
       }
+    }
 
+    const frameMessages = [
+      new SystemMessage(FRAME_SYSTEM_PROMPT),
+      new HumanMessage(`Extract the source frame.\n\nSource: "${sourceText}"`),
+    ];
+    const lensPromise = (async () => {
       const result = await invokeWithAbortSignal(this.getLegacyModel(), messages);
-      const parsed = responseFormat.parse(result);
-      const lenses = parsed.lenses.slice(0, maxLenses);
+      return responseFormat.parse(result).lenses.slice(0, maxLenses);
+    })();
+    const framePromise = (async () => {
+      const result = await invokeWithAbortSignal(this.getFrameModel(), frameMessages);
+      const parsed = FrameResponseSchema.parse(result);
+      return sanitizeHydeSourceFrame(sourceText, parsed.sourceFrame);
+    })();
+    const [lensResult, frameResult] = await Promise.allSettled([lensPromise, framePromise]);
 
-      logger.verbose('Lenses inferred', {
-        count: lenses.length,
-        lenses: lenses.map(l => ({ label: l.label, corpus: l.corpus })),
-      });
-
-      return { lenses };
-    } catch (error: unknown) {
-      logger.error('Lens inference failed', { error });
+    if (lensResult.status === 'rejected') {
+      logger.error('Lens inference failed', { error: lensResult.reason });
       return { lenses: [] };
     }
+
+    const lenses = lensResult.value;
+    logger.verbose('Frame-constrained lenses inferred', { count: lenses.length });
+
+    if (frameResult.status === 'rejected') {
+      logger.error('Source frame extraction failed', { error: frameResult.reason });
+      return {
+        lenses,
+        sourceFrame: {
+          sourceRoles: [],
+          counterpartRoles: [],
+          hardConstraints: [],
+          namedEntities: [],
+          domainVocabulary: [],
+        },
+      };
+    }
+
+    return { lenses, sourceFrame: frameResult.value };
   }
 }

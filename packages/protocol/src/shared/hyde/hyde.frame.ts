@@ -93,24 +93,78 @@ export const HydeSourceFrameSchema = z.object({
   domainVocabulary: z.array(vocabularySchema),
 });
 
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Case-insensitive literal matching bounded by Unicode letters and numbers. */
+function containsAlphanumericSpanCaseInsensitive(container: string, value: string): boolean {
+  const needle = value.trim();
+  if (!needle) return false;
+  return new RegExp(
+    `(?<![\\p{L}\\p{M}\\p{N}])${escapeRegularExpression(needle)}(?![\\p{L}\\p{M}\\p{N}])`,
+    'iu',
+  ).test(container);
+}
+
 function hasExactEvidence(sourceText: string, evidence: string): boolean {
-  return evidence.length > 0 && sourceText.toLocaleLowerCase().includes(evidence.toLocaleLowerCase());
+  return containsAlphanumericSpanCaseInsensitive(sourceText, evidence);
+}
+
+const GENERIC_ROLE_TOKENS = new Set([
+  'advisor', 'analyst', 'attendee', 'borrower', 'builder', 'buyer', 'candidate',
+  'capitalist', 'ceo', 'cfo', 'client', 'cmo', 'cofounder', 'collaborator',
+  'consultant', 'coo', 'creator', 'cto', 'customer', 'designer', 'developer',
+  'director', 'employer', 'engineer', 'entrepreneur', 'executive', 'expert',
+  'founder', 'funder', 'hire', 'hiring', 'investor', 'leader', 'lender',
+  'manager', 'mentor', 'operator', 'organizer', 'owner', 'partner', 'practitioner',
+  'professional', 'provider', 'recruiter', 'researcher', 'scientist', 'seller',
+  'speaker', 'specialist', 'sponsor', 'strategist', 'supplier', 'technologist',
+  'vendor', 'vp',
+]);
+
+const GENERIC_ROLE_MODIFIERS = new Set([
+  'business', 'co', 'commercial', 'community', 'creative', 'early', 'experienced',
+  'growth', 'independent', 'industry', 'junior', 'lead', 'local', 'nonprofit',
+  'operations', 'product', 'professional', 'public', 'senior', 'stage',
+  'startup', 'technical', 'venture',
+]);
+
+function roleTokens(role: string): string[] {
+  return role.toLowerCase().match(/[\p{L}\p{M}\d]+/gu) ?? [];
+}
+
+function hasUnsupportedSourceRoleMaterial(role: string, evidence: string): boolean {
+  const substantiveTokens = roleTokens(role).filter((token) => !GENERIC_ROLE_MODIFIERS.has(token));
+  return substantiveTokens.length === 0
+    || substantiveTokens.some((token) => !containsAlphanumericSpanCaseInsensitive(evidence, token));
+}
+
+function hasUnsupportedCounterpartRoleMaterial(role: string, evidence: string): boolean {
+  return roleTokens(role).some((token) =>
+    !GENERIC_ROLE_TOKENS.has(token)
+    && !GENERIC_ROLE_MODIFIERS.has(token)
+    && !containsAlphanumericSpanCaseInsensitive(evidence, token));
 }
 
 /**
- * Remove every frame element whose evidence is not a case-insensitive exact
- * substring of sourceText. No other text, including profileContext, is accepted
- * as evidence.
+ * Remove frame elements that cross the source-evidence boundary. Structured
+ * payloads must occur inside their evidence span. Source roles require grounded
+ * substantive tokens; counterpart roles may add generic inferred role language.
  */
 export function sanitizeHydeSourceFrame(sourceText: string, frame: HydeSourceFrame): HydeSourceFrame {
   const grounded = <T extends { evidence: string }>(items: T[]): T[] =>
     items.filter((item) => hasExactEvidence(sourceText, item.evidence));
-
   return {
-    sourceRoles: grounded(frame.sourceRoles),
-    counterpartRoles: grounded(frame.counterpartRoles),
-    hardConstraints: grounded(frame.hardConstraints),
-    namedEntities: grounded(frame.namedEntities),
-    domainVocabulary: grounded(frame.domainVocabulary),
+    sourceRoles: grounded(frame.sourceRoles)
+      .filter((item) => !hasUnsupportedSourceRoleMaterial(item.role, item.evidence)),
+    counterpartRoles: grounded(frame.counterpartRoles)
+      .filter((item) => !hasUnsupportedCounterpartRoleMaterial(item.role, item.evidence)),
+    hardConstraints: grounded(frame.hardConstraints)
+      .filter((item) => containsAlphanumericSpanCaseInsensitive(item.evidence, item.value)),
+    namedEntities: grounded(frame.namedEntities)
+      .filter((item) => containsAlphanumericSpanCaseInsensitive(item.evidence, item.name)),
+    domainVocabulary: grounded(frame.domainVocabulary)
+      .filter((item) => containsAlphanumericSpanCaseInsensitive(item.evidence, item.term)),
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "4.15.0",
+  "version": "4.16.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -23,6 +23,7 @@
     "test:isolated": "bun scripts/test.ts",
     "prepublishOnly": "bun run build",
     "eval:matching": "bun --env-file=../../.env.test ./eval/matching/matching.eval.ts",
+    "eval:hyde": "bun --env-file=../../.env.test ./eval/hyde/hyde.eval.ts",
     "eval:premise": "bun --env-file=../../.env.test ./eval/premise/premise.eval.ts",
     "eval:profile": "bun --env-file=../../.env.test ./eval/profile/profile.eval.ts",
     "eval:opportunity": "bun --env-file=../../.env.test ./eval/opportunity/opportunity.eval.ts",

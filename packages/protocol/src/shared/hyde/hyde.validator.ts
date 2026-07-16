@@ -8,7 +8,6 @@ import type { HydeSourceFrame } from './hyde.frame.js';
 import type { HydeTargetCorpus } from './lens.inferrer.js';
 
 export interface HydeValidationDocument {
-  lens: string;
   corpus: HydeTargetCorpus;
   text: string;
 }

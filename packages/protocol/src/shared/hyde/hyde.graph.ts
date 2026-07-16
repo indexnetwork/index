@@ -15,6 +15,7 @@ import type { EmbeddingGenerator } from '../interfaces/embedder.interface.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
 import { timed } from '../observability/performance.js';
 import { requestContext } from "../observability/request-context.js";
+import { computeHydeSourceTextHash } from './hyde.documents.js';
 import { getHydeGenerationMode, HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from './hyde.env.js';
 import { sanitizeHydeSourceFrame, type HydeSourceFrame } from './hyde.frame.js';
 import type { HydeGenerateInput, HydeGeneratorOutput } from './hyde.generator.js';
@@ -24,6 +25,12 @@ import { HYDE_DEFAULT_CACHE_TTL } from './hyde.strategies.js';
 import { HydeValidator, type HydeValidationInput, type HydeValidationOutput, type HydeValidationVerdict } from './hyde.validator.js';
 
 const logger = protocolLogger("HyDEGraphFactory");
+let lastGenerationTimestamp = 0;
+
+function nextGenerationMarker(): string {
+  lastGenerationTimestamp = Math.max(Date.now(), lastGenerationTimestamp + 1);
+  return new Date(lastGenerationTimestamp).toISOString();
+}
 
 /** Narrow lens inferrer contract accepted by the graph. */
 export interface HydeLensInferrerLike {
@@ -58,6 +65,35 @@ function entityCacheKey(sourceId: string | undefined, sourceText: string): strin
   return sourceId ?? `q:${createHash('sha256').update(sourceText).digest('hex').slice(0, 16)}`;
 }
 
+function sortedFrame(frame: HydeSourceFrame): HydeSourceFrame {
+  const sort = <T>(items: T[]): T[] => [...items].sort((left, right) => {
+    const leftJson = JSON.stringify(left);
+    const rightJson = JSON.stringify(right);
+    return leftJson < rightJson ? -1 : leftJson > rightJson ? 1 : 0;
+  });
+  return {
+    sourceRoles: sort(frame.sourceRoles),
+    counterpartRoles: sort(frame.counterpartRoles),
+    hardConstraints: sort(frame.hardConstraints),
+    namedEntities: sort(frame.namedEntities),
+    domainVocabulary: sort(frame.domainVocabulary),
+  };
+}
+
+/** Deterministic identity for the source content and sanitized frame. */
+function computeHydeFrameFingerprint(sourceText: string, sourceFrame: HydeSourceFrame): string {
+  return createHash('sha256')
+    .update(sourceText)
+    .update('\0')
+    .update(JSON.stringify(sortedFrame(sourceFrame)))
+    .digest('hex');
+}
+
+function requireFrameFingerprint(frameFingerprint: string | undefined): string {
+  if (!frameFingerprint) throw new Error('frame-v1 HyDE requires a frame fingerprint');
+  return frameFingerprint;
+}
+
 /** Preserve the exact legacy Redis key and isolate frame-v1 data by namespace. */
 function cacheKey(
   mode: HydeGenerationMode,
@@ -66,29 +102,58 @@ function cacheKey(
   sourceText: string,
   lens: string,
   corpus?: string,
+  frameFingerprint?: string,
 ): string {
   const entityKey = entityCacheKey(sourceId, sourceText);
-  return mode === 'legacy'
-    ? `hyde:${sourceType}:${entityKey}:${lensHash(lens, corpus)}`
-    : `hyde:${HYDE_FRAME_GENERATION_VERSION}:${sourceType}:${entityKey}:${lensHash(lens, corpus)}`;
+  if (mode === 'legacy') return `hyde:${sourceType}:${entityKey}:${lensHash(lens, corpus)}`;
+  return `hyde:${HYDE_FRAME_GENERATION_VERSION}:${sourceType}:${entityKey}:${requireFrameFingerprint(frameFingerprint)}:${lensHash(lens, corpus)}`;
 }
 
-/** Preserve the exact legacy DB strategy and isolate frame-v1 without migration. */
+/** Preserve legacy identity and use a stable frame-v1 identity per lens/corpus. */
 function dbStrategy(mode: HydeGenerationMode, label: string, corpus?: string): string {
   const hash = lensHash(label, corpus);
   return mode === 'legacy' ? hash : `${HYDE_FRAME_GENERATION_VERSION}:${hash}`;
 }
 
-function isFrameCacheDocument(doc: HydeDocumentState, lensLabel: string): boolean {
-  return doc.hydeGenerationVersion === HYDE_FRAME_GENERATION_VERSION
-    && doc.validationStatus === 'valid'
-    && doc.lens === lensLabel;
+function isValidGenerationMarker(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
-function isFrameDbContext(context: Record<string, unknown> | null, lensLabel: string): boolean {
+function isFrameCacheDocument(
+  doc: HydeDocumentState,
+  lensLabel: string,
+  frameFingerprint: string,
+  sourceTextHash: string,
+): boolean {
+  return doc.hydeGenerationVersion === HYDE_FRAME_GENERATION_VERSION
+    && doc.validationStatus === 'valid'
+    && doc.lens === lensLabel
+    && doc.frameFingerprint === frameFingerprint
+    && doc.sourceTextHash === sourceTextHash
+    && isValidGenerationMarker(doc.generatedAt);
+}
+
+interface FrameDbContext extends Record<string, unknown> {
+  hydeGenerationVersion: typeof HYDE_FRAME_GENERATION_VERSION;
+  lensLabel: string;
+  validationStatus: 'valid';
+  frameFingerprint: string;
+  sourceTextHash: string;
+  generatedAt: string;
+}
+
+function isFrameDbContext(
+  context: Record<string, unknown> | null,
+  lensLabel: string,
+  frameFingerprint: string,
+  sourceTextHash: string,
+): context is FrameDbContext {
   return context?.hydeGenerationVersion === HYDE_FRAME_GENERATION_VERSION
-    && context?.lensLabel === lensLabel
-    && context?.validationStatus === 'valid';
+    && context.lensLabel === lensLabel
+    && context.validationStatus === 'valid'
+    && context.frameFingerprint === frameFingerprint
+    && context.sourceTextHash === sourceTextHash
+    && isValidGenerationMarker(context.generatedAt);
 }
 
 function emptyFrame(): HydeSourceFrame {
@@ -158,15 +223,32 @@ export class HydeGraphFactory {
           agentTimingsAccum.push({ name: 'lens.inferrer', durationMs });
           traceEmitter?.({ type: "agent_end", name: "lens-inferrer", durationMs, summary: result.lenses.length > 0 ? `Inferred ${result.lenses.length} lens(es)` : "lens-inferrer completed" });
 
-          return {
-            lenses: result.lenses,
-            ...(mode === HYDE_FRAME_GENERATION_VERSION
-              ? { sourceFrame: sanitizeHydeSourceFrame(sourceText, result.sourceFrame ?? emptyFrame()) }
-              : {}),
-            agentTimings: agentTimingsAccum,
-          };
+          if (mode === HYDE_FRAME_GENERATION_VERSION) {
+            const sourceFrame = sanitizeHydeSourceFrame(sourceText, result.sourceFrame ?? emptyFrame());
+            return {
+              lenses: result.lenses,
+              sourceFrame,
+              frameFingerprint: computeHydeFrameFingerprint(sourceText, sourceFrame),
+              sourceTextHash: computeHydeSourceTextHash(sourceText),
+              generatedAt: nextGenerationMarker(),
+              agentTimings: agentTimingsAccum,
+            };
+          }
+
+          return { lenses: result.lenses, agentTimings: agentTimingsAccum };
         } catch (error) {
           logger.error('Lens inference failed in graph node', { error });
+          if (mode === HYDE_FRAME_GENERATION_VERSION) {
+            const sourceFrame = emptyFrame();
+            return {
+              lenses: [],
+              sourceFrame,
+              frameFingerprint: computeHydeFrameFingerprint(sourceText, sourceFrame),
+              sourceTextHash: computeHydeSourceTextHash(sourceText),
+              generatedAt: nextGenerationMarker(),
+              agentTimings: agentTimingsAccum,
+            };
+          }
           return { lenses: [], agentTimings: agentTimingsAccum };
         }
       });
@@ -179,13 +261,27 @@ export class HydeGraphFactory {
 
         if (forceRegenerate) return { hydeDocuments: {} };
 
+        const frameFingerprint = mode === HYDE_FRAME_GENERATION_VERSION
+          ? requireFrameFingerprint(state.frameFingerprint)
+          : undefined;
+        const sourceTextHash = mode === HYDE_FRAME_GENERATION_VERSION
+          ? state.sourceTextHash ?? computeHydeSourceTextHash(sourceText)
+          : undefined;
         const cached: Record<string, HydeDocumentState> = {};
         for (const lens of lenses) {
-          const key = cacheKey(mode, sourceType, sourceId ?? undefined, sourceText, lens.label, lens.corpus);
+          const key = cacheKey(
+            mode,
+            sourceType,
+            sourceId ?? undefined,
+            sourceText,
+            lens.label,
+            lens.corpus,
+            frameFingerprint,
+          );
           const fromCache = await self.cache.get<HydeDocumentState>(key);
           const cacheAccepted = fromCache?.hydeText
             && fromCache.hydeEmbedding?.length
-            && (mode === 'legacy' || isFrameCacheDocument(fromCache, lens.label));
+            && (mode === 'legacy' || isFrameCacheDocument(fromCache, lens.label, frameFingerprint!, sourceTextHash!));
           if (cacheAccepted && fromCache) {
             cached[lens.label] = {
               ...fromCache,
@@ -200,7 +296,10 @@ export class HydeGraphFactory {
               sourceId,
               dbStrategy(mode, lens.label, lens.corpus),
             );
-            if (fromDb && (mode === 'legacy' || isFrameDbContext(fromDb.context, lens.label))) {
+            const frameDbContext = mode === HYDE_FRAME_GENERATION_VERSION && fromDb
+              ? fromDb.context
+              : null;
+            if (fromDb && (mode === 'legacy' || isFrameDbContext(frameDbContext, lens.label, frameFingerprint!, sourceTextHash!))) {
               cached[lens.label] = {
                 lens: lens.label,
                 targetCorpus: fromDb.targetCorpus as HydeDocumentState['targetCorpus'],
@@ -211,10 +310,25 @@ export class HydeGraphFactory {
                     origin: 'db' as const,
                     validationStatus: 'valid' as const,
                     hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION,
+                    frameFingerprint,
+                    sourceTextHash,
+                    generatedAt: (frameDbContext as FrameDbContext).generatedAt,
                   }
                   : {}),
               };
             }
+          }
+        }
+
+        if (mode === HYDE_FRAME_GENERATION_VERSION) {
+          const newestTimestamp = Math.max(
+            ...Object.values(cached).map((doc) => Date.parse(doc.generatedAt ?? '')),
+          );
+          if (Number.isFinite(newestTimestamp)) {
+            return {
+              hydeDocuments: Object.fromEntries(Object.entries(cached).filter(([, doc]) =>
+                Date.parse(doc.generatedAt ?? '') === newestTimestamp)),
+            };
           }
         }
 
@@ -232,6 +346,12 @@ export class HydeGraphFactory {
         const missing = lenses.filter((lens) => !hydeDocuments[lens.label]);
         const agentTimingsAccum: DebugMetaAgent[] = [];
         const generated: Record<string, HydeDocumentState> = {};
+        const sourceTextHash = mode === HYDE_FRAME_GENERATION_VERSION
+          ? state.sourceTextHash ?? computeHydeSourceTextHash(sourceText)
+          : undefined;
+        const generatedAt = mode === HYDE_FRAME_GENERATION_VERSION
+          ? state.generatedAt ?? nextGenerationMarker()
+          : undefined;
 
         await Promise.all(missing.map(async (lens) => {
           const traceEmitter = requestContext.getStore()?.traceEmitter;
@@ -251,11 +371,30 @@ export class HydeGraphFactory {
             targetCorpus: lens.corpus,
             hydeText: out.text,
             hydeEmbedding: [],
-            ...(mode === HYDE_FRAME_GENERATION_VERSION ? { origin: 'generated' as const } : {}),
+            ...(mode === HYDE_FRAME_GENERATION_VERSION
+              ? {
+                origin: 'generated' as const,
+                frameFingerprint: requireFrameFingerprint(state.frameFingerprint),
+                sourceTextHash,
+                generatedAt,
+              }
+              : {}),
           };
         }));
 
-        return { hydeDocuments: { ...hydeDocuments, ...generated }, agentTimings: agentTimingsAccum };
+        const retained = mode === HYDE_FRAME_GENERATION_VERSION
+          ? Object.fromEntries(Object.entries(hydeDocuments).map(([label, doc]) => [
+            label,
+            {
+              ...doc,
+              frameFingerprint: requireFrameFingerprint(state.frameFingerprint),
+              sourceTextHash,
+              generatedAt,
+            },
+          ]))
+          : hydeDocuments;
+
+        return { hydeDocuments: { ...retained, ...generated }, agentTimings: agentTimingsAccum };
       });
     };
 
@@ -266,52 +405,82 @@ export class HydeGraphFactory {
         if (generated.length === 0 || !validator) return { hydeDocuments: state.hydeDocuments };
 
         const frame = sanitizeHydeSourceFrame(state.sourceText, state.sourceFrame ?? emptyFrame());
-        const keyed = Object.fromEntries(generated.map((doc) => [
-          opaqueDocumentKey(doc),
-          { lens: doc.lens, corpus: doc.targetCorpus, text: doc.hydeText },
-        ]));
+        const documents: HydeValidationInput['documents'] = {};
+        const lensByDocumentKey = new Map<string, string>();
+        for (const doc of generated) {
+          const key = opaqueDocumentKey(doc);
+          documents[key] = { corpus: doc.targetCorpus, text: doc.hydeText };
+          lensByDocumentKey.set(key, doc.lens);
+        }
+
         const updated = { ...state.hydeDocuments };
+        const agentTimingsAccum: DebugMetaAgent[] = [];
+        const traceEmitter = requestContext.getStore()?.traceEmitter;
+        const validatorStart = Date.now();
+        let validCount = 0;
+        let rejectedCount = 0;
+        let failedOpenCount = 0;
+        traceEmitter?.({ type: 'agent_start', name: 'hyde-validator' });
 
         try {
           const output = await validator.validate({
             sourceText: state.sourceText,
             sourceFrame: frame,
-            documents: keyed,
+            documents,
           });
           const rawVerdicts: unknown[] = Array.isArray((output as { verdicts?: unknown }).verdicts)
             ? (output as { verdicts: unknown[] }).verdicts
             : [];
 
-          for (const [key, item] of Object.entries(keyed)) {
+          for (const key of Object.keys(documents)) {
+            const lensLabel = lensByDocumentKey.get(key);
+            if (!lensLabel) continue;
             const matching = rawVerdicts.filter((value) =>
               !!value && typeof value === 'object' && (value as { key?: unknown }).key === key);
-            const doc = updated[item.lens];
+            const doc = updated[lensLabel];
             if (!doc) continue;
 
             if (matching.length !== 1 || !isRuntimeVerdict(matching[0])) {
-              updated[item.lens] = { ...doc, validationStatus: 'failed_open', hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION };
+              failedOpenCount += 1;
+              updated[lensLabel] = { ...doc, validationStatus: 'failed_open', hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION };
               continue;
             }
 
             const verdict = matching[0];
-            const contradictory = verdict.valid
-              && (verdict.unsupportedNamedEntities.length > 0 || verdict.unsupportedHardConstraints.length > 0);
+            const hasUnsupportedGrounding = verdict.unsupportedNamedEntities.length > 0
+              || verdict.unsupportedHardConstraints.length > 0;
+            const contradictory = verdict.valid === hasUnsupportedGrounding;
             if (contradictory) {
-              updated[item.lens] = { ...doc, validationStatus: 'failed_open', hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION };
+              failedOpenCount += 1;
+              updated[lensLabel] = { ...doc, validationStatus: 'failed_open', hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION };
             } else if (!verdict.valid) {
-              delete updated[item.lens];
+              rejectedCount += 1;
+              delete updated[lensLabel];
             } else {
-              updated[item.lens] = { ...doc, validationStatus: 'valid', hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION };
+              validCount += 1;
+              updated[lensLabel] = { ...doc, validationStatus: 'valid', hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION };
             }
           }
         } catch (error) {
           logger.error('HyDE validation failed open', { error });
+          validCount = 0;
+          rejectedCount = 0;
+          failedOpenCount = generated.length;
           for (const doc of generated) {
             updated[doc.lens] = { ...doc, validationStatus: 'failed_open', hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION };
           }
+        } finally {
+          const durationMs = Date.now() - validatorStart;
+          agentTimingsAccum.push({ name: 'hyde.validator', durationMs });
+          traceEmitter?.({
+            type: 'agent_end',
+            name: 'hyde-validator',
+            durationMs,
+            summary: `${validCount} valid, ${rejectedCount} rejected, ${failedOpenCount} failed open`,
+          });
         }
 
-        return { hydeDocuments: updated };
+        return { hydeDocuments: updated, agentTimings: agentTimingsAccum };
       });
     };
 
@@ -354,10 +523,25 @@ export class HydeGraphFactory {
     const cacheResultsNode = async (state: typeof HydeGraphState.State) => {
       return timed("HydeGraph.cacheResults", async () => {
         const { sourceType, sourceId, sourceText, hydeDocuments } = state;
+        const frameFingerprint = mode === HYDE_FRAME_GENERATION_VERSION
+          ? requireFrameFingerprint(state.frameFingerprint)
+          : undefined;
+        const sourceTextHash = mode === HYDE_FRAME_GENERATION_VERSION
+          ? state.sourceTextHash ?? computeHydeSourceTextHash(sourceText)
+          : undefined;
         for (const [label, doc] of Object.entries(hydeDocuments)) {
-          if (mode === HYDE_FRAME_GENERATION_VERSION && doc.validationStatus !== 'valid') continue;
+          if (mode === HYDE_FRAME_GENERATION_VERSION
+            && !isFrameCacheDocument(doc, label, frameFingerprint!, sourceTextHash!)) continue;
 
-          const key = cacheKey(mode, sourceType, sourceId ?? undefined, sourceText, label, doc.targetCorpus);
+          const key = cacheKey(
+            mode,
+            sourceType,
+            sourceId ?? undefined,
+            sourceText,
+            label,
+            doc.targetCorpus,
+            frameFingerprint,
+          );
           await self.cache.set(key, doc, { ttl: HYDE_DEFAULT_CACHE_TTL });
 
           if (sourceId) {
@@ -373,6 +557,9 @@ export class HydeGraphFactory {
                   hydeGenerationVersion: HYDE_FRAME_GENERATION_VERSION,
                   lensLabel: label,
                   validationStatus: 'valid',
+                  frameFingerprint: doc.frameFingerprint,
+                  sourceTextHash: doc.sourceTextHash,
+                  generatedAt: doc.generatedAt,
                 },
               } : {}),
             });

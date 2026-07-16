@@ -10,13 +10,14 @@ config({ path: '.env.test', override: true });
 import { afterAll, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../types/common.types.js';
-import type { OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
+import type { HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { SourceProfileData } from '../opportunity.state.js';
 import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../opportunity.evaluator.js';
 import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
 import type { GeneratedProfile } from '../../enrichment/enrichment.generator.js';
 import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
+import { computeHydeSourceTextHash } from '../../shared/hyde/hyde.documents.js';
 import { requestContext } from '../../shared/observability/request-context.js';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
@@ -674,6 +675,75 @@ describe('Opportunity Graph', () => {
           ]),
         }),
       }));
+    });
+
+    test('context discovery searches only the newest current frame generation', async () => {
+      const previousFlag = process.env.HYDE_FRAME_CONSTRAINTS_ENABLED;
+      process.env.HYDE_FRAME_CONSTRAINTS_ENABLED = 'true';
+      const contextText = 'Alice is looking for protocol collaborators';
+      const sourceTextHash = computeHydeSourceTextHash(contextText);
+      const persistedDocument = (
+        id: string,
+        strategy: string,
+        context: Record<string, unknown> | null,
+      ): HydeDocument => ({
+        id,
+        sourceType: 'context',
+        sourceId: 'ctx-1',
+        sourceText: null,
+        strategy,
+        targetCorpus: 'intents',
+        hydeText: id,
+        hydeEmbedding: [1, 2],
+        context,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        expiresAt: null,
+      });
+      const frameContext = (generatedAt: string, hash = sourceTextHash) => ({
+        hydeGenerationVersion: 'frame-v1',
+        lensLabel: 'protocol collaborator',
+        validationStatus: 'valid',
+        frameFingerprint: 'fingerprint',
+        sourceTextHash: hash,
+        generatedAt,
+      });
+
+      try {
+        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
+          getUserIndexIds: () => Promise.resolve(['net-1'] as Id<'networks'>[]),
+          getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
+          evaluatorResult: [],
+        });
+        mockDb.getUserContexts = mock(async () => [{
+          id: 'ctx-1',
+          networkId: 'net-1',
+          text: contextText,
+          embedding: dummyEmbedding,
+          premiseHash: 'hash-1',
+          generatedAt: new Date('2026-06-09T00:00:00.000Z'),
+        }]) as typeof mockDb.getUserContexts;
+        mockDb.getHydeDocumentsForSource = mock(async () => [
+          persistedDocument('legacy', 'legacy-hash', null),
+          persistedDocument('stale-source', 'frame-v1:stale', frameContext('2026-01-03T00:00:00.000Z', computeHydeSourceTextHash('stale context'))),
+          persistedDocument('old-generation', 'frame-v1:old', frameContext('2026-01-01T00:00:00.000Z')),
+          persistedDocument('new-generation', 'frame-v1:new', frameContext('2026-01-02T00:00:00.000Z')),
+        ]) as typeof mockDb.getHydeDocumentsForSource;
+        const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
+
+        await compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'protocol collaborator',
+          options: { minScore: 70 },
+        } as OpportunityGraphInvokeInput);
+
+        const contextSearch = searchSpy.mock.calls
+          .map((call) => call[0] as Array<{ lens: string }>)
+          .find((embeddings) => embeddings.some((embedding) => embedding.lens.startsWith('frame-v1:')));
+        expect(contextSearch?.map((embedding) => embedding.lens)).toEqual(['frame-v1:new']);
+      } finally {
+        if (previousFlag === undefined) delete process.env.HYDE_FRAME_CONSTRAINTS_ENABLED;
+        else process.env.HYDE_FRAME_CONSTRAINTS_ENABLED = previousFlag;
+      }
     });
   });
 
