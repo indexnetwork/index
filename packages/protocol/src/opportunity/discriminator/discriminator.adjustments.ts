@@ -38,6 +38,8 @@ export interface PoolAdjustment extends PoolAdjustmentProvenance {
   detail?: string;
   /** ISO-8601 apply timestamp. */
   appliedAt: string;
+  /** Audit-only marker: stale adjustments remain stored but have no ranking effect. */
+  stale?: true;
 }
 
 /** Reads valid adjustments, optionally narrowed to one recipient + intent. */
@@ -53,13 +55,22 @@ export function readPoolAdjustments(
       typeof (a as PoolAdjustment).questionId !== "string" ||
       typeof (a as PoolAdjustment).recipientUserId !== "string" ||
       typeof (a as PoolAdjustment).intentId !== "string" ||
-      typeof (a as PoolAdjustment).factor !== "number"
+      typeof (a as PoolAdjustment).factor !== "number" ||
+      ((a as PoolAdjustment).stale !== undefined && (a as PoolAdjustment).stale !== true)
     ) return false;
     return provenance === undefined || (
       (a as PoolAdjustment).recipientUserId === provenance.recipientUserId &&
       (a as PoolAdjustment).intentId === provenance.intentId
     );
   });
+}
+
+/** Reads valid, non-stale adjustments for ranking and presentation behavior. */
+export function readActivePoolAdjustments(
+  metadata: Record<string, unknown> | null | undefined,
+  provenance?: PoolAdjustmentProvenance,
+): PoolAdjustment[] {
+  return readPoolAdjustments(metadata, provenance).filter((adjustment) => adjustment.stale !== true);
 }
 
 /**
@@ -70,7 +81,7 @@ export function poolAdjustmentMultiplier(
   metadata: Record<string, unknown> | null | undefined,
   provenance: PoolAdjustmentProvenance,
 ): number {
-  const adjustments = readPoolAdjustments(metadata, provenance);
+  const adjustments = readActivePoolAdjustments(metadata, provenance);
   if (adjustments.length === 0) return 1;
   const product = adjustments.reduce((acc, a) => acc * (Number.isFinite(a.factor) && a.factor > 0 ? a.factor : 1), 1);
   return Math.max(POOL_ADJUSTMENT_FLOOR, product);
@@ -211,7 +222,7 @@ export function latestPoolDemotionDetail(
   metadata: Record<string, unknown> | null | undefined,
   provenance: PoolAdjustmentProvenance,
 ): string | undefined {
-  return [...readPoolAdjustments(metadata, provenance)]
+  return [...readActivePoolAdjustments(metadata, provenance)]
     .reverse()
     .find((adjustment) => adjustment.factor < 1 && typeof adjustment.detail === 'string' && adjustment.detail.length > 0)
     ?.detail;

@@ -131,6 +131,8 @@ export interface SynthesizePoolQuestionInput {
   /** Remaining ranked eligible discriminators (interview-mode chain stash). */
   alternates: QuestionPoolDiscriminator[];
   poolSize: number;
+  /** Exact bounded candidate opportunity IDs supplied to this synthesis pass. */
+  opportunityIds: string[];
   /** ISO-8601 timestamp of the mining pass. */
   minedAt: string;
   /** Discovery run id, when known. */
@@ -189,6 +191,7 @@ export function synthesizePoolQuestion(input: SynthesizePoolQuestionInput): Synt
     },
     pool: {
       poolSize,
+      opportunityIds: [...input.opportunityIds],
       minedAt: input.minedAt,
       ...(input.runId ? { runId: input.runId } : {}),
       ...(snippet.length > 0 ? { intentText: snippet.slice(0, 160) } : {}),

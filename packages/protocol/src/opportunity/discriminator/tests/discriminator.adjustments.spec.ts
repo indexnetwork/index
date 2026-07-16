@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "bun:test";
 
-import { adjustedConfidence, buildPoolAdjustment, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readPoolAdjustments, removePoolAdjustment } from "../discriminator.adjustments.js";
+import { adjustedConfidence, buildPoolAdjustment, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readActivePoolAdjustments, readPoolAdjustments, removePoolAdjustment } from "../discriminator.adjustments.js";
 import type { PoolAdjustment } from "../discriminator.adjustments.js";
 import type { QuestionPoolDiscriminator } from "../../../shared/schemas/question.schema.js";
 
@@ -128,15 +128,24 @@ describe("merge/remove/read", () => {
     ] })).toEqual([]);
   });
 
-  it("returns only the latest explainable demotion detail for card UI", () => {
+  it("keeps stale adjustments in audit reads and excludes them from active reads", () => {
+    const stale = adjustment({ questionId: "q-stale", stale: true });
+    const active = adjustment({ questionId: "q-active", factor: 1 });
+    const metadata = { poolAdjustments: [stale, active] };
+    expect(readPoolAdjustments(metadata, PROVENANCE)).toEqual([stale, active]);
+    expect(readActivePoolAdjustments(metadata, PROVENANCE)).toEqual([active]);
+  });
+
+  it("returns only the latest active explainable demotion detail for card UI", () => {
     const metadata = {
       poolAdjustments: [
         adjustment({ questionId: "q-1", factor: 0.6, detail: "First: you chose A" }),
         adjustment({ questionId: "q-2", factor: 0.9 }),
-        adjustment({ questionId: "q-3", factor: 0.6, detail: "Latest: you chose B" }),
+        adjustment({ questionId: "q-3", factor: 0.6, detail: "Latest active: you chose B" }),
+        adjustment({ questionId: "q-4", factor: 0.6, detail: "Stale: you chose C", stale: true }),
       ],
     };
-    expect(latestPoolDemotionDetail(metadata, PROVENANCE)).toBe("Latest: you chose B");
+    expect(latestPoolDemotionDetail(metadata, PROVENANCE)).toBe("Latest active: you chose B");
     expect(latestPoolDemotionDetail({}, PROVENANCE)).toBeUndefined();
   });
 });
@@ -154,6 +163,17 @@ describe("multiplier + adjustedConfidence", () => {
     // 0.6^4 = 0.1296 → floored at 0.3
     expect(poolAdjustmentMultiplier(m, PROVENANCE)).toBe(0.3);
     expect(adjustedConfidence(0.9, m, PROVENANCE)).toBeCloseTo(0.27, 6);
+  });
+
+  it("ignores stale factors while retaining active factors", () => {
+    const metadata = {
+      poolAdjustments: [
+        adjustment({ questionId: "q-stale", factor: 0.2, stale: true }),
+        adjustment({ questionId: "q-active", factor: 0.6 }),
+      ],
+    };
+    expect(poolAdjustmentMultiplier(metadata, PROVENANCE)).toBeCloseTo(0.6, 6);
+    expect(adjustedConfidence(0.9, metadata, PROVENANCE)).toBeCloseTo(0.54, 6);
   });
 
   it("returns 1 with no adjustments (raw confidence preserved)", () => {

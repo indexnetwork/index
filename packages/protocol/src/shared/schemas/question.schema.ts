@@ -136,6 +136,8 @@ export const QuestionPoolSnapshotSchema = z.object({
   intentText: z.string().optional(),
   /** Stable hash of the full normalized payload + summary used for freshness. */
   intentFingerprint: z.string().min(1).optional(),
+  /** Exact bounded candidate pool. Optional for legacy rows/jobs created before IND-422. */
+  opportunityIds: z.array(z.string().uuid()).optional(),
   /** The discriminator this question asks about. */
   discriminator: QuestionPoolDiscriminatorSchema,
   /** Remaining ranked discriminators for interview-mode chaining. */
@@ -164,6 +166,9 @@ export const QuestionPoolPushSchema = z.object({
 
 /** Durable request state for proactive pool-question delivery. */
 export const QuestionPoolPushRequestStatusSchema = z.enum(["requested", "suppressed"]);
+
+/** Internal reason a pending pool question was voided. */
+export const QuestionVoidedReasonSchema = z.enum(["pool_drift", "intent_edit"]);
 
 /** Permanent reasons that terminalize an unclaimed proactive push request. */
 export const QuestionPoolPushRequestReasonSchema = z.enum([
@@ -215,6 +220,8 @@ export const QuestionDetectionSchema = z.object({
   pushRequestSuppressedAt: z.string().min(1).optional(),
   /** Internal proactive delivery state. Never serialize to public clients. */
   push: QuestionPoolPushSchema.optional(),
+  /** Internal reason this question was voided after pool or intent drift. */
+  voidedReason: QuestionVoidedReasonSchema.optional(),
   /** Authoritative successful-delivery ledger timestamp. Internal only. */
   pushedAt: z.string().min(1).optional(),
 }).superRefine((detection, ctx) => {
@@ -289,5 +296,6 @@ export type QuestionPoolAssignment = z.infer<typeof QuestionPoolAssignmentSchema
 export type QuestionPoolDiscriminator = z.infer<typeof QuestionPoolDiscriminatorSchema>;
 export type QuestionPoolSnapshot = z.infer<typeof QuestionPoolSnapshotSchema>;
 export type QuestionPoolPush = z.infer<typeof QuestionPoolPushSchema>;
+export type QuestionVoidedReason = z.infer<typeof QuestionVoidedReasonSchema>;
 export type QuestionPoolPushRequestStatus = z.infer<typeof QuestionPoolPushRequestStatusSchema>;
 export type QuestionPoolPushRequestReason = z.infer<typeof QuestionPoolPushRequestReasonSchema>;

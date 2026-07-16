@@ -71,6 +71,9 @@ function opportunity(input: {
   adjustmentRecipientUserId?: string;
   adjustmentIntentId?: string;
   legacyAdjustment?: boolean;
+  stale?: true;
+  extraStaleFactor?: number;
+  extraStaleDetail?: string;
 }): Opportunity {
   return {
     id: input.id,
@@ -98,7 +101,18 @@ function opportunity(input: {
         factor: input.factor,
         ...(input.detail ? { detail: input.detail } : {}),
         appliedAt: input.updatedAt,
-      }],
+        ...(input.stale ? { stale: true as const } : {}),
+      }, ...(input.extraStaleFactor === undefined ? [] : [{
+        questionId: 'question-stale',
+        recipientUserId: input.adjustmentRecipientUserId ?? 'u1',
+        intentId: input.adjustmentIntentId ?? 'intent-1',
+        label: 'Stale axis',
+        side: input.extraStaleFactor < 1 ? 'Advisors' : 'Builders',
+        factor: input.extraStaleFactor,
+        ...(input.extraStaleDetail ? { detail: input.extraStaleDetail } : {}),
+        appliedAt: input.updatedAt,
+        stale: true as const,
+      }])],
     },
   };
 }
@@ -181,6 +195,81 @@ describe('home graph status filter', () => {
     const full = await fullGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'] });
     expect(full.sections.flatMap((section) => section.items).map((item) => item.opportunityId))
       .toEqual(['older-prioritized', 'newer-demoted']);
+  });
+
+  test('stale-only scoped adjustments preserve lifecycle order and presentation', async () => {
+    process.env.POOL_QUESTIONS_RANKING = 'on';
+    const rows = [
+      opportunity({
+        id: 'newer-stale-demotion',
+        counterpartId: 'u2',
+        confidence: 0.9,
+        factor: 0.1,
+        detail: 'Stale axis: you chose Builders',
+        stale: true,
+        updatedAt: '2026-07-15T12:10:00.000Z',
+      }),
+      opportunity({
+        id: 'older-unadjusted',
+        counterpartId: 'u3',
+        confidence: 0.7,
+        updatedAt: '2026-07-15T12:00:00.000Z',
+      }),
+    ];
+
+    const graph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const result = await graph.invoke({
+      userId: 'u1',
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+      statuses: ['draft'],
+      presentation: 'skeleton',
+    });
+    const items = result.sections.flatMap((section) => section.items);
+    expect(items.map((item) => item.opportunityId)).toEqual([
+      'newer-stale-demotion',
+      'older-unadjusted',
+    ]);
+    expect(items[0]?.deprioritizedReason).toBeUndefined();
+  });
+
+  test('mixed active and stale adjustments rank and present from active entries only', async () => {
+    process.env.POOL_QUESTIONS_RANKING = 'on';
+    const rows = [
+      opportunity({
+        id: 'newer-active-priority',
+        counterpartId: 'u2',
+        confidence: 0.9,
+        factor: 1,
+        extraStaleFactor: 0.1,
+        extraStaleDetail: 'Stale axis: you chose Advisors',
+        updatedAt: '2026-07-15T12:10:00.000Z',
+      }),
+      opportunity({
+        id: 'older-active-demotion',
+        counterpartId: 'u3',
+        confidence: 0.7,
+        factor: 0.6,
+        detail: 'Active axis: you chose Builders',
+        updatedAt: '2026-07-15T12:00:00.000Z',
+      }),
+    ];
+
+    const graph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const result = await graph.invoke({
+      userId: 'u1',
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+      statuses: ['draft'],
+      presentation: 'skeleton',
+    });
+    const items = result.sections.flatMap((section) => section.items);
+    expect(items.map((item) => item.opportunityId)).toEqual([
+      'newer-active-priority',
+      'older-active-demotion',
+    ]);
+    expect(items[0]?.deprioritizedReason).toBeUndefined();
+    expect(items[1]?.deprioritizedReason).toBe('Active axis: you chose Builders');
   });
 
   test('ranking and demotion details require exact viewer and intent scope provenance', async () => {
