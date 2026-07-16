@@ -43,6 +43,7 @@ function makeFactory() {
   const mockDb = {
     getProfile: async () => null,
     createOpportunity: async () => persistedOpp,
+    createOpportunityIfNetworkEligible: async () => persistedOpp,
     opportunityExistsBetweenActors: async () => false,
     findOpportunitiesByActors: async () => [],
     getUserIndexIds: async () => (['idx-1'] as Id<'networks'>[]),
@@ -56,6 +57,7 @@ function makeFactory() {
       isPersonal: false,
       joinedAt: new Date(),
     }],
+    getActiveNetworkMembershipPairs: async (pairs: Array<{ userId: string; networkId: string }>) => pairs,
     getActiveIntents: async () => [{
       id: 'intent-1' as Id<'intents'>,
       payload: 'Looking for a co-founder',
@@ -71,6 +73,7 @@ function makeFactory() {
     getOpportunity: async () => null,
     getOpportunitiesForUser: async () => [],
     updateOpportunityStatus: async () => null,
+    updateOpportunityStatusIfNetworkEligible: async () => null,
     updateOpportunityActorApproval: async () => null,
     getIntent: async () => null,
     getIntentIndexScores: async () => [],

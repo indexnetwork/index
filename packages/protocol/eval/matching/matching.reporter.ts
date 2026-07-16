@@ -316,7 +316,7 @@ const HUMAN_GROUPS: { ruleIds: Rule[]; label: string; blurb: string }[] = [
   { ruleIds: ["location"], label: "Respecting where people are", blurb: "Honoring a location requirement without over-penalizing unknown cities." },
   { ruleIds: ["score_calibration"], label: "Scoring matches sensibly", blurb: "Strong matches score high, weak ones score low." },
   { ruleIds: ["already_known"], label: "Skipping people who already know each other", blurb: "Not re-introducing people who are already connected." },
-  { ruleIds: ["event_network"], label: "Using shared events as a signal", blurb: "Recognizing when attending the same event makes two people more relevant." },
+  { ruleIds: ["event_network"], label: "Not inventing event attendance", blurb: "Treating event-network placement as context rather than proof of attendance or shared presence." },
   { ruleIds: ["historical"], label: "Rediscovering real collaborations", blurb: "Surfacing pairs who actually went on to work together, over plausible lookalikes." },
 ];
 

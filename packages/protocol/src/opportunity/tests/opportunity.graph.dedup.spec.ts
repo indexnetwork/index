@@ -109,6 +109,9 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
       updatedAt: new Date(),
       expiresAt: null,
     }),
+    async createOpportunityIfNetworkEligible(data) {
+      return this.createOpportunity(data);
+    },
     opportunityExistsBetweenActors: async () => false,
     findOpportunitiesByActors: async () => [],
     getUserIndexIds: async () => [NET_ID],
@@ -124,6 +127,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
         joinedAt: new Date(),
       },
     ],
+    getActiveNetworkMembershipPairs: async (pairs) => pairs,
     getActiveIntents: async () => [
       {
         id: 'intent-1' as Id<'intents'>,
@@ -140,6 +144,9 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     getOpportunity: async () => null,
     getOpportunitiesForUser: async () => [],
     updateOpportunityStatus: async () => null,
+    async updateOpportunityStatusIfNetworkEligible(id, status) {
+      return this.updateOpportunityStatus(id, status) as Promise<Opportunity | null>;
+    },
     updateOpportunityActorApproval: async () => null,
     isNetworkMember: async () => true,
     isIndexOwner: async () => false,

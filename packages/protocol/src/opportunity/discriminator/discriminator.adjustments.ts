@@ -18,8 +18,14 @@
 import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
 import type { QuestionPoolDiscriminator } from "../../shared/schemas/question.schema.js";
 
+/** Recipient and intent provenance that scopes one pool preference. */
+export interface PoolAdjustmentProvenance {
+  recipientUserId: string;
+  intentId: string;
+}
+
 /** One applied adjustment on an opportunity (stored in metadata.poolAdjustments). */
-export interface PoolAdjustment {
+export interface PoolAdjustment extends PoolAdjustmentProvenance {
   /** The answered question that produced this adjustment (reversal key). */
   questionId: string;
   /** Discriminator label, e.g. "Hands-on builders vs advisors". */
@@ -34,34 +40,53 @@ export interface PoolAdjustment {
   appliedAt: string;
 }
 
-/** Reads the adjustments array off an opportunity's metadata (tolerant). */
-export function readPoolAdjustments(metadata: Record<string, unknown> | null | undefined): PoolAdjustment[] {
+/** Reads valid adjustments, optionally narrowed to one recipient + intent. */
+export function readPoolAdjustments(
+  metadata: Record<string, unknown> | null | undefined,
+  provenance?: PoolAdjustmentProvenance,
+): PoolAdjustment[] {
   const raw = metadata?.poolAdjustments;
   if (!Array.isArray(raw)) return [];
-  return raw.filter((a): a is PoolAdjustment =>
-    typeof a === "object" && a !== null &&
-    typeof (a as PoolAdjustment).questionId === "string" &&
-    typeof (a as PoolAdjustment).factor === "number");
+  return raw.filter((a): a is PoolAdjustment => {
+    if (
+      typeof a !== "object" || a === null ||
+      typeof (a as PoolAdjustment).questionId !== "string" ||
+      typeof (a as PoolAdjustment).recipientUserId !== "string" ||
+      typeof (a as PoolAdjustment).intentId !== "string" ||
+      typeof (a as PoolAdjustment).factor !== "number"
+    ) return false;
+    return provenance === undefined || (
+      (a as PoolAdjustment).recipientUserId === provenance.recipientUserId &&
+      (a as PoolAdjustment).intentId === provenance.intentId
+    );
+  });
 }
 
 /**
  * Cumulative adjustment multiplier for an opportunity, floored at
- * {@link POOL_ADJUSTMENT_FLOOR}. 1 when no adjustments exist.
+ * {@link POOL_ADJUSTMENT_FLOOR}. 1 when no scoped adjustments exist.
  */
-export function poolAdjustmentMultiplier(metadata: Record<string, unknown> | null | undefined): number {
-  const adjustments = readPoolAdjustments(metadata);
+export function poolAdjustmentMultiplier(
+  metadata: Record<string, unknown> | null | undefined,
+  provenance: PoolAdjustmentProvenance,
+): number {
+  const adjustments = readPoolAdjustments(metadata, provenance);
   if (adjustments.length === 0) return 1;
   const product = adjustments.reduce((acc, a) => acc * (Number.isFinite(a.factor) && a.factor > 0 ? a.factor : 1), 1);
   return Math.max(POOL_ADJUSTMENT_FLOOR, product);
 }
 
 /** Adjusted confidence: `confidence × Π factor`, floored. */
-export function adjustedConfidence(confidence: number, metadata: Record<string, unknown> | null | undefined): number {
-  return confidence * poolAdjustmentMultiplier(metadata);
+export function adjustedConfidence(
+  confidence: number,
+  metadata: Record<string, unknown> | null | undefined,
+  provenance: PoolAdjustmentProvenance,
+): number {
+  return confidence * poolAdjustmentMultiplier(metadata, provenance);
 }
 
 /** Deterministic provenance signal stored alongside one adjustment. */
-export interface PoolAdjustmentSignal {
+export interface PoolAdjustmentSignal extends PoolAdjustmentProvenance {
   type: "pool_discriminator";
   weight: 1 | -1 | 0;
   detail: string;
@@ -69,7 +94,7 @@ export interface PoolAdjustmentSignal {
 }
 
 /** Pure helper input shared by Tier-0 answers and newborn stamping. */
-export interface BuildPoolAdjustmentInput {
+export interface BuildPoolAdjustmentInput extends PoolAdjustmentProvenance {
   questionId: string;
   label: string;
   /** Verified side assignment, or null when the candidate is unassigned. */
@@ -94,6 +119,8 @@ export function buildPoolAdjustment(input: BuildPoolAdjustmentInput): {
   return {
     adjustment: {
       questionId: input.questionId,
+      recipientUserId: input.recipientUserId,
+      intentId: input.intentId,
       label: input.label,
       side,
       factor,
@@ -103,6 +130,8 @@ export function buildPoolAdjustment(input: BuildPoolAdjustmentInput): {
     signal: {
       type: "pool_discriminator",
       weight,
+      recipientUserId: input.recipientUserId,
+      intentId: input.intentId,
       detail: isUnknown ? `${input.label}: unassigned` : `${input.label}: ${input.chosenSide}`,
       questionId: input.questionId,
     },
@@ -124,12 +153,16 @@ export interface PoolAdjustmentPlanEntry {
  * @param discriminator  The asked discriminator (from detection.pool).
  * @param chosenSide     The selected option label (chip label = side label).
  * @param questionId     Reversal key.
+ * @param recipientUserId User whose answer produced the preference.
+ * @param intentId       Intent whose candidate pool was ranked.
  * @param now            ISO-8601 timestamp.
  */
 export function planPoolAdjustments(
   discriminator: QuestionPoolDiscriminator,
   chosenSide: string,
   questionId: string,
+  recipientUserId: string,
+  intentId: string,
   now: string,
 ): PoolAdjustmentPlanEntry[] {
   // Chip labels are word-capped side labels; match on the capped prefix too.
@@ -144,6 +177,8 @@ export function planPoolAdjustments(
       opportunityId: a.opportunityId,
       ...buildPoolAdjustment({
         questionId,
+        recipientUserId,
+        intentId,
         label: discriminator.label,
         assignedSide: a.side,
         chosenSide: chosen,
@@ -156,32 +191,42 @@ export function planPoolAdjustments(
 
 /**
  * Merges one adjustment into an opportunity's existing metadata, replacing
- * any prior entry for the same questionId (re-answer semantics). Returns the
- * NEW metadata object (caller persists it wholesale).
+ * only the entry for the same question + recipient + intent provenance.
+ * Returns the NEW metadata object (caller persists it wholesale).
  */
 export function mergePoolAdjustment(
   metadata: Record<string, unknown> | null | undefined,
   adjustment: PoolAdjustment,
 ): Record<string, unknown> {
-  const existing = readPoolAdjustments(metadata).filter((a) => a.questionId !== adjustment.questionId);
+  const existing = readPoolAdjustments(metadata).filter((a) => !(
+    a.questionId === adjustment.questionId &&
+    a.recipientUserId === adjustment.recipientUserId &&
+    a.intentId === adjustment.intentId
+  ));
   return { ...(metadata ?? {}), poolAdjustments: [...existing, adjustment] };
 }
 
-/** Latest user-explainable demotion detail for card presentation, if any. */
+/** Latest scoped user-explainable demotion detail for card presentation. */
 export function latestPoolDemotionDetail(
   metadata: Record<string, unknown> | null | undefined,
+  provenance: PoolAdjustmentProvenance,
 ): string | undefined {
-  return [...readPoolAdjustments(metadata)]
+  return [...readPoolAdjustments(metadata, provenance)]
     .reverse()
     .find((adjustment) => adjustment.factor < 1 && typeof adjustment.detail === 'string' && adjustment.detail.length > 0)
     ?.detail;
 }
 
-/** Removes all adjustments for a questionId (dismissal/withdrawal reversal). */
+/** Removes one question adjustment for exact recipient + intent provenance. */
 export function removePoolAdjustment(
   metadata: Record<string, unknown> | null | undefined,
   questionId: string,
+  provenance: PoolAdjustmentProvenance,
 ): Record<string, unknown> {
-  const remaining = readPoolAdjustments(metadata).filter((a) => a.questionId !== questionId);
+  const remaining = readPoolAdjustments(metadata).filter((a) => !(
+    a.questionId === questionId &&
+    a.recipientUserId === provenance.recipientUserId &&
+    a.intentId === provenance.intentId
+  ));
   return { ...(metadata ?? {}), poolAdjustments: remaining };
 }

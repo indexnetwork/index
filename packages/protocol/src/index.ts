@@ -214,7 +214,7 @@ export { poolQuestionsMiningMode, poolQuestionsMode, poolQuestionsPushMode, pool
 export type { PoolQuestionsMiningMode, PoolQuestionsMode, PoolQuestionsPushMode, PoolQuestionsRankingMode, PoolQuestionsStampNewbornMode } from "./opportunity/discriminator/discriminator.env.js";
 export { poolQuestionsRanking, POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR, POOL_STALENESS_THRESHOLD, POOL_RERUN_DEBOUNCE_MS } from "./opportunity/discriminator/discriminator.env.js";
 export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment, removePoolAdjustment, readPoolAdjustments, poolAdjustmentMultiplier, adjustedConfidence, latestPoolDemotionDetail } from "./opportunity/discriminator/discriminator.adjustments.js";
-export type { BuildPoolAdjustmentInput, PoolAdjustment, PoolAdjustmentPlanEntry, PoolAdjustmentSignal } from "./opportunity/discriminator/discriminator.adjustments.js";
+export type { BuildPoolAdjustmentInput, PoolAdjustment, PoolAdjustmentPlanEntry, PoolAdjustmentProvenance, PoolAdjustmentSignal } from "./opportunity/discriminator/discriminator.adjustments.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunity/discriminator/discriminator.question.js";
 export { poolQuestionCycleKey, poolQuestionPushThreshold, escapePoolPushMarkdown, buildPoolQuestionPushMessage, POOL_QUESTION_PUSH_TITLE_MAX_CHARS } from "./opportunity/discriminator/discriminator.push.js";
 export type { SynthesizePoolQuestionInput, SynthesizedPoolQuestion } from "./opportunity/discriminator/discriminator.question.js";
@@ -242,8 +242,10 @@ export { persistOpportunities } from "./opportunity/opportunity.persist.js";
 export { presentOpportunity } from "./opportunity/opportunity.presentation.js";
 export type { UserInfo } from "./opportunity/opportunity.presentation.js";
 export { stripUuids, stripIntroducerMentions, truncateAtBoundary } from "./opportunity/opportunity.presentation.js";
+export { hasUnsupportedOpportunityClaim, stripUnsupportedOpportunityClaims } from "./opportunity/opportunity.claim-safety.js";
 export { safeFallbackSummary, getSafePresentationOrSkip, SAFE_FALLBACK_MAX_CHARS, DEFAULT_FALLBACK_HEADLINE, DEFAULT_FALLBACK_ACTION, DEFAULT_EMPTY_FALLBACK_TEXT } from "./opportunity/opportunity.safe-presentation.js";
 export type { SafeFallbackOptions, SafePresentation, SafePresentationOptions, SafePresentationSource } from "./opportunity/opportunity.safe-presentation.js";
+export { buildApiChatCardPresentationCacheKey } from "./opportunity/opportunity.presentation-cache.js";
 export { getOrCreateDeliveryCardBatch, DELIVERY_CARD_CACHE_TTL, type CachedDeliveryCard, type OpportunityWithContext } from "./opportunity/delivery-card.cache.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────

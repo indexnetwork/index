@@ -425,6 +425,10 @@ export interface OpportunitySignal {
   detail?: string;
   /** Question provenance for reversible pool-discriminator signals (IND-419). */
   questionId?: string;
+  /** Recipient provenance for pool-discriminator signals. */
+  recipientUserId?: string;
+  /** Intent-pool provenance for pool-discriminator signals. */
+  intentId?: string;
 }
 
 export interface OpportunityInterpretation {

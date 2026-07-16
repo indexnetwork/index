@@ -299,6 +299,23 @@ describe('NotificationQueue', () => {
       expect(mockRedisExpire).toHaveBeenCalled();
     });
 
+    it('priority low: strips unsupported affiliation claims from digest payloads', async () => {
+      const getOpportunity = mock(async () => makeOpportunity(
+        'Yusuf, an attendee of the Edge Esmeralda network, is a strong match.',
+      ));
+      const db = asNotifDb({ getOpportunity });
+      const queue = new NotificationQueue({ database: db });
+
+      await queue.processJob('process_opportunity_notification', {
+        opportunityId: 'o1',
+        recipientId: 'r1',
+        priority: 'low',
+      });
+
+      expect(mockRedisRpush).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(mockRedisRpush.mock.calls[0])).not.toContain('attendee');
+    });
+
     it('priority low: digest dedupe already set skips rpush', async () => {
       let setCalls = 0;
       mockRedisSet = async () => {

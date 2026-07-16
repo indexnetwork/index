@@ -119,8 +119,49 @@ describe('getOrCreateDeliveryCardBatch', () => {
     expect(resultCard?.headline).toBe('Generated headline');
     expect(presentCalledCount).toBeGreaterThan(0);
     expect(setCalls.length).toBeGreaterThan(0);
-    expect(setCalls[0].key).toBe('delivery:card:opp-2:pending:user-1');
+    expect(setCalls[0].key).toBe('delivery:v2:card:opp-2:pending:user-1');
     expect(setCalls[0].opts).toEqual({ ttl: 24 * 60 * 60 });
+  });
+
+  it('returns but does not cache presenter fallback output', async () => {
+    const setCalls: string[] = [];
+    const mockCache: Cache = {
+      get: mock(() => Promise.resolve(null)),
+      set: mock((key: string) => {
+        setCalls.push(key);
+        return Promise.resolve(undefined);
+      }),
+      mget: mock(() => Promise.resolve([null])),
+      delete: mock(() => Promise.resolve(undefined)),
+      exists: mock(() => Promise.resolve(false)),
+      deleteByPattern: mock(() => Promise.resolve(undefined)),
+    };
+    const mockPresenter = {
+      presentHomeCard: mock(() => Promise.resolve({
+        headline: 'A promising connection',
+        personalizedSummary: 'A promising connection.',
+        suggestedAction: 'Take a look.',
+        narratorRemark: 'Worth a look.',
+        greeting: '',
+        isFallback: true,
+      })),
+    } as unknown as OpportunityPresenter;
+    const mockPresenterDb = {
+      getProfile: mock(() => Promise.resolve(null)),
+      getActiveIntents: mock(() => Promise.resolve([])),
+      getNetwork: mock(() => Promise.resolve(null)),
+    } as unknown as PresenterDatabase;
+
+    const result = await getOrCreateDeliveryCardBatch(
+      mockCache,
+      mockPresenter,
+      mockPresenterDb,
+      [{ id: 'opp-fallback', status: 'pending', actors: [] }],
+      'user-1',
+    );
+
+    expect(result.get('opp-fallback')?.headline).toBe('A promising connection');
+    expect(setCalls).toHaveLength(0);
   });
 
   it('propagates presenter error so callers can handle failure', async () => {

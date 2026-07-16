@@ -8,6 +8,7 @@ import { deriveDiscoveryNetworkIds, focusedIntentId, focusedNetworkId, focusedNe
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.safe-presentation.js";
+import { stripUnsupportedOpportunityClaims } from "./opportunity.claim-safety.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../questioner/questioner.env.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
@@ -438,8 +439,32 @@ type OpportunityCardLike = Record<string, unknown> & {
  * fabricate URLs for cards that don't have them. MCP clients have no card
  * renderer, so code fences would surface as raw JSON to end users.
  */
+function sanitizeOpportunityCardProse(card: OpportunityCardLike): OpportunityCardLike {
+  const sanitized: OpportunityCardLike = { ...card };
+  for (const key of ['mainText', 'digestSummary', 'headline', 'cta', 'mutualIntentsLabel'] as const) {
+    const value = card[key];
+    if (typeof value === 'string') {
+      sanitized[key] =
+        stripUnsupportedOpportunityClaims(stripUuids(value)) || 'A suggested connection.';
+    }
+  }
+  const narratorChip = card.narratorChip;
+  if (narratorChip && typeof narratorChip === 'object' && !Array.isArray(narratorChip)) {
+    const narrator = narratorChip as Record<string, unknown>;
+    if (typeof narrator.text === 'string') {
+      sanitized.narratorChip = {
+        ...narrator,
+        text:
+          stripUnsupportedOpportunityClaims(stripUuids(narrator.text)) ||
+          'A potential connection worth exploring.',
+      };
+    }
+  }
+  return sanitized;
+}
+
 export function buildOpportunityPresentation(
-  cards: OpportunityCardLike[],
+  inputCards: OpportunityCardLike[],
   opts: {
     isMcp: boolean;
     leadIn: string;
@@ -448,6 +473,7 @@ export function buildOpportunityPresentation(
     includeDigestMarkers?: boolean;
   },
 ): string {
+  const cards = inputCards.map(sanitizeOpportunityCardProse);
   if (cards.length === 0) return opts.leadIn;
 
   if (opts.isMcp) {
@@ -1038,6 +1064,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const viewerRole = viewerIsParty ? "party" : "introducer";
         const isCounterpartGhost = counterpartUser?.isGhost ?? false;
         const primaryActionLabel = getPrimaryActionLabel(viewerRole);
+        const publicMatchReason = safeFallbackSummary(reasoning, {
+          counterpartName,
+          introducerName: introducerUser?.name ?? undefined,
+          maxChars: MINIMAL_MAIN_TEXT_MAX_CHARS,
+          emptyText: "A suggested connection.",
+        });
         const narratorText = narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined);
         const narratorChip = viewerIsParty
           ? {
@@ -1119,7 +1151,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           opportunities: [
             {
               opportunityId: created.id,
-              matchReason: reasoning,
+              matchReason: publicMatchReason,
               score: confidence,
               status: created.status ?? "draft",
             },

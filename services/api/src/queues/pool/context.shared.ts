@@ -21,8 +21,9 @@ export interface PoolCandidateContextDeps {
 }
 
 /**
- * Build the same bounded profile/bio, match summary, and active-premise text
- * for persisted mining rows and unpersisted newborn create items.
+ * Build the same bounded profile/bio and active-premise text for persisted
+ * mining rows and unpersisted newborn create items. Raw evaluator reasoning is
+ * deliberately excluded because it is not verified public presentation copy.
  */
 export async function buildPoolCandidateContexts(
   ownerUserId: string,
@@ -64,11 +65,9 @@ export async function buildPoolCandidateContexts(
 
   return withCounterpart.map((entry) => {
     const profile = profilesByUser.get(entry.counterpartUserId);
-    const matchReason = entry.opportunity.interpretation?.reasoning?.slice(0, POOL_FIELD_MAX_CHARS);
     const publicContext = [
       profile?.name ? `Name: ${profile.name}.` : null,
       profile?.bio ? `Bio: ${profile.bio.slice(0, POOL_FIELD_MAX_CHARS)}` : null,
-      matchReason ? `Match: ${matchReason}` : null,
       premisesByUser.has(entry.counterpartUserId) ? `Premises: ${premisesByUser.get(entry.counterpartUserId)}` : null,
     ].filter(Boolean).join(' ').slice(0, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS);
     return {

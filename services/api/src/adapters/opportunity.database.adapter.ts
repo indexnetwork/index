@@ -1,5 +1,13 @@
-import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, sql, toOpportunityRow, traceAppOperation } from './database.shared';
+import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
+
+const POOL_LIVE_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
+
+interface OpportunityNetworkEligibilityInput {
+  ownerUserId: string;
+  allowedNetworkIds: string[];
+  triggerIntentId?: string;
+}
 
 export class OpportunityDatabaseAdapter {
   async getProfile(userId: string): Promise<UserIdentity | null> {
@@ -24,6 +32,155 @@ export class OpportunityDatabaseAdapter {
     const created = toOpportunityRow(row);
     emitOpportunityPendingBestEffort(created);
     return created;
+  }
+
+  async createOpportunityIfNetworkEligible(
+    data: CreateOpportunityInput,
+    eligibility: OpportunityNetworkEligibilityInput,
+  ): Promise<OpportunityRow | null> {
+    const actorNetworkIds = [...new Set(data.actors.map((actor) => actor.networkId))];
+    const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
+    if (actorNetworkIds.length === 0 || actorNetworkIds.some((id) => !allowedNetworkIds.has(id))) return null;
+    const requestedPairs = [
+      ...data.actors.map((actor) => ({ userId: actor.userId, networkId: actor.networkId })),
+      ...actorNetworkIds.map((networkId) => ({ userId: eligibility.ownerUserId, networkId })),
+    ];
+    const pairs = [...new Map(requestedPairs.map((pair) => [
+      `${pair.userId}\u0000${pair.networkId}`,
+      pair,
+    ] as const)).values()];
+
+    const created = await db.transaction(async (tx) => {
+      if (eligibility.triggerIntentId) {
+        const [ownedIntent] = await tx
+          .select({ id: schema.intents.id })
+          .from(schema.intents)
+          .where(and(
+            eq(schema.intents.id, eligibility.triggerIntentId),
+            eq(schema.intents.userId, eligibility.ownerUserId),
+            isNull(schema.intents.archivedAt),
+            or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+          ))
+          .for('share');
+        if (!ownedIntent) return null;
+        const assignments = await tx
+          .select({ networkId: schema.intentNetworks.networkId })
+          .from(schema.intentNetworks)
+          .where(and(
+            eq(schema.intentNetworks.intentId, eligibility.triggerIntentId),
+            inArray(schema.intentNetworks.networkId, actorNetworkIds),
+          ))
+          .for('share');
+        if (new Set(assignments.map((row) => row.networkId)).size !== actorNetworkIds.length) return null;
+      }
+
+      const activePairs = await tx
+        .select({
+          userId: schema.networkMembers.userId,
+          networkId: schema.networkMembers.networkId,
+        })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
+        .where(and(
+          or(...pairs.map((pair) => and(
+            eq(schema.networkMembers.userId, pair.userId),
+            eq(schema.networkMembers.networkId, pair.networkId),
+          ))),
+          isNull(schema.networkMembers.deletedAt),
+          isNull(schema.networks.deletedAt),
+        ))
+        .for('share');
+      if (activePairs.length !== pairs.length) return null;
+
+      const [row] = await tx
+        .insert(opportunities)
+        .values({
+          detection: data.detection,
+          actors: data.actors,
+          interpretation: data.interpretation,
+          context: data.context,
+          confidence: data.confidence,
+          status: data.status ?? 'pending',
+          expiresAt: data.expiresAt ?? null,
+          ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+        })
+        .returning();
+      if (!row) throw new Error('OpportunityDatabaseAdapter.createOpportunityIfNetworkEligible: no row returned');
+      return toOpportunityRow(row);
+    });
+    if (created) emitOpportunityPendingBestEffort(created);
+    return created;
+  }
+
+  async updateOpportunityStatusIfNetworkEligible(
+    id: string,
+    status: OpportunityRow['status'],
+    actors: Array<{ userId: string; networkId: string }>,
+    eligibility: OpportunityNetworkEligibilityInput,
+  ): Promise<OpportunityRow | null> {
+    const actorNetworkIds = [...new Set(actors.map((actor) => actor.networkId))];
+    const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
+    if (actorNetworkIds.length === 0 || actorNetworkIds.some((networkId) => !allowedNetworkIds.has(networkId))) return null;
+    const requestedPairs = [
+      ...actors.map((actor) => ({ userId: actor.userId, networkId: actor.networkId })),
+      ...actorNetworkIds.map((networkId) => ({ userId: eligibility.ownerUserId, networkId })),
+    ];
+    const pairs = [...new Map(requestedPairs.map((pair) => [
+      `${pair.userId}\u0000${pair.networkId}`,
+      pair,
+    ] as const)).values()];
+
+    const updated = await db.transaction(async (tx) => {
+      if (eligibility.triggerIntentId) {
+        const [ownedIntent] = await tx
+          .select({ id: schema.intents.id })
+          .from(schema.intents)
+          .where(and(
+            eq(schema.intents.id, eligibility.triggerIntentId),
+            eq(schema.intents.userId, eligibility.ownerUserId),
+            isNull(schema.intents.archivedAt),
+            or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+          ))
+          .for('share');
+        if (!ownedIntent) return null;
+        const assignments = await tx
+          .select({ networkId: schema.intentNetworks.networkId })
+          .from(schema.intentNetworks)
+          .where(and(
+            eq(schema.intentNetworks.intentId, eligibility.triggerIntentId),
+            inArray(schema.intentNetworks.networkId, actorNetworkIds),
+          ))
+          .for('share');
+        if (new Set(assignments.map((row) => row.networkId)).size !== actorNetworkIds.length) return null;
+      }
+
+      const activePairs = await tx
+        .select({
+          userId: schema.networkMembers.userId,
+          networkId: schema.networkMembers.networkId,
+        })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
+        .where(and(
+          or(...pairs.map((pair) => and(
+            eq(schema.networkMembers.userId, pair.userId),
+            eq(schema.networkMembers.networkId, pair.networkId),
+          ))),
+          isNull(schema.networkMembers.deletedAt),
+          isNull(schema.networks.deletedAt),
+        ))
+        .for('share');
+      if (activePairs.length !== pairs.length) return null;
+
+      const [row] = await tx
+        .update(opportunities)
+        .set({ status, acceptedBy: null, updatedAt: new Date() })
+        .where(eq(opportunities.id, id))
+        .returning();
+      return row ? toOpportunityRow(row) : null;
+    });
+    if (updated) emitOpportunityPendingBestEffort(updated);
+    return updated;
   }
 
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
@@ -77,6 +234,33 @@ export class OpportunityDatabaseAdapter {
     userId: string,
     options?: { status?: string; statuses?: string[]; networkId?: string; scopeType?: 'intent'; scopeId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
+    let intentScopeNetworkIds: string[] | null = null;
+    if (options?.scopeType === 'intent' && options.scopeId) {
+      const scopeRows = await db
+        .select({ networkId: schema.intentNetworks.networkId })
+        .from(schema.intents)
+        .innerJoin(
+          schema.intentNetworks,
+          eq(schema.intentNetworks.intentId, schema.intents.id),
+        )
+        .innerJoin(
+          schema.networkMembers,
+          and(
+            eq(schema.networkMembers.userId, userId),
+            eq(schema.networkMembers.networkId, schema.intentNetworks.networkId),
+          ),
+        )
+        .innerJoin(schema.networks, eq(schema.networks.id, schema.intentNetworks.networkId))
+        .where(and(
+          eq(schema.intents.id, options.scopeId),
+          eq(schema.intents.userId, userId),
+          isNull(schema.networkMembers.deletedAt),
+          isNull(schema.networks.deletedAt),
+        ));
+      intentScopeNetworkIds = [...new Set(scopeRows.map((row) => row.networkId))].sort();
+      if (intentScopeNetworkIds.length === 0) return [];
+    }
+
     // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
     const visibilityGuard = sql`(
       ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb
@@ -138,18 +322,42 @@ export class OpportunityDatabaseAdapter {
         )
       )`);
     }
-    if (options?.scopeType === 'intent' && options.scopeId) {
-      // Optional selected-intent narrowing. This composes with the existing
-      // visibility/network/status predicates above: it never broadens a scoped
-      // read. From-intent discovery records `detection.triggeredBy`; older or
-      // manually linked rows can still be selected when the viewer's own actor
-      // carries the selected `intent` id.
+    if (options?.scopeType === 'intent' && options.scopeId && intentScopeNetworkIds) {
+      // Selected-intent Radar keeps the historical linkage predicate, but the
+      // selected intent must be viewer-owned and its scope is authoritative:
+      // assigned networks intersect live viewer memberships and live networks.
       conditions.push(sql`(
         ${opportunities.detection}->>'triggeredBy' = ${options.scopeId}
         OR EXISTS (
           SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
           WHERE actor->>'userId' = ${userId}
             AND actor->>'intent' = ${options.scopeId}
+        )
+      )`);
+      // Participant-safe rather than row-strict: every distinct actor user must
+      // have at least one actor anchor inside the intent's valid scope, and that
+      // exact user/network pair must still be active. This blocks candidate
+      // membership leaks while tolerating harmless duplicate actor stamps for
+      // the same participant on another network.
+      conditions.push(sql`NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS participant
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(${opportunities.actors}) AS anchor
+          JOIN ${schema.networkMembers} nm
+            ON nm.user_id = anchor->>'userId'
+           AND nm.network_id = anchor->>'networkId'
+          JOIN ${schema.networks} n ON n.id = nm.network_id
+          JOIN ${schema.intentNetworks} scoped_intent_network
+            ON scoped_intent_network.network_id = anchor->>'networkId'
+           AND scoped_intent_network.intent_id = ${options.scopeId}
+          JOIN ${schema.intents} scoped_intent
+            ON scoped_intent.id = scoped_intent_network.intent_id
+           AND scoped_intent.user_id = ${userId}
+          WHERE anchor->>'userId' = participant->>'userId'
+            AND anchor->>'networkId' = ANY(ARRAY[${sql.join(intentScopeNetworkIds.map((id) => sql`${id}`), sql`, `)}]::text[])
+            AND nm.deleted_at IS NULL
+            AND n.deleted_at IS NULL
         )
       )`);
     }
@@ -164,6 +372,46 @@ export class OpportunityDatabaseAdapter {
     if (options?.limit != null) q = q.limit(options.limit) as typeof q;
     if (options?.offset != null) q = q.offset(options.offset) as typeof q;
     const rows = await q;
+    return rows.map(toOpportunityRow);
+  }
+
+  /**
+   * Get the live pool produced exactly by one intent for one visible recipient.
+   * This deliberately does not reuse selected-intent scope, whose actor.intent
+   * fallback is correct for UI reads but unsafe for answer-driven writes.
+   */
+  async getLivePoolOpportunitiesForIntent(
+    recipientUserId: string,
+    intentId: string,
+  ): Promise<OpportunityRow[]> {
+    const visibilityGuard = sql`(
+      ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'introducer' }])}::jsonb
+      OR ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'peer' }])}::jsonb
+      OR (
+        ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'patient' }])}::jsonb
+        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+      )
+      OR (
+        ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'agent' }])}::jsonb
+        AND (
+          ${opportunities.status} IN ('accepted', 'rejected', 'expired')
+          OR (${opportunities.status} NOT IN ('latent', 'draft') AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+        )
+      )
+      OR (
+        ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'party' }])}::jsonb
+        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+      )
+    )`;
+    const rows = await db
+      .select()
+      .from(opportunities)
+      .where(and(
+        visibilityGuard,
+        sql`${opportunities.detection}->>'triggeredBy' = ${intentId}`,
+        inArray(opportunities.status, [...POOL_LIVE_STATUSES]),
+      ))
+      .orderBy(desc(opportunities.createdAt));
     return rows.map(toOpportunityRow);
   }
 
@@ -295,40 +543,77 @@ export class OpportunityDatabaseAdapter {
    *
    * @param writes - Opportunity patches keyed by questionId.
    */
-  async applyOpportunityPoolAdjustments(writes: Array<{
-    opportunityId: string;
-    adjustment: {
-      questionId: string;
-      label: string;
-      side: string;
-      factor: number;
-      detail?: string;
-      appliedAt: string;
-    };
-    signal: schema.OpportunitySignal;
-  }>): Promise<void> {
-    if (writes.length === 0) return;
-    await db.transaction(async (tx) => {
+  async applyOpportunityPoolAdjustments(
+    recipientUserId: string,
+    intentId: string,
+    writes: Array<{
+      opportunityId: string;
+      adjustment: {
+        questionId: string;
+        recipientUserId: string;
+        intentId: string;
+        label: string;
+        side: string;
+        factor: number;
+        detail?: string;
+        appliedAt: string;
+      };
+      signal: schema.OpportunitySignal;
+    }>,
+  ): Promise<string[]> {
+    if (writes.length === 0) return [];
+    return db.transaction(async (tx) => {
       const writeById = new Map(writes.map((write) => [write.opportunityId, write]));
       const lockedRows = await tx
-        .select({ id: opportunities.id, metadata: opportunities.metadata, interpretation: opportunities.interpretation })
+        .select({
+          id: opportunities.id,
+          detection: opportunities.detection,
+          actors: opportunities.actors,
+          status: opportunities.status,
+          metadata: opportunities.metadata,
+          interpretation: opportunities.interpretation,
+        })
         .from(opportunities)
         .where(inArray(opportunities.id, [...writeById.keys()]))
         .for('update');
+      const appliedIds: string[] = [];
 
       for (const locked of lockedRows) {
         const write = writeById.get(locked.id);
-        if (!write) continue;
+        if (
+          !write ||
+          locked.detection.triggeredBy !== intentId ||
+          !(POOL_LIVE_STATUSES as readonly string[]).includes(locked.status) ||
+          !(locked.actors as schema.OpportunityActor[]).some((actor) => actor.userId === recipientUserId) ||
+          write.adjustment.recipientUserId !== recipientUserId ||
+          write.adjustment.intentId !== intentId ||
+          write.signal.recipientUserId !== recipientUserId ||
+          write.signal.intentId !== intentId
+        ) continue;
+
         const rawAdjustments = locked.metadata?.poolAdjustments;
         const existingAdjustments = Array.isArray(rawAdjustments)
-          ? rawAdjustments.filter((entry) =>
-              typeof entry === 'object' &&
-              entry !== null &&
-              (entry as { questionId?: unknown }).questionId !== write.adjustment.questionId,
-            )
+          ? rawAdjustments.filter((entry) => {
+              if (typeof entry !== 'object' || entry === null) return true;
+              const candidate = entry as {
+                questionId?: unknown;
+                recipientUserId?: unknown;
+                intentId?: unknown;
+              };
+              return !(
+                candidate.questionId === write.adjustment.questionId &&
+                candidate.recipientUserId === recipientUserId &&
+                candidate.intentId === intentId
+              );
+            })
           : [];
         const existingSignals = (locked.interpretation.signals ?? []).filter(
-          (entry) => !(entry.type === 'pool_discriminator' && entry.questionId === write.adjustment.questionId),
+          (entry) => !(
+            entry.type === 'pool_discriminator' &&
+            entry.questionId === write.adjustment.questionId &&
+            entry.recipientUserId === recipientUserId &&
+            entry.intentId === intentId
+          ),
         );
 
         await tx
@@ -341,7 +626,9 @@ export class OpportunityDatabaseAdapter {
             // byte-identical to the pre-adjustment newest-first ordering.
           })
           .where(eq(opportunities.id, locked.id));
+        appliedIds.push(locked.id);
       }
+      return appliedIds;
     });
   }
 
@@ -433,6 +720,96 @@ export class OpportunityDatabaseAdapter {
     }),
     );
     emitOpportunityPendingBestEffort(result.created);
+    return result;
+  }
+
+  async createOpportunityAndExpireIdsIfNetworkEligible(
+    data: CreateOpportunityInput,
+    expireIds: string[],
+    eligibility: OpportunityNetworkEligibilityInput,
+  ): Promise<{ created: OpportunityRow; expired: OpportunityRow[] } | null> {
+    const actorNetworkIds = [...new Set(data.actors.map((actor) => actor.networkId))];
+    const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
+    if (actorNetworkIds.length === 0 || actorNetworkIds.some((networkId) => !allowedNetworkIds.has(networkId))) return null;
+    const requestedPairs = [
+      ...data.actors.map((actor) => ({ userId: actor.userId, networkId: actor.networkId })),
+      ...actorNetworkIds.map((networkId) => ({ userId: eligibility.ownerUserId, networkId })),
+    ];
+    const pairs = [...new Map(requestedPairs.map((pair) => [
+      `${pair.userId}\u0000${pair.networkId}`,
+      pair,
+    ] as const)).values()];
+
+    const result = await db.transaction(async (tx) => {
+      if (eligibility.triggerIntentId) {
+        const [ownedIntent] = await tx
+          .select({ id: schema.intents.id })
+          .from(schema.intents)
+          .where(and(
+            eq(schema.intents.id, eligibility.triggerIntentId),
+            eq(schema.intents.userId, eligibility.ownerUserId),
+            isNull(schema.intents.archivedAt),
+            or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+          ))
+          .for('share');
+        if (!ownedIntent) return null;
+        const assignments = await tx
+          .select({ networkId: schema.intentNetworks.networkId })
+          .from(schema.intentNetworks)
+          .where(and(
+            eq(schema.intentNetworks.intentId, eligibility.triggerIntentId),
+            inArray(schema.intentNetworks.networkId, actorNetworkIds),
+          ))
+          .for('share');
+        if (new Set(assignments.map((row) => row.networkId)).size !== actorNetworkIds.length) return null;
+      }
+
+      const activePairs = await tx
+        .select({
+          userId: schema.networkMembers.userId,
+          networkId: schema.networkMembers.networkId,
+        })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
+        .where(and(
+          or(...pairs.map((pair) => and(
+            eq(schema.networkMembers.userId, pair.userId),
+            eq(schema.networkMembers.networkId, pair.networkId),
+          ))),
+          isNull(schema.networkMembers.deletedAt),
+          isNull(schema.networks.deletedAt),
+        ))
+        .for('share');
+      if (activePairs.length !== pairs.length) return null;
+
+      const [inserted] = await tx
+        .insert(opportunities)
+        .values({
+          detection: data.detection,
+          actors: data.actors,
+          interpretation: data.interpretation,
+          context: data.context,
+          confidence: data.confidence,
+          status: data.status ?? 'pending',
+          expiresAt: data.expiresAt ?? null,
+          ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+        })
+        .returning();
+      if (!inserted) throw new Error('OpportunityDatabaseAdapter.createOpportunityAndExpireIdsIfNetworkEligible: no row returned');
+
+      const expired: OpportunityRow[] = [];
+      const now = new Date();
+      for (const opportunityId of expireIds) {
+        const [row] = await tx
+          .update(opportunities)
+          .set({ status: 'expired', updatedAt: now })
+          .where(eq(opportunities.id, opportunityId))
+          .returning();
+        if (row) expired.push(toOpportunityRow(row));
+      }
+      return { created: toOpportunityRow(inserted), expired };
+    });
+    if (result) emitOpportunityPendingBestEffort(result.created);
     return result;
   }
 
@@ -758,8 +1135,13 @@ export class OpportunityDatabaseAdapter {
         1 - (p.embedding <=> ${vectorStr}::vector) AS similarity
       FROM ${schema.premises} p
       JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
+      JOIN ${schema.networkMembers} nm
+        ON nm.user_id = p.user_id AND nm.network_id = pn.network_id
+      JOIN ${schema.networks} n ON n.id = pn.network_id
       WHERE pn.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
         AND p.user_id != ${excludeUserId}
+        AND nm.deleted_at IS NULL
+        AND n.deleted_at IS NULL
         AND p.status = 'ACTIVE'
         AND p.embedding IS NOT NULL
         AND p.deleted_at IS NULL
@@ -841,8 +1223,13 @@ export class OpportunityDatabaseAdapter {
               1 - (p.embedding <=> se.embedding) AS similarity
             FROM ${schema.premises} p
             JOIN ${schema.premiseNetworks} pn ON p.id = pn.premise_id
+            JOIN ${schema.networkMembers} nm
+              ON nm.user_id = p.user_id AND nm.network_id = pn.network_id
+            JOIN ${schema.networks} n ON n.id = pn.network_id
             WHERE pn.network_id = ANY(ARRAY[${sql.join(params.networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
               AND p.user_id != ${params.excludeUserId}
+              AND nm.deleted_at IS NULL
+              AND n.deleted_at IS NULL
               AND p.status = 'ACTIVE'
               AND p.embedding IS NOT NULL
               AND p.deleted_at IS NULL

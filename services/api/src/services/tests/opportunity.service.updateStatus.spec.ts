@@ -99,6 +99,24 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(db.upsertContactMembership).not.toHaveBeenCalled();
   });
 
+  it('sanitizes unsafe reasoning in mutation responses', async () => {
+    const unsafe = {
+      ...twoActorOpportunity,
+      interpretation: {
+        ...twoActorOpportunity.interpretation,
+        reasoning: 'Yusuf, an attendee of the Edge Esmeralda network, is a strong match.',
+      },
+    };
+    const db = createMockDb(unsafe);
+    const service = new OpportunityService(db);
+
+    const result = await service.updateOpportunityStatus(OPP_ID, 'accepted', USER_A);
+
+    expect('error' in result).toBe(false);
+    if ('error' in result) throw new Error(result.error);
+    expect(result.opportunity.interpretation.reasoning).toBe('Connection opportunity');
+  });
+
   it("passes acknowledgement IDs into the acceptance guard", async () => {
     const db = createMockDb(twoActorOpportunity);
     const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;

@@ -19,7 +19,9 @@ import { viewerCentricCardSummary } from "./opportunity.presentation.js";
 import type { Opportunity } from "../shared/interfaces/database.interface.js";
 import type { ChatGraphCompositeDatabase } from "../shared/interfaces/database.interface.js";
 import type { NegotiationContext } from "./negotiation-context.loader.js";
-import { stripUuids, stripIntroducerMentions, truncateAtBoundary } from "./opportunity.presentation.js";
+import { stripUuids, stripIntroducerMentions } from "./opportunity.presentation.js";
+import { stripUnsupportedOpportunityClaims } from "./opportunity.claim-safety.js";
+import { DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_ACTION, DEFAULT_FALLBACK_HEADLINE, safeFallbackSummary } from "./opportunity.safe-presentation.js";
 
 /**
  * Minimal database interface required by gatherPresenterContext.
@@ -167,6 +169,7 @@ Rules:
 4. Vary user-facing nouns naturally. Do not repeatedly use the same label in one response.
 5. If possible, avoid repeating "opportunity" in both headline and summary. Prefer alternatives like "connection", "thought partner", "mutual fit", "valuable conversation", or "peer".
 6. Prefer first names in user-facing copy. Do not repeatedly use full names unless needed to disambiguate.
+7. Network assignment, network title/type, and network/event metadata are retrieval context only. They are NEVER proof that a person attended or will attend, belongs to a group, resides in a place, knows anyone from the network, or shared a session, time, place, or location with anyone. Do not make co-attendance, membership, residence, shared-session, or same-place/same-time claims from network co-membership.
 
 **Introduction-originated opportunities:**
 When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created by an introducer (a real person who saw value in this connection). This is NOT an automatic system discovery — someone made a deliberate judgment.
@@ -224,6 +227,7 @@ Rules:
 - narratorRemark is displayed with the narrator name prepended (e.g. "Index: …" or "Alice: …"). Do NOT start narratorRemark with the narrator's name or repeat it; write only the remark (e.g. "Based on your overlapping intents" or "introduced you two, sensing a valuable connection").
 - Vary wording for the match itself. Do not repeat "opportunity" across headline, summary, and narratorRemark when alternatives fit.
 - Prefer first names in user-facing copy. Avoid repeated full names unless disambiguation is necessary.
+- Network assignment, network title/type, and network/event metadata are retrieval context only. They are NEVER proof that a person attended or will attend, belongs to a group, resides in a place, knows anyone from the network, or shared a session, time, place, or location with anyone. Do not make co-attendance, membership, residence, shared-session, or same-place/same-time claims from network co-membership.
 - digestSummary must be grammatically complete as a standalone sentence. It should usually start with "You might like meeting {Name} because ..." for direct connections, or "You may be able to help {Name} because ..." for connector/introducer cards.
 - digestSummary must NOT use awkward third-person fragments like "Name is...", "they're ..., and is...", "you is...", or "the discoverer's query".
 - digestSummary must be one sentence, MUST fit within 180 characters when possible, and MUST contain no markdown links; the caller will attach links.
@@ -275,6 +279,22 @@ When the viewer is the introducer and the opportunity status is "latent", the in
 - Exception for new-connection reveal: if viewer role is "agent", status is "accepted", and there is an introducer, this is the agent's first time seeing this opportunity. Use:
   - suggestedAction: a short line about joining the conversation.
 `;
+
+// ──────────────────────────────────────────────────────────────
+// DETERMINISTIC OUTPUT VALIDATION
+// ──────────────────────────────────────────────────────────────
+
+function sanitizePresenterField(
+  value: string,
+  fallback: string,
+  allowEmpty = fallback === "",
+): { value: string; usedFallback: boolean } {
+  const cleaned = stripUnsupportedOpportunityClaims(stripUuids(value));
+  if (cleaned || allowEmpty) {
+    return { value: cleaned, usedFallback: false };
+  }
+  return { value: fallback, usedFallback: true };
+}
 
 // ──────────────────────────────────────────────────────────────
 // CLASS
@@ -357,8 +377,27 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
       ];
       const result = await this.invokeWithTimeout(this.model, messages);
       const parsed = responseFormat.parse(result);
-      parsed.presentation.personalizedSummary = stripUuids(parsed.presentation.personalizedSummary);
-      return parsed.presentation;
+      const headline = sanitizePresenterField(
+        parsed.presentation.headline,
+        DEFAULT_FALLBACK_HEADLINE,
+      );
+      const summary = sanitizePresenterField(
+        parsed.presentation.personalizedSummary,
+        DEFAULT_EMPTY_FALLBACK_TEXT,
+      );
+      const action = sanitizePresenterField(
+        parsed.presentation.suggestedAction,
+        DEFAULT_FALLBACK_ACTION,
+      );
+      const greeting = sanitizePresenterField(parsed.presentation.greeting, "");
+      const usedFallback = headline.usedFallback || summary.usedFallback || action.usedFallback || greeting.usedFallback;
+      return {
+        headline: headline.value,
+        personalizedSummary: summary.value,
+        suggestedAction: action.value,
+        greeting: greeting.value,
+        ...(usedFallback ? { isFallback: true } : {}),
+      };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
@@ -373,9 +412,9 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
         },
       );
       return {
-        headline: "A promising connection",
-        personalizedSummary: truncateAtBoundary(stripUuids(input.matchReasoning), 300),
-        suggestedAction: "Take a look and decide whether to reach out.",
+        headline: DEFAULT_FALLBACK_HEADLINE,
+        personalizedSummary: safeFallbackSummary(input.matchReasoning),
+        suggestedAction: DEFAULT_FALLBACK_ACTION,
         greeting: "",
         isFallback: true,
       };
@@ -443,9 +482,6 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
       ];
       const result = await this.invokeWithTimeout(this.homeCardModel, messages);
       const parsed = homeCardResponseFormat.parse(result);
-      parsed.presentation.personalizedSummary = stripUuids(parsed.presentation.personalizedSummary);
-      parsed.presentation.digestSummary = stripUuids(parsed.presentation.digestSummary);
-      parsed.presentation.narratorRemark = stripUuids(parsed.presentation.narratorRemark);
       if (/^0\s+(mutual|overlapping)\s+intent/i.test(parsed.presentation.mutualIntentsLabel)) {
         parsed.presentation.mutualIntentsLabel = "Shared interests";
       }
@@ -459,7 +495,35 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
           input.introducerName,
         );
       }
-      return parsed.presentation;
+
+      const fields = {
+        headline: sanitizePresenterField(parsed.presentation.headline, DEFAULT_FALLBACK_HEADLINE),
+        personalizedSummary: sanitizePresenterField(parsed.presentation.personalizedSummary, DEFAULT_EMPTY_FALLBACK_TEXT),
+        digestSummary: sanitizePresenterField(
+          parsed.presentation.digestSummary,
+          isIntroducer
+            ? "You may be able to help make a useful introduction here."
+            : "You might like meeting them based on your current interests.",
+        ),
+        suggestedAction: sanitizePresenterField(parsed.presentation.suggestedAction, DEFAULT_FALLBACK_ACTION),
+        narratorRemark: sanitizePresenterField(parsed.presentation.narratorRemark, "Worth a look."),
+        mutualIntentsLabel: sanitizePresenterField(
+          parsed.presentation.mutualIntentsLabel,
+          isIntroducer ? "Connector match" : "Shared interests",
+        ),
+        greeting: sanitizePresenterField(parsed.presentation.greeting, ""),
+      };
+      const usedFallback = Object.values(fields).some((field) => field.usedFallback);
+      return {
+        headline: fields.headline.value,
+        personalizedSummary: fields.personalizedSummary.value,
+        digestSummary: fields.digestSummary.value,
+        suggestedAction: fields.suggestedAction.value,
+        narratorRemark: fields.narratorRemark.value,
+        mutualIntentsLabel: fields.mutualIntentsLabel.value,
+        greeting: fields.greeting.value,
+        ...(usedFallback ? { isFallback: true } : {}),
+      };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
@@ -473,10 +537,9 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
           timeoutReason,
         },
       );
-      let fallbackSummary = truncateAtBoundary(stripUuids(input.matchReasoning), 300);
-      if (input.isIntroduction && input.introducerName) {
-        fallbackSummary = stripIntroducerMentions(fallbackSummary, input.introducerName);
-      }
+      const fallbackSummary = safeFallbackSummary(input.matchReasoning, {
+        introducerName: input.isIntroduction ? input.introducerName : undefined,
+      });
       return {
         headline: "A promising connection",
         personalizedSummary: fallbackSummary,

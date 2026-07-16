@@ -165,6 +165,25 @@ describe('handlePoolAnswer', () => {
     expect(harness.pushEnqueues).toEqual([{ questionId: 'chained-0', userId: 'user-1' }]);
   });
 
+  it('keeps canonical refinement and Tier-0 targeting on the sourceId-derived intent', async () => {
+    const row = answeredQuestion([]);
+    row.detection.triggeredBy = 'different-trigger-intent';
+    const harness = makeHarness(row);
+
+    await harness.handle(input);
+
+    expect(harness.applyAnswer).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user-1',
+      intentId: 'intent-1',
+      questionId: 'q-answered',
+    }));
+    expect(harness.refineIntent).toHaveBeenCalledWith(input);
+    expect(harness.enqueueRerun).toHaveBeenCalledWith({
+      userId: 'user-1',
+      intentId: 'intent-1',
+    });
+  });
+
   it('uses nonempty free text to refine even with Both matter selected', async () => {
     const harness = makeHarness(answeredQuestion([]), ['asked'], { kind: 'none' });
     await harness.handle({

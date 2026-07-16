@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
-import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary } from '@indexnetwork/protocol';
+import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, HydeCache, OpportunityCache } from '@indexnetwork/protocol';
 import { and, eq } from 'drizzle-orm/sql';
 
@@ -42,6 +42,22 @@ const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['latent', 'negotiating', 'pe
  * pre-draft candidates to every member. Live community statuses only.
  */
 const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
+
+function sanitizeOpportunityForResponse<T extends Opportunity>(
+  opportunity: T,
+  names: { counterpartName?: string; viewerName?: string } = {},
+): T {
+  return {
+    ...opportunity,
+    interpretation: {
+      ...opportunity.interpretation,
+      reasoning: safeFallbackSummary(opportunity.interpretation.reasoning, {
+        ...names,
+        emptyText: 'Connection opportunity',
+      }),
+    },
+  };
+}
 
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
@@ -375,8 +391,12 @@ export class OpportunityService {
         avatar: userMap.get(a.userId)?.avatar ?? null,
       }));
       const counterpartInfo = counterpart ? userMap.get(counterpart.userId) : undefined;
+      const viewerInfo = userMap.get(userId);
       return {
-        ...opp,
+        ...sanitizeOpportunityForResponse(opp, {
+          counterpartName: counterpartInfo?.name ?? undefined,
+          viewerName: viewerInfo?.name ?? undefined,
+        }),
         actors: enrichedActors,
         counterpartName: counterpartInfo?.name ?? undefined,
         counterpartAvatar: counterpartInfo?.avatar ?? null,
@@ -601,7 +621,7 @@ export class OpportunityService {
     }
 
     if (!counterpart) {
-      return { opportunity: updated };
+      return { opportunity: sanitizeOpportunityForResponse(updated) };
     }
 
     const counterpartUserId = counterpart.userId;
@@ -637,7 +657,7 @@ export class OpportunityService {
     });
 
     return {
-      opportunity: updated,
+      opportunity: sanitizeOpportunityForResponse(updated),
       counterpartUserId,
     };
   }
@@ -774,7 +794,11 @@ export class OpportunityService {
           conversationId: conversation.id, userId, error: err,
         });
       });
-      return { conversationId: conversation.id, counterpartUserId: counterpart.userId, opportunity: opp };
+      return {
+        conversationId: conversation.id,
+        counterpartUserId: counterpart.userId,
+        opportunity: sanitizeOpportunityForResponse(opp),
+      };
     }
     if (opp.status !== 'pending' && opp.status !== 'draft' && opp.status !== 'latent') {
       return {
@@ -877,7 +901,7 @@ export class OpportunityService {
     return {
       conversationId: conversation.id,
       counterpartUserId: counterpart.userId,
-      opportunity: updated,
+      opportunity: sanitizeOpportunityForResponse(updated),
     };
   }
 
@@ -914,7 +938,11 @@ export class OpportunityService {
       options: { limit, initialStatus: 'latent' as const },
     });
 
-    return result;
+    return {
+      ...result,
+      opportunities: (result.opportunities ?? []).map((opportunity) =>
+        sanitizeOpportunityForResponse(opportunity)),
+    };
   }
 
   /**
@@ -949,10 +977,11 @@ export class OpportunityService {
     // Default to live community statuses (no latent — there's no per-actor
     // visibility guard here) unless an explicit status/statuses filter is given.
     const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
-    return this.db.getOpportunitiesForNetwork(
+    const rows = await this.db.getOpportunitiesForNetwork(
       networkId,
       hasExplicitStatus ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
     );
+    return rows.map((opp) => sanitizeOpportunityForResponse(opp));
   }
 
   /**
@@ -1042,7 +1071,7 @@ export class OpportunityService {
       for (const opp of expired) {
         this.events.emit('expired', { opportunity: opp });
       }
-      return created[0];
+      return sanitizeOpportunityForResponse(created[0]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to persist opportunity';
       logger.warn('createManualOpportunity persistence failed', { error: err, creatorId, networkId });
@@ -1077,7 +1106,9 @@ export class OpportunityService {
     // Check cache for all opportunities (graceful fallback if Redis unavailable)
     let cachedResults: (ChatCardCached | null)[] = [];
     try {
-      const cacheKeys = rows.map((opp) => `chat:card:${opp.id}:${userId}`);
+      const cacheKeys = rows.map((opp) =>
+        buildApiChatCardPresentationCacheKey(opp.id, userId)
+      );
       cachedResults = await this.cache.mget<ChatCardCached>(cacheKeys);
     } catch (e) {
       logger.warn('getChatContext cache read failed, skipping', { error: e });
@@ -1111,10 +1142,16 @@ export class OpportunityService {
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
           };
-          try {
-            await this.cache.set(`chat:card:${opp.id}:${userId}`, card, { ttl: CHAT_CACHE_TTL });
-          } catch {
-            // Cache write failure is non-critical
+          if (!presented.isFallback) {
+            try {
+              await this.cache.set(
+                buildApiChatCardPresentationCacheKey(opp.id, userId),
+                card,
+                { ttl: CHAT_CACHE_TTL },
+              );
+            } catch {
+              // Cache write failure is non-critical
+            }
           }
           return card;
         } catch (err) {
@@ -1129,7 +1166,7 @@ export class OpportunityService {
           });
           return {
             opportunityId: opp.id,
-            headline: truncateAtBoundary(fallbackSummary, 80) || 'Connection opportunity',
+            headline: truncateAtBoundary(fallbackSummary, 79) || 'Connection opportunity',
             personalizedSummary: fallbackSummary,
             narratorRemark: '',
             introducerName,

@@ -24,7 +24,8 @@ import { getModelName } from '../shared/agent/model.config.js';
 import { selectHydeDocumentsForGeneration } from '../shared/hyde/hyde.documents.js';
 import { getHydeGenerationMode } from '../shared/hyde/hyde.env.js';
 import { validateOpportunityActors } from './opportunity.utils.js';
-import { viewerCentricCardSummary } from './opportunity.presentation.js';
+import { safeFallbackSummary } from './opportunity.safe-presentation.js';
+import { hasUnsupportedOpportunityClaim } from './opportunity.claim-safety.js';
 
 /** Optional evaluator for testing (avoids LLM calls). */
 export type OpportunityEvaluatorLike = {
@@ -46,7 +47,7 @@ export type OpportunityEvaluatorLike = {
   }>>;
 };
 import type { Embedder, LensEmbedding } from '../shared/interfaces/embedder.interface.js';
-import type { CreateOpportunityData, Opportunity, OpportunityActor, ActiveIntent } from '../shared/interfaces/database.interface.js';
+import type { CreateOpportunityData, Opportunity, OpportunityActor, OpportunityNetworkEligibility, ActiveIntent } from '../shared/interfaces/database.interface.js';
 import { persistOpportunities } from './opportunity.persist.js';
 import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from "../negotiation/negotiation.graph.js";
@@ -86,6 +87,10 @@ const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Default cap for source premises used by premise-to-premise discovery. Prevents BACKEND-5-style fan-out. */
 const DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT = 40;
+
+function networkMembershipPairKey(userId: string, networkId: string): string {
+  return `${userId}\u0000${networkId}`;
+}
 
 /** Per-source cap for candidate premise matches. */
 const PREMISE_MATCH_LIMIT_PER_SOURCE = 20;
@@ -439,10 +444,11 @@ export class OpportunityGraphFactory {
               };
             }
             targetIndexIds = [state.networkId];
-          } else if (state.indexScope && state.indexScope.length > 0) {
+          } else if (state.indexScope !== undefined) {
             // Bounded scope (e.g. a network-scoped agent's reachable networks):
             // intersect with the user's actual memberships so discovery never
-            // reaches networks outside the agent's bound scope.
+            // reaches networks outside the agent's bound scope. An explicit
+            // empty scope is authoritative and must fail closed.
             const allowed = new Set(state.indexScope);
             targetIndexIds = state.userNetworks.filter((n) => allowed.has(n));
             scopeLog.verbose('Applied indexScope intersection', {
@@ -453,6 +459,24 @@ export class OpportunityGraphFactory {
           } else {
             // Search all user's indexes
             targetIndexIds = state.userNetworks;
+          }
+
+          if (state.triggerIntentId) {
+            // A trigger intent is an authoritative discovery boundary, not just
+            // ranking context. Recompute the intersection at the graph edge so
+            // direct chat/MCP callers cannot bypass FromIntentQueue admission.
+            const assignedNetworkIds = new Set(
+              await this.database.getNetworkIdsForIntent(state.triggerIntentId),
+            );
+            const activeOwnerNetworkIds = new Set(state.userNetworks);
+            targetIndexIds = targetIndexIds.filter((networkId) =>
+              assignedNetworkIds.has(networkId) && activeOwnerNetworkIds.has(networkId),
+            );
+            scopeLog.verbose('Applied trigger-intent network intersection', {
+              triggerIntentId: state.triggerIntentId,
+              assignedCount: assignedNetworkIds.size,
+              targetCount: targetIndexIds.length,
+            });
           }
 
           // Fetch index details
@@ -597,6 +621,20 @@ export class OpportunityGraphFactory {
         try {
           let resolvedIntentId: Id<'intents'> | undefined;
           if (state.triggerIntentId) {
+            const isOwnedActiveIntent = state.indexedIntents.some((intent) =>
+              intent.intentId === state.triggerIntentId);
+            if (!isOwnedActiveIntent) {
+              resolveLog.warn('Trigger intent is not an active intent owned by the discovery user', {
+                triggerIntentId: state.triggerIntentId,
+                userId: state.userId,
+              });
+              return {
+                resolvedTriggerIntentId: undefined,
+                resolvedIntentInIndex: false,
+                discoverySource: 'context' as const,
+                error: 'Trigger intent is not available for discovery.',
+              };
+            }
             const inNetwork = await this.database.getNetworkIdsForIntent(state.triggerIntentId);
             const inTarget = inNetwork.some((id) => targetIndexIds.includes(id as Id<'networks'>));
             resolvedIntentId = state.triggerIntentId;
@@ -1487,6 +1525,43 @@ export class OpportunityGraphFactory {
         // Re-sort by similarity descending (Map iteration order doesn't guarantee sort)
         dedupedCandidates.sort((a, b) => b.similarity - a.similarity);
 
+        const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
+        let eligibleCandidates: CandidateMatch[];
+        try {
+          const requestedPairs = dedupedCandidates.flatMap((candidate) => [
+            { userId: discoveryUserId, networkId: candidate.networkId },
+            { userId: candidate.candidateUserId, networkId: candidate.networkId },
+          ]);
+          const activePairs = await this.database.getActiveNetworkMembershipPairs(requestedPairs);
+          const activePairKeys = new Set(
+            activePairs.map((pair) => networkMembershipPairKey(pair.userId, pair.networkId)),
+          );
+          eligibleCandidates = dedupedCandidates.filter((candidate) =>
+            activePairKeys.has(networkMembershipPairKey(discoveryUserId, candidate.networkId))
+            && activePairKeys.has(networkMembershipPairKey(candidate.candidateUserId, candidate.networkId)),
+          );
+        } catch (error) {
+          evaluationLog.error('Active network membership recheck failed; skipping evaluation', { error });
+          return {
+            candidates: [],
+            evaluatedOpportunities: [],
+            remainingCandidates: [],
+            error: 'Failed to validate candidate network memberships.',
+            agentTimings: [],
+          };
+        }
+
+        if (eligibleCandidates.length < dedupedCandidates.length) {
+          evaluationLog.info('Removed candidates without active network pairs before evaluation', {
+            before: dedupedCandidates.length,
+            after: eligibleCandidates.length,
+            removed: dedupedCandidates.length - eligibleCandidates.length,
+          });
+        }
+        if (eligibleCandidates.length === 0) {
+          return { candidates: [], evaluatedOpportunities: [], remainingCandidates: [], agentTimings: [] };
+        }
+
         if (dedupedCandidates.length < sortedCandidates.length) {
           evaluationLog.info("Deduped candidates by userId", {
             before: sortedCandidates.length,
@@ -1495,8 +1570,8 @@ export class OpportunityGraphFactory {
           });
         }
 
-        const batchToEvaluate = dedupedCandidates.slice(0, EVAL_BATCH_SIZE);
-        const remaining = dedupedCandidates.slice(EVAL_BATCH_SIZE);
+        const batchToEvaluate = eligibleCandidates.slice(0, EVAL_BATCH_SIZE);
+        const remaining = eligibleCandidates.slice(EVAL_BATCH_SIZE);
 
         // Early termination: if search was query-driven and no query-sourced candidates remain,
         // clear remaining to prevent pointless pagination through non-query leftovers
@@ -1527,7 +1602,6 @@ export class OpportunityGraphFactory {
         const agentTimingsAccum: DebugMetaAgent[] = [];
 
         try {
-          const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
           const sourceProfile = await this.database.getProfile(discoveryUserId);
           const sourceEntity: EvaluatorEntity = {
             userId: discoveryUserId,
@@ -1887,6 +1961,7 @@ export class OpportunityGraphFactory {
           const passedOpportunities = evaluatedOpportunities.filter((o) => o.score >= minScore);
 
           return {
+            candidates: eligibleCandidates,
             evaluatedOpportunities: passedOpportunities,
             remainingCandidates: effectiveRemaining,
             trace: traceEntries,
@@ -2165,17 +2240,22 @@ export class OpportunityGraphFactory {
           const counterpartName = candidate.candidateUser.profile?.name ?? '';
           const viewerName = sourceUser.profile.name;
           const rawReasoning = updated.interpretation?.reasoning ?? '';
-          const personalizedSummary = viewerCentricCardSummary(
-            rawReasoning,
+          const personalizedSummary = safeFallbackSummary(rawReasoning, {
             counterpartName,
-            undefined,
             viewerName,
-          );
+            emptyText: 'A suggested connection.',
+          });
 
           traceEmitter?.({
             type: 'opportunity_draft_ready',
             opportunityId: candidate.opportunityId,
-            opportunity: updated,
+            opportunity: {
+              ...updated,
+              interpretation: {
+                ...updated.interpretation,
+                reasoning: personalizedSummary,
+              },
+            },
             personalizedSummary,
             counterparty: {
               userId: candidate.candidateUser.id,
@@ -2615,6 +2695,100 @@ export class OpportunityGraphFactory {
         }
 
         try {
+          // Recompute the authoritative owner-side scope at the final boundary.
+          // The adapter receives this immutable request scope and locks current
+          // memberships plus trigger-intent assignments through commit.
+          const currentOwnerMemberships = await this.database.getNetworkMemberships(state.userId);
+          let finalAllowedNetworkIds = currentOwnerMemberships.map((membership) => membership.networkId);
+          // Only an explicit trigger intent is an authoritative network boundary.
+          // Ad-hoc global discovery may heuristically resolve a matching intent
+          // for ranking, but must retain its all-membership reach.
+          const finalTriggerIntentId = state.triggerIntentId;
+          if (finalTriggerIntentId) {
+            const currentAssignments = new Set(
+              await this.database.getNetworkIdsForIntent(finalTriggerIntentId),
+            );
+            finalAllowedNetworkIds = finalAllowedNetworkIds.filter((networkId) =>
+              currentAssignments.has(networkId));
+          }
+          const explicitScope = state.networkId
+            ? [state.networkId]
+            : state.indexScope;
+          if (explicitScope !== undefined) {
+            const explicitlyAllowed = new Set(explicitScope);
+            finalAllowedNetworkIds = finalAllowedNetworkIds.filter((networkId) =>
+              explicitlyAllowed.has(networkId));
+          }
+          finalAllowedNetworkIds = [...new Set(finalAllowedNetworkIds)];
+          if (finalAllowedNetworkIds.length === 0) {
+            persistLog.info('Skipped persistence because final discovery scope is empty', {
+              userId: state.userId,
+              triggerIntentId: finalTriggerIntentId,
+            });
+            return { opportunities: [] };
+          }
+          const finalAllowedNetworks = new Set(finalAllowedNetworkIds);
+          const networkEligibility: OpportunityNetworkEligibility = {
+            ownerUserId: state.userId,
+            allowedNetworkIds: finalAllowedNetworkIds,
+            ...(finalTriggerIntentId ? { triggerIntentId: finalTriggerIntentId } : {}),
+          };
+
+          // Recheck evaluator participants before any dedup/reactivation/write.
+          // Persistence-only introducers are deliberately absent here: personal-
+          // network contact discovery validates the evaluated owner/candidate
+          // pairs without requiring the owner actor that is added below.
+          const requestedPairs = state.evaluatedOpportunities.flatMap((evaluated) =>
+            evaluated.actors.flatMap((actor) => actor.networkId
+              ? [{ userId: actor.userId, networkId: actor.networkId }]
+              : []),
+          );
+          const activePairs = await this.database.getActiveNetworkMembershipPairs(requestedPairs);
+          const activePairKeys = new Set(
+            activePairs.map((pair) => networkMembershipPairKey(pair.userId, pair.networkId)),
+          );
+          const evaluatedToPersist = state.evaluatedOpportunities.filter((evaluated) =>
+            evaluated.actors.length > 0
+            && evaluated.actors.every((actor) =>
+              actor.networkId != null
+              && finalAllowedNetworks.has(actor.networkId)
+              && activePairKeys.has(networkMembershipPairKey(actor.userId, actor.networkId))),
+          );
+          if (evaluatedToPersist.length < state.evaluatedOpportunities.length) {
+            persistLog.info('Skipped opportunities with inactive participant network pairs', {
+              before: state.evaluatedOpportunities.length,
+              after: evaluatedToPersist.length,
+              removed: state.evaluatedOpportunities.length - evaluatedToPersist.length,
+            });
+          }
+          if (evaluatedToPersist.length === 0) return { opportunities: [] };
+
+          const updateStatusIfStillEligible = async (
+            opportunityId: string,
+            status: Opportunity['status'],
+            existingActors: OpportunityActor[],
+          ): Promise<Opportunity | null> => {
+            // Reactivation preserves the existing opportunity row, so lock the
+            // existing participant anchors rather than the evaluator's current
+            // (often network-less) actor output. Introducers do not participate
+            // in matching eligibility and must not suppress a valid pair.
+            const anchors = existingActors.filter((actor) => actor.role !== 'introducer');
+            if (anchors.length === 0 || anchors.some((actor) =>
+              !finalAllowedNetworks.has(actor.networkId))) {
+              return null;
+            }
+            if (!this.database.updateOpportunityStatusIfNetworkEligible) {
+              persistLog.error('Network-eligible status update adapter is unavailable; failing closed');
+              return null;
+            }
+            return this.database.updateOpportunityStatusIfNetworkEligible(
+              opportunityId,
+              status,
+              anchors,
+              networkEligibility,
+            );
+          };
+
           const itemsToPersist: CreateOpportunityData[] = [];
           const reactivatedOpportunities: Opportunity[] = [];
           const existingBetweenActors: Array<{
@@ -2649,7 +2823,7 @@ export class OpportunityGraphFactory {
             // counterparty, not between the introducer and the counterparty.
             const dedupUserId = (state.onBehalfOfUserId ?? state.userId) as string;
             const uniqueCounterparts = new Set<string>();
-            for (const evaluated of state.evaluatedOpportunities) {
+            for (const evaluated of evaluatedToPersist) {
               const candidateUserId = evaluated.actors.find(a => a.userId !== dedupUserId)?.userId;
               if (candidateUserId) uniqueCounterparts.add(candidateUserId);
             }
@@ -2671,7 +2845,7 @@ export class OpportunityGraphFactory {
             dedupAlreadyAccepted.push(...lookups.flat());
           }
 
-          for (const evaluated of state.evaluatedOpportunities) {
+          for (const evaluated of evaluatedToPersist) {
             const indexIdForActors = state.networkId ?? evaluated.actors[0]?.networkId;
             let actors: OpportunityActor[];
             let data: CreateOpportunityData;
@@ -2778,7 +2952,7 @@ export class OpportunityGraphFactory {
                   if (existing.status === 'stalled' || sameIntroducer) {
                     // Introduction path always targets 'draft' (chat-only surface) rather than using
                     // initialStatus, because introductions are always chat-initiated, not background-discovered.
-                    const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
+                    const reactivated = await updateStatusIfStillEligible(existing.id, 'draft', existing.actors);
                     if (reactivated) {
                       persistLog.verbose('Reactivated opportunity (introduction path)', {
                         opportunityId: existing.id,
@@ -2810,7 +2984,7 @@ export class OpportunityGraphFactory {
                       continue;
                     }
                   }
-                  const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
+                  const reactivated = await updateStatusIfStillEligible(existing.id, 'draft', existing.actors);
                   if (reactivated) {
                     persistLog.info('Resuming orphaned negotiating opportunity (introduction path)', {
                       opportunityId: existing.id,
@@ -2822,7 +2996,7 @@ export class OpportunityGraphFactory {
                   continue;
                 } else if (existing.status === 'latent') {
                   // Upgrade latent to draft for introduction path
-                  const upgraded = await this.database.updateOpportunityStatus(existing.id, 'draft');
+                  const upgraded = await updateStatusIfStillEligible(existing.id, 'draft', existing.actors);
                   if (upgraded) {
                     persistLog.verbose('Upgraded latent opportunity to draft (introduction path)', {
                       opportunityId: existing.id,
@@ -2948,7 +3122,7 @@ export class OpportunityGraphFactory {
                   // Reactivate expired or stalled opportunities.
                   // Stalled opportunities are reactivated regardless of age: a stalled negotiation
                   // is still in-flight for this pair, so we resume it rather than create a parallel one.
-                  const reactivated = await this.database.updateOpportunityStatus(existing.id, initialStatus);
+                  const reactivated = await updateStatusIfStillEligible(existing.id, initialStatus, existing.actors);
                   if (reactivated) {
                     persistLog.verbose('Reactivated opportunity', {
                       opportunityId: existing.id,
@@ -2983,7 +3157,7 @@ export class OpportunityGraphFactory {
                     }
                   }
                   // Task is stale or missing — reactivate the orphaned negotiating opportunity
-                  const reactivated = await this.database.updateOpportunityStatus(existing.id, initialStatus);
+                  const reactivated = await updateStatusIfStillEligible(existing.id, initialStatus, existing.actors);
                   if (reactivated) {
                     persistLog.info('Resuming orphaned negotiating opportunity', {
                       opportunityId: existing.id,
@@ -2995,7 +3169,7 @@ export class OpportunityGraphFactory {
                   continue;
                 } else if (existing.status === 'latent' && initialStatus !== 'latent') {
                   // Upgrade latent (background-discovered) to the higher-priority status (e.g. pending)
-                  const upgraded = await this.database.updateOpportunityStatus(existing.id, initialStatus);
+                  const upgraded = await updateStatusIfStillEligible(existing.id, initialStatus, existing.actors);
                   if (upgraded) {
                     persistLog.verbose('Upgraded latent opportunity to higher-priority status', {
                       opportunityId: existing.id,
@@ -3064,6 +3238,14 @@ export class OpportunityGraphFactory {
                   evidence: evaluated.evidence ?? [],
                 },
               };
+            }
+
+            if (hasUnsupportedOpportunityClaim(data.interpretation.reasoning)) {
+              persistLog.warn('Skipping opportunity with unsupported affiliation/presence claim at persistence boundary', {
+                source: data.detection.source,
+                triggerIntentId: data.detection.triggeredBy,
+              });
+              continue;
             }
 
             try {
@@ -3136,6 +3318,7 @@ export class OpportunityGraphFactory {
             database: this.database,
             embedder: this.embedder,
             items: itemsForPersistence,
+            networkEligibility,
           });
 
           const allOpportunities = [...reactivatedOpportunities, ...createdList];
@@ -3297,7 +3480,10 @@ export class OpportunityGraphFactory {
                 indexName: indexRecord?.title ?? (actorIndexId ?? ''),
                 connectedWith,
                 suggestedBy,
-                reasoning: opp.interpretation?.reasoning ?? 'Connection opportunity',
+                reasoning: safeFallbackSummary(opp.interpretation?.reasoning, {
+                  counterpartName: connectedWith.join(' and '),
+                  emptyText: 'Connection opportunity',
+                }),
                 status: opp.status,
                 category,
                 confidence: confidence != null ? confidence : null,

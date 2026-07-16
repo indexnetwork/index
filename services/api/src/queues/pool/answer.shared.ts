@@ -20,16 +20,13 @@
  * no explicit invalidation needed (verified IND-419 recon).
  */
 import { POOL_RERUN_DEBOUNCE_MS, POOL_STALENESS_THRESHOLD, buildPoolAdjustment, planPoolAdjustments } from '@indexnetwork/protocol';
-import type { PoolAdjustment, QuestionPoolSnapshot } from '@indexnetwork/protocol';
+import type { PoolAdjustment, PoolAdjustmentSignal, QuestionPoolSnapshot } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { fromIntentQueue } from '../opportunity/from-intent.queue';
 
 const logger = log.service.from('PoolAnswerApply');
-
-/** Statuses that make an opportunity part of the viewer's live candidate pool. */
-const POOL_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
 
 /** Lifecycle admission for new work after applying an existing answer. */
 export type PoolLifecycleAdmission = 'active' | 'paused' | 'unavailable';
@@ -45,22 +42,24 @@ type LivePoolOpportunity = { id: string };
 export interface PoolAdjustmentWrite {
   opportunityId: string;
   adjustment: PoolAdjustment;
-  signal: { type: 'pool_discriminator'; weight: number; detail: string; questionId: string };
+  signal: PoolAdjustmentSignal;
 }
 
 export interface PoolAnswerApplyDeps {
   listLivePool: (userId: string, intentId: string) => Promise<LivePoolOpportunity[]>;
-  /** One all-or-nothing database transaction for the entire live pool. */
-  applyAdjustments: (writes: PoolAdjustmentWrite[]) => Promise<void>;
+  /** One transaction that rechecks scope and returns only rows actually patched. */
+  applyAdjustments: (
+    recipientUserId: string,
+    intentId: string,
+    writes: PoolAdjustmentWrite[],
+  ) => Promise<string[]>;
 }
 
 const defaultApplyDeps: PoolAnswerApplyDeps = {
-  listLivePool: (userId, intentId) => chatDatabaseAdapter.getOpportunitiesForUser(userId, {
-    statuses: [...POOL_STATUSES],
-    scopeType: 'intent',
-    scopeId: intentId,
-  }),
-  applyAdjustments: (writes) => chatDatabaseAdapter.applyOpportunityPoolAdjustments(writes),
+  listLivePool: (userId, intentId) =>
+    chatDatabaseAdapter.getLivePoolOpportunitiesForIntent(userId, intentId),
+  applyAdjustments: (recipientUserId, intentId, writes) =>
+    chatDatabaseAdapter.applyOpportunityPoolAdjustments(recipientUserId, intentId, writes),
 };
 
 /** Tier-0 apply: patch the live pool from the answered question's snapshot. */
@@ -72,7 +71,14 @@ export async function applyPoolAnswer(input: {
   selectedOption: string;
 }, deps: PoolAnswerApplyDeps = defaultApplyDeps): Promise<PoolAnswerOutcome> {
   const now = new Date().toISOString();
-  const plan = planPoolAdjustments(input.pool.discriminator, input.selectedOption, input.questionId, now);
+  const plan = planPoolAdjustments(
+    input.pool.discriminator,
+    input.selectedOption,
+    input.questionId,
+    input.userId,
+    input.intentId,
+    now,
+  );
   if (plan.length === 0) return { kind: 'none' }; // "Both matter" — no preference recorded.
 
   const live = await deps.listLivePool(input.userId, input.intentId);
@@ -89,9 +95,8 @@ export async function applyPoolAnswer(input: {
     return { kind: 'stale', staleRatio };
   }
 
-  let promoted = 0;
-  let demoted = 0;
   const patched = new Set<string>();
+  const outcomeByOpportunityId = new Map<string, 'promoted' | 'demoted' | 'unknown'>();
   const chosenSide = plan.find((entry) => entry.adjustment.factor === 1)?.adjustment.side ?? input.selectedOption;
   const writes: PoolAdjustmentWrite[] = [];
   for (const entry of plan) {
@@ -103,27 +108,37 @@ export async function applyPoolAnswer(input: {
       signal: entry.signal,
     });
     patched.add(entry.opportunityId);
-    if (isChosen) promoted++;
-    else demoted++;
+    outcomeByOpportunityId.set(entry.opportunityId, isChosen ? 'promoted' : 'demoted');
   }
 
   // Live pool members the miner could not assign: mild uncertainty discount.
-  let unknownAdjusted = 0;
   const label = input.pool.discriminator.label;
   for (const row of live) {
     if (patched.has(row.id)) continue;
     const write = buildPoolAdjustment({
       questionId: input.questionId,
+      recipientUserId: input.userId,
+      intentId: input.intentId,
       label,
       assignedSide: null,
       chosenSide,
       appliedAt: now,
     });
     writes.push({ opportunityId: row.id, ...write });
-    unknownAdjusted++;
+    outcomeByOpportunityId.set(row.id, 'unknown');
   }
 
-  await deps.applyAdjustments(writes);
+  const appliedIds = new Set(await deps.applyAdjustments(input.userId, input.intentId, writes));
+  let promoted = 0;
+  let demoted = 0;
+  let unknownAdjusted = 0;
+  for (const opportunityId of appliedIds) {
+    switch (outcomeByOpportunityId.get(opportunityId)) {
+      case 'promoted': promoted++; break;
+      case 'demoted': demoted++; break;
+      case 'unknown': unknownAdjusted++; break;
+    }
+  }
 
   logger.info('Pool answer applied', {
     questionId: input.questionId,

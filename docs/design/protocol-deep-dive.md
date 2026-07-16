@@ -183,7 +183,13 @@ The graph supports multiple discovery paths, searching across intents and premis
 
 All discovery strategies are merged via `mergeStrategyCandidates()`, which deduplicates by `userId:networkId:entityId` and applies a multi-strategy boost (+0.05 per additional strategy, capped at 0.15).
 
+**Trigger-intent network admission:** `FromIntentQueue` recomputes the authoritative target set for every run as the trigger intent's current assignments intersected with the owner's active memberships and any explicit caller/agent scope. Omitted explicit scope means all still-valid assigned networks—not all owner memberships—and an empty result ends the job before graph invocation or pool mining. Multi-network results use `indexScope` without collapsing to the first assignment. Query/ad-hoc discovery without a trigger intent retains its global all-membership behavior.
+
+**Candidate membership invariants:** intent-HyDE, intent-vector, premise-HyDE/vector, and context-to-intent queries require an active candidate membership on the exact returned network and a non-deleted network. The check is permission-agnostic so contacts in a personal network remain eligible. The graph batch-rechecks the discoverer and candidate before profile loading/evaluation and rechecks every evaluated participant before dedup; final creation and reactivation run behind transaction-held active-membership and trigger-intent-assignment locks, with the current active owned intent row locked too, so concurrent member removal, pause/archive, or unassignment cannot race the write. Lookup failure is fail-closed. Selected-intent Radar independently derives valid networks from the viewer-owned intent's assignments plus active viewer memberships and requires every participant to retain an active anchor in that set, including for paused-intent history.
+
 Premise-based candidates carry `candidatePremiseId` in the persist node for actor tracking, regardless of discovery source.
+
+**Affiliation/presence claim safety:** network/event metadata is retrieval context, never evidence that a person attended, joined, resided, met someone, or shared a place/session. Evaluator and presenter prompts prohibit these inferences, evaluator post-validation rejects affected opportunities before persistence, and one deterministic sentence guard strips them from presenter output, raw-reasoning fallbacks, REST lists, MCP cards, notifications, delivery/chat cards, streaming drafts, and invite generation. Because typed support provenance does not exist yet, the guard deliberately fails closed even for genuinely supported phrasing. Home, category, delivery, and chat presentation caches use a versioned namespace and never persist presenter fallback output; unsafe categorizer titles/subtitles fall back before the category cache write.
 
 **Unified trigger model:** `OpportunityGraphState.trigger` (`'ambient' | 'orchestrator'`, default `'ambient'`) drives branches in the `persist` and `negotiate` nodes so the same graph serves both the queue-driven ambient flow and the chat-driven orchestrator flow. The tool layer passes `trigger: 'orchestrator'` whenever `context.sessionId` is set (i.e. the call comes from a chat session); all other callers inherit the ambient default.
 
@@ -269,7 +275,7 @@ The `assign` node has two sub-paths:
 - After `checkPresenterCache`: routes to `generateCardText` (cache misses) or `cachePresenterResults` (all cached)
 - After `checkCategorizerCache`: routes to `categorizeDynamically` (cache miss) or `normalizeAndSort` (cached)
 
-This is a read-only graph (separate from the write-path maintenance graph). It uses `OpportunityPresenter` for card text and `HomeCategorizerAgent` for dynamic section grouping, with full cache support for both layers. Cache TTL is 24 hours.
+This is a read-only graph (separate from the write-path maintenance graph). It uses `OpportunityPresenter` for card text and `HomeCategorizerAgent` for dynamic section grouping, with versioned cache support for both layers. Cache TTL is 24 hours; claim-safety or presenter fallback cards are returned only for the current request and are not cached. Pool adjustments affect ordering and deprioritization copy only when their `recipientUserId + intentId` provenance exactly matches the graph's viewer and selected intent; global Home, other viewers/intents, and legacy unscoped entries ignore them.
 
 **Dependencies:** `HomeGraphDatabase`, `OpportunityCache`
 

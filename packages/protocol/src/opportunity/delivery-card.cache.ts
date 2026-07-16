@@ -1,6 +1,7 @@
 import type { Cache } from '../shared/interfaces/cache.interface.js';
 import type { OpportunityPresenter, PresenterDatabase } from './opportunity.presenter.js';
 import { gatherPresenterContext } from './opportunity.presenter.js';
+import { buildDeliveryCardPresentationCacheKey } from './opportunity.presentation-cache.js';
 
 export interface CachedDeliveryCard {
   opportunityId: string;
@@ -35,8 +36,8 @@ export async function getOrCreateDeliveryCardBatch(
   }
 
   const ttl = options?.ttl ?? DELIVERY_CARD_CACHE_TTL;
-  const keys = opportunities.map(
-    (opp) => `delivery:card:${opp.id}:${opp.status}:${viewerId}`
+  const keys = opportunities.map((opp) =>
+    buildDeliveryCardPresentationCacheKey(opp.id, opp.status, viewerId)
   );
   const cached = await cache.mget<CachedDeliveryCard>(keys);
 
@@ -74,8 +75,11 @@ export async function getOrCreateDeliveryCardBatch(
 
       result.set(opp.id, card);
 
-      // Cache the result
-      await cache.set(keys[index], card, { ttl });
+      // Presenter fallbacks are safe for this request but are deliberately not
+      // persisted for 24 hours; a later request should retry genuine copy.
+      if (!presented.isFallback) {
+        await cache.set(keys[index], card, { ttl });
+      }
     })
   );
 
