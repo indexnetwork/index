@@ -57,14 +57,18 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     runId?: string;
     minedAt?: string;
     conversationId?: string;
+    sourceId?: string;
+    triggeredBy?: string | null;
   }): Promise<string> {
     const tiedIntentId = input?.intentId ?? intentId;
     const question: AdapterPersistableQuestion = {
       detection: {
         mode: 'pool_discovery',
         sourceType: 'intent',
-        sourceId: tiedIntentId,
-        triggeredBy: tiedIntentId,
+        sourceId: input?.sourceId ?? tiedIntentId,
+        ...(input?.triggeredBy === null
+          ? {}
+          : { triggeredBy: input?.triggeredBy ?? tiedIntentId }),
         timestamp: new Date().toISOString(),
         pool: {
           poolSize: input?.poolSize ?? 8,
@@ -89,6 +93,23 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     };
     const [id] = await adapter.persist([question]);
     return id;
+  }
+
+  async function updateDetection(
+    questionId: string,
+    update: (detection: AdapterPersistableQuestion['detection']) => AdapterPersistableQuestion['detection'],
+  ): Promise<void> {
+    const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, questionId));
+    await db.update(questions).set({ detection: update(row.detection) }).where(eq(questions.id, questionId));
+  }
+
+  async function expectSuppressedRequest(questionId: string, expectedReason: string): Promise<void> {
+    expect(reason(await adapter.claimPoolQuestionPush(questionId, userId))).toBe(expectedReason);
+    const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, questionId));
+    expect(row.detection.pushRequestStatus).toBe('suppressed');
+    expect(row.detection.pushRequestReason).toBe(expectedReason);
+    expect(row.detection.pushRequestSuppressedAt).toBeString();
+    expect((await adapter.listRecoverablePoolQuestionPushRequests()).some((request) => request.questionId === questionId)).toBe(false);
   }
 
   async function resolveQuestion(questionId: string, status: 'answered' | 'dismissed', createdAt: Date): Promise<void> {
@@ -181,11 +202,18 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     }
   }, 30_000);
 
-  test('allowNewClaim=false resumes an existing claim but never creates one', async () => {
+  test('allowNewClaim=false resumes an existing claim but leaves an unclaimed request recoverable', async () => {
     const unclaimed = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(unclaimed, userId)).toBe(true);
     expect(reason(await adapter.claimPoolQuestionPush(unclaimed, userId, { allowNewClaim: false }))).toBe('new_claim_disabled');
     const [before] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, unclaimed));
     expect(before.detection.push).toBeUndefined();
+    expect(before.detection.pushRequestStatus).toBe('requested');
+    expect(await adapter.listRecoverablePoolQuestionPushRequests()).toContainEqual({
+      questionId: unclaimed,
+      userId,
+      claimed: false,
+    });
 
     expect((await adapter.claimPoolQuestionPush(unclaimed, userId, { allowNewClaim: true })).kind).toBe('claimed');
     expect((await adapter.claimPoolQuestionPush(unclaimed, userId, { allowNewClaim: false })).kind).toBe('claimed');
@@ -225,6 +253,8 @@ describe('QuestionerAdapter pool push claim transaction', () => {
   test('durable request markers recover only pending nonterminal rows', async () => {
     const requested = await createPoolQuestion({ voi: 0.9 });
     expect(await adapter.markPoolQuestionPushRequested(requested, userId)).toBe(true);
+    const [marked] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, requested));
+    expect(marked.detection.pushRequestStatus).toBe('requested');
     expect(await adapter.listRecoverablePoolQuestionPushRequests()).toContainEqual({
       questionId: requested,
       userId,
@@ -239,7 +269,116 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     });
 
     await adapter.markPoolQuestionPushFailed(requested, userId, 'terminal');
+    const [failed] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, requested));
+    expect(failed.detection.push?.deliveryStatus).toBe('failed');
+    // Successful terminal bookkeeping excludes failed claims from recovery.
     expect((await adapter.listRecoverablePoolQuestionPushRequests()).some((row) => row.questionId === requested)).toBe(false);
+  }, 30_000);
+
+  test('permanent unclaimed rejections terminalize the request and leave recovery', async () => {
+    const poolSize = await createPoolQuestion({ poolSize: 7, voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(poolSize, userId)).toBe(true);
+    await expectSuppressedRequest(poolSize, 'pool_size');
+
+    const lowVoi = await createPoolQuestion({ voi: 0.6 });
+    expect(await adapter.markPoolQuestionPushRequested(lowVoi, userId)).toBe(true);
+    await expectSuppressedRequest(lowVoi, 'voi');
+
+    const visited = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(visited, userId)).toBe(true);
+    await db.update(intents).set({ lastVisitedAt: new Date(Date.now() + 60_000) }).where(eq(intents.id, intentId));
+    await expectSuppressedRequest(visited, 'visited');
+    await db.update(intents).set({ lastVisitedAt: null }).where(eq(intents.id, intentId));
+
+    const resolved = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(resolved, userId)).toBe(true);
+    await db.update(questions).set({ status: 'dismissed' }).where(eq(questions.id, resolved));
+    await expectSuppressedRequest(resolved, 'question_lifecycle');
+
+    const pausedIntent = await createIntent();
+    const paused = await createPoolQuestion({ intentId: pausedIntent, voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(paused, userId)).toBe(true);
+    await db.update(intents).set({ status: 'PAUSED' }).where(eq(intents.id, pausedIntent));
+    await expectSuppressedRequest(paused, 'intent_lifecycle');
+
+    const firstCycle = await createPoolQuestion({ runId: 'terminal-cycle', voi: 0.9 });
+    expect((await adapter.claimPoolQuestionPush(firstCycle, userId)).kind).toBe('claimed');
+    const duplicateCycle = await createPoolQuestion({ runId: 'terminal-cycle', voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(duplicateCycle, userId)).toBe(true);
+    await expectSuppressedRequest(duplicateCycle, 'cycle_budget');
+  }, 30_000);
+
+  test('malformed source, actor, pool, and cycle terminalize unclaimed requests', async () => {
+    const source = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(source, userId)).toBe(true);
+    await updateDetection(source, (detection) => ({ ...detection, sourceType: 'opportunity' }));
+    await expectSuppressedRequest(source, 'malformed_source');
+
+    const actor = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(actor, userId)).toBe(true);
+    await db.update(questions).set({ actors: [] }).where(eq(questions.id, actor));
+    await expectSuppressedRequest(actor, 'malformed_actor');
+
+    const pool = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(pool, userId)).toBe(true);
+    await updateDetection(pool, (detection) => ({ ...detection, pool: undefined }));
+    await expectSuppressedRequest(pool, 'malformed_pool');
+
+    const cycle = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(cycle, userId)).toBe(true);
+    await updateDetection(cycle, (detection) => ({
+      ...detection,
+      pool: detection.pool ? { ...detection.pool, runId: '', minedAt: '' } : undefined,
+    }));
+    await expectSuppressedRequest(cycle, 'malformed_cycle');
+  }, 30_000);
+
+  test('job recipient mismatch cannot suppress a valid authoritative claim', async () => {
+    const questionId = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(questionId, userId)).toBe(true);
+    expect((await adapter.claimPoolQuestionPush(questionId, userId)).kind).toBe('claimed');
+
+    expect(reason(await adapter.claimPoolQuestionPush(questionId, otherUserId, { allowNewClaim: false }))).toBe('recipient_mismatch');
+    const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, questionId));
+    expect(row.detection.push?.recipientId).toBe(userId);
+    expect(row.detection.push?.deliveryStatus).toBe('claimed');
+  }, 30_000);
+
+  test('claim recipient conflict is durably suppressed against actor[0] even for a mismatched job user', async () => {
+    const questionId = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(questionId, userId)).toBe(true);
+    expect((await adapter.claimPoolQuestionPush(questionId, userId)).kind).toBe('claimed');
+    await updateDetection(questionId, (detection) => ({
+      ...detection,
+      push: detection.push ? { ...detection.push, recipientId: otherUserId } : undefined,
+    }));
+
+    expect(reason(await adapter.claimPoolQuestionPush(questionId, userId, { allowNewClaim: false }))).toBe('conflicting_claim');
+    const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, questionId));
+    expect(row.detection.push?.deliveryStatus).toBe('suppressed');
+    expect(row.detection.push?.suppressedAt).toBeString();
+    expect((await adapter.listRecoverablePoolQuestionPushRequests()).some((request) => request.questionId === questionId)).toBe(false);
+  }, 30_000);
+
+  test('missing or mismatched triggeredBy terminalizes requests and suppresses existing claims', async () => {
+    for (const triggeredBy of [null, crypto.randomUUID()] as const) {
+      const unclaimed = await createPoolQuestion({ voi: 0.9 });
+      expect(await adapter.markPoolQuestionPushRequested(unclaimed, userId)).toBe(true);
+      await updateDetection(unclaimed, (detection) => {
+        const updated = { ...detection, triggeredBy: triggeredBy ?? undefined };
+        if (triggeredBy === null) delete updated.triggeredBy;
+        return updated;
+      });
+      await expectSuppressedRequest(unclaimed, 'malformed_source');
+    }
+
+    const claimed = await createPoolQuestion({ voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(claimed, userId)).toBe(true);
+    expect((await adapter.claimPoolQuestionPush(claimed, userId)).kind).toBe('claimed');
+    await updateDetection(claimed, (detection) => ({ ...detection, triggeredBy: crypto.randomUUID() }));
+    expect(reason(await adapter.claimPoolQuestionPush(claimed, userId, { allowNewClaim: false }))).toBe('malformed_source');
+    const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, claimed));
+    expect(row.detection.push?.deliveryStatus).toBe('suppressed');
   }, 30_000);
 
   test('resolved claims count toward the UTC daily cap across intents', async () => {
@@ -251,7 +390,15 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     }
     const thirdIntent = await createIntent();
     const third = await createPoolQuestion({ intentId: thirdIntent, voi: 0.9 });
+    expect(await adapter.markPoolQuestionPushRequested(third, userId)).toBe(true);
     expect(reason(await adapter.claimPoolQuestionPush(third, userId))).toBe('daily_budget');
+    const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, third));
+    expect(row.detection.pushRequestStatus).toBe('requested');
+    expect(await adapter.listRecoverablePoolQuestionPushRequests()).toContainEqual({
+      questionId: third,
+      userId,
+      claimed: false,
+    });
   }, 30_000);
 
   test('same cycle claims once while different cycles can claim', async () => {
@@ -265,7 +412,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
 
   test('foreign, expired, resolved, and conversation-bound rows are ineligible', async () => {
     const foreignActor = await createPoolQuestion({ actorId: otherUserId, voi: 0.9 });
-    expect(reason(await adapter.claimPoolQuestionPush(foreignActor, userId))).toBe('question_lifecycle');
+    expect(reason(await adapter.claimPoolQuestionPush(foreignActor, userId))).toBe('recipient_mismatch');
 
     const foreignIntent = await createIntent(otherUserId);
     const foreign = await createPoolQuestion({ intentId: foreignIntent, actorId: userId, voi: 0.9 });

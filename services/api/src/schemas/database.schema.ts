@@ -521,6 +521,12 @@ export interface QuestionDetection {
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
   /** Durable proactive-delivery request marker. Never exposed publicly. */
   pushRequestedAt?: string;
+  /** Durable request outcome. Never exposed publicly. */
+  pushRequestStatus?: import('@indexnetwork/protocol').QuestionPoolPushRequestStatus;
+  /** Permanent suppression reason for an unclaimed request. Never exposed publicly. */
+  pushRequestReason?: import('@indexnetwork/protocol').QuestionPoolPushRequestReason;
+  /** Timestamp at which an unclaimed request was suppressed. Never exposed publicly. */
+  pushRequestSuppressedAt?: string;
   /** Internal proactive push claim/delivery state. Never exposed publicly. */
   push?: import('@indexnetwork/protocol').QuestionPoolPush;
   /** Authoritative successful-delivery ledger timestamp. Never exposed publicly. */

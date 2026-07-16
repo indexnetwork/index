@@ -28,9 +28,24 @@ const POOL_QUESTION_PUSH_DISMISSAL_DECAY = 1.15;
 const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
 const POOL_QUESTION_PUSH_DAILY_CAP = 2;
 
-function poolPushCycleKey(pool: Pick<import('@indexnetwork/protocol').QuestionPoolSnapshot, 'runId' | 'minedAt'>): string {
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isValidPoolPushPool(value: unknown): value is import('@indexnetwork/protocol').QuestionPoolSnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const pool = value as { poolSize?: unknown; discriminator?: { voi?: unknown } };
+  return Number.isInteger(pool.poolSize)
+    && Number(pool.poolSize) >= 0
+    && Boolean(pool.discriminator)
+    && Number.isFinite(pool.discriminator?.voi);
+}
+
+function poolPushCycleKey(pool: Pick<import('@indexnetwork/protocol').QuestionPoolSnapshot, 'runId' | 'minedAt'>): string | null {
   const runId = pool.runId?.trim();
-  return runId ? `run:${runId}` : `mined:${pool.minedAt}`;
+  if (runId) return `run:${runId}`;
+  const minedAt = pool.minedAt?.trim();
+  return minedAt ? `mined:${minedAt}` : null;
 }
 
 function poolPushThreshold(consecutiveDismissals: number): number {
@@ -65,6 +80,12 @@ export interface AdapterQuestionDetection {
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
   /** Durable request marker written before Redis enqueue. Never exposed publicly. */
   pushRequestedAt?: string;
+  /** Durable request outcome. Never exposed publicly. */
+  pushRequestStatus?: import('@indexnetwork/protocol').QuestionPoolPushRequestStatus;
+  /** Permanent suppression reason for an unclaimed request. Never exposed publicly. */
+  pushRequestReason?: import('@indexnetwork/protocol').QuestionPoolPushRequestReason;
+  /** Timestamp at which an unclaimed request was suppressed. Never exposed publicly. */
+  pushRequestSuppressedAt?: string;
   /** Internal proactive push state. Never exposed publicly. */
   push?: import('@indexnetwork/protocol').QuestionPoolPush;
   /** Authoritative successful-delivery ledger timestamp. */
@@ -168,6 +189,64 @@ export interface RecoverablePoolPushRequest {
 export interface PoolPushClaimOptions {
   /** Whether an eligible unclaimed row may consume budget and create a claim. */
   allowNewClaim: boolean;
+}
+
+export type PoolPushRecipientEvaluation =
+  | { kind: 'valid'; recipientId: string }
+  | { kind: 'permanent'; reason: 'malformed_actor' }
+  | { kind: 'suppress_claim'; reason: 'conflicting_claim' }
+  | { kind: 'ineligible'; reason: 'recipient_mismatch' };
+
+/** Establish actor[0] authority without trusting the queued job recipient. */
+export function evaluatePoolPushRecipient(
+  actors: AdapterQuestionActor[],
+  push: import('@indexnetwork/protocol').QuestionPoolPush | undefined,
+  jobUserId: string,
+): PoolPushRecipientEvaluation {
+  const actor = actors[0];
+  const recipientId = isNonEmptyString(actor?.userId) && actor.role === 'subject'
+    ? actor.userId
+    : null;
+  if (!recipientId) return { kind: 'permanent', reason: 'malformed_actor' };
+  if (push?.deliveryStatus === 'claimed' && push.recipientId !== recipientId) {
+    return { kind: 'suppress_claim', reason: 'conflicting_claim' };
+  }
+  if (jobUserId !== recipientId) return { kind: 'ineligible', reason: 'recipient_mismatch' };
+  return { kind: 'valid', recipientId };
+}
+
+/** Apply the durable terminal state for one permanent eligibility rejection. */
+export function terminalizePoolPushRequestDetection(
+  detection: AdapterQuestionDetection,
+  reason: import('@indexnetwork/protocol').QuestionPoolPushRequestReason,
+  timestamp: string,
+): AdapterQuestionDetection {
+  if (detection.push?.deliveryStatus === 'claimed') {
+    return {
+      ...detection,
+      push: {
+        ...detection.push,
+        deliveryStatus: 'suppressed',
+        suppressedAt: timestamp,
+      },
+    };
+  }
+  if (!detection.push && detection.pushRequestStatus === 'requested') {
+    return {
+      ...detection,
+      pushRequestStatus: 'suppressed',
+      pushRequestReason: reason,
+      pushRequestSuppressedAt: timestamp,
+    };
+  }
+  return detection;
+}
+
+/** Pure mirror of the recovery query's internal request-state predicate. */
+export function isRecoverablePoolPushDetection(detection: AdapterQuestionDetection): boolean {
+  return detection.pushRequestStatus === 'requested'
+    && !detection.pushedAt
+    && (!detection.push || detection.push.deliveryStatus === 'claimed');
 }
 
 export interface AdapterQuestionFilters {
@@ -402,21 +481,30 @@ export class QuestionerAdapter {
       if (!question) return false;
       const detection = question.detection as AdapterQuestionDetection;
       const actors = question.actors as AdapterQuestionActor[];
+      const pool = detection.pool;
       if (
         question.status !== 'pending'
         || (question.expiresAt !== null && question.expiresAt <= clock.now)
         || question.conversationId !== null
         || detection.mode !== 'pool_discovery'
+        || detection.sourceType !== 'intent'
+        || !isNonEmptyString(detection.sourceId)
+        || !isNonEmptyString(detection.triggeredBy)
+        || detection.triggeredBy !== detection.sourceId
         || actors[0]?.userId !== userId
         || actors[0]?.role !== 'subject'
+        || !isValidPoolPushPool(pool)
+        || !poolPushCycleKey(pool)
         || detection.pushedAt
+        || detection.pushRequestStatus === 'suppressed'
       ) return false;
-      if (detection.pushRequestedAt) return true;
+      if (detection.pushRequestStatus === 'requested' && detection.pushRequestedAt) return true;
       await tx.update(questions)
         .set({
           detection: {
             ...detection,
-            pushRequestedAt: clock.now.toISOString(),
+            pushRequestedAt: detection.pushRequestedAt ?? clock.now.toISOString(),
+            pushRequestStatus: 'requested',
           } satisfies QuestionDetection,
         })
         .where(eq(questions.id, questionId));
@@ -426,41 +514,43 @@ export class QuestionerAdapter {
 
   /**
    * List a bounded batch of durable requests that can be re-enqueued.
-   * Terminal delivered, suppressed, and failed rows are excluded.
+   * Only explicit requested state is recoverable. Lifecycle and malformed rows
+   * are intentionally returned so the locked claim transaction can terminalize
+   * them instead of leaving a permanent minute-by-minute recovery loop.
    *
    * @param limit - Maximum oldest requests returned per sweep.
-   * @returns Deterministic question/actor[0] job payloads.
+   * @returns Deterministic question/authoritative actor job payloads.
    */
   async listRecoverablePoolQuestionPushRequests(limit = 100): Promise<RecoverablePoolPushRequest[]> {
     const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 500));
     const rows = await this.db.select({
       questionId: questions.id,
-      userId: sql<string>`${questions.actors}->0->>'userId'`,
+      userId: sql<string>`COALESCE(
+        NULLIF(${questions.actors}->0->>'userId', ''),
+        NULLIF(${questions.detection}->'push'->>'recipientId', ''),
+        ''
+      )`,
       claimed: sql<boolean>`COALESCE(${questions.detection}->'push'->>'deliveryStatus' = 'claimed', false)`,
     })
       .from(questions)
       .where(and(
-        eq(questions.status, 'pending'),
-        isNull(questions.conversationId),
-        or(isNull(questions.expiresAt), sql`${questions.expiresAt} > transaction_timestamp()`),
-        sql`${questions.detection}->>'mode' = 'pool_discovery'`,
-        sql`${questions.detection}->>'pushRequestedAt' IS NOT NULL`,
+        sql`${questions.detection}->>'pushRequestStatus' = 'requested'`,
         sql`${questions.detection}->>'pushedAt' IS NULL`,
         sql`(
           ${questions.detection}->'push' IS NULL
           OR ${questions.detection}->'push'->>'deliveryStatus' = 'claimed'
         )`,
-        sql`${questions.actors}->0->>'userId' IS NOT NULL`,
       ))
-      .orderBy(sql`(${questions.detection}->>'pushRequestedAt')::timestamptz`, questions.createdAt)
+      .orderBy(sql`${questions.detection}->>'pushRequestedAt' NULLS FIRST`, questions.createdAt, questions.id)
       .limit(boundedLimit);
     return rows;
   }
 
   /**
    * Atomically claim one eligible proactive pool-question delivery.
-   * A per-recipient advisory transaction lock serializes the UTC budget and
-   * cycle checks across workers; row locks close lifecycle/visit races.
+   * The locked row establishes actor[0] as the authoritative recipient before
+   * any mutation. A per-recipient advisory transaction lock then serializes
+   * UTC budget and cycle checks across workers.
    *
    * @param questionId - Pending pool question to claim.
    * @param userId - Expected recipient and intent owner.
@@ -472,7 +562,6 @@ export class QuestionerAdapter {
     options: PoolPushClaimOptions = { allowNewClaim: true },
   ): Promise<PoolPushClaimResult> {
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
       const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
       const transactionNow = clock.now;
 
@@ -486,11 +575,9 @@ export class QuestionerAdapter {
 
       const detection = question.detection as AdapterQuestionDetection;
       const actors = question.actors as AdapterQuestionActor[];
-      const pool = detection.pool;
-      const intentId = detection.triggeredBy ?? detection.sourceId;
       const existingPush = detection.push;
       const suppressExistingClaim = async (reason: string): Promise<PoolPushClaimResult> => {
-        if (existingPush?.deliveryStatus !== 'claimed' || existingPush.recipientId !== userId) {
+        if (existingPush?.deliveryStatus !== 'claimed') {
           return { kind: 'ineligible', reason } as const;
         }
         await tx.update(questions)
@@ -507,37 +594,71 @@ export class QuestionerAdapter {
           .where(eq(questions.id, questionId));
         return { kind: 'ineligible', reason } as const;
       };
+      const terminalizePermanentRequest = async (
+        reason: import('@indexnetwork/protocol').QuestionPoolPushRequestReason,
+      ): Promise<PoolPushClaimResult> => {
+        const terminalDetection = terminalizePoolPushRequestDetection(
+          detection,
+          reason,
+          transactionNow.toISOString(),
+        );
+        if (terminalDetection !== detection) {
+          await tx.update(questions)
+            .set({ detection: terminalDetection satisfies QuestionDetection })
+            .where(eq(questions.id, questionId));
+        }
+        return { kind: 'ineligible', reason } as const;
+      };
 
       if (detection.pushedAt || existingPush?.deliveryStatus === 'delivered') {
         return { kind: 'delivered' } as const;
       }
-      if (existingPush && (
-        existingPush.recipientId !== userId
-        || existingPush.intentId !== intentId
-        || existingPush.cycleKey !== (pool ? poolPushCycleKey(pool) : '')
-        || existingPush.messageId !== questionId
-      )) {
-        return suppressExistingClaim('conflicting_claim');
-      }
+
+      // A malformed claim is suppressed from the locked row even when the job
+      // was forged/stale. A valid claim is never mutated by a non-recipient job.
+      const recipient = evaluatePoolPushRecipient(actors, existingPush, userId);
+      if (recipient.kind === 'suppress_claim') return suppressExistingClaim(recipient.reason);
+      if (recipient.kind === 'permanent') return terminalizePermanentRequest(recipient.reason);
+      if (recipient.kind === 'ineligible') return recipient;
+      const authoritativeRecipient = recipient.recipientId;
+
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${authoritativeRecipient}, 0))`);
+
       if (existingPush && existingPush.deliveryStatus !== 'claimed') {
         return { kind: 'ineligible', reason: existingPush.deliveryStatus } as const;
       }
-
       if (
         question.status !== 'pending'
         || (question.expiresAt !== null && question.expiresAt <= transactionNow)
         || question.conversationId !== null
-        || detection.mode !== 'pool_discovery'
-        || detection.sourceType !== 'intent'
-        || detection.sourceId !== intentId
-        || actors[0]?.userId !== userId
-        || actors[0]?.role !== 'subject'
-        || !pool
+        || (detection.pushRequestStatus === 'requested' && !isNonEmptyString(detection.pushRequestedAt))
       ) {
-        return suppressExistingClaim('question_lifecycle');
+        return terminalizePermanentRequest('question_lifecycle');
+      }
+      if (
+        detection.mode !== 'pool_discovery'
+        || detection.sourceType !== 'intent'
+        || !isNonEmptyString(detection.sourceId)
+        || !isNonEmptyString(detection.triggeredBy)
+        || detection.triggeredBy !== detection.sourceId
+      ) {
+        return terminalizePermanentRequest('malformed_source');
       }
 
+      const intentId = detection.triggeredBy;
+      const pool = detection.pool;
+      if (!isValidPoolPushPool(pool)) return terminalizePermanentRequest('malformed_pool');
       const cycleKey = poolPushCycleKey(pool);
+      if (!cycleKey) return terminalizePermanentRequest('malformed_cycle');
+
+      if (existingPush && (
+        existingPush.intentId !== intentId
+        || existingPush.cycleKey !== cycleKey
+        || existingPush.messageId !== questionId
+      )) {
+        return suppressExistingClaim('conflicting_claim');
+      }
+
       const [intent] = await tx
         .select({
           id: intents.id,
@@ -554,25 +675,22 @@ export class QuestionerAdapter {
         .for('update');
       if (
         !intent
-        || intent.userId !== userId
+        || intent.userId !== authoritativeRecipient
         || intent.archivedAt !== null
         || (intent.status !== null && intent.status !== 'ACTIVE')
       ) {
-        return suppressExistingClaim('intent_lifecycle');
+        return terminalizePermanentRequest('intent_lifecycle');
       }
       if (intent.lastVisitedAt && intent.lastVisitedAt > question.createdAt) {
-        return suppressExistingClaim('visited');
+        return terminalizePermanentRequest('visited');
       }
 
       if (!existingPush) {
-        if (!options.allowNewClaim) {
-          return { kind: 'ineligible', reason: 'new_claim_disabled' } as const;
-        }
         if (pool.poolSize < POOL_QUESTION_PUSH_MIN_POOL_SIZE) {
-          return { kind: 'ineligible', reason: 'pool_size' } as const;
+          return terminalizePermanentRequest('pool_size');
         }
 
-        const recipientExpression = sql`${questions.actors}->0->>'userId' = ${userId}`;
+        const recipientExpression = sql`${questions.actors}->0->>'userId' = ${authoritativeRecipient}`;
         const [latestAnswer] = await tx
           .select({ createdAt: questions.createdAt })
           .from(questions)
@@ -596,7 +714,7 @@ export class QuestionerAdapter {
           .from(questions)
           .where(and(...dismissalConditions));
         if (pool.discriminator.voi <= poolPushThreshold(Number(dismissalRow?.value ?? 0))) {
-          return { kind: 'ineligible', reason: 'voi' } as const;
+          return terminalizePermanentRequest('voi');
         }
 
         const [cycleClaim] = await tx
@@ -610,7 +728,7 @@ export class QuestionerAdapter {
             sql`${questions.detection}->'push'->>'claimedAt' IS NOT NULL`,
           ))
           .limit(1);
-        if (cycleClaim) return { kind: 'ineligible', reason: 'cycle_budget' } as const;
+        if (cycleClaim) return terminalizePermanentRequest('cycle_budget');
 
         const [dailyRow] = await tx
           .select({ value: count() })
@@ -624,11 +742,14 @@ export class QuestionerAdapter {
         if (Number(dailyRow?.value ?? 0) >= POOL_QUESTION_PUSH_DAILY_CAP) {
           return { kind: 'ineligible', reason: 'daily_budget' } as const;
         }
+        if (!options.allowNewClaim) {
+          return { kind: 'ineligible', reason: 'new_claim_disabled' } as const;
+        }
 
         const push = {
           version: 1,
           source: 'pool_discovery',
-          recipientId: userId,
+          recipientId: authoritativeRecipient,
           intentId,
           cycleKey,
           messageId: questionId,
@@ -647,7 +768,7 @@ export class QuestionerAdapter {
       return {
         kind: 'claimed',
         questionId,
-        recipientId: userId,
+        recipientId: authoritativeRecipient,
         intentId,
         cycleKey,
         messageId: questionId,

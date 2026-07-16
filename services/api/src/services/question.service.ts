@@ -30,11 +30,25 @@ export function stripInternalDetection(question: AdapterPersistedQuestion): Adap
     strategy: _strategy,
     underspecificationType: _underspecificationType,
     pushRequestedAt: _pushRequestedAt,
+    pushRequestStatus: _pushRequestStatus,
+    pushRequestReason: _pushRequestReason,
+    pushRequestSuppressedAt: _pushRequestSuppressedAt,
     push: _push,
     pushedAt: _pushedAt,
     ...detection
   } = question.detection;
-  if (!_pool && !_purpose && !_strategy && _underspecificationType === undefined && !_pushRequestedAt && !_push && !_pushedAt) return question;
+  if (
+    !_pool
+    && !_purpose
+    && !_strategy
+    && _underspecificationType === undefined
+    && !_pushRequestedAt
+    && !_pushRequestStatus
+    && !_pushRequestReason
+    && !_pushRequestSuppressedAt
+    && !_push
+    && !_pushedAt
+  ) return question;
   return { ...question, detection };
 }
 

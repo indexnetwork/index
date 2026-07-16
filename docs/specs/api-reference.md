@@ -3340,7 +3340,7 @@ Unscoped/global reads always exclude `pool_discovery`; those rows are available 
 
 Returns the canonical count split used by the two allowed surfaces. Counts require pending, unexpired, conversation-unbound rows. They are independent of the current push flag, so a delivered row is not hidden if the flag later turns off.
 
-**Auth**: Required (session or API key)
+**Auth**: Session only (API keys are rejected)
 
 ```json
 {

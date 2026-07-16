@@ -71,6 +71,25 @@ export async function requestPoolQuestionPush(
   await deps.enqueue({ questionId, userId });
 }
 
+/**
+ * Persist terminal failure bookkeeping for an exhausted delivery job.
+ * A successful write changes the claim to `failed`, which excludes it from
+ * recovery. If the database itself is unavailable, this deliberately rejects:
+ * the claim remains `claimed` so the durable recovery sweep can resume it once
+ * storage recovers rather than silently stranding the delivery.
+ */
+export async function recordTerminalPoolQuestionPushFailure(
+  data: PoolQuestionPushJobData,
+  error: unknown,
+  markFailed: (questionId: string, userId: string, failure: string) => Promise<void>,
+): Promise<void> {
+  await markFailed(
+    data.questionId,
+    data.userId,
+    error instanceof Error ? error.message : String(error),
+  );
+}
+
 /** Retryable worker for claim + deterministic stable-DM delivery and recovery. */
 export class PoolQuestionPushQueue {
   readonly queue = QueueFactory.createQueue<PoolQuestionPushQueueData>(POOL_QUESTION_PUSH_QUEUE_NAME);
@@ -240,10 +259,10 @@ export class PoolQuestionPushQueue {
             error,
           });
           if (finalAttempt) {
-            await this.questioner.markPoolQuestionPushFailed(
-              data.questionId,
-              data.userId,
-              error instanceof Error ? error.message : String(error),
+            await recordTerminalPoolQuestionPushFailure(
+              data,
+              error,
+              this.questioner.markPoolQuestionPushFailed.bind(this.questioner),
             );
           }
           throw error;

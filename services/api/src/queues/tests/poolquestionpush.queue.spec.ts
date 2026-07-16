@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { PoolPushClaimResult, RecoverablePoolPushRequest } from '../../adapters/questioner.adapter';
-import { PoolQuestionPushQueue, poolQuestionPushJobId, requestPoolQuestionPush } from '../pool/questionpush.queue';
+import { PoolQuestionPushQueue, poolQuestionPushJobId, recordTerminalPoolQuestionPushFailure, requestPoolQuestionPush } from '../pool/questionpush.queue';
 
 function claim(): PoolPushClaimResult {
   return {
@@ -156,6 +156,24 @@ describe('PoolQuestionPushQueue', () => {
     const disabled = harness({ enabled: false, recoverable });
     expect(await disabled.queue.recoverRequestedPushes()).toBe(1);
     expect(disabled.enqueued.map((row) => row.questionId)).toEqual(['claimed']);
+  });
+
+  it('records terminal failure, but propagates unavailable bookkeeping for eventual recovery', async () => {
+    const recorded: string[] = [];
+    await recordTerminalPoolQuestionPushFailure(
+      { questionId: 'question-1', userId: 'user-1' },
+      new Error('delivery failed'),
+      async (questionId, userId, failure) => recorded.push(`${questionId}:${userId}:${failure}`),
+    );
+    expect(recorded).toEqual(['question-1:user-1:delivery failed']);
+
+    await expect(recordTerminalPoolQuestionPushFailure(
+      { questionId: 'question-1', userId: 'user-1' },
+      new Error('delivery failed'),
+      async () => { throw new Error('database unavailable'); },
+    )).rejects.toThrow('database unavailable');
+    // The failed write leaves the durable claim in `claimed`, intentionally
+    // eligible for the next recovery sweep; there is no in-memory retry state.
   });
 
   it('fails loudly on deterministic delivery conflicts so BullMQ can retry', async () => {

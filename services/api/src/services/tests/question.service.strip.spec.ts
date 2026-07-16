@@ -20,6 +20,9 @@ function poolQuestion(): AdapterPersistedQuestion {
       strategy: 'surface_missing_detail',
       underspecificationType: 'missing_constraint',
       pushRequestedAt: '2026-07-16T11:58:00.000Z',
+      pushRequestStatus: 'suppressed',
+      pushRequestReason: 'visited',
+      pushRequestSuppressedAt: '2026-07-16T11:58:30.000Z',
       pushedAt: '2026-07-16T12:00:00.000Z',
       push: {
         version: 1,
@@ -71,6 +74,9 @@ describe('stripInternalDetection', () => {
     expect(stripped.detection.strategy).toBeUndefined();
     expect(stripped.detection.underspecificationType).toBeUndefined();
     expect(stripped.detection.pushRequestedAt).toBeUndefined();
+    expect(stripped.detection.pushRequestStatus).toBeUndefined();
+    expect(stripped.detection.pushRequestReason).toBeUndefined();
+    expect(stripped.detection.pushRequestSuppressedAt).toBeUndefined();
     expect(stripped.detection.push).toBeUndefined();
     expect(stripped.detection.pushedAt).toBeUndefined();
     expect(stripped.detection.mode).toBe('pool_discovery');
@@ -96,6 +102,9 @@ describe('stripInternalDetection', () => {
     delete (q.detection as { strategy?: unknown }).strategy;
     delete (q.detection as { underspecificationType?: unknown }).underspecificationType;
     delete (q.detection as { pushRequestedAt?: unknown }).pushRequestedAt;
+    delete (q.detection as { pushRequestStatus?: unknown }).pushRequestStatus;
+    delete (q.detection as { pushRequestReason?: unknown }).pushRequestReason;
+    delete (q.detection as { pushRequestSuppressedAt?: unknown }).pushRequestSuppressedAt;
     delete (q.detection as { push?: unknown }).push;
     delete (q.detection as { pushedAt?: unknown }).pushedAt;
     expect(stripInternalDetection(q)).toBe(q);
@@ -116,6 +125,9 @@ describe('QuestionService.findPending', () => {
       expect(row.detection.strategy).toBeUndefined();
       expect(row.detection.underspecificationType).toBeUndefined();
       expect(row.detection.pushRequestedAt).toBeUndefined();
+      expect(row.detection.pushRequestStatus).toBeUndefined();
+      expect(row.detection.pushRequestReason).toBeUndefined();
+      expect(row.detection.pushRequestSuppressedAt).toBeUndefined();
       expect(row.detection.push).toBeUndefined();
       expect(row.detection.pushedAt).toBeUndefined();
     }
