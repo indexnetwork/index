@@ -461,7 +461,7 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | `email.queue` | Email delivery via Resend |
 | `notification.queue` | Notification delivery |
 | `integration-sync-queue` | Periodic Google Calendar sync for event networks |
-| `frame-drift-monitoring` | Disabled-by-default BullMQ job scheduler that records closed-UTC-day centroid drift and cross-network yield snapshots; intentionally omitted from Bull Board |
+| `frame-drift-monitoring` | Disabled-by-default daily BullMQ scheduler for immutable capture-time centroid observations and an intent-assignment-pair normalized opportunity-yield proxy; intentionally omitted from Bull Board |
 
 ### Job Patterns
 
@@ -484,7 +484,7 @@ Queues orchestrate by calling services, graphs, or adapters. They contain no bus
 
 Bull Board UI is served at `http://localhost:3001/dev/queues/` when the protocol server is running. It provides job status visibility, retry controls, and queue metrics. Internal measurement schedulers such as frame-drift monitoring are not registered there.
 
-Daily frame-drift measurement is implemented as queue orchestration → service calculation → adapter-owned `REPEATABLE READ` snapshot and transactional metric upsert. It is measurement-only and has no API/UI or realignment side effects. See [Frame-Drift Monitoring](./frame-drift-monitoring.md).
+Daily frame-drift measurement is implemented as queue orchestration → service calculation → adapter-owned `REPEATABLE READ` observation and atomic insert-if-absent persistence. It is privacy-thresholded, measurement-only, and has no API/UI or realignment side effects. See [Frame-Drift Monitoring](./frame-drift-monitoring.md).
 
 ---
 

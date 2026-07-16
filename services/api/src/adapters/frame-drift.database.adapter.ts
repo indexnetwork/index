@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 
 import db, { type DrizzleDB } from '../lib/drizzle/drizzle';
+import { normalizeEmbedding } from '../lib/embedding/vector';
 import { crossNetworkYieldSnapshots, frameCentroidSnapshots, type FrameCentroidCorpus } from '../schemas/database.schema';
 
-const UPSERT_CHUNK_SIZE = 500;
+const INSERT_CHUNK_SIZE = 500;
+const CORPUS_COUNT = 3;
 
 export interface FrameCentroidCandidate {
   networkId: string;
@@ -28,7 +31,15 @@ export interface FrameDriftReadSet {
   yields: CrossNetworkYieldCandidate[];
   selectedNetworkCount: number;
   eligibleNetworkCount: number;
-  eligiblePairCount: number;
+  stableCohortHash: string;
+  totalPossibleCohortPairCount: number;
+  selectedPairCount: number;
+  positiveMeasuredPairCount: number;
+  graphOpportunityCount: number;
+  attributedGraphOpportunityCount: number;
+  unattributedGraphOpportunityCount: number;
+  suppressedCentroidCount: number;
+  emptyCentroidCount: number;
   invalidVectorCount: number;
 }
 
@@ -70,11 +81,12 @@ export interface FrameDriftSnapshotRequest {
   embeddingModel: string;
   maxNetworks: number;
   maxPairs: number;
+  minUsers: number;
 }
 
 export interface FrameDriftPersistenceResult {
   centroidSnapshotCount: number;
-  yieldSnapshotCount: number;
+  yieldProxySnapshotCount: number;
 }
 
 export interface FrameDriftSnapshotStore {
@@ -94,18 +106,20 @@ interface RawCentroidRow extends Record<string, unknown> {
   corpus: FrameCentroidCorpus;
   centroid: unknown;
   sample_count: number | string | bigint;
+  contributing_user_count: number | string | bigint;
   prior_centroid: unknown;
   prior_bucket_start: Date | string | null;
 }
 
 interface RawYieldRow extends Record<string, unknown> {
-  network_a_id: string;
-  network_b_id: string;
-  opportunity_count: number | string | bigint;
-  potential_intent_pair_count: number | string | bigint;
+  network_a_id: string | null;
+  network_b_id: string | null;
+  opportunity_count: number | string | bigint | null;
+  potential_intent_pair_count: number | string | bigint | null;
   prior_yield_rate: number | string | null;
   prior_bucket_start: Date | string | null;
-  total_pair_count: number | string | bigint;
+  graph_opportunity_count: number | string | bigint;
+  attributed_graph_opportunity_count: number | string | bigint;
 }
 
 function toDate(value: Date | string | null): Date | null {
@@ -114,89 +128,65 @@ function toDate(value: Date | string | null): Date | null {
 }
 
 function toSafeCount(value: number | string | bigint, label: string): number {
-  const parsed = typeof value === 'bigint' ? Number(value) : Number(value);
+  const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     throw new Error(`Unsafe ${label}: ${String(value)}`);
   }
   return parsed;
 }
 
-/** Normalize a PostgreSQL pgvector result into a finite numeric array. */
-export function normalizePgVector(value: unknown): number[] | null {
-  const values = Array.isArray(value)
-    ? value
-    : typeof value === 'string' && value.startsWith('[') && value.endsWith(']')
-      ? value.slice(1, -1).split(',')
-      : null;
-  if (!values || values.length === 0) return null;
-
-  const normalized = values.map((item) => Number(item));
-  return normalized.every(Number.isFinite) ? normalized : null;
+/** Normalize a raw pgvector result and reject empty or nonfinite vectors. */
+export function normalizeFinitePgVector(value: unknown): number[] | null {
+  const normalized = normalizeEmbedding(value);
+  if (normalized.length === 0 || !normalized.every(Number.isFinite)) return null;
+  return normalized;
 }
 
-async function upsertCentroids(
+async function insertCentroids(
   tx: Parameters<Parameters<DrizzleDB['transaction']>[0]>[0],
   rows: FrameCentroidSnapshotWrite[],
-): Promise<void> {
-  for (let offset = 0; offset < rows.length; offset += UPSERT_CHUNK_SIZE) {
-    const chunk = rows.slice(offset, offset + UPSERT_CHUNK_SIZE);
+): Promise<number> {
+  let insertedCount = 0;
+  for (let offset = 0; offset < rows.length; offset += INSERT_CHUNK_SIZE) {
+    const chunk = rows.slice(offset, offset + INSERT_CHUNK_SIZE);
     if (chunk.length === 0) continue;
-    await tx.insert(frameCentroidSnapshots).values(chunk).onConflictDoUpdate({
-      target: [
-        frameCentroidSnapshots.networkId,
-        frameCentroidSnapshots.corpus,
-        frameCentroidSnapshots.embeddingModel,
-        frameCentroidSnapshots.bucketStart,
-      ],
-      set: {
-        centroid: sql`excluded.centroid`,
-        sampleCount: sql`excluded.sample_count`,
-        cosineDrift: sql`excluded.cosine_drift`,
-        priorBucketStart: sql`excluded.prior_bucket_start`,
-        bucketEnd: sql`excluded.bucket_end`,
-        capturedAt: sql`excluded.captured_at`,
-      },
-    });
+    const inserted = await tx.insert(frameCentroidSnapshots)
+      .values(chunk)
+      .onConflictDoNothing()
+      .returning({ id: frameCentroidSnapshots.id });
+    insertedCount += inserted.length;
   }
+  return insertedCount;
 }
 
-async function upsertYields(
+async function insertYieldProxies(
   tx: Parameters<Parameters<DrizzleDB['transaction']>[0]>[0],
   rows: CrossNetworkYieldSnapshotWrite[],
-): Promise<void> {
-  for (let offset = 0; offset < rows.length; offset += UPSERT_CHUNK_SIZE) {
-    const chunk = rows.slice(offset, offset + UPSERT_CHUNK_SIZE);
+): Promise<number> {
+  let insertedCount = 0;
+  for (let offset = 0; offset < rows.length; offset += INSERT_CHUNK_SIZE) {
+    const chunk = rows.slice(offset, offset + INSERT_CHUNK_SIZE);
     if (chunk.length === 0) continue;
-    await tx.insert(crossNetworkYieldSnapshots).values(chunk).onConflictDoUpdate({
-      target: [
-        crossNetworkYieldSnapshots.networkAId,
-        crossNetworkYieldSnapshots.networkBId,
-        crossNetworkYieldSnapshots.bucketStart,
-      ],
-      set: {
-        opportunityCount: sql`excluded.opportunity_count`,
-        potentialIntentPairCount: sql`excluded.potential_active_intent_pair_count`,
-        yieldRate: sql`excluded.yield_rate`,
-        yieldRateDelta: sql`excluded.yield_rate_delta`,
-        priorBucketStart: sql`excluded.prior_bucket_start`,
-        bucketEnd: sql`excluded.bucket_end`,
-        capturedAt: sql`excluded.captured_at`,
-      },
-    });
+    const inserted = await tx.insert(crossNetworkYieldSnapshots)
+      .values(chunk)
+      .onConflictDoNothing()
+      .returning({ id: crossNetworkYieldSnapshots.id });
+    insertedCount += inserted.length;
   }
+  return insertedCount;
 }
 
-/** Database boundary for frame-drift measurement snapshots. */
+/** Database boundary for immutable frame-drift observation snapshots. */
 export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
   constructor(private readonly database: DrizzleDB = db) {}
 
   /**
-   * Read a bounded, repeatable-read metric snapshot and atomically upsert the
-   * derived centroid and yield rows produced by the service callback.
+   * Read one repeatable capture-time observation and atomically insert any
+   * previously unseen daily rows. Existing bucket rows are never rewritten.
    *
-   * @param request - Closed daily bucket, model, and cohort bounds.
+   * @param request - Closed opportunity window, model, privacy, and cohort bounds.
    * @param buildWrites - Pure metric calculation callback owned by the service.
-   * @returns Counts of snapshot rows persisted.
+   * @returns Actual inserted row counts; duplicate buckets return zero.
    * @throws When source counts are unsafe or persistence fails.
    */
   async captureAndPersist(
@@ -212,48 +202,63 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
         SELECT id, count(*) OVER () AS total_count
         FROM networks
         WHERE deleted_at IS NULL AND is_personal = false
-        ORDER BY id ASC
+        ORDER BY created_at ASC, id ASC
         LIMIT ${request.maxNetworks}
       `);
       const selectedNetworkCount = selectedRows.length;
       const eligibleNetworkCount = selectedRows[0]
         ? toSafeCount(selectedRows[0].total_count, 'eligible network count')
         : 0;
+      const stableCohortHash = createHash('sha256')
+        .update(selectedRows.map((row) => row.id).join('\n'))
+        .digest('hex');
+      const totalPossibleCohortPairCount = selectedNetworkCount * (selectedNetworkCount - 1) / 2;
+      const selectedPairCount = Math.min(totalPossibleCohortPairCount, request.maxPairs);
 
       const rawCentroids = await tx.execute<RawCentroidRow>(sql`
         WITH selected_networks AS MATERIALIZED (
           SELECT id
           FROM networks
           WHERE deleted_at IS NULL AND is_personal = false
-          ORDER BY id ASC
+          ORDER BY created_at ASC, id ASC
           LIMIT ${request.maxNetworks}
         ), corpus_centroids AS (
           SELECT pn.network_id, 'premise'::text AS corpus,
-                 avg(p.embedding)::text AS centroid, count(*)::bigint AS sample_count
+                 avg(p.embedding)::text AS centroid,
+                 count(*)::bigint AS sample_count,
+                 count(DISTINCT p.user_id)::bigint AS contributing_user_count
           FROM premise_networks pn
           JOIN selected_networks sn ON sn.id = pn.network_id
           JOIN premises p ON p.id = pn.premise_id
+          JOIN users u ON u.id = p.user_id AND u.deleted_at IS NULL
           WHERE p.deleted_at IS NULL AND p.status = 'ACTIVE' AND p.embedding IS NOT NULL
           GROUP BY pn.network_id
           UNION ALL
           SELECT ino.network_id, 'intent'::text AS corpus,
-                 avg(i.embedding)::text AS centroid, count(*)::bigint AS sample_count
+                 avg(i.embedding)::text AS centroid,
+                 count(*)::bigint AS sample_count,
+                 count(DISTINCT i.user_id)::bigint AS contributing_user_count
           FROM intent_networks ino
           JOIN selected_networks sn ON sn.id = ino.network_id
           JOIN intents i ON i.id = ino.intent_id
+          JOIN users u ON u.id = i.user_id AND u.deleted_at IS NULL
           WHERE i.archived_at IS NULL
             AND (i.status = 'ACTIVE' OR i.status IS NULL)
             AND i.embedding IS NOT NULL
           GROUP BY ino.network_id
           UNION ALL
           SELECT uc.network_id, 'user_context'::text AS corpus,
-                 avg(uc.embedding)::text AS centroid, count(*)::bigint AS sample_count
+                 avg(uc.embedding)::text AS centroid,
+                 count(*)::bigint AS sample_count,
+                 count(DISTINCT uc.user_id)::bigint AS contributing_user_count
           FROM user_contexts uc
           JOIN selected_networks sn ON sn.id = uc.network_id
+          JOIN users u ON u.id = uc.user_id AND u.deleted_at IS NULL
           WHERE uc.network_id IS NOT NULL AND uc.embedding IS NOT NULL
           GROUP BY uc.network_id
         )
         SELECT cc.network_id, cc.corpus, cc.centroid, cc.sample_count,
+               cc.contributing_user_count,
                prior.centroid::text AS prior_centroid,
                prior.bucket_start AS prior_bucket_start
         FROM corpus_centroids cc
@@ -271,83 +276,104 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
       `);
 
       let invalidVectorCount = 0;
-      const centroids = rawCentroids.map((row): FrameCentroidCandidate => {
-        const centroid = normalizePgVector(row.centroid);
+      let suppressedCentroidCount = 0;
+      const centroids: FrameCentroidCandidate[] = [];
+      for (const row of rawCentroids) {
+        const contributingUserCount = toSafeCount(
+          row.contributing_user_count,
+          'centroid contributing user count',
+        );
+        if (contributingUserCount < request.minUsers) {
+          suppressedCentroidCount += 1;
+          continue;
+        }
+        const centroid = normalizeFinitePgVector(row.centroid);
         const priorCentroid = row.prior_centroid === null
           ? null
-          : normalizePgVector(row.prior_centroid);
+          : normalizeFinitePgVector(row.prior_centroid);
         if (centroid === null) invalidVectorCount += 1;
         if (row.prior_centroid !== null && priorCentroid === null) invalidVectorCount += 1;
-        return {
+        centroids.push({
           networkId: row.network_id,
           corpus: row.corpus,
           centroid,
           sampleCount: toSafeCount(row.sample_count, 'centroid sample count'),
           priorCentroid,
           priorBucketStart: toDate(row.prior_bucket_start),
-        };
-      });
+        });
+      }
+      const emptyCentroidCount = selectedNetworkCount * CORPUS_COUNT - rawCentroids.length;
 
       const rawYields = await tx.execute<RawYieldRow>(sql`
         WITH selected_networks AS MATERIALIZED (
           SELECT id
           FROM networks
           WHERE deleted_at IS NULL AND is_personal = false
-          ORDER BY id ASC
+          ORDER BY created_at ASC, id ASC
           LIMIT ${request.maxNetworks}
+        ), selected_pairs AS MATERIALIZED (
+          SELECT a.id AS network_a_id, b.id AS network_b_id
+          FROM selected_networks a
+          JOIN selected_networks b ON a.id < b.id
+          ORDER BY a.id ASC, b.id ASC
+          LIMIT ${request.maxPairs}
         ), active_owner_counts AS MATERIALIZED (
           SELECT ino.network_id, i.user_id, count(*)::bigint AS intent_count
           FROM intent_networks ino
           JOIN selected_networks sn ON sn.id = ino.network_id
           JOIN intents i ON i.id = ino.intent_id
-          WHERE ino.created_at < (${bucketEndIso})::timestamptz
-            AND i.archived_at IS NULL
+          JOIN users u ON u.id = i.user_id AND u.deleted_at IS NULL
+          WHERE i.archived_at IS NULL
             AND (i.status = 'ACTIVE' OR i.status IS NULL)
+            AND i.embedding IS NOT NULL
           GROUP BY ino.network_id, i.user_id
         ), network_totals AS MATERIALIZED (
           SELECT network_id, sum(intent_count)::bigint AS intent_count
           FROM active_owner_counts
           GROUP BY network_id
-        ), eligible_pairs AS MATERIALIZED (
-          SELECT a.network_id AS network_a_id,
-                 b.network_id AS network_b_id,
+        ), pair_denominators AS MATERIALIZED (
+          SELECT sp.network_a_id,
+                 sp.network_b_id,
                  (
-                   a.intent_count * b.intent_count - COALESCE((
+                   COALESCE(a.intent_count, 0) * COALESCE(b.intent_count, 0) - COALESCE((
                      SELECT sum(ao.intent_count * bo.intent_count)
                      FROM active_owner_counts ao
                      JOIN active_owner_counts bo ON bo.user_id = ao.user_id
-                     WHERE ao.network_id = a.network_id
-                       AND bo.network_id = b.network_id
+                     WHERE ao.network_id = sp.network_a_id
+                       AND bo.network_id = sp.network_b_id
                    ), 0)
                  )::bigint AS potential_intent_pair_count
-          FROM network_totals a
-          JOIN network_totals b ON a.network_id < b.network_id
+          FROM selected_pairs sp
+          LEFT JOIN network_totals a ON a.network_id = sp.network_a_id
+          LEFT JOIN network_totals b ON b.network_id = sp.network_b_id
         ), positive_pairs AS MATERIALIZED (
           SELECT network_a_id, network_b_id, potential_intent_pair_count
-          FROM eligible_pairs
+          FROM pair_denominators
           WHERE potential_intent_pair_count > 0
-        ), bounded_pairs AS MATERIALIZED (
-          SELECT network_a_id, network_b_id, potential_intent_pair_count,
-                 count(*) OVER () AS total_pair_count
-          FROM positive_pairs
-          ORDER BY potential_intent_pair_count DESC, network_a_id ASC, network_b_id ASC
-          LIMIT ${request.maxPairs}
+        ), graph_opportunities AS MATERIALIZED (
+          SELECT o.id, o.created_at, o.actors
+          FROM opportunities o
+          WHERE o.created_at >= (${bucketStartIso})::timestamptz
+            AND o.created_at < (${bucketEndIso})::timestamptz
+            AND o.detection->>'source' = 'opportunity_graph'
         ), opportunity_actors AS MATERIALIZED (
           SELECT o.id AS opportunity_id,
                  o.created_at AS opportunity_created_at,
                  actor->>'userId' AS user_id,
                  actor->>'intent' AS intent_id
-          FROM opportunities o
+          FROM graph_opportunities o
           CROSS JOIN LATERAL jsonb_array_elements(o.actors) actor
-          WHERE o.created_at >= (${bucketStartIso})::timestamptz
-            AND o.created_at < (${bucketEndIso})::timestamptz
-            AND actor->>'role' <> 'introducer'
+          WHERE actor->>'role' <> 'introducer'
             AND actor ? 'userId'
             AND actor ? 'intent'
         ), verified_actor_assignments AS MATERIALIZED (
           SELECT DISTINCT oa.opportunity_id, oa.user_id, ino.network_id
           FROM opportunity_actors oa
-          JOIN intents i ON i.id = oa.intent_id AND i.user_id = oa.user_id
+          JOIN intents i
+            ON i.id = oa.intent_id
+           AND i.user_id = oa.user_id
+           AND i.embedding IS NOT NULL
+          JOIN users u ON u.id = i.user_id AND u.deleted_at IS NULL
           JOIN intent_networks ino
             ON ino.intent_id = oa.intent_id
            AND ino.created_at <= oa.opportunity_created_at
@@ -361,55 +387,88 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
             ON b.opportunity_id = a.opportunity_id
            AND b.user_id <> a.user_id
            AND a.network_id < b.network_id
+          JOIN selected_pairs sp
+            ON sp.network_a_id = a.network_id
+           AND sp.network_b_id = b.network_id
         ), opportunity_counts AS MATERIALIZED (
-          SELECT network_a_id, network_b_id, count(DISTINCT opportunity_id)::bigint AS opportunity_count
+          SELECT network_a_id, network_b_id,
+                 count(DISTINCT opportunity_id)::bigint AS opportunity_count
           FROM opportunity_pairs
           GROUP BY network_a_id, network_b_id
+        ), proxy_rows AS MATERIALIZED (
+          SELECT pp.network_a_id, pp.network_b_id,
+                 COALESCE(oc.opportunity_count, 0)::bigint AS opportunity_count,
+                 pp.potential_intent_pair_count,
+                 prior.yield_rate AS prior_yield_rate,
+                 prior.bucket_start AS prior_bucket_start
+          FROM positive_pairs pp
+          LEFT JOIN opportunity_counts oc
+            ON oc.network_a_id = pp.network_a_id
+           AND oc.network_b_id = pp.network_b_id
+          LEFT JOIN cross_network_yield_snapshots prior
+            ON prior.network_a_id = pp.network_a_id
+           AND prior.network_b_id = pp.network_b_id
+           AND prior.bucket_start = (${previousBucketStartIso})::timestamptz
+        ), coverage AS (
+          SELECT count(*)::bigint AS graph_opportunity_count,
+                 count(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM opportunity_pairs op WHERE op.opportunity_id = go.id
+                 ))::bigint AS attributed_graph_opportunity_count
+          FROM graph_opportunities go
         )
-        SELECT bp.network_a_id, bp.network_b_id,
-               COALESCE(oc.opportunity_count, 0)::bigint AS opportunity_count,
-               bp.potential_intent_pair_count,
-               prior.yield_rate AS prior_yield_rate,
-               prior.bucket_start AS prior_bucket_start,
-               bp.total_pair_count
-        FROM bounded_pairs bp
-        LEFT JOIN opportunity_counts oc
-          ON oc.network_a_id = bp.network_a_id
-         AND oc.network_b_id = bp.network_b_id
-        LEFT JOIN cross_network_yield_snapshots prior
-          ON prior.network_a_id = bp.network_a_id
-         AND prior.network_b_id = bp.network_b_id
-         AND prior.bucket_start = (${previousBucketStartIso})::timestamptz
-        ORDER BY bp.potential_intent_pair_count DESC, bp.network_a_id ASC, bp.network_b_id ASC
+        SELECT pr.network_a_id, pr.network_b_id, pr.opportunity_count,
+               pr.potential_intent_pair_count, pr.prior_yield_rate,
+               pr.prior_bucket_start, c.graph_opportunity_count,
+               c.attributed_graph_opportunity_count
+        FROM coverage c
+        LEFT JOIN proxy_rows pr ON true
+        ORDER BY pr.network_a_id ASC NULLS LAST, pr.network_b_id ASC NULLS LAST
       `);
 
-      const eligiblePairCount = rawYields[0]
-        ? toSafeCount(rawYields[0].total_pair_count, 'eligible pair count')
+      const coverage = rawYields[0];
+      const graphOpportunityCount = coverage
+        ? toSafeCount(coverage.graph_opportunity_count, 'graph opportunity count')
         : 0;
-      const yields = rawYields.map((row): CrossNetworkYieldCandidate => ({
-        networkAId: row.network_a_id,
-        networkBId: row.network_b_id,
-        opportunityCount: row.opportunity_count,
-        potentialIntentPairCount: row.potential_intent_pair_count,
-        priorYieldRate: row.prior_yield_rate,
-        priorBucketStart: toDate(row.prior_bucket_start),
-      }));
+      const attributedGraphOpportunityCount = coverage
+        ? toSafeCount(coverage.attributed_graph_opportunity_count, 'attributed graph opportunity count')
+        : 0;
+      const yields: CrossNetworkYieldCandidate[] = rawYields.flatMap((row) => {
+        if (
+          row.network_a_id === null
+          || row.network_b_id === null
+          || row.opportunity_count === null
+          || row.potential_intent_pair_count === null
+        ) return [];
+        return [{
+          networkAId: row.network_a_id,
+          networkBId: row.network_b_id,
+          opportunityCount: row.opportunity_count,
+          potentialIntentPairCount: row.potential_intent_pair_count,
+          priorYieldRate: row.prior_yield_rate,
+          priorBucketStart: toDate(row.prior_bucket_start),
+        }];
+      });
 
       const writes = buildWrites({
         centroids,
         yields,
         selectedNetworkCount,
         eligibleNetworkCount,
-        eligiblePairCount,
+        stableCohortHash,
+        totalPossibleCohortPairCount,
+        selectedPairCount,
+        positiveMeasuredPairCount: yields.length,
+        graphOpportunityCount,
+        attributedGraphOpportunityCount,
+        unattributedGraphOpportunityCount: graphOpportunityCount - attributedGraphOpportunityCount,
+        suppressedCentroidCount,
+        emptyCentroidCount,
         invalidVectorCount,
       });
-      await upsertCentroids(tx, writes.centroids);
-      await upsertYields(tx, writes.yields);
+      const centroidSnapshotCount = await insertCentroids(tx, writes.centroids);
+      const yieldProxySnapshotCount = await insertYieldProxies(tx, writes.yields);
 
-      return {
-        centroidSnapshotCount: writes.centroids.length,
-        yieldSnapshotCount: writes.yields.length,
-      };
+      return { centroidSnapshotCount, yieldProxySnapshotCount };
     }, { isolationLevel: 'repeatable read' });
   }
 }

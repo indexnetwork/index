@@ -13,7 +13,8 @@ import { crossNetworkYieldSnapshots, frameCentroidSnapshots, intentNetworks, int
 const BUCKET_START = new Date('2026-07-14T00:00:00.000Z');
 const BUCKET_END = new Date('2026-07-15T00:00:00.000Z');
 const PREVIOUS_START = new Date('2026-07-13T00:00:00.000Z');
-const NOW = new Date('2026-07-16T00:00:00.000Z');
+const FIRST_CAPTURE = new Date('2026-07-15T00:15:00.000Z');
+const SECOND_CAPTURE = new Date('2026-07-16T00:15:00.000Z');
 const vector = (first: number, second: number): number[] => [first, second, ...Array(1998).fill(0)];
 const E1 = vector(1, 0);
 const E2 = vector(0, 1);
@@ -23,12 +24,13 @@ const networkIds = {
   a: `!ind430-${suffix}-a`,
   b: `!ind430-${suffix}-b`,
   c: `!ind430-${suffix}-c`,
+  later: `!ind430-${suffix}-later`,
 };
 const userIds = {
   one: `!ind430-${suffix}-u1`,
   two: `!ind430-${suffix}-u2`,
   three: `!ind430-${suffix}-u3`,
-  four: `!ind430-${suffix}-u4`,
+  deleted: `!ind430-${suffix}-deleted`,
 };
 const intentIds = {
   a1: `!ind430-${suffix}-a1`,
@@ -39,54 +41,73 @@ const intentIds = {
   b1: `!ind430-${suffix}-b1`,
   b2: `!ind430-${suffix}-b2`,
   bLate: `!ind430-${suffix}-b-late`,
-  c1: `!ind430-${suffix}-c1`,
+  bNoEmbedding: `!ind430-${suffix}-b-no-embedding`,
+  deletedOwner: `!ind430-${suffix}-deleted-owner`,
 };
 const premiseIds = {
-  active: `!ind430-${suffix}-premise-active`,
+  activeOne: `!ind430-${suffix}-premise-active-one`,
+  activeTwo: `!ind430-${suffix}-premise-active-two`,
   retracted: `!ind430-${suffix}-premise-retracted`,
   deleted: `!ind430-${suffix}-premise-deleted`,
+  deletedOwner: `!ind430-${suffix}-premise-deleted-owner`,
 };
-const opportunityIds = Array.from({ length: 6 }, (_, index) => `!ind430-${suffix}-opp-${index}`);
+const opportunityIds = Array.from({ length: 7 }, (_, index) => `!ind430-${suffix}-opp-${index}`);
 
-const originalMaxNetworks = process.env.FRAME_DRIFT_MONITORING_MAX_NETWORKS;
-const originalMaxPairs = process.env.FRAME_DRIFT_MONITORING_MAX_PAIRS;
+const originalEnv = {
+  maxNetworks: process.env.FRAME_DRIFT_MONITORING_MAX_NETWORKS,
+  maxPairs: process.env.FRAME_DRIFT_MONITORING_MAX_PAIRS,
+  minUsers: process.env.FRAME_DRIFT_MONITORING_MIN_USERS,
+};
 
 async function insertOpportunity(
   id: string,
   createdAt: Date,
+  source: 'manual' | 'opportunity_graph',
   actors: Array<Record<string, string>>,
-  status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' = 'rejected',
 ): Promise<void> {
   await db.insert(opportunities).values({
     id,
-    detection: { source: 'manual', timestamp: createdAt.toISOString() },
+    detection: { source, timestamp: createdAt.toISOString() },
     actors: actors as typeof opportunities.$inferInsert.actors,
     interpretation: { category: 'test', reasoning: 'integration test', confidence: 1 },
     context: { networkId: networkIds.c },
     confidence: '1',
-    status,
+    status: 'rejected',
     createdAt,
     updatedAt: createdAt,
   });
+}
+
+function restoreEnv(key: keyof typeof originalEnv, envName: string): void {
+  const value = originalEnv[key];
+  if (value === undefined) delete process.env[envName];
+  else process.env[envName] = value;
 }
 
 describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
   beforeAll(async () => {
     process.env.FRAME_DRIFT_MONITORING_MAX_NETWORKS = '3';
     process.env.FRAME_DRIFT_MONITORING_MAX_PAIRS = '10';
+    process.env.FRAME_DRIFT_MONITORING_MIN_USERS = '2';
 
-    await db.insert(users).values(Object.entries(userIds).map(([name, id]) => ({
-      id,
-      email: `${name}-${suffix}@example.com`,
-      name: `Frame Drift ${name}`,
-      emailVerified: true,
-      isGhost: false,
-    })));
-    await db.insert(networks).values(Object.entries(networkIds).map(([title, id]) => ({
-      id,
-      title: `Frame Drift ${title}`,
-      isPersonal: false,
-    })));
+    await db.insert(users).values([
+      ...Object.entries(userIds).map(([name, id]) => ({
+        id,
+        email: `${name}-${suffix}@example.com`,
+        name: `Frame Drift ${name}`,
+        emailVerified: true,
+        isGhost: false,
+      })),
+    ]);
+    await db.update(users).set({ deletedAt: new Date('2026-07-01T00:00:00Z') })
+      .where(eq(users.id, userIds.deleted));
+
+    const cohortCreatedAt = new Date('1900-01-01T00:00:00Z');
+    await db.insert(networks).values([
+      { id: networkIds.a, title: 'Frame Drift A', isPersonal: false, createdAt: cohortCreatedAt },
+      { id: networkIds.b, title: 'Frame Drift B', isPersonal: false, createdAt: cohortCreatedAt },
+      { id: networkIds.c, title: 'Frame Drift C', isPersonal: false, createdAt: cohortCreatedAt },
+    ]);
 
     await db.insert(intents).values([
       { id: intentIds.a1, userId: userIds.one, payload: 'a1', status: 'ACTIVE', embedding: E1 },
@@ -97,7 +118,8 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
       { id: intentIds.b1, userId: userIds.one, payload: 'b1', status: 'ACTIVE', embedding: E1 },
       { id: intentIds.b2, userId: userIds.three, payload: 'b2', status: 'ACTIVE', embedding: E2 },
       { id: intentIds.bLate, userId: userIds.three, payload: 'b late', status: 'ACTIVE', embedding: E2 },
-      { id: intentIds.c1, userId: userIds.four, payload: 'c1', status: 'ACTIVE', embedding: E1 },
+      { id: intentIds.bNoEmbedding, userId: userIds.three, payload: 'no embedding', status: 'ACTIVE', embedding: null },
+      { id: intentIds.deletedOwner, userId: userIds.deleted, payload: 'deleted owner', status: 'ACTIVE', embedding: E1 },
     ]);
     await db.insert(intentNetworks).values([
       { intentId: intentIds.a1, networkId: networkIds.a, createdAt: new Date('2026-07-10T00:00:00Z') },
@@ -108,30 +130,37 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
       { intentId: intentIds.b1, networkId: networkIds.b, createdAt: new Date('2026-07-10T00:00:00Z') },
       { intentId: intentIds.b2, networkId: networkIds.b, createdAt: new Date('2026-07-10T00:00:00Z') },
       { intentId: intentIds.bLate, networkId: networkIds.b, createdAt: new Date('2026-07-14T13:00:00Z') },
-      { intentId: intentIds.c1, networkId: networkIds.c, createdAt: new Date('2026-07-10T00:00:00Z') },
+      { intentId: intentIds.bNoEmbedding, networkId: networkIds.b, createdAt: new Date('2026-07-10T00:00:00Z') },
+      { intentId: intentIds.deletedOwner, networkId: networkIds.c, createdAt: new Date('2026-07-10T00:00:00Z') },
     ]);
 
     const premiseBase = {
-      userId: userIds.one,
       assertion: { text: 'test', tier: 'assertive' as const },
       provenance: { source: 'explicit' as const, confidence: 1, timestamp: BUCKET_START.toISOString() },
       validity: { volatile: false },
     };
     await db.insert(premises).values([
-      { ...premiseBase, id: premiseIds.active, embedding: E1, status: 'ACTIVE' },
-      { ...premiseBase, id: premiseIds.retracted, embedding: E2, status: 'RETRACTED' },
-      { ...premiseBase, id: premiseIds.deleted, embedding: E2, status: 'ACTIVE', deletedAt: BUCKET_START },
+      { ...premiseBase, id: premiseIds.activeOne, userId: userIds.one, embedding: E1, status: 'ACTIVE' },
+      { ...premiseBase, id: premiseIds.activeTwo, userId: userIds.two, embedding: E2, status: 'ACTIVE' },
+      { ...premiseBase, id: premiseIds.retracted, userId: userIds.one, embedding: E2, status: 'RETRACTED' },
+      { ...premiseBase, id: premiseIds.deleted, userId: userIds.one, embedding: E2, status: 'ACTIVE', deletedAt: BUCKET_START },
+      { ...premiseBase, id: premiseIds.deletedOwner, userId: userIds.deleted, embedding: E1, status: 'ACTIVE' },
     ]);
     await db.insert(premiseNetworks).values([
-      { premiseId: premiseIds.active, networkId: networkIds.a },
-      { premiseId: premiseIds.active, networkId: networkIds.b },
+      { premiseId: premiseIds.activeOne, networkId: networkIds.a },
+      { premiseId: premiseIds.activeTwo, networkId: networkIds.a },
+      { premiseId: premiseIds.activeOne, networkId: networkIds.b },
+      { premiseId: premiseIds.activeTwo, networkId: networkIds.b },
       { premiseId: premiseIds.retracted, networkId: networkIds.a },
       { premiseId: premiseIds.deleted, networkId: networkIds.a },
+      { premiseId: premiseIds.deletedOwner, networkId: networkIds.c },
     ]);
 
     await db.insert(userContexts).values([
       { id: `!ind430-${suffix}-ctx-a1`, userId: userIds.one, networkId: networkIds.a, text: 'a1', embedding: E1 },
       { id: `!ind430-${suffix}-ctx-a2`, userId: userIds.two, networkId: networkIds.a, text: 'a2', embedding: E2 },
+      { id: `!ind430-${suffix}-ctx-b-small`, userId: userIds.three, networkId: networkIds.b, text: 'small', embedding: E2 },
+      { id: `!ind430-${suffix}-ctx-deleted`, userId: userIds.deleted, networkId: networkIds.c, text: 'deleted', embedding: E1 },
       { id: `!ind430-${suffix}-ctx-global`, userId: userIds.three, networkId: null, text: 'global', embedding: E2 },
     ]);
 
@@ -140,7 +169,7 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
       networkId: networkIds.a,
       corpus: 'premise',
       centroid: E2,
-      sampleCount: 1,
+      sampleCount: 2,
       embeddingModel: OPENROUTER_EMBEDDING_MODEL,
       cosineDrift: null,
       priorBucketStart: null,
@@ -167,28 +196,28 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
       { userId: userIds.three, intent: intentIds.b2, networkId: networkIds.c, role: 'candidate' },
       { userId: userIds.three, intent: intentIds.b2, networkId: networkIds.c, role: 'candidate' },
     ];
-    await insertOpportunity(opportunityIds[0], BUCKET_START, validActors, 'rejected');
-    await insertOpportunity(opportunityIds[1], BUCKET_END, validActors, 'accepted');
-    await insertOpportunity(opportunityIds[2], new Date(BUCKET_START.getTime() - 1), validActors);
-    await insertOpportunity(opportunityIds[3], new Date('2026-07-14T12:00:00Z'), [
+    await insertOpportunity(opportunityIds[0], BUCKET_START, 'manual', validActors);
+    await insertOpportunity(opportunityIds[1], BUCKET_START, 'opportunity_graph', validActors);
+    await insertOpportunity(opportunityIds[2], new Date('2026-07-14T12:00:00Z'), 'opportunity_graph', [
       { userId: userIds.two, intent: intentIds.a3, networkId: networkIds.a, role: 'candidate' },
       { userId: userIds.three, intent: intentIds.bLate, networkId: networkIds.b, role: 'candidate' },
     ]);
-    await insertOpportunity(opportunityIds[4], new Date('2026-07-14T12:00:00Z'), [
+    await insertOpportunity(opportunityIds[3], new Date('2026-07-14T12:00:00Z'), 'opportunity_graph', [
       { userId: userIds.two, intent: intentIds.a3, networkId: networkIds.a, role: 'candidate' },
-      { userId: userIds.three, intent: intentIds.b2, networkId: networkIds.b, role: 'introducer' },
+      { userId: userIds.three, intent: intentIds.bNoEmbedding, networkId: networkIds.b, role: 'candidate' },
     ]);
-    await insertOpportunity(opportunityIds[5], new Date('2026-07-14T12:00:00Z'), [
+    await insertOpportunity(opportunityIds[4], new Date('2026-07-14T12:00:00Z'), 'opportunity_graph', [
       { userId: userIds.two, intent: intentIds.a3, networkId: networkIds.a, role: 'candidate' },
-      { userId: userIds.four, intent: intentIds.b2, networkId: networkIds.b, role: 'candidate' },
+      { userId: userIds.three, intent: `!ind430-${suffix}-missing`, networkId: networkIds.b, role: 'candidate' },
     ]);
+    await insertOpportunity(opportunityIds[5], BUCKET_END, 'opportunity_graph', validActors);
+    await insertOpportunity(opportunityIds[6], new Date(BUCKET_START.getTime() - 1), 'opportunity_graph', validActors);
   }, 60_000);
 
   afterAll(async () => {
-    if (originalMaxNetworks === undefined) delete process.env.FRAME_DRIFT_MONITORING_MAX_NETWORKS;
-    else process.env.FRAME_DRIFT_MONITORING_MAX_NETWORKS = originalMaxNetworks;
-    if (originalMaxPairs === undefined) delete process.env.FRAME_DRIFT_MONITORING_MAX_PAIRS;
-    else process.env.FRAME_DRIFT_MONITORING_MAX_PAIRS = originalMaxPairs;
+    restoreEnv('maxNetworks', 'FRAME_DRIFT_MONITORING_MAX_NETWORKS');
+    restoreEnv('maxPairs', 'FRAME_DRIFT_MONITORING_MAX_PAIRS');
+    restoreEnv('minUsers', 'FRAME_DRIFT_MONITORING_MIN_USERS');
 
     await db.delete(frameCentroidSnapshots).where(inArray(frameCentroidSnapshots.networkId, Object.values(networkIds)));
     await db.delete(crossNetworkYieldSnapshots).where(or(
@@ -205,53 +234,87 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
     await db.delete(users).where(inArray(users.id, Object.values(userIds)));
   }, 60_000);
 
-  it('captures filtered normalized centroids, corrected pair yields, exact priors, and idempotent rows', async () => {
+  it('captures a private stable cohort and never rewrites an immutable bucket', async () => {
     const adapter = new FrameDriftDatabaseAdapter(db);
-    const service = new FrameDriftMonitoringService(adapter, () => NOW);
+    const firstService = new FrameDriftMonitoringService(adapter, () => FIRST_CAPTURE);
 
-    await service.captureDailyBucket(BUCKET_START, BUCKET_END);
-    await service.captureDailyBucket(BUCKET_START, BUCKET_END);
+    const first = await firstService.captureDailyBucket(BUCKET_START, BUCKET_END);
 
-    const centroidRows = await db.select().from(frameCentroidSnapshots).where(and(
-      inArray(frameCentroidSnapshots.networkId, Object.values(networkIds)),
+    expect(first.centroidSnapshotCount).toBe(5);
+    expect(first.yieldProxySnapshotCount).toBe(1);
+    expect(first.selectedNetworkCount).toBe(3);
+    expect(first.eligibleNetworkCount).toBeGreaterThanOrEqual(3);
+    expect(first.stableCohortHash).toHaveLength(64);
+    expect(first.totalPossibleCohortPairCount).toBe(3);
+    expect(first.selectedPairCount).toBe(3);
+    expect(first.positiveMeasuredPairCount).toBe(1);
+    expect(first.suppressedCentroidCount).toBe(1);
+    expect(first.emptyCentroidCount).toBe(3);
+    expect(first.graphOpportunityCount).toBe(4);
+    expect(first.attributedGraphOpportunityCount).toBe(1);
+    expect(first.unattributedGraphOpportunityCount).toBe(3);
+
+    const centroidRowsBefore = await db.select().from(frameCentroidSnapshots).where(and(
+      inArray(frameCentroidSnapshots.networkId, [networkIds.a, networkIds.b, networkIds.c]),
       eq(frameCentroidSnapshots.bucketStart, BUCKET_START),
     ));
-    const premiseA = centroidRows.find((row) => row.networkId === networkIds.a && row.corpus === 'premise');
-    const premiseB = centroidRows.find((row) => row.networkId === networkIds.b && row.corpus === 'premise');
-    const intentA = centroidRows.find((row) => row.networkId === networkIds.a && row.corpus === 'intent');
-    const contextA = centroidRows.find((row) => row.networkId === networkIds.a && row.corpus === 'user_context');
+    expect(centroidRowsBefore).toHaveLength(5);
+    expect(centroidRowsBefore.some((row) => row.networkId === networkIds.c)).toBe(false);
+    expect(centroidRowsBefore.some((row) => row.networkId === networkIds.b && row.corpus === 'user_context')).toBe(false);
+    expect(centroidRowsBefore.every((row) => row.sampleCount >= 2)).toBe(true);
 
-    expect(premiseA?.sampleCount).toBe(1);
-    expect(premiseA?.centroid[0]).toBeCloseTo(1);
-    expect(premiseA?.centroid[1]).toBeCloseTo(0);
-    expect(premiseA?.cosineDrift).toBeCloseTo(1);
+    const premiseA = centroidRowsBefore.find((row) => row.networkId === networkIds.a && row.corpus === 'premise');
+    const intentA = centroidRowsBefore.find((row) => row.networkId === networkIds.a && row.corpus === 'intent');
+    expect(premiseA?.sampleCount).toBe(2);
+    expect(premiseA?.centroid[0]).toBeCloseTo(0.5);
+    expect(premiseA?.centroid[1]).toBeCloseTo(0.5);
+    expect(premiseA?.cosineDrift).toBeCloseTo(1 - Math.SQRT1_2);
     expect(premiseA?.priorBucketStart).toEqual(PREVIOUS_START);
-    expect(premiseB?.sampleCount).toBe(1);
     expect(intentA?.sampleCount).toBe(3);
     expect(intentA?.centroid[0]).toBeCloseTo(2 / 3, 5);
     expect(intentA?.centroid[1]).toBeCloseTo(1 / 3, 5);
-    expect(contextA?.sampleCount).toBe(2);
-    expect(contextA?.centroid[0]).toBeCloseTo(0.5, 5);
-    expect(contextA?.centroid[1]).toBeCloseTo(0.5, 5);
 
-    const yieldRows = await db.select().from(crossNetworkYieldSnapshots).where(and(
-      inArray(crossNetworkYieldSnapshots.networkAId, Object.values(networkIds)),
+    const yieldRowsBefore = await db.select().from(crossNetworkYieldSnapshots).where(and(
+      eq(crossNetworkYieldSnapshots.networkAId, networkIds.a),
       eq(crossNetworkYieldSnapshots.bucketStart, BUCKET_START),
     ));
-    expect(yieldRows).toHaveLength(3);
-    const ab = yieldRows.find((row) => row.networkAId === networkIds.a && row.networkBId === networkIds.b);
-    const ac = yieldRows.find((row) => row.networkAId === networkIds.a && row.networkBId === networkIds.c);
-    const bc = yieldRows.find((row) => row.networkAId === networkIds.b && row.networkBId === networkIds.c);
+    expect(yieldRowsBefore).toHaveLength(1);
+    expect(yieldRowsBefore[0].networkBId).toBe(networkIds.b);
+    expect(yieldRowsBefore[0].potentialIntentPairCount).toBe(7);
+    expect(yieldRowsBefore[0].opportunityCount).toBe(1);
+    expect(yieldRowsBefore[0].yieldRate).toBeCloseTo(1 / 7);
+    expect(yieldRowsBefore[0].yieldRateDelta).toBeCloseTo((1 / 7) - 0.5);
+    expect(yieldRowsBefore[0].capturedAt).toEqual(FIRST_CAPTURE);
 
-    expect(ab?.potentialIntentPairCount).toBe(7);
-    expect(ab?.opportunityCount).toBe(1);
-    expect(ab?.yieldRate).toBeCloseTo(1 / 7);
-    expect(ab?.yieldRateDelta).toBeCloseTo((1 / 7) - 0.5);
-    expect(ab?.priorBucketStart).toEqual(PREVIOUS_START);
-    expect(ac?.potentialIntentPairCount).toBe(3);
-    expect(ac?.opportunityCount).toBe(0);
-    expect(ac?.yieldRate).toBe(0);
-    expect(bc?.potentialIntentPairCount).toBe(3);
-    expect(bc?.opportunityCount).toBe(0);
-  });
+    await db.update(intents).set({ archivedAt: SECOND_CAPTURE, embedding: E1 })
+      .where(eq(intents.id, intentIds.b2));
+    await db.insert(networks).values({
+      id: networkIds.later,
+      title: 'Frame Drift later network',
+      isPersonal: false,
+      createdAt: SECOND_CAPTURE,
+    });
+
+    const secondService = new FrameDriftMonitoringService(adapter, () => SECOND_CAPTURE);
+    const second = await secondService.captureDailyBucket(BUCKET_START, BUCKET_END);
+
+    expect(second.centroidSnapshotCount).toBe(0);
+    expect(second.yieldProxySnapshotCount).toBe(0);
+    expect(second.selectedNetworkCount).toBe(3);
+    expect(second.eligibleNetworkCount).toBe(first.eligibleNetworkCount + 1);
+    expect(second.stableCohortHash).toBe(first.stableCohortHash);
+    expect(second.totalPossibleCohortPairCount).toBe(3);
+    expect(second.selectedPairCount).toBe(3);
+
+    const centroidRowsAfter = await db.select().from(frameCentroidSnapshots).where(and(
+      inArray(frameCentroidSnapshots.networkId, [networkIds.a, networkIds.b, networkIds.c]),
+      eq(frameCentroidSnapshots.bucketStart, BUCKET_START),
+    ));
+    const yieldRowsAfter = await db.select().from(crossNetworkYieldSnapshots).where(and(
+      eq(crossNetworkYieldSnapshots.networkAId, networkIds.a),
+      eq(crossNetworkYieldSnapshots.bucketStart, BUCKET_START),
+    ));
+    expect(centroidRowsAfter).toEqual(centroidRowsBefore);
+    expect(yieldRowsAfter).toEqual(yieldRowsBefore);
+  }, 60_000);
 });

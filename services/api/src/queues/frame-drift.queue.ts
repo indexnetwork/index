@@ -20,6 +20,10 @@ type FrameDriftQueueHandle = Pick<
   'upsertJobScheduler' | 'removeJobScheduler' | 'close'
 >;
 type FrameDriftWorkerHandle = Pick<Worker<FrameDriftJobData>, 'close'>;
+type FrameDriftLogger = {
+  info(message: string, metadata?: Record<string, unknown>): void;
+  error(message: string, metadata?: Record<string, unknown>): void;
+};
 
 export interface FrameDriftQueueDeps {
   queue?: FrameDriftQueueHandle;
@@ -27,14 +31,10 @@ export interface FrameDriftQueueDeps {
     processor: (job: Job<FrameDriftJobData>) => Promise<void>,
   ) => FrameDriftWorkerHandle;
   service?: Pick<FrameDriftMonitoringService, 'captureDailyBucket'>;
+  logger?: FrameDriftLogger;
 }
 
-/**
- * Derive the most recently closed UTC calendar day from a scheduler timestamp.
- *
- * @param scheduledAtMs - BullMQ scheduled timestamp (prefer opts.prevMillis).
- * @returns Inclusive start and exclusive end at UTC midnight.
- */
+/** Derive the most recently closed UTC calendar day from a scheduler timestamp. */
 export function deriveMostRecentlyClosedUtcDay(scheduledAtMs: number): {
   bucketStart: Date;
   bucketEnd: Date;
@@ -56,7 +56,7 @@ export function deriveMostRecentlyClosedUtcDay(scheduledAtMs: number): {
 
 /** BullMQ lifecycle wrapper for the measurement-only daily monitoring job. */
 export class FrameDriftQueue {
-  private readonly logger = log.queue.from('FrameDriftQueue');
+  private readonly logger: FrameDriftLogger;
   private readonly queue: FrameDriftQueueHandle;
   private readonly createWorker: (
     processor: (job: Job<FrameDriftJobData>) => Promise<void>,
@@ -72,13 +72,18 @@ export class FrameDriftQueue {
       QueueFactory.createWorker<FrameDriftJobData>(FRAME_DRIFT_QUEUE_NAME, processor)
     ));
     this.service = deps.service ?? frameDriftMonitoringService;
+    this.logger = deps.logger ?? log.queue.from('FrameDriftQueue');
   }
 
   /** Register/remove the stable scheduler and start at most one local worker. */
   start(): Promise<void> {
     if (this.startPromise) return this.startPromise;
-    this.startPromise = this.startInternal();
-    return this.startPromise;
+    const attempt = this.startInternal();
+    this.startPromise = attempt;
+    void attempt.catch(() => {
+      if (this.startPromise === attempt) this.startPromise = null;
+    });
+    return attempt;
   }
 
   private async startInternal(): Promise<void> {
@@ -112,7 +117,35 @@ export class FrameDriftQueue {
       this.worker = this.createWorker(async (job) => {
         const scheduledAtMs = job.opts.prevMillis ?? job.timestamp;
         const { bucketStart, bucketEnd } = deriveMostRecentlyClosedUtcDay(scheduledAtMs);
-        await this.service.captureDailyBucket(bucketStart, bucketEnd);
+        const jobMetadata = {
+          queueName: FRAME_DRIFT_QUEUE_NAME,
+          jobName: FRAME_DRIFT_JOB_NAME,
+          schedulerId: FRAME_DRIFT_SCHEDULER_ID,
+          jobId: job.id,
+          source: job.data.source,
+          attempt: job.attemptsMade + 1,
+          maxAttempts: job.opts.attempts ?? 1,
+          bucketStart: bucketStart.toISOString(),
+          bucketEnd: bucketEnd.toISOString(),
+        };
+        if (!resolveFrameDriftMonitoringConfig().enabled) {
+          this.logger.info('Frame-drift observation skipped because monitoring is disabled', {
+            event: 'frame_drift_monitoring_job_skipped',
+            reason: 'disabled',
+            ...jobMetadata,
+          });
+          return;
+        }
+        try {
+          await this.service.captureDailyBucket(bucketStart, bucketEnd);
+        } catch (error) {
+          this.logger.error('Frame-drift observation failed; BullMQ will retry', {
+            event: 'frame_drift_monitoring_job_failed',
+            ...jobMetadata,
+            error,
+          });
+          throw error;
+        }
       });
     }
     this.logger.info('Frame-drift monitoring scheduled', {

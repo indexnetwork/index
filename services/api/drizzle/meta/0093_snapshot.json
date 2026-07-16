@@ -1,5 +1,5 @@
 {
-  "id": "37ab8807-5b1e-4716-ab7d-66a387bebe3c",
+  "id": "c60d40de-7024-4ca8-9d3d-f3c549fb3a0d",
   "prevId": "937ce873-5088-40ba-a1f0-b827ea4302a1",
   "version": "7",
   "dialect": "postgresql",
@@ -1075,33 +1075,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "cross_network_yield_snapshots_latest_idx": {
-          "name": "cross_network_yield_snapshots_latest_idx",
-          "columns": [
-            {
-              "expression": "network_a_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "network_b_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "bucket_start",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1115,7 +1088,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "cross_network_yield_snapshots_network_b_id_networks_id_fk": {
@@ -1128,7 +1101,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -1139,6 +1112,22 @@
         "cross_network_yield_snapshots_canonical_pair_check": {
           "name": "cross_network_yield_snapshots_canonical_pair_check",
           "value": "\"cross_network_yield_snapshots\".\"network_a_id\" < \"cross_network_yield_snapshots\".\"network_b_id\""
+        },
+        "cross_network_yield_snapshots_opportunity_count_check": {
+          "name": "cross_network_yield_snapshots_opportunity_count_check",
+          "value": "\"cross_network_yield_snapshots\".\"opportunity_count\" >= 0"
+        },
+        "cross_network_yield_snapshots_potential_pair_count_check": {
+          "name": "cross_network_yield_snapshots_potential_pair_count_check",
+          "value": "\"cross_network_yield_snapshots\".\"potential_active_intent_pair_count\" > 0"
+        },
+        "cross_network_yield_snapshots_yield_rate_check": {
+          "name": "cross_network_yield_snapshots_yield_rate_check",
+          "value": "\"cross_network_yield_snapshots\".\"yield_rate\" >= 0"
+        },
+        "cross_network_yield_snapshots_bucket_range_check": {
+          "name": "cross_network_yield_snapshots_bucket_range_check",
+          "value": "\"cross_network_yield_snapshots\".\"bucket_end\" > \"cross_network_yield_snapshots\".\"bucket_start\""
         }
       },
       "isRLSEnabled": false
@@ -1537,39 +1526,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "frame_centroid_snapshots_latest_idx": {
-          "name": "frame_centroid_snapshots_latest_idx",
-          "columns": [
-            {
-              "expression": "network_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "corpus",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "embedding_model",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "bucket_start",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1583,7 +1539,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -1594,6 +1550,18 @@
         "frame_centroid_snapshots_corpus_check": {
           "name": "frame_centroid_snapshots_corpus_check",
           "value": "\"frame_centroid_snapshots\".\"corpus\" IN ('premise', 'intent', 'user_context')"
+        },
+        "frame_centroid_snapshots_sample_count_check": {
+          "name": "frame_centroid_snapshots_sample_count_check",
+          "value": "\"frame_centroid_snapshots\".\"sample_count\" > 0"
+        },
+        "frame_centroid_snapshots_cosine_drift_check": {
+          "name": "frame_centroid_snapshots_cosine_drift_check",
+          "value": "\"frame_centroid_snapshots\".\"cosine_drift\" IS NULL OR (\"frame_centroid_snapshots\".\"cosine_drift\" >= 0 AND \"frame_centroid_snapshots\".\"cosine_drift\" <= 2)"
+        },
+        "frame_centroid_snapshots_bucket_range_check": {
+          "name": "frame_centroid_snapshots_bucket_range_check",
+          "value": "\"frame_centroid_snapshots\".\"bucket_end\" > \"frame_centroid_snapshots\".\"bucket_start\""
         }
       },
       "isRLSEnabled": false
@@ -3111,21 +3079,6 @@
           "columns": [
             {
               "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "opportunities_created_at_idx": {
-          "name": "opportunities_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

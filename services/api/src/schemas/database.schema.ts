@@ -454,7 +454,6 @@ export const opportunities = pgTable('opportunities', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
-  createdAtIdx: index('opportunities_created_at_idx').on(table.createdAt),
 }));
 
 export const opportunityDiscoveryRuns = pgTable('opportunity_discovery_runs', {
@@ -615,7 +614,7 @@ export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
 
 export const frameCentroidSnapshots = pgTable('frame_centroid_snapshots', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  networkId: text('network_id').notNull().references(() => networks.id),
+  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
   corpus: text('corpus').$type<FrameCentroidCorpus>().notNull(),
   centroid: vector('centroid', { dimensions: 2000 }).notNull(),
   sampleCount: integer('sample_count').notNull(),
@@ -627,16 +626,17 @@ export const frameCentroidSnapshots = pgTable('frame_centroid_snapshots', {
   capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   corpusCheck: check('frame_centroid_snapshots_corpus_check', sql`${table.corpus} IN ('premise', 'intent', 'user_context')`),
+  sampleCountCheck: check('frame_centroid_snapshots_sample_count_check', sql`${table.sampleCount} > 0`),
+  cosineDriftCheck: check('frame_centroid_snapshots_cosine_drift_check', sql`${table.cosineDrift} IS NULL OR (${table.cosineDrift} >= 0 AND ${table.cosineDrift} <= 2)`),
+  bucketRangeCheck: check('frame_centroid_snapshots_bucket_range_check', sql`${table.bucketEnd} > ${table.bucketStart}`),
   dailyUnique: uniqueIndex('frame_centroid_snapshots_daily_uniq')
-    .on(table.networkId, table.corpus, table.embeddingModel, table.bucketStart),
-  latestIdx: index('frame_centroid_snapshots_latest_idx')
     .on(table.networkId, table.corpus, table.embeddingModel, table.bucketStart),
 }));
 
 export const crossNetworkYieldSnapshots = pgTable('cross_network_yield_snapshots', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  networkAId: text('network_a_id').notNull().references(() => networks.id),
-  networkBId: text('network_b_id').notNull().references(() => networks.id),
+  networkAId: text('network_a_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  networkBId: text('network_b_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
   opportunityCount: bigint('opportunity_count', { mode: 'number' }).notNull(),
   potentialIntentPairCount: bigint('potential_active_intent_pair_count', { mode: 'number' }).notNull(),
   yieldRate: doublePrecision('yield_rate').notNull(),
@@ -647,9 +647,11 @@ export const crossNetworkYieldSnapshots = pgTable('cross_network_yield_snapshots
   capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   canonicalPairCheck: check('cross_network_yield_snapshots_canonical_pair_check', sql`${table.networkAId} < ${table.networkBId}`),
+  opportunityCountCheck: check('cross_network_yield_snapshots_opportunity_count_check', sql`${table.opportunityCount} >= 0`),
+  potentialPairCountCheck: check('cross_network_yield_snapshots_potential_pair_count_check', sql`${table.potentialIntentPairCount} > 0`),
+  yieldRateCheck: check('cross_network_yield_snapshots_yield_rate_check', sql`${table.yieldRate} >= 0`),
+  bucketRangeCheck: check('cross_network_yield_snapshots_bucket_range_check', sql`${table.bucketEnd} > ${table.bucketStart}`),
   dailyUnique: uniqueIndex('cross_network_yield_snapshots_daily_uniq')
-    .on(table.networkAId, table.networkBId, table.bucketStart),
-  latestIdx: index('cross_network_yield_snapshots_latest_idx')
     .on(table.networkAId, table.networkBId, table.bucketStart),
 }));
 

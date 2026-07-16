@@ -8,81 +8,82 @@ updated: 2026-07-16
 
 # Frame-Drift Monitoring
 
-IND-430 adds a disabled-by-default, backend-only measurement pipeline. It records daily embedding-centroid movement within networks and normalized opportunity yield between networks. It has no dashboard or API and does not mutate embeddings, prompts, vocabulary, assignments, opportunities, or networks. Its only writes are idempotent upserts to the two metric snapshot tables.
+IND-430 adds a disabled-by-default, backend-only observation pipeline. It records daily capture-time embedding centroids within networks and an intent-assignment-pair normalized opportunity-yield proxy between networks. It has no dashboard or API and does not mutate embeddings, prompts, vocabulary, assignments, opportunities, or networks. Its only writes are immutable rows in two metric snapshot tables.
 
-## Components
+## Observation semantics
 
-- `FrameDriftQueue` owns BullMQ scheduling and worker lifecycle only.
-- `FrameDriftMonitoringService` validates a closed UTC day, calculates drift/rates, and emits bounded aggregate logs.
-- `FrameDriftDatabaseAdapter` takes one PostgreSQL `REPEATABLE READ` snapshot, reads the cohort and prior metrics, then bulk-upserts both result sets in the same transaction.
-- `frame_centroid_snapshots` and `cross_network_yield_snapshots` retain daily history.
+`[bucketStart, bucketEnd)` is only the prior closed UTC opportunity-creation window. Historical lifecycle state cannot be reconstructed. Centroids and the proxy denominator are observations of source state when the transaction runs shortly after `bucketEnd`; `capturedAt` is the truth for when that state was observed. Neither value is an as-of/end-of-bucket reconstruction. The numerator alone uses opportunities created inside the closed window.
 
-The feature is configured with:
+The database adapter takes one PostgreSQL `REPEATABLE READ` snapshot and inserts both result sets atomically. Unique daily keys use `ON CONFLICT DO NOTHING`: the first successful transaction wins, and retries or backfills can never rewrite a bucket after source state changes. Returned row counts are actual insert counts and are zero for a duplicate bucket.
+
+## Configuration and scheduling
 
 ```dotenv
 FRAME_DRIFT_MONITORING_ENABLED=false
 FRAME_DRIFT_MONITORING_SCHEDULE='15 0 * * *'
 FRAME_DRIFT_MONITORING_MAX_NETWORKS=200
 FRAME_DRIFT_MONITORING_MAX_PAIRS=10000
+FRAME_DRIFT_MONITORING_MIN_USERS=5
 ```
 
-The schedule is interpreted in UTC. Invalid values fall back to defaults and numeric bounds are clamped. Disabled startup removes a scheduler left by an earlier deployment and does not create a worker.
+The scheduler accepts exactly one fixed numeric minute and hour in a simple five-field UTC cron (`M H * * *`) and also validates it with node-cron. Invalid or potentially more-frequent expressions fall back to `15 0 * * *`. Network and pair limits are hard-clamped to 200 and 10,000. The privacy threshold defaults to 5 distinct users and is clamped to 2–100.
 
-## Daily scheduling and idempotency
+BullMQ uses a stable scheduler identity. Disabled startup removes a scheduler left by an earlier deployment and does not create a worker. The processor rechecks the feature flag, logs a structured skip when disabled, and rethrows service failures after structured bucket/job/attempt logging so BullMQ can retry. Scheduler-registration failure resets the startup promise, allowing a later startup retry.
 
-The queue uses BullMQ 5's supported `Queue.upsertJobScheduler` API with stable queue, job-name, and scheduler IDs. BullMQ's scheduler API deliberately excludes a caller-supplied `jobId`; BullMQ derives each occurrence's ID from the stable scheduler identity and due timestamp. Registering the same scheduler from multiple replicas is therefore safe. Database unique keys make duplicate/retried processing safe as well.
+## Stable bounded cohort
 
-A worker prefers `job.opts.prevMillis` as the scheduled occurrence timestamp and falls back to `job.timestamp`. It derives the most recently closed UTC calendar day as `[bucketStart, bucketEnd)`. Failures escape the processor so BullMQ applies three exponential-backoff attempts.
+Eligible networks are undeleted, non-personal networks. Selection is `created_at ASC, id ASC`, limited to the first `FRAME_DRIFT_MONITORING_MAX_NETWORKS`, so a newly created network cannot displace the initial bounded cohort; deletion may shrink it. Diagnostics include eligible and selected network counts plus a SHA-256 hash of the ordered selected IDs.
 
-## Centroid snapshots
+The pair cohort is independent of activity. All canonical selected-network pairs `A < B` are ordered by IDs, then limited by `FRAME_DRIFT_MONITORING_MAX_PAIRS`. Only afterward is the denominator calculated, and only positive-denominator pairs are persisted. Diagnostics report total possible cohort pairs, selected pairs, and positive measured pairs. This prevents changing activity from changing pair membership.
 
-Eligible networks are undeleted, non-personal networks ordered by ID and bounded by `FRAME_DRIFT_MONITORING_MAX_NETWORKS`. For each selected network, PostgreSQL computes `avg(vector)` over non-null embeddings:
+## Privacy-safe centroid observations
+
+For each selected network, PostgreSQL computes `avg(vector)` over non-null embeddings:
 
 - `premise`: ACTIVE, undeleted premises joined through `premise_networks`;
-- `intent`: unarchived intents with status ACTIVE or legacy NULL joined through `intent_networks`;
+- `intent`: unarchived ACTIVE or legacy-NULL intents joined through `intent_networks`;
 - `user_context`: non-global rows (`network_id IS NOT NULL`).
 
-Assignment primary keys mean a source row contributes once to each network to which it is assigned. Raw pgvector values are normalized and checked before calculation or persistence. The model recorded with each snapshot is `OPENROUTER_EMBEDDING_MODEL`. The prior centroid is the latest older snapshot for the exact network/corpus/model key.
+Every corpus joins its owning user and requires `users.deleted_at IS NULL`. A centroid is persisted only when at least `FRAME_DRIFT_MONITORING_MIN_USERS` distinct undeleted users contributed. Suppressed small cohorts never persist, and logs expose only aggregate `suppressedCentroidCount` and `emptyCentroidCount`, never a suppressed cohort's exact size. Persisted qualifying rows retain their source-row `sample_count`.
 
-Cosine drift is:
+Assignment primary keys mean a source row contributes once to each network to which it is assigned. Raw pgvector values pass through the shared `normalizeEmbedding` boundary and additional finite validation. The recorded model is `OPENROUTER_EMBEDDING_MODEL`; source rows do not record model provenance. Cosine drift compares with the latest older snapshot for the exact network/corpus/model key and is NULL without a valid finite, same-dimensional, nonzero prior.
 
-```text
-1 - clamp(cosineSimilarity(current, prior), -1, 1)
-```
+Historical aggregates that met the threshold are de-identified and are deliberately not recomputed after a later user soft deletion. Hard network deletion cascades to both snapshot tables.
 
-It is NULL when there is no prior centroid or either vector is malformed, zero-length/zero-norm, nonfinite, or dimension-mismatched.
+## Intent-assignment-pair normalized opportunity-yield proxy
 
-## Cross-network yield
-
-Pairs are canonical distinct network IDs `A < B`. The denominator is computed from end-of-bucket active intent-assignment aggregates without expanding a Cartesian product of intents:
+The denominator is a capture-time observation over active, unarchived, embedded intents owned by undeleted users, using independent `intent_networks` assignments:
 
 ```text
 assignments(A) * assignments(B)
 - sum_over_same_owner(assignments(owner,A) * assignments(owner,B))
 ```
 
-Only positive denominators are retained. Pairs are ranked by denominator descending and then IDs ascending, and bounded by `FRAME_DRIFT_MONITORING_MAX_PAIRS`.
+An intent without an embedding is excluded. Canonical attribution deliberately does not use `actor.networkId`, which is shared match context rather than assignment provenance. Because assignments are independent and can be multiple, one opportunity can be attributed to multiple selected frame pairs. It is counted distinctly at most once within each pair.
 
-The numerator counts distinct opportunities created in `[bucketStart, bucketEnd)` for each canonical pair. Attribution expands only opportunity actors, excludes introducers, requires exact `intent` and `userId`, verifies that the intent belongs to that user, and requires the intent-network assignment to exist no later than opportunity creation. Actor users must differ. Actor `networkId` is shared match context and is never used as the pair source. Personal/deleted networks are excluded through the selected cohort. Duplicate actors or multi-assignment paths cannot count an opportunity more than once for the same pair. Opportunity lifecycle status is intentionally ignored.
+The numerator considers only opportunities created in `[bucketStart, bucketEnd)` whose `detection.source` is exactly `opportunity_graph`. Manual, enrichment, and test opportunities do not count. Each non-introducer actor must identify an exact intent and user; the intent must have an embedding, belong to that undeleted user, and have had the relevant network assignment by opportunity creation. Actor owners must differ. Missing, embeddingless, mismatched, deleted-owner, or late-assigned actor intents are not attributed.
 
 ```text
-yieldRate = opportunityCount / potentialActiveIntentPairCount
+yieldRate = graphOpportunityCountForPair / captureTimePotentialIntentAssignmentPairCount
 yieldRateDelta = yieldRate - exactPreviousDailyBucketRate
 ```
 
-Rates are normalized yield, not probabilities, and may exceed 1. A missing exact previous daily bucket produces a NULL delta.
+The rate is an **intent-assignment-pair normalized opportunity-yield proxy**. It is not discovery provenance, causal evidence, an exposure probability, or proof that a frame pair produced a match; it may exceed 1. Immutable per-discovery frame-pair/attempt provenance is required future work before causal diagnosis or any realignment mechanism. A missing exact prior daily bucket produces a NULL delta.
 
-## Logging and safety
+Coverage diagnostics report aggregate total graph opportunities in the window, graph opportunities attributed to at least one selected pair, and unattributed graph opportunities. No actors are logged.
 
-Each successful run emits one start and one completion record with stable `event` values. Completion includes row counts, duration, truncation flags, and at most ten largest centroid drifts and ten most negative yield deltas. One aggregate warning covers invalid vectors and cohort truncation. Vectors and actors are never logged. Unsafe counts or nonfinite rates abort the transaction, so neither table is partially written.
+## Logging, integrity, and rollout
 
-The queue is intentionally omitted from Bull Board because it is an internal scheduled measurement, not an operator-facing workflow.
+Start, warning, failure, skip, and completion records use stable event names. Warning and completion records carry bucket boundaries, `capturedAt`, exact cohort/pair/coverage counts, aggregate suppression/empty/invalid-vector counts, and bounded top drift/proxy-delta lists. Vectors, actors, and suppressed cohort sizes are never logged.
 
-## Limitations
+Database checks enforce a plain-text corpus allowlist, positive centroid sample counts, nonnegative opportunity counts, positive potential pair counts, nonnegative yield rates, cosine drift NULL or in `[0,2]`, canonical `A < B`, and `bucket_end > bucket_start`. Unique daily keys also support latest-row lookup, so no redundant non-unique latest indexes are created.
 
-- Source premise, intent, and user-context rows do not record embedding-model provenance. The configured current model labels the aggregate but cannot prove every source vector was generated by it.
-- The denominator is end-of-bucket point-in-time state, not a historical reconstruction of all states during the day.
-- Deleted assignments cannot be reconstructed, so historical denominators and attribution are limited by retained assignment rows.
-- Yield is normalized and can exceed 1; it must not be interpreted as a probability.
-- Network and pair bounds define a monitored cohort. Truncation flags indicate that the snapshot is not system-wide.
-- Snapshot history grows daily. Retention/partitioning is intentionally deferred until observed storage growth justifies it.
+The rollout intentionally does **not** add a transactional index to the live `opportunities` table. If production query performance requires a `created_at` index, assess it from observed plans and create it separately using an online/concurrent operational procedure.
+
+## Remaining limitations
+
+- Capture-time source state can differ from state at `bucketEnd`; `capturedAt` makes that limitation explicit.
+- Deleted assignment history cannot be reconstructed.
+- The configured model labels an aggregate but cannot prove every source vector used that model.
+- Stable bounds mean monitoring may not be system-wide; exact counts and the cohort hash expose coverage.
+- Snapshot history grows daily. Retention/partitioning is deferred until observed storage growth justifies it.

@@ -12,7 +12,19 @@ export interface YieldMetrics {
 
 export interface FrameDriftMonitoringResult {
   centroidSnapshotCount: number;
-  yieldSnapshotCount: number;
+  yieldProxySnapshotCount: number;
+  capturedAt: Date;
+  selectedNetworkCount: number;
+  eligibleNetworkCount: number;
+  stableCohortHash: string;
+  totalPossibleCohortPairCount: number;
+  selectedPairCount: number;
+  positiveMeasuredPairCount: number;
+  graphOpportunityCount: number;
+  attributedGraphOpportunityCount: number;
+  unattributedGraphOpportunityCount: number;
+  suppressedCentroidCount: number;
+  emptyCentroidCount: number;
   invalidVectorCount: number;
   networksTruncated: boolean;
   pairsTruncated: boolean;
@@ -23,13 +35,7 @@ function finiteVector(vector: readonly number[] | null): vector is readonly numb
   return vector !== null && vector.length > 0 && vector.every(Number.isFinite);
 }
 
-/**
- * Calculate cosine drift as one minus clamped cosine similarity.
- *
- * @param current - Current centroid.
- * @param prior - Most recent prior centroid for the same key.
- * @returns Drift in [0, 2], or null when comparison is not valid.
- */
+/** Calculate cosine drift as one minus clamped cosine similarity. */
 export function calculateCosineDrift(
   current: readonly number[] | null,
   prior: readonly number[] | null,
@@ -62,10 +68,7 @@ function safeNonNegativeInteger(value: number | string | bigint, label: string):
   return parsed;
 }
 
-/**
- * Calculate normalized cross-network opportunity yield and its prior delta.
- * The rate intentionally is not clamped and may exceed one.
- */
+/** Calculate the intent-assignment-pair normalized opportunity-yield proxy. */
 export function calculateYieldMetrics(
   opportunityCountValue: number | string | bigint,
   potentialPairCountValue: number | string | bigint,
@@ -94,7 +97,7 @@ export function calculateYieldMetrics(
   return { yieldRate, yieldRateDelta };
 }
 
-/** Validate that the requested interval is one closed UTC calendar day. */
+/** Validate that the requested opportunity interval is one closed UTC day. */
 export function validateClosedUtcDailyBucket(
   bucketStart: Date,
   bucketEnd: Date,
@@ -156,7 +159,7 @@ function buildYieldWrite(
   capturedAt: Date,
 ): CrossNetworkYieldSnapshotWrite {
   if (candidate.networkAId >= candidate.networkBId) {
-    throw new Error('Cross-network yield pair is not canonical');
+    throw new Error('Cross-network yield-proxy pair is not canonical');
   }
   const hasExactPrior = candidate.priorBucketStart?.getTime() === previousBucketStart.getTime();
   const metrics = calculateYieldMetrics(
@@ -181,7 +184,7 @@ function buildYieldWrite(
   };
 }
 
-/** Measurement-only service for daily frame-centroid drift and cross-network yield. */
+/** Measurement-only service for capture-time frame observations and a yield proxy. */
 export class FrameDriftMonitoringService {
   private readonly logger = log.service.from('FrameDriftMonitoringService');
 
@@ -191,12 +194,8 @@ export class FrameDriftMonitoringService {
   ) {}
 
   /**
-   * Capture metrics for one closed UTC daily bucket.
-   *
-   * @param bucketStart - Inclusive UTC midnight.
-   * @param bucketEnd - Exclusive next UTC midnight.
-   * @returns Persisted counts and bounded-cohort diagnostics.
-   * @throws For invalid buckets, unsafe numeric inputs, or database failures.
+   * Capture observations shortly after one closed UTC opportunity window.
+   * Centroids and denominator are capture-time truth, not historical state.
    */
   async captureDailyBucket(bucketStart: Date, bucketEnd: Date): Promise<FrameDriftMonitoringResult> {
     const startedAt = this.clock();
@@ -204,20 +203,34 @@ export class FrameDriftMonitoringService {
     const config = resolveFrameDriftMonitoringConfig();
     const previousBucketStart = new Date(bucketStart.getTime() - UTC_DAY_MS);
 
-    this.logger.info('Frame-drift monitoring started', {
+    this.logger.info('Frame-drift observation started', {
       event: 'frame_drift_monitoring_started',
       bucketStart: bucketStart.toISOString(),
       bucketEnd: bucketEnd.toISOString(),
       embeddingModel: OPENROUTER_EMBEDDING_MODEL,
       maxNetworks: config.maxNetworks,
       maxPairs: config.maxPairs,
+      minUsers: config.minUsers,
     });
 
-    let diagnostics: Pick<FrameDriftMonitoringResult, 'invalidVectorCount' | 'networksTruncated' | 'pairsTruncated'> = {
-      invalidVectorCount: 0,
-      networksTruncated: false,
-      pairsTruncated: false,
-    };
+    let capturedAt = startedAt;
+    let readDiagnostics: Omit<FrameDriftMonitoringResult,
+      'centroidSnapshotCount' | 'yieldProxySnapshotCount' | 'capturedAt' | 'durationMs'> = {
+        selectedNetworkCount: 0,
+        eligibleNetworkCount: 0,
+        stableCohortHash: '',
+        totalPossibleCohortPairCount: 0,
+        selectedPairCount: 0,
+        positiveMeasuredPairCount: 0,
+        graphOpportunityCount: 0,
+        attributedGraphOpportunityCount: 0,
+        unattributedGraphOpportunityCount: 0,
+        suppressedCentroidCount: 0,
+        emptyCentroidCount: 0,
+        invalidVectorCount: 0,
+        networksTruncated: false,
+        pairsTruncated: false,
+      };
     let completedWrites: FrameDriftSnapshotWrites = { centroids: [], yields: [] };
 
     const persisted = await this.store.captureAndPersist({
@@ -227,12 +240,24 @@ export class FrameDriftMonitoringService {
       embeddingModel: OPENROUTER_EMBEDDING_MODEL,
       maxNetworks: config.maxNetworks,
       maxPairs: config.maxPairs,
+      minUsers: config.minUsers,
     }, (readSet: FrameDriftReadSet): FrameDriftSnapshotWrites => {
-      const capturedAt = this.clock();
-      diagnostics = {
+      capturedAt = this.clock();
+      readDiagnostics = {
+        selectedNetworkCount: readSet.selectedNetworkCount,
+        eligibleNetworkCount: readSet.eligibleNetworkCount,
+        stableCohortHash: readSet.stableCohortHash,
+        totalPossibleCohortPairCount: readSet.totalPossibleCohortPairCount,
+        selectedPairCount: readSet.selectedPairCount,
+        positiveMeasuredPairCount: readSet.positiveMeasuredPairCount,
+        graphOpportunityCount: readSet.graphOpportunityCount,
+        attributedGraphOpportunityCount: readSet.attributedGraphOpportunityCount,
+        unattributedGraphOpportunityCount: readSet.unattributedGraphOpportunityCount,
+        suppressedCentroidCount: readSet.suppressedCentroidCount,
+        emptyCentroidCount: readSet.emptyCentroidCount,
         invalidVectorCount: readSet.invalidVectorCount,
         networksTruncated: readSet.eligibleNetworkCount > readSet.selectedNetworkCount,
-        pairsTruncated: readSet.eligiblePairCount > readSet.yields.length,
+        pairsTruncated: readSet.totalPossibleCohortPairCount > readSet.selectedPairCount,
       };
       completedWrites = {
         centroids: readSet.centroids.flatMap((candidate) => {
@@ -256,43 +281,60 @@ export class FrameDriftMonitoringService {
       return completedWrites;
     });
 
-    if (diagnostics.invalidVectorCount > 0 || diagnostics.networksTruncated || diagnostics.pairsTruncated) {
-      this.logger.warn('Frame-drift monitoring completed with bounded or invalid inputs', {
+    const bucketDiagnostics = {
+      bucketStart: bucketStart.toISOString(),
+      bucketEnd: bucketEnd.toISOString(),
+      capturedAt: capturedAt.toISOString(),
+      ...readDiagnostics,
+    };
+    if (
+      readDiagnostics.invalidVectorCount > 0
+      || readDiagnostics.networksTruncated
+      || readDiagnostics.pairsTruncated
+      || readDiagnostics.suppressedCentroidCount > 0
+      || readDiagnostics.emptyCentroidCount > 0
+      || readDiagnostics.unattributedGraphOpportunityCount > 0
+    ) {
+      this.logger.warn('Frame-drift observation completed with coverage warnings', {
         event: 'frame_drift_monitoring_warning',
-        ...diagnostics,
+        ...bucketDiagnostics,
       });
     }
 
-    const topCentroidDrifts = completedWrites.centroids
-      .filter((row) => row.cosineDrift !== null)
-      .sort((left, right) => (right.cosineDrift ?? 0) - (left.cosineDrift ?? 0))
-      .slice(0, 10)
-      .map((row) => ({ networkId: row.networkId, corpus: row.corpus, cosineDrift: row.cosineDrift }));
-    const topNegativeYieldDeltas = completedWrites.yields
-      .filter((row) => row.yieldRateDelta !== null && row.yieldRateDelta < 0)
-      .sort((left, right) => (left.yieldRateDelta ?? 0) - (right.yieldRateDelta ?? 0))
-      .slice(0, 10)
-      .map((row) => ({
-        networkAId: row.networkAId,
-        networkBId: row.networkBId,
-        yieldRateDelta: row.yieldRateDelta,
-      }));
+    const topCentroidDrifts = persisted.centroidSnapshotCount === completedWrites.centroids.length
+      ? completedWrites.centroids
+        .filter((row) => row.cosineDrift !== null)
+        .sort((left, right) => (right.cosineDrift ?? 0) - (left.cosineDrift ?? 0))
+        .slice(0, 10)
+        .map((row) => ({ networkId: row.networkId, corpus: row.corpus, cosineDrift: row.cosineDrift }))
+      : [];
+    const topNegativeYieldProxyDeltas = persisted.yieldProxySnapshotCount === completedWrites.yields.length
+      ? completedWrites.yields
+        .filter((row) => row.yieldRateDelta !== null && row.yieldRateDelta < 0)
+        .sort((left, right) => (left.yieldRateDelta ?? 0) - (right.yieldRateDelta ?? 0))
+        .slice(0, 10)
+        .map((row) => ({
+          networkAId: row.networkAId,
+          networkBId: row.networkBId,
+          yieldRateDelta: row.yieldRateDelta,
+        }))
+      : [];
     const durationMs = Math.max(0, this.clock().getTime() - startedAt.getTime());
 
-    this.logger.info('Frame-drift monitoring completed', {
+    this.logger.info('Frame-drift observation completed', {
       event: 'frame_drift_monitoring_completed',
-      bucketStart: bucketStart.toISOString(),
+      ...bucketDiagnostics,
       centroidSnapshotCount: persisted.centroidSnapshotCount,
-      yieldSnapshotCount: persisted.yieldSnapshotCount,
+      yieldProxySnapshotCount: persisted.yieldProxySnapshotCount,
       durationMs,
-      ...diagnostics,
       topCentroidDrifts,
-      topNegativeYieldDeltas,
+      topNegativeYieldProxyDeltas,
     });
 
     return {
       ...persisted,
-      ...diagnostics,
+      capturedAt,
+      ...readDiagnostics,
       durationMs,
     };
   }

@@ -29,11 +29,24 @@ const ENV_KEYS = [
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
+function makeJob(overrides: Partial<Job<FrameDriftJobData>> = {}): Job<FrameDriftJobData> {
+  return {
+    id: 'job-123',
+    data: { source: 'daily-scheduler' },
+    opts: { prevMillis: Date.parse('2026-07-15T00:15:00Z'), attempts: 3 },
+    timestamp: Date.parse('2026-01-01T00:15:00Z'),
+    attemptsMade: 1,
+    ...overrides,
+  } as Job<FrameDriftJobData>;
+}
+
 function createHarness() {
   const upsertJobScheduler = mock(async () => ({}));
   const removeJobScheduler = mock(async () => true);
   const closeQueue = mock(async () => undefined);
   const closeWorker = mock(async () => undefined);
+  const info = mock(() => undefined);
+  const error = mock(() => undefined);
   let processor: ((job: Job<FrameDriftJobData>) => Promise<void>) | undefined;
   const createWorker = mock((handler: (job: Job<FrameDriftJobData>) => Promise<void>) => {
     processor = handler;
@@ -41,7 +54,19 @@ function createHarness() {
   });
   const captureDailyBucket = mock(async () => ({
     centroidSnapshotCount: 0,
-    yieldSnapshotCount: 0,
+    yieldProxySnapshotCount: 0,
+    capturedAt: new Date('2026-07-15T00:15:00Z'),
+    selectedNetworkCount: 0,
+    eligibleNetworkCount: 0,
+    stableCohortHash: '',
+    totalPossibleCohortPairCount: 0,
+    selectedPairCount: 0,
+    positiveMeasuredPairCount: 0,
+    graphOpportunityCount: 0,
+    attributedGraphOpportunityCount: 0,
+    unattributedGraphOpportunityCount: 0,
+    suppressedCentroidCount: 0,
+    emptyCentroidCount: 0,
     invalidVectorCount: 0,
     networksTruncated: false,
     pairsTruncated: false,
@@ -55,6 +80,7 @@ function createHarness() {
     } as unknown as NonNullable<FrameDriftQueueDeps['queue']>,
     createWorker,
     service: { captureDailyBucket },
+    logger: { info, error },
   };
   return {
     queue: new FrameDriftQueue(deps),
@@ -64,6 +90,8 @@ function createHarness() {
     closeWorker,
     createWorker,
     captureDailyBucket,
+    info,
+    error,
     getProcessor: () => processor,
   };
 }
@@ -123,17 +151,34 @@ describe('FrameDriftQueue', () => {
     expect(harness.createWorker).not.toHaveBeenCalled();
   });
 
+  it('rechecks enabled and logs a structured skip before measuring', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    await harness.queue.start();
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'false';
+
+    await harness.getProcessor()?.(makeJob());
+
+    expect(harness.captureDailyBucket).not.toHaveBeenCalled();
+    expect(harness.info).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        event: 'frame_drift_monitoring_job_skipped',
+        schedulerId: FRAME_DRIFT_SCHEDULER_ID,
+        jobId: 'job-123',
+        attempt: 2,
+        bucketStart: '2026-07-14T00:00:00.000Z',
+        bucketEnd: '2026-07-15T00:00:00.000Z',
+      }),
+    );
+  });
+
   it('prefers prevMillis, derives the closed bucket, and delegates', async () => {
     process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
     const harness = createHarness();
     await harness.queue.start();
-    const processor = harness.getProcessor();
-    expect(processor).toBeDefined();
 
-    await processor?.({
-      opts: { prevMillis: Date.parse('2026-07-15T00:15:00Z') },
-      timestamp: Date.parse('2026-01-01T00:15:00Z'),
-    } as Job<FrameDriftJobData>);
+    await harness.getProcessor()?.(makeJob());
 
     expect(harness.captureDailyBucket).toHaveBeenCalledWith(
       new Date('2026-07-14T00:00:00.000Z'),
@@ -141,19 +186,41 @@ describe('FrameDriftQueue', () => {
     );
   });
 
-  it('propagates service failures so BullMQ can retry', async () => {
+  it('logs structured service failures and rethrows for BullMQ retry', async () => {
     process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
     const harness = createHarness();
-    harness.captureDailyBucket.mockImplementationOnce(async () => {
-      throw new Error('database unavailable');
-    });
+    const failure = new Error('database unavailable');
+    harness.captureDailyBucket.mockImplementationOnce(async () => { throw failure; });
     await harness.queue.start();
-    const processor = harness.getProcessor();
 
-    await expect(processor?.({
-      opts: { prevMillis: Date.parse('2026-07-15T00:15:00Z') },
-      timestamp: Date.parse('2026-07-15T00:15:00Z'),
-    } as Job<FrameDriftJobData>)).rejects.toThrow('database unavailable');
+    await expect(harness.getProcessor()?.(makeJob())).rejects.toThrow('database unavailable');
+    expect(harness.error).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        event: 'frame_drift_monitoring_job_failed',
+        schedulerId: FRAME_DRIFT_SCHEDULER_ID,
+        jobId: 'job-123',
+        attempt: 2,
+        maxAttempts: 3,
+        bucketStart: '2026-07-14T00:00:00.000Z',
+        bucketEnd: '2026-07-15T00:00:00.000Z',
+        error: failure,
+      }),
+    );
+  });
+
+  it('can retry start after scheduler registration fails', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    harness.upsertJobScheduler.mockImplementationOnce(async () => {
+      throw new Error('redis unavailable');
+    });
+
+    await expect(harness.queue.start()).rejects.toThrow('redis unavailable');
+    await harness.queue.start();
+
+    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(2);
+    expect(harness.createWorker).toHaveBeenCalledTimes(1);
   });
 
   it('gracefully closes worker and queue and is idempotent', async () => {

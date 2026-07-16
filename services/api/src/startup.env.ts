@@ -164,6 +164,7 @@ const envSchema = z.object({
   FRAME_DRIFT_MONITORING_SCHEDULE: z.string().optional(),
   FRAME_DRIFT_MONITORING_MAX_NETWORKS: optionalInt,
   FRAME_DRIFT_MONITORING_MAX_PAIRS: optionalInt,
+  FRAME_DRIFT_MONITORING_MIN_USERS: optionalInt,
 
   // 13. Platform-provided metadata
   RAILWAY_ENVIRONMENT: z.string().optional(),

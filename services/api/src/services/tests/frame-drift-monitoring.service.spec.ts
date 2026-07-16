@@ -3,7 +3,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, expect, it } from 'bun:test';
 
-import type { FrameDriftReadSet, FrameDriftSnapshotStore, FrameDriftSnapshotWrites } from '../../adapters/frame-drift.database.adapter';
+import { normalizeFinitePgVector, type FrameDriftReadSet, type FrameDriftSnapshotStore, type FrameDriftSnapshotWrites } from '../../adapters/frame-drift.database.adapter';
 import { calculateCosineDrift, calculateYieldMetrics, FrameDriftMonitoringService, validateClosedUtcDailyBucket } from '../frame-drift-monitoring.service';
 
 const BUCKET_START = new Date('2026-07-14T00:00:00.000Z');
@@ -17,7 +17,15 @@ function baseReadSet(): FrameDriftReadSet {
     yields: [],
     selectedNetworkCount: 2,
     eligibleNetworkCount: 2,
-    eligiblePairCount: 0,
+    stableCohortHash: 'stable-hash',
+    totalPossibleCohortPairCount: 1,
+    selectedPairCount: 1,
+    positiveMeasuredPairCount: 0,
+    graphOpportunityCount: 0,
+    attributedGraphOpportunityCount: 0,
+    unattributedGraphOpportunityCount: 0,
+    suppressedCentroidCount: 0,
+    emptyCentroidCount: 6,
     invalidVectorCount: 0,
   };
 }
@@ -32,13 +40,19 @@ function createStore(
       onWrites?.(writes);
       return {
         centroidSnapshotCount: writes.centroids.length,
-        yieldSnapshotCount: writes.yields.length,
+        yieldProxySnapshotCount: writes.yields.length,
       };
     },
   };
 }
 
 describe('frame-drift metric calculations', () => {
+  it('normalizes raw pgvector values through the shared helper and rejects nonfinite values', () => {
+    expect(normalizeFinitePgVector('[1,2]')).toEqual([1, 2]);
+    expect(normalizeFinitePgVector('[1,"NaN"]')).toBeNull();
+    expect(normalizeFinitePgVector([1, Number.POSITIVE_INFINITY])).toBeNull();
+  });
+
   it('calculates identical, orthogonal, and opposite centroid drift', () => {
     expect(calculateCosineDrift([1, 0], [1, 0])).toBeCloseTo(0);
     expect(calculateCosineDrift([1, 0], [0, 1])).toBeCloseTo(1);
@@ -81,7 +95,9 @@ describe('frame-drift metric calculations', () => {
 describe('FrameDriftMonitoringService', () => {
   it('uses only an exact previous daily bucket for yield delta', async () => {
     const readSet = baseReadSet();
-    readSet.eligiblePairCount = 2;
+    readSet.totalPossibleCohortPairCount = 2;
+    readSet.selectedPairCount = 2;
+    readSet.positiveMeasuredPairCount = 2;
     readSet.yields = [
       {
         networkAId: 'a',
@@ -150,7 +166,7 @@ describe('FrameDriftMonitoringService', () => {
 
   it('propagates nonfinite input before any write can occur', async () => {
     const readSet = baseReadSet();
-    readSet.eligiblePairCount = 1;
+    readSet.positiveMeasuredPairCount = 1;
     readSet.yields = [{
       networkAId: 'a',
       networkBId: 'b',
@@ -164,7 +180,7 @@ describe('FrameDriftMonitoringService', () => {
       async captureAndPersist(_request, buildWrites) {
         buildWrites(readSet);
         wrote = true;
-        return { centroidSnapshotCount: 0, yieldSnapshotCount: 0 };
+        return { centroidSnapshotCount: 0, yieldProxySnapshotCount: 0 };
       },
     };
     const service = new FrameDriftMonitoringService(store, () => NOW);
