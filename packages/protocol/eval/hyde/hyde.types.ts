@@ -2,23 +2,53 @@ import type { HydeGenerationMode } from '../../src/shared/hyde/hyde.env.js';
 import type { HydeTargetCorpus } from '../../src/shared/hyde/lens.inferrer.js';
 import type { HydeValidationVerdict } from '../../src/shared/hyde/hyde.validator.js';
 
-export type CandidateRole = 'target' | 'trap' | 'distractor';
+import { HYDE_BACKGROUND_SOURCES } from './hyde.policy.js';
 
-/** One hand-authored candidate in the retrieval-only in-memory corpus. */
+export const HYDE_EVAL_STRATA = [
+  'profile-context-contamination',
+  'entity-location-substitution',
+  'time-numeric-scale',
+  'credential-organization-exclusivity',
+  'role-polarity-controls',
+] as const;
+
+export type HydeEvalStratum = typeof HYDE_EVAL_STRATA[number];
+export type HydeBackgroundSource = typeof HYDE_BACKGROUND_SOURCES[number];
+export type HydeEvalGraphSourceType = 'query' | 'context';
+export type RelevanceGrade = 0 | 1 | 2 | 3;
+export type CandidateRole = 'positive' | 'hard-negative' | 'distractor';
+
+export interface HydeHardNegativeLink {
+  positiveCandidateId: string;
+  axis: string;
+  rationale: string;
+}
+
+/**
+ * One candidate in the frozen authored corpus.
+ *
+ * `relevanceGrade` and `role` are construction labels used to validate and
+ * fingerprint the corpus. Canonical evidence must use independently resolved
+ * human grades rather than treating these author labels as adjudication.
+ */
 export interface HydeEvalCandidate {
   id: string;
   role: CandidateRole;
+  relevanceGrade: RelevanceGrade;
   corpus: 'intents' | 'premises';
   text: string;
+  hardNegativeOf?: HydeHardNegativeLink;
 }
 
-/** A drift-focused source paired with one target and plausible same-domain negatives. */
+/** A drift-focused source paired with a graded, multi-positive candidate pool. */
 export interface HydeEvalCase {
   id: string;
+  stratum: HydeEvalStratum;
+  /** Product-level asynchronous source represented by this case. */
+  backgroundSource: HydeBackgroundSource;
   description: string;
   sourceText: string;
   profileContext?: string;
-  expectedTargetId: string;
   candidates: HydeEvalCandidate[];
 }
 
@@ -33,16 +63,38 @@ export interface LensQueryEmbedding {
   embedding: number[];
 }
 
-export interface RankedCandidate {
+export interface CandidateScore {
   candidateId: string;
   role: CandidateRole;
-  /** Production-approximate score after the qualifying-match bonus. */
+  /** Frozen construction grade; canonical metrics use independently resolved grades. */
+  relevanceGrade: RelevanceGrade;
+  corpus: 'intents' | 'premises';
+  hardNegativeOf?: HydeHardNegativeLink;
+  /** Production-approximate score after the qualifying-match bonus; zero when omitted. */
   score: number;
-  /** Raw best cosine, retained only as a diagnostic rather than the headline rank. */
+  /** Raw per-lens cosines retained so score derivation can be independently revalidated. */
+  lensMatches: Array<{ lensId: string; cosine: number }>;
+  /** Raw best cosine across every returned lens embedding. */
   maxCosine: number;
   qualifyingMatchCount: number;
   matchedLensIds: string[];
+  qualified: boolean;
 }
+
+export interface RankedCandidate extends CandidateScore {
+  qualified: true;
+}
+
+export interface HydeRunRetrievalMetrics {
+  precisionAt5: number;
+  ndcgAt5: number;
+  hardNegativeFprAt5: number | null;
+  margin: number | null;
+}
+
+export type ResolvedRelevanceGrades =
+  | Readonly<Record<string, RelevanceGrade>>
+  | ReadonlyMap<string, RelevanceGrade>;
 
 export type DiagnosticValidationStatus =
   | 'not_applicable'
@@ -71,11 +123,25 @@ export interface GeneratedDocumentDiagnostic {
   verdict?: HydeValidationVerdict;
 }
 
+export interface HydeResourceCallDiagnostic {
+  durationMs: number;
+  inputCount: number;
+  outcome: 'completed' | 'threw';
+}
+
+export interface HydeRunResourceDiagnostics {
+  lensInferenceCalls: HydeResourceCallDiagnostic[];
+  generatorCalls: HydeResourceCallDiagnostic[];
+  validatorCalls: HydeResourceCallDiagnostic[];
+  documentEmbeddingCalls: HydeResourceCallDiagnostic[];
+}
+
 export interface HydeEvalRunResult {
   caseId: string;
   mode: HydeGenerationMode;
   run: number;
-  expectedTargetRank: number | null;
+  /** Every authored candidate, including candidates omitted by qualification. */
+  allCandidateScores: CandidateScore[];
   ranking: RankedCandidate[];
   lensCount: number;
   returnedDocumentCount: number;
@@ -87,6 +153,7 @@ export interface HydeEvalRunResult {
   rejectedCount: number | null;
   failedOpenCount: number;
   documents: GeneratedDocumentDiagnostic[];
+  resources: HydeRunResourceDiagnostics;
 }
 
 export interface HydeModeSummary {

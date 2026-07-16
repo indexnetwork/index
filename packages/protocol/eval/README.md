@@ -23,9 +23,27 @@ Each harness has its own README with full flag docs:
 [`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
 [`opportunity`](./opportunity/README.md).
 
-The IND-426 `hyde` harness is intentionally retrieval-only and has no committed baseline;
-its full multi-run paired report is reviewed directly. The `matching` harness calls
-`OpportunityEvaluator` without HyDE and is not retrieval evidence.
+The IND-426 `hyde` harness is retrieval-only and has no committed baseline or run
+artifacts. Evidence-v2 is a staged collect -> blind export -> independent human
+adjudication -> resolve -> analyze -> report study over 90 frozen background cases, 900
+candidates, and four paired runs per case. Its primary cohort is 75 asynchronously
+processed saved intents; its secondary cohort is 15 premise-derived, network-scoped user
+contexts. It contains no synchronous direct-search cohort. The private runner maps saved
+intents to the current internal `query` graph branch and contexts to `context`; this
+implementation label is hidden from blind adjudication and does not represent a user
+request. Its eight gates become insufficient unless the full
+canonical collection and resolved blinded judgments from two independent humans are
+complete. Export runs a full collection-only semantic preflight before review. Analysis
+also requires the original judgment artifacts (and resolver decisions, when used) so it
+can regenerate and revalidate the resolved parent rather than trusting a self-authored
+resolution file; its schema recomputes gates and rejects internally inconsistent PASS
+edits. Report generation additionally recomputes the analysis from every supplied parent,
+and collection preflight recomputes score/ranking derivations from retained per-lens
+cosines. Provenance pins identify configured primary IDs only: production fallback identity,
+separate frame-extraction resources, tokens, and cost remain unavailable. The unsigned
+multi-file artifacts and unauthenticated reviewer attestations require external
+custody/identity/fingerprint review. The `matching` harness calls `OpportunityEvaluator` without HyDE and remains
+only a secondary evaluator-regression check, not retrieval evidence.
 
 `matching` scores *which* people get surfaced; `opportunity` judges the *card a person
 actually reads* once a match exists — complementary surfaces of the same feature.
@@ -38,8 +56,9 @@ takes `--component decompose|analyze`.
 ## Architecture: shared lib + thin harnesses
 
 The harness-agnostic machinery lives in [`eval/shared/`](./shared) and is reused by the
-baseline-backed scorecard harnesses. HyDE is deliberately smaller and standalone because
-it reports paired retrieval ranks/diagnostics and has no canonical baseline.
+baseline-backed scorecard harnesses. HyDE is standalone because it uses versioned evidence artifacts, blinded adjudication,
+hierarchical paired bootstrap intervals, and fixed gates rather than the shared
+scorecard/baseline machinery.
 
 ```
 eval/
@@ -146,9 +165,10 @@ scoring logic, runner wiring, reporter math, and baseline handling.
 
 ## Baseline contract
 
-The drift-focused `hyde` harness is the exception: it rejects `--update-baseline` and must
-not turn filtered/single runs into canonical evidence. The contract below applies to the
-baseline-backed harnesses.
+The evidence-v2 `hyde` harness is the exception: it rejects `--update-baseline`, commits
+no baseline/run artifact, and requires its full 90-case, four-paired-run collection plus
+resolved independent human adjudication for canonical evidence. Filtered/debug runs are
+noncanonical. The contract below applies to the baseline-backed harnesses.
 
 - **Committed baseline** (`baselines/<name>.baseline.json`): the scorecard with per-run
   `detail` stripped (via the harness's `leanCase`). Kept lean so diffs are meaningful.
