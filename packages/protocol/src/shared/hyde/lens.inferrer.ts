@@ -3,12 +3,15 @@
  * profile context and infers 1-N search lenses, each tagged with a target corpus.
  * Replaces the hardcoded HydeStrategy enum and regex-based selectStrategiesFromQuery.
  */
+import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
-import { Timed } from "../observability/performance.js";
-import { protocolLogger } from '../observability/protocol.logger.js';
+
 import { createStructuredModel } from "../agent/model.config.js";
 import { invokeWithAbortSignal } from "../agent/model-signal.js";
+import { protocolLogger } from '../observability/protocol.logger.js';
+import { Timed } from "../observability/performance.js";
+import { HydeSourceFrameSchema, sanitizeHydeSourceFrame, type HydeSourceFrame } from './hyde.frame.js';
 
 export type HydeTargetCorpus = 'profiles' | 'intents' | 'premises';
 
@@ -29,10 +32,14 @@ export interface LensInferenceInput {
   profileContext?: string;
   /** Maximum number of lenses to infer (default 3). */
   maxLenses?: number;
+  /** Use the source-grounded frame-v1 inference path. */
+  frameConstrained?: boolean;
 }
 
 export interface LensInferenceOutput {
   lenses: Lens[];
+  /** Sanitized source frame, present only for frame-constrained inference. */
+  sourceFrame?: HydeSourceFrame;
 }
 
 const SYSTEM_PROMPT = `You analyze goals and search queries to identify the most relevant perspectives for finding matching people in a professional network.
@@ -51,40 +58,91 @@ Guidelines:
 - Always include at least one "profiles" perspective when the source describes a need that a specific type of professional could fulfill. Most intents benefit from profile-based discovery.
 - LOCATION AWARENESS: When the source text or user context mentions a specific location (city, region, country), incorporate it into lens descriptions. For example, "investors in San Francisco" should produce a lens like "SF-based early-stage investor" rather than just "early-stage investor". This helps the hypothetical document generator produce location-specific search documents, improving retrieval quality.`;
 
-const responseFormat = z.object({
-  lenses: z.array(z.object({
-    label: z.string().describe('Specific description of the search perspective'),
-    corpus: z.enum(['profiles', 'intents', 'premises']).describe('Search user profiles, user intents, or user premises (identity/values)'),
-    reasoning: z.string().describe('Why this perspective is relevant'),
-  })).min(1).max(5).describe('Inferred search lenses'),
+/** Source-grounded system prompt used only by the frame-v1 path. */
+export const FRAME_LENS_SYSTEM_PROMPT = `You infer search lenses and a source-grounded frame for semantic retrieval.
+
+Lens rules:
+- Infer distinct profile, intent, or premise search perspectives.
+- You may infer reciprocal target roles and complementary roles (for example, infer "investor" from a source seeking funding).
+- profileContext may specialize which lenses are useful, but it is lens-selection context only.
+
+Source-frame rules:
+- Extract evidence ONLY from sourceText, never from profileContext.
+- Every frame element must include an evidence field copied as an exact substring of sourceText.
+- sourceRoles describe roles held or offered by the source side.
+- counterpartRoles describe reciprocal or complementary target roles. The role may be inferred, but its evidence must be an exact sourceText span that supports the inference.
+- hardConstraints contain only explicit constraints and classify each as location, time, numeric, credential, organization, exclusivity, or other.
+- namedEntities contain only proper names explicitly present in sourceText and classify each as person, organization, product, location, event, or other.
+- domainVocabulary contains source domain terms worth preserving.
+- Do not use profileContext as frame evidence, even when it contains useful names or constraints.`;
+
+const lensSchema = z.object({
+  label: z.string().describe('Specific description of the search perspective'),
+  corpus: z.enum(['profiles', 'intents', 'premises']).describe('Search user profiles, user intents, or user premises (identity/values)'),
+  reasoning: z.string().describe('Why this perspective is relevant'),
 });
+
+const responseFormat = z.object({
+  lenses: z.array(lensSchema).min(1).max(5).describe('Inferred search lenses'),
+});
+
+/** Structured-output schema used only by frame-constrained inference. */
+export const FrameLensResponseSchema = z.object({
+  lenses: z.array(lensSchema).min(1).max(5).describe('Inferred search lenses'),
+  sourceFrame: HydeSourceFrameSchema,
+});
+
+type ModelInput = BaseLanguageModelInput;
+
+/** Minimal structured model contract used for deterministic injection in tests. */
+export interface LensStructuredModel {
+  invoke(input: ModelInput, config?: { signal?: AbortSignal }): Promise<unknown>;
+}
+
+export interface LensInferrerOptions {
+  legacyModel?: LensStructuredModel;
+  frameModel?: LensStructuredModel;
+}
 
 const logger = protocolLogger("LensInferrer");
 
-/**
- * Infers search lenses from source text and optional profile context.
- * Each lens represents a search perspective tagged with a target corpus
- * (profiles or intents) for downstream HyDE document generation.
- */
+/** Infers search lenses from source text and optional profile context. */
 export class LensInferrer {
-  private model = createStructuredModel("lensInferrer", responseFormat, {
-    name: "lens_inferrer",
-  });
+  private legacyModel?: LensStructuredModel;
+  private frameModel?: LensStructuredModel;
 
-  /**
-   * Infer search lenses from source text and optional profile context.
-   *
-   * @param input - Source text, optional profile context, optional max lenses
-   * @returns Array of inferred lenses with corpus tags; empty array on failure
-   */
+  constructor(options: LensInferrerOptions = {}) {
+    // Preserve legacy construction behavior in production. Frame-only model
+    // injection deliberately avoids constructing a provider-backed legacy model.
+    this.legacyModel = options.legacyModel
+      ?? (options.frameModel ? undefined : createStructuredModel("lensInferrer", responseFormat, { name: "lens_inferrer" }));
+    this.frameModel = options.frameModel;
+  }
+
+  private getLegacyModel(): LensStructuredModel {
+    this.legacyModel ??= createStructuredModel("lensInferrer", responseFormat, {
+      name: "lens_inferrer",
+    });
+    return this.legacyModel;
+  }
+
+  private getFrameModel(): LensStructuredModel {
+    this.frameModel ??= createStructuredModel("lensInferrer", FrameLensResponseSchema, {
+      name: "lens_inferrer_frame_v1",
+    });
+    return this.frameModel;
+  }
+
+  /** Infer search lenses while preserving the legacy path unless explicitly enabled. */
   @Timed()
   async infer(input: LensInferenceInput): Promise<LensInferenceOutput> {
-    const { sourceText, profileContext, maxLenses = 3 } = input;
+    const { sourceText, profileContext, maxLenses = 3, frameConstrained = false } = input;
 
     logger.verbose('Inferring lenses', {
       sourceTextLength: sourceText.length,
       hasProfileContext: !!profileContext,
       maxLenses,
+      frameConstrained,
     });
 
     let humanPrompt = `Identify up to ${maxLenses} search perspectives for finding relevant matches.\n\nSource: "${sourceText}"`;
@@ -94,12 +152,21 @@ export class LensInferrer {
     }
 
     const messages = [
-      new SystemMessage(SYSTEM_PROMPT),
+      new SystemMessage(frameConstrained ? FRAME_LENS_SYSTEM_PROMPT : SYSTEM_PROMPT),
       new HumanMessage(humanPrompt),
     ];
 
     try {
-      const result = await invokeWithAbortSignal(this.model, messages);
+      if (frameConstrained) {
+        const result = await invokeWithAbortSignal(this.getFrameModel(), messages);
+        const parsed = FrameLensResponseSchema.parse(result);
+        const lenses = parsed.lenses.slice(0, maxLenses);
+        const sourceFrame = sanitizeHydeSourceFrame(sourceText, parsed.sourceFrame);
+        logger.verbose('Frame-constrained lenses inferred', { count: lenses.length });
+        return { lenses, sourceFrame };
+      }
+
+      const result = await invokeWithAbortSignal(this.getLegacyModel(), messages);
       const parsed = responseFormat.parse(result);
       const lenses = parsed.lenses.slice(0, maxLenses);
 

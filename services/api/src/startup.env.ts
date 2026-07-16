@@ -95,6 +95,7 @@ const envSchema = z.object({
   CONTACTS_ENABLED: optionalBoolean,
   CONTACT_DEDUP_STRATEGY: z.enum(['conservative', 'balanced', 'aggressive', 'off']).optional(),
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
+  HYDE_FRAME_CONSTRAINTS_ENABLED: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
