@@ -10,6 +10,8 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 
 ## 1. Premise dependency graph with revocation cascade — **M/L**
 
+> **Status: shipped (IND-423).** `handlePremiseCascade` now expires only opportunities whose provenance cites the lapsed premise (`metadata.evidence` `sourcePremiseId`/`candidatePremiseId` or actor-level grounding `premise`), and re-verifies the user's intents grounded on it (embedding-proximity heuristic, capped) via `SemanticVerifier`, refreshing their felicity scores. No new schema was needed — the evidence recorded by `buildCandidateEvidence` was already persisted on the opportunity row. An explicit premise→intent provenance edge remains future work.
+
 **Theory:** Schlangen & Skantze (2009), Incremental Unit model — grounded-in (`G`) links with confidence-propagation revocation. *(Report rank #1, Ch. 7.)*
 
 **The real gap it fixes (corrected after code verification):** a retract cascade already exists, but it is **blanket, not dependency-targeted**. `retract_premise` (`premise/premise.tools.ts`) fires `PremiseEvents.onRetracted` (`services/api/src/adapters/chat.database.adapter.ts`), which `handlePremiseCascade` (`services/api/src/queues/premise.queue.ts`) resolves by expiring **all** of the user's `draft`/`latent`/`pending`/`negotiating` opportunities — “regardless of how far along they were” — even those grounded entirely in *other* premises. Context regeneration is likewise wholesale (`userContextQueue.addRegenJob`). Intents are never re-verified at all. So the problem is twofold: **over-invalidation** of unrelated in-flight opportunities and **under-invalidation** of intents whose felicity rested on the retracted premise.
@@ -21,7 +23,9 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 
 **Note:** do **not** import the full IU formalism (`⟨I, L, G, T, C, S, P⟩`); the useful core is the dependency edge + targeted revocation walk. This is closer to a truth-maintenance system than to incremental dialogue processing — the report's framing is a loan, not a law.
 
-## 2. Uptake transition guard (pre-accept clarification) — **S/M**
+## 2. Uptake transition guard (pre-accept clarification) — **S/M** — **SHIPPED (IND-424)**
+
+Implemented low-authority preparatory-condition questions when opportunities enter `pending`, an internal `uptake` detection purpose, and a flag-gated soft acceptance interlock across MCP, REST, web, connect links, CLI, and Hermes. The first accept attempt remains non-mutating until the user answers/dismisses the questions or explicitly acknowledges the current question IDs to continue anyway. No new lifecycle state was added.
 
 **Theory:** Schlöder & Fernández (2014), clarification requests at the level of uptake; Clark (1996) joint-action ladder — verify *understanding* before *commitment*. *(Report rank #4, Ch. 10.)*
 
@@ -31,7 +35,9 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 - Extend the existing `negotiation` Questioner preset to target **preparatory conditions** of the counterparty ("can they actually do this?") when an opportunity reaches `pending` and the counterparty intent's `felicityAuthority` is low.
 - In `update_opportunity`'s accept path, check for unresolved uptake questions and have the agent present them before offering the accept action. Keep it advisory — a hard new `pre-uptake` state is **not** needed; the existing `negotiating` status is the natural host for unresolved-uptake dwell time.
 
-## 3. QUD-typed clarification in the elaboration loop — **S**
+## 3. QUD-typed clarification in the elaboration loop — **S** — **SHIPPED (IND-425)**
+
+Implemented a canonical three-value QUD taxonomy across IntentClarifier and the live intent/discovery Questioner presets, persisted it as internal question detection metadata, and added exact-match clarification evaluations.
 
 **Theory:** Ginzburg (2012) QUD; Purver's clarification-request typology. *(Ch. 2; not in the report's top-6 but highest value-per-effort.)*
 
@@ -40,17 +46,20 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 - Reuse the typology in the Questioner agent's discovery mode — **not** `opportunity/question.generator.ts`, which is `@deprecated` in favor of `QuestionerAgent`.
 - Eval hook: extend `eval/premise` / `eval/matching` fixtures (case files + runners exist on both sides) with under-specified inputs and assert question type.
 
-## 4. Frame-constrained HyDE generation — **M**
+## 4. Frame-constrained HyDE generation — **M** — Implemented (IND-426)
 
 **Theory:** Fillmore frame semantics; report's "Frame-Constrained Generation Filter" against embedding drift. *(Ch. 4.)*
 
-**Correction from code verification:** the hardcoded Mirror/Reciprocal/Neighborhood strategies described in the report (and in `src/README.md`) were **retired** — `shared/hyde/hyde.strategies.ts` states the system now uses free-text, LLM-inferred *lenses*. The report's Ch. 4 analysis applies to the M/R/N taxonomy as a conceptual layer only. The no-validation half of the claim held: `hyde.graph.ts` feeds generated text straight into embedding with no entity/constraint check.
+**Correction from code verification:** the hardcoded Mirror/Reciprocal/Neighborhood strategies described in the report (and in `src/README.md`) were **retired** — `shared/hyde/hyde.strategies.ts` states the system now uses free-text, LLM-inferred *lenses*. The report's Ch. 4 analysis applies to the M/R/N taxonomy as a conceptual layer only. Before IND-426, generated text went directly to embedding with no entity/constraint check.
 
-**Work items:**
-- Constrain **lens-based** generation (`shared/hyde/hyde.generator.ts` + `lens.inferrer.ts`) to frame elements extracted from the source intent (roles, constraints, domain vocabulary) — prompt-side slot discipline instead of free hallucination.
-- Add a post-generation check in `hyde.graph.ts` (between generate and embed nodes) that rejects docs introducing entities/constraints absent from the source frame (cheap LLM check or lexical overlap heuristic).
-- Measure on `eval/matching` before/after — this is the one item with an existing regression harness, so do it behind a flag and compare.
+**Implemented:**
+- Frame-v1 constrains **lens-based** generation (`shared/hyde/hyde.generator.ts` + `lens.inferrer.ts`) with source-only roles, explicit constraints, named entities, and domain vocabulary. Optional profile context may shape lenses but cannot become frame evidence.
+- `hyde.graph.ts` now has a frame-v1 batch validator between generation and embedding. It supports per-document partial rejection and all-rejection-with-empty-output. Validator/provider/shape failures fail open only for the current invocation; failed-open documents are embedded ephemerally but never cached or persisted.
+- Legacy cache identities are preserved. Frame-v1 uses fingerprinted Redis keys and validated context provenance with stable versioned DB lens identities; source revisions upsert rather than accumulate, and bulk reads select only the active mode/current source/newest generation group.
+- `eval/hyde` is the paired retrieval diagnostic: real legacy/frame-v1 LensInferrer, HydeGenerator, HydeValidator, and HydeGraphFactory plus equivalent OpenRouter request configuration and the same embedding model/dimensions rank a small drift-focused in-memory corpus. The scorer approximates production's `0.40` cutoff and `0.1` additional-match bonus and reports Recall@K/MRR plus generation, overwrite, key-resolved rejection, and fail-open diagnostics. It deliberately excludes SQL per-lens limits, network scope, cross-row user grouping beyond one candidate row per user, PostgreSQL execution, and opportunity evaluation. `eval/matching` calls `OpportunityEvaluator` directly and remains only a secondary evaluator-regression check.
 - ~~Housekeeping: update `src/README.md`, which still describes the retired M/R/N strategy registry.~~ Done in the same PR that introduced this backlog.
+
+**Rollout status:** `HYDE_FRAME_CONSTRAINTS_ENABLED` is strict and default-off; only literal `true` selects frame-v1. Implementation is complete, but enabling it is a separate rollout decision after reviewing full-corpus, multi-run paired retrieval output and the separately labeled matching regression check. Filtered or single runs must not establish a canonical baseline.
 
 ## 5. Dowty proto-role scoring in the evaluator — **M**
 
@@ -80,13 +89,14 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 - First: capture the signals — contact source (import channel), interaction recency — as schema additions owned by `services/api`; only then classify tie strength (feeds `opportunity/opportunity.introducer.ts` routing too).
 - Exposure preview at premise→network assignment time (`shared/assignment/network-assignment.policy.ts`, threshold 0.7): "assigning this premise makes it discoverable by ~N members of X."
 
-## 8. Frame-drift monitoring — **S to start**
+## 8. Frame-drift monitoring — **Observation shipped; causal provenance pending (IND-430)**
 
 **Theory:** the report's own "Index Frame Drift Problem" — its most original contribution. Real even in the centralized implementation: per-network prompts, vocabularies, and embedding-model versions drift independently.
 
 **Work items:**
-- Start with measurement, not mechanism: a metric tracking per-network embedding centroid drift over time and cross-network match-rate decay. Note the maintenance graph (`maintenance/maintenance.graph.ts`) is **feed-view-triggered**, not periodic — a drift metric needs the cron infrastructure in `services/api/src/queues/premise.queue.ts` (`startCrons`) or a new scheduled job. Verified: no drift/centroid metric exists anywhere in `packages/protocol/src` today.
-- Only if drift is observed: consider periodic vocabulary/prompt re-alignment. Evolutionary-game machinery is premature.
+- ~~Start with measurement, not mechanism: track privacy-thresholded per-network embedding-centroid movement.~~ Shipped in IND-430 as atomically claimed, immutable capture-time observations through a disabled-by-default BullMQ scheduler and repeatable-read PostgreSQL transaction. Centroids weight users equally and require the privacy threshold; historical qualifying aggregates are not recomputed after later user deletion. See `docs/design/frame-drift-monitoring.md` in the monorepo.
+- The initial S-sized cross-network metric is only a **non-causal intent-assignment-pair normalized opportunity-yield proxy**. Each pair side must independently meet the same privacy threshold. It is not causal match provenance or an exposure probability; multi-assignment attribution is inferred from current independent `intent_networks` rows. Immutable per-discovery frame-pair/attempt provenance remains future work and is required before causal diagnosis.
+- Only after that provenance exists and actual drift/decay is observed should periodic vocabulary/prompt realignment be considered. Evolutionary-game machinery remains premature; IND-430 intentionally adds no realignment mechanism.
 
 ---
 

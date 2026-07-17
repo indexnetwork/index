@@ -56,6 +56,35 @@ export type EarlyStatus = (typeof EARLY_STATUSES)[number];
 export type NonTerminalStatus = InFlightStatus | EarlyStatus;
 
 // ---------------------------------------------------------------------------
+// Grounded-intent re-verification tuning
+// ---------------------------------------------------------------------------
+
+/**
+ * Cosine similarity floor for treating an intent as "grounded on" a lapsed
+ * premise. There is no explicit premise→intent edge in the schema, so the
+ * cascade uses embedding proximity (shared text-embedding-3-large space) as
+ * the grounding heuristic. Deliberately below the 0.7 network-assignment
+ * threshold: premise↔intent pairs are cross-genre (assertion vs. request), so
+ * related pairs land lower in cosine space than same-genre pairs.
+ */
+const GROUNDED_INTENT_MIN_SIMILARITY = 0.5;
+
+/** Max intents re-verified per cascade — caps LLM spend per retraction. */
+const GROUNDED_INTENT_LIMIT = 5;
+
+/**
+ * Minimal verifier verdict consumed by the cascade. Structurally compatible
+ * with the protocol package's `SemanticVerifierOutput` (which carries more
+ * fields); kept narrow here so tests can stub it without importing protocol.
+ */
+export interface IntentReverificationVerdict {
+  classification: string;
+  felicity_scores: { clarity: number; authority: number; sincerity: number };
+  semantic_entropy: number;
+  flags: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Deps interface
 // ---------------------------------------------------------------------------
 
@@ -67,9 +96,14 @@ export type NonTerminalStatus = InFlightStatus | EarlyStatus;
 export interface PremiseQueueDeps {
   /**
    * Retrieve cascade-eligible (non-terminal, non-accepted) opportunities
-   * where `userId` is an actor. Returns a minimal shape: id + current status.
+   * where `userId` is an actor AND whose provenance cites `premiseId`
+   * (evidence sourcePremiseId/candidatePremiseId, or actor-level grounding
+   * premise). Returns a minimal shape: id + current status.
    */
-  getUserOpportunities?: (userId: string) => Promise<Array<{ id: string; status: NonTerminalStatus }>>;
+  getOpportunitiesCitingPremise?: (
+    userId: string,
+    premiseId: string
+  ) => Promise<Array<{ id: string; status: NonTerminalStatus }>>;
 
   /**
    * Transition an opportunity to a new status. The cascade only ever expires.
@@ -93,6 +127,43 @@ export interface PremiseQueueDeps {
    * Transition a premise to EXPIRED status.
    */
   expirePremise?: (premiseId: string) => Promise<void>;
+
+  /**
+   * Fetch the embedding of a premise (null when the premise is missing or
+   * was never embedded — re-verification is skipped in that case).
+   */
+  getPremiseEmbedding?: (premiseId: string) => Promise<number[] | null>;
+
+  /**
+   * Find the user's ACTIVE intents grounded on the given embedding
+   * (cosine-similarity heuristic — no explicit premise→intent edge exists).
+   */
+  getGroundedIntents?: (
+    userId: string,
+    embedding: number[]
+  ) => Promise<Array<{ id: string; payload: string; similarity: number }>>;
+
+  /**
+   * Resolve the user's profile context (JSON string) for the verifier prompt.
+   */
+  getUserProfileContext?: (userId: string) => Promise<string>;
+
+  /**
+   * Re-run felicity verification on an intent payload against the profile.
+   */
+  verifyIntent?: (
+    content: string,
+    profileContext: string
+  ) => Promise<IntentReverificationVerdict>;
+
+  /**
+   * Persist a re-verification verdict onto the intent (felicity scores +
+   * semantic entropy).
+   */
+  applyIntentVerification?: (
+    intentId: string,
+    verdict: IntentReverificationVerdict
+  ) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,11 +173,16 @@ export interface PremiseQueueDeps {
 /**
  * Premise cascade and profile regeneration queue.
  *
- * `premise_cascade` — when a premise is retracted or expired, expires the
- * opportunities it motivated: draft/latent/pending/negotiating → expired.
- * `accepted` opportunities are left untouched (the connection already
- * happened), and `stalled` is never written here — it is strictly a
- * negotiation outcome (turn cap / timeout / no consensus).
+ * `premise_cascade` — when a premise is retracted or expired, expires only the
+ * opportunities whose provenance cites that premise (evidence
+ * sourcePremiseId/candidatePremiseId or actor-level grounding premise):
+ * draft/latent/pending/negotiating → expired. Opportunities evidenced solely
+ * by other premises are untouched (IND-423), `accepted` opportunities are left
+ * alone (the connection already happened), and `stalled` is never written
+ * here — it is strictly a negotiation outcome (turn cap / timeout / no
+ * consensus). The cascade also re-verifies the user's intents grounded on the
+ * lapsed premise (embedding-proximity heuristic) so their felicity scores
+ * don't go stale.
  *
  * `profile_regen` — when any premise lifecycle event fires, regenerates the
  * user's profile from their current active premises via the profile graph's
@@ -293,20 +369,22 @@ export class PremiseQueue {
   // -------------------------------------------------------------------------
 
   /**
-   * Default production implementation: fetch all cascade-eligible
-   * opportunities for a user from the database using a single filtered query.
+   * Default production implementation: fetch the cascade-eligible
+   * opportunities that cite the lapsed premise using a single filtered query.
    * `accepted` is intentionally outside the fetch scope — the cascade must
-   * never touch a made connection.
+   * never touch a made connection — and opportunities that don't cite the
+   * premise are outside it too (targeted revocation, IND-423).
    */
-  private async defaultGetUserOpportunities(
-    userId: string
+  private async defaultGetOpportunitiesCitingPremise(
+    userId: string,
+    premiseId: string
   ): Promise<Array<{ id: string; status: NonTerminalStatus }>> {
     const adapter = new OpportunityDatabaseAdapter();
     const cascadeStatuses: NonTerminalStatus[] = [
       ...EARLY_STATUSES,
       ...IN_FLIGHT_STATUSES,
     ];
-    const rows = await adapter.getOpportunitiesForUser(userId, {
+    const rows = await adapter.getOpportunitiesCitingPremise(userId, premiseId, {
       statuses: cascadeStatuses,
     });
     return rows.map((row) => ({ id: row.id, status: row.status as NonTerminalStatus }));
@@ -345,32 +423,115 @@ export class PremiseQueue {
     const { premiseId, userId, event } = data;
     this.cascadeLogger.info('Starting cascade', { premiseId, userId, event });
 
-    const getUserOpportunities =
-      this.deps?.getUserOpportunities ??
-      ((uid: string) => this.defaultGetUserOpportunities(uid));
+    const getOpportunitiesCitingPremise =
+      this.deps?.getOpportunitiesCitingPremise ??
+      ((uid: string, pid: string) => this.defaultGetOpportunitiesCitingPremise(uid, pid));
 
     const updateOpportunityStatus =
       this.deps?.updateOpportunityStatus ??
       ((oppId: string, status: 'expired') =>
         this.defaultUpdateOpportunityStatus(oppId, status));
 
-    const opportunities = await getUserOpportunities(userId);
-
-    // The premise that motivated these opportunities no longer holds, so they
-    // all expire — regardless of how far along they were. `stalled` is never
-    // written here: it is reserved for negotiation outcomes, and `accepted`
-    // rows are outside the fetch scope entirely.
+    // Targeted revocation (IND-423): only opportunities whose provenance cites
+    // the lapsed premise expire. Everything else the user has in flight —
+    // including active negotiations grounded in unrelated premises — survives.
+    // `stalled` is never written here: it is reserved for negotiation outcomes,
+    // and `accepted` rows are outside the fetch scope entirely.
+    const opportunities = await getOpportunitiesCitingPremise(userId, premiseId);
     for (const opp of opportunities) {
       await updateOpportunityStatus(opp.id, 'expired');
+    }
+
+    // Re-verify intents grounded on the lapsed premise so their felicity
+    // scores (notably `felicityAuthority`, the preparatory condition) reflect
+    // the reduced grounding. Failures here never fail the cascade job —
+    // opportunity expiry must not be retried because an LLM call flaked.
+    let reverified = 0;
+    try {
+      reverified = await this.reverifyGroundedIntents(userId, premiseId);
+    } catch (err) {
+      this.cascadeLogger.warn('Intent re-verification failed; cascade continues', {
+        premiseId,
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     this.cascadeLogger.info('Cascade complete', {
       premiseId,
       userId,
       event,
-      total: opportunities.length,
       expired: opportunities.length,
+      intentsReverified: reverified,
     });
+  }
+
+  /**
+   * Find the user's ACTIVE intents grounded on the lapsed premise (embedding
+   * proximity — no explicit premise→intent edge exists in the schema) and
+   * re-run felicity verification on each, persisting the fresh scores.
+   * Per-intent verifier failures are logged and skipped; the count of
+   * successfully re-verified intents is returned.
+   */
+  private async reverifyGroundedIntents(userId: string, premiseId: string): Promise<number> {
+    const getPremiseEmbedding =
+      this.deps?.getPremiseEmbedding ??
+      ((pid: string) => this.defaultGetPremiseEmbedding(pid));
+
+    const getGroundedIntents =
+      this.deps?.getGroundedIntents ??
+      ((uid: string, embedding: number[]) => this.defaultGetGroundedIntents(uid, embedding));
+
+    const getUserProfileContext =
+      this.deps?.getUserProfileContext ??
+      ((uid: string) => this.defaultGetUserProfileContext(uid));
+
+    const verifyIntent =
+      this.deps?.verifyIntent ??
+      ((content: string, profileContext: string) => this.defaultVerifyIntent(content, profileContext));
+
+    const applyIntentVerification =
+      this.deps?.applyIntentVerification ??
+      ((intentId: string, verdict: IntentReverificationVerdict) =>
+        this.defaultApplyIntentVerification(intentId, verdict));
+
+    const embedding = await getPremiseEmbedding(premiseId);
+    if (!embedding || embedding.length === 0) {
+      this.cascadeLogger.verbose('No premise embedding; skipping intent re-verification', { premiseId });
+      return 0;
+    }
+
+    const intents = await getGroundedIntents(userId, embedding);
+    if (intents.length === 0) {
+      this.cascadeLogger.verbose('No grounded intents to re-verify', { premiseId, userId });
+      return 0;
+    }
+
+    const profileContext = await getUserProfileContext(userId);
+
+    let reverified = 0;
+    for (const intent of intents) {
+      try {
+        const verdict = await verifyIntent(intent.payload, profileContext);
+        await applyIntentVerification(intent.id, verdict);
+        reverified += 1;
+        this.cascadeLogger.verbose('Intent re-verified after premise lapse', {
+          intentId: intent.id,
+          premiseId,
+          similarity: intent.similarity,
+          classification: verdict.classification,
+          authority: verdict.felicity_scores.authority,
+          flags: verdict.flags,
+        });
+      } catch (err) {
+        this.cascadeLogger.warn('Intent re-verification failed for intent; skipping', {
+          intentId: intent.id,
+          premiseId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return reverified;
   }
 
   private async handleProfileRegen(data: ProfileRegenData): Promise<void> {
@@ -395,6 +556,75 @@ export class PremiseQueue {
    */
   private async defaultEnqueueContextRegen(userId: string): Promise<void> {
     await userContextQueue.addRegenJob({ userId, reason: 'profile_regen' });
+  }
+
+  /**
+   * Default production implementation: read the premise's stored embedding.
+   */
+  private async defaultGetPremiseEmbedding(premiseId: string): Promise<number[] | null> {
+    const adapter = new ChatDatabaseAdapter();
+    const premise = await adapter.getPremise(premiseId);
+    return premise?.embedding ?? null;
+  }
+
+  /**
+   * Default production implementation: cosine search over the user's own
+   * ACTIVE intents, capped and thresholded (see tuning constants above).
+   */
+  private async defaultGetGroundedIntents(
+    userId: string,
+    embedding: number[]
+  ): Promise<Array<{ id: string; payload: string; similarity: number }>> {
+    const adapter = new ChatDatabaseAdapter();
+    return adapter.getIntentsGroundedOnEmbedding({
+      userId,
+      embedding,
+      minSimilarity: GROUNDED_INTENT_MIN_SIMILARITY,
+      limit: GROUNDED_INTENT_LIMIT,
+    });
+  }
+
+  /**
+   * Default production implementation: serialize the user's profile for the
+   * verifier prompt (same context shape the intent graph passes at creation).
+   */
+  private async defaultGetUserProfileContext(userId: string): Promise<string> {
+    const adapter = new OpportunityDatabaseAdapter();
+    const profile = await adapter.getProfile(userId);
+    return JSON.stringify(profile ?? {});
+  }
+
+  /**
+   * Default production implementation: run the protocol package's
+   * SemanticVerifier. Imported lazily so loading this queue module (and its
+   * tests) doesn't pull the LLM stack.
+   */
+  private async defaultVerifyIntent(
+    content: string,
+    profileContext: string
+  ): Promise<IntentReverificationVerdict> {
+    const { SemanticVerifier } = await import('@indexnetwork/protocol');
+    const verifier = new SemanticVerifier();
+    return verifier.invoke(content, profileContext);
+  }
+
+  /**
+   * Default production implementation: persist fresh felicity scores and
+   * semantic entropy onto the intent. Classification/flags are logged by the
+   * caller but deliberately not acted on — auto-archiving an intent on a
+   * degraded verdict would be over-invalidation of a different flavor.
+   */
+  private async defaultApplyIntentVerification(
+    intentId: string,
+    verdict: IntentReverificationVerdict
+  ): Promise<void> {
+    const adapter = new ChatDatabaseAdapter();
+    await adapter.updateIntent(intentId, {
+      felicityClarity: verdict.felicity_scores.clarity,
+      felicityAuthority: verdict.felicity_scores.authority,
+      felicitySincerity: verdict.felicity_scores.sincerity,
+      semanticEntropy: verdict.semantic_entropy,
+    });
   }
 }
 

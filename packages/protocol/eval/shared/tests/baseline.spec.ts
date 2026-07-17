@@ -7,6 +7,7 @@ import { buildScorecard } from "../scorecard.js";
 import { diffBaseline, readBaseline, writeBaseline, writeRunReport } from "../baseline.js";
 import { computeRollingBaseline } from "../rolling.js";
 import type { CaseResultLike, ScorecardLike } from "../types.js";
+import { makeTestMeta } from "./artifact.fixtures.js";
 
 const R = 7;
 const BS = 0.8;
@@ -78,23 +79,24 @@ describe("writeBaseline leanCase transform", () => {
   it("applies the per-case transform before serializing", async () => {
     const p = join(tmpdir(), `shared-baseline-${Date.now()}.json`);
     await writeBaseline(p, rich(), {
+      meta: makeTestMeta(),
       leanCase: (c) => ({ ...c, runResults: c.runResults.map(({ detail: _d, ...rest }) => rest) }),
     });
-    const back = await readBaseline<ScorecardLike<RichCase>>(p);
+    const back = await readBaseline<ScorecardLike<RichCase>>(p, { harness: "test-harness" });
     expect(back!.cases[0].runResults[0].detail).toBeUndefined();
     await unlink(p);
   });
 
   it("keeps detail verbatim with the default (identity) transform", async () => {
     const p = join(tmpdir(), `shared-report-${Date.now()}.json`);
-    await writeRunReport(p, rich());
-    const back = JSON.parse(await Bun.file(p).text()) as ScorecardLike<RichCase>;
+    await writeRunReport(p, rich(), { meta: makeTestMeta() });
+    const back = (JSON.parse(await Bun.file(p).text()) as { payload: ScorecardLike<RichCase> }).payload;
     expect(back.cases[0].runResults[0].detail).toBe("verbose");
     await unlink(p);
   });
 
   it("readBaseline returns null when the file is missing", async () => {
-    const back = await readBaseline(join(tmpdir(), `missing-${Date.now()}.json`));
+    const back = await readBaseline(join(tmpdir(), `missing-${Date.now()}.json`), { harness: "test-harness" });
     expect(back).toBeNull();
   });
 });
@@ -113,9 +115,10 @@ describe("computeRollingBaseline", () => {
       ...buildScorecard([s("a", "g", passRate, 3)], { model: "m", runs: 3 }),
       generatedAt: at,
     });
-    await writeRunReport(join(dir, "recent-perfect.json"), mk(1, "2026-05-27T00:00:00.000Z"));
-    await writeRunReport(join(dir, "recent-partial.json"), mk(0.33, "2026-05-26T00:00:00.000Z"));
-    await writeRunReport(join(dir, "old.json"), mk(0, "2026-05-01T00:00:00.000Z"));
+    const meta = makeTestMeta({ runs: 3, startedAt: "2026-04-30T00:00:00.000Z", completedAt: "2026-04-30T00:01:00.000Z" });
+    await writeRunReport(join(dir, "recent-perfect.json"), mk(1, "2026-05-27T00:00:00.000Z"), { meta });
+    await writeRunReport(join(dir, "recent-partial.json"), mk(1 / 3, "2026-05-26T00:00:00.000Z"), { meta });
+    await writeRunReport(join(dir, "old.json"), mk(0, "2026-05-01T00:00:00.000Z"), { meta });
 
     const rolling = await computeRollingBaseline(dir, 7, now);
     expect(rolling).not.toBeNull();

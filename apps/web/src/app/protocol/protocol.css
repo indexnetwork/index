@@ -1,0 +1,53 @@
+.ovw .cli-code {
+  margin: 10px 0 20px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  background: #141414;
+  color: #d0d0d0;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  font: 12px/1.65 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre;
+}
+
+.ovw .cli-code code {
+  font: inherit;
+}
+
+.ovw .cli-commands,
+.ovw .cli-cmd,
+.ovw .cli-cyan {
+  color: #5ccfe6;
+}
+
+.ovw .cli-title {
+  color: #fff;
+  font-weight: 700;
+}
+
+.ovw .cli-green {
+  color: #bae67e;
+}
+
+.ovw .cli-yellow {
+  color: #ffd580;
+}
+
+.ovw .cli-blue {
+  color: #73d0ff;
+}
+
+.ovw .cli-dim {
+  color: #888;
+}
+
+.ovw .doc section > h3 {
+  margin: 24px 0 8px;
+  font-size: 15px;
+}
+
+.ovw .doc section > h4 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+}

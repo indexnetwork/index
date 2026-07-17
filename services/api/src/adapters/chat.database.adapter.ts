@@ -1,7 +1,9 @@
-import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
+import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
+import { IntentEvents } from '../events/intent.event';
+import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
@@ -17,7 +19,9 @@ export class ChatDatabaseAdapter {
 
   // Negotiation context methods — required by HomeGraphDatabase
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
+  async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
+  async getMessagesByTaskIds(taskIds: string[]) { return _convDb().getMessagesByTaskIds(taskIds); }
   async getArtifactsForTask(taskId: string) { return _convDb().getArtifactsForTask(taskId); }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -64,6 +68,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(schema.intents.userId, userId),
           isNull(schema.intents.archivedAt),
+          activeIntentLifecycleWhere(),
           or(ilike(schema.intents.payload, pattern), ilike(schema.intents.summary, pattern)),
         ),
       )
@@ -128,7 +133,8 @@ export class ChatDatabaseAdapter {
           and(
             eq(schema.intentNetworks.networkId, networkId),
             eq(schema.intents.userId, userId),
-            isNull(schema.intents.archivedAt)
+            isNull(schema.intents.archivedAt),
+            activeIntentLifecycleWhere(),
           )
         );
       return result;
@@ -259,19 +265,42 @@ export class ChatDatabaseAdapter {
       if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
       if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
-      const [updated] = await db.update(schema.intents)
-        .set(updateData)
-        .where(eq(schema.intents.id, intentId))
-        .returning({
-          id: schema.intents.id,
+      const result = await db.transaction(async (tx) => {
+        const [before] = await tx.select({
           payload: schema.intents.payload,
           summary: schema.intents.summary,
-          isIncognito: schema.intents.isIncognito,
-          createdAt: schema.intents.createdAt,
-          updatedAt: schema.intents.updatedAt,
           userId: schema.intents.userId,
+        }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
+        if (!before) return null;
+        const [updated] = await tx.update(schema.intents)
+          .set(updateData)
+          .where(eq(schema.intents.id, intentId))
+          .returning({
+            id: schema.intents.id,
+            payload: schema.intents.payload,
+            summary: schema.intents.summary,
+            isIncognito: schema.intents.isIncognito,
+            createdAt: schema.intents.createdAt,
+            updatedAt: schema.intents.updatedAt,
+            userId: schema.intents.userId,
+          });
+        if (!updated) return null;
+        return {
+          updated,
+          oldFingerprint: computeIntentFingerprint(before.payload, before.summary),
+          newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
+        };
+      });
+      if (!result) return null;
+      if (result.oldFingerprint !== result.newFingerprint) {
+        await IntentEvents.onMaterialUpdated({
+          intentId,
+          userId: result.updated.userId,
+          oldFingerprint: result.oldFingerprint,
+          newFingerprint: result.newFingerprint,
         });
-      return updated ?? null;
+      }
+      return result.updated;
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.updateIntent error', { error: error instanceof Error ? error.message : String(error) });
       return null;
@@ -311,6 +340,7 @@ export class ChatDatabaseAdapter {
         .where(
           and(
             eq(schema.networkMembers.userId, userId),
+            isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt),
             or(
               eq(schema.networks.isPersonal, false),
@@ -347,6 +377,7 @@ export class ChatDatabaseAdapter {
           and(
             eq(schema.networkMembers.networkId, networkId),
             eq(schema.networkMembers.userId, userId),
+            isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt)
           )
         )
@@ -356,6 +387,33 @@ export class ChatDatabaseAdapter {
       logger.error('ChatDatabaseAdapter.getNetworkMembership error', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
+  }
+
+  async getActiveNetworkMembershipPairs(
+    pairs: Array<{ userId: string; networkId: string }>,
+  ): Promise<Array<{ userId: string; networkId: string }>> {
+    if (pairs.length === 0) return [];
+    const uniquePairs = [...new Map(
+      pairs.map((pair) => [`${pair.userId}\u0000${pair.networkId}`, pair] as const),
+    ).values()];
+    const pairPredicates = uniquePairs.map((pair) => and(
+      eq(schema.networkMembers.userId, pair.userId),
+      eq(schema.networkMembers.networkId, pair.networkId),
+    ));
+    const rows = await db
+      .select({
+        userId: schema.networkMembers.userId,
+        networkId: schema.networkMembers.networkId,
+      })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+      .where(and(
+        or(...pairPredicates),
+        isNull(schema.networkMembers.deletedAt),
+        isNull(schema.networks.deletedAt),
+      ));
+    return rows.sort((a, b) =>
+      a.userId.localeCompare(b.userId) || a.networkId.localeCompare(b.networkId));
   }
 
   async getNetwork(networkId: string): Promise<{
@@ -772,6 +830,8 @@ export class ChatDatabaseAdapter {
         userId: intents.userId,
         sourceType: intents.sourceType,
         sourceId: intents.sourceId,
+        status: intents.status,
+        archivedAt: intents.archivedAt,
       })
       .from(intents)
       .where(eq(intents.id, intentId))
@@ -1043,7 +1103,12 @@ export class ChatDatabaseAdapter {
           .select({ count: count() })
           .from(intentNetworks)
           .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
-          .where(and(eq(intentNetworks.networkId, networkId), eq(intents.userId, m.userId), isNull(intents.archivedAt)));
+          .where(and(
+            eq(intentNetworks.networkId, networkId),
+            eq(intents.userId, m.userId),
+            isNull(intents.archivedAt),
+            activeIntentLifecycleWhere(),
+          ));
         const email = m.userId === requestingUserId ? (requestingUserEmailRow?.email ?? undefined) : undefined;
         return {
           userId: m.userId,
@@ -1105,7 +1170,12 @@ export class ChatDatabaseAdapter {
           .select({ userId: intents.userId, count: count() })
           .from(intentNetworks)
           .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
-          .where(and(eq(intentNetworks.networkId, networkId), inArray(intents.userId, memberUserIds), isNull(intents.archivedAt)))
+          .where(and(
+            eq(intentNetworks.networkId, networkId),
+            inArray(intents.userId, memberUserIds),
+            isNull(intents.archivedAt),
+            activeIntentLifecycleWhere(),
+          ))
           .groupBy(intents.userId)
       : [];
     const intentCountMap = new Map(intentCountRows.map((r) => [r.userId, Number(r.count)]));
@@ -1188,7 +1258,11 @@ export class ChatDatabaseAdapter {
       .from(intentNetworks)
       .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
       .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(eq(intentNetworks.networkId, networkId), isNull(intents.archivedAt)))
+      .where(and(
+        eq(intentNetworks.networkId, networkId),
+        isNull(intents.archivedAt),
+        activeIntentLifecycleWhere(),
+      ))
       .orderBy(desc(intents.createdAt))
       .limit(limit)
       .offset(offset);
@@ -1268,7 +1342,11 @@ export class ChatDatabaseAdapter {
       .from(intentNetworks)
       .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
       .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(eq(intentNetworks.networkId, networkId), isNull(intents.archivedAt)))
+      .where(and(
+        eq(intentNetworks.networkId, networkId),
+        isNull(intents.archivedAt),
+        activeIntentLifecycleWhere(),
+      ))
       .orderBy(desc(intents.createdAt))
       .limit(limit)
       .offset(offset);
@@ -2332,11 +2410,24 @@ export class ChatDatabaseAdapter {
   async createOpportunity(data: CreateOpportunityInput): Promise<OpportunityRow> {
     return this.opportunityAdapter.createOpportunity(data);
   }
+  async createOpportunityIfNetworkEligible(
+    data: CreateOpportunityInput,
+    eligibility: Parameters<OpportunityDatabaseAdapter['createOpportunityIfNetworkEligible']>[1],
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.createOpportunityIfNetworkEligible(data, eligibility);
+  }
   async createOpportunityAndExpireIds(
     data: CreateOpportunityInput,
     expireIds: string[]
   ): Promise<{ created: OpportunityRow; expired: OpportunityRow[] }> {
     return this.opportunityAdapter.createOpportunityAndExpireIds(data, expireIds);
+  }
+  async createOpportunityAndExpireIdsIfNetworkEligible(
+    data: CreateOpportunityInput,
+    expireIds: string[],
+    eligibility: Parameters<OpportunityDatabaseAdapter['createOpportunityAndExpireIdsIfNetworkEligible']>[2],
+  ): Promise<{ created: OpportunityRow; expired: OpportunityRow[] } | null> {
+    return this.opportunityAdapter.createOpportunityAndExpireIdsIfNetworkEligible(data, expireIds, eligibility);
   }
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.getOpportunity(id);
@@ -2359,9 +2450,15 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string; scopeType?: 'intent'; scopeId?: string }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForUser(userId, options);
+  }
+  async getLivePoolOpportunitiesForIntent(
+    recipientUserId: string,
+    intentId: string,
+  ): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.getLivePoolOpportunitiesForIntent(recipientUserId, intentId);
   }
   async getOpportunitiesForNetwork(
     networkId: string,
@@ -2376,6 +2473,14 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy);
   }
+  async updateOpportunityStatusIfNetworkEligible(
+    id: string,
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    actors: Array<{ userId: string; networkId: string }>,
+    eligibility: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[3],
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.updateOpportunityStatusIfNetworkEligible(id, status, actors, eligibility);
+  }
   async updateOpportunityActorApproval(
     id: string,
     introducerUserId: string,
@@ -2385,6 +2490,19 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
+  }
+  async applyOpportunityPoolAdjustments(
+    recipientUserId: string,
+    intentId: string,
+    expectedIntentFingerprint: string,
+    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[3],
+  ): Promise<string[] | null> {
+    return this.opportunityAdapter.applyOpportunityPoolAdjustments(
+      recipientUserId,
+      intentId,
+      expectedIntentFingerprint,
+      writes,
+    );
   }
   async stampOpportunityActorAction(
     id: string,
@@ -3117,6 +3235,7 @@ export class ChatDatabaseAdapter {
           and(
             eq(schema.intents.userId, schema.networkMembers.userId),
             isNull(schema.intents.archivedAt),
+            activeIntentLifecycleWhere(),
           ),
         )
         .where(
@@ -3457,6 +3576,43 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Find a user's own ACTIVE intents whose embeddings sit close to the given
+   * embedding. Used by the premise retract/expire cascade as the "grounded on"
+   * heuristic: no explicit premise→intent edge exists in the schema, so
+   * cosine proximity in the shared embedding space (text-embedding-3-large,
+   * 2000 dims — same space as premises) is the best available proxy for which
+   * intents were grounded on a lapsed premise and need re-verification (IND-423).
+   * @param params.userId - Owner of the intents (own intents only)
+   * @param params.embedding - The premise embedding to compare against
+   * @param params.minSimilarity - Cosine similarity floor (default 0.5)
+   * @param params.limit - Max intents to return (default 5)
+   */
+  async getIntentsGroundedOnEmbedding(params: {
+    userId: string;
+    embedding: number[];
+    minSimilarity?: number;
+    limit?: number;
+  }): Promise<Array<{ id: string; payload: string; similarity: number }>> {
+    const { userId, embedding, minSimilarity = 0.5, limit = 5 } = params;
+    const vectorStr = `[${embedding.join(',')}]`;
+    const rows = await db.execute<{ id: string; payload: string; similarity: number }>(sql`
+      SELECT
+        i.id,
+        i.payload,
+        1 - (i.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.intents} i
+      WHERE i.user_id = ${userId}
+        AND (i.status = 'ACTIVE' OR i.status IS NULL)
+        AND i.archived_at IS NULL
+        AND i.embedding IS NOT NULL
+        AND 1 - (i.embedding <=> ${vectorStr}::vector) >= ${minSimilarity}
+      ORDER BY i.embedding <=> ${vectorStr}::vector
+      LIMIT ${limit}
+    `);
+    return rows as Array<{ id: string; payload: string; similarity: number }>;
+  }
+
+  /**
    * Find ACTIVE premises whose validity.validUntil has passed.
    * Uses a JSONB text extraction cast to timestamptz for the comparison.
    * @returns Minimal rows: id and userId for each expired premise
@@ -3623,10 +3779,16 @@ export class ChatDatabaseAdapter {
         1 - (i.embedding <=> ${vectorStr}::vector) AS similarity
       FROM ${schema.intents} i
       JOIN ${schema.intentNetworks} ine ON i.id = ine.intent_id
+      JOIN ${schema.networkMembers} nm
+        ON nm.user_id = i.user_id AND nm.network_id = ine.network_id
+      JOIN ${schema.networks} n ON n.id = ine.network_id
       JOIN ${schema.users} u ON i.user_id = u.id
       WHERE ine.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}])
         AND i.user_id != ${excludeUserId}
-        AND i.status = 'ACTIVE'
+        AND nm.deleted_at IS NULL
+        AND n.deleted_at IS NULL
+        AND (i.status = 'ACTIVE' OR i.status IS NULL)
+        AND i.archived_at IS NULL
         AND i.embedding IS NOT NULL
         AND u.deleted_at IS NULL
         AND 1 - (i.embedding <=> ${vectorStr}::vector) >= ${minScore}

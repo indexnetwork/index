@@ -21,6 +21,11 @@ for the assistant. All changes happen in a worktree under `.worktrees/`. This re
 wraps `git worktree` with `bun run worktree:*` helpers (`scripts/worktree-*.sh`) that do
 setup work raw git does **not**.
 
+**Two-session rule**: when this skill is invoked from a main (canonical-root) session,
+the main session only *creates and sets up* the worktree — all implementation, commits,
+rebases, and pushes inside it belong to a separate worktree session. See
+`worktree-session-pipeline` for the full handoff loop.
+
 ## Naming convention (non-negotiable)
 
 - **Branch**: `<type>/<short-desc>` with slashes — e.g. `chore/track-agentvillage-main`.
@@ -40,8 +45,12 @@ bun run worktree:setup <type-desc>                             # REQUIRED next s
 Raw `git worktree add` alone is **not enough**. `worktree:setup` (`scripts/worktree-setup.sh`):
 
 1. Installs `node_modules` for `services/api` + `apps/web` (`bun install --frozen-lockfile`).
-2. Symlinks `.env*` (except `.env.example`) into `services/api`, `apps/web`,
-   `packages/protocol`, `packages/cli` — secrets are linked, never copied.
+2. Symlinks the **repo-root** `.env*` files (except `.env.example`) into the **worktree
+   root** — runtime env files live at the repo root and every loader resolves them
+   there; secrets are linked, never copied. (Legacy package-local `.env` files under
+   `services/api`, `apps/web`, `packages/protocol`, `packages/cli` are used only as
+   fallback *sources* and are still linked into the worktree root, with a migrate
+   reminder — code no longer reads package-local env files.)
 3. Symlinks `.claude/settings.local.json`.
 4. Sets `git config core.hooksPath → scripts/hooks` so the **pre-push hook**
    (regenerates `SKILL.md` files) actually fires on push.
@@ -153,8 +162,16 @@ git -C /Users/yanek/Projects/index worktree remove .worktrees/<type-desc>
 git -C /Users/yanek/Projects/index branch -d <type>/<desc>
 ```
 
+PRs in this repo are usually **squash-merged**, so `git branch -d` often refuses ("not
+fully merged") even though the PR landed — verify via the PR's merged state (`gh pr view`)
+and use `-D` once confirmed. The full post-merge sweep (verification, pointers, prune)
+is the `finish-pr` skill's cleanup procedure; normally that skill runs this, not you.
+
 ## See also
 
+- **`worktree-session-pipeline`** — the two-session development loop (main session
+  creates worktrees and finishes PRs; worktree session implements). Read this when
+  coordinating more than the mechanical create/setup this skill covers.
 - **Submodules** (Edge-City `agentvillage` / `-controlplane` / `-landing`): work inside the
   submodule, branch + PR into the `Edge-City` org repo, then bump the monorepo pointer with
   `git add <submodule-path>`. `git submodule update` restores to the pinned SHA;

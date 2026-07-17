@@ -3,8 +3,11 @@ import { useNavigate, useParams } from "react-router";
 import { Loader2 } from "lucide-react";
 
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useAuthenticatedAPI } from "@/lib/api";
+import { useQuestionsService } from "@/contexts/APIContext";
+import { APIError, useAuthenticatedAPI } from "@/lib/api";
 import ClientLayout from "@/components/ClientLayout";
+import UptakeQuestionsModal from "@/components/UptakeQuestionsModal";
+import type { UptakeAcceptanceAdvisory, UptakeAcceptanceErrorBody } from "@/services/opportunities";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 
@@ -12,7 +15,13 @@ type ConnectLinkGoResponse =
   | { url: string }
   | { kind: "approve_introduction" };
 
-type PageStep = "loading" | "intro-approved" | "error";
+type PageStep = "loading" | "intro-approved" | "uptake" | "error";
+
+function getUptakeAdvisory(error: unknown): UptakeAcceptanceAdvisory | null {
+  if (!(error instanceof APIError) || error.status !== 409) return null;
+  const body = error.response as Partial<UptakeAcceptanceErrorBody> | undefined;
+  return body?.advisory?.code === "unresolved_uptake_questions" ? body.advisory : null;
+}
 
 /**
  * Connect-link continuation page.
@@ -29,6 +38,7 @@ export default function ConnectLinkPage() {
   const { code } = useParams();
   const { isAuthenticated, isLoading: authLoading, openLoginModal } = useAuthContext();
   const api = useAuthenticatedAPI();
+  const questionsService = useQuestionsService();
   const navigate = useNavigate();
   const loginPromptedRef = useRef(false);
   // Track which code was last resolved rather than a plain boolean so that
@@ -38,6 +48,8 @@ export default function ConnectLinkPage() {
 
   const [step, setStep] = useState<PageStep>("loading");
   const [error, setError] = useState<string | null>(null);
+  const [uptakeAdvisory, setUptakeAdvisory] = useState<UptakeAcceptanceAdvisory | null>(null);
+  const [acknowledgedIds, setAcknowledgedIds] = useState<string[] | null>(null);
 
   // Prompt login when unauthenticated; callbackURL returns to this same page
   // so the flow resumes automatically after the OAuth round-trip.
@@ -51,7 +63,8 @@ export default function ConnectLinkPage() {
   // Once authenticated, call the authenticated resolver and redirect.
   useEffect(() => {
     if (!isAuthenticated || authLoading) return;
-    if (lastResolvedCodeRef.current === code) return; // already resolved this code
+    const resolutionKey = `${code ?? ""}:${(acknowledgedIds ?? []).join(",")}`;
+    if (lastResolvedCodeRef.current === resolutionKey) return; // already resolved this attempt
     if (!code) {
       setError("Invalid link — missing code.");
       setStep("error");
@@ -59,13 +72,16 @@ export default function ConnectLinkPage() {
     }
     // Mark this code as resolved before the async call so concurrent renders
     // don't fire a second request. If the code changed, reset display state first.
-    lastResolvedCodeRef.current = code;
+    lastResolvedCodeRef.current = resolutionKey;
     setStep("loading");
     setError(null);
 
     const resolve = async () => {
       try {
-        const data = await api.get<ConnectLinkGoResponse>(`/c/${code}/go`);
+        const acknowledgementQuery = acknowledgedIds?.length
+          ? `?acknowledgedUptakeQuestionIds=${encodeURIComponent(acknowledgedIds.join(","))}`
+          : "";
+        const data = await api.get<ConnectLinkGoResponse>(`/c/${code}/go${acknowledgementQuery}`);
         if ("url" in data) {
           // Parse the URL: same-origin paths get client-side navigation;
           // cross-origin URLs (e.g. Telegram) get a hard redirect.
@@ -87,13 +103,19 @@ export default function ConnectLinkPage() {
           setStep("error");
         }
       } catch (err) {
+        const advisory = getUptakeAdvisory(err);
+        if (advisory) {
+          setUptakeAdvisory(advisory);
+          setStep("uptake");
+          return;
+        }
         setError((err as Error)?.message ?? "This link is unavailable.");
         setStep("error");
       }
     };
 
     void resolve();
-  }, [isAuthenticated, authLoading, code, api, navigate]);
+  }, [isAuthenticated, authLoading, code, api, navigate, acknowledgedIds]);
 
   const renderContent = () => {
     if (step === "intro-approved") {
@@ -174,11 +196,31 @@ export default function ConnectLinkPage() {
   };
 
   return (
-    <ClientLayout>
-      <div className="bg-[#FAFAFA]">
-        <div className="px-6 py-12">{renderContent()}</div>
-      </div>
-    </ClientLayout>
+    <>
+      <ClientLayout>
+        <div className="bg-[#FAFAFA]">
+          <div className="px-6 py-12">{renderContent()}</div>
+        </div>
+      </ClientLayout>
+      {step === "uptake" && uptakeAdvisory ? (
+        <UptakeQuestionsModal
+          advisory={uptakeAdvisory}
+          onAnswer={(questionId, body) => questionsService.answer(questionId, body).then(() => undefined)}
+          onDismiss={(questionId) => questionsService.dismiss(questionId)}
+          onContinue={async (questionIds) => {
+            lastResolvedCodeRef.current = null;
+            setUptakeAdvisory(null);
+            setStep("loading");
+            setAcknowledgedIds(questionIds);
+          }}
+          onCancel={() => {
+            setUptakeAdvisory(null);
+            setError("Connection cancelled. The opportunity remains pending.");
+            setStep("error");
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

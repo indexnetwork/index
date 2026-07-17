@@ -74,7 +74,6 @@ export type { ProfileEnricher, EnrichmentRequest, EnrichmentResult } from "./sha
 export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, IntegrationSessionOptions, ToolActionResponse } from "./shared/interfaces/integration.interface.js";
 export type { IntentGraphQueue } from "./shared/interfaces/queue.interface.js";
 export type { Scraper, ExtractUrlContentOptions } from "./shared/interfaces/scraper.interface.js";
-export type { Storage } from "./shared/interfaces/storage.interface.js";
 export type { DeliveryLedger, DeliveredOpportunityRow } from "./shared/interfaces/delivery-ledger.interface.js";
 export type { MintConnectLink, ConnectLinkKind } from "./shared/interfaces/connect-link.interface.js";
 export type {
@@ -94,7 +93,7 @@ export { SYSTEM_AGENT_IDS } from './shared/interfaces/agent.interface.js';
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
 export { ChatContextDigestSchema, type ChatContextDigest } from "./shared/schemas/chat-context.schema.js";
-export { QuestionOptionSchema, QuestionSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema, type Question, type QuestionOption, type QuestionStrategy, type QuestionWithStrategy, type QuestionGeneratorResponse, type QuestionGenerationResult, type QuestionMode, type QuestionDetection, type QuestionActor, type QuestionAnswer } from "./shared/schemas/question.schema.js";
+export { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolPushSchema, QuestionVoidedReasonSchema, QuestionPoolPushRequestStatusSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema, type Question, type QuestionOption, type UnderspecificationType, type QuestionStrategy, type QuestionWithStrategy, type QuestionGeneratorResponse, type QuestionGenerationResult, type QuestionPurpose, type QuestionMode, type QuestionDetection, type QuestionPoolPush, type QuestionVoidedReason, type QuestionPoolPushRequestStatus, type QuestionPoolPushRequestReason, type QuestionActor, type QuestionAnswer } from "./shared/schemas/question.schema.js";
 export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 export type { McpAuthInput } from "./shared/schemas/mcp-auth.schema.js";
 export { UserIdentitySchema, type UserIdentity } from "./shared/schemas/identity.schema.js";
@@ -105,6 +104,10 @@ export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, classifyPromptPresence, resolveAs
 export type { PromptPresenceInput, ResolveAssignmentNetworkScopeArgs, AssignmentScopeMembership, BuildNetworkAssignmentDecisionArgs, NetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
 export { buildCandidateEvidence, withCandidateEvidence, mergeOpportunityEvidence, withMatchedStrategies, renderOpportunityEvidenceForPrompt } from "./opportunity/opportunity.evidence.js";
 export type { EvidenceCandidateInput } from "./opportunity/opportunity.evidence.js";
+
+// ─── Intent clarification ─────────────────────────────────────────────────────
+
+export { IntentClarifier, type IntentClarifierOutput } from "./intent/intent.clarifier.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
@@ -123,10 +126,7 @@ export {
   filterNegotiatorTools,
 } from "./chat/negotiator.persona.js";
 export { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./chat/negotiator.prompt.js";
-export {
-  NEGOTIATOR_MEMORY_TOOL_NAMES,
-  createNegotiatorMemoryTools,
-} from "./chat/negotiator.tools.js";
+export { createNegotiatorMemoryTools } from "./chat/negotiator.tools.js";
 export type {
   NegotiatorMemoryToolsHost,
   NegotiatorMemoryRememberInput,
@@ -136,14 +136,24 @@ export type {
 } from "./shared/interfaces/negotiator-memory.interface.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
+export type { HydeGraphOptions, HydeLensInferrerLike, HydeGeneratorLike, HydeValidatorLike } from "./shared/hyde/hyde.graph.js";
+export { getHydeGenerationMode, HYDE_FRAME_GENERATION_VERSION } from "./shared/hyde/hyde.env.js";
+export type { HydeGenerationMode } from "./shared/hyde/hyde.env.js";
+export { sanitizeHydeSourceFrame } from "./shared/hyde/hyde.frame.js";
+export type { HydeSourceFrame, HydeFrameRole, HydeFrameHardConstraint, HydeFrameNamedEntity, HydeFrameVocabulary, HydeHardConstraintType, HydeNamedEntityType } from "./shared/hyde/hyde.frame.js";
+export { HydeValidator } from "./shared/hyde/hyde.validator.js";
+export type { HydeValidationInput, HydeValidationDocument, HydeValidationOutput, HydeValidationVerdict } from "./shared/hyde/hyde.validator.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";
 export { NetworkMembershipGraphFactory } from "./network/membership/membership.graph.js";
 export { IntentGraphFactory } from "./intent/intent.graph.js";
+export { SemanticVerifier } from "./intent/intent.verifier.js";
+export type { SemanticVerifierOutput } from "./intent/intent.verifier.js";
 export { IntentNetworkGraphFactory } from "./network/indexer/indexer.graph.js";
 export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";
-export { NegotiationGraphFactory, createDefaultNegotiationGraph, negotiateCandidates } from "./negotiation/negotiation.graph.js";
+export { NegotiationGraphFactory, negotiateCandidates } from "./negotiation/negotiation.graph.js";
 export { OpportunityGraphFactory } from "./opportunity/opportunity.graph.js";
+export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "./opportunity/opportunity.graph.js";
 export { EnrichmentGraphFactory } from "./enrichment/enrichment.graph.js";
 export { PremiseGraphFactory } from "./premise/premise.graph.js";
 
@@ -157,6 +167,7 @@ export type { ClassifyInterruptInput } from "./chat/chat.interrupt.classifier.js
 export { ChatSummarizer } from "./chat/chat.summarizer.js";
 export type { ChatSummarizerInput, ChatSummarizerMessage } from "./chat/chat.summarizer.js";
 export { HydeGenerator } from "./shared/hyde/hyde.generator.js";
+export type { HydeGenerateInput, HydeGeneratorOutput } from "./shared/hyde/hyde.generator.js";
 export { SuggestionGenerator } from "./chat/chat.suggester.js";
 export type { SuggestionGeneratorInput } from "./chat/chat.suggester.js";
 export { generateInviteMessage } from "./contact/contact.inviter.js";
@@ -170,6 +181,7 @@ export type { PremiseDecomposerOutput, DecomposedPremise } from "./premise/premi
 export { PremiseIndexer } from "./premise/premise.indexer.js";
 export type { PremiseIndexerOutput } from "./premise/premise.indexer.js";
 export { LensInferrer } from "./shared/hyde/lens.inferrer.js";
+export type { Lens, LensInferenceInput, LensInferenceOutput, HydeTargetCorpus } from "./shared/hyde/lens.inferrer.js";
 export { NegotiationInsightsGenerator } from "./negotiation/insight.generator.js";
 export type { NegotiationDigest } from "./negotiation/insight.generator.js";
 export { IndexNegotiator } from "./negotiation/negotiation.agent.js";
@@ -182,21 +194,41 @@ export type { NegotiatorMemoryEntry, NegotiatorMemoryQuery, NegotiatorMemoryScop
 export type { NegotiationAgentInput } from "./negotiation/negotiation.agent.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
 export type { QuestionerAgentConfig } from "./questioner/questioner.agent.js";
-export type { QuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, NegotiationInflightContext, ChatContext, PoolDiscoveryContext } from "./questioner/questioner.types.js";
+export type { QuestionerInput, UptakeQuestionerInput, QuestionerContext, QuestionerEnqueuePayload, QuestionerEnqueueFn, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext, PostStallNegotiationContext, UptakeNegotiationContext, NegotiationInflightContext, ChatContext, PoolDiscoveryContext } from "./questioner/questioner.types.js";
 export { getPreset } from "./questioner/questioner.presets.js";
-export { isQuestionerEnabled, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs } from "./questioner/questioner.env.js";
+export { QUD_UNDERSPECIFICATION_RULES } from "./questioner/questioner.qud.js";
+export { isQuestionerEnabled, isDiscoveryQuestionsEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs } from "./questioner/questioner.env.js";
 export type { QuestionerPreset } from "./questioner/questioner.presets.js";
 export { PoolDiscriminatorMiner } from "./opportunity/discriminator/discriminator.miner.js";
 export type { PoolDiscriminatorMinerConfig } from "./opportunity/discriminator/discriminator.miner.js";
+export { PoolDiscriminatorAssigner, buildAssignmentPrompt, verifyAssignedAxis } from "./opportunity/discriminator/discriminator.assigner.js";
+export type { PoolDiscriminatorAssignerConfig, PoolDiscriminatorAssignmentAxis, PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis, PoolDiscriminatorCandidateAssignment } from "./opportunity/discriminator/discriminator.assigner.js";
 export { runPoolDiscriminatorShadow } from "./opportunity/discriminator/discriminator.shadow.js";
 export type { DiscriminatorShadowInput } from "./opportunity/discriminator/discriminator.shadow.js";
 export { scoreDiscriminator, computeNovelty, cosineSimilarity } from "./opportunity/discriminator/discriminator.scorer.js";
-export { poolQuestionsMiningMode, poolQuestionsMode, POOL_DISCRIMINATOR_MIN_POOL_SIZE, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_QUESTION_MIN_VOI, POOL_QUESTION_MIN_EVIDENCE_RATE, POOL_QUESTION_MAX_DISCRIMINATORS, POOL_QUESTION_MAX_PENDING_PER_INTENT } from "./opportunity/discriminator/discriminator.env.js";
-export type { PoolQuestionsMiningMode, PoolQuestionsMode } from "./opportunity/discriminator/discriminator.env.js";
+export { poolQuestionsMiningMode, poolQuestionsMode, poolQuestionsPushMode, poolQuestionsStampNewborn, POOL_DISCRIMINATOR_MIN_POOL_SIZE, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_QUESTION_MIN_VOI, POOL_QUESTION_MIN_EVIDENCE_RATE, POOL_QUESTION_MAX_DISCRIMINATORS, POOL_QUESTION_MAX_PENDING_PER_INTENT, POOL_QUESTION_PUSH_BASE_VOI, POOL_QUESTION_PUSH_DISMISSAL_DECAY, POOL_QUESTION_PUSH_MIN_POOL_SIZE, POOL_QUESTION_PUSH_DAILY_CAP } from "./opportunity/discriminator/discriminator.env.js";
+export type { PoolQuestionsMiningMode, PoolQuestionsMode, PoolQuestionsPushMode, PoolQuestionsRankingMode, PoolQuestionsStampNewbornMode } from "./opportunity/discriminator/discriminator.env.js";
+export { poolQuestionsRanking, POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR, POOL_RERUN_DEBOUNCE_MS } from "./opportunity/discriminator/discriminator.env.js";
+export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment, readPoolAdjustments, readActivePoolAdjustments, poolAdjustmentMultiplier, adjustedConfidence, latestPoolDemotionDetail } from "./opportunity/discriminator/discriminator.adjustments.js";
+export type { BuildPoolAdjustmentInput, PoolAdjustment, PoolAdjustmentPlanEntry, PoolAdjustmentProvenance, PoolAdjustmentSignal } from "./opportunity/discriminator/discriminator.adjustments.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunity/discriminator/discriminator.question.js";
+export { poolQuestionCycleKey, escapePoolPushMarkdown, buildPoolQuestionPushMessage, POOL_QUESTION_PUSH_TITLE_MAX_CHARS } from "./opportunity/discriminator/discriminator.push.js";
 export type { SynthesizePoolQuestionInput, SynthesizedPoolQuestion } from "./opportunity/discriminator/discriminator.question.js";
 export type { QuestionPoolAssignment, QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./shared/schemas/question.schema.js";
 export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator, ScoredDiscriminator, VerifiedAssignment, DiscriminatorShadowResult } from "./opportunity/discriminator/discriminator.types.js";
+
+// Lens C — negotiation-evidence questions (IND-433, shadow).
+export { negotiationEvidenceQuestionsMode, NEGOTIATION_EVIDENCE_QUESTIONS_MODES, NEGOTIATION_EVIDENCE_MIN_DISTINCT_OPPORTUNITIES, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES, NEGOTIATION_EVIDENCE_MAX_CONTENT_CHARS } from "./opportunity/negotiation-evidence/negotiation-evidence.env.js";
+export type { NegotiationEvidenceQuestionsMode } from "./opportunity/negotiation-evidence/negotiation-evidence.env.js";
+export { extractAllowlistedEvidence } from "./opportunity/negotiation-evidence/negotiation-evidence.extractor.js";
+export type { ExtractionResult } from "./opportunity/negotiation-evidence/negotiation-evidence.extractor.js";
+export { verifyHypotheses, evidenceSpanMatches } from "./opportunity/negotiation-evidence/negotiation-evidence.verifier.js";
+export type { VerificationResult } from "./opportunity/negotiation-evidence/negotiation-evidence.verifier.js";
+export { NegotiationEvidenceMiner, buildEvidencePrompt } from "./opportunity/negotiation-evidence/negotiation-evidence.miner.js";
+export type { NegotiationEvidenceMinerConfig } from "./opportunity/negotiation-evidence/negotiation-evidence.miner.js";
+export { runNegotiationEvidenceShadow } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
+export type { NegotiationEvidenceShadowInput } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
+export type { EvidenceKind, EvidenceSpeaker, AllowlistedEvidence, RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment, EvidenceMiningScope, HypothesisClaimType, ProposedSupportRef, MinedEvidenceHypothesis, VerifiedSupportRef, RetainedEvidenceHypothesis, NegotiationEvidenceTelemetry, NegotiationEvidenceShadowResult } from "./opportunity/negotiation-evidence/negotiation-evidence.types.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";
@@ -219,8 +251,10 @@ export { persistOpportunities } from "./opportunity/opportunity.persist.js";
 export { presentOpportunity } from "./opportunity/opportunity.presentation.js";
 export type { UserInfo } from "./opportunity/opportunity.presentation.js";
 export { stripUuids, stripIntroducerMentions, truncateAtBoundary } from "./opportunity/opportunity.presentation.js";
+export { hasUnsupportedOpportunityClaim, stripUnsupportedOpportunityClaims } from "./opportunity/opportunity.claim-safety.js";
 export { safeFallbackSummary, getSafePresentationOrSkip, SAFE_FALLBACK_MAX_CHARS, DEFAULT_FALLBACK_HEADLINE, DEFAULT_FALLBACK_ACTION, DEFAULT_EMPTY_FALLBACK_TEXT } from "./opportunity/opportunity.safe-presentation.js";
 export type { SafeFallbackOptions, SafePresentation, SafePresentationOptions, SafePresentationSource } from "./opportunity/opportunity.safe-presentation.js";
+export { buildApiChatCardPresentationCacheKey } from "./opportunity/opportunity.presentation-cache.js";
 export { getOrCreateDeliveryCardBatch, DELIVERY_CARD_CACHE_TTL, type CachedDeliveryCard, type OpportunityWithContext } from "./opportunity/delivery-card.cache.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
@@ -232,7 +266,7 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 // ─── MCP ──────────────────────────────────────────────────────────────────────
 
-export { createMcpServer, computeAgentAllowedNetworkIds, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
+export { createMcpServer, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
 export { buildElicitationCreate, flattenChoice } from "./mcp/elicitation.builder.js";
 export { dispatchElicitations } from "./mcp/elicitation.dispatcher.js";
@@ -274,4 +308,3 @@ export {
 // ─── Streamers ────────────────────────────────────────────────────────────────
 
 export { ChatStreamer } from "./chat/chat.streamer.js";
-export { ResponseStreamer } from "./shared/agent/response.streamer.js";

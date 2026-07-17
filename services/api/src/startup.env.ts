@@ -95,16 +95,21 @@ const envSchema = z.object({
   CONTACTS_ENABLED: optionalBoolean,
   CONTACT_DEDUP_STRATEGY: z.enum(['conservative', 'balanced', 'aggressive', 'off']).optional(),
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
+  HYDE_FRAME_CONSTRAINTS_ENABLED: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
   QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
+  QUESTIONER_UPTAKE_ENABLED: optionalBoolean,
+  QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: optionalInt,
   QUESTIONER_DISCOVERY_INPUT_MODE: z.string().optional(),
   QUESTIONER_DISCOVERY_TIMEOUT_MS: optionalInt,
   QUESTIONER_CHAT_WAIT_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
   NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
   NEGOTIATION_MAX_TURNS_AMBIENT: optionalInt,
+  NEGOTIATION_PROTOCOL_VERSION: z.union([z.literal(''), z.enum(['v1', 'v2'])]).optional(),
+  NEGOTIATOR_CHAT_ENABLED: optionalBoolean,
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
@@ -115,6 +120,10 @@ const envSchema = z.object({
   QUESTIONER_ENABLED: optionalBoolean,
   POOL_QUESTIONS_MINING: z.union([z.literal(''), z.enum(['off', 'shadow'])]).optional(),
   POOL_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
+  POOL_QUESTIONS_PUSH: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
+  POOL_QUESTIONS_RANKING: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
+  POOL_QUESTIONS_STAMP_NEWBORN: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
+  NEGOTIATION_EVIDENCE_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
 
   // 9. MCP / tool runtime
   MCP_MAX_REQUEST_BYTES: optionalInt,
@@ -152,6 +161,13 @@ const envSchema = z.object({
   // 12b. LangGraph checkpoint retention
   CHECKPOINT_RETENTION_DAYS: z.string().optional(), // whole days, or 0/off/none to disable pruning
   CHECKPOINT_PRUNE_BATCH_SIZE: optionalInt,
+
+  // 12c. Frame-drift measurement (disabled by default)
+  FRAME_DRIFT_MONITORING_ENABLED: optionalBoolean,
+  FRAME_DRIFT_MONITORING_SCHEDULE: z.string().optional(),
+  FRAME_DRIFT_MONITORING_MAX_NETWORKS: optionalInt,
+  FRAME_DRIFT_MONITORING_MAX_PAIRS: optionalInt,
+  FRAME_DRIFT_MONITORING_MIN_USERS: optionalInt,
 
   // 13. Platform-provided metadata
   RAILWAY_ENVIRONMENT: z.string().optional(),

@@ -42,6 +42,8 @@ export function toQuestionDiscriminator(d: ScoredDiscriminator): QuestionPoolDis
     sideCounts,
     voi: d.voi,
     evidenceRate: d.evidenceRate,
+    ...(d.embedding ? { embedding: d.embedding } : {}),
+    ...(d.embeddingModel ? { embeddingModel: d.embeddingModel } : {}),
     assignments,
   };
 }
@@ -74,7 +76,23 @@ function toSecondPerson(seed: string): string {
     .replace(/\b(do|should|would|could|can|will) I\b/gi, (_, verb: string) => `${verb.toLowerCase()} you`)
     .replace(/\bam I\b/gi, "are you")
     .replace(/\bI\b/g, "you")
-    .replace(/\bmy\b/gi, "your");
+    .replace(/\bmy\b/gi, "your")
+    // Third-person seeds ("Is the user primarily involved…") — the question is
+    // asked TO the owner, never ABOUT them.
+    .replace(/\b(is|was) (?:the|this) (user|owner|discoverer|client)\b/gi, "are you")
+    .replace(/\bdoes (?:the|this) (user|owner|discoverer|client)\b/gi, "do you")
+    .replace(/\b(?:the|this) (user|owner|discoverer|client)'s\b/gi, "your")
+    .replace(/\b(?:the|this) (user|owner|discoverer|client)\b/gi, "you");
+}
+
+/**
+ * Catch-all: after normalization the prompt must be second-person. Any
+ * residual third-person reference to the owner means an unanticipated seed
+ * shape slipped through — the deterministic two-sided template (always
+ * second-person) is the safe fallback.
+ */
+function isStillThirdPerson(prompt: string): boolean {
+  return /\b(?:the|this|a) (?:user|owner|discoverer|client)\b/i.test(prompt);
 }
 
 /**
@@ -95,7 +113,7 @@ function mentionsSide(seed: string, side: string): boolean {
 function toPrompt(questionSeed: string, sides: string[]): string {
   let p = toSecondPerson(questionSeed.trim().replace(/\s+/g, " "));
   const sidesMentioned = sides.filter((s) => mentionsSide(p, s)).length;
-  if (sidesMentioned < 2) {
+  if (sidesMentioned < 2 || isStillThirdPerson(p)) {
     const last = sides[sides.length - 1];
     const head = sides.slice(0, -1).join(", ");
     p = `Which matters more here: ${head} or ${last}`;
@@ -113,10 +131,19 @@ export interface SynthesizePoolQuestionInput {
   /** Remaining ranked eligible discriminators (interview-mode chain stash). */
   alternates: QuestionPoolDiscriminator[];
   poolSize: number;
+  /** Exact bounded candidate opportunity IDs supplied to this synthesis pass. */
+  opportunityIds: string[];
   /** ISO-8601 timestamp of the mining pass. */
   minedAt: string;
   /** Discovery run id, when known. */
   runId?: string;
+  /**
+   * Intent payload snippet — folded into the evidence chip so the question
+   * self-identifies on any surface ("based on 16 people matching ‘…’").
+   */
+  intentText?: string;
+  /** Stable hash of the full normalized intent payload + summary. */
+  intentFingerprint?: string;
 }
 
 /** Synthesized question: client payload + server-side snapshot. */
@@ -134,6 +161,13 @@ export function synthesizePoolQuestion(input: SynthesizePoolQuestionInput): Synt
   const { discriminator: d, poolSize } = input;
   if (poolSize < POOL_DISCRIMINATOR_MIN_POOL_SIZE) return null;
   if (d.sides.length < 2 || d.sides.length > 3) return null;
+
+  // Evidence chip: aggregate count + the intent it belongs to, so the card is
+  // self-identifying on every surface (QuestionSchema caps evidence at 160).
+  const snippet = input.intentText?.trim().replace(/\s+/g, " ") ?? "";
+  const evidence = snippet.length > 0
+    ? `based on ${poolSize} people matching “${snippet.slice(0, 110)}${snippet.length > 110 ? "…" : ""}”`
+    : `based on ${poolSize} people matching this intent`;
 
   const sideOptions: QuestionOption[] = d.sides.map((side) => ({
     label: chipLabel(side),
@@ -153,12 +187,15 @@ export function synthesizePoolQuestion(input: SynthesizePoolQuestionInput): Synt
       prompt: toPrompt(d.questionSeed, d.sides),
       options,
       multiSelect: false,
-      evidence: `based on ${poolSize} people matching this intent`,
+      evidence,
     },
     pool: {
       poolSize,
+      opportunityIds: [...input.opportunityIds],
       minedAt: input.minedAt,
       ...(input.runId ? { runId: input.runId } : {}),
+      ...(snippet.length > 0 ? { intentText: snippet.slice(0, 160) } : {}),
+      ...(input.intentFingerprint ? { intentFingerprint: input.intentFingerprint } : {}),
       discriminator: d,
       alternates: input.alternates,
     },

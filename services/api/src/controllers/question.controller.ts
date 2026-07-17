@@ -5,7 +5,8 @@ import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard } from '../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
+import { resolveAgentNetworkScope } from '../guards/agent-scope.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
@@ -20,6 +21,7 @@ const answerBodySchema = z.object({
 });
 
 const statusQuerySchema = z.enum(['pending', 'answered', 'dismissed']).default('pending');
+const purposeQuerySchema = z.enum(['uptake']);
 const modeQuerySchema = z.enum(['discovery', 'intent', 'enrichment', 'negotiation', 'negotiation_inflight', 'chat', 'pool_discovery']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
@@ -58,6 +60,19 @@ function parseIntentScopeFromUrl(url: URL): { scopeType?: 'intent'; scopeId?: st
 @Controller('/questions')
 export class QuestionController {
   /**
+   * GET /questions/counts — canonical split pending counts.
+   *
+   * @param _req - Incoming authenticated request.
+   * @param user - Authenticated recipient.
+   * @returns Global inbox, pushed-pool, and Personal Agent counts.
+   */
+  @Get('/counts')
+  @UseGuards(RateLimit('read'), SessionOnlyGuard)
+  async counts(_req: Request, user: AuthenticatedUser) {
+    return Response.json(await questionService.countPending(user.id));
+  }
+
+  /**
    * GET /questions — list questions for the authenticated user.
    *
    * Query params: status (default: pending), mode, sourceType, sourceId, conversationId, noConversation.
@@ -72,10 +87,12 @@ export class QuestionController {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
     const rawMode = url.searchParams.get('mode');
+    const rawPurpose = url.searchParams.get('purpose');
     const sourceType = url.searchParams.get('sourceType');
     const sourceId = url.searchParams.get('sourceId');
     const conversationId = url.searchParams.get('conversationId');
     const noConversation = url.searchParams.get('noConversation');
+    const rawExcludeModes = url.searchParams.get('excludeModes');
     const scope = parseIntentScopeFromUrl(url);
     if (scope instanceof Response) return scope;
 
@@ -96,6 +113,13 @@ export class QuestionController {
     }
 
     const filters: AdapterQuestionFilters = {};
+    const networkScopeId = await resolveAgentNetworkScope(req);
+    if (networkScopeId) {
+      filters.networkId = networkScopeId;
+      // Match MCP scope policy: negotiation questions can contain context from
+      // another user/network and are not listable through network-scoped keys.
+      filters.modes = ['enrichment', 'intent', 'discovery'];
+    }
 
     if (rawMode) {
       const modeResult = modeQuerySchema.safeParse(rawMode);
@@ -107,6 +131,23 @@ export class QuestionController {
       }
       filters.mode = modeResult.data;
     }
+    if (rawPurpose) {
+      const purposeResult = purposeQuerySchema.safeParse(rawPurpose);
+      if (!purposeResult.success) {
+        return Response.json({ error: 'Invalid purpose; use: uptake' }, { status: 400 });
+      }
+      filters.purpose = purposeResult.data;
+    }
+    if (rawExcludeModes) {
+      const parsed = rawExcludeModes.split(',').map((m) => modeQuerySchema.safeParse(m.trim()));
+      if (parsed.some((r) => !r.success)) {
+        return Response.json(
+          { error: 'Invalid excludeModes; use a comma-separated list of: discovery, intent, enrichment, negotiation, negotiation_inflight, chat, pool_discovery' },
+          { status: 400 },
+        );
+      }
+      filters.excludeModes = parsed.map((r) => (r as { success: true; data: AdapterQuestionFilters['mode'] & string }).data);
+    }
     if (sourceType) filters.sourceType = sourceType;
     if (sourceId) filters.sourceId = sourceId;
     if (scope.scopeType === 'intent') {
@@ -115,6 +156,12 @@ export class QuestionController {
     }
     if (conversationId) filters.conversationId = conversationId;
     if (noConversation === 'true') filters.noConversation = true;
+
+    // Pool questions are intent-page-only rows. Even delivered pushes affect
+    // only the Personal Agent count and DM line, never the global inbox/list.
+    if (scope.scopeType !== 'intent' && !conversationId) {
+      filters.excludeModes = [...new Set([...(filters.excludeModes ?? []), 'pool_discovery' as const])];
+    }
 
     const hasFilters = Object.keys(filters).length > 0;
     const questions = await questionService.findPending(user.id, hasFilters ? filters : undefined);
@@ -146,6 +193,10 @@ export class QuestionController {
       body = await req.json();
     } catch {
       return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    if (await resolveAgentNetworkScope(req)) {
+      return Response.json({ error: 'Network-scoped API keys cannot answer pending questions' }, { status: 403 });
     }
 
     const parsed = answerBodySchema.safeParse(body);
@@ -184,10 +235,14 @@ export class QuestionController {
    */
   @Post('/:id/dismiss')
   @UseGuards(RateLimit('write'), AuthGuard)
-  async dismiss(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async dismiss(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const questionId = params?.id;
     if (!questionId) {
       return Response.json({ error: 'Question ID is required' }, { status: 400 });
+    }
+
+    if (await resolveAgentNetworkScope(req)) {
+      return Response.json({ error: 'Network-scoped API keys cannot dismiss pending questions' }, { status: 403 });
     }
 
     const updated = await questionService.dismiss(questionId, user.id);

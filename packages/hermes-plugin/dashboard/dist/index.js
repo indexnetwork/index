@@ -2000,16 +2000,34 @@
         });
     }
 
-    function opportunityAction(opportunityId, action, onPayload) {
+    function opportunityAction(opportunityId, action, onPayload, acknowledgedIds) {
       if (!opportunityId) return;
       setActingId(opportunityId);
       setActionError(null);
       fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(opportunityId) + "/" + action, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(acknowledgedIds && acknowledgedIds.length
+          ? { acknowledgedUptakeQuestionIds: acknowledgedIds }
+          : {}),
       })
         .then(function (payload) {
+          if (payload && payload.success === false && payload.advisory && payload.advisory.code === "unresolved_uptake_questions") {
+            var questions = Array.isArray(payload.advisory.questions) ? payload.advisory.questions : [];
+            var warning = questions.map(function (question) {
+              return (question.title ? question.title + ": " : "") + (question.prompt || "Question " + question.id);
+            }).join("\n\n");
+            var proceed = window.confirm(
+              "Please answer or dismiss these questions before connecting:\n\n" + warning +
+              "\n\nContinue anyway without answering?"
+            );
+            if (proceed) {
+              opportunityAction(opportunityId, action, onPayload, questions.map(function (question) { return question.id; }));
+            } else {
+              setActionError("Acceptance is still pending. Answer or dismiss the listed questions, or choose Continue anyway.");
+            }
+            return;
+          }
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "That action could not be completed.");
           }

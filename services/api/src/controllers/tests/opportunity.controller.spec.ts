@@ -3,7 +3,8 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
-import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
+import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 // ---------------------------------------------------------------------------
@@ -214,8 +215,7 @@ describe("OpportunityController Integration", () => {
 
   afterAll(async () => {
     if (testIndexId) {
-      const indexAdapter = new NetworkGraphDatabaseAdapter();
-      await indexAdapter.deleteNetworkAndMembers(testIndexId);
+      await deleteNetworkAndMembers(testIndexId);
     }
     if (testUserId) {
       await profileAdapter.deleteProfile(testUserId);
@@ -313,6 +313,32 @@ describe("OpportunityController Integration", () => {
 
     expect(res.status).toBe(400);
     expect(data.error).toContain("Invalid status");
+  });
+
+  test("updateStatus should reject malformed uptake acknowledgement IDs", async () => {
+    const req = new Request("http://localhost/opportunities/" + testOpportunityId + "/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "accepted", acknowledgedUptakeQuestionIds: "q-1" }),
+    });
+    const res = await controller.updateStatus(req, mockUser(), { id: testOpportunityId });
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(data.error).toContain("acknowledgedUptakeQuestionIds");
+  });
+
+  test("startChat should reject malformed uptake acknowledgement IDs", async () => {
+    const req = new Request("http://localhost/opportunities/" + testOpportunityId + "/start-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ acknowledgedUptakeQuestionIds: [""] }),
+    });
+    const res = await controller.startChat(req, mockUser(), { id: testOpportunityId });
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(data.error).toContain("acknowledgedUptakeQuestionIds");
   });
 
   test("updateStatus should return 404 when opportunity not found", async () => {

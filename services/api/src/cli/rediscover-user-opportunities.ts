@@ -21,12 +21,13 @@ import path from 'path';
 const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.env.production';
 dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm/sql';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, opportunities, users } from '../schemas/database.schema';
 import { tasks } from '../schemas/conversation.schema';
 import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
+import { assertNoPausedIntentsForRediscovery } from './rediscover-user-opportunities.guard';
 
 async function main() {
   const userId = process.argv[2];
@@ -44,6 +45,16 @@ async function main() {
     console.error(`[rediscover] User ${userId} not found (or soft-deleted).`);
     process.exit(1);
   }
+
+  const pausedIntents = await db
+    .select({ id: intents.id })
+    .from(intents)
+    .where(and(
+      eq(intents.userId, userId),
+      eq(intents.status, 'PAUSED'),
+      isNull(intents.archivedAt),
+    ));
+  assertNoPausedIntentsForRediscovery(userId, pausedIntents.map(({ id }) => id));
 
   const involvesUser = sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`;
 
@@ -77,7 +88,11 @@ async function main() {
   const activeIntents = await db
     .select({ id: intents.id })
     .from(intents)
-    .where(and(eq(intents.userId, userId), isNull(intents.archivedAt)));
+    .where(and(
+      eq(intents.userId, userId),
+      isNull(intents.archivedAt),
+      or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
+    ));
   console.log(`[rediscover] Found ${activeIntents.length} active intent(s) for user ${userId}.`);
 
   const stamp = Date.now();

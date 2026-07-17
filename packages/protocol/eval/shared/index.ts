@@ -21,6 +21,40 @@ export { buildScorecard, meanRate } from "./scorecard.js";
 export { diffBaseline, readBaseline, writeBaseline, writeRunReport } from "./baseline.js";
 export { computeRollingBaseline } from "./rolling.js";
 
+// ─── Versioned artifact envelope ───────────────────────────────────────────
+export {
+  EVAL_ARTIFACT_SCHEMA_VERSION,
+  EVAL_BASELINE_ARTIFACT_TYPE,
+  EVAL_RUN_REPORT_ARTIFACT_TYPE,
+  EVAL_LEGACY_UNAVAILABLE,
+  EvalArtifactEnvelopeSchema,
+  EvalScorecardPayloadSchema,
+  buildEvalArtifact,
+  parseEvalArtifact,
+  looksLikeLegacyScorecard,
+  migrateLegacyBaseline,
+  canonicalizeForFingerprint,
+  fingerprintCanonicalJson,
+  fingerprintEvalCorpus,
+  fingerprintEvalConfig,
+  readEvalGitProvenance,
+  type EvalArtifactType,
+  type EvalArtifactEnvelope,
+  type EvalRunMeta,
+  type EvalSelection,
+  type EvalGitProvenance,
+  type EvalCompleteness,
+  type GitCommandRunner,
+} from "./artifact.js";
+export {
+  readEvalArtifact,
+  writeEvalArtifact,
+  assertEvalWritePlan,
+  type EvalWritePlan,
+  type EvalWriteOutput,
+  type WriteEvalArtifactOptions,
+} from "./artifact.io.js";
+
 // ─── Reporting ─────────────────────────────────────────────────────────────
 export { formatConsole, type ConsoleOptions } from "./console.js";
 export {

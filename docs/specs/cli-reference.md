@@ -241,8 +241,12 @@ The `index opportunity` command exposes subcommands for managing opportunities f
 ### `index opportunity accept <id>`
 
 1. Reads credentials. Exits with error if not logged in.
-2. Calls the `update_opportunity` MCP tool via the Tool HTTP API with `{ opportunityId, status: "accepted" }`.
-3. Prints confirmation message.
+2. Resolves the opportunity and calls the REST acceptance preflight.
+3. When no uptake advisory exists, accepts and prints confirmation.
+4. When unresolved preparatory questions exist, prints each question and leaves the opportunity pending. Answer or dismiss them through a question-capable surface, then retry normally.
+5. To explicitly continue without resolving them, retry with `--acknowledge-uptake <question-id[,question-id...]>` using the complete ID set printed by the latest advisory. This is an advisory override, not an answer.
+
+With `--json`, structured advisory responses are printed unchanged.
 
 ### `index opportunity reject <id>`
 
@@ -410,7 +414,7 @@ Marks the user's onboarding as complete.
 30. `index opportunity list` displays a table of opportunities.
 31. `index opportunity list --status pending` filters by status.
 32. `index opportunity show <id>` displays a detailed card with parties, roles, and reasoning.
-33. `index opportunity accept <id>` sends accepted status and prints confirmation.
+33. `index opportunity accept <id>` runs the uptake preflight; it accepts immediately when clear, otherwise prints preparatory questions and the explicit `--acknowledge-uptake` retry.
 34. `index opportunity reject <id>` sends rejected status and prints confirmation.
 35. `index opportunity discover <query>` discovers and displays opportunities.
 

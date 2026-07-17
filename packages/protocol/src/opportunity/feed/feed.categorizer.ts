@@ -15,6 +15,7 @@ import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { Timed } from "../../shared/observability/performance.js";
 import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
+import { hasUnsupportedOpportunityClaim } from '../opportunity.claim-safety.js';
 
 const logger = protocolLogger('HomeCategorizer');
 
@@ -180,6 +181,12 @@ Rules:
         iconName: s.iconName,
         itemIndices: s.itemIndices.filter((i) => i >= 0 && i <= maxIndex),
       }));
+      if (sections.some((section) =>
+        hasUnsupportedOpportunityClaim(section.title)
+        || hasUnsupportedOpportunityClaim(section.subtitle))) {
+        logger.warn('HomeCategorizer emitted unsupported affiliation/presence claim; using fallback');
+        return buildFallbackResult(cards);
+      }
       const reconciledSections = reconcileSections(sections, maxIndex);
       return { sections: reconciledSections };
     } catch (e) {

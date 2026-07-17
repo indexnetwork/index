@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "questions_uptake_recipient_source_uniq" ON "questions" USING btree (("actors"->0->>'userId'),("detection"->>'sourceType'),("detection"->>'sourceId'),("detection"->>'purpose')) WHERE "questions"."detection"->>'purpose' = 'uptake';

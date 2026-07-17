@@ -2440,12 +2440,61 @@ Get a single intent by ID.
     "id": "...",
     "payload": "...",
     "summary": "...",
+    "status": "ACTIVE | PAUSED | FULFILLED | EXPIRED",
     "createdAt": "...",
     "updatedAt": "...",
     "archivedAt": "... | null"
   }
 }
 ```
+
+### POST /api/intents/:id/visit
+
+Explicitly records that the owner mounted the intent page. This endpoint is session-only: API keys are rejected with `403`. The timestamp is monotonic, does not modify `intent.updatedAt`, and is used only to suppress proactive pool-question delivery when the visit is later than the question. `GET /api/intents/:id` never stamps a visit.
+
+**Auth**: SessionOnlyGuard; owner-only
+
+**Response**: `{ "success": true, "lastVisitedAt": "<ISO-8601>" }` (200), or `404` for missing/foreign intents.
+
+### PATCH /api/intents/:id/status
+
+Pause or resume an intent. The transition is idempotent.
+
+**Auth**: AuthGuard. The intent must belong to the authenticated user. A network-scoped agent may update it only when the intent is assigned to the agent's bound network; scope violations return `403`.
+
+**Path params**:
+- `id` — Intent UUID or unambiguous short prefix
+
+**Request body** (Zod-validated):
+```json
+{ "status": "PAUSED" }
+```
+
+Use `PAUSED` to pause or `ACTIVE` to resume. No other lifecycle status is accepted. Archived intents and terminal `FULFILLED` or `EXPIRED` intents return `409`.
+
+**Response 200**:
+```json
+{
+  "success": true,
+  "intent": {
+    "id": "...",
+    "status": "ACTIVE | PAUSED",
+    "lifecycleVersionMs": 1784102400000
+  },
+  "changed": true
+}
+```
+
+`changed` is `false` when the requested status is already effective. A null legacy status is normalized to `ACTIVE`. On resume, the service immediately enqueues a from-intent discovery job deduplicated by the intent lifecycle version; the response waits for the queue's enqueue acknowledgement before returning success. If enqueue fails after this request changed `PAUSED` to `ACTIVE`, the service compare-and-sets that exact lifecycle version back to `PAUSED` without overwriting concurrent lifecycle changes. An idempotent `ACTIVE` request is never paused by compensation.
+
+Pause is non-destructive: existing opportunities and Radar cards, pending questions, conversations, intent-network assignments, and HyDE documents remain available. It blocks admission of not-yet-started intent-driven discovery, candidate matching against the intent, new pool mining/questions, and answer-triggered Tier-1 reruns. Work already admitted may finish. Existing pending questions remain answerable, and their deterministic Tier-0 re-ranking can still apply. After resume, ordinary pool mining and question generation follow the newly enqueued discovery run.
+
+**Errors**:
+- `400` — invalid request body or unsupported status
+- `403` — network-scoped agent is not allowed to act on the intent
+- `404` — intent not found or not owned by the authenticated user
+- `409` — ambiguous short prefix, archived intent, or terminal intent
+- `503` — resume enqueue was not acknowledged; returns `{ "error": "Failed to enqueue intent resume", "code": "enqueue_failed", "retryable": true, "intent": { "id": "...", "status": "ACTIVE | PAUSED" } }`. `PAUSED` means compensation succeeded; `ACTIVE` is the authoritative status when compensation did not apply or the request was idempotent.
 
 ### PATCH /api/intents/:id/archive
 
@@ -2459,85 +2508,6 @@ Archive an intent.
 **Response**:
 ```json
 { "success": true }
-```
-
----
-
-## Link
-
-**Controller prefix**: `/links`
-
-### GET /api/links
-
-List all links for the authenticated user.
-
-**Auth**: AuthGuard
-
-**Response**:
-```json
-{
-  "links": [
-    {
-      "id": "...",
-      "url": "...",
-      "createdAt": "...",
-      "lastSyncAt": "... | null"
-    }
-  ]
-}
-```
-
-### POST /api/links
-
-Create a new link.
-
-**Auth**: AuthGuard
-
-**Request body**:
-```json
-{
-  "url": "string (required)"
-}
-```
-
-**Response**:
-```json
-{
-  "link": { ... }
-}
-```
-
-### DELETE /api/links/:id
-
-Delete a link.
-
-**Auth**: AuthGuard
-
-**Path params**:
-- `id` — Link ID
-
-**Response**:
-```json
-{ "success": true }
-```
-
-### GET /api/links/:id/content
-
-Get link content/metadata.
-
-**Auth**: AuthGuard
-
-**Path params**:
-- `id` — Link ID
-
-**Response**:
-```json
-{
-  "url": "...",
-  "lastSyncAt": "... | null",
-  "lastStatus": "...",
-  "pending": true
-}
 ```
 
 ---
@@ -2556,7 +2526,7 @@ List opportunities for the authenticated user.
 - `status` — Filter by status: `pending`, `stalled`, `accepted`, `rejected`, `expired` (optional)
 - `networkId` — Filter by network (optional)
 - `scopeType` — Optional selected scope type. Use `intent` for selected-intent scope.
-- `scopeId` — Required when `scopeType=intent`; selected intent UUID. Composes with `networkId`; it never broadens network visibility.
+- `scopeId` — Required when `scopeType=intent`; viewer-owned selected intent UUID. Composes with `networkId`; it never broadens network visibility. Rows are returned only when every participant retains an active anchor in the intent's current `intent_networks ∩ viewer memberships` scope (paused-intent history is allowed).
 - `intentId` — Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`.
 - `limit` — Max results (optional)
 - `offset` — Pagination offset (optional)
@@ -2567,6 +2537,8 @@ List opportunities for the authenticated user.
   "opportunities": [...]
 }
 ```
+
+`interpretation.reasoning` in this user-facing list is safety-normalized. Unsupported attendance, network/community membership, residence, acquaintance, shared-session, and same-place/time claims are removed rather than returned as raw evaluator text.
 
 ### GET /api/opportunities/chat-context
 
@@ -2588,12 +2560,12 @@ Home view with dynamic sections including LLM-categorized opportunities, present
 **Query params**:
 - `networkId` — Scope to a specific network (optional)
 - `scopeType` — Optional selected scope type. Use `intent` for selected-intent scope.
-- `scopeId` — Required when `scopeType=intent`; selected intent UUID. Applied before home visibility filtering, sorting, and counterpart dedupe.
+- `scopeId` — Required when `scopeType=intent`; viewer-owned selected intent UUID. Applied before home visibility filtering, sorting, and counterpart dedupe. Pool-answer factors and deprioritization reasons apply only when their `recipientUserId + intentId` provenance exactly matches this viewer and selected intent; global Home and legacy unscoped adjustments ignore them.
 - `intentId` — Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`.
 - `limit` — Max results (optional)
 - `noCache` — Bypass home cache when `true` or `1` (optional)
 
-**Response**: JSON with categorized home sections.
+**Response**: JSON with categorized home sections. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
 
 ### POST /api/opportunities/discover
 
@@ -2609,7 +2581,7 @@ Discover opportunities via HyDE graph.
 }
 ```
 
-**Response**: JSON with discovered opportunities.
+**Response**: JSON with discovered opportunities. Public card prose and `matchReason` are safety-normalized; network/event metadata alone is never presented as attendance, membership, residence, acquaintance, or shared presence.
 
 ### GET /api/opportunities/:id
 
@@ -2648,7 +2620,8 @@ Update opportunity status.
   "status": "latent | draft | negotiating | pending | stalled | accepted | rejected | expired",
   "scopeType": "intent (optional)",
   "scopeId": "selected intent UUID when scopeType=intent (optional)",
-  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId> (optional)"
+  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId> (optional)",
+  "acknowledgedUptakeQuestionIds": ["question UUIDs from the latest advisory (optional)"]
 }
 ```
 
@@ -2660,6 +2633,7 @@ When selected-intent scope is supplied, an `accepted` update affects only this o
 - `403` — Caller is not an actor on the opportunity
 - `404` — Opportunity not found
 - `409` — Self-accept blocked. Caller's actor already has `actedAt` set (they advanced the opportunity earlier) and is attempting to accept it. The other party must accept. See `docs/domain/opportunities.md#bilateral-acceptance`.
+- `409` — Uptake soft interlock. When the feature is enabled and unresolved preparatory questions exist, the response contains `advisory.code = "unresolved_uptake_questions"`, public question payloads, and `acknowledgedUptakeQuestionIds`. No DM, status, sibling, or contact mutation has occurred. Answer/dismiss the questions and retry normally, or retry with the complete current ID list to continue anyway.
 
 ---
 
@@ -2679,7 +2653,8 @@ Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling
 {
   "scopeType": "intent",
   "scopeId": "selected intent UUID",
-  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId>"
+  "intentId": "deprecated/convenience alias for scopeType=intent&scopeId=<intentId>",
+  "acknowledgedUptakeQuestionIds": ["question UUIDs from the latest advisory"]
 }
 ```
 
@@ -2699,6 +2674,7 @@ When selected-intent scope is supplied, sibling acceptance is skipped. Unscoped 
 - `403` — Caller is not an actor on the opportunity
 - `404` — Opportunity not found
 - `409` — Self-accept blocked. Caller's actor already has `actedAt` set. See `docs/domain/opportunities.md#bilateral-acceptance`.
+- `409` — Uptake soft interlock with the same structured advisory and no side effects as the status endpoint. The authenticated `/c/:code` continuation flow preserves this advisory; legacy token links render a review page with an explicit continue-anyway link.
 - `500` — Status update or DM resolution failed
 
 ---
@@ -2728,6 +2704,8 @@ List opportunities for an index. Requires membership.
 }
 ```
 
+User-facing `interpretation.reasoning` is safety-normalized using the same deterministic affiliation/presence guard as the per-user list.
+
 ### POST /api/networks/:indexId/opportunities
 
 Create a manual opportunity (curator). Requires owner or member permission.
@@ -2751,7 +2729,7 @@ Create a manual opportunity (curator). Requires owner or member permission.
 
 `parties` must contain at least 2 entries.
 
-**Response** (`201`): JSON with created opportunity.
+**Response** (`201`): JSON with the created opportunity. The response reasoning is safety-normalized; persistence-boundary validation rejects unsupported attendance/membership/residence/shared-presence claims.
 
 ---
 
@@ -3020,6 +2998,10 @@ Trigger a discovery negotiation between the authenticated viewer and the target 
 {
   "negotiation": {
     "id": "...",
+    "segments": 1,
+    "state": "completed",
+    "statusMessage": null,
+    "statusTimestamp": "...",
     "counterparty": { "id": "...", "name": "...", "avatar": null },
     "outcome": {
       "hasOpportunity": true,
@@ -3030,14 +3012,15 @@ Trigger a discovery negotiation between the authenticated viewer and the target 
     "turns": [
       { "speaker": { "id": "...", "name": "...", "avatar": null }, "action": "propose", "reasoning": "...", "suggestedRoles": null, "createdAt": "..." }
     ],
-    "createdAt": "..."
+    "createdAt": "...",
+    "updatedAt": "..."
   }
 }
 ```
 
 ### GET /api/users/:userId/negotiations
 
-List past negotiations for a user. When the viewer differs from the profile owner, only mutual negotiations are returned.
+List past negotiation threads for a user. Tasks sharing `metadata.opportunityId` are stitched into one thread; tasks without an opportunity ID remain independent. Messages are merged chronologically across all segments, while the newest segment supplies the response ID, state, status, outcome, and timestamps. When the viewer differs from the profile owner, only mutual negotiations are returned.
 
 **Auth**: AuthGuard
 
@@ -3045,8 +3028,8 @@ List past negotiations for a user. When the viewer differs from the profile owne
 - `userId` — User ID
 
 **Query params**:
-- `limit` — Max results (default: 20, max: 50)
-- `offset` — Pagination offset (default: 0)
+- `limit` — Max threads (default: 20, max: 50)
+- `offset` — Thread offset (default: 0)
 - `result` — Filter by result: `has_opportunity`, `no_opportunity`, `in_progress` (optional)
 
 **Response**:
@@ -3055,10 +3038,13 @@ List past negotiations for a user. When the viewer differs from the profile owne
   "negotiations": [
     {
       "id": "...",
+      "segments": 2,
+      "state": "completed",
+      "statusMessage": null,
+      "statusTimestamp": "...",
       "counterparty": { "id": "...", "name": "...", "avatar": "..." },
       "outcome": {
         "hasOpportunity": true,
-        "finalScore": 0.85,
         "role": "...",
         "turnCount": 3,
         "reason": "..."
@@ -3067,13 +3053,13 @@ List past negotiations for a user. When the viewer differs from the profile owne
         {
           "speaker": { "id": "...", "name": "...", "avatar": "..." },
           "action": "...",
-          "fitScore": 0.8,
           "reasoning": "...",
           "suggestedRoles": { ... },
           "createdAt": "..."
         }
       ],
-      "createdAt": "..."
+      "createdAt": "...",
+      "updatedAt": "..."
     }
   ]
 }
@@ -3237,7 +3223,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_network_membership` | Network | Remove a member from a network |
 | `discover_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
 | `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
-| `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. Accepting returns a `conversationId` |
+| `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. With the uptake guard enabled, a first accept can return `success:false` plus `advisory.code="unresolved_uptake_questions"` without mutation; retry with the current `acknowledgedUptakeQuestionIds` only after explicit user approval to continue anyway. Successful acceptance returns a `conversationId`. |
 | `list_contacts` | Contact | List user's contacts |
 | `add_contact` | Contact | Add a contact by email |
 | `remove_contact` | Contact | Remove a contact |
@@ -3262,7 +3248,7 @@ List pending questions for the authenticated user.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `status` | `pending` \| `answered` \| `dismissed` | `pending` | Only `pending` is currently supported |
-| `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `chat` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
+| `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `negotiation_inflight` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
 | `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
@@ -3271,7 +3257,25 @@ List pending questions for the authenticated user.
 | `conversationId` | string | — | Filter to questions linked to a specific chat session |
 | `noConversation` | `true` | — | Exclude questions that have a `conversationId` (sidebar badge use) |
 
+Unscoped/global reads always exclude `pool_discovery`; those rows are available only with an explicit intent scope. Public rows strip internal pool snapshots, assignments, embeddings, push claims/status, cycle keys, and the authoritative `pushedAt` ledger.
+
 **Response:** `{ questions: PersistedQuestion[] }`
+
+### GET /api/questions/counts
+
+Returns the canonical count split used by the two allowed surfaces. Counts require pending, unexpired, conversation-unbound rows. They are independent of the current push flag, so a delivered row is not hidden if the flag later turns off.
+
+**Auth**: Session only (API keys are rejected)
+
+```json
+{
+  "globalPending": 2,
+  "pushedPoolPending": 1,
+  "personalAgentPending": 3
+}
+```
+
+`globalPending` excludes every `pool_discovery` row and remains the Questions-page count. `pushedPoolPending` includes only `pool_discovery` rows with a successful internal `pushedAt` stamp. `personalAgentPending` is their sum and drives the Personal Agent badge.
 
 ### POST /api/questions/:id/answer
 

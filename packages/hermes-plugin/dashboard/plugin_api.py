@@ -133,8 +133,15 @@ def _web_url() -> str:
     return (raw or "https://index.network").rstrip("/")
 
 
-def _update_opportunity(opportunity_id: str, status: str) -> dict[str, Any]:
-    return _call_mcp("update_opportunity", {"opportunityId": opportunity_id, "status": status})
+def _update_opportunity(
+    opportunity_id: str,
+    status: str,
+    acknowledged_uptake_question_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    arguments: dict[str, Any] = {"opportunityId": opportunity_id, "status": status}
+    if acknowledged_uptake_question_ids:
+        arguments["acknowledgedUptakeQuestionIds"] = acknowledged_uptake_question_ids
+    return _call_mcp("update_opportunity", arguments)
 
 
 def _call_answer_question(question_id: str, answer: dict[str, Any]) -> dict[str, Any]:
@@ -949,7 +956,10 @@ def join_network(network_id: str) -> dict[str, Any]:
 
 
 @router.post("/opportunities/{opportunity_id}/accept")
-def accept_opportunity(opportunity_id: str) -> dict[str, Any]:
+def accept_opportunity(
+    opportunity_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
     """Accept an opportunity (Start chat) via MCP update_opportunity → status=accepted.
 
     Returns the new conversation's web chat URL when the tool surfaces one.
@@ -957,8 +967,17 @@ def accept_opportunity(opportunity_id: str) -> dict[str, Any]:
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    payload = _update_opportunity(opportunity_id, "accepted")
+    acknowledged = body.get("acknowledgedUptakeQuestionIds") if isinstance(body, dict) else None
+    if acknowledged is not None and (
+        not isinstance(acknowledged, list)
+        or any(not isinstance(question_id, str) or not question_id.strip() for question_id in acknowledged)
+    ):
+        return {"success": False, "error": "acknowledgedUptakeQuestionIds must be an array of non-empty strings."}
+    acknowledged_ids = list(dict.fromkeys(question_id.strip() for question_id in (acknowledged or [])))
+    payload = _update_opportunity(opportunity_id, "accepted", acknowledged_ids)
     if payload.get("success") is False:
+        # Preserve the structured advisory exactly; the dashboard needs its
+        # question IDs and public question shapes for a continue-anyway retry.
         return payload
     data = _data(payload)
     conversation_id = _text(data.get("conversationId")) if isinstance(data, dict) else ""

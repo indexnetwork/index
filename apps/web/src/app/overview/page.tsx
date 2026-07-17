@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-import bodyHtml from './overview-body.html?raw';
+import overviewBodyHtml from './overview-body.html?raw';
 import './overview.css';
 
 // ── Protocol Overview ──────────────────────────────────────────────
@@ -17,7 +17,13 @@ const TITLE = 'Index Network: Protocol Overview';
 const DESCRIPTION =
   'Index Network is a private, intent-driven social discovery protocol.';
 
-export default function OverviewPage() {
+export function OverviewArticle({
+  bodyHtml,
+  pathname,
+}: {
+  bodyHtml: string;
+  pathname: string;
+}) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,7 +42,7 @@ export default function OverviewPage() {
     };
 
     const origin = window.location.origin;
-    const url = `${origin}/overview`;
+    const url = `${origin}${pathname}`;
     const image = `${origin}/link-preview.png`;
 
     setMeta('description', DESCRIPTION);
@@ -53,7 +59,7 @@ export default function OverviewPage() {
     return () => {
       document.title = prevTitle;
     };
-  }, []);
+  }, [pathname]);
 
   // Auto-fit the embedded live-trace frame to its content height (the trace
   // stays an iframe: it is a self-running animation with its own document).
@@ -87,6 +93,10 @@ export default function OverviewPage() {
   }, []);
 
   return <div ref={rootRef} className="ovw" dangerouslySetInnerHTML={{ __html: bodyHtml }} />;
+}
+
+export default function OverviewPage() {
+  return <OverviewArticle bodyHtml={overviewBodyHtml} pathname="/overview" />;
 }
 
 export const Component = OverviewPage;

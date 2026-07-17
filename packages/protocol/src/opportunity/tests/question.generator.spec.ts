@@ -39,11 +39,25 @@ function makeQuestion(overrides: Record<string, unknown> = {}) {
     options: [okOption, { label: "B", description: "desc-b" }],
     multiSelect: false,
     strategy: "refine_intent",
+    underspecificationType: null,
     ...overrides,
   };
 }
 
 describe("QuestionGenerator", () => {
+  it("sends the QUD metadata contract to the backward-compatible discovery model", async () => {
+    let capturedMessages: unknown[] | undefined;
+    const gen = makeGenerator(async (input) => {
+      capturedMessages = input as unknown[];
+      return { questions: [makeQuestion({ title: "Stage" })] };
+    });
+    const result = await gen.generate(makeInput());
+    expect(result).not.toBeNull();
+    const systemContent = (capturedMessages?.[0] as { content?: unknown })?.content;
+    expect(String(systemContent)).toContain("QUD underspecification taxonomy");
+    expect(String(systemContent)).toContain("underspecificationType");
+  });
+
   it("returns null when the LLM throws", async () => {
     const gen = makeGenerator(async () => {
       throw new Error("model down");

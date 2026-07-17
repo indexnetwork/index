@@ -5,7 +5,8 @@ config({ path: '.env.test', override: true });
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { eq } from "drizzle-orm/sql";
 import { ChatController } from "../chat.controller";
-import { ChatDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, IntentDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { ChatDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, IntentDatabaseAdapter } from "../../adapters/database.adapter";
+import { deleteNetworkAndMembers } from "./test-helpers";
 import { chatSessionService } from "../../services/chat.service";
 import { chatFactory } from "../mcp.controller";
 import db from "../../lib/drizzle/drizzle";
@@ -27,7 +28,6 @@ describe("ChatController Integration", () => {
   const userAdapter = new UserDatabaseAdapter();
   const profileAdapter = new EnrichmentDatabaseAdapter();
   const intentAdapter = new IntentDatabaseAdapter();
-  const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
   /** Network IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
   let testIndexId: string | null = null;
@@ -79,7 +79,7 @@ describe("ChatController Integration", () => {
 
   afterAll(async () => {
     for (const networkId of [testIndexId, testIndexIdOther, unauthorizedStreamIndexId]) {
-      if (networkId) await indexAdapter.deleteNetworkAndMembers(networkId);
+      if (networkId) await deleteNetworkAndMembers(networkId);
     }
     if (testUserId) {
       await intentAdapter.deleteByUserId(testUserId);

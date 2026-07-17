@@ -24,6 +24,12 @@ export type HydeQueueDatabase = Pick<
  */
 export interface HydeQueueDeps {
   database?: HydeQueueDatabase;
+  invokeHyde?: (input: {
+    sourceText: string;
+    sourceType: 'intent';
+    sourceId: string;
+    forceRegenerate: true;
+  }) => Promise<unknown>;
 }
 
 /**
@@ -40,12 +46,14 @@ export class HydeQueue {
   private readonly cleanupLogger = log.job.from('HydeJob:Cleanup');
   private readonly refreshLogger = log.job.from('HydeJob:Refresh');
   private readonly database: HydeQueueDatabase | ChatDatabaseAdapter;
+  private readonly invokeHydeOverride?: HydeQueueDeps['invokeHyde'];
 
   /**
    * @param deps - Optional overrides for database (for tests).
    */
   constructor(deps?: HydeQueueDeps) {
     this.database = deps?.database ?? new ChatDatabaseAdapter();
+    this.invokeHydeOverride = deps?.invokeHyde;
     // When deps is omitted, default adapter implements the same interface.
   }
 
@@ -72,12 +80,27 @@ export class HydeQueue {
     const staleDocuments = await db.getStaleHydeDocuments(staleThreshold);
     this.refreshLogger.verbose('Found stale HyDE documents', { count: staleDocuments.length });
 
-    const embedder = new EmbedderAdapter();
-    const cache = new RedisCacheAdapter();
-    const inferrer = new LensInferrer();
-    const generator = new HydeGenerator();
-    const graphDb = this.database as unknown as HydeGraphDatabase;
-    const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
+    let hydeGraph: ReturnType<HydeGraphFactory['createGraph']> | null = null;
+    const invokeHyde = async (input: {
+      sourceText: string;
+      sourceType: 'intent';
+      sourceId: string;
+      forceRegenerate: true;
+    }): Promise<void> => {
+      if (this.invokeHydeOverride) {
+        await this.invokeHydeOverride(input);
+        return;
+      }
+      if (!hydeGraph) {
+        const embedder = new EmbedderAdapter();
+        const cache = new RedisCacheAdapter();
+        const inferrer = new LensInferrer();
+        const generator = new HydeGenerator();
+        const graphDb = this.database as unknown as HydeGraphDatabase;
+        hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
+      }
+      await hydeGraph.invoke(input);
+    };
 
     let refreshedCount = 0;
     for (const doc of staleDocuments) {
@@ -89,9 +112,24 @@ export class HydeQueue {
         await db.deleteHydeDocumentsForSource(doc.sourceType, doc.sourceId);
         continue;
       }
+      if (
+        !intent.userId
+        || intent.archivedAt
+        || intent.status === 'PAUSED'
+        || intent.status === 'FULFILLED'
+        || intent.status === 'EXPIRED'
+      ) {
+        this.refreshLogger.verbose('Skipping stale HyDE refresh for inactive intent', {
+          sourceId: doc.sourceId,
+          status: intent.status,
+          archived: Boolean(intent.archivedAt),
+          hasOwner: Boolean(intent.userId),
+        });
+        continue;
+      }
 
       try {
-        await hydeGraph.invoke({
+        await invokeHyde({
           sourceText: intent.payload,
           sourceType: 'intent',
           sourceId: doc.sourceId,

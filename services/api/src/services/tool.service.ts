@@ -15,6 +15,7 @@ import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
@@ -68,11 +69,13 @@ export class ToolService {
       enricher: { enrichUserProfile },
       getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
+      stampNewbornOpportunities,
       findPendingQuestions: async (
         userId: string,
         filters?: {
           sourceType?: string;
           sourceId?: string;
+          purpose?: import('@indexnetwork/protocol').QuestionPurpose;
           networkId?: string;
           scopeType?: 'intent';
           scopeId?: string;
@@ -80,7 +83,9 @@ export class ToolService {
           limit?: number;
         },
       ) => {
-        const rows = await questionerAdapter.findPending(userId, filters);
+        const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
+          ? filters
+          : { ...filters, excludeModes: ['pool_discovery'] });
         return rows.map((row): PendingQuestionSummary => ({
           id: row.id,
           title: row.payload.title,
@@ -88,6 +93,7 @@ export class ToolService {
           options: row.payload.options,
           multiSelect: row.payload.multiSelect,
           mode: row.detection.mode,
+          ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
           sourceType: row.detection.sourceType,
           sourceId: row.detection.sourceId,
           createdAt: row.createdAt,
@@ -272,6 +278,8 @@ export class ToolService {
       undefined,
       negotiationGraph,
       noOpDispatcher,
+      undefined,
+      stampNewbornOpportunities,
     ).createGraph();
     const indexGraph = new NetworkGraphFactory(database).createGraph();
     const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();

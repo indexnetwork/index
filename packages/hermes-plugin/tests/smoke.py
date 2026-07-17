@@ -214,6 +214,8 @@ def main() -> None:
     assert "index-dashboard__opp-id--clickable" in dashboard_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
+    assert "unresolved_uptake_questions" in dashboard_js
+    assert "Continue anyway" in dashboard_js
     assert "startChatWithOpportunity" in dashboard_js
     assert "counterpartUserId" in dashboard_js
     assert "MessagesPanel" in dashboard_js
@@ -652,11 +654,17 @@ def main() -> None:
         mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
         assert mcp_calls == ["read_intents", "read_pending_questions", "read_networks", "read_network_memberships"]
         rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
-        assert rest_calls == [
+        assert rest_calls[:3] == [
             ("GET", "https://api.example.test/api/opportunities"),
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
             ("GET", "https://api.example.test/api/opportunities?status=rejected"),
         ]
+        assert set(rest_calls[3:]) == {
+            ("GET", "https://api.example.test/api/users/other"),
+            ("GET", "https://api.example.test/api/users/other-general"),
+            ("GET", "https://api.example.test/api/users/expired-other"),
+            ("GET", "https://api.example.test/api/users/rejected-other"),
+        }
 
         captured = []
         install_fake_urlopen([FakeResponse({"success": True})], captured)
@@ -694,6 +702,40 @@ def main() -> None:
         assert dashboard_api.accept_opportunity("") == {
             "success": False,
             "error": "An opportunity id is required.",
+        }
+
+        captured = []
+        advisory = {
+            "success": False,
+            "error": "Resolve pending uptake questions.",
+            "advisory": {
+                "code": "unresolved_uptake_questions",
+                "advisoryOnly": True,
+                "opportunityId": "opp-1",
+                "questions": [{"id": "q-1", "title": "Capacity", "prompt": "Can they deliver?", "options": [], "multiSelect": False}],
+                "acknowledgedUptakeQuestionIds": [],
+            },
+        }
+        install_fake_urlopen([mcp_text_response(advisory)], captured)
+        assert dashboard_api.accept_opportunity("opp-1") == advisory
+
+        captured = []
+        install_fake_urlopen([mcp_text_response({"success": True, "conversationId": "conv-10"})], captured)
+        acknowledged_result = dashboard_api.accept_opportunity(
+            "opp-1", {"acknowledgedUptakeQuestionIds": ["q-1", "q-1"]}
+        )
+        assert acknowledged_result["success"] is True
+        assert captured[-1]["body"]["params"] == {
+            "name": "update_opportunity",
+            "arguments": {
+                "opportunityId": "opp-1",
+                "status": "accepted",
+                "acknowledgedUptakeQuestionIds": ["q-1"],
+            },
+        }
+        assert dashboard_api.accept_opportunity("opp-1", {"acknowledgedUptakeQuestionIds": "q-1"}) == {
+            "success": False,
+            "error": "acknowledgedUptakeQuestionIds must be an array of non-empty strings.",
         }
 
         captured = []

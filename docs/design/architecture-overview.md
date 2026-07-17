@@ -382,6 +382,14 @@ When a user says "I'm looking for a React co-founder":
 3. `IntentEvents.onCreated` fires, which enqueues an opportunity discovery job
 4. The opportunity queue picks up the job asynchronously
 
+### Intent Pause/Resume Admission
+
+`PATCH /api/intents/:id/status` accepts only `ACTIVE` and `PAUSED`. The transition is owner-scoped, re-checks a bound agent's network scope against `intent_networks`, and rejects archived or terminal (`FULFILLED`/`EXPIRED`) intents. Null legacy status is normalized to `ACTIVE`.
+
+Pause is an admission gate, not cleanup. It preserves existing opportunities/Radar cards, pending questions, conversations, intent-network assignments, and HyDE documents. Lifecycle checks prevent a paused intent from admitting not-yet-started intent-driven discovery, appearing as a candidate match, or starting new pool mining, question generation, and answer-triggered Tier-1 runs. Work that passed its admission check before the pause may finish. A pending question can still be answered and its deterministic Tier-0 re-ranking can still affect the existing pool.
+
+Resume atomically restores `ACTIVE` and invokes `IntentEvents.onResumed`. The HTTP response awaits enqueue acknowledgement for a from-intent discovery job whose ID includes the stable lifecycle version, so retries deduplicate. If enqueue fails after a real `PAUSED` → `ACTIVE` transition, a narrow owner/scope/version compare-and-set compensates back to `PAUSED`; concurrent lifecycle writes are not overwritten, and an idempotent `ACTIVE` request is not mutated. The endpoint returns retryable `503 enqueue_failed` with the authoritative resulting status instead of claiming success. An acknowledged run proceeds through the ordinary discovery-completion pool mining and question flow.
+
 ---
 
 ## 6. Event System
@@ -395,18 +403,19 @@ Defined in `src/events/intent.event.ts`:
 ```typescript
 export const IntentEvents = {
   onCreated: (_intentId: string, _userId: string): void => {},
-  onUpdated: (_intentId: string, _userId: string): void => {},
+  onPaused: (_intentId: string, _userId: string, _lifecycleVersionMs: number): void => {},
+  onResumed: async (_intentId: string, _userId: string, _lifecycleVersionMs: number): Promise<void> => {},
   onArchived: (_intentId: string, _userId: string): void => {},
 };
 ```
 
-These are assigned concrete handlers in `main.ts`. For example, `onCreated` enqueues an opportunity discovery job so that newly created intents trigger matching:
+These are assigned concrete handlers in `main.ts`. `onCreated` enqueues discovery and triggers opportunity maintenance; `onPaused` records the transition without cleanup; `onResumed` awaits enqueue acknowledgement for the deduplicated resume discovery job; and `onArchived` triggers maintenance after archive cleanup. The awaited resume handler makes the status response acknowledge queue admission rather than merely starting a fire-and-forget enqueue; service-level compare-and-set compensation restores `PAUSED` when a changed resume cannot be admitted:
 
 ```typescript
-IntentEvents.onCreated = (intentId: string, userId: string) => {
-  fromIntentQueue.addJob(
-    { intentId, userId },
-    { priority: 10, jobId: `rediscovery-${userId}-${intentId}-...` },
+IntentEvents.onResumed = async (intentId, userId, lifecycleVersionMs) => {
+  await fromIntentQueue.addJob(
+    { intentId, userId, trigger: 'intent_resume' },
+    { priority: 10, jobId: intentResumeDiscoveryJobId(userId, intentId, lifecycleVersionMs) },
   );
 };
 ```
@@ -452,6 +461,7 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | `email.queue` | Email delivery via Resend |
 | `notification.queue` | Notification delivery |
 | `integration-sync-queue` | Periodic Google Calendar sync for event networks |
+| `frame-drift-monitoring` | Disabled-by-default daily BullMQ scheduler for atomically claimed, immutable capture-time centroid observations and a non-causal intent-assignment-pair normalized opportunity-yield proxy; intentionally omitted from Bull Board |
 
 ### Job Patterns
 
@@ -472,7 +482,9 @@ Queues orchestrate by calling services, graphs, or adapters. They contain no bus
 
 ### Monitoring
 
-Bull Board UI is served at `http://localhost:3001/dev/queues/` when the protocol server is running. It provides job status visibility, retry controls, and queue metrics.
+Bull Board UI is served at `http://localhost:3001/dev/queues/` when the protocol server is running. It provides job status visibility, retry controls, and queue metrics. Internal measurement schedulers such as frame-drift monitoring are not registered there.
+
+Daily frame-drift measurement is implemented as queue orchestration → service calculation → adapter-owned `REPEATABLE READ` observation. A unique run header claims the whole bucket before source reads, and metric rows reference that header, preventing duplicate captures from appending newly eligible rows. Privacy thresholding applies both to user-balanced centroids and to each side of a yield pair; historical qualifying aggregates are not recomputed after later user deletion. The pipeline is measurement-only and has no API/UI or realignment side effects. See [Frame-Drift Monitoring](./frame-drift-monitoring.md).
 
 ---
 

@@ -65,6 +65,7 @@ describe('introducer gating lifecycle', () => {
       findOpportunitiesByActors: () => Promise.resolve([]),
       getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
       getNetworkMemberships: async () => [],
+      getActiveNetworkMembershipPairs: async (pairs) => pairs,
       getActiveIntents: (userId: string) => Promise.resolve([
         { id: `intent-${userId}` as Id<'intents'>, payload: `Intent for ${userId}`, summary: null, createdAt: new Date() },
       ]),

@@ -1,9 +1,9 @@
 ---
 title: "Intents"
 type: domain
-tags: [intents, speech-acts, felicity-conditions, semantic-entropy, reconciliation, lifecycle]
+tags: [intents, speech-acts, felicity-conditions, semantic-entropy, reconciliation, lifecycle, pool-questions]
 created: 2026-03-26
-updated: 2026-04-06
+updated: 2026-07-16
 ---
 
 # Intents
@@ -115,10 +115,16 @@ Intents follow a four-state lifecycle:
 
 | Status | Meaning |
 |---|---|
-| **ACTIVE** | The intent is live and participates in discovery. New intents start here. |
-| **PAUSED** | The user has temporarily suspended the intent. It does not participate in discovery but is not expired. |
+| **ACTIVE** | The intent is live and can admit new discovery and matching work. New intents start here. |
+| **PAUSED** | The user has temporarily suspended new intent-driven discovery and matching without removing the existing intent workspace. |
 | **FULFILLED** | The intent has been satisfied (the user found what they were looking for or completed what they committed to). |
 | **EXPIRED** | The intent is no longer relevant. This can happen through explicit user action, through reconciliation (a tombstone matched it), or through system expiration rules. |
+
+Legacy rows whose `status` is null are treated as **ACTIVE**.
+
+Pausing is non-destructive. Existing opportunities (including Radar cards), pending questions, conversations, intent-network assignments, and HyDE documents remain in place. A paused intent cannot admit not-yet-started intent-driven discovery, be returned as a candidate match, start new pool mining or question generation, or schedule an answer-triggered Tier-1 discovery rerun. Work that already passed its lifecycle admission check may still finish.
+
+Existing pending questions remain answerable while paused. Their deterministic Tier-0 preference adjustment can still re-rank the existing pool, but the answer does not start Tier-1 discovery or chain a new question. Resuming changes the intent to **ACTIVE** and immediately enqueues one lifecycle-version-deduplicated from-intent discovery run; ordinary pool mining and question generation then follow the normal discovery flow. If that enqueue is not acknowledged, a changed resume is compare-and-set back to **PAUSED** when no concurrent lifecycle write intervened, and the client receives a retryable failure rather than false success.
 
 An archived intent (with an `archivedAt` timestamp) is effectively removed from active consideration.
 
@@ -188,6 +194,32 @@ The `relevancyScore` stored on the junction table is used during opportunity dis
 
 ---
 
+## Pool-Aware Refinement Questions
+
+An active intent can receive `pool_discovery` questions derived from meaningful differences across its current opportunity pool. The discriminator miner verifies evidence against candidate context, scores each axis for expected value of information, and asks only sufficiently supported questions. These questions are scoped to the intent's Personal Agent thread rather than the global question inbox. Before a queued or chained result is persisted, the final gate re-reads the exact recipient+intent pool and normalized payload+summary fingerprint. It creates no row, push, or dismissal when the fingerprint changed or pool Jaccard similarity is below the shared inclusive `0.7` freshness threshold.
+
+Discovery completion also reconciles pending snapshots against that same current pool and fingerprint. Drifted rows are system-voided with `detection.voidedReason='pool_drift'`; voided rows never render, push, count, contribute to dismissal decay, or suppress a novel axis. Repeated MODE-on mining skips when the latest durable non-voided snapshot has the same fingerprint and pool Jaccard is at least `0.7`. Shadow-only mining remains independently gated and has no durable snapshot cadence anchor.
+
+Immediate rank application is deterministic and auditable. Candidates on the chosen side retain a `1.0` factor, the other side receives `0.6`, and live candidates that were not assigned by the mined snapshot receive `0.9`. Every adjustment records the exact answering `recipientUserId` and selected `intentId`; legacy entries without both fields are ignored for ranking but preserved. Multiple answers multiply, with a cumulative floor of `0.3`, but only in that recipient's Radar for that exact selected intent, so a preference cannot change another participant's or another intent's ordering. “Both matter” records no preference and changes no ranking. The same inclusive `0.7` Jaccard threshold used for drift governs P3 retained-assignment admission; below it, the system skips the local reshuffle rather than applying stale evidence.
+
+Pool mining and Tier-0 admission are narrower than ordinary selected-intent display scoping: mining, the initial adjustment read, and the row-locked write recheck all require `opportunities.detection.triggeredBy` to equal the answered intent, an eligible recipient actor, and a live pool status. The actor-level `actors[].intent` fallback remains available for historical Radar reads but cannot admit answer-driven metadata writes. Canonical intent refinement intentionally continues to target only `questions.detection.sourceId`, and newborn opportunities stamp the same recipient+intent provenance only when their exact `detection.triggeredBy` matches.
+
+For an active intent, a substantive answer also runs through the same canonical intent-update graph used by chat refinements; it never mechanically appends answer text or creates a premise. Refinement completes before the debounced discovery rerun is scheduled, and a refinement failure is isolated so Tier-1 discovery and interview chaining can continue. “Both matter” alone does not refine the intent, while accompanying free text can. While the intent is paused, the pending question remains answerable and the immediate deterministic re-ranking can still apply, but refinement, rerun, and any next question are withheld.
+
+Resolved axes are durable semantic novelty references when `POOL_QUESTIONS_MODE=on`. Each generated question discriminator retains its internal embedding and embedding-model id, and answered or dismissed axes—including “Both matter”—suppress semantically equivalent future questions while their full normalized intent payload+summary fingerprint is current. Reuse requires both the current embedding model and vector dimensions; mismatches and legacy rows fall back to canonical axis text. Shadow-only mining neither looks up resolved axes nor retains vectors, though ordinary text-reference novelty scoring still embeds as needed. A pool answer whose canonical refinement actually applies is stamped directly from the returned updated payload plus the pre-update summary, so a concurrent external edit cannot be stamped accidentally. A later material payload/summary edit voids pending stale questions, invalidates resolved-axis dedup so an answered axis may be asked once under the new fingerprint, and marks exact recipient+intent `poolAdjustments` as `stale: true`; stale adjustments remain auditable but cannot rank or demote. Legacy unscoped or malformed entries are preserved. Pause/resume does not invalidate the fingerprint. For legacy snapshots without a fingerprint, normalized snippets shorter than the 160-character cap require exact equality; only snippets exactly 160 characters long may prefix-match a longer current intent. Pending exact labels always deduplicate. The Personal Agent narrates the immediate adjustment and later refresh using count-only templates; cards expose only the user's selected side in a muted deprioritization chip, never embeddings, evaluator reasoning, or internal pool snapshots.
+
+When both `POOL_QUESTIONS_MODE=on` and `POOL_QUESTIONS_STAMP_NEWBORN=on`, genuinely new opportunities from owned, active, exact-trigger intent discovery inherit still-current answered preferences immediately before insertion. One fixed-axis classifier call batches the call-local candidates using the same bounded public context as mining; it never receives the user's chosen sides. Only answers with an exact current full payload+summary fingerprint are eligible. Verified chosen, other, and unknown assignments receive the same `1.0`, `0.6`, and `0.9` factors (cumulative floor `0.3`), deterministic template details, and `questionId` provenance. Raw classifier evidence and evaluator reasoning are not added to persisted adjustment metadata or signals. Callback failure, lifecycle/fingerprint drift, or unsafe output length/order fails open to the original insert payload. Dedup reactivations/upgrades, context-only/ad-hoc discovery, introductions, on-behalf-of, enrichment, and manual paths are excluded.
+
+When `POOL_QUESTIONS_PUSH=on`, a pending owner question may proactively reach the Personal Agent only if pool-question mode and negotiator chat are also available. Admission is transactional and self-throttling: internal asked VoI must be strictly above `0.6 × 1.15^dismissalStreak`, pool size must be at least 8, the active/nonarchived intent must not have been visited after the question was created, only one claim is allowed per recipient+intent+pool-refresh cycle, and each recipient may claim at most two per UTC day. Dismissed legacy/pull pool questions participate in the streak; the latest later answer resets it. Claims—not successful deliveries—consume the daily budget so concurrency and terminal delivery failures cannot overrun it.
+
+A successful push has exactly two surfaces: the delivered row joins the Personal Agent sidebar count, and one deterministic assistant line is inserted into the stable unscoped negotiator DM with a link to `/i/:intentId`. It never creates an intent-pinned session, global Questions row, injected unscoped card, toast, modal, or separate notification. The DM remains historical after resolution; the badge clears naturally because counts require pending status and the authoritative internal `pushedAt` delivery stamp. Internal pool snapshots and push claim/delivery metadata are stripped from REST and MCP payloads.
+
+Pool answers do **not** create premises. The canonical intent-refinement graph already incorporates substantive answers into the owned intent, so creating a premise would duplicate authority and trigger unrelated premise cascades.
+
+This behavior is independently gated: `POOL_QUESTIONS_MINING` controls shadow-only scoring, `POOL_QUESTIONS_MODE` controls durable question generation/application, `POOL_QUESTIONS_PUSH` controls proactive delivery, `POOL_QUESTIONS_STAMP_NEWBORN` controls pre-insert preference stamping, and `POOL_QUESTIONS_RANKING` controls whether fresh stored adjustments affect read-time ordering. With ranking off, feed ordering remains unchanged. The question TTL remains seven days.
+
+---
+
 ## Reconciliation
 
 When new content arrives (user input, uploaded document, integration sync), the system does not blindly create new intents. Instead, a three-stage pipeline runs:
@@ -222,6 +254,7 @@ Matching uses Donnellan's distinction: referential intents match only if they sh
 
 Intent state changes emit events that other parts of the system react to asynchronously:
 
-- **onCreated**: Fired when a new intent is created. Triggers HyDE document generation and opportunity discovery.
-- **onUpdated**: Fired when an intent is modified. Triggers re-evaluation of index assignments and opportunity re-discovery.
-- **onArchived**: Fired when an intent is archived/expired. Triggers cleanup of associated HyDE documents and opportunity expiration.
+- **onCreated**: Fired when a new intent is created; its handler enqueues from-intent discovery and triggers opportunity maintenance.
+- **onPaused**: Fired only when an intent actually changes to **PAUSED**. It records the lifecycle transition without deleting existing workspace state.
+- **onResumed**: Invoked for **ACTIVE** requests, including idempotent retries. Its async handler enqueues the lifecycle-version-deduplicated from-intent discovery job, and the status request waits for that enqueue acknowledgement. A failed enqueue returns `enqueue_failed`; a changed resume is narrowly compensated back to **PAUSED** when still at the same lifecycle version.
+- **onArchived**: Fired after archive handling removes intent-network assignments, expires opportunities that reference the intent, and enqueues HyDE deletion; its handler triggers opportunity maintenance.

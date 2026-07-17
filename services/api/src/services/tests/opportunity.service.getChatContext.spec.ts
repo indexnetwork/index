@@ -168,9 +168,17 @@ const MockChatDatabaseAdapter = class {
 mock.module("../../adapters/database.adapter", () => ({
   ChatDatabaseAdapter: MockChatDatabaseAdapter,
   chatDatabaseAdapter: new MockChatDatabaseAdapter(),
+  userDatabaseAdapter: {},
+  conversationDatabaseAdapter: {
+    deliverClaimedPoolQuestionPush: mock(() => Promise.resolve(null)),
+  },
+  intentDatabaseAdapter: {},
+  fileDatabaseAdapter: {},
+  linkDatabaseAdapter: {},
 }));
 mock.module("../../adapters/embedder.adapter", () => ({
   EmbedderAdapter: class {},
+  embedderAdapter: {},
 }));
 mock.module("../../adapters/cache.adapter", () => ({
   RedisCacheAdapter: class {
@@ -289,6 +297,50 @@ describe("OpportunityService.getChatContext", () => {
       expect(result.opportunities[0].personalizedSummary).toBe(
         "You both share deep expertise in distributed systems."
       );
+    });
+
+    it("uses v2 chat cache keys", async () => {
+      const service = createService([directOpportunity]);
+      const readKeys: string[][] = [];
+      const writeKeys: string[] = [];
+      (service as unknown as Record<string, unknown>).cache = {
+        mget: mock((keys: string[]) => {
+          readKeys.push(keys);
+          return Promise.resolve([null]);
+        }),
+        set: mock((key: string) => {
+          writeKeys.push(key);
+          return Promise.resolve();
+        }),
+      };
+
+      await service.getChatContext(VIEWER_ID, PEER_ID);
+
+      expect(readKeys[0]).toEqual([`chat:v2:card:${OPP_ID_DIRECT}:${VIEWER_ID}`]);
+      expect(writeKeys).toEqual([`chat:v2:card:${OPP_ID_DIRECT}:${VIEWER_ID}`]);
+    });
+
+    it("does not cache presenter fallback output", async () => {
+      mockPresent.mockImplementationOnce(() => Promise.resolve({
+        headline: "A promising connection",
+        personalizedSummary: "A promising connection.",
+        suggestedAction: "Take a look.",
+        isFallback: true,
+      }));
+      const service = createService([directOpportunity]);
+      const writeKeys: string[] = [];
+      (service as unknown as Record<string, unknown>).cache = {
+        mget: mock(() => Promise.resolve([null])),
+        set: mock((key: string) => {
+          writeKeys.push(key);
+          return Promise.resolve();
+        }),
+      };
+
+      const result = await service.getChatContext(VIEWER_ID, PEER_ID);
+
+      expect(result.opportunities[0].headline).toBe("A promising connection");
+      expect(writeKeys).toHaveLength(0);
     });
 
     it("should return empty narratorRemark (not used in chat context)", async () => {

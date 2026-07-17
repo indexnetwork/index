@@ -42,6 +42,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     findOpportunitiesByActors: async () => [],
     getUserIndexIds: async () => [] as Id<'networks'>[],
     getNetworkMemberships: async () => [],
+    getActiveNetworkMembershipPairs: async (pairs) => pairs,
     getActiveIntents: async () => [],
     getNetworkIdsForIntent: async () => [],
     getNetwork: async () => null,

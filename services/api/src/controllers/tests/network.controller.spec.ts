@@ -22,14 +22,14 @@ import { NetworkController } from "../network.controller";
 import { NetworkExperimentController } from "../network-experiment.controller";
 import db from "../../lib/drizzle/drizzle";
 import * as schema from "../../schemas/database.schema";
-import { UserDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { UserDatabaseAdapter } from "../../adapters/database.adapter";
+import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 describe("NetworkController Integration", () => {
   const controller = new NetworkController();
   const experimentController = new NetworkExperimentController();
   const userAdapter = new UserDatabaseAdapter();
-  const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
   let createdIndexId: string;
   const additionalNetworkIds: string[] = [];
@@ -49,8 +49,8 @@ describe("NetworkController Integration", () => {
   });
 
   afterAll(async () => {
-    for (const id of additionalNetworkIds) await indexAdapter.deleteNetworkAndMembers(id);
-    if (createdIndexId) await indexAdapter.deleteNetworkAndMembers(createdIndexId);
+    for (const id of additionalNetworkIds) await deleteNetworkAndMembers(id);
+    if (createdIndexId) await deleteNetworkAndMembers(createdIndexId);
     if (testUserId) await userAdapter.deleteById(testUserId);
   });
 
@@ -299,7 +299,7 @@ describe("NetworkController Integration", () => {
           await db.delete(schema.networks).where(inArray(schema.networks.id, personalNetworkIds));
         }
       }
-      if (experimentNetworkId) await indexAdapter.deleteNetworkAndMembers(experimentNetworkId);
+      if (experimentNetworkId) await deleteNetworkAndMembers(experimentNetworkId);
     });
 
     test("returns 400 when email is missing", async () => {
@@ -381,7 +381,7 @@ describe("NetworkController Integration", () => {
     });
 
     afterAll(async () => {
-      if (rotateNetworkId) await indexAdapter.deleteNetworkAndMembers(rotateNetworkId);
+      if (rotateNetworkId) await deleteNetworkAndMembers(rotateNetworkId);
     });
 
     test("returns 200 with a fresh masterKey for the owner", async () => {

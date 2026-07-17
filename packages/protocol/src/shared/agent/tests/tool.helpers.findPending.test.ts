@@ -11,10 +11,11 @@ describe("ToolDeps.findPendingQuestions", () => {
   it("accepts a callback with the correct signature", () => {
     const mockFn = async (
       _userId: string,
-      _filters?: { sourceType?: string; sourceId?: string },
+      _filters?: { sourceType?: string; sourceId?: string; purpose?: "uptake" },
     ): Promise<PendingQuestionSummary[]> => [];
 
     const deps = { findPendingQuestions: mockFn } as Pick<ToolDeps, "findPendingQuestions">;
     expect(deps.findPendingQuestions).toBeDefined();
+    void deps.findPendingQuestions?.("user-1", { purpose: "uptake" });
   });
 });

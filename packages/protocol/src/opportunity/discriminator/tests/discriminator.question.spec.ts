@@ -21,6 +21,8 @@ function scored(overrides: Partial<ScoredDiscriminator> = {}): ScoredDiscriminat
     coverage: 0.8,
     novelty: 0.7,
     voi: 0.5,
+    embedding: [0.1, 0.2],
+    embeddingModel: "test/model-v1",
     ...overrides,
   };
 }
@@ -33,6 +35,8 @@ function questionDiscriminator(overrides: Partial<QuestionPoolDiscriminator> = {
     sideCounts: { "Hands-on builder": 8, "Advisor": 6 },
     voi: 0.5,
     evidenceRate: 0.9,
+    embedding: [0.1, 0.2],
+    embeddingModel: "test/model-v1",
     assignments: [{ opportunityId: "opp-1", side: "Hands-on builder" }],
     ...overrides,
   };
@@ -46,6 +50,8 @@ describe("toQuestionDiscriminator", () => {
       { opportunityId: "opp-2", side: "Advisor" },
     ]);
     expect(d.sideCounts).toEqual({ "Hands-on builder": 1, "Advisor": 1 });
+    expect(d.embedding).toEqual([0.1, 0.2]);
+    expect(d.embeddingModel).toBe("test/model-v1");
   });
 });
 
@@ -63,12 +69,18 @@ describe("selectQuestionDiscriminators", () => {
 });
 
 describe("synthesizePoolQuestion", () => {
+  const opportunityIds = Array.from(
+    { length: 21 },
+    (_, index) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+  );
   const base = {
     discriminator: questionDiscriminator(),
     alternates: [questionDiscriminator({ label: "alt-1" })],
     poolSize: 21,
+    opportunityIds,
     minedAt: "2026-07-14T14:00:00.000Z",
     runId: "run-1",
+    intentFingerprint: "fingerprint-v1",
   };
 
   it("produces a schema-valid question: sides as chip options + Both matter", () => {
@@ -91,8 +103,13 @@ describe("synthesizePoolQuestion", () => {
   it("stashes the pool snapshot with alternates for chaining", () => {
     const out = synthesizePoolQuestion(base)!;
     expect(out.pool.poolSize).toBe(21);
+    expect(out.pool.opportunityIds).toEqual(opportunityIds);
+    expect(out.pool.opportunityIds).not.toBe(opportunityIds);
     expect(out.pool.runId).toBe("run-1");
+    expect(out.pool.intentFingerprint).toBe("fingerprint-v1");
     expect(out.pool.discriminator.label).toBe("Hands-on builders vs advisors");
+    expect(out.pool.discriminator.embedding).toEqual([0.1, 0.2]);
+    expect(out.pool.discriminator.embeddingModel).toBe("test/model-v1");
     expect(out.pool.alternates.map((a) => a.label)).toEqual(["alt-1"]);
   });
 
@@ -128,6 +145,64 @@ describe("synthesizePoolQuestion", () => {
       }),
     })!;
     expect(out.payload.prompt).toBe("Do you want someone hands-on builder style, or advisor style?");
+  });
+
+  it("rewrites third-person miner seeds ('the user') into second person", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        questionSeed: "Is the user primarily seeking a hands-on builder, or does the user prefer an advisor",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe(
+      "Are you primarily seeking a hands-on builder, or do you prefer an advisor?",
+    );
+  });
+
+  it("names the intent in the evidence chip and stores it in the snapshot for chaining", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      intentText: "Explore the use of LLMs for procedural video game narration",
+    })!;
+    expect(out.payload.evidence).toBe(
+      "based on 21 people matching \u201cExplore the use of LLMs for procedural video game narration\u201d",
+    );
+    expect(out.pool.intentText).toBe("Explore the use of LLMs for procedural video game narration");
+  });
+
+  it("truncates long intent snippets and keeps evidence within the 160-char schema cap", () => {
+    const long = "Collaborate with partners, advisors, technical professionals, agent builders, and protocol engineers on long-horizon coordination infrastructure for cities";
+    const out = synthesizePoolQuestion({ ...base, intentText: long })!;
+    expect(out.payload.evidence!.length).toBeLessThanOrEqual(160);
+    expect(out.payload.evidence).toContain("\u2026\u201d");
+    expect(() => QuestionSchema.parse(out.payload)).not.toThrow();
+  });
+
+  it("falls back to the generic evidence line without intentText", () => {
+    const out = synthesizePoolQuestion(base)!;
+    expect(out.payload.evidence).toBe("based on 21 people matching this intent");
+    expect(out.pool.intentText).toBeUndefined();
+  });
+
+  it("rewrites 'this user' / 'the client' variants into second person", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        questionSeed: "Does this user want a hands-on builder, or is the client seeking an advisor",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe("Do you want a hands-on builder, or are you seeking an advisor?");
+  });
+
+  it("falls back to the two-sided template when a third-person reference survives normalization", () => {
+    const out = synthesizePoolQuestion({
+      ...base,
+      discriminator: questionDiscriminator({
+        // 'a user' is not rewritten — the catch-all must route to the template.
+        questionSeed: "Would a user like this prefer a hands-on builder or an advisor",
+      }),
+    })!;
+    expect(out.payload.prompt).toBe("Which matters more here: Hands-on builder or Advisor?");
   });
 
   it("rewrites first-person miner seeds into second person", () => {

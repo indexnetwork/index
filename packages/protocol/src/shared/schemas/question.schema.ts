@@ -3,10 +3,10 @@
  * elicitation dispatch. Mirrors the brainstorming AskUserQuestion skill so a
  * Question can be rendered identically across surfaces.
  *
- * `QuestionWithStrategy` extends the public shape with an internal `strategy`
- * tag used by the generator's guardrails (dedup/diversity) and recorded in
- * `debugMeta`. The tag is stripped before the public payload leaves the
- * generator — users never see it.
+ * `QuestionWithStrategy` extends the public shape with internal `strategy`
+ * and QUD underspecification tags used by generator guardrails and persisted
+ * metadata. Both tags are stripped before the public payload leaves the
+ * generator — users never see them.
  */
 import { z } from "zod";
 
@@ -34,6 +34,13 @@ export const QuestionSchema = z.object({
   evidence: z.string().min(1).max(160).optional(),
 });
 
+/** Canonical QUD repair categories for underspecified intents/questions. */
+export const UnderspecificationTypeSchema = z.enum([
+  "missing_constituent",
+  "missing_constraint",
+  "open_alternative_set",
+]);
+
 export const QuestionStrategySchema = z.enum([
   "refine_intent",
   "surface_missing_detail",
@@ -44,6 +51,8 @@ export const QuestionStrategySchema = z.enum([
 
 export const QuestionWithStrategySchema = QuestionSchema.extend({
   strategy: QuestionStrategySchema,
+  /** QUD repair category, or null when the question is not an underspecification repair. */
+  underspecificationType: UnderspecificationTypeSchema.nullable(),
 });
 
 export const QuestionGeneratorResponseSchema = z.object({
@@ -52,21 +61,26 @@ export const QuestionGeneratorResponseSchema = z.object({
 
 export type QuestionOption = z.infer<typeof QuestionOptionSchema>;
 export type Question = z.infer<typeof QuestionSchema>;
+export type UnderspecificationType = z.infer<typeof UnderspecificationTypeSchema>;
 export type QuestionStrategy = z.infer<typeof QuestionStrategySchema>;
 export type QuestionWithStrategy = z.infer<typeof QuestionWithStrategySchema>;
 export type QuestionGeneratorResponse = z.infer<typeof QuestionGeneratorResponseSchema>;
 
 /**
- * Internal generator output: public questions plus a parallel strategies
- * array for debug-only consumption. The generator emits this; callers
- * forward `questions` to renderers and `strategies` to `debugMeta` only.
+ * Internal generator output: public questions plus parallel strategy and QUD
+ * taxonomy arrays for metadata-only consumption. The generator emits this;
+ * callers forward only `questions` to renderers.
  */
 export interface QuestionGenerationResult {
   questions: Question[];
   strategies: QuestionStrategy[];
+  underspecificationTypes: Array<UnderspecificationType | null>;
 }
 
 // ─── Persistence types (opportunity-style composable jsonb) ──────────────────
+
+/** Internal reason a question was generated, orthogonal to mode and QUD metadata. */
+export const QuestionPurposeSchema = z.enum(["uptake"]);
 
 export const QuestionModeSchema = z.enum([
   "discovery",
@@ -103,6 +117,10 @@ export const QuestionPoolDiscriminatorSchema = z.object({
   sideCounts: z.record(z.string(), z.number()),
   voi: z.number(),
   evidenceRate: z.number(),
+  /** Discriminator embedding retained for durable semantic novelty checks. */
+  embedding: z.array(z.number().finite()).min(1).max(4096).optional(),
+  /** Model that generated `embedding`; mismatches must fall back to text. */
+  embeddingModel: z.string().min(1).optional(),
   /** Verified assignments only — the P3 re-rank input. */
   assignments: z.array(QuestionPoolAssignmentSchema),
 });
@@ -114,15 +132,63 @@ export const QuestionPoolSnapshotSchema = z.object({
   minedAt: z.string().min(1),
   /** Discovery run that produced the pool, when known. */
   runId: z.string().optional(),
+  /** Intent payload snippet (≤160 chars) — reused by chained questions' evidence chips. */
+  intentText: z.string().optional(),
+  /** Stable hash of the full normalized payload + summary used for freshness. */
+  intentFingerprint: z.string().min(1).optional(),
+  /** Exact bounded candidate pool. Optional for legacy rows/jobs created before IND-422. */
+  opportunityIds: z.array(z.string().uuid()).optional(),
   /** The discriminator this question asks about. */
   discriminator: QuestionPoolDiscriminatorSchema,
   /** Remaining ranked discriminators for interview-mode chaining. */
   alternates: z.array(QuestionPoolDiscriminatorSchema),
 });
 
+/** Internal delivery ledger for proactive pool-question pushes (IND-421). */
+export const QuestionPoolPushSchema = z.object({
+  version: z.literal(1),
+  source: z.literal("pool_discovery"),
+  recipientId: z.string().min(1),
+  intentId: z.string().min(1),
+  cycleKey: z.string().min(1),
+  messageId: z.string().min(1),
+  surfaces: z.tuple([
+    z.literal("personal_agent_badge"),
+    z.literal("negotiator_dm"),
+  ]),
+  claimedAt: z.string().min(1),
+  deliveryStatus: z.enum(["claimed", "delivered", "suppressed", "failed"]),
+  conversationId: z.string().min(1).optional(),
+  deliveredAt: z.string().min(1).optional(),
+  suppressedAt: z.string().min(1).optional(),
+  failure: z.string().min(1).max(500).optional(),
+});
+
+/** Durable request state for proactive pool-question delivery. */
+export const QuestionPoolPushRequestStatusSchema = z.enum(["requested", "suppressed"]);
+
+/** Internal reason a pending pool question was voided. */
+export const QuestionVoidedReasonSchema = z.enum(["pool_drift", "intent_edit"]);
+
+/** Permanent reasons that terminalize an unclaimed proactive push request. */
+export const QuestionPoolPushRequestReasonSchema = z.enum([
+  "question_lifecycle",
+  "intent_lifecycle",
+  "malformed_source",
+  "malformed_actor",
+  "malformed_pool",
+  "malformed_cycle",
+  "visited",
+  "pool_size",
+  "voi",
+  "cycle_budget",
+]);
+
 export const QuestionDetectionSchema = z.object({
   /** Which preset mode generated this question. */
   mode: QuestionModeSchema,
+  /** Internal reason for generation; independent of mode and QUD repair metadata. */
+  purpose: QuestionPurposeSchema.optional(),
   /** Entity type that triggered generation (e.g. "opportunity", "intent", "profile"). */
   sourceType: z.string().min(1),
   /** ID of the triggering entity. */
@@ -131,6 +197,10 @@ export const QuestionDetectionSchema = z.object({
   triggeredBy: z.string().optional(),
   /** ISO-8601 timestamp of generation. */
   timestamp: z.string().min(1),
+  /** Generation strategy persisted as internal metadata. */
+  strategy: QuestionStrategySchema.optional(),
+  /** QUD repair category persisted as internal metadata. */
+  underspecificationType: UnderspecificationTypeSchema.nullable().optional(),
   /** ID of the assistant message that triggered this question. Used by the frontend to anchor the question card inline. */
   messageId: z.string().optional(),
   /**
@@ -138,6 +208,63 @@ export const QuestionDetectionSchema = z.object({
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool: QuestionPoolSnapshotSchema.optional(),
+  /** Durable request marker written before enqueueing proactive delivery. Internal only. */
+  pushRequestedAt: z.string().min(1).optional(),
+  /** Last bounded recovery sweep that selected this request. Internal only. */
+  pushRecoveryAttemptedAt: z.string().min(1).optional(),
+  /** Durable request outcome. Internal only. */
+  pushRequestStatus: QuestionPoolPushRequestStatusSchema.optional(),
+  /** Permanent suppression reason for an unclaimed request. Internal only. */
+  pushRequestReason: QuestionPoolPushRequestReasonSchema.optional(),
+  /** ISO-8601 timestamp at which an unclaimed request was suppressed. Internal only. */
+  pushRequestSuppressedAt: z.string().min(1).optional(),
+  /** Internal proactive delivery state. Never serialize to public clients. */
+  push: QuestionPoolPushSchema.optional(),
+  /** Internal reason this question was voided after pool or intent drift. */
+  voidedReason: QuestionVoidedReasonSchema.optional(),
+  /** Authoritative successful-delivery ledger timestamp. Internal only. */
+  pushedAt: z.string().min(1).optional(),
+}).superRefine((detection, ctx) => {
+  if (
+    detection.mode === "pool_discovery"
+    && (!detection.triggeredBy?.trim() || detection.triggeredBy !== detection.sourceId)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["triggeredBy"],
+      message: "pool_discovery triggeredBy must be non-empty and equal sourceId",
+    });
+  }
+  if (detection.pushRequestStatus && !detection.pushRequestedAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pushRequestedAt"],
+      message: "push request state requires a request timestamp",
+    });
+  }
+  if (detection.pushRecoveryAttemptedAt && !detection.pushRequestedAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pushRequestedAt"],
+      message: "push recovery attempts require a request timestamp",
+    });
+  }
+  if (detection.pushRequestStatus === "suppressed") {
+    if (!detection.pushRequestReason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pushRequestReason"],
+        message: "suppressed push requests require a reason",
+      });
+    }
+    if (!detection.pushRequestSuppressedAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pushRequestSuppressedAt"],
+        message: "suppressed push requests require a timestamp",
+      });
+    }
+  }
 });
 
 export const QuestionActorSchema = z.object({
@@ -160,6 +287,7 @@ export const QuestionAnswerSchema = z.object({
   answeredAt: z.string().min(1),
 });
 
+export type QuestionPurpose = z.infer<typeof QuestionPurposeSchema>;
 export type QuestionMode = z.infer<typeof QuestionModeSchema>;
 export type QuestionDetection = z.infer<typeof QuestionDetectionSchema>;
 export type QuestionActor = z.infer<typeof QuestionActorSchema>;
@@ -167,3 +295,7 @@ export type QuestionAnswer = z.infer<typeof QuestionAnswerSchema>;
 export type QuestionPoolAssignment = z.infer<typeof QuestionPoolAssignmentSchema>;
 export type QuestionPoolDiscriminator = z.infer<typeof QuestionPoolDiscriminatorSchema>;
 export type QuestionPoolSnapshot = z.infer<typeof QuestionPoolSnapshotSchema>;
+export type QuestionPoolPush = z.infer<typeof QuestionPoolPushSchema>;
+export type QuestionVoidedReason = z.infer<typeof QuestionVoidedReasonSchema>;
+export type QuestionPoolPushRequestStatus = z.infer<typeof QuestionPoolPushRequestStatusSchema>;
+export type QuestionPoolPushRequestReason = z.infer<typeof QuestionPoolPushRequestReasonSchema>;

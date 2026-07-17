@@ -1,4 +1,5 @@
 import { createChatTools, type ChatTools, type ToolContext, type ResolvedToolContext } from "../shared/agent/tool.factory.js";
+import { focusedIntentId, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
 import { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./negotiator.prompt.js";
 import { createNegotiatorMemoryTools } from "./negotiator.tools.js";
@@ -101,6 +102,20 @@ export function filterNegotiatorTools<T extends { name: string }>(tools: T[]): T
 }
 
 /**
+ * Applies negotiator tool availability rules that depend on the focused scope.
+ * Intent-pinned chats use the adjacent Radar for opportunity listing, while all
+ * other negotiator capabilities remain available.
+ */
+export function filterNegotiatorToolsForContext<T extends { name: string }>(
+  tools: T[],
+  context: ToolScopeEnvelope,
+): T[] {
+  return focusedIntentId(context)
+    ? tools.filter((tool) => tool.name !== "list_opportunities")
+    : tools;
+}
+
+/**
  * Creates the negotiator persona's client-scoped toolset.
  *
  * Reuses the standard chat tool factory (so context resolution, scope
@@ -115,6 +130,10 @@ export async function createNegotiatorTools(
 ): Promise<ChatTools> {
   const tools = await createChatTools(deps, preResolvedContext);
   const filtered = filterNegotiatorTools(tools);
+  // A supplied resolved context is authoritative. Direct callers without one
+  // still get the canonical explicit scope envelope from ToolContext.
+  const toolScope = preResolvedContext ?? { scopeType: deps.scopeType, scopeId: deps.scopeId };
+  const contextFiltered = filterNegotiatorToolsForContext(filtered, toolScope);
   // P5.4 (IND-408): `remember`/`forget` are negotiator-exclusive — appended
   // AFTER the allowlist filter, and only when the composition root injected
   // the host bridge (i.e. negotiator memory writes are enabled). They never
@@ -125,9 +144,9 @@ export async function createNegotiatorTools(
       userId: deps.userId,
       ...(deps.sessionId ? { sessionId: deps.sessionId } : {}),
     });
-    return [...filtered, ...memoryTools] as ChatTools;
+    return [...contextFiltered, ...memoryTools] as ChatTools;
   }
-  return filtered;
+  return contextFiltered;
 }
 
 /**

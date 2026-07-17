@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
-import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary } from '@indexnetwork/protocol';
+import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, HydeCache, OpportunityCache } from '@indexnetwork/protocol';
 import { and, eq } from 'drizzle-orm/sql';
 
@@ -13,6 +13,7 @@ import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue
 import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
+import { uptakeAcceptanceGuard, type UptakeAcceptanceAdvisoryResult, type UptakeAcceptanceGuardLike } from '../lib/opportunity/uptake-acceptance.guard';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
@@ -42,6 +43,22 @@ const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['latent', 'negotiating', 'pe
  */
 const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
 
+function sanitizeOpportunityForResponse<T extends Opportunity>(
+  opportunity: T,
+  names: { counterpartName?: string; viewerName?: string } = {},
+): T {
+  return {
+    ...opportunity,
+    interpretation: {
+      ...opportunity.interpretation,
+      reasoning: safeFallbackSummary(opportunity.interpretation.reasoning, {
+        ...names,
+        emptyText: 'Connection opportunity',
+      }),
+    },
+  };
+}
+
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
   counterpartUserId?: string;
@@ -50,6 +67,9 @@ interface OpportunityStatusUpdateResult {
 interface IntentScopeOptions {
   scopeType?: 'intent';
   scopeId?: string;
+  acknowledgedUptakeQuestionIds?: string[];
+  /** Internal clamp derived from a network-scoped API-key principal. */
+  networkScopeId?: string;
 }
 
 function matchesSelectedIntentScope(
@@ -60,6 +80,22 @@ function matchesSelectedIntentScope(
   if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
   if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
   return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === scope.scopeId);
+}
+
+function matchesAgentNetworkScope(
+  opportunity: Pick<Opportunity, 'actors'>,
+  userId: string,
+  networkScopeId?: string,
+): boolean {
+  if (!networkScopeId) return true;
+  const callerAnchored = opportunity.actors.some(
+    (actor) => actor.userId === userId && actor.networkId === networkScopeId,
+  );
+  if (!callerAnchored) return false;
+  const participantIds = new Set(opportunity.actors.map((actor) => actor.userId));
+  return [...participantIds].every((participantId) => opportunity.actors.some(
+    (actor) => actor.userId === participantId && actor.networkId === networkScopeId,
+  ));
 }
 
 
@@ -124,6 +160,7 @@ export class OpportunityService {
   private readonly presenter: OpportunityPresenter;
   private readonly presenterDb: PresenterDatabase;
   private readonly deliveryCache: RedisCacheAdapter;
+  private readonly uptakeGuard: UptakeAcceptanceGuardLike;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
@@ -133,12 +170,14 @@ export class OpportunityService {
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
+    acceptanceGuard: UptakeAcceptanceGuardLike = uptakeAcceptanceGuard,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
     this.presenter = new OpportunityPresenter();
     this.presenterDb = chatDatabaseAdapter as unknown as PresenterDatabase;
     this.deliveryCache = new RedisCacheAdapter();
+    this.uptakeGuard = acceptanceGuard;
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -352,8 +391,12 @@ export class OpportunityService {
         avatar: userMap.get(a.userId)?.avatar ?? null,
       }));
       const counterpartInfo = counterpart ? userMap.get(counterpart.userId) : undefined;
+      const viewerInfo = userMap.get(userId);
       return {
-        ...opp,
+        ...sanitizeOpportunityForResponse(opp, {
+          counterpartName: counterpartInfo?.name ?? undefined,
+          viewerName: viewerInfo?.name ?? undefined,
+        }),
         actors: enrichedActors,
         counterpartName: counterpartInfo?.name ?? undefined,
         counterpartAvatar: counterpartInfo?.avatar ?? null,
@@ -505,7 +548,7 @@ export class OpportunityService {
     status: OpportunityStatus,
     userId: string,
     options?: IntentScopeOptions,
-  ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
+  ): Promise<OpportunityStatusUpdateResult | UptakeAcceptanceAdvisoryResult | { error: string; status: number }> {
     logger.verbose('Updating opportunity status', {
       opportunityId,
       status,
@@ -526,11 +569,24 @@ export class OpportunityService {
     if (!matchesSelectedIntentScope(opp, userId, options)) {
       return { error: 'Opportunity not found', status: 404 };
     }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
 
     // Self-accept guard: if the caller has already committed (actedAt is set)
     // and they are trying to accept, block them — the other party must accept.
     if (status === 'accepted' && callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
+    }
+
+    if (status === 'accepted') {
+      const advisory = await this.uptakeGuard.check({
+        opportunityId,
+        userId,
+        networkId: options?.networkScopeId,
+        acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
+      });
+      if (advisory) return advisory;
     }
 
     const counterpart = status === 'accepted'
@@ -551,7 +607,7 @@ export class OpportunityService {
       }
     }
 
-    let updated: Awaited<ReturnType<typeof this.db.updateOpportunityStatus>>;
+    let updated: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
     if (status === 'accepted') {
       updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
     } else if (status === 'pending') {
@@ -565,7 +621,7 @@ export class OpportunityService {
     }
 
     if (!counterpart) {
-      return { opportunity: updated };
+      return { opportunity: sanitizeOpportunityForResponse(updated) };
     }
 
     const counterpartUserId = counterpart.userId;
@@ -601,7 +657,7 @@ export class OpportunityService {
     });
 
     return {
-      opportunity: updated,
+      opportunity: sanitizeOpportunityForResponse(updated),
       counterpartUserId,
     };
   }
@@ -618,6 +674,7 @@ export class OpportunityService {
   async approveIntroduction(
     opportunityId: string,
     userId: string,
+    options?: Pick<IntentScopeOptions, 'networkScopeId'>,
   ): Promise<{ success: true } | { error: string; status: number }> {
     const opp = await this.db.getOpportunity(opportunityId);
     if (!opp) {
@@ -627,6 +684,9 @@ export class OpportunityService {
     const actor = opp.actors.find((a) => a.userId === userId);
     if (!actor || actor.role !== 'introducer') {
       return { error: 'Not authorized — user is not an introducer on this opportunity', status: 403 };
+    }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
     }
 
     const TERMINAL_STATUSES = new Set(['pending', 'negotiating', 'accepted', 'rejected', 'expired']);
@@ -698,6 +758,7 @@ export class OpportunityService {
     options?: IntentScopeOptions,
   ): Promise<
     | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
+    | UptakeAcceptanceAdvisoryResult
     | { error: string; status: number }
   > {
     const opp = await this.db.getOpportunity(opportunityId);
@@ -710,6 +771,9 @@ export class OpportunityService {
         return { error: 'Not authorized to start chat for this opportunity', status: 403 };
       }
       if (!matchesSelectedIntentScope(opp, userId, options)) {
+        return { error: 'Opportunity not found', status: 404 };
+      }
+      if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
         return { error: 'Opportunity not found', status: 404 };
       }
       const counterpart = resolveCounterpart(opp.actors, userId);
@@ -730,7 +794,11 @@ export class OpportunityService {
           conversationId: conversation.id, userId, error: err,
         });
       });
-      return { conversationId: conversation.id, counterpartUserId: counterpart.userId, opportunity: opp };
+      return {
+        conversationId: conversation.id,
+        counterpartUserId: counterpart.userId,
+        opportunity: sanitizeOpportunityForResponse(opp),
+      };
     }
     if (opp.status !== 'pending' && opp.status !== 'draft' && opp.status !== 'latent') {
       return {
@@ -745,12 +813,23 @@ export class OpportunityService {
     if (!matchesSelectedIntentScope(opp, userId, options)) {
       return { error: 'Opportunity not found', status: 404 };
     }
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
 
     // Self-accept guard: if the caller already committed (actedAt is set) they
     // cannot accept again — the other party must be the one to accept.
     if (callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
+
+    const advisory = await this.uptakeGuard.check({
+      opportunityId,
+      userId,
+      networkId: options?.networkScopeId,
+      acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
+    });
+    if (advisory) return advisory;
 
     const counterpart = resolveCounterpart(opp.actors, userId);
     if (!counterpart) {
@@ -822,7 +901,7 @@ export class OpportunityService {
     return {
       conversationId: conversation.id,
       counterpartUserId: counterpart.userId,
-      opportunity: updated,
+      opportunity: sanitizeOpportunityForResponse(updated),
     };
   }
 
@@ -859,7 +938,11 @@ export class OpportunityService {
       options: { limit, initialStatus: 'latent' as const },
     });
 
-    return result;
+    return {
+      ...result,
+      opportunities: (result.opportunities ?? []).map((opportunity) =>
+        sanitizeOpportunityForResponse(opportunity)),
+    };
   }
 
   /**
@@ -894,10 +977,11 @@ export class OpportunityService {
     // Default to live community statuses (no latent — there's no per-actor
     // visibility guard here) unless an explicit status/statuses filter is given.
     const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
-    return this.db.getOpportunitiesForNetwork(
+    const rows = await this.db.getOpportunitiesForNetwork(
       networkId,
       hasExplicitStatus ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
     );
+    return rows.map((opp) => sanitizeOpportunityForResponse(opp));
   }
 
   /**
@@ -987,7 +1071,7 @@ export class OpportunityService {
       for (const opp of expired) {
         this.events.emit('expired', { opportunity: opp });
       }
-      return created[0];
+      return sanitizeOpportunityForResponse(created[0]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to persist opportunity';
       logger.warn('createManualOpportunity persistence failed', { error: err, creatorId, networkId });
@@ -1022,7 +1106,9 @@ export class OpportunityService {
     // Check cache for all opportunities (graceful fallback if Redis unavailable)
     let cachedResults: (ChatCardCached | null)[] = [];
     try {
-      const cacheKeys = rows.map((opp) => `chat:card:${opp.id}:${userId}`);
+      const cacheKeys = rows.map((opp) =>
+        buildApiChatCardPresentationCacheKey(opp.id, userId)
+      );
       cachedResults = await this.cache.mget<ChatCardCached>(cacheKeys);
     } catch (e) {
       logger.warn('getChatContext cache read failed, skipping', { error: e });
@@ -1056,10 +1142,16 @@ export class OpportunityService {
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
           };
-          try {
-            await this.cache.set(`chat:card:${opp.id}:${userId}`, card, { ttl: CHAT_CACHE_TTL });
-          } catch {
-            // Cache write failure is non-critical
+          if (!presented.isFallback) {
+            try {
+              await this.cache.set(
+                buildApiChatCardPresentationCacheKey(opp.id, userId),
+                card,
+                { ttl: CHAT_CACHE_TTL },
+              );
+            } catch {
+              // Cache write failure is non-critical
+            }
           }
           return card;
         } catch (err) {
@@ -1074,7 +1166,7 @@ export class OpportunityService {
           });
           return {
             opportunityId: opp.id,
-            headline: truncateAtBoundary(fallbackSummary, 80) || 'Connection opportunity',
+            headline: truncateAtBoundary(fallbackSummary, 79) || 'Connection opportunity',
             personalizedSummary: fallbackSummary,
             narratorRemark: '',
             introducerName,

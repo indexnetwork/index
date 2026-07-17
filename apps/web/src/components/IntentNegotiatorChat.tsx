@@ -24,6 +24,8 @@ export interface IntentNegotiatorChatProps {
    * be incoming — render a typing indicator below the question cards.
    */
   questionChainPending?: boolean;
+  /** Monotonic signal to reload server-appended Beat narration. */
+  refreshVersion?: number;
   /** Opportunity card plumbing shared with the page's Radar panel. */
   opportunityStatusMap: Record<string, string>;
   opportunityActionLoading: Record<string, boolean>;
@@ -57,6 +59,7 @@ export default function IntentNegotiatorChat({
   onAnswerQuestion,
   onDismissQuestion,
   questionChainPending,
+  refreshVersion = 0,
   opportunityStatusMap,
   opportunityActionLoading,
   onOpportunityAction,
@@ -77,6 +80,7 @@ export default function IntentNegotiatorChat({
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const clearChatRef = useRef(clearChat);
+  const appliedRefreshVersionRef = useRef(0);
   useEffect(() => {
     clearChatRef.current = clearChat;
   }, [clearChat]);
@@ -115,6 +119,16 @@ export default function IntentNegotiatorChat({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intentId]);
+
+  // Server-side pool reactions append template messages outside the active
+  // stream. Reload only when the parent emits one of its bounded checkpoints.
+  useEffect(() => {
+    if (!ready || !sessionId || refreshVersion <= appliedRefreshVersionRef.current) return;
+    appliedRefreshVersionRef.current = refreshVersion;
+    void loadSession(sessionId).catch((error) => {
+      logger.warn("Failed to refresh intent negotiator session", { error, intentId });
+    });
+  }, [intentId, loadSession, ready, refreshVersion, sessionId]);
 
   // Follow the stream.
   useEffect(() => {
