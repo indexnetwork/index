@@ -1,7 +1,7 @@
 import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
-
-const POOL_LIVE_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
+import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -384,33 +384,10 @@ export class OpportunityDatabaseAdapter {
     recipientUserId: string,
     intentId: string,
   ): Promise<OpportunityRow[]> {
-    const visibilityGuard = sql`(
-      ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'introducer' }])}::jsonb
-      OR ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'peer' }])}::jsonb
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'patient' }])}::jsonb
-        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-      )
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'agent' }])}::jsonb
-        AND (
-          ${opportunities.status} IN ('accepted', 'rejected', 'expired')
-          OR (${opportunities.status} NOT IN ('latent', 'draft') AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-        )
-      )
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'party' }])}::jsonb
-        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-      )
-    )`;
     const rows = await db
       .select()
       .from(opportunities)
-      .where(and(
-        visibilityGuard,
-        sql`${opportunities.detection}->>'triggeredBy' = ${intentId}`,
-        inArray(opportunities.status, [...POOL_LIVE_STATUSES]),
-      ))
+      .where(exactLivePoolWhere(recipientUserId, intentId))
       .orderBy(desc(opportunities.createdAt));
     return rows.map(toOpportunityRow);
   }
@@ -546,6 +523,7 @@ export class OpportunityDatabaseAdapter {
   async applyOpportunityPoolAdjustments(
     recipientUserId: string,
     intentId: string,
+    expectedIntentFingerprint: string,
     writes: Array<{
       opportunityId: string;
       adjustment: {
@@ -560,9 +538,24 @@ export class OpportunityDatabaseAdapter {
       };
       signal: schema.OpportunitySignal;
     }>,
-  ): Promise<string[]> {
+  ): Promise<string[] | null> {
     if (writes.length === 0) return [];
     return db.transaction(async (tx) => {
+      const [intent] = await tx
+        .select({
+          userId: schema.intents.userId,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+        })
+        .from(schema.intents)
+        .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, recipientUserId)))
+        .limit(1)
+        .for('update');
+      if (
+        !intent
+        || computeIntentFingerprint(intent.payload, intent.summary) !== expectedIntentFingerprint
+      ) return null;
+
       const writeById = new Map(writes.map((write) => [write.opportunityId, write]));
       const lockedRows = await tx
         .select({

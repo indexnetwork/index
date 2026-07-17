@@ -9,6 +9,7 @@ import db from '../../lib/drizzle/drizzle';
 import { intentNetworks, intents, networkMembers, networks, opportunities, premiseNetworks, premises, users } from '../../schemas/database.schema';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../database.adapter';
 import { EmbedderAdapter } from '../embedder.adapter';
+import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 
 const TEST_PREFIX = `network_isolation_${Date.now()}_`;
 
@@ -381,6 +382,7 @@ describe('network discovery adapter isolation', () => {
     const applied = await opportunity.applyOpportunityPoolAdjustments(
       ids.viewer,
       ids.selectedIntent,
+      computeIntentFingerprint('Paused selected intent', null),
       [writeFor(exact.id), writeFor(actorOnly.id), writeFor(terminal.id)],
     );
 

@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled, poolQuestionCycleKey } from '@indexnetwork/protocol';
+import { POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled, poolQuestionCycleKey, poolQuestionsMode } from '@indexnetwork/protocol';
 import type { PersistableQuestion, PoolDiscoveryContext, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -11,6 +11,7 @@ import { QuestionEvents } from '../events/question.event';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool/question.shared';
 import type { PoolQuestionPostPersist } from './pool/question.shared';
 import { enqueuePoolQuestionPush } from './pool/questionpush.queue';
+import { isPoolArtifactFresh } from './pool/poolquestions.constants';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
@@ -31,8 +32,10 @@ function isUniqueViolation(error: unknown): boolean {
  * Optional dependencies for testing. Use abstractions so tests can inject
  * stubs without touching real DB or LLM.
  */
-type QuestionerQueueAdapter = Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>
-  & Partial<Pick<QuestionerAdapter, 'existsForRecipientSourcePurpose'>>;
+type QuestionerQueueAdapter = Pick<
+  QuestionerAdapter,
+  'persist' | 'persistFreshPoolQuestion' | 'isPoolQuestionFreshForDelivery' | 'findPending' | 'listPoolQuestionLabels'
+> & Partial<Pick<QuestionerAdapter, 'existsForRecipientSourcePurpose'>>;
 
 export interface QuestionerQueueDeps {
   adapter?: QuestionerQueueAdapter;
@@ -297,7 +300,7 @@ export class QuestionerQueue {
    * synthesize + persist the top discriminator.
    */
   private async handlePoolDiscovery(data: QuestionerJobData): Promise<void> {
-    const context = data.context as PoolDiscoveryContext;
+    const context = data.context as PoolDiscoveryContext & { opportunityIds?: string[] };
     const intentId = context.intentId;
 
     const pending = await this.adapter.findPending(data.userId, {
@@ -308,7 +311,17 @@ export class QuestionerQueue {
     if (existingPoolQuestion) {
       const existingPool = existingPoolQuestion.detection.pool;
       const incomingCycle = poolQuestionCycleKey({ runId: context.runId, minedAt: context.minedAt });
-      if (existingPool && poolQuestionCycleKey(existingPool) === incomingCycle && this.poolQuestionPostPersist) {
+      if (
+        existingPool
+        && poolQuestionCycleKey(existingPool) === incomingCycle
+        && this.poolQuestionPostPersist
+        && poolQuestionsMode() === 'on'
+        && await this.adapter.isPoolQuestionFreshForDelivery(
+          existingPoolQuestion.id,
+          data.userId,
+          isPoolArtifactFresh,
+        )
+      ) {
         await this.poolQuestionPostPersist(existingPoolQuestion.id, data.userId);
         this.logger.info('Re-enqueued existing same-cycle pool question', {
           intentId,
@@ -337,6 +350,7 @@ export class QuestionerQueue {
       userId: data.userId,
       intentId,
       poolSize: context.poolSize,
+      opportunityIds: context.opportunityIds ?? [],
       minedAt: context.minedAt,
       ...(context.runId ? { runId: context.runId } : {}),
       ...(context.intentText ? { intentText: context.intentText } : {}),
@@ -354,6 +368,10 @@ export class QuestionerQueue {
       data.userId,
       this.poolQuestionPostPersist,
     );
+    if (!id) {
+      this.logger.info('Pool question skipped by final freshness gate', { intentId });
+      return;
+    }
     this.logger.info('Persisted pool question', { intentId, questionId: id });
   }
 }

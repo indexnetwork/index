@@ -18,13 +18,14 @@ import type { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from '../../queues/pool/question.shared';
 import type { PoolQuestionPostPersist } from '../../queues/pool/question.shared';
 import { applyPoolAnswer, beatOneMessage, enqueuePoolRerun } from '../../queues/pool/answer.shared';
+import { extractSnapshotOpportunityIds } from '../../queues/pool/poolquestions.constants';
 import type { PoolAnswerOutcome, PoolLifecycleAdmission } from '../../queues/pool/answer.shared';
 import type { IntentRefinementResult } from './question.answer.intent';
 
 const logger = log.service.from('PoolQuestionAnswer');
 
 export interface HandlePoolAnswerDeps {
-  adapter: Pick<QuestionerAdapter, 'getById' | 'persist' | 'listPoolQuestionLabels' | 'updateAnsweredPoolIntentFingerprint'>;
+  adapter: Pick<QuestionerAdapter, 'getById' | 'persistFreshPoolQuestion' | 'listPoolQuestionLabels' | 'updateAnsweredPoolIntentFingerprint'>;
   applyAnswer?: typeof applyPoolAnswer;
   narrateBeatOne?: (input: {
     userId: string;
@@ -102,6 +103,16 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    // The answer row may resolve for audit/UI purposes, but an old material
+    // intent snapshot must not refine, rerun, or chain any pool state.
+    if (outcome.kind === 'stale' && outcome.reason === 'intent') {
+      logger.info('Stale intent snapshot answer resolved without pool effects', {
+        questionId: input.questionId,
+        intentId: input.intentId,
+      });
+      return;
     }
 
     // Existing questions stay answerable and Tier 0 remains valid while paused,
@@ -200,6 +211,7 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
       userId: input.userId,
       intentId: input.intentId,
       poolSize: pool.poolSize,
+      opportunityIds: extractSnapshotOpportunityIds(pool),
       minedAt: pool.minedAt,
       ...(pool.runId ? { runId: pool.runId } : {}),
       ...(currentIntentText ? { intentText: currentIntentText } : {}),
@@ -214,6 +226,13 @@ export function handlePoolAnswerFactory(deps: HandlePoolAnswerDeps) {
       input.userId,
       deps.poolQuestionPostPersist,
     );
+    if (!id) {
+      logger.info('Chained pool question skipped by final freshness gate', {
+        answeredQuestionId: input.questionId,
+        intentId: input.intentId,
+      });
+      return;
+    }
     logger.info('Chained next pool question', {
       answeredQuestionId: input.questionId,
       nextQuestionId: id,

@@ -32,6 +32,7 @@ function answeredQuestion(alternates: QuestionPoolDiscriminator[]): AdapterPersi
       timestamp: 'now',
       pool: {
         poolSize: 21,
+        opportunityIds: ['opp-1'],
         minedAt: '2026-07-14T14:00:00.000Z',
         runId: 'run-1',
         intentText: 'Find collaborators',
@@ -86,9 +87,9 @@ function makeHarness(
   const handle = handlePoolAnswerFactory({
     adapter: {
       getById: async () => row,
-      persist: async (batch: AdapterPersistableQuestion[]) => {
-        persisted.push(batch);
-        return batch.map((_, index) => `chained-${index}`);
+      persistFreshPoolQuestion: async (question: AdapterPersistableQuestion) => {
+        persisted.push([question]);
+        return 'chained-0';
       },
       listPoolQuestionLabels: async (_userId, _intentId, freshness) => {
         freshnessCalls.push(freshness);
@@ -262,6 +263,18 @@ describe('handlePoolAnswer', () => {
     expect(harness.enqueueRerun).toHaveBeenCalledTimes(1);
     const narration = harness.narrateBeatOne.mock.calls[0]?.[0] as { message: string };
     expect(narration.message).toContain("didn't reshuffle");
+  });
+
+  it('resolves an old-fingerprint answer without refinement, rerun, or chaining', async () => {
+    const harness = makeHarness(
+      answeredQuestion([discriminator('next')]),
+      ['asked'],
+      { kind: 'stale', staleRatio: 1, reason: 'intent' },
+    );
+    await harness.handle(input);
+    expect(harness.refineIntent).not.toHaveBeenCalled();
+    expect(harness.enqueueRerun).not.toHaveBeenCalled();
+    expect(harness.persisted).toHaveLength(0);
   });
 
   it('keeps Tier 0 answerable while paused but skips Tier 1 and chaining', async () => {

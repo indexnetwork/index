@@ -20,9 +20,17 @@ export function intentResumeDiscoveryJobId(
  * Hooks called on intent lifecycle events.
  * Set by main.ts to trigger maintenance and queued work.
  */
+export interface IntentMaterialUpdateEvent {
+  intentId: string;
+  userId: string;
+  oldFingerprint: string;
+  newFingerprint: string;
+}
+
 export const IntentEvents = {
   onCreated: (_intentId: string, _userId: string): void => {},
   onPaused: (_intentId: string, _userId: string, _lifecycleVersionMs: number): void => {},
   onResumed: async (_intentId: string, _userId: string, _lifecycleVersionMs: number): Promise<void> => {},
+  onMaterialUpdated: async (_event: IntentMaterialUpdateEvent): Promise<void> => {},
   onArchived: (_intentId: string, _userId: string): void => {},
 };

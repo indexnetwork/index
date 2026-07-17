@@ -6,13 +6,14 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
+import { describe, expect, it, beforeAll, afterAll, mock } from 'bun:test';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 import { PremiseEvents } from '../../events/premise.event';
+import { IntentEvents } from '../../events/intent.event';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 
@@ -127,6 +128,26 @@ describe('IntentDatabaseAdapter', () => {
     expect(updated!.summary).toBe('Updated summary');
   });
 
+  it('emits one awaited event only for a material normalized payload or summary edit', async () => {
+    if (!intent2Id) throw new Error('intent2Id not set');
+    const handler = mock(async () => {});
+    IntentEvents.onMaterialUpdated = handler;
+    const current = await adapter.updateIntent(intent2Id, {
+      payload: `  ${TEST_PREFIX}Updated   payload  `,
+      summary: ' Updated summary ',
+    });
+    expect(current).not.toBeNull();
+    expect(handler).not.toHaveBeenCalled();
+
+    await adapter.updateIntent(intent2Id, { summary: 'Materially different summary' });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]?.[0]).toMatchObject({
+      intentId: intent2Id,
+      userId: fixture.userBId,
+    });
+    IntentEvents.onMaterialUpdated = async () => {};
+  });
+
   it('should archive intent', async () => {
     if (!intent2Id) throw new Error('intent2Id not set');
     const result = await adapter.archiveIntent(intent2Id);
@@ -147,6 +168,16 @@ describe('IntentDatabaseAdapter', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 describe('ChatDatabaseAdapter', () => {
   const adapter = new ChatDatabaseAdapter();
+
+  it('emits the same material update event at the chat persistence chokepoint', async () => {
+    const handler = mock(async () => {});
+    IntentEvents.onMaterialUpdated = handler;
+    await adapter.updateIntent(fixture.intent1Id, { embedding: Array(2000).fill(0.01) });
+    expect(handler).not.toHaveBeenCalled();
+    await adapter.updateIntent(fixture.intent1Id, { payload: `${TEST_PREFIX}Chat materially updated payload` });
+    expect(handler).toHaveBeenCalledTimes(1);
+    IntentEvents.onMaterialUpdated = async () => {};
+  });
 
   it('should get profile sourced from the users table', async () => {
     // getProfile now sources identity from `users` (name/intro->bio/location); the typed

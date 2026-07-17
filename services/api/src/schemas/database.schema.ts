@@ -535,6 +535,8 @@ export interface QuestionDetection {
   pushRequestSuppressedAt?: string;
   /** Internal proactive push claim/delivery state. Never exposed publicly. */
   push?: import('@indexnetwork/protocol').QuestionPoolPush;
+  /** Internal reason a pool question was voided after drift. */
+  voidedReason?: import('@indexnetwork/protocol').QuestionVoidedReason;
   /** Authoritative successful-delivery ledger timestamp. Never exposed publicly. */
   pushedAt?: string;
 }

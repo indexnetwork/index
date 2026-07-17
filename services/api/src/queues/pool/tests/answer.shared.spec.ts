@@ -8,6 +8,8 @@ import type { PoolAdjustmentWrite } from '../answer.shared';
 function pool(assignments: Array<{ opportunityId: string; side: string }>): QuestionPoolSnapshot {
   return {
     poolSize: assignments.length,
+    opportunityIds: assignments.map((assignment) => assignment.opportunityId),
+    intentFingerprint: 'fingerprint-v1',
     minedAt: '2026-07-15T12:00:00.000Z',
     discriminator: {
       label: 'Builders vs advisors',
@@ -32,9 +34,10 @@ const baseInput = {
 describe('applyPoolAnswer', () => {
   it('applies chosen, other, and live-unassigned factors with safe signals', async () => {
     const writes: Array<{ id: string; factor: number; side: string; weight: number; detail: string; recipientUserId: string; intentId: string }> = [];
-    const applyAdjustments = mock(async (recipientUserId: string, intentId: string, batch: PoolAdjustmentWrite[]) => {
+    const applyAdjustments = mock(async (recipientUserId: string, intentId: string, expectedFingerprint: string, batch: PoolAdjustmentWrite[]) => {
       expect(recipientUserId).toBe(baseInput.userId);
       expect(intentId).toBe(baseInput.intentId);
+      expect(expectedFingerprint).toBe('fingerprint-v1');
       writes.push(...batch.map(({ opportunityId, adjustment, signal }) => {
         expect(signal.recipientUserId).toBe(adjustment.recipientUserId);
         expect(signal.intentId).toBe(adjustment.intentId);
@@ -57,6 +60,7 @@ describe('applyPoolAnswer', () => {
         { opportunityId: 'opp-b', side: 'Advisors' },
       ]),
     }, {
+      getIntentFingerprint: async () => 'fingerprint-v1',
       listLivePool: async () => [
         { id: 'opp-a', metadata: {} },
         { id: 'opp-b', metadata: {} },
@@ -85,6 +89,7 @@ describe('applyPoolAnswer', () => {
         { opportunityId: 'opp-d', side: 'Advisors' },
       ]),
     }, {
+      getIntentFingerprint: async () => 'fingerprint-v1',
       listLivePool: async () => [
         { id: 'opp-a', metadata: {} },
         { id: 'opp-b', metadata: {} },
@@ -96,14 +101,52 @@ describe('applyPoolAnswer', () => {
     expect(applyAdjustments).not.toHaveBeenCalled();
   });
 
-  it('does not read or write the pool for Both matter', async () => {
+  it.each([
+    [7, 'applied'],
+    [6, 'stale'],
+  ] as const)('accepts 70%% retained assignments and rejects below it (%s/10)', async (retained, expectedKind) => {
+    const assignments = Array.from({ length: 10 }, (_, index) => ({
+      opportunityId: `opp-${index}`,
+      side: index % 2 === 0 ? 'Builders' : 'Advisors',
+    }));
+    const applyAdjustments = mock(async (_userId, _intentId, _fingerprint, writes: PoolAdjustmentWrite[]) =>
+      writes.map((write) => write.opportunityId));
+    const outcome = await applyPoolAnswer({
+      ...baseInput,
+      pool: pool(assignments),
+    }, {
+      getIntentFingerprint: async () => 'fingerprint-v1',
+      listLivePool: async () => assignments.slice(0, retained).map(({ opportunityId }) => ({ id: opportunityId })),
+      applyAdjustments,
+    });
+    expect(outcome.kind).toBe(expectedKind);
+    expect(applyAdjustments).toHaveBeenCalledTimes(expectedKind === 'applied' ? 1 : 0);
+  });
+
+  it('rejects an old material intent fingerprint before reading or writing the pool', async () => {
+    const listLivePool = mock(async () => [{ id: 'opp-a' }]);
+    const applyAdjustments = mock(async () => [] as string[]);
+    const outcome = await applyPoolAnswer({
+      ...baseInput,
+      pool: pool([{ opportunityId: 'opp-a', side: 'Builders' }]),
+    }, {
+      getIntentFingerprint: async () => 'fingerprint-v2',
+      listLivePool,
+      applyAdjustments,
+    });
+    expect(outcome).toEqual({ kind: 'stale', staleRatio: 1, reason: 'intent' });
+    expect(listLivePool).not.toHaveBeenCalled();
+    expect(applyAdjustments).not.toHaveBeenCalled();
+  });
+
+  it('does not read or write the live pool for Both matter', async () => {
     const listLivePool = mock(async () => [{ id: 'opp-a', metadata: {} }]);
     const applyAdjustments = mock(async () => [] as string[]);
     const outcome = await applyPoolAnswer({
       ...baseInput,
       selectedOption: 'Both matter',
       pool: pool([{ opportunityId: 'opp-a', side: 'Builders' }]),
-    }, { listLivePool, applyAdjustments });
+    }, { getIntentFingerprint: async () => 'fingerprint-v1', listLivePool, applyAdjustments });
 
     expect(outcome).toEqual({ kind: 'none' });
     expect(listLivePool).not.toHaveBeenCalled();
@@ -118,6 +161,7 @@ describe('applyPoolAnswer', () => {
         { opportunityId: 'opp-b', side: 'Advisors' },
       ]),
     }, {
+      getIntentFingerprint: async () => 'fingerprint-v1',
       listLivePool: async () => [
         { id: 'opp-a' },
         { id: 'opp-b' },

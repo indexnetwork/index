@@ -19,12 +19,14 @@
  * hashes the ORDERED id set, so a reorder is structurally a fresh cache key —
  * no explicit invalidation needed (verified IND-419 recon).
  */
-import { POOL_RERUN_DEBOUNCE_MS, POOL_STALENESS_THRESHOLD, buildPoolAdjustment, planPoolAdjustments } from '@indexnetwork/protocol';
+import { POOL_RERUN_DEBOUNCE_MS, buildPoolAdjustment, planPoolAdjustments } from '@indexnetwork/protocol';
 import type { PoolAdjustment, PoolAdjustmentSignal, QuestionPoolSnapshot } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
+import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { fromIntentQueue } from '../opportunity/from-intent.queue';
+import { POOL_QUESTION_FRESHNESS_THRESHOLD, extractAssignmentOpportunityIds } from './poolquestions.constants';
 
 const logger = log.service.from('PoolAnswerApply');
 
@@ -34,7 +36,7 @@ export type PoolLifecycleAdmission = 'active' | 'paused' | 'unavailable';
 /** Outcome of one answer application (drives the Beat-1 template). */
 export type PoolAnswerOutcome =
   | { kind: 'none' }
-  | { kind: 'stale'; staleRatio: number }
+  | { kind: 'stale'; staleRatio: number; reason?: 'pool' | 'intent' }
   | { kind: 'applied'; promoted: number; demoted: number; unknownAdjusted: number };
 
 type LivePoolOpportunity = { id: string };
@@ -48,18 +50,30 @@ export interface PoolAdjustmentWrite {
 export interface PoolAnswerApplyDeps {
   listLivePool: (userId: string, intentId: string) => Promise<LivePoolOpportunity[]>;
   /** One transaction that rechecks scope and returns only rows actually patched. */
+  getIntentFingerprint: (userId: string, intentId: string) => Promise<string | null>;
   applyAdjustments: (
     recipientUserId: string,
     intentId: string,
+    expectedIntentFingerprint: string,
     writes: PoolAdjustmentWrite[],
-  ) => Promise<string[]>;
+  ) => Promise<string[] | null>;
 }
 
 const defaultApplyDeps: PoolAnswerApplyDeps = {
   listLivePool: (userId, intentId) =>
     chatDatabaseAdapter.getLivePoolOpportunitiesForIntent(userId, intentId),
-  applyAdjustments: (recipientUserId, intentId, writes) =>
-    chatDatabaseAdapter.applyOpportunityPoolAdjustments(recipientUserId, intentId, writes),
+  getIntentFingerprint: async (userId, intentId) => {
+    const intent = await chatDatabaseAdapter.getIntent(intentId);
+    if (!intent || intent.userId !== userId) return null;
+    return computeIntentFingerprint(intent.payload, intent.summary);
+  },
+  applyAdjustments: (recipientUserId, intentId, expectedIntentFingerprint, writes) =>
+    chatDatabaseAdapter.applyOpportunityPoolAdjustments(
+      recipientUserId,
+      intentId,
+      expectedIntentFingerprint,
+      writes,
+    ),
 };
 
 /** Tier-0 apply: patch the live pool from the answered question's snapshot. */
@@ -70,6 +84,16 @@ export async function applyPoolAnswer(input: {
   pool: QuestionPoolSnapshot;
   selectedOption: string;
 }, deps: PoolAnswerApplyDeps = defaultApplyDeps): Promise<PoolAnswerOutcome> {
+  const storedFingerprint = input.pool.intentFingerprint;
+  const currentFingerprint = await deps.getIntentFingerprint(input.userId, input.intentId);
+  if (!storedFingerprint || !currentFingerprint || storedFingerprint !== currentFingerprint) {
+    logger.info('Pool answer intent snapshot stale — skipping all pool effects', {
+      questionId: input.questionId,
+      intentId: input.intentId,
+    });
+    return { kind: 'stale', staleRatio: 1, reason: 'intent' };
+  }
+
   const now = new Date().toISOString();
   const plan = planPoolAdjustments(
     input.pool.discriminator,
@@ -84,15 +108,16 @@ export async function applyPoolAnswer(input: {
   const live = await deps.listLivePool(input.userId, input.intentId);
   const liveById = new Map(live.map((opportunity) => [opportunity.id, opportunity]));
 
-  const assignments = input.pool.discriminator.assignments;
-  const missing = assignments.filter((a) => !liveById.has(a.opportunityId)).length;
-  const staleRatio = assignments.length > 0 ? missing / assignments.length : 1;
-  if (staleRatio > POOL_STALENESS_THRESHOLD) {
+  const assignmentIds = extractAssignmentOpportunityIds(input.pool);
+  const retained = assignmentIds.filter((opportunityId) => liveById.has(opportunityId)).length;
+  const overlap = assignmentIds.length > 0 ? retained / assignmentIds.length : 0;
+  const staleRatio = 1 - overlap;
+  if (overlap < POOL_QUESTION_FRESHNESS_THRESHOLD) {
     logger.info('Pool answer stale — skipping re-rank', {
       questionId: input.questionId,
       staleRatio: Math.round(staleRatio * 100) / 100,
     });
-    return { kind: 'stale', staleRatio };
+    return { kind: 'stale', staleRatio, reason: 'pool' };
   }
 
   const patched = new Set<string>();
@@ -128,7 +153,14 @@ export async function applyPoolAnswer(input: {
     outcomeByOpportunityId.set(row.id, 'unknown');
   }
 
-  const appliedIds = new Set(await deps.applyAdjustments(input.userId, input.intentId, writes));
+  const applied = await deps.applyAdjustments(
+    input.userId,
+    input.intentId,
+    storedFingerprint,
+    writes,
+  );
+  if (applied === null) return { kind: 'stale', staleRatio: 1, reason: 'intent' };
+  const appliedIds = new Set(applied);
   let promoted = 0;
   let demoted = 0;
   let unknownAdjusted = 0;

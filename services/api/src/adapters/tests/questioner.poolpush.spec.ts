@@ -181,6 +181,15 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     expect((await adapter.claimPoolQuestionPush(reset, userId)).kind).toBe('claimed');
   }, 30_000);
 
+  test('lifecycle-voided dismissals do not contribute to dismissal decay', async () => {
+    const voided = await createPoolQuestion({ voi: 0.1 });
+    await resolveQuestion(voided, 'dismissed', new Date(Date.now() - 10_000));
+    await updateDetection(voided, (detection) => ({ ...detection, voidedReason: 'pool_drift' }));
+
+    const candidate = await createPoolQuestion({ voi: 0.61 });
+    expect((await adapter.claimPoolQuestionPush(candidate, userId)).kind).toBe('claimed');
+  }, 30_000);
+
   test('visit and active lifecycle checks use question creation time', async () => {
     const beforeVisit = new Date(Date.now() - 60_000);
     await db.update(intents).set({ lastVisitedAt: beforeVisit }).where(eq(intents.id, intentId));
