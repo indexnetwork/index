@@ -8,7 +8,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { afterAll, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
-import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext } from '../opportunity.graph.js';
+import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
 import type { Id } from '../../types/common.types.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
@@ -24,6 +24,31 @@ type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
+
+describe('buildPrioritizedNegotiationIntents', () => {
+  test('prioritizes an exact fallback intent, removes duplicates, and keeps the five-intent cap', () => {
+    const intents = buildPrioritizedNegotiationIntents(
+      [
+        { id: 'other-1', summary: 'Other 1', payload: 'one' },
+        { id: 'other-1', summary: 'Duplicate', payload: 'duplicate' },
+        { id: 'other-2', summary: 'Other 2', payload: 'two' },
+        { id: 'other-3', summary: 'Other 3', payload: 'three' },
+        { id: 'other-4', summary: 'Other 4', payload: 'four' },
+        { id: 'other-5', summary: 'Other 5', payload: 'five' },
+      ],
+      'exact-intent',
+      { id: 'exact-intent', summary: 'Exact', payload: 'exact payload' },
+    );
+
+    expect(intents.map((intent) => intent.id)).toEqual([
+      'exact-intent',
+      'other-1',
+      'other-2',
+      'other-3',
+      'other-4',
+    ]);
+  });
+});
 
 const defaultMockEvaluatorResult: EvaluatedOpportunityWithActors[] = [
   {
@@ -2756,14 +2781,14 @@ describe('Opportunity Graph', () => {
           isPersonal: false,
           joinedAt: new Date(),
         }]),
-        getActiveIntents: (userId: string) => Promise.resolve([
-          {
-            id: `intent-${userId}` as Id<'intents'>,
-            payload: `Intent for ${userId}`,
-            summary: null,
+        getActiveIntents: (userId: string) => Promise.resolve(
+          Array.from({ length: 6 }, (_, index) => ({
+            id: `other-${userId}-${index}` as Id<'intents'>,
+            payload: `Other intent ${index} for ${userId}`,
+            summary: `Other ${index}`,
             createdAt: new Date(),
-          },
-        ]),
+          })),
+        ),
         getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
         getNetworkMemberCount: () => Promise.resolve(2),
         getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
@@ -2776,7 +2801,17 @@ describe('Opportunity Graph', () => {
         getOpportunitiesForUser: () => Promise.resolve([]),
         updateOpportunityStatus: () => Promise.resolve(null),
         updateOpportunityActorApproval: () => Promise.resolve(null),
-        getIntent: () => Promise.resolve(null),
+        getIntent: (intentId: string) => Promise.resolve({
+          id: intentId as Id<'intents'>,
+          userId: intentId === 'intent-patient' ? 'patient-user' : 'agent-user',
+          payload: `Exact payload for ${intentId}`,
+          summary: `Exact ${intentId}`,
+          isIncognito: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          archivedAt: null,
+          status: 'ACTIVE' as const,
+        }),
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
         getNegotiationTaskForOpportunity: async () => null,
@@ -2819,8 +2854,19 @@ describe('Opportunity Graph', () => {
         options: {},
       });
 
-      // Negotiation should have been invoked
+      // Negotiation should have been invoked with each opportunity actor's exact
+      // intent first, even though it required fallback loading outside the active list.
       expect(negotiationInvocations.length).toBeGreaterThan(0);
+      const invocation = negotiationInvocations[0] as {
+        sourceUser: { intents: Array<{ id: string }> };
+        candidateUser: { intents: Array<{ id: string }> };
+      };
+      expect(invocation.sourceUser.intents).toHaveLength(5);
+      expect(invocation.candidateUser.intents).toHaveLength(5);
+      expect(invocation.sourceUser.intents[0]?.id).toBe('intent-patient');
+      expect(invocation.candidateUser.intents[0]?.id).toBe('intent-agent');
+      expect(new Set(invocation.sourceUser.intents.map((intent) => intent.id)).size).toBe(5);
+      expect(new Set(invocation.candidateUser.intents.map((intent) => intent.id)).size).toBe(5);
 
       // Notifications should be sent to non-introducer actors only
       expect(notifiedUserIds).toContain('patient-user');

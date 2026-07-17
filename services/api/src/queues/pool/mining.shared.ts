@@ -30,6 +30,7 @@ import { embedderAdapter } from '../../adapters/embedder.adapter';
 import { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { questionerEnqueueIfEnabled } from '../questioner.queue';
 import { buildPoolCandidateContexts } from './context.shared';
+import { maybeRunNegotiationEvidenceShadow } from './negotiation-evidence.shadow';
 import { resolvePoolAxisNoveltyReferences } from './novelty.shared';
 import { POOL_QUESTION_FRESHNESS_THRESHOLD, extractSnapshotOpportunityIds, isPoolArtifactFresh, setJaccard } from './poolquestions.constants';
 
@@ -88,6 +89,11 @@ export function isPoolMiningActivated(): boolean {
 }
 
 export async function minePoolDiscriminatorsOnCompletion(trigger: PoolMiningTrigger): Promise<void> {
+  // Lens C (IND-433) runs on its OWN flag, independent of the Lens A pool
+  // flags below — fire-and-forget and fully failure-isolated so it neither
+  // blocks nor perturbs the discriminator mining path.
+  void maybeRunNegotiationEvidenceShadow(trigger).catch(() => {});
+
   if (!isPoolMiningActivated()) return;
   // Introducer flow: the discovered candidates are matches for someone else,
   // not the viewer's own pool — discriminator questions don't apply.

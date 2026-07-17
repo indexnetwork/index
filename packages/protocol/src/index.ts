@@ -220,6 +220,19 @@ export { poolQuestionCycleKey, poolQuestionPushThreshold, escapePoolPushMarkdown
 export type { SynthesizePoolQuestionInput, SynthesizedPoolQuestion } from "./opportunity/discriminator/discriminator.question.js";
 export type { QuestionPoolAssignment, QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./shared/schemas/question.schema.js";
 export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator, ScoredDiscriminator, VerifiedAssignment, DiscriminatorShadowResult } from "./opportunity/discriminator/discriminator.types.js";
+
+// Lens C — negotiation-evidence questions (IND-433, shadow).
+export { negotiationEvidenceQuestionsMode, NEGOTIATION_EVIDENCE_QUESTIONS_MODES, NEGOTIATION_EVIDENCE_MIN_DISTINCT_OPPORTUNITIES, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES, NEGOTIATION_EVIDENCE_MAX_CONTENT_CHARS } from "./opportunity/negotiation-evidence/negotiation-evidence.env.js";
+export type { NegotiationEvidenceQuestionsMode } from "./opportunity/negotiation-evidence/negotiation-evidence.env.js";
+export { extractAllowlistedEvidence } from "./opportunity/negotiation-evidence/negotiation-evidence.extractor.js";
+export type { ExtractionResult } from "./opportunity/negotiation-evidence/negotiation-evidence.extractor.js";
+export { verifyHypotheses, evidenceSpanMatches } from "./opportunity/negotiation-evidence/negotiation-evidence.verifier.js";
+export type { VerificationResult } from "./opportunity/negotiation-evidence/negotiation-evidence.verifier.js";
+export { NegotiationEvidenceMiner, buildEvidencePrompt } from "./opportunity/negotiation-evidence/negotiation-evidence.miner.js";
+export type { NegotiationEvidenceMinerConfig } from "./opportunity/negotiation-evidence/negotiation-evidence.miner.js";
+export { runNegotiationEvidenceShadow } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
+export type { NegotiationEvidenceShadowInput } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
+export type { EvidenceKind, EvidenceSpeaker, AllowlistedEvidence, RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment, EvidenceMiningScope, HypothesisClaimType, ProposedSupportRef, MinedEvidenceHypothesis, VerifiedSupportRef, RetainedEvidenceHypothesis, NegotiationEvidenceTelemetry, NegotiationEvidenceShadowResult } from "./opportunity/negotiation-evidence/negotiation-evidence.types.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";

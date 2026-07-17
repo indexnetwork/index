@@ -19,7 +19,9 @@ export class ChatDatabaseAdapter {
 
   // Negotiation context methods — required by HomeGraphDatabase
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
+  async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
+  async getMessagesByTaskIds(taskIds: string[]) { return _convDb().getMessagesByTaskIds(taskIds); }
   async getArtifactsForTask(taskId: string) { return _convDb().getArtifactsForTask(taskId); }
 
   // ─────────────────────────────────────────────────────────────────────────────

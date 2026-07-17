@@ -1100,6 +1100,42 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Looks up every negotiation task attached to an opportunity, ordered from
+   * oldest to newest so continuation provenance remains stable.
+   *
+   * @param opportunityId - Opportunity id stored on task metadata
+   * @returns All matching task records, oldest first
+   */
+  async getNegotiationTasksForOpportunity(opportunityId: string): Promise<Array<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }>> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+        ),
+      )
+      .orderBy(asc(schema.tasks.createdAt));
+
+    return rows.map((row) => ({
+      id: row.id,
+      conversationId: row.conversationId,
+      state: row.state as string,
+      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+  }
+
+  /**
    * Returns the most-recently-created negotiation task on a conversation,
    * regardless of opportunityId or direction. Used by the negotiation init
    * node's conversation-scoped initiator tie-break: symmetric concurrent
