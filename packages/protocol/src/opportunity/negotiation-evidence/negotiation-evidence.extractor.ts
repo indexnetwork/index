@@ -113,15 +113,32 @@ export function extractAllowlistedEvidence(
     }
 
     const seen = new Set<string>();
-    const opportunityEvidence: Array<{ kind: EvidenceKind; speaker: EvidenceSpeaker; content: string }> = [];
+    const opportunityEvidence: Array<{
+      kind: EvidenceKind;
+      speaker: EvidenceSpeaker;
+      content: string;
+      taskId: string;
+      conversationId: string;
+    }> = [];
 
-    const push = (kind: EvidenceKind, speaker: EvidenceSpeaker, rawContent: string): boolean => {
+    const push = (
+      segment: RawEvidenceSegment,
+      kind: EvidenceKind,
+      speaker: EvidenceSpeaker,
+      rawContent: string,
+    ): boolean => {
       const content = boundContent(rawContent);
       if (content.length === 0) return false;
       const key = dedupKey(kind, speaker, content);
-      if (seen.has(key)) return true; // duplicate continuation content — grouped, not excluded
+      if (seen.has(key)) return true; // duplicate continuation content retains its first source
       seen.add(key);
-      opportunityEvidence.push({ kind, speaker, content });
+      opportunityEvidence.push({
+        kind,
+        speaker,
+        content,
+        taskId: segment.taskId,
+        conversationId: segment.conversationId,
+      });
       return true;
     };
 
@@ -134,7 +151,7 @@ export function extractAllowlistedEvidence(
         }
         const parts = [...answer.selectedOptions, ...(answer.freeText ? [answer.freeText] : [])];
         const content = parts.join(" | ");
-        if (!push("owner_answer", "owner", content)) excludedRecords += 1;
+        if (!push(segment, "owner_answer", "owner", content)) excludedRecords += 1;
       }
 
       // Turns → structured bilateral action + explicitly shared message.
@@ -148,12 +165,12 @@ export function extractAllowlistedEvidence(
         }
         // Structured bilateral action (label only; reasoning never read).
         const action = turn.action?.trim();
-        if (action) push("bilateral_action", "system", action);
+        if (action) push(segment, "bilateral_action", "system", action);
 
         // Explicitly shared message content only. Untagged → excluded.
         const message = turn.message?.trim();
         if (message) {
-          if (turn.sharedTagged === true) push("shared_message", speaker, message);
+          if (turn.sharedTagged === true) push(segment, "shared_message", speaker, message);
           else excludedRecords += 1;
         }
       }
@@ -175,7 +192,7 @@ export function extractAllowlistedEvidence(
           ]
             .filter(Boolean)
             .join(" ");
-          push("coarse_outcome", "system", content);
+          push(segment, "coarse_outcome", "system", content);
         }
       }
     }
@@ -195,8 +212,8 @@ export function extractAllowlistedEvidence(
         intentId: first.intentId,
         intentFingerprint: first.intentFingerprint,
         opportunityId,
-        taskId: first.taskId,
-        conversationId: first.conversationId,
+        taskId: e.taskId,
+        conversationId: e.conversationId,
         networkId: first.networkId,
       });
     });

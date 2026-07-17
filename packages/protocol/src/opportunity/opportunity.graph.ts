@@ -53,7 +53,7 @@ import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from "../negotiation/negotiation.graph.js";
 import { AMBIENT_PARK_WINDOW_MS } from "../negotiation/negotiation.tools.js";
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from "./negotiation-summary.builder.js";
-import type { NegotiationGraphLike } from "../negotiation/negotiation.state.js";
+import type { NegotiationGraphLike, UserNegotiationContext } from "../negotiation/negotiation.state.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { protocolLogger, withCallLogging } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
@@ -84,6 +84,48 @@ const routingLog = protocolLogger('OpportunityGraph:Routing');
 
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
 const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const NEGOTIATION_INTENT_LIMIT = 5;
+
+interface NegotiationIntentSource {
+  id?: string | null;
+  summary?: string | null;
+  payload?: string | null;
+}
+
+/** Put an opportunity actor's exact intent first, then fill the bounded context without duplicates. */
+export function buildPrioritizedNegotiationIntents(
+  activeIntents: readonly NegotiationIntentSource[],
+  exactIntentId?: string | null,
+  fallbackIntent?: NegotiationIntentSource | null,
+): UserNegotiationContext['intents'] {
+  const exactId = typeof exactIntentId === 'string' && exactIntentId.trim().length > 0
+    ? exactIntentId
+    : null;
+  const exactActive = exactId
+    ? activeIntents.find((intent) => intent.id === exactId)
+    : undefined;
+  const ordered = [
+    ...(exactActive ? [exactActive] : []),
+    ...(!exactActive && fallbackIntent?.id === exactId ? [fallbackIntent] : []),
+    ...activeIntents,
+  ];
+  const seen = new Set<string>();
+  const intents: UserNegotiationContext['intents'] = [];
+
+  for (const intent of ordered) {
+    if (typeof intent.id !== 'string' || intent.id.trim().length === 0 || seen.has(intent.id)) continue;
+    seen.add(intent.id);
+    intents.push({
+      id: intent.id,
+      title: intent.summary ?? '',
+      description: intent.payload ?? '',
+      confidence: 1,
+    });
+    if (intents.length === NEGOTIATION_INTENT_LIMIT) break;
+  }
+
+  return intents;
+}
 
 /** Default cap for source premises used by premise-to-premise discovery. Prevents BACKEND-5-style fan-out. */
 const DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT = 40;
@@ -2011,15 +2053,26 @@ export class OpportunityGraphFactory {
         const discoveryUserId = (state.onBehalfOfUserId ?? state.userId) as string;
 
         const sourceAccount = await this.database.getUser(discoveryUserId).catch(() => null);
+        const sourceIntentInputs = (state.indexedIntents ?? []).map((intent) => ({
+          id: intent.intentId as string,
+          summary: intent.summary ?? null,
+          payload: intent.payload ?? null,
+        }));
+        const sourceHasExactIntent = sourceIntentInputs.some((intent) => intent.id === state.triggerIntentId);
+        const sourceFallbackIntent = state.triggerIntentId && !sourceHasExactIntent
+          ? await this.database.getIntent(state.triggerIntentId).catch(() => null)
+          : null;
+        const ownedSourceFallback = sourceFallbackIntent?.userId === discoveryUserId
+          ? sourceFallbackIntent
+          : null;
 
         const sourceUser = {
           id: discoveryUserId,
-          intents: state.indexedIntents?.slice(0, 5).map(i => ({
-            id: i.intentId as string,
-            title: i.summary ?? '',
-            description: i.payload ?? '',
-            confidence: 1,
-          })) ?? [],
+          intents: buildPrioritizedNegotiationIntents(
+            sourceIntentInputs,
+            state.triggerIntentId,
+            ownedSourceFallback,
+          ),
           profile: {
             name: state.sourceProfile?.identity?.name ?? sourceAccount?.name,
             bio: state.sourceProfile?.identity?.bio ?? sourceAccount?.intro ?? undefined,
@@ -2048,8 +2101,13 @@ export class OpportunityGraphFactory {
               return null;
             }
 
-            const candidateActor = (opp.actors as Array<{ userId: string; role?: string; networkId?: string; intentId?: string }>)
-              .find(a => a.userId !== discoveryUserId);
+            const candidateActor = (opp.actors as Array<{
+              userId: string;
+              role?: string;
+              networkId?: string;
+              intent?: string;
+              intentId?: string;
+            }>).find(a => a.userId !== discoveryUserId);
             if (!candidateActor) {
               negotiateLog.verbose('Skipping opportunity: no candidateActor found', {
                 opportunityId: opp.id,
@@ -2070,28 +2128,22 @@ export class OpportunityGraphFactory {
         const candidates: NegotiationCandidate[] = await Promise.all(
           candidateEntries.map(async ({ opp, candidateActor }) => {
             const userId = candidateActor.userId as string;
+            const candidateIntentId = candidateActor.intentId ?? candidateActor.intent;
             const [profile, user, activeIntents, intent] = await Promise.all([
               this.database.getProfile(userId).catch(() => null),
               this.database.getUser(userId).catch(() => null),
               this.database.getActiveIntents(userId).catch(() => []),
-              candidateActor.intentId
-                ? this.database.getIntent(candidateActor.intentId as string).catch(() => null)
+              candidateIntentId
+                ? this.database.getIntent(candidateIntentId).catch(() => null)
                 : null,
             ]);
 
-            const toNegIntent = (ai: { id?: string | null; summary?: string | null; payload?: string | null }) => ({
-              id: (ai.id ?? candidateActor.intentId) as string,
-              title: ai.summary ?? '',
-              description: ai.payload ?? '',
-              confidence: 1,
-            });
-            const triggerInActive = activeIntents.some(ai => ai.id === candidateActor.intentId);
-            const triggerFallback = !triggerInActive && intent ? [toNegIntent(intent)] : [];
-            const candidateIntents = [
-              ...triggerFallback,
-              ...activeIntents.filter(ai => ai.id === candidateActor.intentId).map(toNegIntent),
-              ...activeIntents.filter(ai => ai.id !== candidateActor.intentId).map(toNegIntent),
-            ].slice(0, 5);
+            const ownedFallbackIntent = intent?.userId === userId ? intent : null;
+            const candidateIntents = buildPrioritizedNegotiationIntents(
+              activeIntents,
+              candidateIntentId,
+              ownedFallbackIntent,
+            );
 
             return {
               userId,
@@ -3735,7 +3787,7 @@ export class OpportunityGraphFactory {
           return {};
         }
 
-        const actors = opp.actors as OpportunityActor[];
+        const actors = opp.actors as Array<OpportunityActor & { intentId?: string }>;
         const nonIntroducerActors = actors.filter(a => a.role !== 'introducer');
 
         // Find the sourceActor: non-introducer with role patient or party, fallback to first non-introducer
@@ -3753,6 +3805,9 @@ export class OpportunityGraphFactory {
           return {};
         }
 
+        const sourceIntentId = sourceActor.intentId ?? sourceActor.intent;
+        const candidateIntentId = candidateActor.intentId ?? candidateActor.intent;
+
         // Load user data for both actors in parallel
         const [sourceUserAccount, sourceProfile, sourceIntents, candidateAccount, candidateProfile, candidateIntents] =
           await Promise.all([
@@ -3764,16 +3819,24 @@ export class OpportunityGraphFactory {
             this.database.getActiveIntents(candidateActor.userId).catch(() => [] as ActiveIntent[]),
           ]);
 
-        const toNegIntent = (ai: ActiveIntent) => ({
-          id: ai.id as string,
-          title: ai.summary ?? '',
-          description: ai.payload ?? '',
-          confidence: 1,
-        });
+        const sourceHasExactIntent = sourceIntents.some((intent) => intent.id === sourceIntentId);
+        const candidateHasExactIntent = candidateIntents.some((intent) => intent.id === candidateIntentId);
+        const [sourceFallbackIntent, candidateFallbackIntent] = await Promise.all([
+          sourceIntentId && !sourceHasExactIntent
+            ? this.database.getIntent(sourceIntentId).catch(() => null)
+            : null,
+          candidateIntentId && !candidateHasExactIntent
+            ? this.database.getIntent(candidateIntentId).catch(() => null)
+            : null,
+        ]);
 
         const sourceUser = {
           id: sourceActor.userId,
-          intents: sourceIntents.slice(0, 5).map(toNegIntent),
+          intents: buildPrioritizedNegotiationIntents(
+            sourceIntents,
+            sourceIntentId,
+            sourceFallbackIntent?.userId === sourceActor.userId ? sourceFallbackIntent : null,
+          ),
           profile: {
             name: sourceProfile?.identity?.name ?? sourceUserAccount?.name,
             bio: sourceProfile?.identity?.bio ?? sourceUserAccount?.intro ?? undefined,
@@ -3781,7 +3844,11 @@ export class OpportunityGraphFactory {
           },
         };
 
-        const candidateIntentsForNeg = candidateIntents.slice(0, 5).map(toNegIntent);
+        const candidateIntentsForNeg = buildPrioritizedNegotiationIntents(
+          candidateIntents,
+          candidateIntentId,
+          candidateFallbackIntent?.userId === candidateActor.userId ? candidateFallbackIntent : null,
+        );
 
         const candidate: NegotiationCandidate = {
           userId: candidateActor.userId,

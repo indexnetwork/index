@@ -4,10 +4,14 @@ import { NegotiationGraphState } from "../negotiation.state.js";
 
 function mkStubs() {
   const messages: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }> = [];
+  const createdTaskMetadata: Array<Record<string, unknown>> = [];
   const database = {
     createConversation: async () => ({ id: "conv-1" }),
     getOrCreateDM: async () => ({ id: "conv-1" }),
-    createTask: async () => ({ id: "task-1" }),
+    createTask: async (_conversationId: string, metadata: Record<string, unknown>) => {
+      createdTaskMetadata.push(metadata);
+      return { id: "task-1" };
+    },
     updateOpportunityStatus: async () => {},
     createMessage: async (p: { conversationId: string; senderId: string; parts: unknown[] }) => {
       const msg = { id: `msg-${messages.length}`, senderId: p.senderId, parts: p.parts, createdAt: new Date() };
@@ -26,8 +30,74 @@ function mkStubs() {
     dispatch: async () => ({ handled: false, reason: "no-agent" }),
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[1];
 
-  return { database, dispatcher, messages };
+  return { database, dispatcher, messages, createdTaskMetadata };
 }
+
+describe("negotiation graph — task intent snapshots", () => {
+  it("captures immutable, deduplicated source and candidate intent snapshots at task creation", async () => {
+    const { database, dispatcher, createdTaskMetadata } = mkStubs();
+    const sourceUser = {
+      id: "u-src",
+      intents: [
+        { id: "intent-source", title: "Source title", description: "Source description", confidence: 0.8 },
+        { id: "intent-source", title: "Duplicate", description: "Duplicate", confidence: 0.2 },
+        { id: " ", title: "Blank", description: "Blank", confidence: 1 },
+      ],
+      profile: {},
+    };
+    const candidateUser = {
+      id: "u-cand",
+      intents: [
+        { id: "intent-source", title: "Candidate title", description: "Candidate description", confidence: 0.9 },
+      ],
+      profile: {},
+    };
+
+    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const originalInvoke = IndexNegotiator.prototype.invoke;
+    IndexNegotiator.prototype.invoke = async function () {
+      return {
+        action: "propose" as const,
+        assessment: {
+          reasoning: "stub",
+          suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const },
+        },
+        message: "stub",
+      };
+    };
+
+    try {
+      await new NegotiationGraphFactory(database, dispatcher).createGraph().invoke({
+        sourceUser,
+        candidateUser,
+        indexContext: { networkId: "net-1", prompt: "" },
+        seedAssessment: { reasoning: "x", valencyRole: "peer" },
+        opportunityId: "opp-1",
+        maxTurns: 1,
+      } as Partial<typeof NegotiationGraphState.State>);
+    } finally {
+      IndexNegotiator.prototype.invoke = originalInvoke;
+    }
+
+    sourceUser.intents[0].title = "Mutated after capture";
+    candidateUser.intents[0].description = "Mutated after capture";
+    expect(createdTaskMetadata).toHaveLength(1);
+    expect(createdTaskMetadata[0].intentSnapshots).toEqual([
+      {
+        userId: "u-src",
+        intentId: "intent-source",
+        title: "Source title",
+        description: "Source description",
+      },
+      {
+        userId: "u-cand",
+        intentId: "intent-source",
+        title: "Candidate title",
+        description: "Candidate description",
+      },
+    ]);
+  });
+});
 
 describe("negotiation graph — negotiation_turn emission", () => {
   it("emits negotiation_turn with correct payload after each turn", async () => {

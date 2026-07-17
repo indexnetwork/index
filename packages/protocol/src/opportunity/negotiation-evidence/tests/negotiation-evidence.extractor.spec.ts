@@ -183,6 +183,35 @@ describe("extractAllowlistedEvidence — continuation grouping", () => {
       coarse_outcome: 1,
       shared_message: 1,
     });
+    expect(result.evidence.every((e) => e.taskId === "task-1")).toBe(true);
+  });
+
+  it("preserves each accepted continuation unit's exact task and conversation provenance", () => {
+    const cont1 = segment({
+      taskId: "task-1",
+      conversationId: "conv-1",
+      turns: [{ senderUserId: "owner-1", action: "propose" }],
+      outcome: null,
+      ownerAnswers: [],
+    });
+    const cont2 = segment({
+      taskId: "task-2",
+      conversationId: "conv-2",
+      turns: [{ senderUserId: "cp-1", action: "counter" }],
+      outcome: null,
+      ownerAnswers: [],
+    });
+    const result = extractAllowlistedEvidence(SCOPE, [cont1, cont2]);
+
+    expect(result.distinctOpportunities).toBe(1);
+    expect(result.evidence.find((e) => e.content === "propose")).toMatchObject({
+      taskId: "task-1",
+      conversationId: "conv-1",
+    });
+    expect(result.evidence.find((e) => e.content === "counter")).toMatchObject({
+      taskId: "task-2",
+      conversationId: "conv-2",
+    });
   });
 
   it("a single opportunity contributes at most one distinct-opportunity unit no matter how many continuations", () => {
