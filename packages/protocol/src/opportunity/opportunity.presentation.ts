@@ -5,6 +5,7 @@
 
 import type { Opportunity } from '../shared/interfaces/database.interface.js';
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "./opportunity.labels.js";
+import { stripUnsupportedOpportunityClaims } from "./opportunity.claim-safety.js";
 
 export interface OpportunityPresentation {
   title: string;
@@ -37,6 +38,9 @@ export function presentOpportunity(
   }
 
   const otherName = otherPartyInfo.name;
+  const safeReasoning =
+    stripUnsupportedOpportunityClaims(stripUuids(opp.interpretation.reasoning)) ||
+    'A promising connection.';
   let title: string;
   let description: string;
   let descriptionIsReasoning = false;
@@ -74,18 +78,18 @@ export function presentOpportunity(
     default:
       if (introducer && introducerInfo) {
         title = `${introducerInfo.name} thinks you should meet ${otherName}`;
-        description = opp.interpretation.reasoning;
+        description = safeReasoning;
         descriptionIsReasoning = true;
       } else {
         title = `Opportunity with ${otherName}`;
-        description = opp.interpretation.reasoning;
+        description = safeReasoning;
         descriptionIsReasoning = true;
       }
       break;
   }
 
   if (!descriptionIsReasoning) {
-    description += `\n\n${opp.interpretation.reasoning}`;
+    description += `\n\n${safeReasoning}`;
   }
 
   if (format === 'notification') {
@@ -302,7 +306,7 @@ export function viewerCentricCardSummary(
   viewerName?: string,
   introducerName?: string,
 ): string {
-  const raw = stripUuids(reasoning);
+  const raw = stripUnsupportedOpportunityClaims(stripUuids(reasoning));
   if (!raw) return "A suggested connection.";
 
   const name = counterpartName.trim();
@@ -430,7 +434,7 @@ export function narratorRemarkFromReasoning(
   counterpartName: string,
   viewerName?: string,
 ): string {
-  const raw = stripUuids(reasoning).trim();
+  const raw = stripUnsupportedOpportunityClaims(stripUuids(reasoning)).trim();
   if (!raw) return FALLBACK_REMARK;
 
   // Strip all person names from the text so we work only with topics.

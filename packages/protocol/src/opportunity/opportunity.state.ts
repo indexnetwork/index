@@ -373,7 +373,7 @@ export const OpportunityGraphState = Annotation.Root({
   }),
 
   /** User context embeddings per network (from prep). Used for context-to-intent discovery. */
-  sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; embedding: number[] }>>({
+  sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; text: string; embedding: number[] }>>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),

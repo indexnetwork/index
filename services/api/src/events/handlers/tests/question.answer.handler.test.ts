@@ -4,10 +4,11 @@ import { handleQuestionAnswered, type QuestionAnswerHandlerDeps } from "../quest
 function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswerHandlerDeps {
   return {
     createPremiseFromAnswer: mock(async () => {}),
-    enqueueIntentRefinement: mock(async () => {}),
+    enqueueIntentRefinement: mock(async () => ({ applied: true })),
     storeNegotiationContext: mock(async () => {}),
     resumeInflightNegotiation: mock(async () => {}),
     resolveChatQuestionWait: mock(() => {}),
+    handlePoolAnswer: mock(async () => {}),
     ...overrides,
   };
 }
@@ -103,6 +104,14 @@ describe("handleQuestionAnswered", () => {
     });
   });
 
+  it("keeps uptake answers private to the question row", async () => {
+    await handleQuestionAnswered(
+      { ...basePayload, mode: "negotiation", purpose: "uptake", sourceType: "opportunity", sourceId: "opp-1" },
+      deps,
+    );
+    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
+  });
+
   it("swallows errors from handlers without rethrowing", async () => {
     const failDeps = makeDeps({
       createPremiseFromAnswer: mock(async () => { throw new Error("DB down"); }),
@@ -142,6 +151,27 @@ describe("handleQuestionAnswered", () => {
       deps,
     );
     expect(deps.resumeInflightNegotiation).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes pool_discovery through the complete pool-answer reaction", async () => {
+    await handleQuestionAnswered(
+      {
+        ...basePayload,
+        mode: "pool_discovery",
+        sourceType: "intent",
+        sourceId: "intent-1",
+        answer: { ...basePayload.answer, freeText: "Prefer a short engagement" },
+      },
+      deps,
+    );
+    expect(deps.handlePoolAnswer).toHaveBeenCalledTimes(1);
+    expect((deps.handlePoolAnswer as ReturnType<typeof mock>).mock.calls[0]?.[0]).toEqual({
+      userId: "u-1",
+      questionId: "q-1",
+      intentId: "intent-1",
+      selectedOptions: ["Option A"],
+      freeText: "Prefer a short engagement",
+    });
   });
 
   it("handles unknown mode gracefully", async () => {

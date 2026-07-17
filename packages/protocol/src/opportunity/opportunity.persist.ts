@@ -3,7 +3,7 @@
  * Used by the opportunity graph persist node and by the manual opportunity service for consistency.
  */
 
-import type { CreateOpportunityData, Opportunity, OpportunityStatus } from '../shared/interfaces/database.interface.js';
+import type { CreateOpportunityData, Opportunity, OpportunityNetworkEligibility, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import type { Embedder } from '../shared/interfaces/embedder.interface.js';
 import type { EnricherDatabase } from './opportunity.enricher.js';
 import { enrichOrCreate } from './opportunity.enricher.js';
@@ -13,11 +13,20 @@ const logger = protocolLogger('OpportunityPersist');
 
 export type PersistOpportunityDatabase = EnricherDatabase & {
   createOpportunity(data: CreateOpportunityData): Promise<Opportunity>;
+  createOpportunityIfNetworkEligible?(
+    data: CreateOpportunityData,
+    eligibility: OpportunityNetworkEligibility,
+  ): Promise<Opportunity | null>;
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<void | Opportunity | null>;
   createOpportunityAndExpireIds?(
     data: CreateOpportunityData,
     expireIds: string[]
   ): Promise<{ created: Opportunity; expired: Opportunity[] }>;
+  createOpportunityAndExpireIdsIfNetworkEligible?(
+    data: CreateOpportunityData,
+    expireIds: string[],
+    eligibility: OpportunityNetworkEligibility,
+  ): Promise<{ created: Opportunity; expired: Opportunity[] } | null>;
   /** Optional: used to populate expired list in non-atomic path. */
   getOpportunity?(id: string): Promise<Opportunity | null>;
 };
@@ -27,6 +36,8 @@ export interface PersistOpportunitiesParams {
   embedder: Embedder;
   items: CreateOpportunityData[];
   injectChat?: (opportunity: Opportunity) => Promise<unknown>;
+  /** Require adapter-level membership/assignment locks for discovery-created rows. */
+  networkEligibility?: OpportunityNetworkEligibility;
 }
 
 export interface PersistOpportunitiesError {
@@ -46,7 +57,7 @@ export interface PersistOpportunitiesResult {
  * Returns both created and expired so callers can emit events (e.g. manual service).
  */
 export async function persistOpportunities(params: PersistOpportunitiesParams): Promise<PersistOpportunitiesResult> {
-  const { database, embedder, items, injectChat } = params;
+  const { database, embedder, items, injectChat, networkEligibility } = params;
   const created: Opportunity[] = [];
   const expired: Opportunity[] = [];
   const errors: PersistOpportunitiesError[] = [];
@@ -60,7 +71,28 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
         toCreate.status = enrichment.resolvedStatus;
       }
 
-      if (
+      if (networkEligibility) {
+        if (enrichment.enriched && enrichment.expiredIds.length > 0) {
+          if (!database.createOpportunityAndExpireIdsIfNetworkEligible) {
+            throw new Error('Network-eligible create+expire is required for discovery persistence');
+          }
+          const result = await database.createOpportunityAndExpireIdsIfNetworkEligible(
+            toCreate,
+            enrichment.expiredIds,
+            networkEligibility,
+          );
+          if (!result) continue;
+          created.push(result.created);
+          expired.push(...result.expired);
+        } else {
+          if (!database.createOpportunityIfNetworkEligible) {
+            throw new Error('Network-eligible create is required for discovery persistence');
+          }
+          const c = await database.createOpportunityIfNetworkEligible(toCreate, networkEligibility);
+          if (!c) continue;
+          created.push(c);
+        }
+      } else if (
         database.createOpportunityAndExpireIds &&
         enrichment.enriched &&
         enrichment.expiredIds.length > 0

@@ -293,7 +293,7 @@ describe('OpportunityDeliveryService cache-aside wiring', () => {
     expect(mgetCalls.length).toBe(0);
   });
 
-  it('uses the correct cache key format: delivery:card:{id}:{status}:{viewerId}', async () => {
+  it('uses the v2 cache key format: delivery:v2:card:{id}:{status}:{viewerId}', async () => {
     const { OpportunityPresenter } = await import('@indexnetwork/protocol');
     const cache = makeMockCache(false);
     const svc = new OpportunityDeliveryService(
@@ -305,6 +305,6 @@ describe('OpportunityDeliveryService cache-aside wiring', () => {
     await renderCard(svc, OPP_ID, USER_ID);
 
     const key = cache.mgetCalls[0][0];
-    expect(key).toBe(`delivery:card:${OPP_ID}:${STUB_OPP.status}:${USER_ID}`);
+    expect(key).toBe(`delivery:v2:card:${OPP_ID}:${STUB_OPP.status}:${USER_ID}`);
   });
 });

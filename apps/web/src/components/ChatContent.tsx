@@ -220,7 +220,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     const scopeQuestionPromise = chatScope?.type === "intent"
       ? questionsService.getPending({ scopeType: "intent", scopeId: chatScope.id })
       : isNegotiatorDm
-        ? questionsService.getPending({ noConversation: true })
+        ? questionsService.getPending({ noConversation: true, excludeModes: ['pool_discovery'] })
         : Promise.resolve([] as PendingQuestion[]);
     Promise.all([
       questionsService.getByConversation(sessionId),

@@ -1,7 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { z } from "zod";
 
-import { createIntentTools } from "../intent.tools.js";
+import { createIntentTools, setIntentClarifierForTesting } from "../intent.tools.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "../intent.specificity.js";
 
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
@@ -43,7 +43,89 @@ function extractFirstIntentProposal(message: string): Record<string, unknown> {
   return JSON.parse(match[1]) as Record<string, unknown>;
 }
 
+afterEach(() => {
+  setIntentClarifierForTesting(null);
+});
+
 describe("create_intent", () => {
+  test("returns typed clarification from the live elaboration path for vague intents", async () => {
+    setIntentClarifierForTesting({
+      invoke: async () => ({
+        needsClarification: true,
+        reason: "target missing",
+        suggestedDescription: "Find a collaborator for my climate startup",
+        clarificationMessage: "What kind of collaborator does your climate startup need?",
+        underspecificationType: "missing_constituent",
+      }),
+    });
+    const tools = captureTools({
+      userDb: {},
+      systemDb: {},
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: {
+          invoke: async () => ({
+            verifiedIntents: [],
+            agentTimings: [],
+            trace: [{ node: "verification", detail: "Verified 0/1 (1 filtered as invalid)" }],
+          }),
+        },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((candidate) => candidate.name === "create_intent")!;
+
+    const result = JSON.parse(await tool.handler({
+      context: makeContext("alice"),
+      query: { description: "I need help with something", autoApprove: true },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.needsClarification).toBe(true);
+    expect(result.underspecificationType).toBe("missing_constituent");
+    expect(result.message).toBe("What kind of collaborator does your climate startup need?");
+    expect(result.suggestedDescription).toBe("Find a collaborator for my climate startup");
+  });
+
+  test("passes active intents into typed clarification for no-inference proposals", async () => {
+    let capturedActiveIntents = "";
+    setIntentClarifierForTesting({
+      invoke: async (_description, _profile, activeIntents) => {
+        capturedActiveIntents = activeIntents;
+        return {
+          needsClarification: true,
+          reason: "target missing",
+          suggestedDescription: "Find an AI collaborator",
+          clarificationMessage: "Which kind of AI collaborator do you need?",
+          underspecificationType: "missing_constituent",
+        };
+      },
+    });
+    const tools = captureTools({
+      userDb: {},
+      systemDb: {},
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: {
+          invoke: async () => ({
+            verifiedIntents: [],
+            activeIntents: "ID: existing-1, Description: Find ML mentors",
+            agentTimings: [],
+            trace: [{ node: "inference", detail: "Inferred 0 intent(s)" }],
+          }),
+        },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((candidate) => candidate.name === "create_intent")!;
+
+    const result = JSON.parse(await tool.handler({
+      context: makeContext("alice"),
+      query: { description: "help", autoApprove: true },
+    }));
+
+    expect(result.needsClarification).toBe(true);
+    expect(capturedActiveIntents).toContain("Find ML mentors");
+  });
+
   test("falls back to approved user intro when structured profile is still pending", async () => {
     const capturedProfiles: string[] = [];
     const tools = captureTools({
@@ -88,6 +170,15 @@ describe("create_intent", () => {
   });
 
   test("rejects broad referential-breadth signals in MCP auto-approve mode", async () => {
+    setIntentClarifierForTesting({
+      invoke: async () => ({
+        needsClarification: false,
+        reason: "test fallback",
+        suggestedDescription: null,
+        clarificationMessage: null,
+        underspecificationType: null,
+      }),
+    });
     let createCalls = 0;
     const tools = captureTools({
       userDb: {},
@@ -136,6 +227,15 @@ describe("create_intent", () => {
   });
 
   test("uses default broad warning in MCP auto-approve mode when verifier emits a null-like string", async () => {
+    setIntentClarifierForTesting({
+      invoke: async () => ({
+        needsClarification: false,
+        reason: "test fallback",
+        suggestedDescription: null,
+        clarificationMessage: null,
+        underspecificationType: null,
+      }),
+    });
     let createCalls = 0;
     const tools = captureTools({
       userDb: {},

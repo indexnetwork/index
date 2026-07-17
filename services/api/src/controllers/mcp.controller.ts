@@ -22,6 +22,7 @@ import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import type { AdapterPersistableQuestion } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
+import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
@@ -145,6 +146,7 @@ const protocolDeps = {
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
+  stampNewbornOpportunities,
   mintConnectToken: signConnectToken,
   mintConnectLink,
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
@@ -218,6 +220,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     undefined, undefined, negotiationGraph,
     protocolDeps.agentDispatcher,
     protocolDeps.queueNegotiateExisting,
+    protocolDeps.stampNewbornOpportunities,
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
@@ -637,6 +640,7 @@ function createMcpServerInstance(): McpServer {
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
     agentDispatcher: protocolDeps.agentDispatcher,
+    stampNewbornOpportunities: protocolDeps.stampNewbornOpportunities,
     negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
@@ -672,6 +676,7 @@ function createMcpServerInstance(): McpServer {
       filters?: {
         sourceType?: string;
         sourceId?: string;
+        purpose?: import('@indexnetwork/protocol').QuestionPurpose;
         networkId?: string;
         scopeType?: 'intent';
         scopeId?: string;
@@ -679,7 +684,9 @@ function createMcpServerInstance(): McpServer {
         limit?: number;
       },
     ) => {
-      const rows = await questionerAdapter.findPending(userId, filters);
+      const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
+        ? filters
+        : { ...filters, excludeModes: ['pool_discovery'] });
       return rows.map((row): PendingQuestionSummary => ({
         id: row.id,
         title: row.payload.title,
@@ -687,6 +694,7 @@ function createMcpServerInstance(): McpServer {
         options: row.payload.options,
         multiSelect: row.payload.multiSelect,
         mode: row.detection.mode,
+        ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
         sourceType: row.detection.sourceType,
         sourceId: row.detection.sourceId,
         createdAt: row.createdAt,

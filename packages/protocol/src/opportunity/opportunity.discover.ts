@@ -592,10 +592,15 @@ async function enrichOpportunities(
         name: item.profile?.identity?.name ?? nameByUserId.get(item.candidateUserId) ?? undefined,
         avatar: avatarByUserId.get(item.candidateUserId) ?? null,
         bio: truncateForChat(item.profile?.identity?.bio),
-        matchReason:
-          truncateForChat(
-            item.opportunity.interpretation?.reasoning ?? "",
-          ) ?? "",
+        matchReason: safeFallbackSummary(
+          item.opportunity.interpretation?.reasoning,
+          {
+            counterpartName: item.profile?.identity?.name ?? nameByUserId.get(item.candidateUserId) ?? undefined,
+            viewerName,
+            maxChars: MAX_FIELD_CHARS,
+            emptyText: "A suggested connection.",
+          },
+        ),
         score: item.confidence,
         status: chatSessionId && !existingOpportunityIds?.has(item.opportunity.id) ? "draft" : item.opportunity.status,
         viewerRole: item.viewerRole,

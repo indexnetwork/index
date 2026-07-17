@@ -7,6 +7,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
 import type { OpportunityGraphDatabase, HydeGraphDatabase } from '@indexnetwork/protocol';
+import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 
 /** Preflight diagnostics gathered before running discovery. */
 export interface DiscoveryPreflight {
@@ -15,6 +16,7 @@ export interface DiscoveryPreflight {
     text: string;
     hasEmbedding: boolean;
     isArchived: boolean;
+    status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
     assignedToIndexes: Array<{ networkId: string; title: string | null }>;
   };
   userNetworks: Array<{ networkId: string; title: string | null }>;
@@ -56,6 +58,39 @@ export interface DiscoveryResult {
   trace: unknown[];
 }
 
+/** Raised when the debug runner is asked to discover from an inactive intent. */
+export class DebugIntentDiscoveryBlockedError extends Error {
+  readonly status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
+
+  constructor(status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED') {
+    super(`Debug discovery requires an active, non-archived intent (current status: ${status})`);
+    this.name = 'DebugIntentDiscoveryBlockedError';
+    this.status = status;
+  }
+}
+
+/**
+ * Apply production lifecycle admission to debug discovery.
+ * @param intent - Intent ownership and lifecycle data.
+ * @param userId - Authenticated user requesting discovery.
+ * @returns True only for owned, non-archived ACTIVE/legacy-null intents.
+ */
+export function isDebugDiscoveryIntentActive(
+  intent: {
+    userId: string;
+    status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null;
+    archivedAt: Date | null;
+  } | null,
+  userId: string,
+): boolean {
+  return Boolean(
+    intent
+    && intent.userId === userId
+    && !intent.archivedAt
+    && (intent.status == null || intent.status === 'ACTIVE'),
+  );
+}
+
 /** Full discovery debug response. */
 export interface DiscoveryDebugResponse {
   exportedAt: string;
@@ -90,6 +125,7 @@ export class DebugService {
         userId: intents.userId,
         hasEmbedding: sql<boolean>`${intents.embedding} IS NOT NULL`.as('has_embedding'),
         archivedAt: intents.archivedAt,
+        status: intents.status,
       })
       .from(intents)
       .where(and(eq(intents.id, intentId), eq(intents.userId, userId)))
@@ -163,6 +199,7 @@ export class DebugService {
           text: intent.payload?.slice(0, 120),
           hasEmbedding: intent.hasEmbedding,
           isArchived: !!intent.archivedAt,
+          status: intent.status ?? 'ACTIVE',
           assignedToIndexes: intentIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         },
         userNetworks: userIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
@@ -187,13 +224,28 @@ export class DebugService {
    */
   async runDiscoveryGraph(intentId: string, userId: string, intentPayload: string): Promise<DiscoveryResult> {
     const database = new ChatDatabaseAdapter();
+    const intent = await database.getIntentForIndexing(intentId);
+    if (!isDebugDiscoveryIntentActive(intent, userId)) {
+      throw new DebugIntentDiscoveryBlockedError(intent?.status ?? 'ACTIVE');
+    }
+
     const graphDb = database as unknown as OpportunityGraphDatabase & HydeGraphDatabase;
     const embedder = new EmbedderAdapter();
     const cache = new RedisCacheAdapter();
     const inferrer = new LensInferrer();
     const generator = new HydeGenerator();
     const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
-    const opportunityGraph = new OpportunityGraphFactory(graphDb, embedder, hydeGraph).createGraph();
+    const opportunityGraph = new OpportunityGraphFactory(
+      graphDb,
+      embedder,
+      hydeGraph,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      stampNewbornOpportunities,
+    ).createGraph();
 
     const result = await opportunityGraph.invoke({
       userId,

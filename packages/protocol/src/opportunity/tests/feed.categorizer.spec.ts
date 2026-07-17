@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, mock } from 'bun:test';
 import { HomeCategorizerAgent } from '../feed/feed.categorizer.js';
 import { resolveHomeSectionIcon } from '../../shared/ui/lucide.icon-catalog.js';
 
@@ -27,6 +27,31 @@ describe('HomeCategorizerAgent', () => {
     expect(section.itemIndices).toContain(0);
     const resolvedIcon = resolveHomeSectionIcon(section.iconName);
     expect(resolvedIcon.length).toBeGreaterThan(0);
+  });
+
+  test('falls back instead of caching unsupported section claims', async () => {
+    const agent = new HomeCategorizerAgent();
+    const invoke = mock(async () => ({
+      sections: [{
+        id: 'attendees',
+        title: 'MEET FELLOW EVENT ATTENDEES',
+        subtitle: 'Connections worth exploring',
+        iconName: 'users',
+        itemIndices: [0],
+      }],
+    }));
+    (agent as unknown as { model: { invoke: typeof invoke } }).model = { invoke };
+
+    const result = await agent.categorize([
+      { index: 0, mainText: 'A safe technical match.', name: 'Alice' },
+    ]);
+
+    expect(result.sections).toEqual([{
+      id: 'opportunities',
+      title: 'OPPORTUNITIES',
+      iconName: 'hourglass',
+      itemIndices: [0],
+    }]);
   });
 
   test('categorize section title is CTA-style (uppercase or action-oriented)', async () => {

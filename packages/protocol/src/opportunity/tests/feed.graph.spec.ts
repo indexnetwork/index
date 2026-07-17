@@ -5,7 +5,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { HomeGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES } from '../feed/feed.graph.js';
+import { HomeGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES, isHomePresentationCacheable } from '../feed/feed.graph.js';
 import { selectByComposition, classifyOpportunity, FEED_SOFT_TARGETS } from '../opportunity.utils.js';
 import type { HomeGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
@@ -88,6 +88,16 @@ function minimalOpportunityWithId(viewerId: string, otherId: string, id: string,
     expiresAt: null,
   };
 }
+
+describe('home presentation cache policy', () => {
+  test('does not cache presenter fallback cards', () => {
+    expect(isHomePresentationCacheable({
+      name: 'Alice',
+      _presentationFallback: true,
+    }, 'pending')).toBe(false);
+    expect(isHomePresentationCacheable({ name: 'Alice' }, 'pending')).toBe(true);
+  });
+});
 
 describe('HomeGraph', () => {
   test('no opportunities returns empty sections and meta', async () => {
@@ -584,7 +594,7 @@ describe('HomeGraph caching', () => {
 
     // Pre-populate cache with a card for this opportunity
     const card = cachedCard('opp-cached', 99); // stale _cardIndex to verify recomputation
-    await cache.set(`home:card:opp-cached:${opp.status}:${viewerId}`, card);
+    await cache.set(`home:v2:card:opp-cached:${opp.status}:${viewerId}`, card);
 
     const graph = new HomeGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
@@ -605,7 +615,7 @@ describe('HomeGraph caching', () => {
     const cache = createMockCache();
 
     // Only cache opp1
-    await cache.set(`home:card:opp-hit:${opp1.status}:${viewerId}`, cachedCard('opp-hit', 0));
+    await cache.set(`home:v2:card:opp-hit:${opp1.status}:${viewerId}`, cachedCard('opp-hit', 0));
 
     const graph = new HomeGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
@@ -629,7 +639,7 @@ describe('HomeGraph caching', () => {
     const cache = createMockCache();
 
     // Cache with stale _cardIndex of 42
-    await cache.set(`home:card:opp-reindex:${opp.status}:${viewerId}`, cachedCard('opp-reindex', 42));
+    await cache.set(`home:v2:card:opp-reindex:${opp.status}:${viewerId}`, cachedCard('opp-reindex', 42));
 
     const graph = new HomeGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
@@ -945,7 +955,7 @@ describe('HomeGraph skeleton presentation', () => {
 
     // Skeleton cards must not poison the presenter cache: the follow-up full
     // request has to see a miss and generate real text.
-    const cached = await cache.get(`home:card:${opp.id}:pending:${viewerId}`);
+    const cached = await cache.get(`home:v2:card:${opp.id}:pending:${viewerId}`);
     expect(cached).toBeNull();
   });
 
@@ -954,7 +964,7 @@ describe('HomeGraph skeleton presentation', () => {
     const opp = minimalOpportunityAgentViewer(viewerId, 'other-1');
     const db = createMockDb([opp]);
     const cache = createMockCache();
-    await cache.set(`home:card:${opp.id}:pending:${viewerId}`, {
+    await cache.set(`home:v2:card:${opp.id}:pending:${viewerId}`, {
       opportunityId: opp.id,
       userId: 'other-1',
       name: 'User other-1',

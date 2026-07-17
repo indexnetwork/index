@@ -177,13 +177,19 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 The graph supports multiple discovery paths, searching across intents and premises corpora:
 - **Intent-based (Path A):** Trigger intent is assigned to an index — use its HyDE documents for search
-- **Query-based (Path B):** Query-generated HyDE documents for search
+- **Internal generated-source branch (Path B):** HyDE documents generated from `searchQuery`. Background `FromIntentQueue` currently supplies the stored intent payload here with `triggerIntentId`; the HyDE graph calls this internal source type `query`. That label does not imply the source is a direct user request.
 - **Context-to-intent (Path C):** User contexts (network-scoped paragraph representations from the premise graph) are embedded and used to search for matching intents via `searchIntentsByContextEmbedding()`. Candidates carry `discoverySource: 'context-to-intent'`.
 - **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared networks
 
 All discovery strategies are merged via `mergeStrategyCandidates()`, which deduplicates by `userId:networkId:entityId` and applies a multi-strategy boost (+0.05 per additional strategy, capped at 0.15).
 
+**Trigger-intent network admission:** `FromIntentQueue` recomputes the authoritative target set for every run as the trigger intent's current assignments intersected with the owner's active memberships and any explicit caller/agent scope. Omitted explicit scope means all still-valid assigned networks—not all owner memberships—and an empty result ends the job before graph invocation or pool mining. Multi-network results use `indexScope` without collapsing to the first assignment. Query/ad-hoc discovery without a trigger intent retains its global all-membership behavior.
+
+**Candidate membership invariants:** intent-HyDE, intent-vector, premise-HyDE/vector, and context-to-intent queries require an active candidate membership on the exact returned network and a non-deleted network. The check is permission-agnostic so contacts in a personal network remain eligible. The graph batch-rechecks the discoverer and candidate before profile loading/evaluation and rechecks every evaluated participant before dedup; final creation and reactivation run behind transaction-held active-membership and trigger-intent-assignment locks, with the current active owned intent row locked too, so concurrent member removal, pause/archive, or unassignment cannot race the write. Lookup failure is fail-closed. Selected-intent Radar independently derives valid networks from the viewer-owned intent's assignments plus active viewer memberships and requires every participant to retain an active anchor in that set, including for paused-intent history.
+
 Premise-based candidates carry `candidatePremiseId` in the persist node for actor tracking, regardless of discovery source.
+
+**Affiliation/presence claim safety:** network/event metadata is retrieval context, never evidence that a person attended, joined, resided, met someone, or shared a place/session. Evaluator and presenter prompts prohibit these inferences, evaluator post-validation rejects affected opportunities before persistence, and one deterministic sentence guard strips them from presenter output, raw-reasoning fallbacks, REST lists, MCP cards, notifications, delivery/chat cards, streaming drafts, and invite generation. Because typed support provenance does not exist yet, the guard deliberately fails closed even for genuinely supported phrasing. Home, category, delivery, and chat presentation caches use a versioned namespace and never persist presenter fallback output; unsafe categorizer titles/subtitles fall back before the category cache write.
 
 **Unified trigger model:** `OpportunityGraphState.trigger` (`'ambient' | 'orchestrator'`, default `'ambient'`) drives branches in the `persist` and `negotiate` nodes so the same graph serves both the queue-driven ambient flow and the chat-driven orchestrator flow. The tool layer passes `trigger: 'orchestrator'` whenever `context.sessionId` is set (i.e. the call comes from a chat session); all other callers inherit the ambient default.
 
@@ -197,17 +203,22 @@ Premise-based candidates carry `candidatePremiseId` in the persist node for acto
 ### 3.5 HyDE Graph
 
 **File:** `shared/hyde/hyde.graph.ts`
-**Purpose:** Cache-aware hypothetical document generation with dynamic lens inference.
-**Nodes:** `infer_lenses`, `check_cache`, `generate_missing`, `embed`, `cache_results`
-**State:** `HydeGraphState` (sourceType, sourceId, sourceText, profileContext, lenses, hydeDocuments, hydeEmbeddings, etc.)
+**Purpose:** Cache-aware hypothetical document generation with dynamic lens inference and an opt-in source-grounded validation path.
+**Nodes:** legacy uses `infer_lenses`, `check_cache`, `generate_missing`, `embed`, `cache_results`; frame-v1 inserts `validate_generated` between generation and embedding.
+**State:** `HydeGraphState` (sourceType, sourceId, sourceText, profileContext, lenses, optional sourceFrame/frameFingerprint, hydeDocuments, hydeEmbeddings, etc.)
 **Conditional edges:**
-- After `check_cache`: routes to `generate_missing` (cache misses) or `embed` (all cached)
+- After `check_cache`: routes to `generate_missing` (cache misses) or `embed` (all cached).
+- In frame-v1, generated documents route through one batch validator; cache/DB hits already marked valid skip validation.
 
-**Flow:** `START -> infer_lenses -> check_cache -> [generate_missing if needed] -> embed -> cache_results -> END`
+**Legacy flow:** `START -> infer_lenses -> check_cache -> [generate_missing] -> embed -> cache_results -> END`
 
-The graph is designed for efficiency: it checks both Redis cache and PostgreSQL before generating any HyDE documents, and only generates documents for lenses that had cache misses.
+**Frame-v1 flow:** `START -> infer_lenses+frame -> check_versioned_cache -> [generate_missing -> validate_generated] -> embed -> cache_results -> END`
 
-**Dependencies:** `HydeGraphDatabase`, `EmbeddingGenerator`, `HydeCache`, `LensInferrer`, `HydeGenerator`
+`HYDE_FRAME_CONSTRAINTS_ENABLED=true` selects frame-v1; every other value preserves the default legacy path. Frame extraction uses only `sourceText`. Optional `profileContext` remains lens-selection context and is never frame evidence or validator input. A partial rejection removes only invalid siblings. If every generated document is rejected, the graph returns no HyDE embeddings. Validator errors and malformed/missing/contradictory verdicts fail open per document: those documents are embedded and returned ephemerally, but `cache_results` never writes them.
+
+Legacy Redis keys and DB strategy hashes remain untouched. Frame-v1 Redis keys include the version plus a fingerprint of exact source text and sanitized frame; frame-v1 DB strategies are stable versioned lens/corpus hashes so revisions upsert rather than append. Persisted context carries source/frame fingerprints, a generation marker, and `validationStatus: valid`. Bulk context discovery filters to the active mode, current source-text hash, and newest generation-marker group, so changed content cannot reuse stale frame documents and disabling the flag returns to legacy rows only.
+
+**Dependencies:** `HydeGraphDatabase`, `EmbeddingGenerator`, `HydeCache`, `LensInferrer`, `HydeGenerator`, and frame-v1 `HydeValidator`
 
 ### 3.6 Network Graph
 
@@ -264,7 +275,7 @@ The `assign` node has two sub-paths:
 - After `checkPresenterCache`: routes to `generateCardText` (cache misses) or `cachePresenterResults` (all cached)
 - After `checkCategorizerCache`: routes to `categorizeDynamically` (cache miss) or `normalizeAndSort` (cached)
 
-This is a read-only graph (separate from the write-path maintenance graph). It uses `OpportunityPresenter` for card text and `HomeCategorizerAgent` for dynamic section grouping, with full cache support for both layers. Cache TTL is 24 hours.
+This is a read-only graph (separate from the write-path maintenance graph). It uses `OpportunityPresenter` for card text and `HomeCategorizerAgent` for dynamic section grouping, with versioned cache support for both layers. Cache TTL is 24 hours; claim-safety or presenter fallback cards are returned only for the current request and are not cached. Pool adjustments affect ordering and deprioritization copy only when their `recipientUserId + intentId` provenance exactly matches the graph's viewer and selected intent; global Home, other viewers/intents, and legacy unscoped entries ignore them.
 
 **Dependencies:** `HomeGraphDatabase`, `OpportunityCache`
 
@@ -410,22 +421,24 @@ Scoring bands:
 ### 4.11 HyDE Generator
 
 **File:** `hyde.generator.ts`
-**Role:** Generates hypothetical documents in a target corpus voice for semantic search. Takes a source text and a lens label, produces text that would match the ideal counterpart.
-**Model:** `google/gemini-2.5-flash`
-**Input:** `HydeGenerateInput` (sourceText, lens label, target corpus)
+**Role:** Generates hypothetical documents in a target corpus voice for semantic search. Legacy takes source text plus a lens. Frame-v1 also takes the sanitized source frame, allows generic reciprocal-role/domain elaboration, and forbids new named entities or hard location/time/numeric/credential/organization/exclusivity constraints.
+**Model:** configured `hydeGenerator` model
+**Input:** `HydeGenerateInput` (sourceText, lens label, target corpus, optional sourceFrame)
 **Output:** `HydeGeneratorOutput` (text)
-**Used by:** HyDE Graph (generate_missing node)
+**Used by:** HyDE Graph (`generate_missing` node)
 
 ### 4.12 Lens Inferrer
 
 **File:** `lens.inferrer.ts`
-**Role:** Analyzes source text with optional profile context and infers 1-5 search lenses, each tagged with a target corpus (profiles, intents, or premises).
-**Model:** `google/gemini-2.5-flash`
-**Input:** Source text, optional profile context, optional max lenses
-**Output:** Array of lenses with label, corpus, reasoning
-**Used by:** HyDE Graph (infer_lenses node)
+**Role:** Analyzes source text with optional profile context and infers 1-5 search lenses tagged `profiles`, `intents`, or `premises`. In frame-v1 it also extracts a source-grounded frame whose evidence spans must come only from `sourceText`; `profileContext` can shape lens selection but cannot supply frame facts.
+**Model:** configured `lensInferrer` model
+**Input:** Source text, optional profile context, optional max lenses, frame-constrained mode
+**Output:** Lenses with label/corpus/reasoning plus an optional sanitized source frame
+**Used by:** HyDE Graph (`infer_lenses` node)
 
-Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with dynamic, LLM-inferred lenses. This allows the system to generate contextually appropriate search perspectives for any domain.
+Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with dynamic, LLM-inferred lenses. The `profiles` value is now a preference hint: the API remaps it to premise retrieval because profile-vector discovery was retired.
+
+**Post-generation validator:** `shared/hyde/hyde.validator.ts` performs one structured frame-v1 batch check after generation. It rejects only unsupported named entities or hard constraints; generic elaboration and reciprocal/target voice are valid. The graph owns partial/all-rejection and fail-open persistence behavior rather than the agent.
 
 ### 4.13 Home Categorizer
 
@@ -492,7 +505,15 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 
 **Blocking chat questions (`ask_user_question`).** The chat orchestrator carries a chat-only `ask_user_question` tool (`questioner/questioner.ask.tool.ts`, registered by `createChatTools` only when the host injects a `ChatQuestionsHost` bridge — never in the MCP registry). Mirroring the AskUserQuestion human-in-the-loop pattern: the model states a `purpose` plus optional draft questions; the QuestionerAgent's `chat` preset polishes them synchronously; the tool persists them (mode `chat`, `conversationId = sessionId`), streams a `user_question` SSE event carrying the persisted ids, and then **blocks the turn** on the host's `awaitAnswers` (in-memory per-question wait bus, `services/api/src/lib/chat-question.events.ts` — same single-instance semantics as the steer/queue interrupt emitter). Answers submitted through `POST /api/questions/:id/answer` resolve the bus via `QuestionEvents.onAnswered` (mode `chat` handler); dismissals resolve via the new `QuestionEvents.onDismissed`. The answer endpoint reports `resumed: true` when a waiter consumed the answer. On timeout (`QUESTIONER_CHAT_WAIT_TIMEOUT_MS`, default 4 min — kept under the tool runtime's `interactive` class timeout `MCP_TOOL_TIMEOUT_INTERACTIVE_MS`, default 5 min) the questions stay `pending`, render via the conversation-linked inline fetch, and a later answer re-enters the chat as a new user turn (frontend behavior, gated on `resumed === false`). While blocked, the tool emits `status` heartbeats every 15 s so SSE transports (Bun `idleTimeout: 60`) do not idle out.
 
-**Question delivery pipeline.** Generated questions are persisted with `expiresAt` (default 7 days). Pending questions are injected into `discover_opportunities` tool results via `mergePendingQuestions` (max 3 per source, deduplicated per session via a local Set in the ChatAgent). The frontend polls `GET /api/questions?status=pending` every 30s and displays a sidebar badge + dropdown. When a user answers, `QuestionEvents.onAnswered` dispatches to mode-specific handlers: profile answers create premises (tier=contextual, confidence=0.9), intent answers re-run the intent graph in `update` mode (same path as the chat `update_intent` tool) so the reconciler merges the answer into the description naturally — the graph handles verification, sanitization, re-embedding, and HyDE regeneration; a vague answer that fails verification leaves the intent untouched, negotiation answers enrich `opportunities.metadata.userAnswers`, and discovery answers are no-ops. Empty answers (no selected options and no free text) are guarded against at the handler level. When a negotiation continuation resumes, the init node reads `userAnswers` back from the opportunity via `NegotiationQueries.getOpportunityUserAnswers` and injects them into the agent prompt so the negotiator sees between-session context.
+**Question delivery pipeline.** Generated questions are persisted with `expiresAt` (default 7 days). Pending questions are injected into `discover_opportunities` tool results via `mergePendingQuestions` (max 3 per source, deduplicated per session via a local Set in the ChatAgent). The frontend polls `GET /api/questions?status=pending` every 30s and displays a sidebar badge + dropdown. When a user answers, `QuestionEvents.onAnswered` dispatches to mode-specific handlers: enrichment answers create premises (tier=contextual, confidence=0.9), intent answers re-run the intent graph in `update` mode (same path as the chat `update_intent` tool) so the reconciler merges the answer into the description naturally — the graph handles verification, sanitization, re-embedding, and HyDE regeneration; a vague answer that fails verification leaves the intent untouched, negotiation answers enrich `opportunities.metadata.userAnswers`, and discovery answers are no-ops. Empty answers (no selected options and no free text) are guarded against at the handler level. When a negotiation continuation resumes, the init node reads `userAnswers` back from the opportunity via `NegotiationQueries.getOpportunityUserAnswers` and injects them into the agent prompt so the negotiator sees between-session context.
+
+**Proactive pool-question delivery (IND-421).** Both initial and answer-chained `pool_discovery` producers pass through `persistPoolQuestion` and its injected post-persist enqueue. `PoolQuestionPushQueue` is a dedicated retryable BullMQ worker with settled-job removal and a colon-free deterministic job ID. With `POOL_QUESTIONS_PUSH=on`, pool-question mode on, negotiator chat enabled, and a personal negotiator available, `QuestionerAdapter.claimPoolQuestionPush` takes a per-recipient advisory transaction lock plus question/intent row locks, then enforces lifecycle, strict VoI decay, pool ≥8, explicit `intents.lastVisitedAt`, cycle uniqueness, and the two-claims-per-UTC-day cap. Claim metadata is internal; only successful delivery stamps `detection.pushedAt`.
+
+Delivery resolves `ChatSessionService.resolveNegotiatorSession(userId, 'Personal Agent')`, never an intent-pinned session. `ConversationDatabaseAdapter.deliverClaimedPoolQuestionPush` locks/rechecks the question and, in one transaction, inserts or verifies the question ID as the deterministic assistant message ID, advances `conversations.lastMessageAt` only on a fresh insert, and stamps delivered metadata plus `pushedAt`. A concurrent answer/dismiss wins by suppressing delivery without a message. The global Questions list and unscoped injection remain pool-free; the canonical count split is `globalPending`, delivered `pushedPoolPending`, and their `personalAgentPending` sum. Public REST/MCP payloads strip pool and push internals.
+
+**Pool drift lifecycle (IND-422).** The queued/chained final persist gate re-reads the exact recipient+intent pool and normalized payload+summary fingerprint. Persistence proceeds only when the fingerprint is unchanged and pool Jaccard is at least the shared inclusive `0.7` threshold; otherwise no question row, push enqueue, or dismissal is produced. Discovery completion uses the same comparison to system-void pending drifted rows with `detection.voidedReason='pool_drift'`. Voided rows are excluded from rendering, push admission, counts, dismissal decay, and novelty suppression. MODE-on mining also skips when the latest durable non-voided snapshot has the same fingerprint and sufficient pool overlap; independently gated shadow-only mining has no durable cadence anchor. The same `0.7` threshold governs P3 retained-assignment admission.
+
+Material normalized payload/summary edits void stale pending questions, allow a previously answered axis once under the new fingerprint, and mark exact recipient+intent `poolAdjustments` as `stale: true`. Stale adjustments remain for audit but are excluded from ranking and demotion; legacy unscoped or malformed entries are preserved. `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_STAMP_NEWBORN`, and `POOL_QUESTIONS_RANKING` remain independent gates, and the seven-day question TTL is unchanged.
 
 ## 5. Chat Tool System
 
@@ -659,32 +680,24 @@ Agents claim turns via the HTTP pickup endpoint rather than an MCP tool — the 
 
 ## 6. HyDE System
 
-HyDE (Hypothetical Document Embeddings) is the core semantic search technique. Instead of searching directly with a user's intent text, the system generates hypothetical documents that describe what an ideal match would look like, then embeds those documents for vector similarity search.
+HyDE (Hypothetical Document Embeddings) bridges source-side wording and counterpart-side documents before vector search. Source types are `intent`, `query`, and `context`; there is no profile source. Presentation identity lives on `users`, and the retired profile-vector corpus is not read. A lens tagged `profiles` is treated by the API as a preference for premise retrieval.
 
-### How it works
+### Legacy and frame-v1
 
-1. **Lens inference:** The `LensInferrer` agent analyzes the source text (intent or query) and user profile context, producing 1-5 search lenses. Each lens is a specific search perspective (e.g., "early-stage crypto infrastructure VC") tagged with a target corpus (`profiles` or `intents`).
+1. **Lens inference:** Both modes infer 1-5 dynamic lenses from `sourceText` and optional `profileContext`. Frame-v1 additionally extracts roles, hard constraints, named entities, and domain vocabulary. Every frame value must have exact evidence in `sourceText`; profile context can specialize lenses but is never frame evidence.
+2. **Version-aware cache check:** Legacy reads its unchanged Redis/DB identities. Frame-v1 reads only validated entries carrying `frame-v1`, the lens, matching source/frame fingerprints, and a valid generation marker; its stable DB lens identities are overwritten on source revisions rather than accumulated.
+3. **Generation:** Legacy uses the existing corpus-specific source+lens prompt. Frame-v1 generates from the sanitized frame with slot discipline: target voice and generic reciprocal/domain elaboration are allowed; unsupported named entities and hard constraints are forbidden.
+4. **Validation (frame-v1 only):** One batch validator checks newly generated documents before embedding. Partial rejection preserves valid siblings; all rejection returns no HyDE embeddings. Provider/shape failures fail open per document for the current run, but failed-open documents are not cached or persisted.
+5. **Embedding and retrieval:** Returned texts use the configured OpenRouter embedding model (default `openai/text-embedding-3-large`, 2000 dimensions). Every lens searches intents and premises within scope, preferring its hinted corpus, and candidate results are merged before `OpportunityEvaluator` runs.
+6. **Caching:** Legacy output follows existing cache behavior. Frame-v1 persists only `valid` documents under versioned Redis keys and DB strategies/context, preventing cross-mode or changed-frame reuse.
 
-2. **Cache check:** For each lens, the system checks Redis cache and PostgreSQL `hyde_documents` table. Only lenses with cache misses proceed to generation.
+`HYDE_FRAME_CONSTRAINTS_ENABLED` is strict and default-off: only the literal `true` enables frame-v1. IND-426's evidence-v2 `eval/hyde` study runs the unchanged production agents/graph with empty cache/database ports over 90 frozen background cases and 900 candidates. The primary 75 cases model stored intents processed asynchronously; the secondary 15 model premise-derived, network-scoped user contexts matching other users' active intents. There is no synchronous direct-search cohort. All five existing drift strata retain at least 15 cases, and every case has two authored graded positives, four linked minimal-pair hard negatives, and four distractors. Authored grades only construct/fingerprint the corpus; canonical truth comes from resolved blinded judgments by two independent humans. Candidate embeddings are shared across four paired legacy/frame-v1 runs, counterbalanced by fixed case/run hash, with the live background cutoff `0.30`, lens bonus `0.1`, and maximum three lenses. Every saved-intent case receives production-shaped discoverer context containing the trigger under `Active intents:` and, where authored, a global `Context:` paragraph. Failures remain explicit without retries or success-only selection.
 
-3. **HyDE generation:** The `HydeGenerator` agent takes each uncached lens and generates a hypothetical document in the target corpus voice:
-   - **Intents corpus:** Generates a goal/aspiration statement from the complementary perspective
-   - **Premises corpus:** Generates an identity assertion matching the ideal person's values or expertise
+For current production fidelity, the private runner maps `saved-intent` to graph `sourceType: 'query'` and `user-context` to `sourceType: 'context'`, using stable synthetic source IDs. In this study `query` is an internal background-graph branch fed a stored intent, not a user-facing direct query. Collection provenance and paired blocks record the mapping; the staged evidence boundary exports a public batch without background source, graph source, mode/run, production-validator, or return-status leakage and a private 0600 mapping key. Removing or refactoring the direct-search product must preserve this background branch or intentionally migrate its mapping and the eval contract. `sourceText` alone supports generated facts; `profileContext` does not. Production `HydeValidator` results are a noncanonical diagnostic appendix, and optional LLM triage cannot satisfy canonicality. Analysis reports tie-fractional Precision@5, graded nDCG@5, linked-hard-negative FPR@5, raw-cosine positive-to-nearest-linked-negative margin, unsupported-generation and returned exposure/grounding-error, all-rejected, failed-open, incomplete-pair, timing, and resources. Deterministic fixed-seed 10,000-replicate hierarchical paired bootstrapping resamples cases within each stratum and paired runs within case, then equally weights run -> case -> stratum in a five-stratum macro average. Its eight versioned gates all become `INSUFFICIENT` for incomplete/noncanonical evidence.
 
-4. **Embedding:** Generated texts are embedded using the same embedding model (text-embedding-3-large, 2000 dimensions) as the stored intents and premises.
+This remains a frozen local, provider-variable in-memory component approximation. It does not execute BullMQ, network scoping, database persistence or reuse, raw-context fallback, candidate merging, negotiation, or delivery. It also omits SQL limits, cross-row grouping, production opportunity precision/fairness/external validity, and canonical token/cost accounting. Non-gating coverage and point estimates split saved-intent from user-context behavior; the unchanged eight gates still use all 90 cases with equal-stratum weighting. Model/embedding pins identify configured primary IDs; production retry/fallback identity per call and separate frame-extraction resources are unavailable. Eval scoring intentionally preserves production cross-corpus search (both intents and premises for every lens; target corpus is a preference/limit-allocation hint). Human adjudication is deliberately expensive. Report generation recomputes analysis from all supplied parents, retained per-lens cosines allow score/ranking revalidation, and outputs cannot collide with inputs even under `--force`. Artifacts remain unsigned, embeddings are not retained, reviewer identity/independence attestations require external verification, and the atomically replaced public/private/template files are not a transactional set, so external custody/fingerprint review is required; `--force` regenerates opaque IDs. Artifacts/baselines are not committed, and `eval/matching` remains only a secondary evaluator-only check.
 
-5. **Caching:** Results are cached in Redis (1-hour TTL) and persisted to PostgreSQL for entity sources (intents, premises).
-
-### Dynamic lenses vs. hardcoded strategies
-
-The system previously used hardcoded strategy names (mirror, reciprocal, mentor, investor, collaborator, hiree). These have been replaced by LLM-inferred lenses that adapt to any domain. The `LensInferrer` is location-aware and domain-specific -- a DePIN founder searching for "investors" gets "SF-based early-stage crypto infra VC" rather than generic "investor".
-
-### Corpus-specific prompt templates
-
-The `HYDE_CORPUS_PROMPTS` in `hyde.strategies.ts` define how source text and lens labels are combined into prompts:
-
-- **Profiles:** "Write a professional biography for someone who could fulfill this need: [source]. Focus on the specific expertise described by: [lens]."
-- **Intents:** "Write a goal or aspiration statement for someone who is: [lens]. This person's needs would complement: [source]."
+See [`../domain/hyde.md`](../domain/hyde.md) for cache identities, rejection semantics, source/profile boundaries, and eval limitations.
 
 ## 7. Opportunity Pipeline
 

@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
 import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
-import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
+import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, StampNewbornOpportunitiesFn, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { captureAppException } from '../../lib/sentry';
@@ -27,6 +27,7 @@ export interface DiscoveryRunJobData {
 export interface DiscoveryRunQueueDeps {
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
+  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
 }
 
 const apiBaseUrl = resolveProtocolBaseUrl();
@@ -215,6 +216,7 @@ export class DiscoveryRunQueue {
       async (opportunityId: string, userId: string) => {
         await negotiationRunExistingQueue.addJob({ opportunityId, userId });
       },
+      this.deps?.stampNewbornOpportunities,
     ).createGraph();
 
     // Env-gated questioner enqueue: queued/async discovery runs generate

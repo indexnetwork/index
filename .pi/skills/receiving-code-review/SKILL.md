@@ -25,7 +25,7 @@ Do not silently resolve Copilot conversations.
 
 - The repository uses GitHub pull requests.
 - The `gh` CLI is installed and authenticated.
-- Work from the current repository checkout.
+- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the session that owns the PR's worktree checkout** — when this skill runs in the main (canonical-root) session, e.g. via `finish-pr`, code changes are handed off as a fix prompt to the worktree session (see `worktree-session-pipeline`); only the reply/resolve happens here.
 - If the user does not provide a PR number, infer it from the current branch.
 
 ## Command safety rule
@@ -170,13 +170,15 @@ If you update `.github/instructions/pr-reviewer.instructions.md`:
 
 ### 4. Apply fixes when needed
 
-When a fix is needed:
+When a fix is needed (in the session that owns the PR checkout — see Preconditions):
 
 1. Edit the code.
 2. Run targeted tests, lint, typecheck, or a focused verification command when practical.
 3. Commit and push the fix if the user expects the PR to be updated remotely.
 4. Reply to the Copilot review comment with a concise summary of the fix.
 5. Resolve the thread.
+
+When running in the main session, step 1–3 become: write the fix prompt for the worktree session, wait for the user to confirm the fix landed, then reply (referencing the pushed commit) and resolve.
 
 Reply to a PR review comment using this exact REST endpoint shape:
 
@@ -230,7 +232,7 @@ After all threads in the current round are handled:
 
 ### 7. Request another Copilot review round
 
-Copilot re-review is manually requested by the user on the GitHub PR page. Do not assume Copilot will automatically review after you push or reply.
+Copilot re-review is requested by the user — either via the Reviewers menu on the GitHub PR page, or by asking you to run the CLI equivalent (`gh pr edit PR_NUMBER --add-reviewer @copilot`, per CLAUDE.md). Do not assume Copilot will automatically review after you push or reply, and never re-request a review on your own initiative.
 
 When the current round is clean and the PR still benefits from another Copilot pass:
 
@@ -240,7 +242,7 @@ When the current round is clean and the PR still benefits from another Copilot p
 4. After the user says the review was requested or enough time has passed, re-fetch review threads with the GraphQL query above.
 5. Treat newly unresolved Copilot threads as the next round and repeat this workflow.
 
-Do not use `gh pr edit --add-reviewer @copilot` unless the user explicitly asks for CLI-based review requests; this project workflow expects the user to request Copilot manually in GitHub.
+Do not run `gh pr edit --add-reviewer @copilot` unless the user asks — re-review requests are always user-initiated, whether via the GitHub UI or the CLI.
 
 ### 8. Detect low-signal Copilot review rounds
 
@@ -266,7 +268,7 @@ Include the evidence: number of rounds, number of comments fixed vs no-fix, and 
 
 - GitHub Copilot does not auto-resolve conversations when commits are pushed or suggestions are applied. Resolve each thread manually.
 - Copilot does not respond to follow-up comments in threads. Replies are for human context only.
-- Re-requesting Copilot review is a separate manual action by the user on the GitHub PR page.
+- Re-requesting Copilot review is a separate user-initiated action (GitHub Reviewers menu, or the `gh pr edit --add-reviewer @copilot` CLI equivalent when the user asks).
 - A fresh Copilot review commonly takes a couple of minutes to appear; do not assume immediate results.
 - Repeat review rounds only while the feedback remains substantive.
 - If Copilot re-raises a previously resolved comment on re-review, treat it as a new unresolved thread and evaluate it again, but count repeated non-actionable feedback toward the low-signal stopping condition.

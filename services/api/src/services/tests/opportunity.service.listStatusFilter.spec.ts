@@ -43,6 +43,30 @@ function createService() {
   return { service, userCall, networkCall };
 }
 
+function unsafeOpportunity(): Opportunity {
+  const now = new Date('2026-07-18T12:00:00.000Z');
+  return {
+    id: 'opp-unsafe',
+    detection: { source: 'opportunity_graph', timestamp: now.toISOString() },
+    actors: [
+      { userId: 'user-1' as never, networkId: 'net-1' as never, role: 'peer' },
+      { userId: 'user-2' as never, networkId: 'net-1' as never, role: 'peer' },
+    ],
+    interpretation: {
+      category: 'connection',
+      reasoning: 'Yusuf, an attendee of the Edge Esmeralda network, is a strong match.',
+      confidence: 0.9,
+    },
+    context: { networkId: 'net-1' as never },
+    confidence: '0.9',
+    status: 'pending',
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: null,
+    metadata: {},
+  };
+}
+
 describe("OpportunityService list status filtering (IND-254)", () => {
   describe("getOpportunitiesForUser", () => {
     it("defaults to live statuses (no expired/rejected) when no status is given", async () => {
@@ -79,6 +103,25 @@ describe("OpportunityService list status filtering (IND-254)", () => {
       expect(userCall.opts?.scopeId).toBe("intent-1");
       expect(userCall.opts?.statuses).toEqual(EXPECTED_USER_STATUSES);
     });
+
+    it('removes unsupported affiliation claims from raw REST list reasoning', async () => {
+      const db = {
+        getOpportunitiesForUser: mock(async () => [unsafeOpportunity()]),
+        getUser: mock(async (userId: string) => ({
+          id: userId,
+          name: userId === 'user-1' ? 'Viewer' : 'Yusuf',
+          email: `${userId}@test.com`,
+          avatar: null,
+          socials: [],
+        })),
+      } as unknown as OpportunityControllerDatabase;
+      const service = new OpportunityService(db);
+
+      const rows = await service.getOpportunitiesForUser('user-1');
+
+      expect(rows[0]?.interpretation.reasoning).toBe('Connection opportunity');
+      expect(JSON.stringify(rows[0])).not.toContain('attendee');
+    });
   });
 
   describe("getOpportunitiesForNetwork", () => {
@@ -105,6 +148,42 @@ describe("OpportunityService list status filtering (IND-254)", () => {
       await service.getOpportunitiesForNetwork("net-1", "user-1", { statuses: ["expired"] });
 
       expect(networkCall.opts?.statuses).toEqual(["expired"]);
+    });
+
+    it('removes unsupported affiliation claims from raw network-list reasoning', async () => {
+      const db = {
+        getOpportunitiesForNetwork: mock(async () => [unsafeOpportunity()]),
+        isIndexOwner: mock(async () => true),
+        isNetworkMember: mock(async () => true),
+      } as unknown as OpportunityControllerDatabase;
+      const service = new OpportunityService(db);
+
+      const rows = await service.getOpportunitiesForNetwork('net-1', 'user-1');
+
+      expect(Array.isArray(rows)).toBe(true);
+      if (!Array.isArray(rows)) throw new Error('Expected opportunity rows');
+      expect(rows[0]?.interpretation.reasoning).toBe('Connection opportunity');
+      expect(JSON.stringify(rows[0])).not.toContain('attendee');
+    });
+  });
+
+  describe('discover response safety', () => {
+    it('removes unsupported claims from raw graph opportunities', async () => {
+      const db = {
+        getNetworkMemberships: mock(async () => [{ networkId: 'net-1' }]),
+      } as unknown as OpportunityControllerDatabase;
+      const service = new OpportunityService(db);
+      (service as unknown as {
+        graph: { invoke: () => Promise<{ opportunities: Opportunity[] }> };
+      }).graph = {
+        invoke: mock(async () => ({ opportunities: [unsafeOpportunity()] })),
+      };
+
+      const result = await service.discoverOpportunities('user-1', 'find a collaborator');
+
+      expect('error' in result).toBe(false);
+      if ('error' in result) throw new Error(result.error);
+      expect(result.opportunities[0]?.interpretation.reasoning).toBe('Connection opportunity');
     });
   });
 });

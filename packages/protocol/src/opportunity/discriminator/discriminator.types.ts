@@ -75,6 +75,10 @@ export interface MinedDiscriminator {
 
 /** A mined discriminator with its deterministic VoI score components. */
 export interface ScoredDiscriminator extends MinedDiscriminator {
+  /** Current discriminator embedding retained for durable semantic dedup. */
+  embedding?: number[];
+  /** Model that generated {@link embedding}. */
+  embeddingModel?: string;
   /** Normalized score-weighted entropy over sides, in [0,1]. */
   entropy: number;
   /** Assigned score mass / total pool score mass, in [0,1]. */

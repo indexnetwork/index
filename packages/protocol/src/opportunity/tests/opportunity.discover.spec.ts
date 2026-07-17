@@ -120,6 +120,43 @@ describe("opportunity.discover", () => {
       });
     });
 
+    test("does not expose unsupported claims through public matchReason", async () => {
+      const candidateId = "candidate-unsafe";
+      const mockGraph = {
+        invoke: async () => ({
+          opportunities: [{
+            id: "opp-unsafe",
+            actors: [
+              { networkId: "idx-1", userId: "u1", role: "patient" },
+              { networkId: "idx-1", userId: candidateId, role: "agent" },
+            ],
+            interpretation: {
+              reasoning: "Jane attended the same event as the viewer.",
+              confidence: 0.85,
+            },
+          }],
+        }),
+      };
+      const dbWithProfile = {
+        ...mockDatabase,
+        getProfile: async (userId: string) =>
+          userId === candidateId
+            ? { identity: { name: "Jane Mentor", bio: "Advisor." } }
+            : null,
+      } as unknown as ChatGraphCompositeDatabase;
+
+      const result = await runDiscoverFromQuery({
+        opportunityGraph: mockGraph as Parameters<typeof runDiscoverFromQuery>[0]["opportunityGraph"],
+        database: dbWithProfile,
+        userId: "u1",
+        query: "find me a mentor",
+        indexScope: ["idx1"],
+      });
+
+      expect(result.opportunities?.[0].matchReason).toBe("A suggested connection.");
+      expect(result.opportunities?.[0].matchReason).not.toContain("attended");
+    });
+
     test("on graph throw, returns found: false with generic message", async () => {
       const mockGraph = {
         invoke: async () => {

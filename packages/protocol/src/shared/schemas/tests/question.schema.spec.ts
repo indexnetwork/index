@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { QuestionOptionSchema, QuestionSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
+import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolSnapshotSchema, QuestionPoolPushSchema, QuestionVoidedReasonSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
 const okOption = { label: "Stay focused", description: "Higher risk but cleaner narrative" };
 
@@ -74,6 +74,17 @@ describe("QuestionSchema", () => {
   });
 });
 
+describe("UnderspecificationTypeSchema", () => {
+  it.each(["missing_constituent", "missing_constraint", "open_alternative_set"])(
+    "accepts '%s'",
+    (type) => expect(UnderspecificationTypeSchema.safeParse(type).success).toBe(true),
+  );
+
+  it("rejects values outside the canonical taxonomy", () => {
+    expect(UnderspecificationTypeSchema.safeParse("missing_context").success).toBe(false);
+  });
+});
+
 describe("QuestionStrategySchema", () => {
   const strategies = [
     "refine_intent",
@@ -96,10 +107,26 @@ describe("QuestionStrategySchema", () => {
 
 describe("QuestionWithStrategySchema", () => {
   it("accepts a question with a valid strategy", () => {
-    expect(() => QuestionWithStrategySchema.parse({ ...okQuestion, strategy: "refine_intent" })).not.toThrow();
+    expect(() => QuestionWithStrategySchema.parse({
+      ...okQuestion,
+      strategy: "refine_intent",
+      underspecificationType: "missing_constraint",
+    })).not.toThrow();
   });
   it("rejects a question with an invalid strategy", () => {
-    expect(() => QuestionWithStrategySchema.parse({ ...okQuestion, strategy: "bogus" })).toThrow();
+    expect(() => QuestionWithStrategySchema.parse({
+      ...okQuestion,
+      strategy: "bogus",
+      underspecificationType: null,
+    })).toThrow();
+  });
+  it("requires nullable internal underspecification metadata", () => {
+    expect(() => QuestionWithStrategySchema.parse({ ...okQuestion, strategy: "refine_intent" })).toThrow();
+    expect(() => QuestionWithStrategySchema.parse({
+      ...okQuestion,
+      strategy: "open_adjacent_thread",
+      underspecificationType: null,
+    })).not.toThrow();
   });
 });
 
@@ -112,6 +139,7 @@ describe("QuestionGeneratorResponseSchema", () => {
       ...okQuestion,
       title: `T${i}`,
       strategy: "refine_intent" as const,
+      underspecificationType: null,
     }));
     expect(() => QuestionGeneratorResponseSchema.parse({ questions: three })).not.toThrow();
   });
@@ -120,8 +148,50 @@ describe("QuestionGeneratorResponseSchema", () => {
       ...okQuestion,
       title: `T${i}`,
       strategy: "refine_intent" as const,
+      underspecificationType: null,
     }));
     expect(() => QuestionGeneratorResponseSchema.parse({ questions: four })).toThrow();
+  });
+});
+
+describe("QuestionPurpose", () => {
+  it("accepts only the internal uptake discriminator", () => {
+    expect(QuestionPurposeSchema.parse("uptake")).toBe("uptake");
+    expect(QuestionPurposeSchema.safeParse("negotiation").success).toBe(false);
+  });
+});
+
+describe("QuestionPoolSnapshot", () => {
+  const legacySnapshot = {
+    poolSize: 8,
+    minedAt: "2026-07-16T12:00:00.000Z",
+    discriminator: {
+      label: "Builders vs advisors",
+      questionSeed: "Which matters more?",
+      sides: ["Builders", "Advisors"],
+      sideCounts: { Builders: 4, Advisors: 4 },
+      voi: 0.5,
+      evidenceRate: 1,
+      assignments: [{ opportunityId: "legacy-opp", side: "Builders" }],
+    },
+    alternates: [],
+  };
+
+  it("accepts legacy snapshots that omit opportunityIds", () => {
+    const result = QuestionPoolSnapshotSchema.safeParse(legacySnapshot);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.opportunityIds).toBeUndefined();
+  });
+
+  it("validates opportunityIds as UUIDs when present", () => {
+    expect(QuestionPoolSnapshotSchema.safeParse({
+      ...legacySnapshot,
+      opportunityIds: ["00000000-0000-4000-8000-000000000001"],
+    }).success).toBe(true);
+    expect(QuestionPoolSnapshotSchema.safeParse({
+      ...legacySnapshot,
+      opportunityIds: ["not-a-uuid"],
+    }).success).toBe(false);
   });
 });
 
@@ -136,6 +206,18 @@ describe("QuestionDetection", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts optional purpose independently from QUD metadata", () => {
+    const result = QuestionDetectionSchema.safeParse({
+      mode: "negotiation",
+      purpose: "uptake",
+      sourceType: "opportunity",
+      sourceId: "opp-1",
+      timestamp: new Date().toISOString(),
+      underspecificationType: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("accepts optional triggeredBy", () => {
     const result = QuestionDetectionSchema.safeParse({
       mode: "intent",
@@ -146,6 +228,114 @@ describe("QuestionDetection", () => {
     });
     expect(result.success).toBe(true);
     expect(result.data!.triggeredBy).toBe("intent-456");
+  });
+
+  it("accepts the complete internal proactive push ledger", () => {
+    const push = {
+      version: 1,
+      source: "pool_discovery",
+      recipientId: "user-1",
+      intentId: "intent-1",
+      cycleKey: "run:run-1",
+      messageId: "question-1",
+      surfaces: ["personal_agent_badge", "negotiator_dm"],
+      claimedAt: "2026-07-16T12:00:00.000Z",
+      deliveryStatus: "claimed",
+    };
+    expect(QuestionPoolPushSchema.safeParse(push).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+      pushRequestedAt: "2026-07-16T11:59:00.000Z",
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
+      pushRequestStatus: "requested",
+      push,
+      pushedAt: "2026-07-16T12:00:01.000Z",
+    }).success).toBe(true);
+  });
+
+  it("requires pool intent identity to be explicit and exact", () => {
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+    };
+    expect(QuestionDetectionSchema.safeParse(base).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-2" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-1" }).success).toBe(true);
+  });
+
+  it("accepts the internal recovery-attempt timestamp only as a non-empty string", () => {
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+      pushRequestedAt: "2026-07-16T11:59:00.000Z",
+      pushRequestStatus: "requested",
+    };
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
+    }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRecoveryAttemptedAt: "",
+    }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRequestedAt: undefined,
+      pushRequestStatus: undefined,
+      pushRecoveryAttemptedAt: "2026-07-16T11:59:30.000Z",
+    }).success).toBe(false);
+  });
+
+  it("bounds suppressed request outcomes to permanent reasons with timestamps", () => {
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+      pushRequestedAt: "2026-07-16T11:59:00.000Z",
+      pushRequestStatus: "suppressed",
+    };
+    expect(QuestionPoolPushRequestReasonSchema.safeParse("visited").success).toBe(true);
+    expect(QuestionPoolPushRequestReasonSchema.safeParse("database_unavailable").success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRequestedAt: undefined,
+      pushRequestStatus: "requested",
+    }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse(base).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      pushRequestReason: "visited",
+      pushRequestSuppressedAt: "2026-07-16T12:00:01.000Z",
+    }).success).toBe(true);
+  });
+
+  it("accepts only pool drift and intent edit as internal void reasons", () => {
+    expect(QuestionVoidedReasonSchema.safeParse("pool_drift").success).toBe(true);
+    expect(QuestionVoidedReasonSchema.safeParse("intent_edit").success).toBe(true);
+    expect(QuestionVoidedReasonSchema.safeParse("manual").success).toBe(false);
+
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+    };
+    expect(QuestionDetectionSchema.safeParse({ ...base, voidedReason: "pool_drift" }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({ ...base, voidedReason: "intent_edit" }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({ ...base, voidedReason: "manual" }).success).toBe(false);
   });
 
   it("rejects an invalid mode", () => {

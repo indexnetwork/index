@@ -16,6 +16,7 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { QuestionGeneratorResponseSchema, type Question, type QuestionGenerationResult, type QuestionStrategy, type QuestionWithStrategy } from "../shared/schemas/question.schema.js";
+import { QUD_UNDERSPECIFICATION_RULES } from "../questioner/questioner.qud.js";
 import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -59,7 +60,10 @@ export class QuestionGenerator {
     try {
       raw = await invokeWithAbortSignal(
         this.model,
-        [new SystemMessage(SYSTEM_PROMPT), new HumanMessage(user)],
+        [
+          new SystemMessage(`${SYSTEM_PROMPT}\n\n${QUD_UNDERSPECIFICATION_RULES}`),
+          new HumanMessage(user),
+        ],
         options?.signal,
       );
     } catch (err) {
@@ -89,8 +93,9 @@ export class QuestionGenerator {
     if (filtered.length === 0) return null;
 
     return {
-      questions: filtered.map(stripStrategy),
+      questions: filtered.map(stripInternalMetadata),
       strategies: filtered.map((q) => q.strategy),
+      underspecificationTypes: filtered.map((q) => q.underspecificationType),
     };
   }
 }
@@ -140,7 +145,11 @@ function enforceStrategyDiversity(
   return out;
 }
 
-function stripStrategy(q: QuestionWithStrategy): Question {
-  const { strategy: _strategy, ...publicShape } = q;
+function stripInternalMetadata(q: QuestionWithStrategy): Question {
+  const {
+    strategy: _strategy,
+    underspecificationType: _underspecificationType,
+    ...publicShape
+  } = q;
   return publicShape;
 }

@@ -16,12 +16,13 @@
  *              via the run-existing continuation (P3.2 ask_user loop)
  * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
  *              tool call resumes the paused chat turn with the answer
- * - pool_discovery: interview-mode chaining — synthesize the next pool
- *              question from the answered question's stored alternates
- *              (IND-418; re-rank + reactive re-discovery land in P3)
+ * - pool_discovery: deterministically re-rank the live pool, narrate the
+ *              delta, enqueue answer-conditioned re-discovery, and chain the
+ *              next stored discriminator (IND-418/419)
  */
 
 import { log } from '../../lib/log';
+import type { IntentRefinementResult } from './question.answer.intent';
 
 const logger = log.service.from('QuestionAnswerHandler');
 
@@ -31,6 +32,8 @@ interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
   mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
+  /** Internal generation purpose; uptake answers must not enter shared opportunity metadata. */
+  purpose?: 'uptake';
   sourceType: string;
   sourceId: string;
   answer: {
@@ -58,7 +61,7 @@ export interface QuestionAnswerHandlerDeps {
     questionId: string;
     selectedOptions: string[];
     freeText?: string;
-  }) => Promise<void>;
+  }) => Promise<IntentRefinementResult>;
 
   /** Store the answer as negotiation context for the next turn. */
   storeNegotiationContext: (input: {
@@ -92,15 +95,13 @@ export interface QuestionAnswerHandlerDeps {
     answer: QuestionAnsweredPayload['answer'];
   }) => void;
 
-  /**
-   * Interview-mode chaining for pool_discovery answers: persist the next
-   * pool question from the answered question's stored alternates (no-op when
-   * POOL_QUESTIONS_MODE is off or no fresh alternate remains).
-   */
-  chainPoolQuestion: (input: {
+  /** Complete pool_discovery answer reaction (Tier 0 + Tier 1 + chaining). */
+  handlePoolAnswer: (input: {
     userId: string;
     questionId: string;
     intentId: string;
+    selectedOptions: string[];
+    freeText?: string;
   }) => Promise<void>;
 }
 
@@ -144,6 +145,10 @@ export async function handleQuestionAnswered(
         break;
 
       case 'negotiation':
+        // Uptake answers are private acceptance-decision context. Persisting
+        // them in shared opportunity.metadata.userAnswers would expose them to
+        // the counterparty through opportunity reads.
+        if (payload.purpose === 'uptake') break;
         await deps.storeNegotiationContext({
           userId,
           opportunityId: sourceId,
@@ -168,10 +173,12 @@ export async function handleQuestionAnswered(
         break;
 
       case 'pool_discovery':
-        await deps.chainPoolQuestion({
+        await deps.handlePoolAnswer({
           userId,
           questionId,
           intentId: sourceId,
+          selectedOptions: answer.selectedOptions,
+          freeText: answer.freeText,
         });
         break;
 

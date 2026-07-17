@@ -150,6 +150,26 @@ describe("buildMinimalOpportunityCard - IND-113", () => {
     expect(card.mainText).toContain("Lucy Chen");
   });
 
+  it("strips unsupported presence claims from minimal public card prose", () => {
+    const unsafeOpportunity = {
+      ...mockOpportunity,
+      interpretation: {
+        reasoning: "Lucy attended the same event as the viewer.",
+        confidence: 0.85,
+      },
+    } as unknown as Opportunity;
+    const card = buildMinimalOpportunityCard(
+      unsafeOpportunity,
+      "viewer-456",
+      "counterpart-789",
+      "Lucy Chen",
+      null,
+    );
+    expect(card.mainText).toBe("A suggested connection.");
+    expect(card.narratorChip.text).toBe("A potential connection worth exploring.");
+    expect(card.mainText).not.toContain("attended");
+  });
+
   it("should return safe card when interpretation or reasoning is missing", () => {
     const oppNoInterpretation = {
       id: "opp-no-interp",
@@ -658,6 +678,21 @@ describe("buildOpportunityPresentation — MCP opportunityId omission", () => {
 
     expect(out).toContain("opportunityId: opp-draft-sender-1");
     expect(out).toContain("Use opportunityId values only when calling update_opportunity");
+  });
+
+  test("strips unsupported claims from MCP card prose", () => {
+    const out = buildOpportunityPresentation(
+      [{
+        opportunityId: "opp-unsafe",
+        name: "Alice",
+        mainText: "Alice attended the same event as you.",
+        status: "pending",
+      }],
+      { isMcp: true, leadIn: "Found 1." },
+    );
+
+    expect(out).not.toContain("attended");
+    expect(out).toContain("A suggested connection.");
   });
 
   test("mixed actionability: keeps id only for non-actionable cards, keeps instruction", () => {

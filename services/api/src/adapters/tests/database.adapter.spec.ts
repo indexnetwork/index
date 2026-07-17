@@ -6,13 +6,14 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
+import { describe, expect, it, beforeAll, afterAll, mock } from 'bun:test';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
-import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
+import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 import { PremiseEvents } from '../../events/premise.event';
+import { IntentEvents } from '../../events/intent.event';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 
@@ -127,6 +128,26 @@ describe('IntentDatabaseAdapter', () => {
     expect(updated!.summary).toBe('Updated summary');
   });
 
+  it('emits one awaited event only for a material normalized payload or summary edit', async () => {
+    if (!intent2Id) throw new Error('intent2Id not set');
+    const handler = mock(async () => {});
+    IntentEvents.onMaterialUpdated = handler;
+    const current = await adapter.updateIntent(intent2Id, {
+      payload: `  ${TEST_PREFIX}Updated   payload  `,
+      summary: ' Updated summary ',
+    });
+    expect(current).not.toBeNull();
+    expect(handler).not.toHaveBeenCalled();
+
+    await adapter.updateIntent(intent2Id, { summary: 'Materially different summary' });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]?.[0]).toMatchObject({
+      intentId: intent2Id,
+      userId: fixture.userBId,
+    });
+    IntentEvents.onMaterialUpdated = async () => {};
+  });
+
   it('should archive intent', async () => {
     if (!intent2Id) throw new Error('intent2Id not set');
     const result = await adapter.archiveIntent(intent2Id);
@@ -147,6 +168,16 @@ describe('IntentDatabaseAdapter', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 describe('ChatDatabaseAdapter', () => {
   const adapter = new ChatDatabaseAdapter();
+
+  it('emits the same material update event at the chat persistence chokepoint', async () => {
+    const handler = mock(async () => {});
+    IntentEvents.onMaterialUpdated = handler;
+    await adapter.updateIntent(fixture.intent1Id, { embedding: Array(2000).fill(0.01) });
+    expect(handler).not.toHaveBeenCalled();
+    await adapter.updateIntent(fixture.intent1Id, { payload: `${TEST_PREFIX}Chat materially updated payload` });
+    expect(handler).toHaveBeenCalledTimes(1);
+    IntentEvents.onMaterialUpdated = async () => {};
+  });
 
   it('should get profile sourced from the users table', async () => {
     // getProfile now sources identity from `users` (name/intro->bio/location); the typed
@@ -1418,66 +1449,6 @@ describe('OpportunityDatabaseAdapter', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// NetworkGraphDatabaseAdapter
-// ═══════════════════════════════════════════════════════════════════════════════
-describe('NetworkGraphDatabaseAdapter', () => {
-  const adapter = new NetworkGraphDatabaseAdapter();
-
-  it('should get intent for indexing', async () => {
-    const row = await adapter.getIntentForIndexing(fixture.intent1Id);
-    expect(row).not.toBeNull();
-    expect(row!.id).toBe(fixture.intent1Id);
-    expect(row!.payload).toContain('Intent 1');
-  });
-
-  it('should return null for non-existent intent', async () => {
-    const row = await adapter.getIntentForIndexing(uuidv4());
-    expect(row).toBeNull();
-  });
-
-  it('should get network member context', async () => {
-    const ctx = await adapter.getNetworkMemberContext(fixture.networkId, fixture.userBId);
-    expect(ctx).not.toBeNull();
-    expect(ctx!.networkId).toBe(fixture.networkId);
-    expect(ctx!.memberPrompt).toBe('Member prompt');
-  });
-
-  it('should return null for non-member', async () => {
-    const ctx = await adapter.getNetworkMemberContext(fixture.networkId, uuidv4());
-    expect(ctx).toBeNull();
-  });
-
-  it('should report intent assigned to index', async () => {
-    expect(await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.networkId)).toBe(true);
-  });
-
-  it('should get network ids for intent', async () => {
-    const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
-    expect(indexIds).toEqual([fixture.networkId]);
-    const empty = await adapter.getNetworkIdsForIntent(uuidv4());
-    expect(empty).toEqual([]);
-  });
-
-  it('should assign and unassign intent to index', async () => {
-    const newIntentId = uuidv4();
-    await db.insert(intents).values({
-      id: newIntentId,
-      userId: fixture.userBId,
-      payload: TEST_PREFIX + 'Network graph assign test',
-      sourceType: 'discovery_form',
-      sourceId: fixture.userBId,
-    });
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
-    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
-    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
-    await db.delete(intentNetworks).where(eq(intentNetworks.intentId, newIntentId));
-    await db.delete(intents).where(eq(intents.id, newIntentId));
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // HydeDatabaseAdapter
 // ═══════════════════════════════════════════════════════════════════════════════
 describe('HydeDatabaseAdapter', () => {
@@ -1733,5 +1704,165 @@ describe('Network overview member reads (EDG-53)', () => {
     expect(ids.has(ownIntentId)).toBe(true);            // userA's second intent
     expect(ids.has(otherMemberIntentId)).toBe(false);   // userB's intent excluded
     expect(rows.every((r) => r.userId === fixture.userAId)).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Premise cascade targeting (IND-423)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Premise cascade targeting (IND-423)', () => {
+  const oppAdapter = new OpportunityDatabaseAdapter();
+  const chatAdapter = new ChatDatabaseAdapter();
+
+  const premiseAId = uuidv4();
+  const premiseBId = uuidv4();
+  const createdOppIds: string[] = [];
+  const createdIntentIds: string[] = [];
+
+  const CASCADE_STATUSES = ['draft', 'latent', 'pending', 'negotiating'];
+
+  const detection = () => ({
+    source: 'opportunity_graph' as const,
+    createdBy: 'agent-opportunity-finder',
+    timestamp: new Date().toISOString(),
+  });
+  const interpretation = { category: 'collaboration', reasoning: 'IND-423 fixture', confidence: 0.8 };
+
+  const makeOpp = async (opts: {
+    status: 'draft' | 'latent' | 'pending' | 'negotiating' | 'accepted';
+    evidence?: Array<Record<string, unknown>>;
+    actorPremise?: string;
+  }) => {
+    const created = await oppAdapter.createOpportunity({
+      detection: detection(),
+      actors: [
+        {
+          networkId: fixture.networkId,
+          userId: fixture.userAId,
+          role: 'agent',
+          ...(opts.actorPremise ? { premise: opts.actorPremise } : {}),
+        },
+        { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+      ],
+      interpretation,
+      context: { networkId: fixture.networkId },
+      confidence: '0.8',
+      status: opts.status,
+      ...(opts.evidence !== undefined ? { metadata: { evidence: opts.evidence } } : {}),
+    });
+    createdOppIds.push(created.id);
+    return created;
+  };
+
+  afterAll(async () => {
+    if (createdOppIds.length) await db.delete(opportunities).where(inArray(opportunities.id, createdOppIds));
+    await db.delete(premises).where(inArray(premises.id, [premiseAId, premiseBId]));
+    if (createdIntentIds.length) await db.delete(intents).where(inArray(intents.id, createdIntentIds));
+  });
+
+  describe('getOpportunitiesCitingPremise', () => {
+    let citedViaSource: string;
+    let citedViaCandidate: string;
+    let citedViaActor: string;
+    let citesOtherPremise: string;
+    let noProvenance: string;
+    let citedButAccepted: string;
+
+    beforeAll(async () => {
+      citedViaSource = (await makeOpp({
+        status: 'pending',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.8, sourcePremiseId: premiseAId }],
+      })).id;
+      citedViaCandidate = (await makeOpp({
+        status: 'negotiating',
+        evidence: [{ kind: 'query_premise', networkId: fixture.networkId, score: 0.7, candidatePremiseId: premiseAId }],
+      })).id;
+      citedViaActor = (await makeOpp({ status: 'draft', actorPremise: premiseAId })).id;
+      citesOtherPremise = (await makeOpp({
+        status: 'pending',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.9, sourcePremiseId: premiseBId }],
+      })).id;
+      noProvenance = (await makeOpp({ status: 'pending' })).id;
+      citedButAccepted = (await makeOpp({
+        status: 'accepted',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.8, sourcePremiseId: premiseAId }],
+      })).id;
+    });
+
+    it('returns opportunities citing the premise via evidence or actor grounding', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citedViaSource)).toBe(true);
+      expect(ids.has(citedViaCandidate)).toBe(true);
+      expect(ids.has(citedViaActor)).toBe(true);
+    });
+
+    it('does not return opportunities evidenced solely by other premises (no collateral)', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citesOtherPremise)).toBe(false);
+      expect(ids.has(noProvenance)).toBe(false);
+    });
+
+    it('respects the status filter: accepted opportunities stay out of cascade scope', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citedButAccepted)).toBe(false);
+    });
+
+    it('scopes to the requesting user via the actors guard', async () => {
+      const otherUserId = uuidv4();
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(otherUserId, premiseAId, { statuses: CASCADE_STATUSES });
+      expect(rows.length).toBe(0);
+    });
+  });
+
+  describe('getIntentsGroundedOnEmbedding', () => {
+    // Orthogonal unit vectors so cosine similarity is exactly 1 (aligned) or 0 (orthogonal).
+    const dim = 2000;
+    const premiseEmbedding = new Array(dim).fill(0).map((_, i) => (i === 0 ? 1 : 0));
+    const orthogonalEmbedding = new Array(dim).fill(0).map((_, i) => (i === 1 ? 1 : 0));
+
+    const alignedIntentId = uuidv4();
+    const orthogonalIntentId = uuidv4();
+    const alignedOtherUserIntentId = uuidv4();
+    const alignedArchivedIntentId = uuidv4();
+
+    beforeAll(async () => {
+      createdIntentIds.push(alignedIntentId, orthogonalIntentId, alignedOtherUserIntentId, alignedArchivedIntentId);
+      await db.insert(intents).values([
+        { id: alignedIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'aligned intent', embedding: premiseEmbedding, status: 'ACTIVE' },
+        { id: orthogonalIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'orthogonal intent', embedding: orthogonalEmbedding, status: 'ACTIVE' },
+        { id: alignedOtherUserIntentId, userId: fixture.userBId, payload: TEST_PREFIX + 'other user aligned', embedding: premiseEmbedding, status: 'ACTIVE' },
+        { id: alignedArchivedIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'archived aligned', embedding: premiseEmbedding, status: 'ACTIVE', archivedAt: new Date() },
+      ]);
+    });
+
+    it('returns only the user own ACTIVE non-archived intents above the similarity floor', async () => {
+      const rows = await chatAdapter.getIntentsGroundedOnEmbedding({
+        userId: fixture.userAId,
+        embedding: premiseEmbedding,
+        minSimilarity: 0.5,
+        limit: 5,
+      });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(alignedIntentId)).toBe(true);
+      expect(ids.has(orthogonalIntentId)).toBe(false);      // below similarity floor
+      expect(ids.has(alignedOtherUserIntentId)).toBe(false); // other user's intent
+      expect(ids.has(alignedArchivedIntentId)).toBe(false);  // archived
+      const aligned = rows.find((r) => r.id === alignedIntentId);
+      expect(aligned!.similarity).toBeGreaterThan(0.99);
+      expect(aligned!.payload).toBe(TEST_PREFIX + 'aligned intent');
+    });
+
+    it('respects the limit cap', async () => {
+      const rows = await chatAdapter.getIntentsGroundedOnEmbedding({
+        userId: fixture.userAId,
+        embedding: premiseEmbedding,
+        minSimilarity: 0.5,
+        limit: 1,
+      });
+      expect(rows.length).toBeLessThanOrEqual(1);
+    });
   });
 });

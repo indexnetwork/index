@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { mkdir, rm, unlink } from "node:fs/promises";
 import { binomialCI, binomialPValue, binomialSignificance, predictivePValue, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole, renderHtml, writeBaseline, writeRunReport, readBaseline } from "../matching.reporter.js";
 import type { CaseResult, MatchingCase, Scorecard } from "../matching.types.js";
+import { makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
+
+const matchingMeta = (runs: number) => makeTestMeta({ harness: "matching", runs });
 
 const caseResult = (caseId: string, rule: CaseResult["rule"], passRate: number): CaseResult => ({
   caseId,
@@ -327,7 +330,7 @@ describe("computeRollingBaseline", () => {
       generatedAt: "2026-05-27T00:00:00.000Z",
     };
     const recentPartial: Scorecard = {
-      ...buildScorecard([caseResult("a", "same_side", 0.33)], { model: "m", runs: 3 }),
+      ...buildScorecard([caseResult("a", "same_side", 1 / 3)], { model: "m", runs: 3 }),
       generatedAt: "2026-05-26T00:00:00.000Z",
     };
     const oldRun: Scorecard = {
@@ -335,9 +338,10 @@ describe("computeRollingBaseline", () => {
       generatedAt: "2026-05-01T00:00:00.000Z",
     };
 
-    await writeRunReport(join(dir, "recent-perfect.json"), recentPerfect);
-    await writeRunReport(join(dir, "recent-partial.json"), recentPartial);
-    await writeRunReport(join(dir, "old.json"), oldRun);
+    const meta = makeTestMeta({ harness: "matching", runs: 3, startedAt: "2026-04-30T00:00:00.000Z", completedAt: "2026-04-30T00:01:00.000Z" });
+    await writeRunReport(join(dir, "recent-perfect.json"), recentPerfect, { meta });
+    await writeRunReport(join(dir, "recent-partial.json"), recentPartial, { meta });
+    await writeRunReport(join(dir, "old.json"), oldRun, { meta });
 
     const rolling = await computeRollingBaseline(dir, 7, now);
     expect(rolling).not.toBeNull();
@@ -375,7 +379,7 @@ describe("baseline vs run-report reasoning handling", () => {
 
   it("strips candidate reasoning from the committed baseline", async () => {
     const p = join(tmpdir(), `matching-baseline-${Date.now()}.json`);
-    await writeBaseline(p, scWithReasoning());
+    await writeBaseline(p, scWithReasoning(), { meta: matchingMeta(1) });
     const back = await readBaseline(p);
     expect(back!.cases[0].runResults[0].candidates).toBeUndefined();
     await unlink(p);
@@ -383,8 +387,8 @@ describe("baseline vs run-report reasoning handling", () => {
 
   it("keeps candidate reasoning verbatim in the run report", async () => {
     const p = join(tmpdir(), `matching-report-${Date.now()}.json`);
-    await writeRunReport(p, scWithReasoning());
-    const back = JSON.parse(await Bun.file(p).text()) as Scorecard;
+    await writeRunReport(p, scWithReasoning(), { meta: matchingMeta(1) });
+    const back = (JSON.parse(await Bun.file(p).text()) as { payload: Scorecard }).payload;
     expect(back.cases[0].runResults[0].candidates![0].reasoning).toBe("because X");
     await unlink(p);
   });

@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, test, expect } from 'bun:test';
+import { afterEach, describe, test, expect } from 'bun:test';
 import { HomeGraphFactory, DEFAULT_HOME_STATUSES, ALL_OPPORTUNITY_STATUSES } from '../feed/feed.graph.js';
 import type { HomeGraphDatabase, Opportunity, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
@@ -18,13 +18,40 @@ function createMockCache(): OpportunityCache {
   };
 }
 
-function createMockDb(captured: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string }): HomeGraphDatabase {
+/** Presenter-hit cache: lets full lifecycle tests prove ordering without LLM calls. */
+function createPresenterHitCache(): OpportunityCache {
+  return {
+    get: async () => null,
+    set: async () => {},
+    mget: async <T>(keys: string[]) => keys.map((key, index) => {
+      const opportunityId = key.split(':')[3] ?? `opportunity-${index}`;
+      return {
+        opportunityId,
+        status: 'draft',
+        userId: `counterpart-${index}`,
+        name: `Counterpart ${index}`,
+        avatar: null,
+        mainText: 'Cached safe summary.',
+        cta: 'Review this match.',
+        primaryActionLabel: 'Connect',
+        secondaryActionLabel: 'Skip',
+        mutualIntentsLabel: 'Shared interests',
+        _cardIndex: index,
+      } as T;
+    }),
+  };
+}
+
+function createMockDb(
+  captured: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string },
+  rows: Opportunity[] = [],
+): HomeGraphDatabase {
   return {
     getOpportunitiesForUser: (_userId: string, opts?: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string }) => {
       captured.statuses = opts?.statuses;
       captured.scopeType = opts?.scopeType;
       captured.scopeId = opts?.scopeId;
-      return Promise.resolve([] as Opportunity[]);
+      return Promise.resolve(rows);
     },
     getOpportunity: () => Promise.resolve(null),
     getProfile: () => Promise.resolve(null),
@@ -34,7 +61,67 @@ function createMockDb(captured: { statuses?: OpportunityStatus[]; scopeType?: 'i
   };
 }
 
+function opportunity(input: {
+  id: string;
+  counterpartId: string;
+  confidence: number;
+  updatedAt: string;
+  factor?: number;
+  detail?: string;
+  adjustmentRecipientUserId?: string;
+  adjustmentIntentId?: string;
+  legacyAdjustment?: boolean;
+  stale?: true;
+  extraStaleFactor?: number;
+  extraStaleDetail?: string;
+}): Opportunity {
+  return {
+    id: input.id,
+    detection: { source: 'opportunity_graph', timestamp: input.updatedAt },
+    actors: [
+      { userId: 'u1' as never, networkId: 'network-1' as never, role: 'party' },
+      { userId: input.counterpartId as never, networkId: 'network-1' as never, role: 'party' },
+    ],
+    interpretation: { category: 'connection', reasoning: 'Safe test summary.', confidence: input.confidence },
+    context: {},
+    confidence: String(input.confidence),
+    status: 'draft',
+    createdAt: new Date(input.updatedAt),
+    updatedAt: new Date(input.updatedAt),
+    expiresAt: null,
+    metadata: input.factor === undefined ? {} : {
+      poolAdjustments: [{
+        questionId: 'question-1',
+        ...(!input.legacyAdjustment ? {
+          recipientUserId: input.adjustmentRecipientUserId ?? 'u1',
+          intentId: input.adjustmentIntentId ?? 'intent-1',
+        } : {}),
+        label: 'Builders vs advisors',
+        side: input.factor < 1 ? 'Advisors' : 'Builders',
+        factor: input.factor,
+        ...(input.detail ? { detail: input.detail } : {}),
+        appliedAt: input.updatedAt,
+        ...(input.stale ? { stale: true as const } : {}),
+      }, ...(input.extraStaleFactor === undefined ? [] : [{
+        questionId: 'question-stale',
+        recipientUserId: input.adjustmentRecipientUserId ?? 'u1',
+        intentId: input.adjustmentIntentId ?? 'intent-1',
+        label: 'Stale axis',
+        side: input.extraStaleFactor < 1 ? 'Advisors' : 'Builders',
+        factor: input.extraStaleFactor,
+        ...(input.extraStaleDetail ? { detail: input.extraStaleDetail } : {}),
+        appliedAt: input.updatedAt,
+        stale: true as const,
+      }])],
+    },
+  };
+}
+
 describe('home graph status filter', () => {
+  afterEach(() => {
+    delete process.env.POOL_QUESTIONS_RANKING;
+  });
+
   test('DEFAULT_HOME_STATUSES is exactly latent, pending', () => {
     expect(DEFAULT_HOME_STATUSES).toEqual(['latent', 'pending']);
   });
@@ -68,5 +155,174 @@ describe('home graph status filter', () => {
     expect(captured.statuses).toEqual(DEFAULT_HOME_STATUSES);
     expect(captured.scopeType).toBe('intent');
     expect(captured.scopeId).toBe('00000000-0000-4000-8000-00000000a111');
+  });
+
+  test('lifecycle order is unchanged while ranking is off and adjusted when on', async () => {
+    const rows = [
+      opportunity({
+        id: 'newer-demoted',
+        counterpartId: 'u2',
+        confidence: 0.9,
+        factor: 0.6,
+        detail: 'Builders vs advisors: you chose Builders',
+        updatedAt: '2026-07-15T12:10:00.000Z',
+      }),
+      opportunity({
+        id: 'older-prioritized',
+        counterpartId: 'u3',
+        confidence: 0.7,
+        factor: 1,
+        updatedAt: '2026-07-15T12:00:00.000Z',
+      }),
+    ];
+
+    const offGraph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const off = await offGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'], presentation: 'skeleton' });
+    expect(off.sections.flatMap((section) => section.items).map((item) => item.opportunityId))
+      .toEqual(['newer-demoted', 'older-prioritized']);
+    expect(off.sections.flatMap((section) => section.items)[0]?.deprioritizedReason).toBeUndefined();
+
+    process.env.POOL_QUESTIONS_RANKING = 'on';
+    const onGraph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const on = await onGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'], presentation: 'skeleton' });
+    const onItems = on.sections.flatMap((section) => section.items);
+    expect(onItems.map((item) => item.opportunityId)).toEqual(['older-prioritized', 'newer-demoted']);
+    expect(onItems[1]?.deprioritizedReason).toBe('Builders vs advisors: you chose Builders');
+
+    // The full second phase must preserve that order too; otherwise the
+    // categorizer can reshuffle sections before the intent page flattens them.
+    const fullGraph = new HomeGraphFactory(createMockDb({}, rows), createPresenterHitCache()).createGraph();
+    const full = await fullGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'] });
+    expect(full.sections.flatMap((section) => section.items).map((item) => item.opportunityId))
+      .toEqual(['older-prioritized', 'newer-demoted']);
+  });
+
+  test('stale-only scoped adjustments preserve lifecycle order and presentation', async () => {
+    process.env.POOL_QUESTIONS_RANKING = 'on';
+    const rows = [
+      opportunity({
+        id: 'newer-stale-demotion',
+        counterpartId: 'u2',
+        confidence: 0.9,
+        factor: 0.1,
+        detail: 'Stale axis: you chose Builders',
+        stale: true,
+        updatedAt: '2026-07-15T12:10:00.000Z',
+      }),
+      opportunity({
+        id: 'older-unadjusted',
+        counterpartId: 'u3',
+        confidence: 0.7,
+        updatedAt: '2026-07-15T12:00:00.000Z',
+      }),
+    ];
+
+    const graph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const result = await graph.invoke({
+      userId: 'u1',
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+      statuses: ['draft'],
+      presentation: 'skeleton',
+    });
+    const items = result.sections.flatMap((section) => section.items);
+    expect(items.map((item) => item.opportunityId)).toEqual([
+      'newer-stale-demotion',
+      'older-unadjusted',
+    ]);
+    expect(items[0]?.deprioritizedReason).toBeUndefined();
+  });
+
+  test('mixed active and stale adjustments rank and present from active entries only', async () => {
+    process.env.POOL_QUESTIONS_RANKING = 'on';
+    const rows = [
+      opportunity({
+        id: 'newer-active-priority',
+        counterpartId: 'u2',
+        confidence: 0.9,
+        factor: 1,
+        extraStaleFactor: 0.1,
+        extraStaleDetail: 'Stale axis: you chose Advisors',
+        updatedAt: '2026-07-15T12:10:00.000Z',
+      }),
+      opportunity({
+        id: 'older-active-demotion',
+        counterpartId: 'u3',
+        confidence: 0.7,
+        factor: 0.6,
+        detail: 'Active axis: you chose Builders',
+        updatedAt: '2026-07-15T12:00:00.000Z',
+      }),
+    ];
+
+    const graph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const result = await graph.invoke({
+      userId: 'u1',
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+      statuses: ['draft'],
+      presentation: 'skeleton',
+    });
+    const items = result.sections.flatMap((section) => section.items);
+    expect(items.map((item) => item.opportunityId)).toEqual([
+      'newer-active-priority',
+      'older-active-demotion',
+    ]);
+    expect(items[0]?.deprioritizedReason).toBeUndefined();
+    expect(items[1]?.deprioritizedReason).toBe('Active axis: you chose Builders');
+  });
+
+  test('ranking and demotion details require exact viewer and intent scope provenance', async () => {
+    process.env.POOL_QUESTIONS_RANKING = 'on';
+    const cases = [
+      {
+        name: 'global home',
+        invoke: { userId: 'u1', statuses: ['draft'] as OpportunityStatus[], presentation: 'skeleton' as const },
+        rowOverrides: {},
+      },
+      {
+        name: 'another viewer provenance',
+        invoke: { userId: 'u1', scopeType: 'intent' as const, scopeId: 'intent-1', statuses: ['draft'] as OpportunityStatus[], presentation: 'skeleton' as const },
+        rowOverrides: { adjustmentRecipientUserId: 'other-user' },
+      },
+      {
+        name: 'another intent scope',
+        invoke: { userId: 'u1', scopeType: 'intent' as const, scopeId: 'intent-other', statuses: ['draft'] as OpportunityStatus[], presentation: 'skeleton' as const },
+        rowOverrides: {},
+      },
+      {
+        name: 'legacy adjustment',
+        invoke: { userId: 'u1', scopeType: 'intent' as const, scopeId: 'intent-1', statuses: ['draft'] as OpportunityStatus[], presentation: 'skeleton' as const },
+        rowOverrides: { legacyAdjustment: true },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const rows = [
+        opportunity({
+          id: 'newer-demoted',
+          counterpartId: 'u2',
+          confidence: 0.9,
+          factor: 0.6,
+          detail: 'Builders vs advisors: you chose Builders',
+          updatedAt: '2026-07-15T12:10:00.000Z',
+          ...testCase.rowOverrides,
+        }),
+        opportunity({
+          id: 'older-prioritized',
+          counterpartId: 'u3',
+          confidence: 0.7,
+          factor: 1,
+          updatedAt: '2026-07-15T12:00:00.000Z',
+          ...testCase.rowOverrides,
+        }),
+      ];
+      const graph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+      const result = await graph.invoke(testCase.invoke);
+      const items = result.sections.flatMap((section) => section.items);
+      expect(items.map((item) => item.opportunityId), testCase.name)
+        .toEqual(['newer-demoted', 'older-prioritized']);
+      expect(items[0]?.deprioritizedReason, testCase.name).toBeUndefined();
+    }
   });
 });

@@ -161,6 +161,14 @@ The `actedAt` stamp is written atomically with the status change inside a row-lo
 
 Reject and expire transitions are exempt from the guard — they are terminal flips, not commit signals, and may be invoked by either actor regardless of prior `actedAt`. Background system flips (negotiation finalize, timeout cleanup) also use the legacy `updateOpportunityStatus` path and do not stamp `actedAt` — only explicit user commits do.
 
+### Uptake clarification before commitment
+
+When the uptake feature is enabled, every committed transition to `pending` is evaluated asynchronously. If the exact counterparty intent is active in the shared non-personal network and its preparatory-condition (`felicityAuthority`) score is below the configured threshold, the receiving actor gets one neutral negotiation-mode question about practical capability, resources, availability, or authority. The numeric score and verifier reasoning are never shown or persisted in the public question.
+
+The question carries server-only `detection.purpose = "uptake"`; purpose, QUD type, and conversational strategy remain independent metadata. Uptake answers stay private on the question row and are not copied into shared opportunity metadata.
+
+Acceptance uses a **soft interlock**, not a new status. The first accept attempt returns the current unresolved questions and leaves the opportunity `pending` without opening a DM or mutating contacts. The user can answer/dismiss and retry, cancel, or explicitly continue anyway by acknowledging every ID in the latest advisory. Question lookup/generation failures fail open, so infrastructure trouble cannot permanently block a connection. The rollout is independently gated by `QUESTIONER_UPTAKE_ENABLED` under the `QUESTIONER_ENABLED` master switch.
+
 ---
 
 ## Dual-Interpretation Model

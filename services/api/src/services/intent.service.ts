@@ -26,8 +26,11 @@ export class IntentService {
   private adapter: IntentDatabaseAdapter;
   private embedder: EmbedderAdapter;
 
-  constructor() {
-    this.adapter = intentDatabaseAdapter;
+  /**
+   * @param deps - Optional adapter override for focused service tests.
+   */
+  constructor(deps?: { adapter?: IntentDatabaseAdapter }) {
+    this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.db = this.adapter;
     this.embedder = new EmbedderAdapter();
     this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue);
@@ -108,7 +111,10 @@ export class IntentService {
     });
 
     return {
-      intents: rows,
+      intents: rows.map((intent) => ({
+        ...intent,
+        status: intent.status ?? 'ACTIVE' as const,
+      })),
       pagination: {
         current: page,
         total: Math.ceil(total / limit),
@@ -122,10 +128,15 @@ export class IntentService {
    * Resolve an intent identifier (full UUID or short prefix) to a full UUID.
    * @param idOrPrefix - Full UUID or short hex prefix
    * @param userId - The user ID (for ownership scoping)
+   * @param networkScopeId - Optional bound-agent network constraint for prefix lookup.
    * @returns Resolved ID, or error object with status
    */
-  async resolveId(idOrPrefix: string, userId: string): Promise<{ id: string } | { error: string; status: number }> {
-    const result = await this.adapter.resolveIntentId(idOrPrefix, userId);
+  async resolveId(
+    idOrPrefix: string,
+    userId: string,
+    networkScopeId?: string | null,
+  ): Promise<{ id: string } | { error: string; status: number }> {
+    const result = await this.adapter.resolveIntentId(idOrPrefix, userId, networkScopeId);
     if (!result) {
       return { error: 'Intent not found', status: 404 };
     }
@@ -145,7 +156,100 @@ export class IntentService {
   async getById(intentId: string, userId: string) {
     logger.verbose('Getting intent by ID', { intentId, userId });
 
-    return this.adapter.getIntentById(intentId, userId);
+    const intent = await this.adapter.getIntentById(intentId, userId);
+    return intent ? { ...intent, status: intent.status ?? 'ACTIVE' as const } : null;
+  }
+
+  /**
+   * Record an explicit human visit to an owned intent page.
+   *
+   * @param intentId - Full intent ID.
+   * @param userId - Authenticated owner.
+   * @returns Monotonic visit time, or null when missing/foreign.
+   */
+  async visit(intentId: string, userId: string): Promise<Date | null> {
+    return this.adapter.visitIntent(intentId, userId);
+  }
+
+  /**
+   * Pause or resume an owned intent without using the generic content update
+   * path. Resume emission is awaited on every idempotent success so a caller
+   * can retry a failed enqueue; the lifecycle-version job id deduplicates
+   * successful retries.
+   *
+   * @param intentId - Full intent UUID.
+   * @param userId - Authenticated owner.
+   * @param status - Requested lifecycle status.
+   * @param networkScopeId - Optional bound-agent network constraint.
+   * @returns Atomic adapter outcome.
+   */
+  async transitionStatus(
+    intentId: string,
+    userId: string,
+    status: 'ACTIVE' | 'PAUSED',
+    networkScopeId?: string | null,
+  ) {
+    logger.verbose('Transitioning intent lifecycle', { intentId, userId, status, networkScopeId });
+    const result = await this.adapter.transitionIntentLifecycle({
+      intentId,
+      userId,
+      status,
+      networkScopeId,
+    });
+    if (result.kind !== 'success') return result;
+
+    if (status === 'PAUSED') {
+      if (result.changed) IntentEvents.onPaused(intentId, userId, result.lifecycleVersionMs);
+      return result;
+    }
+
+    try {
+      await IntentEvents.onResumed(intentId, userId, result.lifecycleVersionMs);
+      return result;
+    } catch (error) {
+      logger.warn('Failed to enqueue resumed intent discovery', {
+        intentId,
+        userId,
+        lifecycleVersionMs: result.lifecycleVersionMs,
+        changed: result.changed,
+        error,
+      });
+
+      if (!result.changed) {
+        return {
+          kind: 'enqueue_failed' as const,
+          id: result.id,
+          status: result.status,
+          lifecycleVersionMs: result.lifecycleVersionMs,
+          retryable: true as const,
+        };
+      }
+
+      let authoritative: { status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED'; lifecycleVersionMs: number } | null = null;
+      try {
+        authoritative = await this.adapter.compensateFailedResume({
+          intentId,
+          userId,
+          lifecycleVersionMs: result.lifecycleVersionMs,
+          networkScopeId,
+        });
+      } catch (compensationError) {
+        logger.error('Failed to compensate resumed intent after enqueue failure', {
+          intentId,
+          userId,
+          lifecycleVersionMs: result.lifecycleVersionMs,
+          compensationError,
+        });
+      }
+
+      return {
+        kind: 'enqueue_failed' as const,
+        id: result.id,
+        status: authoritative?.status ?? result.status,
+        lifecycleVersionMs: authoritative?.lifecycleVersionMs ?? result.lifecycleVersionMs,
+        retryable: true as const,
+      };
+    }
   }
 
   /**

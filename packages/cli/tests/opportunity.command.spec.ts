@@ -43,6 +43,11 @@ describe("opportunity argument parsing", () => {
     expect(result.targetId).toBe("opp-123");
   });
 
+  it("parses 'opportunity accept <id> --acknowledge-uptake <ids>'", () => {
+    const result = parseArgs(["opportunity", "accept", "opp-456", "--acknowledge-uptake", "q-1,q-2"]);
+    expect(result.acknowledgeUptake).toEqual(["q-1", "q-2"]);
+  });
+
   it("parses 'opportunity accept <id>'", () => {
     const result = parseArgs(["opportunity", "accept", "opp-456"]);
     expect(result.command).toBe("opportunity");

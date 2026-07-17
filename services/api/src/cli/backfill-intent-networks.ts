@@ -28,7 +28,7 @@ import path from 'path';
 const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.env.production';
 dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
-import { and, isNull, sql } from 'drizzle-orm/sql';
+import { and, eq, isNull, or, sql } from 'drizzle-orm/sql';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
@@ -64,6 +64,7 @@ async function findOrphanedIntents(userId: string | undefined, limit: number) {
     .where(
       and(
         isNull(schema.intents.archivedAt),
+        or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
         isNull(schema.intentNetworks.intentId),
         userId ? sql`${schema.intents.userId} = ${userId}` : sql`true`,
       ),

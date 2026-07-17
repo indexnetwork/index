@@ -10,6 +10,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
 import { createStructuredModel } from "../shared/agent/model.config.js";
+import { stripUnsupportedOpportunityClaims } from "../opportunity/opportunity.claim-safety.js";
 
 const InviteInputSchema = z.object({
   recipientName: z.string(),
@@ -39,7 +40,8 @@ Tone: casual, direct, human. Think how you'd actually message someone you just g
 Do NOT use a generic opener like "Hi [Name], I'm [Sender]." Just get to the point.
 Do NOT summarize the person's background. Pick one real, specific overlap from the context and mention it.
 Do NOT include a subject line. This is a chat message.
-Do NOT use placeholder brackets like [Name]. Use the actual names provided.`;
+Do NOT use placeholder brackets like [Name]. Use the actual names provided.
+Network assignment, network title/type, and event/network metadata are retrieval context only. They are NEVER proof that either person attended or will attend, belongs to a group, resides in a place, knows anyone from the network, or shared a session, time, place, or location. Do not make co-attendance, membership, residence, shared-session, or same-place/same-time claims from network co-membership.`;
 
 /**
  * Generates a contextual invite message for a ghost user.
@@ -51,17 +53,24 @@ export async function generateInviteMessage(input: InviteInput): Promise<InviteO
 
   const structuredModel = createStructuredModel("inviteGenerator", InviteOutputSchema);
 
+  const safeInterpretation =
+    stripUnsupportedOpportunityClaims(validated.opportunityInterpretation) ||
+    "Their current goals may be relevant to each other.";
+
   const userPrompt = `Generate an invite message with this context:
 - Sender: ${validated.senderName}
 - Recipient: ${validated.recipientName}
-- Why they matched: ${validated.opportunityInterpretation}
+- Why they matched: ${safeInterpretation}
 - Sender's interests: ${validated.senderIntents.join(', ') || 'Not specified'}
 - Recipient's interests: ${validated.recipientIntents.join(', ') || 'Not specified'}${validated.referrerName ? `\n- Referred by: ${validated.referrerName}` : ''}`;
 
-  const result = await structuredModel.invoke([
+  const result = InviteOutputSchema.parse(await structuredModel.invoke([
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(userPrompt),
-  ]);
+  ]));
+  const safeMessage = stripUnsupportedOpportunityClaims(result.message);
 
-  return result;
+  return {
+    message: safeMessage || "Thought it could be useful for us to compare notes on what we're working on.",
+  };
 }

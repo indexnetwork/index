@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Brain, ChevronLeft, Pause, Pencil, Trash2 } from "lucide-react";
+import { Brain, ChevronLeft, LoaderCircle, Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { Link } from "react-router";
 
 import ClientLayout from "@/components/ClientLayout";
@@ -12,8 +12,11 @@ import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useQuestions } from "@/contexts/QuestionsContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
+import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
+import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import type { AnswerBody, PendingQuestion } from "@/services/questions";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +44,17 @@ function bucketForStatus(status?: string): string {
   return STATUS_BUCKET[status ?? ""] ?? "pending";
 }
 
+function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus {
+  if (
+    status === "PAUSED" ||
+    status === "FULFILLED" ||
+    status === "EXPIRED"
+  ) {
+    return status;
+  }
+  return "ACTIVE";
+}
+
 /**
  * Lifecycle statuses the radar fetches: the full pipeline except chat-only
  * drafts. This switches the home view into lifecycle mode (terminal statuses
@@ -62,21 +76,28 @@ function ActionChip({
   title,
   tone = "text-gray-400 hover:text-gray-700 hover:bg-gray-100",
   onClick,
+  disabled = false,
+  busy = false,
 }: {
   icon: React.ReactNode;
   title: string;
   tone?: string;
   onClick?: () => void;
+  disabled?: boolean;
+  busy?: boolean;
 }) {
   return (
     <button
       type="button"
       title={title}
       aria-label={title}
+      aria-busy={busy || undefined}
       onClick={onClick}
+      disabled={disabled}
       className={cn(
         "inline-flex items-center justify-center rounded p-1.5 leading-none transition-colors [&>svg]:h-4 [&>svg]:w-4",
         tone,
+        disabled && "cursor-not-allowed opacity-50",
       )}
     >
       {icon}
@@ -171,6 +192,8 @@ export default function IntentDetailPage() {
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
   const questionsService = useQuestionsService();
+  useIntentVisitPing(intentId);
+  const { refresh: refreshQuestionCounts } = useQuestions();
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
 
@@ -178,6 +201,16 @@ export default function IntentDetailPage() {
     Awaited<ReturnType<typeof intentsService.getIntent>> | null
   >(null);
   const [intentLoading, setIntentLoading] = useState(true);
+  const [intentStatusPending, setIntentStatusPending] = useState<{
+    intentId: string;
+    status: MutableIntentLifecycleStatus;
+  } | null>(null);
+  const lifecycleMutationRef = useRef<{
+    intentId: string;
+    generation: number;
+  } | null>(null);
+  const lifecycleGenerationRef = useRef(0);
+  const activeIntentIdRef = useRef(intentId);
   const [opportunities, setOpportunities] = useState<HomeViewCardItem[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
@@ -185,14 +218,22 @@ export default function IntentDetailPage() {
   // backend may synchronously persist a follow-up — show a typing indicator,
   // refetch once, and append any new pool_discovery card.
   const [questionChainPending, setQuestionChainPending] = useState(false);
+  /** Bumps make the intent negotiator reload its stable session on pool beats. */
+  const [negotiatorRefreshVersion, setNegotiatorRefreshVersion] = useState(0);
   /** Every question id ever displayed — so a chain refetch only appends new cards. */
   const seenQuestionIdsRef = useRef<Set<string>>(new Set());
   const chainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const clearReactionTimers = useCallback(() => {
+    for (const timer of reactionTimersRef.current) clearTimeout(timer);
+    reactionTimersRef.current = [];
+  }, []);
   useEffect(
     () => () => {
       if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
+      clearReactionTimers();
     },
-    [],
+    [clearReactionTimers],
   );
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
@@ -203,6 +244,17 @@ export default function IntentDetailPage() {
   // `chatUnavailable` is the runtime fallback if the bootstrap fails.
   const [chatUnavailable, setChatUnavailable] = useState(false);
   const negotiatorChatEnabled = features?.negotiatorChat === true && !chatUnavailable;
+
+  useLayoutEffect(() => {
+    activeIntentIdRef.current = intentId;
+    lifecycleGenerationRef.current += 1;
+    lifecycleMutationRef.current = null;
+    clearReactionTimers();
+    if (chainTimerRef.current) {
+      clearTimeout(chainTimerRef.current);
+      chainTimerRef.current = null;
+    }
+  }, [intentId, clearReactionTimers]);
 
   const scope = useMemo(
     () =>
@@ -223,10 +275,44 @@ export default function IntentDetailPage() {
    * (e.g. after refine) starts while a previous two-phase load is in flight. */
   const loadSeqRef = useRef(0);
 
-  const loadOpportunities = useCallback(async () => {
+  const loadQuestions = useCallback(async (appendOnly = false) => {
+    if (!intentId) return;
+    try {
+      const res = await questionsService.getPending({
+        scopeType: "intent",
+        scopeId: intentId,
+      });
+      if (activeIntentIdRef.current !== intentId) return;
+      for (const question of res) seenQuestionIdsRef.current.add(question.id);
+      if (!appendOnly) {
+        setQuestions(res);
+        return;
+      }
+      setQuestions((current) => {
+        const currentIds = new Set(current.map((question) => question.id));
+        const fresh = res.filter((question) => !currentIds.has(question.id));
+        return fresh.length > 0 ? [...current, ...fresh] : current;
+      });
+    } catch {
+      // Best-effort refresh; keep already-rendered questions on failure.
+    }
+  }, [intentId, questionsService]);
+
+  const loadOpportunities = useCallback(async (preserveExisting = false) => {
     if (!intentId) return;
     const seq = ++loadSeqRef.current;
-    setOpportunitiesLoading(true);
+    if (!preserveExisting) setOpportunitiesLoading(true);
+    const applyItems = (items: HomeViewCardItem[]) => {
+      if (!preserveExisting) {
+        setOpportunities(items);
+        return;
+      }
+      setOpportunities((current) => {
+        const merged = new Map(current.map((item) => [item.opportunityId, item]));
+        for (const item of items) merged.set(item.opportunityId, item);
+        return [...merged.values()];
+      });
+    };
     const baseOptions = {
       scopeType: "intent" as const,
       scopeId: intentId,
@@ -236,27 +322,29 @@ export default function IntentDetailPage() {
     // status pills and the connection cards immediately; cards missing from
     // the presenter cache arrive with presentationPending and shimmer their
     // body until phase 2 replaces them.
-    try {
-      const fast = await opportunitiesService.getHomeView({
-        ...baseOptions,
-        presentation: "skeleton",
-      });
-      if (seq !== loadSeqRef.current) return;
-      setOpportunities(fast.sections.flatMap((s) => s.items));
-      setOpportunitiesLoading(false);
-    } catch {
-      // Skeleton phase is best-effort — fall through to the full fetch.
+    if (!preserveExisting) {
+      try {
+        const fast = await opportunitiesService.getHomeView({
+          ...baseOptions,
+          presentation: "skeleton",
+        });
+        if (seq !== loadSeqRef.current) return;
+        applyItems(fast.sections.flatMap((s) => s.items));
+        setOpportunitiesLoading(false);
+      } catch {
+        // Skeleton phase is best-effort — fall through to the full fetch.
+      }
     }
     // Phase 2 (full): presenter text for cache misses; replaces the whole list.
     try {
       const res = await opportunitiesService.getHomeView(baseOptions);
       if (seq !== loadSeqRef.current) return;
-      setOpportunities(res.sections.flatMap((s) => s.items));
+      applyItems(res.sections.flatMap((s) => s.items));
     } catch {
       if (seq !== loadSeqRef.current) return;
-      setOpportunities([]);
+      if (!preserveExisting) setOpportunities([]);
     } finally {
-      if (seq === loadSeqRef.current) setOpportunitiesLoading(false);
+      if (seq === loadSeqRef.current && !preserveExisting) setOpportunitiesLoading(false);
     }
   }, [intentId, opportunitiesService]);
 
@@ -275,19 +363,29 @@ export default function IntentDetailPage() {
       .finally(() => {
         if (active) setIntentLoading(false);
       });
-    questionsService
-      .getPending({ scopeType: "intent", scopeId: intentId })
-      .then((res) => {
-        if (!active) return;
-        for (const q of res) seenQuestionIdsRef.current.add(q.id);
-        setQuestions(res);
-      })
-      .catch(() => {});
+    void loadQuestions();
     void loadOpportunities();
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, questionsService, loadOpportunities]);
+  }, [intentId, intentsService, loadQuestions, loadOpportunities]);
+
+  const refreshWorkspaceAfterReaction = useCallback((includeQuestions: boolean) => {
+    setNegotiatorRefreshVersion((version) => version + 1);
+    void loadOpportunities(true);
+    if (includeQuestions) void loadQuestions(true);
+  }, [loadOpportunities, loadQuestions]);
+
+  const scheduleBoundedWorkspaceRefresh = useCallback(
+    ({ includeQuestions }: { includeQuestions: boolean }) => {
+      clearReactionTimers();
+      refreshWorkspaceAfterReaction(includeQuestions);
+      reactionTimersRef.current = [1_500, 65_000, 90_000, 120_000, 180_000].map((delay) =>
+        setTimeout(() => refreshWorkspaceAfterReaction(includeQuestions), delay),
+      );
+    },
+    [clearReactionTimers, refreshWorkspaceAfterReaction],
+  );
 
   const handleArchive = useCallback(async () => {
     if (!intentId) return;
@@ -299,6 +397,46 @@ export default function IntentDetailPage() {
       showError("Failed to archive intent");
     }
   }, [intentId, intentsService, navigate, showError]);
+
+  const handleSetIntentStatus = useCallback(
+    async (status: MutableIntentLifecycleStatus) => {
+      if (!intentId || lifecycleMutationRef.current?.intentId === intentId) return;
+
+      const generation = ++lifecycleGenerationRef.current;
+      const request = { intentId, generation };
+      lifecycleMutationRef.current = request;
+      setIntentStatusPending({ intentId, status });
+      const isCurrentRequest = () =>
+        activeIntentIdRef.current === request.intentId
+        && lifecycleMutationRef.current?.intentId === request.intentId
+        && lifecycleMutationRef.current.generation === request.generation;
+      try {
+        const updated = await intentsService.setIntentStatus(intentId, status);
+        if (!isCurrentRequest()) return;
+        setIntent((current: typeof intent) =>
+          current?.id === request.intentId
+            ? { ...current, status: updated.status }
+            : current,
+        );
+        if (status === "ACTIVE" && updated.status === "ACTIVE") {
+          scheduleBoundedWorkspaceRefresh({ includeQuestions: true });
+        }
+      } catch {
+        if (!isCurrentRequest()) return;
+        showError(
+          status === "PAUSED"
+            ? "Failed to pause intent"
+            : "Failed to resume intent",
+        );
+      } finally {
+        if (isCurrentRequest()) {
+          lifecycleMutationRef.current = null;
+          setIntentStatusPending(null);
+        }
+      }
+    },
+    [intentId, intentsService, scheduleBoundedWorkspaceRefresh, showError],
+  );
 
   const handleRefine = useCallback(async () => {
     const text = refineText.trim();
@@ -322,9 +460,16 @@ export default function IntentDetailPage() {
       const answered = questions.find((q) => q.id === questionId);
       await questionsService.answer(questionId, body);
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      void refreshQuestionCounts();
       // Chain once per answer: a pool_discovery answer may have synchronously
       // produced a follow-up question — refetch shortly and append it.
       if (answered?.detection?.mode === "pool_discovery" && intentId) {
+        // The answer endpoint persists first and dispatches reactions
+        // asynchronously. Refresh now, shortly for Beat 1, and only at bounded
+        // Tier-1 checkpoints through three minutes for Beat 2/retries — no
+        // permanent polling.
+        scheduleBoundedWorkspaceRefresh({ includeQuestions: false });
+
         setQuestionChainPending(true);
         if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
         chainTimerRef.current = setTimeout(async () => {
@@ -345,20 +490,22 @@ export default function IntentDetailPage() {
           } catch {
             // Best-effort — the follow-up will surface on the next visit.
           } finally {
+            await refreshQuestionCounts();
             setQuestionChainPending(false);
           }
         }, 1200);
       }
     },
-    [questions, questionsService, intentId],
+    [questions, questionsService, intentId, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
   );
 
   const handleDismiss = useCallback(
     async (questionId: string) => {
       await questionsService.dismiss(questionId);
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      void refreshQuestionCounts();
     },
-    [questionsService],
+    [questionsService, refreshQuestionCounts],
   );
 
   const bucketOf = useCallback(
@@ -386,6 +533,8 @@ export default function IntentDetailPage() {
     ? intent.summary
     : intent?.payload ?? ""
   ).trim();
+  const lifecycleStatus = normalizeIntentLifecycleStatus(intent?.status);
+  const lifecycleBusy = intentStatusPending?.intentId === intentId;
 
   return (
     <ClientLayout>
@@ -423,11 +572,34 @@ export default function IntentDetailPage() {
                     {title}
                   </h1>
                   <div className="flex shrink-0 items-center gap-0.5">
-                    <ActionChip
-                      icon={<Pause />}
-                      title="Pause"
-                      tone="text-amber-500 hover:text-amber-600 hover:bg-amber-50"
-                    />
+                    {lifecycleStatus === "ACTIVE" && (
+                      <ActionChip
+                        icon={
+                          lifecycleBusy
+                            ? <LoaderCircle className="animate-spin" />
+                            : <Pause />
+                        }
+                        title="Pause"
+                        tone="text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                        onClick={() => void handleSetIntentStatus("PAUSED")}
+                        disabled={lifecycleBusy}
+                        busy={lifecycleBusy}
+                      />
+                    )}
+                    {lifecycleStatus === "PAUSED" && (
+                      <ActionChip
+                        icon={
+                          lifecycleBusy
+                            ? <LoaderCircle className="animate-spin" />
+                            : <Play />
+                        }
+                        title="Resume"
+                        tone="text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => void handleSetIntentStatus("ACTIVE")}
+                        disabled={lifecycleBusy}
+                        busy={lifecycleBusy}
+                      />
+                    )}
                     <ActionChip
                       icon={<Pencil />}
                       title="Edit"
@@ -442,14 +614,45 @@ export default function IntentDetailPage() {
                   </div>
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
-                  <span className="inline-flex items-center gap-1.5 rounded border border-green-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-green-600">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
-                    </span>
-                    live
-                  </span>
-                  <span>agent is looking in the background</span>
+                  {lifecycleStatus === "ACTIVE" && (
+                    <>
+                      <span className="inline-flex items-center gap-1.5 rounded border border-green-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-green-600">
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+                        </span>
+                        live
+                      </span>
+                      <span>agent is looking in the background</span>
+                    </>
+                  )}
+                  {lifecycleStatus === "PAUSED" && (
+                    <>
+                      <span className="inline-flex items-center rounded border border-amber-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-amber-600">
+                        paused
+                      </span>
+                      <span>
+                        background discovery is paused; existing Radar matches
+                        and questions remain available
+                      </span>
+                    </>
+                  )}
+                  {lifecycleStatus === "FULFILLED" && (
+                    <>
+                      <span className="inline-flex items-center rounded border border-gray-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-gray-600">
+                        fulfilled
+                      </span>
+                      <span>this intent has been fulfilled</span>
+                    </>
+                  )}
+                  {lifecycleStatus === "EXPIRED" && (
+                    <>
+                      <span className="inline-flex items-center rounded border border-gray-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-gray-600">
+                        expired
+                      </span>
+                      <span>this intent has expired</span>
+                    </>
+                  )}
                 </div>
 
                 {showRefine && (
@@ -517,6 +720,7 @@ export default function IntentDetailPage() {
                       onAnswerQuestion={handleAnswer}
                       onDismissQuestion={handleDismiss}
                       questionChainPending={questionChainPending}
+                      refreshVersion={negotiatorRefreshVersion}
                       opportunityStatusMap={opportunityStatusMap}
                       opportunityActionLoading={opportunityActionLoading}
                       onOpportunityAction={(id, action, userId, role, name) =>

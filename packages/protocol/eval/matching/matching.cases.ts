@@ -540,36 +540,35 @@ export const CASES: MatchingCase[] = [
     expect: [{ candidateId: "c-aiml", match: true, scoreBand: [85, 100] }],
   },
 
-  // ── Tier 1: event-network awareness ─────────────────────────────────────
+  // ── Tier 1: event-network claim safety ──────────────────────────────────
   {
-    id: "event_network/co-attendance-theme-lift",
+    id: "event_network/co-membership-is-not-attendance",
     rule: "event_network",
     tier: 1,
     domains: ["community", "technology"],
-    description: "Two attendees of the same themed event with aligned interests get a co-attendance lift.",
+    description: "Shared event-network placement alone must not prove candidate attendance or a shared session.",
     input: {
       discovererId: "src-attendee",
+      discoveryQuery: "Find someone who attended the same AI residency session as me.",
       entities: [
         {
           userId: "src-attendee",
-          profile: { name: "(source user)", bio: "Builder attending a month-long AI residency.", location: "Healdsburg, CA", interests: ["AI agents"], skills: ["engineering"] },
-          intents: [{ intentId: "e-1", payload: "Meet other AI agent builders at the residency to collaborate during the event." }],
+          profile: { name: "(source user)", bio: "AI product builder.", interests: ["AI agents"], skills: ["engineering"] },
           networkId: "idx-event",
         },
         {
           userId: "c-attendee",
-          profile: { name: "Jonah Lee", bio: "AI agent researcher attending the same residency.", location: "Healdsburg, CA", interests: ["AI agents", "multi-agent systems"], skills: ["research"] },
-          intents: [{ intentId: "c-1", payload: "Looking to pair with builders on agent projects during the residency." }],
+          profile: { name: "Jonah Lee", bio: "Software researcher open to technical conversations.", interests: ["developer tools"], skills: ["research"] },
           networkId: "idx-event",
           ragScore: 78,
-          matchedVia: "AI agent builders",
+          matchedVia: "event network retrieval",
         },
       ],
       networkContexts: {
         "idx-event": "Event: AI Residency. Dates: 2026-05-30 to 2026-06-27. Location: Healdsburg, CA. Themes: AI agents, autonomy, tooling.",
       },
     },
-    expect: [{ candidateId: "c-attendee", match: true, scoreBand: [70, 100], role: "peer" }],
+    expect: [{ candidateId: "c-attendee", match: false, scoreBand: [0, 29] }],
   },
 
   // ── Tier 2: realistic multi-candidate ranking/calibration ───────────────

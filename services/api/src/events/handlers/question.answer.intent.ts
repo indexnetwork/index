@@ -18,11 +18,17 @@ import { log } from '../../lib/log';
 
 const logger = log.service.from('QuestionAnswerIntent');
 
+/** Explicit outcome returned to pool-answer chaining and other callers. */
+export type IntentRefinementResult =
+  | { applied: false }
+  | { applied: true; payload: string; summary: string | null };
+
 export interface IntentRefinementDeps {
   getIntent: (intentId: string) => Promise<{
     id: string;
     userId: string;
     description: string;
+    summary?: string | null;
     status: string;
   } | null>;
   /** Fetch the clarifying question's prompt text for update context. Null when unavailable. */
@@ -38,7 +44,7 @@ export interface IntentRefinementDeps {
     userProfile: string;
     inputContent: string;
     targetIntentIds: string[];
-  }) => Promise<{ applied: boolean }>;
+  }) => Promise<{ applied: false } | { applied: true; payload: string }>;
 }
 
 /**
@@ -70,7 +76,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
     questionId: string;
     selectedOptions: string[];
     freeText?: string;
-  }): Promise<void> => {
+  }): Promise<IntentRefinementResult> => {
     const intent = await deps.getIntent(input.intentId);
 
     if (!intent) {
@@ -78,7 +84,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
         intentId: input.intentId,
         questionId: input.questionId,
       });
-      return;
+      return { applied: false };
     }
 
     if (intent.userId !== input.userId) {
@@ -87,7 +93,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
         intentOwner: intent.userId,
         answerer: input.userId,
       });
-      return;
+      return { applied: false };
     }
 
     if (intent.status !== 'active') {
@@ -95,7 +101,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
         intentId: input.intentId,
         status: intent.status,
       });
-      return;
+      return { applied: false };
     }
 
     const hasContent = input.selectedOptions.length > 0 || !!input.freeText?.trim();
@@ -104,7 +110,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
         intentId: input.intentId,
         questionId: input.questionId,
       });
-      return;
+      return { applied: false };
     }
 
     const [questionPrompt, userProfile] = await Promise.all([
@@ -119,14 +125,14 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
       input.freeText,
     );
 
-    const { applied } = await deps.runIntentUpdate({
+    const update = await deps.runIntentUpdate({
       userId: input.userId,
       userProfile,
       inputContent,
       targetIntentIds: [input.intentId],
     });
 
-    if (!applied) {
+    if (!update.applied) {
       // By design: e.g. the answer failed semantic verification as too
       // vague. The intent stays untouched; the answer remains on the
       // question row.
@@ -134,7 +140,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
         intentId: input.intentId,
         questionId: input.questionId,
       });
-      return;
+      return { applied: false };
     }
 
     logger.info('Intent refined via intent graph', {
@@ -142,5 +148,10 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
       userId: input.userId,
       questionId: input.questionId,
     });
+    return {
+      applied: true,
+      payload: update.payload,
+      summary: intent.summary ?? null,
+    };
   };
 }

@@ -2,12 +2,24 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, expect, it, mock } from "bun:test";
-import { OpportunityPresenter, type HomeCardPresenterInput } from "../opportunity.presenter.js";
+import { OpportunityPresenter, summarizeSignalsForPresenter, type HomeCardPresenterInput } from "../opportunity.presenter.js";
 
 /** Test-only type to override the private invokeWithTimeout method via index access. */
 type PresenterWithInvokeOverride = {
   invokeWithTimeout: (...args: unknown[]) => unknown;
 };
+
+describe("summarizeSignalsForPresenter", () => {
+  it("excludes pool-discriminator disposition from LLM context", () => {
+    expect(summarizeSignalsForPresenter([
+      { type: "semantic_match", weight: 0.8, detail: "Complementary goals" },
+      { type: "pool_discriminator", weight: -1, detail: "Builders vs advisors: Builders" },
+    ])).toBe("semantic_match: Complementary goals");
+    expect(summarizeSignalsForPresenter([
+      { type: "pool_discriminator", weight: -1, detail: "Builders vs advisors: Builders" },
+    ])).toBe("Match based on profile and intent alignment.");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Zero mutual intents – fallback path (no LLM needed)
@@ -138,6 +150,64 @@ describe("OpportunityPresenter – sanitizer rewrites zero-count LLM output", ()
     const presenter = createLlmMockPresenter("Shared interests");
     const result = await presenter.presentHomeCard(baseInput);
     expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+});
+
+describe("OpportunityPresenter - claim post-validation", () => {
+  const baseInput: HomeCardPresenterInput = {
+    viewerContext: "Name: Alice",
+    otherPartyContext: "Name: Bob",
+    matchReasoning: "Alice and Bob attended the same event.",
+    category: "collaboration",
+    confidence: 0.8,
+    signalsSummary: "profile alignment",
+    indexName: "Event network",
+    viewerRole: "party",
+    opportunityStatus: "pending",
+  };
+
+  it("sanitizes every prose field from present() and marks deterministic fallback", async () => {
+    const presenter = new OpportunityPresenter() as unknown as PresenterWithInvokeOverride;
+    presenter.invokeWithTimeout = mock(() => ({
+      presentation: {
+        headline: "A fellow member of the event",
+        personalizedSummary: "You both attended the same session.",
+        suggestedAction: "Message this resident of Berlin.",
+        greeting: "Great to meet another attendee from the same event.",
+      },
+    }));
+
+    const result = await (presenter as unknown as OpportunityPresenter).present(baseInput);
+    expect(result.headline).toBe("A promising connection");
+    expect(result.personalizedSummary).toBe("A promising connection.");
+    expect(result.suggestedAction).toBe("Take a look and decide whether to reach out.");
+    expect(result.greeting).toBe("");
+    expect(result.isFallback).toBe(true);
+  });
+
+  it("sanitizes every home-card prose field before returning", async () => {
+    const presenter = new OpportunityPresenter() as unknown as PresenterWithInvokeOverride;
+    presenter.invokeWithTimeout = mock(() => ({
+      presentation: {
+        headline: "Bob attended the event",
+        personalizedSummary: "You both attended the same session. Bob builds privacy tools.",
+        digestSummary: "You are fellow members of the event network.",
+        suggestedAction: "Message this resident of Berlin.",
+        narratorRemark: "Co-attendees with shared interests.",
+        mutualIntentsLabel: "Fellow members of the network",
+        greeting: "Great to meet another attendee.",
+      },
+    }));
+
+    const result = await (presenter as unknown as OpportunityPresenter).presentHomeCard(baseInput);
+    expect(result.headline).toBe("A promising connection");
+    expect(result.personalizedSummary).toBe("Bob builds privacy tools.");
+    expect(result.digestSummary).toBe("You might like meeting them based on your current interests.");
+    expect(result.suggestedAction).toBe("Take a look and decide whether to reach out.");
+    expect(result.narratorRemark).toBe("Worth a look.");
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+    expect(result.greeting).toBe("");
+    expect(result.isFallback).toBe(true);
   });
 });
 

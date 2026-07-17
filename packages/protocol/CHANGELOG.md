@@ -12,9 +12,31 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+### Added
+- Default-off Lens C negotiation-evidence shadow mining from future negotiation tasks with immutable intent snapshots, exact task-linked allowlisted evidence, strict participant/source verification, recurrence across at least five distinct opportunities, and aggregate-only telemetry (IND-433).
+- Default-off frame-v1 HyDE generation with source-only frame extraction, post-generation entity/constraint validation, partial/all rejection, ephemeral fail-open behavior, and mode/source/generation-isolated cache persistence (IND-426).
+- Opt-in `POOL_QUESTIONS_PUSH` accessor, pool refresh cycle identity, dismissal-decayed push threshold helpers, deterministic Markdown-safe Personal Agent DM template, and typed private push-ledger metadata (IND-421 P5).
+- Pre-insert newborn-opportunity stamping for fresh answered pool discriminators, with a fixed-axis evidence-verifying classifier, deterministic `questionId` provenance, and fail-open host callback (IND-420 P4b).
+- Durable pool-discriminator semantic novelty metadata: current axis embeddings and embedding-model ids now survive deterministic question snapshot conversion, alongside full-intent freshness fingerprints (IND-420 P4a).
+- Additive `IntentRecord.status` lifecycle contract (`ACTIVE | PAUSED | FULFILLED | EXPIRED | null`), with null legacy rows treated as active and paused intents excluded from candidate matching.
+- Advisory uptake guard for opportunity acceptance: low-authority counterparty intents can generate preparatory-condition questions, and `update_opportunity` now returns a structured, non-mutating advisory until the questions are resolved or their IDs are explicitly acknowledged (IND-424).
+- Public `QuestionPurpose` / uptake Questioner context contracts and `acknowledgedUptakeQuestionIds` acceptance input.
+- QUD-typed intent clarification (`missing_constituent`, `missing_constraint`, and `open_alternative_set`) across the live intent elaboration and Questioner flows, with internal detection metadata and exact-match eval coverage (IND-425).
+
 ### Changed
+- Added the pool-question drift lifecycle: exact recipient+intent final freshness gates, shared inclusive `0.7` Jaccard admission, system-voided stale snapshots, durable MODE cadence suppression, intent-edit invalidation, and audit-preserved stale scoped adjustments excluded from ranking (IND-422).
+- Retargeted the HyDE evidence-v2 harness to background-only discovery: 75 saved-intent cases plus 15 independently authored user-context cases (90 cases/900 candidates), with private saved-intent -> internal `query` and user-context -> `context` graph-source provenance, production-shaped saved-intent discoverer context, source-specific non-gating diagnostics, and no direct-search cohort. The four counterbalanced paired runs, blinded independent human adjudication, hierarchical bootstrap intervals, eight fixed gates, and production agents remain unchanged; this changes eval evidence and documentation only (IND-426).
+- Marked atomically claimed, user-balanced and privacy-thresholded frame-centroid observation plus the privacy-thresholded non-causal yield proxy as shipped by IND-430, while explicitly leaving immutable per-discovery provenance and causal drift diagnosis as future work; protocol runtime behavior is unchanged.
+- Intent graph update mode now fails closed to update actions targeting the caller-provided intent IDs; create, expire, and wrong-target actions are discarded before persistence.
+- Pool-discriminator shadow scoring now retains generated axis vectors and compares fresh resolved-axis vectors in addition to text references, while embedding failures remain fail-open (IND-420 P4a).
 - Reframed `README.md` as the public-facing Index Network Protocol document and moved package integration details into `IMPLEMENTATION.md`.
 - Included protocol documentation files in the published package tarball so README links remain available to package consumers.
+
+### Fixed
+- Aligned HyDE evidence scoring with the live background `0.30` cutoff, retained per-lens cosines for score/ranking revalidation, required report-stage parent recomputation, and prevented forced outputs from overwriting input evidence artifacts (IND-426).
+- Scoped pool-question adjustments to the exact answering recipient and selected intent, ignored legacy unscoped factors, and restricted Tier-0/newborn writes to exact trigger-intent provenance so shared opportunities cannot re-rank another viewer or intent.
+- Made trigger-intent discovery fail closed over current intent assignments, active owner memberships, and explicit caller scope; enforced active candidate membership across intent/premise/context retrieval plus pre-evaluation/pre-persistence rechecks and selected-intent Radar reads.
+- Removed network-derived co-attendance inference and added deterministic affiliation/presence claim rejection across evaluation, presenter/fallback/MCP/REST/delivery/chat/invite surfaces, with versioned presentation caches that do not retain degraded fallback copy.
 
 ## [4.3.0] - 2026-06-21
 

@@ -4,7 +4,8 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { NetworkController } from "../network.controller";
-import { UserDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { UserDatabaseAdapter } from "../../adapters/database.adapter";
+import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 /**
@@ -16,7 +17,6 @@ import type { AuthenticatedUser } from "../../guards/auth.guard";
 describe("Invitation Backend Gaps", () => {
   const controller = new NetworkController();
   const userAdapter = new UserDatabaseAdapter();
-  const indexAdapter = new NetworkGraphDatabaseAdapter();
 
   let ownerUserId: string;
   let outsiderUserId: string;
@@ -75,7 +75,7 @@ describe("Invitation Backend Gaps", () => {
   });
 
   afterAll(async () => {
-    for (const id of createdIndexIds) await indexAdapter.deleteNetworkAndMembers(id);
+    for (const id of createdIndexIds) await deleteNetworkAndMembers(id);
     if (ownerUserId) await userAdapter.deleteById(ownerUserId);
     if (outsiderUserId) await userAdapter.deleteById(outsiderUserId);
   });

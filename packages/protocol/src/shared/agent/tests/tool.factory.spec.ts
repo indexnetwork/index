@@ -2143,6 +2143,61 @@ describe("discover_opportunities async MCP runs", () => {
     expect(created[0]).toMatchObject({ userId: testUserId, agentId: "agent-1", input: { searchQuery: "find founders" } });
   });
 
+  test("rejects a paused intent before creating an MCP discovery run", async () => {
+    const intentId = "11111111-1111-4111-8111-111111111111";
+    let created = false;
+    const discoveryRuns = {
+      create: async () => {
+        created = true;
+        throw new Error("must not create");
+      },
+      listActive: async () => [],
+    };
+    const mockDb = createMockDatabase(async () => [], {
+      getIntent: async () => ({
+        id: intentId,
+        userId: testUserId,
+        payload: "Find founders",
+        summary: null,
+        isIncognito: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        archivedAt: null,
+        status: "PAUSED" as const,
+      }),
+    });
+    const context: ToolContext = {
+      userId: testUserId,
+      database: mockDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      discoveryRuns: discoveryRuns as never,
+      discoveryRunQueue: { enqueue: async () => ({}), cancel: async () => false },
+    } as ToolContext;
+    const resolved = {
+      userId: testUserId,
+      userName: "Test User",
+      userEmail: "test@example.com",
+      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      userProfile: null,
+      userNetworks: [],
+      indexScope: ["idx-1"],
+      isOnboarding: false,
+      hasName: true,
+      isMcp: true,
+      agentId: "agent-1",
+    } satisfies import("../tool.helpers").ResolvedToolContext;
+
+    const tools = await createChatTools(context, resolved);
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as { invoke: (args: { intentId: string }) => Promise<string> };
+    const parsed = JSON.parse(await tool.invoke({ intentId }));
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain("not active");
+    expect(created).toBe(false);
+  });
+
   test("get_discovery_run returns the persisted run result for the current user", async () => {
     const completedAt = new Date("2026-01-01T00:00:00.000Z");
     const discoveryRuns = {

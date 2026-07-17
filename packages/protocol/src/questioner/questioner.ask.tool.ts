@@ -31,7 +31,7 @@ import { error, success } from "../shared/agent/tool.helpers.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { PersistableQuestion, PersistedQuestion, ChatQuestionAnswerOutcome } from "../shared/interfaces/questioner.interface.js";
-import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
+import type { Question, QuestionGenerationResult, QuestionStrategy, UnderspecificationType } from "../shared/schemas/question.schema.js";
 import { QuestionerAgent } from "./questioner.agent.js";
 import { chatQuestionWaitTimeoutMs } from "./questioner.env.js";
 import type { ChatContext } from "./questioner.types.js";
@@ -177,7 +177,7 @@ export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDep
         ...(userContext ? { userContext } : {}),
       };
 
-      let generated: { questions: Question[]; strategies: QuestionStrategy[] } | null = null;
+      let generated: QuestionGenerationResult | null = null;
       try {
         generated = await getQuestionerAgent().invoke(
           {
@@ -198,9 +198,11 @@ export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDep
 
       let finalQuestions: Question[];
       let strategies: QuestionStrategy[];
+      let underspecificationTypes: Array<UnderspecificationType | null>;
       if (generated && generated.questions.length > 0) {
         finalQuestions = generated.questions;
         strategies = generated.strategies;
+        underspecificationTypes = generated.underspecificationTypes;
       } else {
         // Fallback: use the orchestrator's own drafts verbatim (options required).
         const fromDrafts = (query.questions ?? [])
@@ -213,6 +215,7 @@ export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDep
         }
         finalQuestions = fromDrafts;
         strategies = fromDrafts.map(() => "surface_missing_detail" as const);
+        underspecificationTypes = fromDrafts.map(() => null);
       }
 
       if (signal?.aborted) {
@@ -231,6 +234,7 @@ export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDep
         actors: [{ userId: context.userId, role: "subject" as const }],
         payload,
         strategy: strategies[i] ?? "surface_missing_detail",
+        underspecificationType: underspecificationTypes[i] ?? null,
         conversationId: sessionId,
       }));
 

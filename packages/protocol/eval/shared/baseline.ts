@@ -1,3 +1,5 @@
+import { buildEvalArtifact, EVAL_BASELINE_ARTIFACT_TYPE, EVAL_RUN_REPORT_ARTIFACT_TYPE, type EvalRunMeta } from "./artifact.js";
+import { readEvalArtifact, writeEvalArtifact } from "./artifact.io.js";
 import { predictivePValue } from "./stats.js";
 import type { CaseResultLike, Regression, ScorecardLike } from "./types.js";
 
@@ -66,19 +68,30 @@ export function diffBaseline(
 }
 
 /**
- * Reads a baseline scorecard from a JSON file on disk.
+ * Reads a committed baseline through the versioned artifact envelope.
+ *
+ * The file must be a valid `index-eval/baseline` envelope for the given
+ * harness; corrupt files, legacy unversioned scorecards, unknown schema
+ * versions, and incompatible artifact types all fail with actionable errors
+ * instead of being trusted through a cast.
  *
  * @param path - Absolute or relative path to the baseline JSON file.
- * @returns The parsed scorecard, or `null` if the file does not exist.
+ * @param options.harness - The harness that owns this baseline.
+ * @returns The validated baseline scorecard payload, or `null` if the file does not exist.
  */
-export async function readBaseline<T extends ScorecardLike>(path: string): Promise<T | null> {
-  const file = Bun.file(path);
-  if (!(await file.exists())) return null;
-  return (await file.json()) as T;
+export async function readBaseline<T extends ScorecardLike>(
+  path: string,
+  options: { harness: string },
+): Promise<T | null> {
+  const envelope = await readEvalArtifact<T>(path, {
+    expectedType: EVAL_BASELINE_ARTIFACT_TYPE,
+    expectedHarness: options.harness,
+  });
+  return envelope?.payload ?? null;
 }
 
 /**
- * Writes a scorecard to disk as a formatted JSON baseline file.
+ * Writes a scorecard to disk as a versioned, validated baseline artifact.
  *
  * The committed baseline is a diff target, so verbose per-run detail (model
  * reasoning, candidate outcomes) is best stripped to keep `--update-baseline`
@@ -86,29 +99,44 @@ export async function readBaseline<T extends ScorecardLike>(path: string): Promi
  * per-run candidate payloads); the full detail lives in the run report instead
  * (see {@link writeRunReport}).
  *
- * @param path - Absolute or relative path to write to (created or overwritten).
+ * Writes are atomic (same-directory temp file + rename) and refuse to replace
+ * an existing baseline unless `force` is set (the CLI's `--force`).
+ *
+ * @param path - Absolute or relative path to write to.
  * @param sc - The scorecard to persist.
+ * @param opts.meta - Run provenance recorded in the envelope.
  * @param opts.leanCase - Optional per-case transform applied before serialization.
+ * @param opts.force - Explicit consent to overwrite an existing baseline.
  */
 export async function writeBaseline<C extends CaseResultLike>(
   path: string,
   sc: ScorecardLike<C>,
-  opts: { leanCase?: (c: C) => C } = {},
+  opts: { meta: EvalRunMeta; leanCase?: (c: C) => C; force?: boolean },
 ): Promise<void> {
   const leanCase = opts.leanCase ?? ((c: C) => c);
   const lean: ScorecardLike<C> = { ...sc, cases: sc.cases.map(leanCase) };
-  await Bun.write(path, JSON.stringify(lean, null, 2) + "\n");
+  const envelope = buildEvalArtifact(EVAL_BASELINE_ARTIFACT_TYPE, lean, opts.meta);
+  await writeEvalArtifact(path, envelope, { force: opts.force });
 }
 
 /**
  * Writes a full run report to disk: the scorecard *including* every per-run
- * detail. This is the explanatory artifact a reviewer or a report skill reads to
- * see the agent's own justification for each score. Written on demand via the
- * `--report` flag and auto-saved for full-corpus runs; never committed.
+ * detail, wrapped in the same versioned envelope as baselines (with
+ * `artifactType: "index-eval/run-report"`). This is the explanatory artifact a
+ * reviewer or a report skill reads to see the agent's own justification for
+ * each score. Written on demand via the `--report` flag and auto-saved for
+ * full-corpus runs; never committed.
  *
- * @param path - Absolute or relative path to write to. Parent dirs are created by Bun.
+ * @param path - Absolute or relative path to write to (parent dirs are created).
  * @param sc - The scorecard to persist, with detail intact.
+ * @param opts.meta - Run provenance recorded in the envelope.
+ * @param opts.force - Explicit consent to overwrite an existing report.
  */
-export async function writeRunReport(path: string, sc: ScorecardLike): Promise<void> {
-  await Bun.write(path, JSON.stringify(sc, null, 2) + "\n");
+export async function writeRunReport(
+  path: string,
+  sc: ScorecardLike,
+  opts: { meta: EvalRunMeta; force?: boolean },
+): Promise<void> {
+  const envelope = buildEvalArtifact(EVAL_RUN_REPORT_ARTIFACT_TYPE, sc, opts.meta);
+  await writeEvalArtifact(path, envelope, { force: opts.force });
 }

@@ -69,6 +69,8 @@ export interface HomeViewCardItem {
   viewerRole?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Template-only pool-answer demotion explanation from server metadata. */
+  deprioritizedReason?: string;
   /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
   secondParty?: {
     name: string;
@@ -114,6 +116,29 @@ export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' |
 export interface OpportunityStatusUpdateResponse {
   opportunity: OpportunityListItem | null;
   counterpartUserId?: string;
+}
+
+/** Public question projection embedded in an acceptance advisory. */
+export interface UptakeQuestion {
+  id: string;
+  title: string;
+  prompt: string;
+  options: Array<{ label: string; description: string }>;
+  multiSelect: boolean;
+}
+
+/** Structured 409 soft interlock returned before opportunity acceptance. */
+export interface UptakeAcceptanceAdvisory {
+  code: 'unresolved_uptake_questions';
+  advisoryOnly: true;
+  opportunityId: string;
+  questions: UptakeQuestion[];
+  acknowledgedUptakeQuestionIds: string[];
+}
+
+export interface UptakeAcceptanceErrorBody {
+  error: string;
+  advisory: UptakeAcceptanceAdvisory;
 }
 
 export interface OpportunityPresentation {
@@ -217,10 +242,11 @@ export const createOpportunitiesService = (
     opportunityId: string,
     status: OpportunityStatus,
     scope?: { scopeType: 'intent'; scopeId: string },
+    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<OpportunityStatusUpdateResponse> => {
     return api.patch<OpportunityStatusUpdateResponse>(
       `/opportunities/${opportunityId}/status`,
-      { status, ...(scope ?? {}) }
+      { status, ...(scope ?? {}), ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}) }
     );
   },
 
@@ -244,6 +270,7 @@ export const createOpportunitiesService = (
   startChat: async (
     opportunityId: string,
     scope?: { scopeType: 'intent'; scopeId: string },
+    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<{
     conversationId: string;
     counterpartUserId: string;
@@ -253,7 +280,10 @@ export const createOpportunitiesService = (
       conversationId: string;
       counterpartUserId: string;
       opportunity: { id: string; status: OpportunityStatus };
-    }>(`/opportunities/${opportunityId}/start-chat`, scope ?? {});
+    }>(`/opportunities/${opportunityId}/start-chat`, {
+      ...(scope ?? {}),
+      ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}),
+    });
   },
 
   /**

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { IntentClarifier } from "./intent.clarifier.js";
 import type { ExecutionResult, VerifiedIntent } from "./intent.state.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "./intent.specificity.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -12,6 +13,44 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
 
 const logger = protocolLogger("ChatTools:Intent");
+
+type IntentClarifierLike = Pick<IntentClarifier, "invoke">;
+
+let intentClarifier: IntentClarifierLike | undefined;
+
+function getIntentClarifier(): IntentClarifierLike {
+  intentClarifier ??= new IntentClarifier();
+  return intentClarifier;
+}
+
+async function buildTypedClarificationResult(params: {
+  description: string;
+  userProfile: string;
+  activeIntentsContext?: string;
+  debugSteps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
+}): Promise<string | null> {
+  const clarification = await getIntentClarifier().invoke(
+    params.description,
+    params.userProfile,
+    params.activeIntentsContext ?? "",
+  );
+  if (!clarification.needsClarification) return null;
+  return JSON.stringify({
+    success: false,
+    needsClarification: true,
+    underspecificationType: clarification.underspecificationType,
+    suggestedDescription: clarification.suggestedDescription,
+    clarificationMessage: clarification.clarificationMessage,
+    missingFields: [clarification.underspecificationType],
+    message: clarification.clarificationMessage,
+    debugSteps: params.debugSteps,
+  });
+}
+
+/** Replace the lazy clarifier in deterministic tool tests. */
+export function setIntentClarifierForTesting(clarifier: IntentClarifierLike | null): void {
+  intentClarifier = clarifier ?? undefined;
+}
 
 /**
  * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
@@ -334,14 +373,21 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         // runs — so we check inference trace first.
         const verificationTrace = debugSteps.find((s: { step: string; detail?: string }) => s.step === "verification");
 
+        const typedClarification = await buildTypedClarificationResult({
+          description: query.description,
+          userProfile,
+          activeIntentsContext: result.activeIntents,
+          debugSteps,
+        });
+        if (typedClarification) return typedClarification;
+
         if (!verificationTrace) {
           const inferenceHint =
             debugSteps.find((s: { step: string; detail?: string }) => s.step === "inference")?.detail
             ?? "no intents extracted";
           return error(
             `No actionable intent was extracted (${inferenceHint}). ` +
-            `Please retry with a more specific goal (what kind, what for, and/or timeframe), ` +
-            `or ask the user to clarify.`,
+            `Please retry with an explicit goal or ask the user what outcome they want.`,
             debugSteps,
           );
         }
@@ -350,9 +396,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
           verificationTrace.detail ?? "all candidate intents were filtered as invalid or too vague";
         return error(
           `Intent verification failed (${rejectionHint}). ` +
-          `The description may be too vague or was classified as a statement rather than a goal. ` +
-          `Either retry with a more specific description (e.g. include what kind, what for, or a timeframe) ` +
-          `or ask the user to clarify what exactly they are looking for.`,
+          `The description may have been classified as a statement rather than a goal. ` +
+          `Retry with an explicit goal or ask the user what outcome they want.`,
           debugSteps,
         );
       }
@@ -361,6 +406,14 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (shouldAutoApprove) {
         const broadIntents = (verified as VerifiedIntent[]).filter(isBroadAttributiveIntent);
         if (broadIntents.length > 0) {
+          const typedClarification = await buildTypedClarificationResult({
+            description: broadIntents[0].description,
+            userProfile,
+            activeIntentsContext: result.activeIntents,
+            debugSteps,
+          });
+          if (typedClarification) return typedClarification;
+
           const first = broadIntents[0];
           const missing = first.verification?.missing_selectional_constraints ?? [];
           const missingHint = missing.length > 0

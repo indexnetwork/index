@@ -19,8 +19,10 @@ function isVisibleInScopedNetwork(question: PendingQuestionSummary, userId: stri
   return question.actors?.some((actor) => actor.userId === userId && actor.networkId === networkId) === true;
 }
 
-function stripInternalActors(question: PendingQuestionSummary): Omit<PendingQuestionSummary, "actors"> {
-  const { actors: _actors, ...publicQuestion } = question;
+function stripInternalQuestionFields(
+  question: PendingQuestionSummary,
+): Omit<PendingQuestionSummary, "actors" | "purpose"> {
+  const { actors: _actors, purpose: _purpose, ...publicQuestion } = question;
   return publicQuestion;
 }
 
@@ -90,7 +92,7 @@ export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
                 isVisibleInScopedNetwork(q, context.userId, scopedNetworkId!),
             )
           : fetched;
-        const limited = visible.slice(0, limit).map(stripInternalActors);
+        const limited = visible.slice(0, limit).map(stripInternalQuestionFields);
 
         if (isIntentScoped) {
           return success({

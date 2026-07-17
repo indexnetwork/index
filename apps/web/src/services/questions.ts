@@ -65,6 +65,12 @@ export interface QuestionsListResponse {
   questions: PendingQuestion[];
 }
 
+export interface PendingQuestionCounts {
+  globalPending: number;
+  pushedPoolPending: number;
+  personalAgentPending: number;
+}
+
 export interface AnswerBody {
   selectedOptions: string[];
   freeText?: string;
@@ -93,6 +99,8 @@ export const createQuestionsService = (
     scopeType?: 'intent';
     scopeId?: string;
     noConversation?: boolean;
+    /** Drop these modes server-side (e.g. pool_discovery on non-scoped surfaces). */
+    excludeModes?: Array<QuestionDetection['mode']>;
   }): Promise<PendingQuestion[]> => {
     const params = new URLSearchParams({ status: 'pending' });
     if (filters?.mode) params.set('mode', filters.mode);
@@ -101,8 +109,14 @@ export const createQuestionsService = (
     if (filters?.scopeType) params.set('scopeType', filters.scopeType);
     if (filters?.scopeId) params.set('scopeId', filters.scopeId);
     if (filters?.noConversation) params.set('noConversation', 'true');
+    if (filters?.excludeModes?.length) params.set('excludeModes', filters.excludeModes.join(','));
     const res = await api.get<QuestionsListResponse>(`/questions?${params}`);
     return res.questions ?? [];
+  },
+
+  /** Fetch canonical split counts for global and Personal Agent surfaces. */
+  getPendingCounts: async (): Promise<PendingQuestionCounts> => {
+    return api.get<PendingQuestionCounts>('/questions/counts');
   },
 
   /** Fetch pending questions linked to a specific conversation. */

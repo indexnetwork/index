@@ -24,7 +24,7 @@ describe("QuestionGeneratorService", () => {
       ],
       multiSelect: false,
     };
-    const result: QuestionGenerationResult = { questions: [q], strategies: ["refine_intent"] };
+    const result: QuestionGenerationResult = { questions: [q], strategies: ["refine_intent"], underspecificationTypes: [null] };
     const svc = new QuestionGeneratorService({ generate: async () => result });
     const got = await svc.generate(baseInput);
     expect(got).toEqual(result);

@@ -10,6 +10,33 @@ import type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, List
 // Re-export all types for backward compatibility
 export type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, SearchedUser, AddMemberResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, ToolResult } from "./types";
 
+export interface UptakeQuestion {
+  id: string;
+  title: string;
+  prompt: string;
+  options: Array<{ label: string; description: string }>;
+  multiSelect: boolean;
+}
+
+export interface UptakeAcceptanceAdvisoryBody {
+  error: string;
+  advisory: {
+    code: "unresolved_uptake_questions";
+    advisoryOnly: true;
+    opportunityId: string;
+    questions: UptakeQuestion[];
+    acknowledgedUptakeQuestionIds: string[];
+  };
+}
+
+/** HTTP error retaining a parsed structured response for JSON/advisory clients. */
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly response?: unknown) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -88,6 +115,15 @@ export class ApiClient {
   async getOpportunity(id: string): Promise<OpportunityDetail> {
     const res = await this.get(`/api/opportunities/${id}`);
     return (await res.json()) as OpportunityDetail;
+  }
+
+  /** Accept an opportunity over REST, optionally acknowledging uptake questions. */
+  async acceptOpportunity(id: string, acknowledgedUptakeQuestionIds?: string[]): Promise<Record<string, unknown>> {
+    const res = await this.patch(`/api/opportunities/${id}/status`, {
+      status: "accepted",
+      ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}),
+    });
+    return (await res.json()) as Record<string, unknown>;
   }
 
   /**
@@ -457,6 +493,20 @@ export class ApiClient {
     return res;
   }
 
+  private async patch(path: string, body?: unknown): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+
+    if (!res.ok) await this.handleError(res);
+    return res;
+  }
+
   private async del(path: string): Promise<Response> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: "DELETE",
@@ -479,20 +529,25 @@ export class ApiClient {
    */
   private async handleError(res: Response): Promise<never> {
     if (res.status === 401) {
-      throw new Error(
+      throw new ApiError(
         "Session expired or invalid. Run `index login` to re-authenticate.",
+        res.status,
       );
     }
 
     let message = `HTTP ${res.status}`;
+    let response: unknown;
     try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
+      response = await res.json();
+      if (typeof response === "object" && response !== null && "error" in response) {
+        const error = (response as { error?: unknown }).error;
+        if (typeof error === "string") message = error;
+      }
     } catch {
       // Response body was not JSON — use status text.
     }
 
-    throw new Error(message);
+    throw new ApiError(message, res.status, response);
   }
 }
 

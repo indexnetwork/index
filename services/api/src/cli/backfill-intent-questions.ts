@@ -27,7 +27,7 @@ import path from 'path';
 const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.env.production';
 dotenv.config({ path: path.resolve(import.meta.dir, '../../../..', envFile) });
 
-import { and, desc, eq, isNull, sql } from 'drizzle-orm/sql';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm/sql';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, networkMembers, questions, users } from '../schemas/database.schema';
@@ -73,6 +73,7 @@ async function main(): Promise<void> {
   // per-user dedup below selects each user's most recent active intent.
   const baseConditions = [
     isNull(intents.archivedAt),
+    or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
     eq(users.isGhost, false),
     sql`${users.onboarding}->>'completedAt' IS NOT NULL`,
   ];

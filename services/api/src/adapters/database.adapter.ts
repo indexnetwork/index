@@ -9,18 +9,16 @@ export { IntentDatabaseAdapter } from './intent.database.adapter';
 export { ChatDatabaseAdapter } from './chat.database.adapter';
 export { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 export { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
-export { NetworkGraphDatabaseAdapter } from './network-graph.database.adapter';
 export { HydeDatabaseAdapter } from './hyde.database.adapter';
 export { UserDatabaseAdapter } from './user.database.adapter';
 export { FileDatabaseAdapter } from './file.database.adapter';
-export { LinkDatabaseAdapter } from './link.database.adapter';
 export { ConversationDatabaseAdapter } from './conversation.database.adapter';
 
 // ── Public helpers + DTO types ──
 export { ensurePersonalNetwork, getPersonalIndexId } from './database.shared';
 export type {
   ChatSession, ChatMessage, ChatConversationMeta, ChatMessageMeta,
-  CreateSessionInput, CreateMessageInput, CreateFileInput, LinkRow,
+  CreateSessionInput, CreateMessageInput, CreateFileInput,
   ResolvedParticipant, ConversationSummary,
 } from './database.shared';
 
@@ -29,7 +27,6 @@ import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { ChatDatabaseAdapter } from './chat.database.adapter';
 import { UserDatabaseAdapter } from './user.database.adapter';
 import { FileDatabaseAdapter } from './file.database.adapter';
-import { LinkDatabaseAdapter } from './link.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { Id, SimilarIntent, VectorStore, canActorSeeOpportunity, getPersonalIndexId, log } from './database.shared';
 
@@ -37,7 +34,6 @@ import { Id, SimilarIntent, VectorStore, canActorSeeOpportunity, getPersonalInde
 export const chatDatabaseAdapter = new ChatDatabaseAdapter();
 export const userDatabaseAdapter = new UserDatabaseAdapter();
 export const fileDatabaseAdapter = new FileDatabaseAdapter();
-export const linkDatabaseAdapter = new LinkDatabaseAdapter();
 export const intentDatabaseAdapter = new IntentDatabaseAdapter();
 export const conversationDatabaseAdapter = new ConversationDatabaseAdapter();
 
@@ -309,7 +305,11 @@ export function createSystemDatabase(
       const intents = await Promise.all(results.map((r) => db.getIntent(r.item.id)));
       return results
         .map((r, i) => ({ r, intent: intents[i] }))
-        .filter((pair): pair is { r: (typeof results)[0]; intent: NonNullable<(typeof intents)[0]> } => pair.intent != null)
+        .filter((pair): pair is { r: (typeof results)[0]; intent: NonNullable<(typeof intents)[0]> } =>
+          pair.intent != null &&
+          !pair.intent.archivedAt &&
+          (pair.intent.status == null || pair.intent.status === 'ACTIVE')
+        )
         .map(({ r, intent }): SimilarIntent => ({
           id: intent.id,
           payload: intent.payload,

@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled } from '@indexnetwork/protocol';
+import { POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled, poolQuestionCycleKey, poolQuestionsMode } from '@indexnetwork/protocol';
 import type { PersistableQuestion, PoolDiscoveryContext, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -9,6 +9,9 @@ import db from '../lib/drizzle/drizzle';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { QuestionEvents } from '../events/question.event';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool/question.shared';
+import type { PoolQuestionPostPersist } from './pool/question.shared';
+import { enqueuePoolQuestionPush } from './pool/questionpush.queue';
+import { isPoolArtifactFresh } from './pool/poolquestions.constants';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
@@ -16,13 +19,31 @@ export const QUEUE_NAME = 'questioner-queue';
 /** Job data for question generation. Identical to QuestionerInput from protocol. */
 export type QuestionerJobData = QuestionerInput;
 
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { code?: unknown; cause?: unknown };
+  if (candidate.code === '23505') return true;
+  return typeof candidate.cause === 'object'
+    && candidate.cause !== null
+    && (candidate.cause as { code?: unknown }).code === '23505';
+}
+
 /**
  * Optional dependencies for testing. Use abstractions so tests can inject
  * stubs without touching real DB or LLM.
  */
+type QuestionerQueueAdapter = Pick<
+  QuestionerAdapter,
+  'persist' | 'persistFreshPoolQuestion' | 'isPoolQuestionFreshForDelivery' | 'findPending' | 'listPoolQuestionLabels'
+> & Partial<Pick<QuestionerAdapter, 'existsForRecipientSourcePurpose'>>;
+
 export interface QuestionerQueueDeps {
-  adapter?: Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>;
+  adapter?: QuestionerQueueAdapter;
   agent?: Pick<QuestionerAgent, 'invoke'>;
+  /** Lifecycle lookup used to gate intent-scoped jobs before generation. */
+  getIntentLifecycle?: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
+  /** Post-persist delivery enqueue; injected so tests never touch Redis. */
+  poolQuestionPostPersist?: PoolQuestionPostPersist;
 }
 
 /**
@@ -42,7 +63,9 @@ export class QuestionerQueue {
 
   private readonly logger = log.job.from('QuestionerJob');
   private readonly queueLogger = log.queue.from('QuestionerQueue');
-  private readonly adapter: Pick<QuestionerAdapter, 'persist' | 'findPending' | 'listPoolQuestionLabels'>;
+  private readonly adapter: QuestionerQueueAdapter;
+  private readonly getIntentLifecycle: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
+  private readonly poolQuestionPostPersist?: PoolQuestionPostPersist;
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
 
@@ -50,7 +73,15 @@ export class QuestionerQueue {
    * @param deps - Optional overrides for adapter and agent (for tests).
    */
   constructor(deps?: QuestionerQueueDeps) {
-    this.adapter = deps?.adapter ?? new QuestionerAdapter(db);
+    const defaultAdapter = new QuestionerAdapter(db);
+    this.adapter = deps?.adapter ?? defaultAdapter;
+    this.getIntentLifecycle = deps?.getIntentLifecycle
+      ?? (deps
+        ? async (intentId) => ({ id: intentId, status: 'ACTIVE' as const, archivedAt: null })
+        : defaultAdapter.getIntentLifecycle.bind(defaultAdapter));
+    this.poolQuestionPostPersist = deps
+      ? deps.poolQuestionPostPersist
+      : enqueuePoolQuestionPush;
     this.agent = deps?.agent ?? null; // lazy — created on first job
   }
 
@@ -67,8 +98,11 @@ export class QuestionerQueue {
    * @param data - The QuestionerInput payload (mode, userId, sourceType, sourceId, context).
    * @returns The BullMQ job.
    */
-  addGenerateJob(data: QuestionerJobData): Promise<Job<QuestionerJobData>> {
-    return this.addJob('generate_questions', data);
+  addGenerateJob(
+    data: QuestionerJobData,
+    options?: { jobId?: string; priority?: number },
+  ): Promise<Job<QuestionerJobData>> {
+    return this.addJob('generate_questions', data, options);
   }
 
   /**
@@ -132,12 +166,55 @@ export class QuestionerQueue {
   }
 
   private async handleGenerateQuestions(data: QuestionerJobData): Promise<void> {
+    const intentId = data.triggeredByIntentId?.trim()
+      || (data.scopeType === 'intent' ? data.scopeId?.trim() : undefined)
+      || (data.mode === 'intent' ? data.sourceId?.trim() : undefined)
+      || (data.mode === 'pool_discovery'
+        ? (data.context as PoolDiscoveryContext).intentId?.trim()
+        : undefined);
+    if (intentId) {
+      const lifecycle = await this.getIntentLifecycle(intentId, data.userId);
+      if (!lifecycle || lifecycle.archivedAt || (lifecycle.status != null && lifecycle.status !== 'ACTIVE')) {
+        this.logger.info('Intent-scoped question generation skipped at admission', {
+          intentId,
+          userId: data.userId,
+          status: lifecycle?.status ?? (lifecycle ? 'ACTIVE' : 'missing'),
+          archived: Boolean(lifecycle?.archivedAt),
+        });
+        return;
+      }
+    }
+
     this.logger.info('Starting question generation', {
       mode: data.mode,
       userId: data.userId,
       sourceType: data.sourceType,
       sourceId: data.sourceId,
     });
+
+    // Re-check exact uptake dedup at worker time before invoking the LLM. This
+    // covers retries and events racing after a question has already persisted.
+    if (data.purpose === 'uptake') {
+      const existing = this.adapter.existsForRecipientSourcePurpose
+        ? await this.adapter.existsForRecipientSourcePurpose(
+            data.userId,
+            data.sourceType,
+            data.sourceId,
+            'uptake',
+          )
+        : (await this.adapter.findPending(data.userId, {
+            purpose: 'uptake',
+            sourceType: data.sourceType,
+            sourceId: data.sourceId,
+          })).length > 0;
+      if (existing) {
+        this.logger.info('Uptake question skipped: exact question already exists', {
+          userId: data.userId,
+          sourceId: data.sourceId,
+        });
+        return;
+      }
+    }
 
     // pool_discovery questions are synthesized deterministically from mined
     // discriminators — no generator LLM (IND-418). Budget + dedup live here
@@ -163,9 +240,13 @@ export class QuestionerQueue {
     const triggeredByIntentId = data.triggeredByIntentId?.trim()
       || (data.scopeType === 'intent' && data.scopeId?.trim() ? data.scopeId.trim() : undefined);
 
-    const batch: PersistableQuestion[] = result.questions.map((question, i) => ({
+    const generatedQuestions = data.purpose === 'uptake'
+      ? result.questions.slice(0, 1)
+      : result.questions;
+    const batch: PersistableQuestion[] = generatedQuestions.map((question, i) => ({
       detection: {
         mode: data.mode,
+        ...(data.purpose ? { purpose: data.purpose } : {}),
         sourceType: data.sourceType,
         sourceId: data.sourceId,
         timestamp: new Date().toISOString(),
@@ -175,10 +256,25 @@ export class QuestionerQueue {
       actors: [{ userId: data.userId, ...(actorNetworkId ? { networkId: actorNetworkId } : {}), role: 'subject' as const }],
       payload: question,
       strategy: result.strategies[i],
+      underspecificationType: result.underspecificationTypes[i],
       conversationId: data.conversationId,
     }));
 
-    const ids = await this.adapter.persist(batch);
+    let ids: string[];
+    try {
+      ids = await this.adapter.persist(batch);
+    } catch (error) {
+      // The expression unique index is the final race guard. A competing
+      // worker winning persistence is success-equivalent and must not retry.
+      if (data.purpose === 'uptake' && isUniqueViolation(error)) {
+        this.logger.info('Uptake question skipped: concurrent persist won', {
+          userId: data.userId,
+          sourceId: data.sourceId,
+        });
+        return;
+      }
+      throw error;
+    }
 
     this.logger.info('Persisted questions', {
       mode: data.mode,
@@ -204,15 +300,37 @@ export class QuestionerQueue {
    * synthesize + persist the top discriminator.
    */
   private async handlePoolDiscovery(data: QuestionerJobData): Promise<void> {
-    const context = data.context as PoolDiscoveryContext;
+    const context = data.context as PoolDiscoveryContext & { opportunityIds?: string[] };
     const intentId = context.intentId;
 
     const pending = await this.adapter.findPending(data.userId, {
       scopeType: 'intent',
       scopeId: intentId,
     });
-    if (pending.some((q) => q.detection.mode === 'pool_discovery')) {
-      this.logger.info('Pool question skipped: one already pending for intent', { intentId });
+    const existingPoolQuestion = pending.find((q) => q.detection.mode === 'pool_discovery');
+    if (existingPoolQuestion) {
+      const existingPool = existingPoolQuestion.detection.pool;
+      const incomingCycle = poolQuestionCycleKey({ runId: context.runId, minedAt: context.minedAt });
+      if (
+        existingPool
+        && poolQuestionCycleKey(existingPool) === incomingCycle
+        && this.poolQuestionPostPersist
+        && poolQuestionsMode() === 'on'
+        && await this.adapter.isPoolQuestionFreshForDelivery(
+          existingPoolQuestion.id,
+          data.userId,
+          isPoolArtifactFresh,
+        )
+      ) {
+        await this.poolQuestionPostPersist(existingPoolQuestion.id, data.userId);
+        this.logger.info('Re-enqueued existing same-cycle pool question', {
+          intentId,
+          questionId: existingPoolQuestion.id,
+          cycleKey: incomingCycle,
+        });
+      } else {
+        this.logger.info('Pool question skipped: one already pending for intent', { intentId });
+      }
       return;
     }
     if (pending.length >= POOL_QUESTION_MAX_PENDING_PER_INTENT) {
@@ -223,14 +341,20 @@ export class QuestionerQueue {
       return;
     }
 
-    const askedLabels = await this.adapter.listPoolQuestionLabels(data.userId, intentId);
+    const askedLabels = await this.adapter.listPoolQuestionLabels(data.userId, intentId, {
+      ...(context.intentFingerprint ? { currentIntentFingerprint: context.intentFingerprint } : {}),
+      currentIntentText: context.intentText,
+    });
     const fresh = dedupDiscriminators(context.discriminators, askedLabels);
     const question = buildPoolQuestion({
       userId: data.userId,
       intentId,
       poolSize: context.poolSize,
+      opportunityIds: context.opportunityIds ?? [],
       minedAt: context.minedAt,
       ...(context.runId ? { runId: context.runId } : {}),
+      ...(context.intentText ? { intentText: context.intentText } : {}),
+      ...(context.intentFingerprint ? { intentFingerprint: context.intentFingerprint } : {}),
       discriminators: fresh,
     });
     if (!question) {
@@ -238,7 +362,16 @@ export class QuestionerQueue {
       return;
     }
 
-    const id = await persistPoolQuestion(this.adapter, question, data.userId);
+    const id = await persistPoolQuestion(
+      this.adapter,
+      question,
+      data.userId,
+      this.poolQuestionPostPersist,
+    );
+    if (!id) {
+      this.logger.info('Pool question skipped by final freshness gate', { intentId });
+      return;
+    }
     this.logger.info('Persisted pool question', { intentId, questionId: id });
   }
 }

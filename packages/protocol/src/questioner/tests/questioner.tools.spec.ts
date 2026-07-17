@@ -84,6 +84,17 @@ describe("createQuestionerTools", () => {
       expect(result.success).toBe(true);
       expect(result.data.questions).toHaveLength(1);
       expect(result.data.questions[0].id).toBe("q-0001");
+      expect(result.data.questions[0].actors).toBeUndefined();
+    });
+
+    it("strips internal purpose metadata from public results", async () => {
+      const { defineTool, call } = makeDefineTool();
+      createQuestionerTools(defineTool as never, makeDeps({
+        findPendingQuestions: async () => [{ ...mockQuestion, purpose: "uptake" }],
+      }));
+      const result = await call("read_pending_questions", {}) as { success: boolean; data: { questions: PendingQuestionSummary[] } };
+      expect(result.success).toBe(true);
+      expect(result.data.questions[0].purpose).toBeUndefined();
     });
 
     it("returns an empty list when no questions are pending", async () => {

@@ -53,7 +53,7 @@ function mapNegotiatorMemory(row: NegotiatorMemory, subjectMap: ReadonlyMap<stri
   };
 }
 
-type NegotiationRow = Awaited<ReturnType<TaskService['getNegotiationsByUser']>>[number];
+type NegotiationThread = Awaited<ReturnType<TaskService['getNegotiationThreadsByUser']>>[number];
 type NegotiationMessages = Awaited<ReturnType<TaskService['getMessagesByTaskIds']>>;
 type SpeakerUser = { id: string; name: string; avatar: string | null };
 
@@ -61,19 +61,20 @@ type NegotiationTurnData = { action?: string; assessment?: { reasoning?: string;
 type NegotiationOutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
 
 /**
- * Maps a negotiation task row into the API negotiation DTO.
- * @param row - Negotiation task with its outcome artifact
+ * Maps a negotiation thread into the API negotiation DTO.
+ * @param thread - Current task and every continuation segment in the thread
  * @param messagesMap - Messages keyed by task id (turn data source)
  * @param userMap - Participant users keyed by id (counterparty + speaker resolution)
  * @param selfId - The id treated as "self" for counterparty/role selection
  * @returns Negotiation DTO with counterparty, outcome, and turns
  */
-function mapNegotiationRow(
-  row: NegotiationRow,
+function mapNegotiationThread(
+  thread: NegotiationThread,
   messagesMap: NegotiationMessages,
   userMap: ReadonlyMap<string, SpeakerUser>,
   selfId: string,
 ) {
+  const row = thread.current;
   const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
   const counterpartyId = meta?.sourceUserId === selfId ? meta?.candidateUserId : meta?.sourceUserId;
   const counterparty = counterpartyId ? userMap.get(counterpartyId) : null;
@@ -82,7 +83,17 @@ function mapNegotiationRow(
   const outcomeData = outcomePart?.data;
   const viewerRole = outcomeData?.agreedRoles?.find((r) => r.userId === selfId)?.role ?? null;
 
-  const rawMessages = messagesMap.get(row.id) ?? [];
+  const oldestSegments = [...thread.segmentRows].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
+  );
+  const segmentOrder = new Map(oldestSegments.map((segment, index) => [segment.id, index]));
+  const rawMessages = oldestSegments
+    .flatMap((segment) => messagesMap.get(segment.id) ?? [])
+    .sort((a, b) =>
+      a.createdAt.getTime() - b.createdAt.getTime()
+      || (segmentOrder.get(a.taskId ?? '') ?? 0) - (segmentOrder.get(b.taskId ?? '') ?? 0)
+      || a.id.localeCompare(b.id),
+    );
   const turns = rawMessages.map((msg) => {
     const agentUserId = msg.senderId.replace(/^agent:/, '');
     const speakerUser = userMap.get(agentUserId);
@@ -101,6 +112,10 @@ function mapNegotiationRow(
 
   return {
     id: row.id,
+    segments: thread.segmentRows.length,
+    state: row.state,
+    statusMessage: row.statusMessage,
+    statusTimestamp: row.statusTimestamp?.toISOString() ?? null,
     counterparty: counterparty
       ? { id: counterparty.id, name: counterparty.name, avatar: counterparty.avatar }
       : { id: counterpartyId ?? 'unknown', name: 'Unknown user', avatar: null },
@@ -114,6 +129,7 @@ function mapNegotiationRow(
       : null,
     turns,
     createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -246,7 +262,7 @@ export class UserController {
         : [];
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
-      const negotiation = mapNegotiationRow(row, messagesMap, userMap, viewer.id);
+      const negotiation = mapNegotiationThread({ current: row, segmentRows: [row] }, messagesMap, userMap, viewer.id);
 
       return Response.json({ negotiation }, { status: 201 });
     } catch (err) {
@@ -287,16 +303,18 @@ export class UserController {
     const mutualWithUserId = isSelf ? undefined : viewer.id;
 
     try {
-      const rows = await this.taskService.getNegotiationsByUser(params.userId, { limit, offset, mutualWithUserId, result, since: validSince });
+      const threads = await this.taskService.getNegotiationThreadsByUser(params.userId, { limit, offset, mutualWithUserId, result, since: validSince });
 
-      const taskIds = rows.map((r) => r.id);
+      const taskIds = threads.flatMap((thread) => thread.segmentRows.map((row) => row.id));
       const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);
 
       const participantIds = new Set<string>();
-      for (const row of rows) {
-        const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
-        if (meta?.sourceUserId) participantIds.add(meta.sourceUserId);
-        if (meta?.candidateUserId) participantIds.add(meta.candidateUserId);
+      for (const thread of threads) {
+        for (const row of thread.segmentRows) {
+          const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
+          if (meta?.sourceUserId) participantIds.add(meta.sourceUserId);
+          if (meta?.candidateUserId) participantIds.add(meta.candidateUserId);
+        }
       }
 
       const participantUsers = participantIds.size > 0
@@ -304,7 +322,7 @@ export class UserController {
         : [];
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
-      const negotiations = rows.map((row) => mapNegotiationRow(row, messagesMap, userMap, params.userId));
+      const negotiations = threads.map((thread) => mapNegotiationThread(thread, messagesMap, userMap, params.userId));
 
       return Response.json({ negotiations });
     } catch (err) {

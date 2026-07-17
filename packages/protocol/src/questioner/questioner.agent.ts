@@ -96,8 +96,9 @@ export class QuestionerAgent {
     if (filtered.length === 0) return null;
 
     return {
-      questions: filtered.map(stripStrategy),
+      questions: filtered.map(stripInternalMetadata),
       strategies: filtered.map((q) => q.strategy),
+      underspecificationTypes: filtered.map((q) => q.underspecificationType),
     };
   }
 }
@@ -134,7 +135,11 @@ function enforceStrategyDiversity(
   return out;
 }
 
-function stripStrategy(q: QuestionWithStrategy): Question {
-  const { strategy: _strategy, ...publicShape } = q;
+function stripInternalMetadata(q: QuestionWithStrategy): Question {
+  const {
+    strategy: _strategy,
+    underspecificationType: _underspecificationType,
+    ...publicShape
+  } = q;
   return publicShape;
 }

@@ -13,8 +13,32 @@ export interface NegotiationTurnSummary {
   createdAt: string;
 }
 
+export type NegotiationState =
+  | 'submitted'
+  | 'working'
+  | 'input_required'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+  | 'rejected'
+  | 'auth_required'
+  | 'waiting_for_agent'
+  | 'claimed';
+
+export type NegotiationStatusMessage =
+  | string
+  | number
+  | boolean
+  | null
+  | NegotiationStatusMessage[]
+  | { [key: string]: NegotiationStatusMessage };
+
 export interface NegotiationSummary {
   id: string;
+  segments: number;
+  state: NegotiationState;
+  statusMessage: NegotiationStatusMessage;
+  statusTimestamp: string | null;
   counterparty: { id: string; name: string; avatar: string | null };
   outcome: {
     hasOpportunity: boolean;
@@ -24,6 +48,7 @@ export interface NegotiationSummary {
   } | null;
   turns: NegotiationTurnSummary[];
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface NegotiationInsights {

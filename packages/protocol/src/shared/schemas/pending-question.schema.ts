@@ -3,7 +3,7 @@
  * in tool results. Omits internal fields (actors, answer, status) that
  * are not needed by the chat agent or MCP client.
  */
-import type { QuestionMode } from "./question.schema.js";
+import type { QuestionMode, QuestionPurpose } from "./question.schema.js";
 
 export interface PendingQuestionSummary {
   id: string;
@@ -12,6 +12,8 @@ export interface PendingQuestionSummary {
   options: Array<{ label: string; description: string }>;
   multiSelect: boolean;
   mode: QuestionMode;
+  /** Internal generation purpose used for exact server-side filtering. */
+  purpose?: QuestionPurpose;
   sourceType: string;
   sourceId: string;
   createdAt: string;

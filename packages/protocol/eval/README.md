@@ -12,28 +12,55 @@ equivalent env) — harnesses call real models.
 
 | Harness    | Script                  | Agent(s) under test                                              |
 | :--------- | :---------------------- | :-------------------------------------------------------------- |
-| `matching`    | `bun run eval:matching`    | `OpportunityEvaluator.invokeEntityBundle` (which people get surfaced + scored) |
+| `matching`    | `bun run eval:matching`    | `OpportunityEvaluator.invokeEntityBundle` (secondary evaluator-only regression check) |
+| `hyde`        | `bun run eval:hyde`        | Paired real legacy/frame-v1 HyDE generation, validation, embedding, and in-memory retrieval |
 | `premise`     | `bun run eval:premise`     | `PremiseDecomposer.invoke`, `PremiseAnalyzer.invoke`                           |
-| `profile`     | `bun run eval:profile`     | `ProfileGenerator.invoke` (incl. the PII-redaction guarantee)                 |
+| `profile`     | `bun run eval:profile`     | `EnrichmentGenerator.invoke` (incl. the PII-redaction guarantee)              |
 | `opportunity` | `bun run eval:opportunity` | `OpportunityPresenter.present` (the user-facing card: headline/summary/greeting) |
+| `clarification` | `bun run eval:clarification` | `IntentClarifier` QUD underspecification taxonomy (exact-match corpus)     |
 
 Each harness has its own README with full flag docs:
-[`matching`](./matching/README.md) · [`premise`](./premise/README.md) ·
-[`profile`](./profile/README.md) · [`opportunity`](./opportunity/README.md).
+[`matching`](./matching/README.md) · [`hyde`](./hyde/README.md) ·
+[`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
+[`opportunity`](./opportunity/README.md) · [`clarification`](./clarification/README.md).
+
+The IND-426 `hyde` harness is retrieval-only and has no committed baseline or run
+artifacts. Evidence-v2 is a staged collect -> blind export -> independent human
+adjudication -> resolve -> analyze -> report study over 90 frozen background cases, 900
+candidates, and four paired runs per case. Its primary cohort is 75 asynchronously
+processed saved intents; its secondary cohort is 15 premise-derived, network-scoped user
+contexts. It contains no synchronous direct-search cohort. The private runner maps saved
+intents to the current internal `query` graph branch and contexts to `context`; this
+implementation label is hidden from blind adjudication and does not represent a user
+request. Its eight gates become insufficient unless the full
+canonical collection and resolved blinded judgments from two independent humans are
+complete. Export runs a full collection-only semantic preflight before review. Analysis
+also requires the original judgment artifacts (and resolver decisions, when used) so it
+can regenerate and revalidate the resolved parent rather than trusting a self-authored
+resolution file; its schema recomputes gates and rejects internally inconsistent PASS
+edits. Report generation additionally recomputes the analysis from every supplied parent,
+and collection preflight recomputes score/ranking derivations from retained per-lens
+cosines. Provenance pins identify configured primary IDs only: production fallback identity,
+separate frame-extraction resources, tokens, and cost remain unavailable. The unsigned
+multi-file artifacts and unauthenticated reviewer attestations require external
+custody/identity/fingerprint review. The `matching` harness calls `OpportunityEvaluator` without HyDE and remains
+only a secondary evaluator-regression check, not retrieval evidence.
 
 `matching` scores *which* people get surfaced; `opportunity` judges the *card a person
 actually reads* once a match exists — complementary surfaces of the same feature.
 
-Common flags (all harnesses): `--runs N`, `--rule R`, `--case ID`, `--tier N`,
-`--list-cases`, `--no-judge`, `--update-baseline`, `--report [path]`, `--html [path]`,
+Common flags (most baseline-backed harnesses): `--runs N`, `--rule R`, `--case ID`, `--tier N`,
+`--list-cases`, `--no-judge`, `--update-baseline`, `--force`, `--report [path]`, `--html [path]`,
 `--rolling-baseline [days]`, `--alpha P`, `--no-save`. The `premise` harness additionally
-takes `--component decompose|analyze`.
+takes `--component decompose|analyze`. Baseline/report writes refuse to replace existing
+files unless `--force` is passed (see the artifact envelope section below).
 
 ## Architecture: shared lib + thin harnesses
 
-The harness-agnostic machinery lives in [`eval/shared/`](./shared) and is reused by every
-harness, so a new harness only authors its corpus, scorer, and CLI — never the statistics,
-baseline math, or reporting again.
+The harness-agnostic machinery lives in [`eval/shared/`](./shared) and is reused by the
+baseline-backed scorecard harnesses. HyDE is standalone because it uses versioned evidence artifacts, blinded adjudication,
+hierarchical paired bootstrap intervals, and fixed gates rather than the shared
+scorecard/baseline machinery.
 
 ```
 eval/
@@ -41,7 +68,10 @@ eval/
 │   ├── stats.ts            # Wilson CI, binomial + beta-binomial p-values
 │   ├── types.ts            # CaseResultLike / ScorecardLike / RuleResult / Regression
 │   ├── scorecard.ts        # buildScorecard (generic over the case type)
-│   ├── baseline.ts         # read/write/diff baselines, writeRunReport
+│   ├── artifact.ts         # versioned artifact envelope: Zod schemas, fingerprints, git provenance
+│   ├── artifact.io.ts      # atomic writes, overwrite refusal, write-plan collision checks
+│   ├── migrate-legacy-baselines.ts  # explicit legacy → v1 baseline conversion CLI
+│   ├── baseline.ts         # read/write/diff baselines, writeRunReport (envelope-backed)
 │   ├── rolling.ts          # computeRollingBaseline from recent run reports
 │   ├── console.ts          # formatConsole (parameterized title)
 │   ├── runner.ts           # repeatRuns: repeat-with-retry execution loop
@@ -50,9 +80,12 @@ eval/
 │   ├── index.ts            # barrel export — import everything from "../shared/index.js"
 │   └── tests/              # unit tests for the shared lib
 ├── matching/               # matching corpus, scorer, bespoke HTML renderer
+├── hyde/                   # paired retrieval eval; intentionally no canonical baseline
 ├── premise/                # premise corpus, scorer, reporter (shared HTML shell)
 ├── profile/                # profile corpus, scorer, PII detectors, reporter
-└── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
+├── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
+├── clarification/          # IntentClarifier QUD taxonomy corpus + scorer
+└── verify.ts               # provider-free CI gate: per-suite typecheck + tests (see below)
 ```
 
 The shared scorecard types are **structural**: they describe only the aggregate fields the
@@ -61,6 +94,36 @@ harness defines its own richer `CaseResult` (with per-run assertions + agent-out
 that extends `CaseResultLike`, and specializes `Scorecard = ScorecardLike<CaseResult>`. The
 shared layer never reads harness-specific run internals, so harness types stay fully owned
 by the harness while reusing all aggregation, baseline, rolling, console, and HTML code.
+
+## Versioned artifact envelope (schema v1)
+
+Every baseline-backed JSON artifact (committed `baselines/*.baseline.json` and gitignored
+`runs/*.json` run reports) is wrapped in a small versioned envelope
+(`index-eval/baseline` / `index-eval/run-report`, `eval/shared/artifact.ts`) and validated
+with Zod on **every read and write**. The envelope records provenance — harness +
+version, source (`run` or `legacy-migration`), created/start/completion times, configured
+model IDs, selection filters, run count, SHA-256 corpus/config fingerprints over
+canonicalized inputs, Git revision + dirty state, and a completeness summary — while the
+scorecard stays a harness-owned payload (per-case detail passes through untouched).
+Validation rejects malformed numbers, duplicate case/rule ids, inconsistent
+aggregates/completeness, non-monotonic timestamps, unknown schema versions, and
+incompatible artifact types with actionable errors. Fingerprint inputs must never contain
+embeddings, API keys, secret-bearing prompts, or raw environment values (secret-like
+config keys are rejected).
+
+Persistence is collision-safe (`eval/shared/artifact.io.ts`): writes validate first, go
+through a same-directory temp file + atomic rename (an interrupted write can never replace
+a valid artifact with a partial one), and refuse to overwrite existing files unless
+`--force` is passed. Each harness asserts its full write plan up front, so an output can
+never clobber an input (e.g. `--report <baseline path>` is rejected) and multi-output runs
+fail before anything is written rather than leaving partial combinations behind.
+
+Legacy (pre-envelope) baselines are converted only through the explicit, reviewable
+`bun eval/shared/migrate-legacy-baselines.ts --write` CLI — payload score values are
+preserved verbatim, unavailable provenance carries explicit `unavailable-legacy-migration`
+sentinels, and readers never cast a legacy scorecard silently. Pre-envelope files in
+`runs/` are simply skipped by the rolling baseline. A provider-free spec
+(`eval/shared/tests/migration.spec.ts`) keeps every committed baseline valid.
 
 ## Anatomy of a harness
 
@@ -109,13 +172,20 @@ eval/<name>/
 7. **Write the CLI** in `<name>.eval.ts`, importing `buildScorecard`, `diffBaseline`,
    `readBaseline`, `writeBaseline`, `writeRunReport`, `computeRollingBaseline`,
    `formatConsole`, and `arg`/`has`/`flagValue` from `../shared/index.js`. Pass a
-   `leanCase` to `writeBaseline` that strips your per-run `detail`.
+   `leanCase` to `writeBaseline` that strips your per-run `detail`. Build an
+   `EvalRunMeta` (harness id/version, model IDs, `fingerprintEvalCorpus(selected)`,
+   `fingerprintEvalConfig({…})`, `readEvalGitProvenance(import.meta.dir)`,
+   started/completed timestamps) for the write calls, support `--force`, and assert an
+   `assertEvalWritePlan({ inputs, outputs, force })` before running any cases.
 
 8. **Add a package.json script**:
    ```json
    "eval:<name>": "bun --env-file=.env.test ./eval/<name>/<name>.eval.ts"
    ```
-   and gitignore `packages/protocol/eval/<name>/runs/`.
+   and gitignore `packages/protocol/eval/<name>/runs/`. Also add the suite to the
+   `SUITES` manifest in [`eval/verify.ts`](./verify.ts) — `bun run eval:verify`
+   fails on any eval directory that is not in the manifest, so a new harness
+   cannot silently skip CI verification.
 
 9. **Write tests** in `eval/<name>/tests/`: corpus invariants, scorer correctness,
    selection. These do NOT invoke live agents.
@@ -129,6 +199,7 @@ eval/<name>/
 ## Testing the evals themselves
 
 ```bash
+bun run eval:verify              # the CI gate: everything below, plus typechecks
 bun test eval/shared/tests/      # the shared lib
 bun test eval/matching/tests/    # a harness
 bun test eval/premise/tests/ eval/profile/tests/
@@ -137,7 +208,35 @@ bun test eval/premise/tests/ eval/profile/tests/
 These are standard `bun test` specs — they do NOT invoke live agents; they validate types,
 scoring logic, runner wiring, reporter math, and baseline handling.
 
+### `bun run eval:verify` — the provider-free CI gate
+
+One command verifies every suite without touching a provider:
+
+1. **Inventory check** — the directories under `eval/` must exactly match the
+   explicit `SUITES` manifest in [`verify.ts`](./verify.ts), and every suite must
+   have a `tsconfig.json` and a `tests/` directory. New suites cannot escape CI
+   unnoticed: an unlisted directory fails the run.
+2. **Per-suite typecheck** — `tsc --noEmit -p eval/<suite>/tsconfig.json` for all
+   seven suites (including `shared`; the regular protocol build only covers `src/`).
+3. **Provider-free tests** — `bun test --timeout 30000 eval/<suite>/tests/` per
+   suite, each in its own process (so `mock.module()` state never leaks between
+   suites). The per-test timeout is capped at 30 seconds (vs Bun's 5s default)
+   because some HyDE specs deterministically recompute bootstrap/report evidence
+   on CPU and exceed 5s on slower CI runners.
+
+It never loads `.env.test`, strips `OPENROUTER_API_KEY`/`OPENAI_API_KEY` from the
+child environment, calls no models or embedders, and writes no baselines or run
+artifacts — so it needs no secrets. CI runs it in the `eval-verify` job of
+[`.github/workflows/lint.yml`](../../../.github/workflows/lint.yml) on every PR and
+push to `dev`/`main` (typically ~1–2 minutes; local runtime is dominated by the
+seven `tsc` invocations plus the `hyde` specs).
+
 ## Baseline contract
+
+The evidence-v2 `hyde` harness is the exception: it rejects `--update-baseline`, commits
+no baseline/run artifact, and requires its full 90-case, four-paired-run collection plus
+resolved independent human adjudication for canonical evidence. Filtered/debug runs are
+noncanonical. The contract below applies to the baseline-backed harnesses.
 
 - **Committed baseline** (`baselines/<name>.baseline.json`): the scorecard with per-run
   `detail` stripped (via the harness's `leanCase`). Kept lean so diffs are meaningful.
