@@ -10,7 +10,7 @@
  *   bun run eval:profile -- --tier 1               # one tier
  *   bun run eval:profile -- --list-cases           # print selected cases and exit
  *   bun run eval:profile -- --no-judge             # skip LLM coverage/apply/preserve checks
- *   bun run eval:profile -- --update-baseline      # overwrite the committed baseline
+ *   bun run eval:profile -- --update-baseline --force # replace the committed baseline
  *   bun run eval:profile -- --report [path]        # write a full run report (incl. generated profiles)
  *   bun run eval:profile -- --html [path]          # write a standalone HTML scorecard
  *   bun run eval:profile -- --rolling-baseline [d] # compare against recent runs (default 7d)
@@ -25,7 +25,7 @@ import path from "path";
 import { EnrichmentGenerator } from "../../src/enrichment/enrichment.generator.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
-import { arg, buildScorecard, computeRollingBaseline, diffBaseline, flagValue, formatConsole, has, readBaseline, writeBaseline, writeRunReport } from "../shared/index.js";
+import { arg, assertEvalWritePlan, buildScorecard, computeRollingBaseline, diffBaseline, fingerprintEvalConfig, fingerprintEvalCorpus, flagValue, formatConsole, has, readBaseline, readEvalGitProvenance, writeBaseline, writeRunReport, type EvalRunMeta } from "../shared/index.js";
 import { CASES } from "./profile.cases.js";
 import { runCase } from "./profile.runner.js";
 import { scoreCase, type Judge } from "./profile.scorer.js";
@@ -33,6 +33,8 @@ import { writeHtmlReport } from "./profile.reporter.js";
 import { formatCaseList, hasRule, parseTier, selectCases } from "./profile.selection.js";
 import type { CaseResult, Scorecard } from "./profile.types.js";
 
+const HARNESS = "profile";
+const HARNESS_VERSION = "1";
 const DEFAULT_ALPHA = 0.05;
 const BASELINE_PATH = path.resolve(import.meta.dir, "baselines/profile.baseline.json");
 const RUNS_DIR = path.resolve(import.meta.dir, "runs");
@@ -56,7 +58,8 @@ Execution:
   --no-save                 Do not auto-save full-corpus run JSON for rolling-baseline fuel
 
 Baselines/reports:
-  --update-baseline         Overwrite committed baseline (full corpus only)
+  --update-baseline         Overwrite committed baseline (full corpus only; needs --force if one exists)
+  --force                   Consent to overwrite existing baseline/report/HTML outputs
   --rolling-baseline [days] Compare against recent run reports (default: 7)
   --report [path]           Write JSON scorecard
   --html [path]             Write standalone HTML scorecard
@@ -96,6 +99,7 @@ async function main(): Promise<void> {
   const report = has("--report");
   const html = has("--html");
   const noSave = has("--no-save");
+  const force = has("--force");
   const alpha = Number(arg("--alpha") ?? DEFAULT_ALPHA);
   if (!Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
     console.error(`--alpha must be a number between 0 and 1 (got "${arg("--alpha")}")`);
@@ -134,10 +138,30 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  // Assert every declared output before running anything: no output may
+  // clobber an input, and existing destinations need explicit --force.
+  const explicitReportPath = report ? flagValue("--report") : undefined;
+  const explicitHtmlPath = html ? flagValue("--html") : undefined;
+  try {
+    await assertEvalWritePlan({
+      inputs: [BASELINE_PATH],
+      outputs: [
+        ...(updateBaseline ? [{ path: BASELINE_PATH, updatesInput: true }] : []),
+        ...(explicitReportPath ? [explicitReportPath] : []),
+        ...(explicitHtmlPath ? [explicitHtmlPath] : []),
+      ],
+      force,
+    });
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(2);
+  }
+
   const generator = new EnrichmentGenerator();
   const model = getModelName("profileGenerator");
   console.log(`Running ${selected.length} case(s) × ${runs} run(s) against ${model}${noJudge ? " (judge off)" : ""}…`);
 
+  const startedAt = new Date().toISOString();
   const results: CaseResult[] = [];
   for (const c of selected) {
     process.stdout.write(`  ${c.id} … `);
@@ -148,10 +172,28 @@ async function main(): Promise<void> {
   }
 
   const scorecard = buildScorecard(results, { model, runs }) as Scorecard;
+  const completedAt = new Date().toISOString();
+  const filters: Record<string, string> = {};
+  if (ruleFilter) filters.rule = ruleFilter;
+  if (caseFilter) filters.case = caseFilter;
+  if (tierFilter !== undefined) filters.tier = String(tierFilter);
+  const models = [...new Set([model])];
+  const meta: EvalRunMeta = {
+    harness: HARNESS,
+    harnessVersion: HARNESS_VERSION,
+    models,
+    runs,
+    selection: { fullCorpus, filters },
+    corpusFingerprint: fingerprintEvalCorpus(selected),
+    configFingerprint: fingerprintEvalConfig({ runs, alpha, judge: !noJudge, filters, models }),
+    git: readEvalGitProvenance(import.meta.dir),
+    startedAt,
+    completedAt,
+  };
   const baseline =
     rollingBaselineDays !== null
       ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
-      : await readBaseline<Scorecard>(BASELINE_PATH);
+      : await readBaseline<Scorecard>(BASELINE_PATH, { harness: HARNESS });
   const { regressions, skippedCaseIds } = diffBaseline(scorecard, baseline, alpha);
 
   if (rollingBaselineDays !== null) {
@@ -166,6 +208,8 @@ async function main(): Promise<void> {
 
   if (updateBaseline) {
     await writeBaseline(BASELINE_PATH, scorecard, {
+      meta,
+      force,
       leanCase: (c) => ({ ...c, runResults: c.runResults.map(({ detail: _detail, ...rest }) => rest) }),
     });
     console.log(`\nBaseline updated at ${BASELINE_PATH}`);
@@ -173,13 +217,14 @@ async function main(): Promise<void> {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
-  if (fullCorpus && !noSave) {
-    await writeRunReport(autoRunPath, scorecard);
+  const autoSaved = fullCorpus && !noSave;
+  if (autoSaved) {
+    await writeRunReport(autoRunPath, scorecard, { meta });
   }
 
   if (report) {
     const reportPath = flagValue("--report") ?? autoRunPath;
-    if (reportPath !== autoRunPath) await writeRunReport(reportPath, scorecard);
+    if (!(autoSaved && reportPath === autoRunPath)) await writeRunReport(reportPath, scorecard, { meta, force });
     console.log(`\nRun report written to ${reportPath}`);
   }
 

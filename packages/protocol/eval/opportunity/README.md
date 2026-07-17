@@ -17,7 +17,7 @@ bun run eval:opportunity -- --case greeting/        # one case or id prefix
 bun run eval:opportunity -- --tier 1               # one tier
 bun run eval:opportunity -- --list-cases           # print selected cases and exit
 bun run eval:opportunity -- --no-judge             # skip LLM grounding/framing/tone checks (free)
-bun run eval:opportunity -- --update-baseline      # overwrite the committed baseline
+bun run eval:opportunity -- --update-baseline --force # replace the committed baseline
 bun run eval:opportunity -- --report [path]        # write a full run report incl. generated cards
 bun run eval:opportunity -- --html [path]          # write a standalone HTML scorecard
 bun run eval:opportunity -- --rolling-baseline [d] # compare against trailing run average (default 7d)
@@ -50,7 +50,7 @@ Append an `OpportunityCase` to `CASES`. Set `rule`, `tier` (1 surgical, 2 realis
 `expect`. The deterministic guarantees are on by default; add judged `mustReference` /
 `framingCriteria` / `toneCriteria` for grounding, framing, and tone. To stress leakage, embed
 a UUID or an internal label in the `input` and rely on the default `no_leakage` assertion.
-Re-run with `--update-baseline` after an intentional change.
+Re-run with `--update-baseline --force` after an intentional change.
 
 ## Layout
 

@@ -1,4 +1,4 @@
-import { binomialCI, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole as sharedFormatConsole, readBaseline as sharedReadBaseline, writeBaseline as sharedWriteBaseline, writeRunReport, binomialPValue, binomialSignificance, predictivePValue, renderHumanReport, HUMAN_CSS, type HumanReport, type Regression } from "../shared/index.js";
+import { binomialCI, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole as sharedFormatConsole, readBaseline as sharedReadBaseline, writeBaseline as sharedWriteBaseline, writeRunReport, binomialPValue, binomialSignificance, predictivePValue, renderHumanReport, HUMAN_CSS, type EvalRunMeta, type HumanReport, type Regression } from "../shared/index.js";
 import type { CaseResult, Scorecard, MatchingCase, CandidateExpectation, CandidateOutcome, AssertionKind, Rule } from "./matching.types.js";
 
 // ── Shared machinery re-exported for matching consumers and tests ────────────
@@ -19,7 +19,7 @@ export {
 
 /** Read a committed matching baseline, typed as a matching {@link Scorecard}. */
 export function readBaseline(path: string): Promise<Scorecard | null> {
-  return sharedReadBaseline<Scorecard>(path);
+  return sharedReadBaseline<Scorecard>(path, { harness: "matching" });
 }
 
 /** Console scorecard with the matching-specific title. */
@@ -34,9 +34,13 @@ export function formatConsole(sc: Scorecard, regressions: Regression[], skippedC
  *
  * @param path - Absolute or relative path to write to.
  * @param sc - The scorecard to persist (candidate detail stripped before writing).
+ * @param opts.meta - Run provenance recorded in the versioned envelope.
+ * @param opts.force - Explicit consent to overwrite an existing baseline.
  */
-export async function writeBaseline(path: string, sc: Scorecard): Promise<void> {
+export async function writeBaseline(path: string, sc: Scorecard, opts: { meta: EvalRunMeta; force?: boolean }): Promise<void> {
   await sharedWriteBaseline(path, sc, {
+    meta: opts.meta,
+    force: opts.force,
     leanCase: (c) => ({
       ...c,
       runResults: c.runResults.map(({ candidates: _candidates, ...rest }) => rest),
