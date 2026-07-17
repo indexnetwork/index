@@ -239,6 +239,21 @@ Common command:
 gh pr merge PR_NUMBER --squash --delete-branch
 ```
 
+**Expected exit-code-1 "failure" in this repo:** when the PR's feature branch is checked out in a `.worktrees/` worktree (the normal case here), `--delete-branch` deletes the remote branch and completes the server-side merge, but the local branch deletion fails with:
+
+```
+failed to delete local branch <branch>: ... cannot delete branch '<branch>' used by worktree at '.../.worktrees/<name>'
+Command exited with code 1
+```
+
+This is **not a merge failure**. Do not retry the merge and do not treat the nonzero exit as a blocker. Immediately verify the actual merge state and use it as the source of truth:
+
+```bash
+gh pr view PR_NUMBER --json state,mergedAt,mergeCommit,url
+```
+
+If `state` is `MERGED`, proceed; the leftover local branch is removed later during step-8 worktree cleanup (`git worktree remove` + `git branch -d`). If you want to avoid the noisy exit entirely, merge without `--delete-branch` and delete the remote branch during cleanup instead: `git push origin --delete <branch>`.
+
 If the PR should use merge commit or rebase instead, use the user/repo preference.
 
 ### 7. Verify post-merge GitHub checks
