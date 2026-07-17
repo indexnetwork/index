@@ -15,13 +15,14 @@ equivalent env) — harnesses call real models.
 | `matching`    | `bun run eval:matching`    | `OpportunityEvaluator.invokeEntityBundle` (secondary evaluator-only regression check) |
 | `hyde`        | `bun run eval:hyde`        | Paired real legacy/frame-v1 HyDE generation, validation, embedding, and in-memory retrieval |
 | `premise`     | `bun run eval:premise`     | `PremiseDecomposer.invoke`, `PremiseAnalyzer.invoke`                           |
-| `profile`     | `bun run eval:profile`     | `ProfileGenerator.invoke` (incl. the PII-redaction guarantee)                 |
+| `profile`     | `bun run eval:profile`     | `EnrichmentGenerator.invoke` (incl. the PII-redaction guarantee)              |
 | `opportunity` | `bun run eval:opportunity` | `OpportunityPresenter.present` (the user-facing card: headline/summary/greeting) |
+| `clarification` | `bun run eval:clarification` | `IntentClarifier` QUD underspecification taxonomy (exact-match corpus)     |
 
 Each harness has its own README with full flag docs:
 [`matching`](./matching/README.md) · [`hyde`](./hyde/README.md) ·
 [`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
-[`opportunity`](./opportunity/README.md).
+[`opportunity`](./opportunity/README.md) · [`clarification`](./clarification/README.md).
 
 The IND-426 `hyde` harness is retrieval-only and has no committed baseline or run
 artifacts. Evidence-v2 is a staged collect -> blind export -> independent human
@@ -78,7 +79,9 @@ eval/
 ├── hyde/                   # paired retrieval eval; intentionally no canonical baseline
 ├── premise/                # premise corpus, scorer, reporter (shared HTML shell)
 ├── profile/                # profile corpus, scorer, PII detectors, reporter
-└── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
+├── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
+├── clarification/          # IntentClarifier QUD taxonomy corpus + scorer
+└── verify.ts               # provider-free CI gate: per-suite typecheck + tests (see below)
 ```
 
 The shared scorecard types are **structural**: they describe only the aggregate fields the
@@ -141,7 +144,10 @@ eval/<name>/
    ```json
    "eval:<name>": "bun --env-file=.env.test ./eval/<name>/<name>.eval.ts"
    ```
-   and gitignore `packages/protocol/eval/<name>/runs/`.
+   and gitignore `packages/protocol/eval/<name>/runs/`. Also add the suite to the
+   `SUITES` manifest in [`eval/verify.ts`](./verify.ts) — `bun run eval:verify`
+   fails on any eval directory that is not in the manifest, so a new harness
+   cannot silently skip CI verification.
 
 9. **Write tests** in `eval/<name>/tests/`: corpus invariants, scorer correctness,
    selection. These do NOT invoke live agents.
@@ -155,6 +161,7 @@ eval/<name>/
 ## Testing the evals themselves
 
 ```bash
+bun run eval:verify              # the CI gate: everything below, plus typechecks
 bun test eval/shared/tests/      # the shared lib
 bun test eval/matching/tests/    # a harness
 bun test eval/premise/tests/ eval/profile/tests/
@@ -162,6 +169,29 @@ bun test eval/premise/tests/ eval/profile/tests/
 
 These are standard `bun test` specs — they do NOT invoke live agents; they validate types,
 scoring logic, runner wiring, reporter math, and baseline handling.
+
+### `bun run eval:verify` — the provider-free CI gate
+
+One command verifies every suite without touching a provider:
+
+1. **Inventory check** — the directories under `eval/` must exactly match the
+   explicit `SUITES` manifest in [`verify.ts`](./verify.ts), and every suite must
+   have a `tsconfig.json` and a `tests/` directory. New suites cannot escape CI
+   unnoticed: an unlisted directory fails the run.
+2. **Per-suite typecheck** — `tsc --noEmit -p eval/<suite>/tsconfig.json` for all
+   seven suites (including `shared`; the regular protocol build only covers `src/`).
+3. **Provider-free tests** — `bun test --timeout 30000 eval/<suite>/tests/` per
+   suite, each in its own process (so `mock.module()` state never leaks between
+   suites). The per-test timeout is capped at 30 seconds (vs Bun's 5s default)
+   because some HyDE specs deterministically recompute bootstrap/report evidence
+   on CPU and exceed 5s on slower CI runners.
+
+It never loads `.env.test`, strips `OPENROUTER_API_KEY`/`OPENAI_API_KEY` from the
+child environment, calls no models or embedders, and writes no baselines or run
+artifacts — so it needs no secrets. CI runs it in the `eval-verify` job of
+[`.github/workflows/lint.yml`](../../../.github/workflows/lint.yml) on every PR and
+push to `dev`/`main` (typically ~1–2 minutes; local runtime is dominated by the
+seven `tsc` invocations plus the `hyde` specs).
 
 ## Baseline contract
 
