@@ -25,7 +25,7 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 
 ## Supporting rpiv skills
 
-Use other rpiv skills when they fit: `worktree-session-pipeline` for the two-session fix loop, `receiving-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `release-prod-safety` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
+Use other rpiv skills when they fit: `worktree-session-pipeline` for the two-session fix loop, `flag-rollout-consistency` for env-flag flips across Railway/local surfaces, `receiving-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `release-prod-safety` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
 
 ## Handing off fixes to the worktree session
 
@@ -183,6 +183,26 @@ git diff origin/BASE...HEAD -- packages/protocol/package.json services/api/packa
 
 If a bump is missing, include it in the fix prompt: the worktree session adds a `chore: bump <pkg> to X.Y.Z (…)` commit on the PR branch, then runs `bun install` and commits any root `bun.lock` change — a stale root lockfile fails the prod build under `--frozen-lockfile` (see `release-prod-safety`). Precedents: PR #1087 (feat, protocol 4.4.1→4.5.0), #1082 (fix, 4.4.0→4.4.1), #1081 (feat touching all three packages — all bumped).
 
+### 4c. Check environment variable surfaces
+
+If the PR adds, changes, or removes environment variables, surface them to the user before merging — never let a PR merge with a var that only exists on the author's machine. Detect:
+
+```bash
+git diff origin/<base>...origin/<head> --stat -- services/api/src/startup.env.ts .env.example
+git diff origin/<base>...origin/<head> | grep -oE '^\+.*(process\.env|Bun\.env)\.[A-Z0-9_]+' | grep -oE '[A-Z0-9_]+$' | sort -u
+```
+
+If nothing changed, record "no env changes" and move on. Otherwise, for each affected variable:
+
+1. **Explain it in plain English** — one or two sentences on what it does and its default/required-ness, derived from the `.env.example` comments and how the code uses it. Present this explanation to the user; do not assume they remember what their own flag does.
+2. **Report its state on every surface:**
+   - `startup.env.ts` registration and `.env.example` (committed — `tests/env-example-drift.spec.ts` keeps them in sync). Missing entries are committed-code gaps → they go into the worktree fix prompt, this session does not add them.
+   - Root `.env.development` and `.env.test` (gitignored local files — `.env.development` mirrors Railway dev). Read them and report set/unset.
+   - Railway dev service variables (query via Railway MCP; `bun scripts/audit-railway-env.ts` diffs a Railway service against the schema). For dev→main release PRs, check the production service too.
+3. **Ask the user what to do**, per variable or as one batched question, with the plain-English explanations included: set/update a value in Railway, add it to `.env.development`/`.env.test`, or deliberately leave a flag off. Setting Railway variables is a mutation — it needs explicit user confirmation per the safety rules (use the `flag-rollout-consistency` skill for the mechanics: ship-dark→flip order, snake_case ids, auto-redeploy). Editing the gitignored root `.env.development`/`.env.test` is allowed from this session after confirmation — they are not worktree contents and not committed. Committed-file gaps (`.env.example`, `startup.env.ts`) always route to the worktree fix prompt.
+
+Record the user's decisions for the step-6 summary.
+
 ### 5. Check GitHub readiness before merge
 
 Check PR status and reviews:
@@ -205,6 +225,7 @@ Before merging, summarize:
 - base-freshness/fix-loop outcome (up-to-date, or rebased and fixed by the worktree session — summarize what changed),
 - local verification results,
 - GitHub checks/review state,
+- env variable decisions (what was set in Railway / `.env.development` / `.env.test`, what was deliberately left unset),
 - related GitHub/Linear issues that will be updated after merge.
 
 Do not ask for merge confirmation while any finding is outstanding — hand it off first and re-verify when the user returns. Ask the user for explicit confirmation to merge.
