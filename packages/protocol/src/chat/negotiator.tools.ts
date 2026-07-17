@@ -20,9 +20,6 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 
 const logger = protocolLogger("NegotiatorMemoryTools");
 
-/** Tool names appended to the negotiator persona toolset when the host bridge is present. */
-export const NEGOTIATOR_MEMORY_TOOL_NAMES = ["remember", "forget"] as const;
-
 const RememberSchema = z.object({
   kind: z
     .enum(["disclosure_rule", "playbook", "threshold"])

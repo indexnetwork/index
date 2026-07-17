@@ -3,7 +3,8 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
-import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
+import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 // ---------------------------------------------------------------------------
@@ -214,8 +215,7 @@ describe("OpportunityController Integration", () => {
 
   afterAll(async () => {
     if (testIndexId) {
-      const indexAdapter = new NetworkGraphDatabaseAdapter();
-      await indexAdapter.deleteNetworkAndMembers(testIndexId);
+      await deleteNetworkAndMembers(testIndexId);
     }
     if (testUserId) {
       await profileAdapter.deleteProfile(testUserId);

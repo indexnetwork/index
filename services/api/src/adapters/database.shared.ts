@@ -189,7 +189,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, links, sessions, userSocials, userContexts } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, sessions, userSocials, userContexts } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -580,25 +580,6 @@ export interface FileListResult {
   total: number;
 }
 
-/**
- * FileDatabaseAdapter
- *
- * Wraps all database operations for files table.
- */
-export interface LinkRow {
-  id: string;
-  url: string;
-  createdAt: Date;
-  lastSyncAt: Date | null;
-  lastStatus: string | null;
-  lastError: string | null;
-}
-
-/**
- * LinkDatabaseAdapter
- *
- * Wraps all database operations for the links table.
- */
 export interface VectorStore {
   search<T>(
     queryVector: number[],

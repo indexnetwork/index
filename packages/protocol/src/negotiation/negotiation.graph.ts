@@ -1190,15 +1190,3 @@ export async function negotiateCandidates(
 
   return results.filter((r): r is NegotiationResult => r !== null);
 }
-
-/**
- * Creates a negotiation graph with the provided dependencies.
- */
-export function createDefaultNegotiationGraph(deps: {
-  database: NegotiationGraphDatabase;
-  dispatcher: AgentDispatcher;
-  timeoutQueue?: NegotiationTimeoutQueue;
-}) {
-  const factory = new NegotiationGraphFactory(deps.database, deps.dispatcher, deps.timeoutQueue);
-  return factory.createGraph();
-}

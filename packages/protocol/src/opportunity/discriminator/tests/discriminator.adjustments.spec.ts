@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "bun:test";
 
-import { adjustedConfidence, buildPoolAdjustment, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readActivePoolAdjustments, readPoolAdjustments, removePoolAdjustment } from "../discriminator.adjustments.js";
+import { adjustedConfidence, buildPoolAdjustment, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readActivePoolAdjustments, readPoolAdjustments } from "../discriminator.adjustments.js";
 import type { PoolAdjustment } from "../discriminator.adjustments.js";
 import type { QuestionPoolDiscriminator } from "../../../shared/schemas/question.schema.js";
 
@@ -108,17 +108,6 @@ describe("merge/remove/read", () => {
     const m2 = mergePoolAdjustment(m1, adjustment({ questionId: "q-2" }));
     const m3 = mergePoolAdjustment(m2, adjustment({ questionId: "q-1", recipientUserId: "user-2" }));
     expect(readPoolAdjustments(m3)).toHaveLength(3);
-  });
-
-  it("remove deletes only exact question provenance and preserves the rest", () => {
-    const m = mergePoolAdjustment(
-      mergePoolAdjustment(undefined, adjustment({ questionId: "q-1" })),
-      adjustment({ questionId: "q-1", recipientUserId: "user-2" }),
-    );
-    const removed = removePoolAdjustment(m, "q-1", PROVENANCE);
-    expect(readPoolAdjustments(removed)).toEqual([
-      adjustment({ questionId: "q-1", recipientUserId: "user-2" }),
-    ]);
   });
 
   it("read tolerates malformed metadata and ignores legacy entries without provenance", () => {

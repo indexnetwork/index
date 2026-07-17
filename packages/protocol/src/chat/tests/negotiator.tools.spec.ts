@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "bun:test";
 
-import { NEGOTIATOR_MEMORY_TOOL_NAMES, createNegotiatorMemoryTools } from "../negotiator.tools.js";
+import { createNegotiatorMemoryTools } from "../negotiator.tools.js";
 import { NEGOTIATOR_TOOL_NAMES, filterNegotiatorTools } from "../negotiator.persona.js";
 import { buildNegotiatorSystemContent } from "../negotiator.prompt.js";
 import type { NegotiatorMemoryForgetResult, NegotiatorMemoryRememberInput, NegotiatorMemoryToolsHost, NegotiatorMemoryToolView } from "../../shared/interfaces/negotiator-memory.interface.js";
@@ -43,7 +43,7 @@ describe("createNegotiatorMemoryTools", () => {
   it("creates exactly the remember and forget tools", () => {
     const { host } = makeHost();
     const tools = createNegotiatorMemoryTools({ host, userId: "user-1" });
-    expect(tools.map((t) => t.name)).toEqual([...NEGOTIATOR_MEMORY_TOOL_NAMES]);
+    expect(tools.map((t) => t.name)).toEqual(["remember", "forget"]);
   });
 
   it("remember passes the acting user, kind, content, and session provenance to the host", async () => {
@@ -131,7 +131,7 @@ describe("createNegotiatorMemoryTools", () => {
 
 describe("memory tools registry isolation", () => {
   it("remember/forget are NOT part of the shared-registry allowlist", () => {
-    for (const name of NEGOTIATOR_MEMORY_TOOL_NAMES) {
+    for (const name of ["remember", "forget"] as const) {
       expect(NEGOTIATOR_TOOL_NAMES).not.toContain(name);
     }
   });
