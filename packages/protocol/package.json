@@ -27,7 +27,8 @@
     "eval:premise": "bun --env-file=../../.env.test ./eval/premise/premise.eval.ts",
     "eval:profile": "bun --env-file=../../.env.test ./eval/profile/profile.eval.ts",
     "eval:opportunity": "bun --env-file=../../.env.test ./eval/opportunity/opportunity.eval.ts",
-    "eval:clarification": "bun --env-file=../../.env.test ./eval/clarification/clarification.eval.ts"
+    "eval:clarification": "bun --env-file=../../.env.test ./eval/clarification/clarification.eval.ts",
+    "eval:verify": "bun ./eval/verify.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.17",

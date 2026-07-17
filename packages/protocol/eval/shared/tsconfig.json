@@ -6,6 +6,6 @@
     "rootDir": "../../",
     "types": ["node", "bun-types"]
   },
-  "include": ["**/*.ts", "../../src/**/*.ts"],
+  "include": ["**/*.ts", "../verify.ts", "../../src/**/*.ts"],
   "exclude": ["node_modules", "../../src/**/*.spec.ts", "../../src/**/*.test.ts"]
 }

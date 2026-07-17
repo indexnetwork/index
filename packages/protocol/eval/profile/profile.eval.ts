@@ -22,7 +22,7 @@
  */
 import path from "path";
 
-import { ProfileGenerator } from "../../src/profile/profile.generator.js";
+import { EnrichmentGenerator } from "../../src/enrichment/enrichment.generator.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
 import { arg, buildScorecard, computeRollingBaseline, diffBaseline, flagValue, formatConsole, has, readBaseline, writeBaseline, writeRunReport } from "../shared/index.js";
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const generator = new ProfileGenerator();
+  const generator = new EnrichmentGenerator();
   const model = getModelName("profileGenerator");
   console.log(`Running ${selected.length} case(s) × ${runs} run(s) against ${model}${noJudge ? " (judge off)" : ""}…`);
 
