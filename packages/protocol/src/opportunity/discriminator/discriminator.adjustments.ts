@@ -38,6 +38,8 @@ export interface PoolAdjustment extends PoolAdjustmentProvenance {
   detail?: string;
   /** ISO-8601 apply timestamp. */
   appliedAt: string;
+  /** Full intent fingerprint authoritative when this adjustment was created. */
+  intentFingerprint?: string;
   /** Audit-only marker: stale adjustments remain stored but have no ranking effect. */
   stale?: true;
 }
@@ -112,6 +114,8 @@ export interface BuildPoolAdjustmentInput extends PoolAdjustmentProvenance {
   assignedSide: string | null;
   chosenSide: string;
   appliedAt: string;
+  /** Full intent fingerprint authoritative when this adjustment was created. */
+  intentFingerprint?: string;
 }
 
 /**
@@ -137,6 +141,7 @@ export function buildPoolAdjustment(input: BuildPoolAdjustmentInput): {
       factor,
       ...(!isChosen && !isUnknown ? { detail: `${input.label}: you chose ${input.chosenSide}` } : {}),
       appliedAt: input.appliedAt,
+      ...(input.intentFingerprint !== undefined ? { intentFingerprint: input.intentFingerprint } : {}),
     },
     signal: {
       type: "pool_discriminator",
@@ -167,6 +172,7 @@ export interface PoolAdjustmentPlanEntry {
  * @param recipientUserId User whose answer produced the preference.
  * @param intentId       Intent whose candidate pool was ranked.
  * @param now            ISO-8601 timestamp.
+ * @param intentFingerprint Full intent fingerprint authoritative at apply time.
  */
 export function planPoolAdjustments(
   discriminator: QuestionPoolDiscriminator,
@@ -175,6 +181,7 @@ export function planPoolAdjustments(
   recipientUserId: string,
   intentId: string,
   now: string,
+  intentFingerprint?: string,
 ): PoolAdjustmentPlanEntry[] {
   // Chip labels are word-capped side labels; match on the capped prefix too.
   const matchesSide = (side: string): boolean =>
@@ -194,6 +201,7 @@ export function planPoolAdjustments(
         assignedSide: a.side,
         chosenSide: chosen,
         appliedAt: now,
+        ...(intentFingerprint !== undefined ? { intentFingerprint } : {}),
       }),
     });
   }

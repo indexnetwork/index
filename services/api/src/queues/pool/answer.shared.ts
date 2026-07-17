@@ -102,6 +102,7 @@ export async function applyPoolAnswer(input: {
     input.userId,
     input.intentId,
     now,
+    storedFingerprint,
   );
   if (plan.length === 0) return { kind: 'none' }; // "Both matter" — no preference recorded.
 
@@ -148,6 +149,7 @@ export async function applyPoolAnswer(input: {
       assignedSide: null,
       chosenSide,
       appliedAt: now,
+      intentFingerprint: storedFingerprint,
     });
     writes.push({ opportunityId: row.id, ...write });
     outcomeByOpportunityId.set(row.id, 'unknown');

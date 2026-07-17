@@ -458,7 +458,8 @@ export class QuestionerAdapter {
       const liveRows = await tx
         .select({ id: opportunities.id })
         .from(opportunities)
-        .where(exactLivePoolWhere(userId, intentId));
+        .where(exactLivePoolWhere(userId, intentId))
+        .for('update');
       if (!isFresh(pool, fingerprint, liveRows.map((row) => row.id))) return null;
       // Final dynamic flag read occurs after every durable validation and
       // immediately before the INSERT statement is issued.
@@ -522,7 +523,8 @@ export class QuestionerAdapter {
       if (!intent || intent.archivedAt || (intent.status !== null && intent.status !== 'ACTIVE')) return false;
       const liveRows = await tx.select({ id: opportunities.id })
         .from(opportunities)
-        .where(exactLivePoolWhere(userId, intentId));
+        .where(exactLivePoolWhere(userId, intentId))
+        .for('update');
       return isFresh(
         detection.pool,
         computeIntentFingerprint(intent.payload, intent.summary),
@@ -1135,6 +1137,19 @@ export class QuestionerAdapter {
   }): Promise<{ voidedQuestions: number; staledAdjustments: number }> {
     return this.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.userId}:${input.intentId}`}, 0))`);
+      const [intent] = await tx
+        .select({ payload: intents.payload, summary: intents.summary })
+        .from(intents)
+        .where(and(eq(intents.id, input.intentId), eq(intents.userId, input.userId)))
+        .limit(1)
+        .for('update');
+      const authoritativeFingerprint = intent
+        ? computeIntentFingerprint(intent.payload, intent.summary)
+        : null;
+      if (authoritativeFingerprint !== input.newFingerprint) {
+        return { voidedQuestions: 0, staledAdjustments: 0 };
+      }
+
       const voided = await tx.update(questions)
         .set({
           status: 'dismissed',
@@ -1145,7 +1160,7 @@ export class QuestionerAdapter {
           sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: input.userId, role: 'subject' }])}::jsonb`,
           sql`${questions.detection}->>'mode' = 'pool_discovery'`,
           sql`${questions.detection}->>'triggeredBy' = ${input.intentId}`,
-          sql`${questions.detection}->'pool'->>'intentFingerprint' = ${input.oldFingerprint}`,
+          sql`${questions.detection}->'pool'->>'intentFingerprint' IS DISTINCT FROM ${authoritativeFingerprint}`,
         ))
         .returning({ id: questions.id });
 
@@ -1169,9 +1184,13 @@ export class QuestionerAdapter {
           if (typeof entry !== 'object' || entry === null) return entry;
           const scoped = entry as Record<string, unknown>;
           if (
-            scoped.recipientUserId !== input.userId
+            typeof scoped.questionId !== 'string'
+            || typeof scoped.factor !== 'number'
+            || (scoped.stale !== undefined && scoped.stale !== true)
+            || scoped.recipientUserId !== input.userId
             || scoped.intentId !== input.intentId
             || scoped.stale === true
+            || scoped.intentFingerprint === authoritativeFingerprint
           ) return entry;
           changed = true;
           staledAdjustments++;

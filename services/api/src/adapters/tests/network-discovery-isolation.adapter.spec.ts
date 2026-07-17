@@ -352,12 +352,34 @@ describe('network discovery adapter isolation', () => {
       status: 'accepted',
       suffix: 'pool-terminal',
     });
-    createdOpportunityIds.push(exact.id, actorOnly.id, terminal.id);
+    const hidden = await opportunity.createOpportunity({
+      detection: {
+        source: 'opportunity_graph',
+        createdBy: 'agent-opportunity-finder',
+        triggeredBy: ids.selectedIntent,
+        timestamp: new Date().toISOString(),
+      },
+      actors: [
+        { userId: ids.viewer, networkId: ids.activeNetwork, role: 'patient', intent: ids.selectedIntent },
+        { userId: ids.activeCandidate, networkId: ids.activeNetwork, role: 'introducer' },
+      ],
+      interpretation: {
+        category: 'collaboration',
+        reasoning: `${TEST_PREFIX}pool-hidden-latent-patient`,
+        confidence: 0.9,
+        signals: [],
+      },
+      context: { networkId: ids.activeNetwork },
+      confidence: '0.9',
+      status: 'latent',
+    });
+    createdOpportunityIds.push(exact.id, actorOnly.id, terminal.id, hidden.id);
 
     const live = await opportunity.getLivePoolOpportunitiesForIntent(ids.viewer, ids.selectedIntent);
     expect(live.map((row) => row.id)).toContain(exact.id);
     expect(live.map((row) => row.id)).not.toContain(actorOnly.id);
     expect(live.map((row) => row.id)).not.toContain(terminal.id);
+    expect(live.map((row) => row.id)).not.toContain(hidden.id);
 
     const writeFor = (opportunityId: string) => ({
       opportunityId,
@@ -383,13 +405,14 @@ describe('network discovery adapter isolation', () => {
       ids.viewer,
       ids.selectedIntent,
       computeIntentFingerprint('Paused selected intent', null),
-      [writeFor(exact.id), writeFor(actorOnly.id), writeFor(terminal.id)],
+      [writeFor(exact.id), writeFor(actorOnly.id), writeFor(terminal.id), writeFor(hidden.id)],
     );
 
     expect(applied).toEqual([exact.id]);
     expect((await opportunity.getOpportunity(exact.id))?.metadata?.poolAdjustments).toHaveLength(1);
     expect((await opportunity.getOpportunity(actorOnly.id))?.metadata?.poolAdjustments).toBeUndefined();
     expect((await opportunity.getOpportunity(terminal.id))?.metadata?.poolAdjustments).toBeUndefined();
+    expect((await opportunity.getOpportunity(hidden.id))?.metadata?.poolAdjustments).toBeUndefined();
   });
 
   it('keeps paused owned-intent Radar history while blocking inactive participants and foreign scopes', async () => {

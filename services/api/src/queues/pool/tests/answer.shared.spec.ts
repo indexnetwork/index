@@ -33,7 +33,7 @@ const baseInput = {
 
 describe('applyPoolAnswer', () => {
   it('applies chosen, other, and live-unassigned factors with safe signals', async () => {
-    const writes: Array<{ id: string; factor: number; side: string; weight: number; detail: string; recipientUserId: string; intentId: string }> = [];
+    const writes: Array<{ id: string; factor: number; side: string; weight: number; detail: string; recipientUserId: string; intentId: string; intentFingerprint?: string }> = [];
     const applyAdjustments = mock(async (recipientUserId: string, intentId: string, expectedFingerprint: string, batch: PoolAdjustmentWrite[]) => {
       expect(recipientUserId).toBe(baseInput.userId);
       expect(intentId).toBe(baseInput.intentId);
@@ -49,6 +49,7 @@ describe('applyPoolAnswer', () => {
           detail: signal.detail,
           recipientUserId: adjustment.recipientUserId,
           intentId: adjustment.intentId,
+          intentFingerprint: adjustment.intentFingerprint,
         };
       }));
       return batch.map((write) => write.opportunityId);
@@ -72,9 +73,9 @@ describe('applyPoolAnswer', () => {
     expect(outcome).toEqual({ kind: 'applied', promoted: 1, demoted: 1, unknownAdjusted: 1 });
     expect(applyAdjustments).toHaveBeenCalledTimes(1);
     expect(writes).toEqual([
-      { id: 'opp-a', factor: 1, side: 'Builders', weight: 1, detail: 'Builders vs advisors: Builders', recipientUserId: 'user-1', intentId: 'intent-1' },
-      { id: 'opp-b', factor: 0.6, side: 'Advisors', weight: -1, detail: 'Builders vs advisors: Builders', recipientUserId: 'user-1', intentId: 'intent-1' },
-      { id: 'opp-unknown', factor: 0.9, side: 'unknown', weight: 0, detail: 'Builders vs advisors: unassigned', recipientUserId: 'user-1', intentId: 'intent-1' },
+      { id: 'opp-a', factor: 1, side: 'Builders', weight: 1, detail: 'Builders vs advisors: Builders', recipientUserId: 'user-1', intentId: 'intent-1', intentFingerprint: 'fingerprint-v1' },
+      { id: 'opp-b', factor: 0.6, side: 'Advisors', weight: -1, detail: 'Builders vs advisors: Builders', recipientUserId: 'user-1', intentId: 'intent-1', intentFingerprint: 'fingerprint-v1' },
+      { id: 'opp-unknown', factor: 0.9, side: 'unknown', weight: 0, detail: 'Builders vs advisors: unassigned', recipientUserId: 'user-1', intentId: 'intent-1', intentFingerprint: 'fingerprint-v1' },
     ]);
   });
 

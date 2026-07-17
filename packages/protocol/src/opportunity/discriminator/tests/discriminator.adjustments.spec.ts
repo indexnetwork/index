@@ -5,6 +5,7 @@ import type { PoolAdjustment } from "../discriminator.adjustments.js";
 import type { QuestionPoolDiscriminator } from "../../../shared/schemas/question.schema.js";
 
 const NOW = "2026-07-15T13:00:00.000Z";
+const FINGERPRINT = "intent-fingerprint-v1";
 const PROVENANCE = { recipientUserId: "user-1", intentId: "intent-1" };
 
 function discriminator(overrides: Partial<QuestionPoolDiscriminator> = {}): QuestionPoolDiscriminator {
@@ -37,28 +38,30 @@ function adjustment(overrides: Partial<PoolAdjustment> = {}): PoolAdjustment {
 }
 
 describe("buildPoolAdjustment", () => {
-  it("preserves exact chosen, other, and unknown P3 semantics", () => {
-    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: "Hands-on", chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
-      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "Hands-on", factor: 1, appliedAt: NOW },
+  it("preserves exact chosen, other, and unknown P3 semantics with optional fingerprint provenance", () => {
+    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: "Hands-on", chosenSide: "Hands-on", appliedAt: NOW, intentFingerprint: FINGERPRINT })).toEqual({
+      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "Hands-on", factor: 1, appliedAt: NOW, intentFingerprint: FINGERPRINT },
       signal: { type: "pool_discriminator", weight: 1, ...PROVENANCE, detail: "Style: Hands-on", questionId: "q-1" },
     });
-    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: "Advisory", chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
-      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "Advisory", factor: 0.6, detail: "Style: you chose Hands-on", appliedAt: NOW },
+    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: "Advisory", chosenSide: "Hands-on", appliedAt: NOW, intentFingerprint: FINGERPRINT })).toEqual({
+      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "Advisory", factor: 0.6, detail: "Style: you chose Hands-on", appliedAt: NOW, intentFingerprint: FINGERPRINT },
       signal: { type: "pool_discriminator", weight: -1, ...PROVENANCE, detail: "Style: Hands-on", questionId: "q-1" },
     });
-    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: null, chosenSide: "Hands-on", appliedAt: NOW })).toEqual({
-      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "unknown", factor: 0.9, appliedAt: NOW },
+    expect(buildPoolAdjustment({ questionId: "q-1", ...PROVENANCE, label: "Style", assignedSide: null, chosenSide: "Hands-on", appliedAt: NOW, intentFingerprint: FINGERPRINT })).toEqual({
+      adjustment: { questionId: "q-1", ...PROVENANCE, label: "Style", side: "unknown", factor: 0.9, appliedAt: NOW, intentFingerprint: FINGERPRINT },
       signal: { type: "pool_discriminator", weight: 0, ...PROVENANCE, detail: "Style: unassigned", questionId: "q-1" },
     });
+    expect(buildPoolAdjustment({ questionId: "q-legacy", ...PROVENANCE, label: "Style", assignedSide: "Hands-on", chosenSide: "Hands-on", appliedAt: NOW }).adjustment)
+      .not.toHaveProperty("intentFingerprint");
   });
 });
 
 describe("planPoolAdjustments", () => {
   it("factors chosen side 1.0 and other side 0.6 with a demotion detail from the user's own words", () => {
-    const plan = planPoolAdjustments(discriminator(), "Hands-on builder", "q-1", PROVENANCE.recipientUserId, PROVENANCE.intentId, NOW);
+    const plan = planPoolAdjustments(discriminator(), "Hands-on builder", "q-1", PROVENANCE.recipientUserId, PROVENANCE.intentId, NOW, FINGERPRINT);
     expect(plan).toHaveLength(3);
     const byId = new Map(plan.map((p) => [p.opportunityId, p.adjustment]));
-    expect(byId.get("opp-1")).toMatchObject({ factor: 1, questionId: "q-1" });
+    expect(byId.get("opp-1")).toMatchObject({ factor: 1, questionId: "q-1", intentFingerprint: FINGERPRINT });
     expect(byId.get("opp-1")?.detail).toBeUndefined();
     expect(byId.get("opp-2")).toMatchObject({
       factor: 0.6,

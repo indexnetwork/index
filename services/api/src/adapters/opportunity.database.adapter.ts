@@ -535,6 +535,7 @@ export class OpportunityDatabaseAdapter {
         factor: number;
         detail?: string;
         appliedAt: string;
+        intentFingerprint?: string;
       };
       signal: schema.OpportunitySignal;
     }>,
@@ -567,7 +568,10 @@ export class OpportunityDatabaseAdapter {
           interpretation: opportunities.interpretation,
         })
         .from(opportunities)
-        .where(inArray(opportunities.id, [...writeById.keys()]))
+        .where(and(
+          inArray(opportunities.id, [...writeById.keys()]),
+          exactLivePoolWhere(recipientUserId, intentId),
+        ))
         .for('update');
       const appliedIds: string[] = [];
 
