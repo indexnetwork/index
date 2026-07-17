@@ -19,7 +19,7 @@ bun run eval:matching -- --case location/known-mismatch-penalized # one case/pre
 bun run eval:matching -- --tier 4             # one tier
 bun run eval:matching -- --list-cases         # print selected cases and exit
 bun run eval:matching -- --no-judge           # skip LLM reasoning checks (free)
-bun run eval:matching -- --update-baseline    # overwrite the committed baseline
+bun run eval:matching -- --update-baseline --force # replace the committed baseline
 bun run eval:matching -- --report             # write a full run report incl. evaluator reasoning
 bun run eval:matching -- --report out.json    # ...to a specific path
 bun run eval:matching -- --html              # write a standalone HTML scorecard
@@ -95,7 +95,7 @@ report can show whether failures cluster by domain rather than only by evaluator
 check can't express the expectation. Only assert `role` when the case is explicitly about
 valency; query-primary and score-calibration cases should usually avoid role assertions so
 component metrics stay isolated. Negative cases are best authored as minimal-pair
-perturbations of a positive. Re-run with `--update-baseline` after an intentional change.
+perturbations of a positive. Re-run with `--update-baseline --force` after an intentional change.
 
 The eval runner uses `returnAll: true` to capture diagnostic low scores, but the scorer only
 counts a candidate as surfaced when `score >= MATCHING_MIN_SCORE` (currently 30). A returned

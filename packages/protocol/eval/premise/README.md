@@ -21,7 +21,7 @@ bun run eval:premise -- --case atomicity/      # one case or id prefix
 bun run eval:premise -- --tier 1               # one tier
 bun run eval:premise -- --list-cases           # print selected cases and exit
 bun run eval:premise -- --no-judge             # skip LLM coverage/exclusion/reasoning checks (free)
-bun run eval:premise -- --update-baseline      # overwrite the committed baseline
+bun run eval:premise -- --update-baseline --force # replace the committed baseline
 bun run eval:premise -- --report [path]        # write a full run report incl. agent output
 bun run eval:premise -- --html [path]          # write a standalone HTML scorecard
 bun run eval:premise -- --rolling-baseline [d] # compare against trailing run average (default 7d)
@@ -54,7 +54,7 @@ Append a `PremiseCase` to `CASES` in `premise.cases.ts`. Set `component`
 (`decompose` | `analyze`), `rule`, `tier` (1 surgical, 2 realistic), `input`, and the
 component-specific `expect`. Prefer deterministic expectations; reach for judged
 `mustCover` / `mustNotContain` / `reasoningCriteria` only when a code check can't express
-the expectation. Re-run with `--update-baseline` after an intentional change.
+the expectation. Re-run with `--update-baseline --force` after an intentional change.
 
 ## Layout
 

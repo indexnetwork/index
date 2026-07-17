@@ -64,8 +64,8 @@ describe("matching corpus", () => {
       "event_network/co-membership-is-not-attendance", // added in #1144 without a baseline run
     ]);
 
-    const baseline = (await Bun.file(new URL("../baselines/matching.baseline.json", import.meta.url)).json()) as Scorecard;
-    const baselineIds = new Set(baseline.cases.map((c) => c.caseId));
+    const envelope = (await Bun.file(new URL("../baselines/matching.baseline.json", import.meta.url)).json()) as { payload: Scorecard };
+    const baselineIds = new Set(envelope.payload.cases.map((c) => c.caseId));
     const corpusIds = new Set(CASES.map((c) => c.id));
 
     const missing = CASES.map((c) => c.id).filter((id) => !baselineIds.has(id) && !BASELINE_PENDING_CASE_IDS.has(id));

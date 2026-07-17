@@ -50,9 +50,10 @@ only a secondary evaluator-regression check, not retrieval evidence.
 actually reads* once a match exists — complementary surfaces of the same feature.
 
 Common flags (most baseline-backed harnesses): `--runs N`, `--rule R`, `--case ID`, `--tier N`,
-`--list-cases`, `--no-judge`, `--update-baseline`, `--report [path]`, `--html [path]`,
+`--list-cases`, `--no-judge`, `--update-baseline`, `--force`, `--report [path]`, `--html [path]`,
 `--rolling-baseline [days]`, `--alpha P`, `--no-save`. The `premise` harness additionally
-takes `--component decompose|analyze`.
+takes `--component decompose|analyze`. Baseline/report writes refuse to replace existing
+files unless `--force` is passed (see the artifact envelope section below).
 
 ## Architecture: shared lib + thin harnesses
 
@@ -67,7 +68,10 @@ eval/
 │   ├── stats.ts            # Wilson CI, binomial + beta-binomial p-values
 │   ├── types.ts            # CaseResultLike / ScorecardLike / RuleResult / Regression
 │   ├── scorecard.ts        # buildScorecard (generic over the case type)
-│   ├── baseline.ts         # read/write/diff baselines, writeRunReport
+│   ├── artifact.ts         # versioned artifact envelope: Zod schemas, fingerprints, git provenance
+│   ├── artifact.io.ts      # atomic writes, overwrite refusal, write-plan collision checks
+│   ├── migrate-legacy-baselines.ts  # explicit legacy → v1 baseline conversion CLI
+│   ├── baseline.ts         # read/write/diff baselines, writeRunReport (envelope-backed)
 │   ├── rolling.ts          # computeRollingBaseline from recent run reports
 │   ├── console.ts          # formatConsole (parameterized title)
 │   ├── runner.ts           # repeatRuns: repeat-with-retry execution loop
@@ -90,6 +94,36 @@ harness defines its own richer `CaseResult` (with per-run assertions + agent-out
 that extends `CaseResultLike`, and specializes `Scorecard = ScorecardLike<CaseResult>`. The
 shared layer never reads harness-specific run internals, so harness types stay fully owned
 by the harness while reusing all aggregation, baseline, rolling, console, and HTML code.
+
+## Versioned artifact envelope (schema v1)
+
+Every baseline-backed JSON artifact (committed `baselines/*.baseline.json` and gitignored
+`runs/*.json` run reports) is wrapped in a small versioned envelope
+(`index-eval/baseline` / `index-eval/run-report`, `eval/shared/artifact.ts`) and validated
+with Zod on **every read and write**. The envelope records provenance — harness +
+version, source (`run` or `legacy-migration`), created/start/completion times, configured
+model IDs, selection filters, run count, SHA-256 corpus/config fingerprints over
+canonicalized inputs, Git revision + dirty state, and a completeness summary — while the
+scorecard stays a harness-owned payload (per-case detail passes through untouched).
+Validation rejects malformed numbers, duplicate case/rule ids, inconsistent
+aggregates/completeness, non-monotonic timestamps, unknown schema versions, and
+incompatible artifact types with actionable errors. Fingerprint inputs must never contain
+embeddings, API keys, secret-bearing prompts, or raw environment values (secret-like
+config keys are rejected).
+
+Persistence is collision-safe (`eval/shared/artifact.io.ts`): writes validate first, go
+through a same-directory temp file + atomic rename (an interrupted write can never replace
+a valid artifact with a partial one), and refuse to overwrite existing files unless
+`--force` is passed. Each harness asserts its full write plan up front, so an output can
+never clobber an input (e.g. `--report <baseline path>` is rejected) and multi-output runs
+fail before anything is written rather than leaving partial combinations behind.
+
+Legacy (pre-envelope) baselines are converted only through the explicit, reviewable
+`bun eval/shared/migrate-legacy-baselines.ts --write` CLI — payload score values are
+preserved verbatim, unavailable provenance carries explicit `unavailable-legacy-migration`
+sentinels, and readers never cast a legacy scorecard silently. Pre-envelope files in
+`runs/` are simply skipped by the rolling baseline. A provider-free spec
+(`eval/shared/tests/migration.spec.ts`) keeps every committed baseline valid.
 
 ## Anatomy of a harness
 
@@ -138,7 +172,11 @@ eval/<name>/
 7. **Write the CLI** in `<name>.eval.ts`, importing `buildScorecard`, `diffBaseline`,
    `readBaseline`, `writeBaseline`, `writeRunReport`, `computeRollingBaseline`,
    `formatConsole`, and `arg`/`has`/`flagValue` from `../shared/index.js`. Pass a
-   `leanCase` to `writeBaseline` that strips your per-run `detail`.
+   `leanCase` to `writeBaseline` that strips your per-run `detail`. Build an
+   `EvalRunMeta` (harness id/version, model IDs, `fingerprintEvalCorpus(selected)`,
+   `fingerprintEvalConfig({…})`, `readEvalGitProvenance(import.meta.dir)`,
+   started/completed timestamps) for the write calls, support `--force`, and assert an
+   `assertEvalWritePlan({ inputs, outputs, force })` before running any cases.
 
 8. **Add a package.json script**:
    ```json

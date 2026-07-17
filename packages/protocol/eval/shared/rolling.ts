@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 
+import { EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact } from "./artifact.js";
 import { buildScorecard } from "./scorecard.js";
 import type { CaseResultLike, ScorecardLike } from "./types.js";
 
@@ -10,7 +11,12 @@ interface RollingCaseAcc {
   runs: number;
 }
 
-/** Reads all JSON scorecards in a run directory, ignoring missing dirs and malformed files. */
+/**
+ * Reads all versioned run-report envelopes in a run directory, ignoring
+ * missing dirs plus malformed, legacy-unversioned, or non-report files. Only
+ * payloads that pass full envelope validation contribute to the rolling
+ * baseline, so a corrupt or stale-format report can never skew it.
+ */
 async function readRunScorecards(runsDir: string): Promise<ScorecardLike[]> {
   let entries: string[];
   try {
@@ -24,11 +30,11 @@ async function readRunScorecards(runsDir: string): Promise<ScorecardLike[]> {
     if (!entry.endsWith(".json")) continue;
     try {
       const file = Bun.file(`${runsDir}/${entry}`);
-      const sc = (await file.json()) as ScorecardLike;
-      if (sc.generatedAt && Array.isArray(sc.cases)) out.push(sc);
+      const envelope = parseEvalArtifact(await file.json(), { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE });
+      out.push(envelope.payload);
     } catch {
-      // Run reports are diagnostic artifacts; one malformed file should not
-      // disable rolling-baseline computation for every other run.
+      // Run reports are diagnostic artifacts; one malformed or legacy file
+      // should not disable rolling-baseline computation for every other run.
     }
   }
   return out;
