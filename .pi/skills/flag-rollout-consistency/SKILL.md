@@ -40,6 +40,6 @@ grep -n "FLAG_NAME" .env.example .env.development services/api/src/startup.env.t
 
 If a flag exists on Railway but is absent from `.env.development` (or vice versa), that's drift — fix it in the same sitting.
 
-## Current pool-questions flag set (reference)
+## Pool-questions flag family (reference)
 
-`POOL_QUESTIONS_MINING=shadow`, `POOL_QUESTIONS_MODE=on`, `POOL_QUESTIONS_RANKING=on` on Railway dev + `.env.development`; all three documented commented-off in `.env.example`; accessors in `packages/protocol/src/opportunity/discriminator/discriminator.env.ts`.
+Five related flags, all with accessors in `packages/protocol/src/opportunity/discriminator/discriminator.env.ts` and documented commented-off in `.env.example` (section 9): `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_RANKING`, `POOL_QUESTIONS_STAMP_NEWBORN`. This list is the *names* only — do not record live values here, they rot. Check current values on all surfaces with the Quick audit above (`.env.development` + `railway_list_variables`) before reasoning about pool-question behavior.

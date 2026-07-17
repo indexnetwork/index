@@ -163,6 +163,7 @@ If the user explicitly wants a local run/smoke test, start only the necessary se
 Every substantive PR bumps the `version` field of **each package it touches, in the PR itself** (not after merge). This repo uses semantic versioning per package:
 
 - `packages/protocol/package.json`
+- `packages/cli/package.json` (published subtree — CLAUDE.md requires bumping it like protocol)
 - `services/api/package.json`
 - `apps/web/package.json`
 
@@ -177,11 +178,11 @@ Rules (per touched package):
 Check which packages the PR touches and whether each got a bump:
 
 ```bash
-git diff origin/BASE...HEAD --stat -- packages/protocol services/api apps/web | tail -5
-git diff origin/BASE...HEAD -- packages/protocol/package.json services/api/package.json apps/web/package.json | grep '"version"'
+git diff origin/BASE...HEAD --stat -- packages/protocol packages/cli services/api apps/web | tail -5
+git diff origin/BASE...HEAD -- packages/protocol/package.json packages/cli/package.json services/api/package.json apps/web/package.json | grep '"version"'
 ```
 
-If a bump is missing, include it in the fix prompt: the worktree session adds a `chore: bump <pkg> to X.Y.Z (…)` commit on the PR branch, then runs `bun install` and commits any root `bun.lock` change — a stale root lockfile fails the prod build under `--frozen-lockfile` (see `release-prod-safety`). Precedents: PR #1087 (feat, protocol 4.4.1→4.5.0), #1082 (fix, 4.4.0→4.4.1), #1081 (feat touching all three packages — all bumped).
+If a bump is missing, include it in the fix prompt: the worktree session adds a `chore: bump <pkg> to X.Y.Z (…)` commit on the PR branch, then runs `bun install` and commits any root `bun.lock` change — a stale root lockfile fails the prod build under `--frozen-lockfile` (see `release-prod-safety`). Historical precedents (versions long since superseded — the pattern is what matters): PR #1087 (feat, protocol minor bump), #1082 (fix, patch bump), #1081 (feat touching all packages — all bumped).
 
 ### 4c. Check environment variable surfaces
 
@@ -250,7 +251,7 @@ gh pr view PR_NUMBER --json state,mergedAt,mergeCommit,url
 
 #### Release PR ancestry reconciliation
 
-For `dev` → `main` release PRs that are squash-merged, reconcile `main` back into `dev` after the main-branch checks pass. Otherwise `main` contains only the release squash commit while `dev` still contains the individual commits, and the next release PR can re-include already-shipped changes with merge conflicts. Follow `references/squash-release-reconciliation.md`: verify matching trees + clean merge simulation, create the no-content merge, push `dev`, then wait for the normal `dev` workflows triggered by that push.
+For `dev` → `main` release PRs that are squash-merged, reconcile `main` back into `dev` after the main-branch checks pass. Otherwise `main` contains only the release squash commit while `dev` still contains the individual commits, and the next release PR can re-include already-shipped changes with merge conflicts. Follow `../_shared/squash-release-reconciliation.md`: verify matching trees + clean merge simulation, create the no-content merge, push `dev`, then wait for the normal `dev` workflows triggered by that push.
 
 Check workflow runs for the target branch/commit:
 

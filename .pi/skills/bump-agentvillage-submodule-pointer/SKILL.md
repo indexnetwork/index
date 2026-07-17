@@ -33,7 +33,11 @@ your local tree; the monorepo pointer is what matters.
 
 Convention: `chore(agentvillage): bump submodule pointer to merged #NNN` (see git log
 for prior art). Do it from a worktree **without initializing the submodule** — stage
-the gitlink directly with plumbing:
+the gitlink directly with plumbing. Per the two-session rule (`worktree-session-pipeline`),
+worktree commits belong to a worktree session; because this is a single mechanical
+plumbing commit, the invoking main session may also do it inline **only with the user's
+explicit go-ahead** (the standard escape hatch) — otherwise hand the block below to the
+worktree session as the fix prompt:
 
 ```bash
 git worktree add .worktrees/chore-bump-agentvillage -b chore/bump-agentvillage-submodule origin/dev
