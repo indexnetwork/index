@@ -38,6 +38,10 @@ export interface PoolAdjustment extends PoolAdjustmentProvenance {
   detail?: string;
   /** ISO-8601 apply timestamp. */
   appliedAt: string;
+  /** Full intent fingerprint authoritative when this adjustment was created. */
+  intentFingerprint?: string;
+  /** Audit-only marker: stale adjustments remain stored but have no ranking effect. */
+  stale?: true;
 }
 
 /** Reads valid adjustments, optionally narrowed to one recipient + intent. */
@@ -53,13 +57,22 @@ export function readPoolAdjustments(
       typeof (a as PoolAdjustment).questionId !== "string" ||
       typeof (a as PoolAdjustment).recipientUserId !== "string" ||
       typeof (a as PoolAdjustment).intentId !== "string" ||
-      typeof (a as PoolAdjustment).factor !== "number"
+      typeof (a as PoolAdjustment).factor !== "number" ||
+      ((a as PoolAdjustment).stale !== undefined && (a as PoolAdjustment).stale !== true)
     ) return false;
     return provenance === undefined || (
       (a as PoolAdjustment).recipientUserId === provenance.recipientUserId &&
       (a as PoolAdjustment).intentId === provenance.intentId
     );
   });
+}
+
+/** Reads valid, non-stale adjustments for ranking and presentation behavior. */
+export function readActivePoolAdjustments(
+  metadata: Record<string, unknown> | null | undefined,
+  provenance?: PoolAdjustmentProvenance,
+): PoolAdjustment[] {
+  return readPoolAdjustments(metadata, provenance).filter((adjustment) => adjustment.stale !== true);
 }
 
 /**
@@ -70,7 +83,7 @@ export function poolAdjustmentMultiplier(
   metadata: Record<string, unknown> | null | undefined,
   provenance: PoolAdjustmentProvenance,
 ): number {
-  const adjustments = readPoolAdjustments(metadata, provenance);
+  const adjustments = readActivePoolAdjustments(metadata, provenance);
   if (adjustments.length === 0) return 1;
   const product = adjustments.reduce((acc, a) => acc * (Number.isFinite(a.factor) && a.factor > 0 ? a.factor : 1), 1);
   return Math.max(POOL_ADJUSTMENT_FLOOR, product);
@@ -101,6 +114,8 @@ export interface BuildPoolAdjustmentInput extends PoolAdjustmentProvenance {
   assignedSide: string | null;
   chosenSide: string;
   appliedAt: string;
+  /** Full intent fingerprint authoritative when this adjustment was created. */
+  intentFingerprint?: string;
 }
 
 /**
@@ -126,6 +141,7 @@ export function buildPoolAdjustment(input: BuildPoolAdjustmentInput): {
       factor,
       ...(!isChosen && !isUnknown ? { detail: `${input.label}: you chose ${input.chosenSide}` } : {}),
       appliedAt: input.appliedAt,
+      ...(input.intentFingerprint !== undefined ? { intentFingerprint: input.intentFingerprint } : {}),
     },
     signal: {
       type: "pool_discriminator",
@@ -156,6 +172,7 @@ export interface PoolAdjustmentPlanEntry {
  * @param recipientUserId User whose answer produced the preference.
  * @param intentId       Intent whose candidate pool was ranked.
  * @param now            ISO-8601 timestamp.
+ * @param intentFingerprint Full intent fingerprint authoritative at apply time.
  */
 export function planPoolAdjustments(
   discriminator: QuestionPoolDiscriminator,
@@ -164,6 +181,7 @@ export function planPoolAdjustments(
   recipientUserId: string,
   intentId: string,
   now: string,
+  intentFingerprint?: string,
 ): PoolAdjustmentPlanEntry[] {
   // Chip labels are word-capped side labels; match on the capped prefix too.
   const matchesSide = (side: string): boolean =>
@@ -183,6 +201,7 @@ export function planPoolAdjustments(
         assignedSide: a.side,
         chosenSide: chosen,
         appliedAt: now,
+        ...(intentFingerprint !== undefined ? { intentFingerprint } : {}),
       }),
     });
   }
@@ -211,7 +230,7 @@ export function latestPoolDemotionDetail(
   metadata: Record<string, unknown> | null | undefined,
   provenance: PoolAdjustmentProvenance,
 ): string | undefined {
-  return [...readPoolAdjustments(metadata, provenance)]
+  return [...readActivePoolAdjustments(metadata, provenance)]
     .reverse()
     .find((adjustment) => adjustment.factor < 1 && typeof adjustment.detail === 'string' && adjustment.detail.length > 0)
     ?.detail;

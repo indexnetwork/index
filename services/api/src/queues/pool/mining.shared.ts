@@ -31,6 +31,7 @@ import { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { questionerEnqueueIfEnabled } from '../questioner.queue';
 import { buildPoolCandidateContexts } from './context.shared';
 import { resolvePoolAxisNoveltyReferences } from './novelty.shared';
+import { POOL_QUESTION_FRESHNESS_THRESHOLD, extractSnapshotOpportunityIds, isPoolArtifactFresh, setJaccard } from './poolquestions.constants';
 
 /** Greppable logger (IND-417): search deploy logs for "PoolDiscriminatorMiner". */
 const logger = log.job.from('PoolDiscriminatorMiner');
@@ -82,8 +83,12 @@ export function maybeMinePoolDiscriminators(trigger: PoolMiningTrigger): void {
  * Regular discovery callers retain the fire-and-forget wrapper above; the
  * answer path awaits this so Beat 2 cannot race ahead of the next question.
  */
+export function isPoolMiningActivated(): boolean {
+  return poolQuestionsMiningMode() === 'shadow' || poolQuestionsMode() === 'on';
+}
+
 export async function minePoolDiscriminatorsOnCompletion(trigger: PoolMiningTrigger): Promise<void> {
-  if (poolQuestionsMiningMode() !== 'shadow' && poolQuestionsMode() !== 'on') return;
+  if (!isPoolMiningActivated()) return;
   // Introducer flow: the discovered candidates are matches for someone else,
   // not the viewer's own pool — discriminator questions don't apply.
   if (trigger.isIntroducerFlow) return;
@@ -103,6 +108,34 @@ type PoolSelectionDatabase = Pick<
   typeof chatDatabaseAdapter,
   'getLivePoolOpportunitiesForIntent' | 'getOpportunitiesForUser'
 >;
+
+type PoolMiningLifecycleAdapter = Pick<
+  QuestionerAdapter,
+  'reconcilePendingPoolQuestions' | 'getLatestPoolQuestionSnapshot'
+>;
+
+/** MODE-only completion reconciliation and durable re-mine cadence decision. */
+export async function shouldMineCurrentPool(input: {
+  userId: string;
+  intentId: string;
+  intentFingerprint: string;
+  currentPoolIds: string[];
+}, adapter: PoolMiningLifecycleAdapter = poolMiningQuestionerAdapter): Promise<boolean> {
+  const voided = await adapter.reconcilePendingPoolQuestions(
+    input.userId,
+    input.intentId,
+    input.intentFingerprint,
+    input.currentPoolIds,
+    isPoolArtifactFresh,
+  );
+  if (voided.length > 0) return true;
+  const latest = await adapter.getLatestPoolQuestionSnapshot(input.userId, input.intentId);
+  return !(
+    latest?.intentFingerprint === input.intentFingerprint
+    && setJaccard(extractSnapshotOpportunityIds(latest), input.currentPoolIds)
+      >= POOL_QUESTION_FRESHNESS_THRESHOLD
+  );
+}
 
 /** Select the mining pool using exact trigger provenance for owned intents. */
 export async function selectPoolForMining(
@@ -134,12 +167,44 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
   const questionsEnabled = poolQuestionsMode() === 'on';
   const pool = await selectPoolForMining(userId, intentId, trigger.sessionId);
 
+  // Material intent state must be loaded before any candidate-context,
+  // embedding, or miner work so MODE lifecycle reconciliation is independent
+  // of the shadow flag and cadence can return cheaply.
+  let intentText = trigger.searchQuery ?? '';
+  let intentFingerprint: string | undefined;
+  if (intentId) {
+    const intent = await chatDatabaseAdapter.getIntent(intentId);
+    if (intent?.userId === userId) {
+      intentText = buildFullIntentText(intent.payload, intent.summary);
+      intentFingerprint = computeIntentFingerprint(intent.payload, intent.summary);
+    }
+  }
+
   const withCounterpart = pool
     .map((o) => ({
       opportunity: o,
       counterpartUserId: o.actors.find((a) => a.userId !== userId && a.role !== 'introducer')?.userId,
     }))
     .filter((x): x is typeof x & { counterpartUserId: string } => Boolean(x.counterpartUserId));
+
+  const top = withCounterpart
+    .sort((a, b) => (b.opportunity.interpretation?.confidence ?? 0) - (a.opportunity.interpretation?.confidence ?? 0))
+    .slice(0, POOL_DISCRIMINATOR_MAX_CANDIDATES);
+  const currentPoolIds = top.map((entry) => entry.opportunity.id);
+
+  if (
+    questionsEnabled
+    && intentId
+    && intentFingerprint
+    && !await shouldMineCurrentPool({ userId, intentId, intentFingerprint, currentPoolIds })
+  ) {
+    logger.debug('pool mining skipped: durable pool snapshot is fresh', {
+      source: trigger.source,
+      runId: trigger.runId ?? null,
+      intentId,
+    });
+    return;
+  }
 
   if (withCounterpart.length < POOL_DISCRIMINATOR_MIN_POOL_SIZE) {
     logger.debug('shadow mining skipped: pool below k-anonymity floor', {
@@ -151,10 +216,6 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
     return;
   }
 
-  const top = withCounterpart
-    .sort((a, b) => (b.opportunity.interpretation?.confidence ?? 0) - (a.opportunity.interpretation?.confidence ?? 0))
-    .slice(0, POOL_DISCRIMINATOR_MAX_CANDIDATES);
-
   // Thin bounded public context is shared verbatim with newborn stamping so
   // mining-time and insert-time classifications cannot drift.
   const candidates: PoolCandidate[] = await buildPoolCandidateContexts(
@@ -162,19 +223,6 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
     top.map((entry) => ({ id: entry.opportunity.id, opportunity: entry.opportunity })),
     chatDatabaseAdapter,
   );
-
-  // Intent text: prefer the triggering owned intent record; fall back to the
-  // ad-hoc query for shadow-only pools. Questions carry only a display snippet
-  // plus a fingerprint of the full payload + summary.
-  let intentText = trigger.searchQuery ?? '';
-  let intentFingerprint: string | undefined;
-  if (intentId) {
-    const intent = await chatDatabaseAdapter.getIntent(intentId);
-    if (intent?.userId === userId) {
-      intentText = buildFullIntentText(intent.payload, intent.summary);
-      intentFingerprint = computeIntentFingerprint(intent.payload, intent.summary);
-    }
-  }
 
   // Novelty references: the owner's own intent sentences + active premises —
   // axes the user has effectively already answered should score ~0.
@@ -265,6 +313,7 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
       intentText: buildIntentSnippet(intentText),
       intentFingerprint,
       poolSize: shadow.poolSize,
+      opportunityIds: currentPoolIds,
       ...(trigger.runId ? { runId: trigger.runId } : {}),
       minedAt: new Date().toISOString(),
       discriminators: eligible.map(toQuestionDiscriminator),

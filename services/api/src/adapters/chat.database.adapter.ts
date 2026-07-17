@@ -2,6 +2,8 @@ import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, sc
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
+import { IntentEvents } from '../events/intent.event';
+import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
@@ -261,19 +263,42 @@ export class ChatDatabaseAdapter {
       if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
       if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
-      const [updated] = await db.update(schema.intents)
-        .set(updateData)
-        .where(eq(schema.intents.id, intentId))
-        .returning({
-          id: schema.intents.id,
+      const result = await db.transaction(async (tx) => {
+        const [before] = await tx.select({
           payload: schema.intents.payload,
           summary: schema.intents.summary,
-          isIncognito: schema.intents.isIncognito,
-          createdAt: schema.intents.createdAt,
-          updatedAt: schema.intents.updatedAt,
           userId: schema.intents.userId,
+        }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
+        if (!before) return null;
+        const [updated] = await tx.update(schema.intents)
+          .set(updateData)
+          .where(eq(schema.intents.id, intentId))
+          .returning({
+            id: schema.intents.id,
+            payload: schema.intents.payload,
+            summary: schema.intents.summary,
+            isIncognito: schema.intents.isIncognito,
+            createdAt: schema.intents.createdAt,
+            updatedAt: schema.intents.updatedAt,
+            userId: schema.intents.userId,
+          });
+        if (!updated) return null;
+        return {
+          updated,
+          oldFingerprint: computeIntentFingerprint(before.payload, before.summary),
+          newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
+        };
+      });
+      if (!result) return null;
+      if (result.oldFingerprint !== result.newFingerprint) {
+        await IntentEvents.onMaterialUpdated({
+          intentId,
+          userId: result.updated.userId,
+          oldFingerprint: result.oldFingerprint,
+          newFingerprint: result.newFingerprint,
         });
-      return updated ?? null;
+      }
+      return result.updated;
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.updateIntent error', { error: error instanceof Error ? error.message : String(error) });
       return null;
@@ -2467,9 +2492,15 @@ export class ChatDatabaseAdapter {
   async applyOpportunityPoolAdjustments(
     recipientUserId: string,
     intentId: string,
-    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[2],
-  ): Promise<string[]> {
-    return this.opportunityAdapter.applyOpportunityPoolAdjustments(recipientUserId, intentId, writes);
+    expectedIntentFingerprint: string,
+    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[3],
+  ): Promise<string[] | null> {
+    return this.opportunityAdapter.applyOpportunityPoolAdjustments(
+      recipientUserId,
+      intentId,
+      expectedIntentFingerprint,
+      writes,
+    );
   }
   async stampOpportunityActorAction(
     id: string,

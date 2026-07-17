@@ -8,6 +8,7 @@ import type { NewbornOpportunityStamperDeps } from '../newborn.shared';
 const NOW = '2026-07-16T10:00:00.000Z';
 const owner = 'owner-1';
 const intentId = 'intent-1';
+const CURRENT_FINGERPRINT = computeIntentFingerprint('Find a collaborator', 'Current');
 
 function item(counterpart: string, score = 0.8): CreateOpportunityData {
   return {
@@ -146,13 +147,13 @@ describe('newborn opportunity stamper', () => {
 
     const firstAdjustments = stamped[0].metadata?.poolAdjustments as Array<Record<string, unknown>>;
     expect(firstAdjustments).toEqual([
-      { questionId: 'q-stage', recipientUserId: owner, intentId, label: 'Company stage', side: 'unknown', factor: 0.9, appliedAt: NOW },
-      { questionId: 'q-style', recipientUserId: owner, intentId, label: 'Working style', side: 'Hands-on', factor: 1, appliedAt: NOW },
+      { questionId: 'q-stage', recipientUserId: owner, intentId, label: 'Company stage', side: 'unknown', factor: 0.9, appliedAt: NOW, intentFingerprint: CURRENT_FINGERPRINT },
+      { questionId: 'q-style', recipientUserId: owner, intentId, label: 'Working style', side: 'Hands-on', factor: 1, appliedAt: NOW, intentFingerprint: CURRENT_FINGERPRINT },
     ]);
     const secondAdjustments = stamped[1].metadata?.poolAdjustments as Array<Record<string, unknown>>;
     expect(secondAdjustments).toEqual([
-      { questionId: 'q-stage', recipientUserId: owner, intentId, label: 'Company stage', side: 'Growth', factor: 1, appliedAt: NOW },
-      { questionId: 'q-style', recipientUserId: owner, intentId, label: 'Working style', side: 'Advisory', factor: 0.6, detail: 'Working style: you chose Hands-on', appliedAt: NOW },
+      { questionId: 'q-stage', recipientUserId: owner, intentId, label: 'Company stage', side: 'Growth', factor: 1, appliedAt: NOW, intentFingerprint: CURRENT_FINGERPRINT },
+      { questionId: 'q-style', recipientUserId: owner, intentId, label: 'Working style', side: 'Advisory', factor: 0.6, detail: 'Working style: you chose Hands-on', appliedAt: NOW, intentFingerprint: CURRENT_FINGERPRINT },
     ]);
     expect(stamped[0].interpretation.signals?.slice(-2)).toEqual([
       { type: 'pool_discriminator', weight: 0, recipientUserId: owner, intentId, detail: 'Company stage: unassigned', questionId: 'q-stage' },

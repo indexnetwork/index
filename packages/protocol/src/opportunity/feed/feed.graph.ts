@@ -28,7 +28,7 @@ import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
-import { adjustedConfidence, latestPoolDemotionDetail, readPoolAdjustments } from '../discriminator/discriminator.adjustments.js';
+import { adjustedConfidence, latestPoolDemotionDetail, readActivePoolAdjustments } from '../discriminator/discriminator.adjustments.js';
 import type { PoolAdjustmentProvenance } from '../discriminator/discriminator.adjustments.js';
 import { poolQuestionsRanking } from '../discriminator/discriminator.env.js';
 
@@ -195,7 +195,7 @@ const getPoolRankingProvenance = (
 const hasPoolAdjustment = (
   opp: typeof HomeGraphState.State['opportunities'][number],
   provenance: PoolAdjustmentProvenance,
-): boolean => readPoolAdjustments(
+): boolean => readActivePoolAdjustments(
   (opp as { metadata?: Record<string, unknown> | null }).metadata,
   provenance,
 ).length > 0;

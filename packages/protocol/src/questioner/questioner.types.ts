@@ -118,6 +118,8 @@ export interface PoolDiscoveryContext {
   /** Stable hash of the full normalized payload + summary used for freshness. */
   intentFingerprint?: string;
   poolSize: number;
+  /** Exact bounded candidate opportunity IDs supplied to synthesis. */
+  opportunityIds: string[];
   /** Discovery run that produced the pool. */
   runId?: string;
   /** Eligible discriminators, VoI-descending (asked + chain alternates). */

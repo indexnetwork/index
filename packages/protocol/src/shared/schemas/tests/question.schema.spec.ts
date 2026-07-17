@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolPushSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
+import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolSnapshotSchema, QuestionPoolPushSchema, QuestionVoidedReasonSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
 const okOption = { label: "Stay focused", description: "Higher risk but cleaner narrative" };
 
@@ -161,6 +161,40 @@ describe("QuestionPurpose", () => {
   });
 });
 
+describe("QuestionPoolSnapshot", () => {
+  const legacySnapshot = {
+    poolSize: 8,
+    minedAt: "2026-07-16T12:00:00.000Z",
+    discriminator: {
+      label: "Builders vs advisors",
+      questionSeed: "Which matters more?",
+      sides: ["Builders", "Advisors"],
+      sideCounts: { Builders: 4, Advisors: 4 },
+      voi: 0.5,
+      evidenceRate: 1,
+      assignments: [{ opportunityId: "legacy-opp", side: "Builders" }],
+    },
+    alternates: [],
+  };
+
+  it("accepts legacy snapshots that omit opportunityIds", () => {
+    const result = QuestionPoolSnapshotSchema.safeParse(legacySnapshot);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.opportunityIds).toBeUndefined();
+  });
+
+  it("validates opportunityIds as UUIDs when present", () => {
+    expect(QuestionPoolSnapshotSchema.safeParse({
+      ...legacySnapshot,
+      opportunityIds: ["00000000-0000-4000-8000-000000000001"],
+    }).success).toBe(true);
+    expect(QuestionPoolSnapshotSchema.safeParse({
+      ...legacySnapshot,
+      opportunityIds: ["not-a-uuid"],
+    }).success).toBe(false);
+  });
+});
+
 describe("QuestionDetection", () => {
   it("accepts a valid detection object", () => {
     const result = QuestionDetectionSchema.safeParse({
@@ -285,6 +319,23 @@ describe("QuestionDetection", () => {
       pushRequestReason: "visited",
       pushRequestSuppressedAt: "2026-07-16T12:00:01.000Z",
     }).success).toBe(true);
+  });
+
+  it("accepts only pool drift and intent edit as internal void reasons", () => {
+    expect(QuestionVoidedReasonSchema.safeParse("pool_drift").success).toBe(true);
+    expect(QuestionVoidedReasonSchema.safeParse("intent_edit").success).toBe(true);
+    expect(QuestionVoidedReasonSchema.safeParse("manual").success).toBe(false);
+
+    const base = {
+      mode: "pool_discovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-16T12:00:00.000Z",
+    };
+    expect(QuestionDetectionSchema.safeParse({ ...base, voidedReason: "pool_drift" }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({ ...base, voidedReason: "intent_edit" }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({ ...base, voidedReason: "manual" }).success).toBe(false);
   });
 
   it("rejects an invalid mode", () => {

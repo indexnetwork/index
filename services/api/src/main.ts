@@ -470,6 +470,14 @@ IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: n
   log.job.from('IntentEvents').verbose('Intent paused', { intentId, userId, lifecycleVersionMs });
 };
 
+IntentEvents.onMaterialUpdated = async (event) => {
+  const result = await answerQuestionerAdapter.handleMaterialIntentUpdate(event);
+  log.job.from('IntentEvents').verbose('Material intent update reconciled pool lifecycle', {
+    ...event,
+    ...result,
+  });
+};
+
 IntentEvents.onResumed = async (intentId: string, userId: string, lifecycleVersionMs: number) => {
   log.job.from('IntentEvents').verbose('Intent resumed, triggering discovery', {
     intentId,

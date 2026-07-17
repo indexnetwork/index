@@ -130,6 +130,7 @@ export function createNewbornOpportunityStamper(
             assignedSide: assignment.side,
             chosenSide: preference.chosenSide,
             appliedAt,
+            intentFingerprint: beforeFingerprint,
           });
           const item = stamped[itemIndex];
           item.metadata = mergePoolAdjustment(item.metadata, write.adjustment);

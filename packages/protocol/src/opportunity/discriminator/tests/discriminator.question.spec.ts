@@ -69,10 +69,15 @@ describe("selectQuestionDiscriminators", () => {
 });
 
 describe("synthesizePoolQuestion", () => {
+  const opportunityIds = Array.from(
+    { length: 21 },
+    (_, index) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+  );
   const base = {
     discriminator: questionDiscriminator(),
     alternates: [questionDiscriminator({ label: "alt-1" })],
     poolSize: 21,
+    opportunityIds,
     minedAt: "2026-07-14T14:00:00.000Z",
     runId: "run-1",
     intentFingerprint: "fingerprint-v1",
@@ -98,6 +103,8 @@ describe("synthesizePoolQuestion", () => {
   it("stashes the pool snapshot with alternates for chaining", () => {
     const out = synthesizePoolQuestion(base)!;
     expect(out.pool.poolSize).toBe(21);
+    expect(out.pool.opportunityIds).toEqual(opportunityIds);
+    expect(out.pool.opportunityIds).not.toBe(opportunityIds);
     expect(out.pool.runId).toBe("run-1");
     expect(out.pool.intentFingerprint).toBe("fingerprint-v1");
     expect(out.pool.discriminator.label).toBe("Hands-on builders vs advisors");

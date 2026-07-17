@@ -17,7 +17,8 @@ import { intents, questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
-import { normalizeIntentText } from '../lib/intent/intent.fingerprint';
+import { computeIntentFingerprint, normalizeIntentText } from '../lib/intent/intent.fingerprint';
+import { exactLivePoolWhere } from './poolquery.shared';
 
 /** Default question TTL in milliseconds (7 days). */
 const DEFAULT_QUESTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -90,6 +91,8 @@ export interface AdapterQuestionDetection {
   pushRequestSuppressedAt?: string;
   /** Internal proactive push state. Never exposed publicly. */
   push?: import('@indexnetwork/protocol').QuestionPoolPush;
+  /** Internal reason this row was lifecycle-voided. */
+  voidedReason?: import('@indexnetwork/protocol').QuestionVoidedReason;
   /** Authoritative successful-delivery ledger timestamp. */
   pushedAt?: string;
 }
@@ -348,6 +351,189 @@ export class QuestionerAdapter {
   }
 
   /**
+   * Final queued-artifact gate. The recipient+intent advisory lock serializes
+   * competing inserts and lifecycle reconciliation while the transaction
+   * rechecks authoritative intent text and the exact live pool.
+   */
+  async persistFreshPoolQuestion(
+    question: AdapterPersistableQuestion,
+    userId: string,
+    modeEnabled: () => boolean,
+    maxPendingForIntent: number,
+    isFresh: (
+      pool: import('@indexnetwork/protocol').QuestionPoolSnapshot | undefined,
+      currentIntentFingerprint: string,
+      currentPoolIds: Iterable<string>,
+    ) => boolean,
+  ): Promise<string | null> {
+    const intentId = question.detection.triggeredBy;
+    const pool = question.detection.pool;
+    if (!intentId || question.detection.mode !== 'pool_discovery' || !pool) return null;
+
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${intentId}`}, 0))`);
+      const [intent] = await tx
+        .select({
+          userId: intents.userId,
+          payload: intents.payload,
+          summary: intents.summary,
+          status: intents.status,
+          archivedAt: intents.archivedAt,
+        })
+        .from(intents)
+        .where(and(eq(intents.id, intentId), eq(intents.userId, userId)))
+        .limit(1)
+        .for('update');
+      if (
+        !intent
+        || intent.archivedAt
+        || (intent.status !== null && intent.status !== 'ACTIVE')
+      ) return null;
+
+      const fingerprint = computeIntentFingerprint(intent.payload, intent.summary);
+      const [existingPool] = await tx.select({ id: questions.id })
+        .from(questions)
+        .where(and(
+          eq(questions.status, 'pending'),
+          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId, role: 'subject' }])}::jsonb`,
+          sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+          sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+          sql`${questions.detection}->>'voidedReason' IS NULL`,
+          or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
+        ))
+        .limit(1);
+      if (existingPool) return null;
+
+      const [pendingBudget] = await tx.select({ value: count() })
+        .from(questions)
+        .where(and(
+          eq(questions.status, 'pending'),
+          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+          or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
+          sql`(
+            ${questions.detection}->>'triggeredBy' = ${intentId}
+            OR (
+              ${questions.detection}->>'mode' = 'intent'
+              AND ${questions.detection}->>'sourceType' = 'intent'
+              AND ${questions.detection}->>'sourceId' = ${intentId}
+            )
+            OR (
+              ${questions.detection}->>'sourceType' = 'opportunity'
+              AND EXISTS (
+                SELECT 1 FROM ${opportunities} budget_opp
+                WHERE budget_opp.id::text = ${questions.detection}->>'sourceId'
+                  AND (
+                    budget_opp.detection->>'triggeredBy' = ${intentId}
+                    OR EXISTS (
+                      SELECT 1 FROM jsonb_array_elements(budget_opp.actors) budget_actor
+                      WHERE budget_actor->>'intent' = ${intentId}
+                    )
+                  )
+              )
+            )
+          )`,
+        ));
+      if (Number(pendingBudget?.value ?? 0) >= maxPendingForIntent) return null;
+
+      const incomingLabel = pool.discriminator.label.toLowerCase().replace(/\s+/g, ' ').trim();
+      const [askedAxis] = await tx.select({ id: questions.id })
+        .from(questions)
+        .where(and(
+          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId, role: 'subject' }])}::jsonb`,
+          sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+          sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+          sql`${questions.detection}->>'voidedReason' IS NULL`,
+          sql`lower(regexp_replace(btrim(${questions.detection}->'pool'->'discriminator'->>'label'), '[[:space:]]+', ' ', 'g')) = ${incomingLabel}`,
+          or(
+            and(
+              eq(questions.status, 'pending'),
+              or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
+            ),
+            sql`${questions.detection}->'pool'->>'intentFingerprint' = ${fingerprint}`,
+          ),
+        ))
+        .limit(1);
+      if (askedAxis) return null;
+
+      const liveRows = await tx
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(exactLivePoolWhere(userId, intentId))
+        .for('update');
+      if (!isFresh(pool, fingerprint, liveRows.map((row) => row.id))) return null;
+      // Final dynamic flag read occurs after every durable validation and
+      // immediately before the INSERT statement is issued.
+      if (!modeEnabled()) return null;
+
+      const [inserted] = await tx.insert(questions).values({
+        detection: {
+          ...question.detection,
+          strategy: question.strategy,
+          underspecificationType: question.underspecificationType ?? null,
+        } satisfies QuestionDetection,
+        actors: question.actors as QuestionActor[],
+        payload: question.payload,
+        status: 'pending',
+        expiresAt: new Date(Date.now() + DEFAULT_QUESTION_TTL_MS),
+        conversationId: question.conversationId ?? null,
+      }).returning({ id: questions.id });
+      return inserted?.id ?? null;
+    });
+  }
+
+  /** Revalidate an existing same-cycle row before retrying post-persist work. */
+  async isPoolQuestionFreshForDelivery(
+    questionId: string,
+    userId: string,
+    isFresh: (
+      pool: import('@indexnetwork/protocol').QuestionPoolSnapshot | undefined,
+      currentIntentFingerprint: string,
+      currentPoolIds: Iterable<string>,
+    ) => boolean,
+  ): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const [candidate] = await tx.select({ detection: questions.detection })
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .limit(1);
+      const candidateDetection = candidate?.detection as AdapterQuestionDetection | undefined;
+      if (!candidateDetection?.triggeredBy) return false;
+      const intentId = candidateDetection.triggeredBy;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${intentId}`}, 0))`);
+      const [row] = await tx.select({
+        status: questions.status,
+        detection: questions.detection,
+        actors: questions.actors,
+      }).from(questions).where(eq(questions.id, questionId)).limit(1).for('update');
+      const detection = row?.detection as AdapterQuestionDetection | undefined;
+      if (
+        !row
+        || row.status !== 'pending'
+        || detection?.voidedReason
+        || detection?.mode !== 'pool_discovery'
+        || detection.triggeredBy !== intentId
+        || (row.actors as AdapterQuestionActor[])[0]?.userId !== userId
+      ) return false;
+      const [intent] = await tx.select({
+        payload: intents.payload,
+        summary: intents.summary,
+        status: intents.status,
+        archivedAt: intents.archivedAt,
+      }).from(intents).where(and(eq(intents.id, intentId), eq(intents.userId, userId))).limit(1).for('update');
+      if (!intent || intent.archivedAt || (intent.status !== null && intent.status !== 'ACTIVE')) return false;
+      const liveRows = await tx.select({ id: opportunities.id })
+        .from(opportunities)
+        .where(exactLivePoolWhere(userId, intentId))
+        .for('update');
+      return isFresh(
+        detection.pool,
+        computeIntentFingerprint(intent.payload, intent.summary),
+        liveRows.map((live) => live.id),
+      );
+    });
+  }
+
+  /**
    * Find pending questions for a given user, optionally filtered by
    * detection mode, source type, source id, or selected-intent scope.
    *
@@ -497,6 +683,7 @@ export class QuestionerAdapter {
       const pool = detection.pool;
       if (
         question.status !== 'pending'
+        || detection.voidedReason
         || (question.expiresAt !== null && question.expiresAt <= clock.now)
         || question.conversationId !== null
         || detection.mode !== 'pool_discovery'
@@ -669,6 +856,7 @@ export class QuestionerAdapter {
       }
       if (
         question.status !== 'pending'
+        || detection.voidedReason
         || (question.expiresAt !== null && question.expiresAt <= transactionNow)
         || question.conversationId !== null
         || (detection.pushRequestStatus === 'requested' && !isNonEmptyString(detection.pushRequestedAt))
@@ -747,6 +935,7 @@ export class QuestionerAdapter {
           recipientExpression,
           sql`${questions.detection}->>'mode' = 'pool_discovery'`,
           sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+          sql`${questions.detection}->>'voidedReason' IS NULL`,
         ];
         if (latestAnswer) dismissalConditions.push(gt(questions.createdAt, latestAnswer.createdAt));
         const [dismissalRow] = await tx
@@ -871,6 +1060,153 @@ export class QuestionerAdapter {
   }
 
   /**
+   * CAS-void stale pending questions for one exact recipient+intent scope.
+   * No dismissal event is emitted because this is lifecycle reconciliation,
+   * not a user action.
+   */
+  async reconcilePendingPoolQuestions(
+    userId: string,
+    intentId: string,
+    currentIntentFingerprint: string,
+    currentPoolIds: string[],
+    isFresh: (
+      pool: import('@indexnetwork/protocol').QuestionPoolSnapshot | undefined,
+      currentIntentFingerprint: string,
+      currentPoolIds: Iterable<string>,
+    ) => boolean,
+  ): Promise<string[]> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${intentId}`}, 0))`);
+      const rows = await tx.select({ id: questions.id, detection: questions.detection })
+        .from(questions)
+        .where(and(
+          eq(questions.status, 'pending'),
+          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId, role: 'subject' }])}::jsonb`,
+          sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+          sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+        ))
+        .for('update');
+      const voided: string[] = [];
+      for (const row of rows) {
+        const detection = row.detection as AdapterQuestionDetection;
+        const pool = detection.pool;
+        const fresh = isFresh(pool, currentIntentFingerprint, currentPoolIds);
+        if (fresh) continue;
+        const [updated] = await tx.update(questions)
+          .set({
+            status: 'dismissed',
+            detection: { ...detection, voidedReason: 'pool_drift' } satisfies QuestionDetection,
+          })
+          .where(and(eq(questions.id, row.id), eq(questions.status, 'pending')))
+          .returning({ id: questions.id });
+        if (updated) voided.push(updated.id);
+      }
+      return voided;
+    });
+  }
+
+  /** Latest non-voided durable cadence anchor for one exact pool scope. */
+  async getLatestPoolQuestionSnapshot(
+    userId: string,
+    intentId: string,
+  ): Promise<import('@indexnetwork/protocol').QuestionPoolSnapshot | null> {
+    const [row] = await this.db.select({
+      pool: sql<import('@indexnetwork/protocol').QuestionPoolSnapshot | null>`${questions.detection}->'pool'`,
+      voidedReason: sql<string | null>`${questions.detection}->>'voidedReason'`,
+    })
+      .from(questions)
+      .where(and(
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId, role: 'subject' }])}::jsonb`,
+        sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+        sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+      ))
+      .orderBy(desc(questions.createdAt))
+      .limit(1);
+    return row && !row.voidedReason ? row.pool : null;
+  }
+
+  /**
+   * Apply the awaited material-edit lifecycle effects without deleting audit
+   * history or advancing opportunity updatedAt.
+   */
+  async handleMaterialIntentUpdate(input: {
+    intentId: string;
+    userId: string;
+    oldFingerprint: string;
+    newFingerprint: string;
+  }): Promise<{ voidedQuestions: number; staledAdjustments: number }> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.userId}:${input.intentId}`}, 0))`);
+      const [intent] = await tx
+        .select({ payload: intents.payload, summary: intents.summary })
+        .from(intents)
+        .where(and(eq(intents.id, input.intentId), eq(intents.userId, input.userId)))
+        .limit(1)
+        .for('update');
+      const authoritativeFingerprint = intent
+        ? computeIntentFingerprint(intent.payload, intent.summary)
+        : null;
+      if (authoritativeFingerprint !== input.newFingerprint) {
+        return { voidedQuestions: 0, staledAdjustments: 0 };
+      }
+
+      const voided = await tx.update(questions)
+        .set({
+          status: 'dismissed',
+          detection: sql`jsonb_set(${questions.detection}::jsonb, '{voidedReason}', '"intent_edit"'::jsonb, true)`,
+        })
+        .where(and(
+          eq(questions.status, 'pending'),
+          sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: input.userId, role: 'subject' }])}::jsonb`,
+          sql`${questions.detection}->>'mode' = 'pool_discovery'`,
+          sql`${questions.detection}->>'triggeredBy' = ${input.intentId}`,
+          sql`${questions.detection}->'pool'->>'intentFingerprint' IS DISTINCT FROM ${authoritativeFingerprint}`,
+        ))
+        .returning({ id: questions.id });
+
+      const rows = await tx.select({ id: opportunities.id, metadata: opportunities.metadata })
+        .from(opportunities)
+        .where(sql`EXISTS (
+          SELECT 1 FROM jsonb_array_elements(
+            CASE WHEN jsonb_typeof(${opportunities.metadata}->'poolAdjustments') = 'array'
+              THEN ${opportunities.metadata}->'poolAdjustments' ELSE '[]'::jsonb END
+          ) adjustment
+          WHERE adjustment->>'recipientUserId' = ${input.userId}
+            AND adjustment->>'intentId' = ${input.intentId}
+        )`)
+        .for('update');
+      let staledAdjustments = 0;
+      for (const row of rows) {
+        const raw = row.metadata?.poolAdjustments;
+        if (!Array.isArray(raw)) continue;
+        let changed = false;
+        const poolAdjustments = raw.map((entry) => {
+          if (typeof entry !== 'object' || entry === null) return entry;
+          const scoped = entry as Record<string, unknown>;
+          if (
+            typeof scoped.questionId !== 'string'
+            || typeof scoped.factor !== 'number'
+            || (scoped.stale !== undefined && scoped.stale !== true)
+            || scoped.recipientUserId !== input.userId
+            || scoped.intentId !== input.intentId
+            || scoped.stale === true
+            || scoped.intentFingerprint === authoritativeFingerprint
+          ) return entry;
+          changed = true;
+          staledAdjustments++;
+          return { ...scoped, stale: true };
+        });
+        if (changed) {
+          await tx.update(opportunities)
+            .set({ metadata: { ...(row.metadata ?? {}), poolAdjustments } })
+            .where(eq(opportunities.id, row.id));
+        }
+      }
+      return { voidedQuestions: voided.length, staledAdjustments };
+    });
+  }
+
+  /**
    * Discriminator labels used for exact dedup. Pending labels always count;
    * resolved labels count only while their intent snapshot is fresh when
    * freshness options are supplied. Omitting options preserves the legacy
@@ -898,6 +1234,7 @@ export class QuestionerAdapter {
         sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
         sql`${questions.detection}->>'mode' = 'pool_discovery'`,
         sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+        sql`${questions.detection}->>'voidedReason' IS NULL`,
       ));
     return rows.flatMap((row) => {
       const poolFreshness = {
@@ -957,6 +1294,7 @@ export class QuestionerAdapter {
         sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
         sql`${questions.detection}->>'mode' = 'pool_discovery'`,
         sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+        sql`${questions.detection}->>'voidedReason' IS NULL`,
         freshnessPredicate,
       ))
       .orderBy(desc(questions.createdAt))

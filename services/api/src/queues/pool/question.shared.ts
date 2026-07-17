@@ -7,11 +7,12 @@
  * the mined pool snapshot (assignments + remaining alternates) rides along
  * in `detection.pool`, which the client read paths strip.
  */
-import { synthesizePoolQuestion } from '@indexnetwork/protocol';
+import { POOL_QUESTION_MAX_PENDING_PER_INTENT, poolQuestionsMode, synthesizePoolQuestion } from '@indexnetwork/protocol';
 import type { QuestionPoolDiscriminator } from '@indexnetwork/protocol';
 
 import type { AdapterPersistableQuestion, QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { QuestionEvents } from '../../events/question.event';
+import { isPoolArtifactFresh } from './poolquestions.constants';
 
 /** Normalized form used for axis dedup (re-asking an already-seen axis). */
 export function normalizePoolLabel(label: string): string {
@@ -32,6 +33,8 @@ export interface BuildPoolQuestionInput {
   userId: string;
   intentId: string;
   poolSize: number;
+  /** Exact bounded opportunity IDs supplied to this synthesis pass. */
+  opportunityIds: string[];
   /** ISO-8601 timestamp of the mining pass. */
   minedAt: string;
   runId?: string;
@@ -51,6 +54,7 @@ export function buildPoolQuestion(input: BuildPoolQuestionInput): AdapterPersist
     discriminator: top,
     alternates,
     poolSize: input.poolSize,
+    opportunityIds: [...new Set(input.opportunityIds)],
     minedAt: input.minedAt,
     ...(input.runId ? { runId: input.runId } : {}),
     ...(input.intentText ? { intentText: input.intentText } : {}),
@@ -81,12 +85,22 @@ export type PoolQuestionPostPersist = (questionId: string, userId: string) => Pr
  * job retry can re-enqueue the same-cycle pending row without a second insert.
  */
 export async function persistPoolQuestion(
-  adapter: Pick<QuestionerAdapter, 'persist'>,
+  adapter: Pick<QuestionerAdapter, 'persistFreshPoolQuestion'>,
   question: AdapterPersistableQuestion,
   userId: string,
   postPersist?: PoolQuestionPostPersist,
 ): Promise<string | null> {
-  const [id] = await adapter.persist([question]);
+  // Read the independently mutable mode flag immediately before the adapter's
+  // locked validation+INSERT transaction. A disabled mode never persists or
+  // triggers any downstream effect.
+  if (poolQuestionsMode() !== 'on') return null;
+  const id = await adapter.persistFreshPoolQuestion(
+    question,
+    userId,
+    () => poolQuestionsMode() === 'on',
+    POOL_QUESTION_MAX_PENDING_PER_INTENT,
+    isPoolArtifactFresh,
+  );
   if (!id) return null;
   QuestionEvents.onCreated({
     questionId: id,
