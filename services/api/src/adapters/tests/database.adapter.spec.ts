@@ -11,7 +11,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
-import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, NetworkGraphDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
+import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 import { PremiseEvents } from '../../events/premise.event';
 import { IntentEvents } from '../../events/intent.event';
 
@@ -1445,66 +1445,6 @@ describe('OpportunityDatabaseAdapter', () => {
       const refetched = await adapter.getOpportunity(created.id);
       expect(refetched!.status).toBe('pending');
     });
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// NetworkGraphDatabaseAdapter
-// ═══════════════════════════════════════════════════════════════════════════════
-describe('NetworkGraphDatabaseAdapter', () => {
-  const adapter = new NetworkGraphDatabaseAdapter();
-
-  it('should get intent for indexing', async () => {
-    const row = await adapter.getIntentForIndexing(fixture.intent1Id);
-    expect(row).not.toBeNull();
-    expect(row!.id).toBe(fixture.intent1Id);
-    expect(row!.payload).toContain('Intent 1');
-  });
-
-  it('should return null for non-existent intent', async () => {
-    const row = await adapter.getIntentForIndexing(uuidv4());
-    expect(row).toBeNull();
-  });
-
-  it('should get network member context', async () => {
-    const ctx = await adapter.getNetworkMemberContext(fixture.networkId, fixture.userBId);
-    expect(ctx).not.toBeNull();
-    expect(ctx!.networkId).toBe(fixture.networkId);
-    expect(ctx!.memberPrompt).toBe('Member prompt');
-  });
-
-  it('should return null for non-member', async () => {
-    const ctx = await adapter.getNetworkMemberContext(fixture.networkId, uuidv4());
-    expect(ctx).toBeNull();
-  });
-
-  it('should report intent assigned to index', async () => {
-    expect(await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.networkId)).toBe(true);
-  });
-
-  it('should get network ids for intent', async () => {
-    const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
-    expect(indexIds).toEqual([fixture.networkId]);
-    const empty = await adapter.getNetworkIdsForIntent(uuidv4());
-    expect(empty).toEqual([]);
-  });
-
-  it('should assign and unassign intent to index', async () => {
-    const newIntentId = uuidv4();
-    await db.insert(intents).values({
-      id: newIntentId,
-      userId: fixture.userBId,
-      payload: TEST_PREFIX + 'Network graph assign test',
-      sourceType: 'discovery_form',
-      sourceId: fixture.userBId,
-    });
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
-    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
-    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
-    await db.delete(intentNetworks).where(eq(intentNetworks.intentId, newIntentId));
-    await db.delete(intents).where(eq(intents.id, newIntentId));
   });
 });
 

@@ -6,7 +6,8 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { eq } from 'drizzle-orm/sql';
 
 import { IntentController } from "../intent.controller";
-import { IntentDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { IntentDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
+import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import db from '../../lib/drizzle/drizzle';
 import { IntentEvents } from '../../events/intent.event';
@@ -121,7 +122,6 @@ describe("IntentDatabaseAdapter Integration", () => {
 
   test("listIntents attaches assigned networks and excludes soft-deleted ones", async () => {
     const chatAdapter = new ChatDatabaseAdapter();
-    const indexAdapter = new NetworkGraphDatabaseAdapter();
     const live = await chatAdapter.createNetwork({ title: `Intent-Net Live ${Date.now()}` });
     const removed = await chatAdapter.createNetwork({ title: `Intent-Net Removed ${Date.now()}` });
     try {
@@ -140,14 +140,13 @@ describe("IntentDatabaseAdapter Integration", () => {
       expect(single!.networks).toEqual([{ id: live.id, title: live.title }]);
     } finally {
       // deleteNetworkAndMembers also clears the intent_networks rows for each network.
-      await indexAdapter.deleteNetworkAndMembers(live.id).catch(() => {});
-      await indexAdapter.deleteNetworkAndMembers(removed.id).catch(() => {});
+      await deleteNetworkAndMembers(live.id).catch(() => {});
+      await deleteNetworkAndMembers(removed.id).catch(() => {});
     }
   }, 30_000);
 
   test('scoped short-prefix resolution ignores and hides out-of-scope rows', async () => {
     const chatAdapter = new ChatDatabaseAdapter();
-    const indexAdapter = new NetworkGraphDatabaseAdapter();
     const visibleNetwork = await chatAdapter.createNetwork({ title: `Prefix Visible ${Date.now()}` });
     const hiddenNetwork = await chatAdapter.createNetwork({ title: `Prefix Hidden ${Date.now()}` });
     const sharedPrefix = testIntentId.slice(0, 8);
@@ -165,8 +164,8 @@ describe("IntentDatabaseAdapter Integration", () => {
       expect(await adapter.resolveIntentId(sharedPrefix, testUserId, visibleNetwork.id)).toEqual({ id: visibleId });
       expect(await adapter.resolveIntentId(hiddenId.slice(0, 13), testUserId, visibleNetwork.id)).toBeNull();
     } finally {
-      await indexAdapter.deleteNetworkAndMembers(visibleNetwork.id).catch(() => {});
-      await indexAdapter.deleteNetworkAndMembers(hiddenNetwork.id).catch(() => {});
+      await deleteNetworkAndMembers(visibleNetwork.id).catch(() => {});
+      await deleteNetworkAndMembers(hiddenNetwork.id).catch(() => {});
       await db.delete(intentsTable).where(eq(intentsTable.id, visibleId)).catch(() => {});
       await db.delete(intentsTable).where(eq(intentsTable.id, hiddenId)).catch(() => {});
     }
@@ -265,7 +264,6 @@ describe("IntentDatabaseAdapter Integration", () => {
 
   test("context-to-intent candidate search excludes paused intents and admits legacy null", async () => {
     const chatAdapter = new ChatDatabaseAdapter();
-    const indexAdapter = new NetworkGraphDatabaseAdapter();
     const network = await chatAdapter.createNetwork({ title: `Intent-Search ${Date.now()}` });
     const embedding = [1, ...new Array(1999).fill(0)];
     try {
@@ -294,7 +292,7 @@ describe("IntentDatabaseAdapter Integration", () => {
       expect(paused.some((intent) => intent.intentId === testIntentId)).toBe(false);
       await adapter.transitionIntentLifecycle({ intentId: testIntentId, userId: testUserId, status: 'ACTIVE' });
     } finally {
-      await indexAdapter.deleteNetworkAndMembers(network.id).catch(() => {});
+      await deleteNetworkAndMembers(network.id).catch(() => {});
     }
   }, 30_000);
 

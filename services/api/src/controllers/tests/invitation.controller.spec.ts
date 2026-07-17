@@ -4,13 +4,13 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { NetworkController } from "../network.controller";
-import { UserDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { UserDatabaseAdapter } from "../../adapters/database.adapter";
+import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 describe("Invitation Endpoints Integration", () => {
   const controller = new NetworkController();
   const userAdapter = new UserDatabaseAdapter();
-  const indexAdapter = new NetworkGraphDatabaseAdapter();
 
   let ownerUserId: string;
   let joinerUserId: string;
@@ -72,7 +72,7 @@ describe("Invitation Endpoints Integration", () => {
   });
 
   afterAll(async () => {
-    if (createdIndexId) await indexAdapter.deleteNetworkAndMembers(createdIndexId);
+    if (createdIndexId) await deleteNetworkAndMembers(createdIndexId);
     if (ownerUserId) await userAdapter.deleteById(ownerUserId);
     if (joinerUserId) await userAdapter.deleteById(joinerUserId);
   });

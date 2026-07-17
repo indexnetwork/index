@@ -74,7 +74,6 @@ export type { ProfileEnricher, EnrichmentRequest, EnrichmentResult } from "./sha
 export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, IntegrationSessionOptions, ToolActionResponse } from "./shared/interfaces/integration.interface.js";
 export type { IntentGraphQueue } from "./shared/interfaces/queue.interface.js";
 export type { Scraper, ExtractUrlContentOptions } from "./shared/interfaces/scraper.interface.js";
-export type { Storage } from "./shared/interfaces/storage.interface.js";
 export type { DeliveryLedger, DeliveredOpportunityRow } from "./shared/interfaces/delivery-ledger.interface.js";
 export type { MintConnectLink, ConnectLinkKind } from "./shared/interfaces/connect-link.interface.js";
 export type {
@@ -127,10 +126,7 @@ export {
   filterNegotiatorTools,
 } from "./chat/negotiator.persona.js";
 export { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./chat/negotiator.prompt.js";
-export {
-  NEGOTIATOR_MEMORY_TOOL_NAMES,
-  createNegotiatorMemoryTools,
-} from "./chat/negotiator.tools.js";
+export { createNegotiatorMemoryTools } from "./chat/negotiator.tools.js";
 export type {
   NegotiatorMemoryToolsHost,
   NegotiatorMemoryRememberInput,
@@ -155,7 +151,7 @@ export type { SemanticVerifierOutput } from "./intent/intent.verifier.js";
 export { IntentNetworkGraphFactory } from "./network/indexer/indexer.graph.js";
 export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";
-export { NegotiationGraphFactory, createDefaultNegotiationGraph, negotiateCandidates } from "./negotiation/negotiation.graph.js";
+export { NegotiationGraphFactory, negotiateCandidates } from "./negotiation/negotiation.graph.js";
 export { OpportunityGraphFactory } from "./opportunity/opportunity.graph.js";
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "./opportunity/opportunity.graph.js";
 export { EnrichmentGraphFactory } from "./enrichment/enrichment.graph.js";
@@ -212,11 +208,11 @@ export type { DiscriminatorShadowInput } from "./opportunity/discriminator/discr
 export { scoreDiscriminator, computeNovelty, cosineSimilarity } from "./opportunity/discriminator/discriminator.scorer.js";
 export { poolQuestionsMiningMode, poolQuestionsMode, poolQuestionsPushMode, poolQuestionsStampNewborn, POOL_DISCRIMINATOR_MIN_POOL_SIZE, POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS, POOL_QUESTION_MIN_VOI, POOL_QUESTION_MIN_EVIDENCE_RATE, POOL_QUESTION_MAX_DISCRIMINATORS, POOL_QUESTION_MAX_PENDING_PER_INTENT, POOL_QUESTION_PUSH_BASE_VOI, POOL_QUESTION_PUSH_DISMISSAL_DECAY, POOL_QUESTION_PUSH_MIN_POOL_SIZE, POOL_QUESTION_PUSH_DAILY_CAP } from "./opportunity/discriminator/discriminator.env.js";
 export type { PoolQuestionsMiningMode, PoolQuestionsMode, PoolQuestionsPushMode, PoolQuestionsRankingMode, PoolQuestionsStampNewbornMode } from "./opportunity/discriminator/discriminator.env.js";
-export { poolQuestionsRanking, POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR, POOL_STALENESS_THRESHOLD, POOL_RERUN_DEBOUNCE_MS } from "./opportunity/discriminator/discriminator.env.js";
-export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment, removePoolAdjustment, readPoolAdjustments, readActivePoolAdjustments, poolAdjustmentMultiplier, adjustedConfidence, latestPoolDemotionDetail } from "./opportunity/discriminator/discriminator.adjustments.js";
+export { poolQuestionsRanking, POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR, POOL_RERUN_DEBOUNCE_MS } from "./opportunity/discriminator/discriminator.env.js";
+export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment, readPoolAdjustments, readActivePoolAdjustments, poolAdjustmentMultiplier, adjustedConfidence, latestPoolDemotionDetail } from "./opportunity/discriminator/discriminator.adjustments.js";
 export type { BuildPoolAdjustmentInput, PoolAdjustment, PoolAdjustmentPlanEntry, PoolAdjustmentProvenance, PoolAdjustmentSignal } from "./opportunity/discriminator/discriminator.adjustments.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunity/discriminator/discriminator.question.js";
-export { poolQuestionCycleKey, poolQuestionPushThreshold, escapePoolPushMarkdown, buildPoolQuestionPushMessage, POOL_QUESTION_PUSH_TITLE_MAX_CHARS } from "./opportunity/discriminator/discriminator.push.js";
+export { poolQuestionCycleKey, escapePoolPushMarkdown, buildPoolQuestionPushMessage, POOL_QUESTION_PUSH_TITLE_MAX_CHARS } from "./opportunity/discriminator/discriminator.push.js";
 export type { SynthesizePoolQuestionInput, SynthesizedPoolQuestion } from "./opportunity/discriminator/discriminator.question.js";
 export type { QuestionPoolAssignment, QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./shared/schemas/question.schema.js";
 export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator, ScoredDiscriminator, VerifiedAssignment, DiscriminatorShadowResult } from "./opportunity/discriminator/discriminator.types.js";
@@ -270,7 +266,7 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 // ─── MCP ──────────────────────────────────────────────────────────────────────
 
-export { createMcpServer, computeAgentAllowedNetworkIds, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
+export { createMcpServer, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
 export { buildElicitationCreate, flattenChoice } from "./mcp/elicitation.builder.js";
 export { dispatchElicitations } from "./mcp/elicitation.dispatcher.js";
@@ -312,4 +308,3 @@ export {
 // ─── Streamers ────────────────────────────────────────────────────────────────
 
 export { ChatStreamer } from "./chat/chat.streamer.js";
-export { ResponseStreamer } from "./shared/agent/response.streamer.js";

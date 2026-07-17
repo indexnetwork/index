@@ -11,7 +11,7 @@ import { fileService } from '../services/file.service';
 import { validateFileByMetadata, FILE_SIZE_LIMITS } from '../lib/uploads.config';
 import { normalizeExtension } from '../lib/storage.utils';
 import { log } from '../lib/log';
-import type { FileRecord } from '../types';
+import type { FileRecord } from '../types/files.types';
 
 const logger = log.controller.from('storage');
 

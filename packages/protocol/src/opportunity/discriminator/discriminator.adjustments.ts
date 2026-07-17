@@ -235,17 +235,3 @@ export function latestPoolDemotionDetail(
     .find((adjustment) => adjustment.factor < 1 && typeof adjustment.detail === 'string' && adjustment.detail.length > 0)
     ?.detail;
 }
-
-/** Removes one question adjustment for exact recipient + intent provenance. */
-export function removePoolAdjustment(
-  metadata: Record<string, unknown> | null | undefined,
-  questionId: string,
-  provenance: PoolAdjustmentProvenance,
-): Record<string, unknown> {
-  const remaining = readPoolAdjustments(metadata).filter((a) => !(
-    a.questionId === questionId &&
-    a.recipientUserId === provenance.recipientUserId &&
-    a.intentId === provenance.intentId
-  ));
-  return { ...(metadata ?? {}), poolAdjustments: remaining };
-}

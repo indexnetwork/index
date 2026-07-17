@@ -103,14 +103,6 @@ export const POOL_ADJUSTMENT_FACTOR_UNKNOWN = 0.9;
 /** Floor for the cumulative adjustment multiplier — demoted, never hidden. */
 export const POOL_ADJUSTMENT_FLOOR = 0.3;
 
-/**
- * Staleness guard (IND-419): when more than this fraction of a question's
- * stored assignments point at opportunities that left the pool (expired /
- * rejected / accepted / archived), skip the re-rank — the snapshot no longer
- * describes the live pool.
- */
-export const POOL_STALENESS_THRESHOLD = 0.3;
-
 /** Debounce window for answer-triggered re-discovery (Tier 1), per intent. */
 export const POOL_RERUN_DEBOUNCE_MS = 60_000;
 

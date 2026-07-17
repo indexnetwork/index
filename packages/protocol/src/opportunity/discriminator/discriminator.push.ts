@@ -1,7 +1,5 @@
 import type { QuestionPoolSnapshot } from "../../shared/schemas/question.schema.js";
 
-import { POOL_QUESTION_PUSH_BASE_VOI, POOL_QUESTION_PUSH_DISMISSAL_DECAY } from "./discriminator.env.js";
-
 /** Maximum raw intent-title characters included in a proactive DM line. */
 export const POOL_QUESTION_PUSH_TITLE_MAX_CHARS = 80;
 
@@ -11,12 +9,6 @@ export function poolQuestionCycleKey(
 ): string {
   const runId = pool.runId?.trim();
   return runId ? `run:${runId}` : `mined:${pool.minedAt}`;
-}
-
-/** Strict VoI threshold after the recipient's consecutive dismissal streak. */
-export function poolQuestionPushThreshold(consecutiveDismissals: number): number {
-  const streak = Math.max(0, Math.floor(consecutiveDismissals));
-  return POOL_QUESTION_PUSH_BASE_VOI * POOL_QUESTION_PUSH_DISMISSAL_DECAY ** streak;
 }
 
 /** Escape plain text so it cannot alter the deterministic Markdown template. */
