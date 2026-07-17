@@ -1,6 +1,6 @@
 ---
 name: finish-pr
-description: "Finish a pull request end-to-end: validate local build/run health, ensure GitHub checks and review threads are clear, merge the PR, verify post-merge GitHub/Railway deployment health, and close or update related GitHub and Linear issues. Use when the user says a PR is ready to finish, ship, merge, or close out."
+description: "Finish a pull request end-to-end: rebase the PR branch onto its target branch (usually dev) and resolve any conflicts meaningfully, validate local build/run health, ensure GitHub checks and review threads are clear, merge the PR, verify post-merge GitHub/Railway deployment health, and close or update related GitHub and Linear issues. Use when the user says a PR is ready to finish, ship, merge, or close out."
 ---
 
 # Finish PR
@@ -9,7 +9,7 @@ Use this workflow when a pull request is ready to ship and the user wants the su
 
 ## Goal
 
-Safely finish a PR end-to-end: identify the PR/issues, verify local build/test health, ensure GitHub checks/reviews are green, merge only after explicit confirmation, verify post-merge CI and Railway deployment health, update/close related issues, clean finished worktrees, and summarize what shipped.
+Safely finish a PR end-to-end: identify the PR/issues, rebase the PR branch onto its target branch (usually `dev`) and resolve any conflicts meaningfully, verify local build/test health, ensure GitHub checks/reviews are green, merge only after explicit confirmation, verify post-merge CI and Railway deployment health, update/close related issues, clean finished worktrees, and summarize what shipped.
 
 ## Safety rules
 
@@ -19,6 +19,7 @@ Safely finish a PR end-to-end: identify the PR/issues, verify local build/test h
 - Never claim deployment success from a queued/in-progress status. Wait for a terminal success state or report that it is still pending.
 - If Railway MCP tools are unavailable, stop and tell the user to configure/connect Railway MCP instead of pretending to verify deployment.
 - If checks fail, keep issues open and report the blocker.
+- Only rebase the PR's own feature branch onto its base. Never rebase a shared/long-lived head branch (`dev`, `main` — e.g. a release PR's head): that rewrites shared history and breaks other worktrees. Always force-push a rebased branch with `--force-with-lease`, never plain `--force`.
 - Do not remove a git worktree without confirming the PR is merged, the working tree is clean (no uncommitted/unpushed work), and the user has not asked to keep it. When in doubt, ask before removing.
 
 ## Supporting rpiv skills
@@ -99,6 +100,44 @@ gh pr view PR_NUMBER --json headRefOid --jq .headRefOid
 
 If a previous push went to a review/helper branch instead, push the same commit to `headRefName` before trusting CI; clean up the accidental helper branch during final worktree cleanup if it is no longer needed.
 
+### 3b. Rebase onto the target branch
+
+Before merging, bring the PR branch current with its base so the merge is a fast-forward in content terms and CI validates the exact code that will ship. Use the PR's actual `baseRefName` from step 1 (usually `dev` — do not hardcode) and run the rebase from the worktree where the PR head branch is checked out.
+
+Skip the rebase when:
+
+- the head branch is shared/long-lived (`dev`, `main` — e.g. release PRs): never rewrite shared history; if it is behind, ask the user whether to merge the base into the head instead;
+- the PR head is a fork you cannot push to: skip and tell the user;
+- the branch is not behind: check `git rev-list --count HEAD..origin/<base>` after `git fetch origin`; if `0`, do nothing — a gratuitous rebase + force-push just retriggers CI.
+
+Procedure:
+
+```bash
+git fetch origin
+git rebase origin/<base>
+```
+
+If the rebase is clean, force-push with lease to the PR head branch and verify the head SHA moved (CI will restart; step 5 waits on it):
+
+```bash
+git push --force-with-lease origin HEAD:$PR_HEAD
+gh pr view PR_NUMBER --json headRefOid --jq .headRefOid
+```
+
+If there are conflicts, resolve them meaningfully — never blanket `git checkout --ours/--theirs` across files. For each conflict, read both sides and understand why each changed the region; if you cannot explain both sides' intent, stop and ask the user instead of guessing. Repo-specific guidance:
+
+- `package.json` version collisions (very common here): take the base's version as the floor and re-apply the PR's semver bump on top — e.g. base went 4.4.1→4.5.0 and the PR also bumped to 4.5.0 → the PR becomes 4.6.0 (feat) or 4.5.1 (fix). Step 4b re-verifies the result.
+- `bun.lock`: never hand-merge. Resolve `package.json` first, then regenerate with `bun install` and stage the result (a stale lockfile also fails prod builds under `--frozen-lockfile` — see `release-prod-safety`).
+- Drizzle migrations (`services/api/drizzle/`): keep both sides' migration files; renumber the PR's new migration(s) after the base's latest, and update the entry `idx`/`tag` in `drizzle/meta/_journal.json` to match. Afterwards `bun run db:generate` must report "No schema changes".
+- Generated files (e.g. bundled SKILL.md files from `scripts/build-skills.ts`): take either side textually, then regenerate with the build command rather than hand-merging.
+
+Operational notes:
+
+- A rebase replays commits one by one — expect conflicts in more than one commit; `git add` + `git rebase --continue` through them.
+- Rebases re-sign every replayed commit; on `gpg: signing failed: Inappropriate ioctl for device`, follow the `git-worktree-workflow` skill (have the user cache their passphrase, or set worktree-local `git config --worktree commit.gpgsign false`), then retry.
+- A textually clean rebase can still be semantically wrong (both sides touched different lines of the same logic). After any rebase — clean or not — re-run the targeted builds/tests in step 4 against the rebased tree before merging.
+- If the conflicts are unresolvable without product decisions, or the rebase goes sideways: `git rebase --abort`, restore the branch to its pre-rebase state, and report the conflict summary and options to the user.
+
 ### 4. Run local build/run verification
 
 Use project guidance first. For this repository, prefer targeted commands:
@@ -157,6 +196,7 @@ Before merging, summarize:
 
 - PR title and URL,
 - base branch,
+- rebase outcome (skipped/up-to-date, clean rebase, or conflicts resolved and how),
 - local verification results,
 - GitHub checks/review state,
 - related GitHub/Linear issues that will be updated after merge.
@@ -183,7 +223,7 @@ gh pr view PR_NUMBER --json state,mergedAt,mergeCommit,url
 
 #### Release PR ancestry reconciliation
 
-For `dev` → `main` release PRs that are squash-merged, reconcile `main` back into `dev` after the main-branch checks pass. Otherwise `main` contains only the release squash commit while `dev` still contains the individual commits, and the next release PR can re-include already-shipped changes with merge conflicts. Follow `../_shared/squash-release-reconciliation.md`: verify matching trees + clean merge simulation, create the no-content merge, push `dev`, then wait for the normal `dev` workflows triggered by that push.
+For `dev` → `main` release PRs that are squash-merged, reconcile `main` back into `dev` after the main-branch checks pass. Otherwise `main` contains only the release squash commit while `dev` still contains the individual commits, and the next release PR can re-include already-shipped changes with merge conflicts. Follow `references/squash-release-reconciliation.md`: verify matching trees + clean merge simulation, create the no-content merge, push `dev`, then wait for the normal `dev` workflows triggered by that push.
 
 Check workflow runs for the target branch/commit:
 
