@@ -57,6 +57,7 @@ function getModelConfig(config?: ModelConfig) {
     negotiationSummarizer:      { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 256 },
     poolDiscriminatorMiner:        { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 4096 },
     poolDiscriminatorAssigner:     { model: "google/gemini-2.5-flash", temperature: 0.1, maxTokens: 16384 },
+    negotiationEvidenceMiner:      { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 4096 },
     inviteGenerator:      { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
     premiseAnalyzer:      { model: "google/gemini-2.5-flash" },
     premiseDecomposer:    { model: "google/gemini-2.5-flash" },
