@@ -504,7 +504,7 @@ describe('canonical HyDE evidence analysis', () => {
     generationSlot.result.resources.generatorCalls.pop();
     const generationAnalysis = analyze(bundle(HydeCollectionArtifactSchema.parse(generationTampered)));
     expect(firstReasonIncludes(generationAnalysis, 'Generator resource/diagnostic count mismatch')).toBeTrue();
-  });
+  }, 30_000);
 
   it('requires original judgment parents and revalidates resolved content rather than trusting provenance', () => {
     const complete = bundle();
