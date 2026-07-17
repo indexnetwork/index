@@ -180,8 +180,11 @@ One command verifies every suite without touching a provider:
    unnoticed: an unlisted directory fails the run.
 2. **Per-suite typecheck** — `tsc --noEmit -p eval/<suite>/tsconfig.json` for all
    seven suites (including `shared`; the regular protocol build only covers `src/`).
-3. **Provider-free tests** — `bun test eval/<suite>/tests/` per suite, each in its
-   own process (so `mock.module()` state never leaks between suites).
+3. **Provider-free tests** — `bun test --timeout 30000 eval/<suite>/tests/` per
+   suite, each in its own process (so `mock.module()` state never leaks between
+   suites). The per-test timeout is capped at 30 seconds (vs Bun's 5s default)
+   because some HyDE specs deterministically recompute bootstrap/report evidence
+   on CPU and exceed 5s on slower CI runners.
 
 It never loads `.env.test`, strips `OPENROUTER_API_KEY`/`OPENAI_API_KEY` from the
 child environment, calls no models or embedders, and writes no baselines or run

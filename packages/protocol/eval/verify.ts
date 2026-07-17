@@ -4,7 +4,11 @@
  *
  * Runs, for every eval suite in the manifest below:
  *   1. `tsc --noEmit -p eval/<suite>/tsconfig.json` — per-suite TypeScript project
- *   2. `bun test eval/<suite>/tests/`               — provider-free unit specs
+ *   2. `bun test --timeout 30000 eval/<suite>/tests/` — provider-free unit specs
+ *
+ * The per-test timeout is raised from Bun's 5s default to 30s: some HyDE
+ * specs deterministically recompute bootstrap/report evidence on CPU and
+ * exceed 5s on slower CI runners while passing comfortably under 30s.
  *
  * Each suite's specs run in their own process so `mock.module()` state never
  * leaks across suites (same rationale as scripts/test.ts).
@@ -35,6 +39,12 @@ const SUITES = [
 ] as const;
 
 const PROVIDER_ENV_VARS = ["OPENROUTER_API_KEY", "OPENAI_API_KEY"];
+
+/**
+ * Per-test timeout (ms) for suite specs. Bun's 5s default is too tight for
+ * deterministic CPU-heavy HyDE evidence-recomputation specs on CI runners.
+ */
+const TEST_TIMEOUT_MS = 30_000;
 
 const EVAL_DIR = new URL(".", import.meta.url).pathname;
 const PACKAGE_DIR = join(EVAL_DIR, "..");
@@ -111,7 +121,13 @@ for (const suite of manifest) {
     "-p",
     `eval/${suite}/tsconfig.json`,
   ]);
-  const okTest = await run(`bun test eval/${suite}/tests/`, ["bun", "test", `eval/${suite}/tests/`]);
+  const okTest = await run(`bun test --timeout ${TEST_TIMEOUT_MS} eval/${suite}/tests/`, [
+    "bun",
+    "test",
+    "--timeout",
+    String(TEST_TIMEOUT_MS),
+    `eval/${suite}/tests/`,
+  ]);
   if (!okTsc || !okTest) failures++;
 }
 
