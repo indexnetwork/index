@@ -14,6 +14,7 @@ import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 import { uptakeAcceptanceGuard, type UptakeAcceptanceAdvisoryResult, type UptakeAcceptanceGuardLike } from '../lib/opportunity/uptake-acceptance.guard';
+import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike } from '../lib/opportunity/outcome-feedback.recorder';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
@@ -161,6 +162,8 @@ export class OpportunityService {
   private readonly presenterDb: PresenterDatabase;
   private readonly deliveryCache: RedisCacheAdapter;
   private readonly uptakeGuard: UptakeAcceptanceGuardLike;
+  /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
+  private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
@@ -171,6 +174,7 @@ export class OpportunityService {
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
     acceptanceGuard: UptakeAcceptanceGuardLike = uptakeAcceptanceGuard,
+    outcomeRecorder: OutcomeFeedbackRecorderLike = outcomeFeedbackRecorder,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
@@ -178,6 +182,7 @@ export class OpportunityService {
     this.presenterDb = chatDatabaseAdapter as unknown as PresenterDatabase;
     this.deliveryCache = new RedisCacheAdapter();
     this.uptakeGuard = acceptanceGuard;
+    this.outcomeRecorder = outcomeRecorder;
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -620,6 +625,14 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
+    // Lens B (IND-434): capture the explicit owner decision as append-only
+    // feedback. Only accept/reject are preferences; this is the authoritative
+    // owner path, runs after the write succeeded (rollback → no event), and is
+    // fully best-effort (never throws), so it cannot affect the response.
+    if (status === 'accepted' || status === 'rejected') {
+      await this.outcomeRecorder.record({ opportunity: opp, recipientUserId: userId, action: status });
+    }
+
     if (!counterpart) {
       return { opportunity: sanitizeOpportunityForResponse(updated) };
     }
@@ -867,6 +880,10 @@ export class OpportunityService {
     if (!updated) {
       return { error: 'Failed to accept opportunity', status: 500 };
     }
+
+    // Lens B (IND-434): the Connect/Start-Chat accept is an explicit owner
+    // decision — capture it as append-only feedback (best-effort, never throws).
+    await this.outcomeRecorder.record({ opportunity: opp, recipientUserId: userId, action: 'accepted' });
 
     // Best-effort side effects — their failure must not block the user from
     // reaching the chat. The opp is already accepted and the DM already

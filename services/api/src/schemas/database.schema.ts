@@ -976,6 +976,68 @@ export type OpportunityDelivery = typeof opportunityDeliveries.$inferSelect;
 export type NewOpportunityDelivery = typeof opportunityDeliveries.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Lens B outcome feedback events (IND-434)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Append-only, idempotent log of EXPLICIT owner opportunity actions used as
+ * Lens B feedback (IND-434). One row per (recipient, opportunity, action);
+ * retries of the same action collapse via `idempotencyKey`.
+ *
+ * Written only from the authoritative owner-action service paths when
+ * OUTCOME_QUESTIONS_MODE != off. Counterparty, agent, screening, timeout,
+ * merge, cascade, TTL/expiry, and delivery transitions are NEVER recorded here.
+ * Content is bounded and presentation-safe: no raw model reasoning, vectors, or
+ * user text beyond the sanitized snapshot; the counterpart identity is stored
+ * only as a non-reversible dedup hash.
+ */
+export const opportunityOutcomeEvents = pgTable(
+  'opportunity_outcome_events',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    /** The owner (recipient) who took the explicit action. */
+    recipientUserId: text('recipient_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Triggering intent (detection.triggeredBy) that owns the scope. */
+    intentId: text('intent_id')
+      .notNull()
+      .references(() => intents.id, { onDelete: 'cascade' }),
+    /** Stable hash of normalized intent payload + summary at event time. */
+    intentFingerprint: text('intent_fingerprint').notNull(),
+    opportunityId: text('opportunity_id')
+      .notNull()
+      .references(() => opportunities.id, { onDelete: 'cascade' }),
+    /** Recipient actor's network at action time (context, not a label). */
+    networkId: text('network_id'),
+    /** Explicit owner action: 'accepted' | 'rejected'. */
+    action: text('action').notNull(),
+    /** Bounded, presentation-safe candidate snapshot text (for manual review). */
+    candidateSnapshot: text('candidate_snapshot').notNull(),
+    /** SHA-256 of the snapshot text (content hash for audit/change detection). */
+    snapshotHash: text('snapshot_hash').notNull(),
+    /** Non-reversible related-opportunity dedup key (counterpart identity). */
+    dedupKey: text('dedup_key').notNull(),
+    /** SHA-256(recipient, opportunity, action) — collapses idempotent retries. */
+    idempotencyKey: text('idempotency_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    idempotent: uniqueIndex('uniq_opp_outcome_events_idempotency').on(t.idempotencyKey),
+    scopeLookup: index('idx_opp_outcome_events_scope').on(
+      t.recipientUserId,
+      t.intentId,
+      t.intentFingerprint,
+    ),
+  }),
+);
+
+export type OpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferSelect;
+export type NewOpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Relations
 // ═══════════════════════════════════════════════════════════════════════════════
 

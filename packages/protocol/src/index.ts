@@ -229,6 +229,14 @@ export type { NegotiationEvidenceMinerConfig } from "./opportunity/negotiation-e
 export { runNegotiationEvidenceShadow } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
 export type { NegotiationEvidenceShadowInput } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
 export type { EvidenceKind, EvidenceSpeaker, AllowlistedEvidence, RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment, EvidenceMiningScope, HypothesisClaimType, ProposedSupportRef, MinedEvidenceHypothesis, VerifiedSupportRef, RetainedEvidenceHypothesis, NegotiationEvidenceTelemetry, NegotiationEvidenceShadowResult } from "./opportunity/negotiation-evidence/negotiation-evidence.types.js";
+
+// Lens B — outcome-question shadow (IND-434)
+export { outcomeQuestionsMode, isOutcomeQuestionsActivated, OUTCOME_MIN_INDEPENDENT_SUPPORT, OUTCOME_MIN_COMPARED_SIDES, OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunity/outcome/outcome.env.js";
+export type { OutcomeQuestionsMode } from "./opportunity/outcome/outcome.env.js";
+export { joinOutcomeHypotheses } from "./opportunity/outcome/outcome.hypotheses.js";
+export { runOutcomeShadow, deduplicateOutcomeExamples } from "./opportunity/outcome/outcome.shadow.js";
+export type { OutcomeShadowInput } from "./opportunity/outcome/outcome.shadow.js";
+export type { OutcomeLabel, OutcomeExample, OutcomeSideSupport, OutcomeHypothesis, OutcomeShadowResult, JoinOutcomeHypothesesInput } from "./opportunity/outcome/outcome.types.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";
