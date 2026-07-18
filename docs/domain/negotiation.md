@@ -3,7 +3,7 @@ title: "Negotiation"
 type: domain
 tags: [negotiation, bilateral, agents, opportunity, a2a, roles]
 created: 2026-03-26
-updated: 2026-07-11
+updated: 2026-07-18
 proposal: "Negotiations v2 — The Client-Advocate Protocol: see the visual proposal attached to IND-395 (https://linear.app/indexnetwork/issue/IND-395/)"
 ---
 
@@ -41,6 +41,8 @@ On the first turn, the initiating side presents the match case. On subsequent tu
 ## Turn-Based Protocol
 
 Negotiation proceeds in alternating turns.
+
+> **Formal framing:** the turn protocol is a formal *dialogue game* in the McBurney & Parsons (2001) sense — the actions below are its locutions, `allowedActionsFor` its combination rules, the persisted turn history its commitment store, and `isTerminalAction` + the turn cap its termination rules. The full mapping lives in [docs/design/negotiation-dialogue-game.md](../design/negotiation-dialogue-game.md).
 
 ### Protocol versions
 
