@@ -266,6 +266,8 @@ interface OpportunityEvaluatorOptions {
   candidates?: CandidateProfile[]; // For direct evaluation
   filter?: Record<string, unknown>;
   initialStatus?: OpportunityStatus;
+  /** Optional caller cancellation; does not change retry/fallback policy. */
+  signal?: AbortSignal;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -319,7 +321,7 @@ export class OpportunityEvaluator {
     const promises = candidates.map(async (candidate) => {
       // Pass existing opportunities context if provided
       const existingContext = options.existingOpportunities || '';
-      return this.analyzeMatch(sourceProfileContext, candidate, candidate.userId, existingContext);
+      return this.analyzeMatch(sourceProfileContext, candidate, candidate.userId, existingContext, options.signal);
     });
 
     const results = await Promise.all(promises);
@@ -342,7 +344,8 @@ export class OpportunityEvaluator {
     sourceProfileContext: string,
     candidateProfile: CandidateProfile,
     candidateUserId: string,
-    existingOpportunities: string
+    existingOpportunities: string,
+    signal?: AbortSignal,
   ): Promise<Opportunity[]> {
     try {
       // Construct the source context part of the prompt
@@ -369,7 +372,7 @@ export class OpportunityEvaluator {
         new HumanMessage(`${sourceContext}\n${existingContextPart}\nCANDIDATE PROFILE:\n${candidateContext}`)
       ];
 
-      const result = await invokeWithAbortSignal(this.model, messages);
+      const result = await invokeWithAbortSignal(this.model, messages, signal);
       const output = responseFormat.parse(result);
 
       const mappedOpportunities = output.opportunities.map((op: Opportunity) => ({
@@ -392,7 +395,7 @@ export class OpportunityEvaluator {
   @Timed()
   public async invokeEntityBundle(
     input: EvaluatorInput,
-    options: { minScore?: number; returnAll?: boolean } = {}
+    options: { minScore?: number; returnAll?: boolean; signal?: AbortSignal } = {}
   ): Promise<EvaluatedOpportunityWithActors[]> {
     const minScore = options.minScore ?? 70;
     const returnAll = options.returnAll ?? false;
@@ -498,7 +501,7 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
     ];
     let parsedTotal = 0;
     try {
-      const result = await invokeWithAbortSignal(this.entityBundleModel, messages);
+      const result = await invokeWithAbortSignal(this.entityBundleModel, messages, options.signal);
       const parsed = entityBundleResponseFormat.parse(result);
       for (const op of parsed.opportunities) {
         op.reasoning = stripUuids(op.reasoning);

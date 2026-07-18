@@ -1359,12 +1359,15 @@ export interface Database {
    *
    * @param id - Opportunity ID
    * @param status - New status
+   * @param acceptedBy - Required when `status === 'accepted'`
+   * @param outbox - Optional IND-434 atomic outcome-capture (same-txn insert)
    * @returns The updated opportunity or null if not found
    */
   updateOpportunityStatus(
     id: string,
     status: OpportunityStatus,
     acceptedBy?: string,
+    outbox?: OutcomeOutbox,
   ): Promise<Opportunity | null>;
 
   /**
@@ -1380,6 +1383,7 @@ export interface Database {
    * @param actorUserId - The user whose actor entry should be stamped
    * @param status - New opportunity status
    * @param acceptedBy - Required when `status === 'accepted'`
+   * @param outbox - Optional IND-434 atomic outcome-capture (same-txn insert)
    * @returns The updated opportunity, or null if not found
    */
   stampOpportunityActorAction(
@@ -1387,6 +1391,7 @@ export interface Database {
     actorUserId: string,
     status: OpportunityStatus,
     acceptedBy?: string,
+    outbox?: OutcomeOutbox,
   ): Promise<Opportunity | null>;
 
   /**
@@ -2440,6 +2445,28 @@ export type NegotiationGraphDatabase = Pick<
  *
  * Access layer: Both UserDatabase + SystemDatabase (API handles auth)
  */
+/**
+ * Optional atomic outbox for Lens B outcome capture (IND-434). Passed to a
+ * winning owner-action transition so the append-only outcome event is written
+ * in the SAME transaction as the status change:
+ *   - a rolled-back action leaves NO event;
+ *   - a committed eligible action produces EXACTLY one event;
+ *   - `result.inserted` is set to true by the adapter only when a NEW row was
+ *     written (idempotent retries / duplicates set it false), so the caller can
+ *     gate post-commit mining on a genuine first insert.
+ *
+ * `event` is typed `unknown` (the api-side outcome-event insert row, cast by the
+ * adapter) to keep the protocol layer free of database-schema imports. The
+ * actor-resolution mode is a transaction-time precondition: selected-intent
+ * captures require that exact actor intent, while unscoped captures require the
+ * recipient to still have one unambiguous actor-intent scope.
+ */
+export interface OutcomeOutbox {
+  event: unknown;
+  actorResolution: 'selected_intent' | 'unique_owned_scope';
+  result: { inserted: boolean };
+}
+
 export type OpportunityControllerDatabase = Pick<
   Database,
   | 'getOpportunity'

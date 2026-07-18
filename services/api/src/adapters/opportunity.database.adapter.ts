@@ -1,12 +1,161 @@
 import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
   allowedNetworkIds: string[];
   triggerIntentId?: string;
+}
+
+/**
+ * API-local structural twin of protocol's OutcomeOutbox. Adapters must not
+ * import protocol interfaces; TypeScript verifies compatibility at the caller.
+ */
+export interface AtomicOutcomeOutbox {
+  event: unknown;
+  actorResolution: 'selected_intent' | 'unique_owned_scope';
+  result: { inserted: boolean };
+}
+
+/** Drizzle transaction handle type (callback param of db.transaction). */
+type DrizzleTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Minimal transaction runner used by the testable atomic-transition wrapper. */
+export interface AtomicTransactionRunner {
+  transaction<T>(callback: (tx: DrizzleTx) => Promise<T>): Promise<T>;
+}
+
+/**
+ * Lens B atomic outbox (IND-434): insert the append-only outcome event in the
+ * SAME transaction as a winning owner-action transition. Idempotent on
+ * idempotencyKey — a duplicate retry writes no new row and sets
+ * `outbox.result.inserted = false`, so the caller never re-triggers mining.
+ * Callers MUST only invoke this after the transition row is confirmed written.
+ */
+function getOutcomeEvent(outbox: AtomicOutcomeOutbox): schema.NewOpportunityOutcomeEvent {
+  if (!outbox.event || typeof outbox.event !== 'object') {
+    throw new Error('Outcome capture precondition failed');
+  }
+  return outbox.event as schema.NewOpportunityOutcomeEvent;
+}
+
+export async function applyOutcomeOutbox(tx: DrizzleTx, outbox: AtomicOutcomeOutbox | undefined): Promise<void> {
+  if (!outbox) return;
+  outbox.result.inserted = false;
+  const event = getOutcomeEvent(outbox);
+  const inserted = await tx
+    .insert(schema.opportunityOutcomeEvents)
+    .values(event)
+    .onConflictDoNothing({ target: schema.opportunityOutcomeEvents.idempotencyKey })
+    .returning({ id: schema.opportunityOutcomeEvents.id });
+  outbox.result.inserted = inserted.length > 0;
+}
+
+interface OutcomeTransitionResult {
+  actors: schema.OpportunityActor[];
+}
+
+/**
+ * Revalidate the prepared scope against transaction-held opportunity actors and
+ * a share-locked intent row. Any actor, owner, fingerprint, counterpart, or
+ * event-integrity drift aborts the whole transaction before event insertion.
+ */
+export async function revalidateOutcomeOutbox(
+  tx: DrizzleTx,
+  opportunity: OutcomeTransitionResult,
+  outbox: AtomicOutcomeOutbox,
+): Promise<void> {
+  const event = getOutcomeEvent(outbox);
+  if (
+    !event.recipientUserId
+    || !event.intentId
+    || !event.intentFingerprint
+    || !event.opportunityId
+    || (event.action !== 'accepted' && event.action !== 'rejected')
+  ) {
+    throw new Error('Outcome capture precondition failed');
+  }
+
+  const recipientActors = opportunity.actors.filter(
+    (actor) => actor.userId === event.recipientUserId && actor.role !== 'introducer',
+  );
+  const recipientIntentIds = new Set(
+    recipientActors
+      .map((actor) => actor.intent?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
+  const actorScopeValid = outbox.actorResolution === 'selected_intent'
+    ? recipientActors.some((actor) => actor.intent === event.intentId)
+    : recipientIntentIds.size === 1 && recipientIntentIds.has(event.intentId);
+  if (!actorScopeValid) throw new Error('Outcome capture precondition failed');
+
+  const participantIds = new Set(
+    opportunity.actors
+      .filter((actor) => actor.role !== 'introducer')
+      .map((actor) => actor.userId),
+  );
+  if (participantIds.size !== 2 || !participantIds.has(event.recipientUserId)) {
+    throw new Error('Outcome capture precondition failed');
+  }
+  const counterpartUserId = [...participantIds].find((userId) => userId !== event.recipientUserId);
+  if (
+    !counterpartUserId
+    || computeOutcomeCounterpartDedupKey(event.recipientUserId, counterpartUserId) !== event.dedupKey
+  ) {
+    throw new Error('Outcome capture precondition failed');
+  }
+
+  const [intent] = await tx
+    .select({
+      payload: schema.intents.payload,
+      summary: schema.intents.summary,
+      userId: schema.intents.userId,
+    })
+    .from(schema.intents)
+    .where(and(
+      eq(schema.intents.id, event.intentId),
+      eq(schema.intents.userId, event.recipientUserId),
+    ))
+    .for('share');
+  if (
+    !intent
+    || computeIntentFingerprint(intent.payload, intent.summary) !== event.intentFingerprint
+    || computeOutcomeSnapshotHash(event.candidateSnapshot) !== event.snapshotHash
+    || computeOutcomeIdempotencyKey({
+      recipientUserId: event.recipientUserId,
+      intentId: event.intentId,
+      intentFingerprint: event.intentFingerprint,
+      opportunityId: event.opportunityId,
+      action: event.action,
+    }) !== event.idempotencyKey
+  ) {
+    throw new Error('Outcome capture precondition failed');
+  }
+}
+
+/**
+ * Execute a winning owner-action transition and its optional outcome event in
+ * one database transaction. This is the single atomic choke point used by both
+ * status-update and actor-stamp paths. Transaction-held revalidation happens
+ * after the winning row update and immediately before insertion, so intent or
+ * actor drift rolls back both the owner action and the event.
+ */
+export async function runAtomicOutcomeTransition<T extends OutcomeTransitionResult>(
+  database: AtomicTransactionRunner,
+  transition: (tx: DrizzleTx) => Promise<T | null>,
+  outbox?: AtomicOutcomeOutbox,
+): Promise<T | null> {
+  return database.transaction(async (tx) => {
+    const updated = await transition(tx);
+    if (updated !== null && outbox) {
+      await revalidateOutcomeOutbox(tx, updated, outbox);
+      await applyOutcomeOutbox(tx, outbox);
+    }
+    return updated;
+  });
 }
 
 export class OpportunityDatabaseAdapter {
@@ -463,6 +612,7 @@ export class OpportunityDatabaseAdapter {
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
+    outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
     if (status === 'accepted' && !acceptedBy) {
       throw new Error('acceptedBy is required when status is accepted');
@@ -473,11 +623,29 @@ export class OpportunityDatabaseAdapter {
     } else {
       updates.acceptedBy = null;
     }
-    const [row] = await db
-      .update(opportunities)
-      .set(updates)
-      .where(eq(opportunities.id, id))
-      .returning();
+    // When an outbox is present, the flip and the outcome-event insert must be
+    // atomic (rollback → no event); otherwise keep the cheap single-statement path.
+    let row: typeof opportunities.$inferSelect | null | undefined;
+    if (outbox) {
+      row = await runAtomicOutcomeTransition(
+        db as unknown as AtomicTransactionRunner,
+        async (tx) => {
+          const [updatedRow] = await tx
+            .update(opportunities)
+            .set(updates)
+            .where(eq(opportunities.id, id))
+            .returning();
+          return updatedRow ?? null;
+        },
+        outbox,
+      );
+    } else {
+      [row] = await db
+        .update(opportunities)
+        .set(updates)
+        .where(eq(opportunities.id, id))
+        .returning();
+    }
     const updated = row ? toOpportunityRow(row) : null;
     if (updated) emitOpportunityPendingBestEffort(updated);
     return updated;
@@ -634,40 +802,45 @@ export class OpportunityDatabaseAdapter {
     actorUserId: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
+    outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
     if (status === 'accepted' && !acceptedBy) {
       throw new Error('acceptedBy is required when status is accepted');
     }
-    const updated = await db.transaction(async (tx) => {
-      const [locked] = await tx
-        .select({ actors: opportunities.actors })
-        .from(opportunities)
-        .where(eq(opportunities.id, id))
-        .for('update');
-      if (!locked) return null;
-      const nowIso = new Date().toISOString();
-      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
-        actor.userId === actorUserId
-          ? { ...actor, actedAt: actor.actedAt ?? nowIso }
-          : actor,
-      );
-      const updates: Record<string, unknown> = {
-        actors: updatedActors,
-        status,
-        updatedAt: new Date(),
-      };
-      if (status === 'accepted') {
-        updates.acceptedBy = acceptedBy;
-      } else {
-        updates.acceptedBy = null;
-      }
-      const [row] = await tx
-        .update(opportunities)
-        .set(updates)
-        .where(eq(opportunities.id, id))
-        .returning();
-      return row ? toOpportunityRow(row) : null;
-    });
+    const updated = await runAtomicOutcomeTransition(
+      db as unknown as AtomicTransactionRunner,
+      async (tx) => {
+        const [locked] = await tx
+          .select({ actors: opportunities.actors })
+          .from(opportunities)
+          .where(eq(opportunities.id, id))
+          .for('update');
+        if (!locked) return null;
+        const nowIso = new Date().toISOString();
+        const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
+          actor.userId === actorUserId
+            ? { ...actor, actedAt: actor.actedAt ?? nowIso }
+            : actor,
+        );
+        const updates: Record<string, unknown> = {
+          actors: updatedActors,
+          status,
+          updatedAt: new Date(),
+        };
+        if (status === 'accepted') {
+          updates.acceptedBy = acceptedBy;
+        } else {
+          updates.acceptedBy = null;
+        }
+        const [row] = await tx
+          .update(opportunities)
+          .set(updates)
+          .where(eq(opportunities.id, id))
+          .returning();
+        return row ? toOpportunityRow(row) : null;
+      },
+      outbox,
+    );
     if (updated) emitOpportunityPendingBestEffort(updated);
     return updated;
   }

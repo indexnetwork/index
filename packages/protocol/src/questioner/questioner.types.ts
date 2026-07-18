@@ -5,7 +5,7 @@
  * Slice 1 defines all four context shapes but only `DiscoveryContext` has a
  * working preset implementation. The others are type stubs for future slices.
  */
-import type { DiscoveryQuestionInput } from "../opportunity/question.prompt.js";
+import type { DiscoveryQuestionInput } from "../shared/schemas/discovery-question.schema.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/question.schema.js";
 
@@ -13,7 +13,7 @@ import type { QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/
 
 /**
  * Discovery context — wraps the existing DiscoveryQuestionInput wholesale.
- * The discovery preset's buildPrompt delegates to the migrated builder.
+ * The discovery preset's buildPrompt delegates to `questioner.discovery.prompt.ts`.
  */
 export type DiscoveryContext = DiscoveryQuestionInput;
 

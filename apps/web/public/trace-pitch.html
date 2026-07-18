@@ -206,8 +206,8 @@
   };
   const qTrim = () => {
     while (qbox.children.length > MAXQ) {
-      const o = qbox.lastElementChild;
-      if (o.dataset.state === 'pending') break; // never drop an in-flight question
+      const o = [...qbox.children].reverse().find(row => row.dataset.state !== 'pending');
+      if (!o) break;
       qActive.delete(o.dataset.q);
       qbox.removeChild(o);
     }
@@ -248,8 +248,7 @@
     if (qPending() < 2) spawnQ();
     setTimeout(qLoop, rnd(1500, 3000));
   }
-  spawnQ();
-  setTimeout(spawnQ, 500);
+  for (let i = 0; i < MAXQ; i++) spawnQ();
   setTimeout(qLoop, 1800);
 
   // opportunity tallies (all cumulative: the connections pile up)
@@ -290,7 +289,8 @@
 
   function trim() {
     while (negs.children.length > MAX) {
-      const old = negs.lastElementChild;
+      const old = [...negs.children].reverse().find(row => !row.classList.contains('run'));
+      if (!old) break;
       active.delete(old.dataset.name);
       negs.removeChild(old);
       more++;               // scrolled-off connections keep accumulating in the tally
@@ -298,16 +298,16 @@
     refresh();
   }
 
-  function spawn() {
+  function spawn(completed = false) {
     const free = NAMES.filter(n => !active.has(n));
     if (!free.length) return;
     const name = pick(free);
     active.add(name);
-    inFlight++;
+    if (!completed) inFlight++;
 
     const row = document.createElement('div');
     row.dataset.name = name;
-    row.className = 'neg run swap flex items-center gap-2 pl-12 pr-3.5 py-0.5';
+    row.className = 'neg ' + (completed ? '' : 'run ') + 'swap flex items-center gap-2 pl-12 pr-3.5 py-0.5';
     row.innerHTML =
       '<span class="text-gray-300 flex-shrink-0 select-none">└─</span>' + BOT + LDR +
       '<span class="lbl flex-1 truncate text-gray-600"><span class="nm">Negotiating with ' + name + '</span><span class="meta"></span></span>' +
@@ -316,18 +316,20 @@
     bumpEvents();
     trim();
 
-    setTimeout(() => {
+    const settle = () => {
       const { c, ok } = chain();
       row.classList.remove('run');
       row.querySelector('.meta').innerHTML =
         '<span class="text-gray-400">: ' + c + '</span>' +
         (ok ? '<span class="text-emerald-700"> ✓ opportunity</span>' : '');
       row.querySelector('.dur').textContent = rnd(150, 720) + 'ms';
-      inFlight--;
+      if (!completed) inFlight--;
       bumpEvents();
       if (ok) { accepted++; matches++; if (Math.random() < 0.4) ready = Math.min(ready + 1, 12); }
       refresh();
-    }, rnd(1400, 3800));
+    };
+    if (completed) settle();
+    else setTimeout(settle, rnd(1400, 3800));
   }
 
   function loop() {
@@ -336,7 +338,8 @@
   }
 
   refresh();
-  for (let i = 0; i < CONCURRENT; i++) setTimeout(spawn, i * 350);
+  for (let i = 0; i < MAX - CONCURRENT; i++) spawn(true);
+  for (let i = 0; i < CONCURRENT; i++) spawn();
   setTimeout(loop, 1400);
 </script>
 </body>

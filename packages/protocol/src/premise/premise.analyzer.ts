@@ -101,7 +101,11 @@ export class PremiseAnalyzer {
   }
 
   @Timed()
-  public async invoke(premiseText: string, profileContext?: string): Promise<PremiseAnalyzerOutput> {
+  public async invoke(
+    premiseText: string,
+    profileContext?: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PremiseAnalyzerOutput> {
     invokeLog.verbose('Analyzing premise text', { preview: premiseText.substring(0, 50) });
 
     const contextBlock = profileContext
@@ -119,7 +123,7 @@ Classify this premise and score its felicity conditions.`;
       new HumanMessage(prompt),
     ];
 
-    const result = await invokeWithAbortSignal(this.model, messages);
+    const result = await invokeWithAbortSignal(this.model, messages, options.signal);
     const output = responseFormat.parse(result);
 
     invokeLog.verbose('Analysis result', { speechActType: output.speechActType, semanticEntropy: output.semanticEntropy });

@@ -10,7 +10,7 @@
  *   bun run eval:profile -- --tier 1               # one tier
  *   bun run eval:profile -- --list-cases           # print selected cases and exit
  *   bun run eval:profile -- --no-judge             # skip LLM coverage/apply/preserve checks
- *   bun run eval:profile -- --update-baseline --force # replace the committed baseline
+ *   bun run eval:profile -- --update-baseline --reason "why" --force # replace the committed baseline
  *   bun run eval:profile -- --report [path]        # write a full run report (incl. generated profiles)
  *   bun run eval:profile -- --html [path]          # write a standalone HTML scorecard
  *   bun run eval:profile -- --rolling-baseline [d] # compare against recent runs (default 7d)
@@ -25,8 +25,9 @@ import path from "path";
 import { EnrichmentGenerator } from "../../src/enrichment/enrichment.generator.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
-import { arg, assertEvalWritePlan, buildScorecard, computeRollingBaseline, diffBaseline, fingerprintEvalConfig, fingerprintEvalCorpus, flagValue, formatConsole, has, readBaseline, readEvalGitProvenance, writeBaseline, writeRunReport, type EvalRunMeta } from "../shared/index.js";
+import { arg, assertEvalWritePlan, attachScoredRunProvenance, baselineUpdateSummaryPath, buildEvalScoringConfigFingerprint, buildExecutionEvidence, buildScorecard, compareAgainstGovernedBaseline, emptyGovernedComparison, fingerprintEvalCorpus, flagValue, formatBaselineUpdateSummary, formatConsole, formatGovernedComparison, governedComparisonExitStatus, governedRegressionCount, has, installEvalProcessCancellation, performGovernedBaselineUpdate, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, writeBaseline, writeRunReport, type EvalEvidencePolicy, type EvalRunMeta, type GovernedComparison } from "../shared/index.js";
 import { CASES } from "./profile.cases.js";
+import { PROFILE_EVAL_ATTEMPT_TIMEOUT_MS } from "./profile.constants.js";
 import { runCase } from "./profile.runner.js";
 import { scoreCase, type Judge } from "./profile.scorer.js";
 import { writeHtmlReport } from "./profile.reporter.js";
@@ -53,16 +54,22 @@ Selection:
 
 Execution:
   --runs <n>                Runs per case (default: 3)
+  --attempt-timeout-ms <n>  Deadline for each invocation attempt (default: ${PROFILE_EVAL_ATTEMPT_TIMEOUT_MS})
+  --strict-evidence         Exit 3 when any requested run is incomplete
   --no-judge                Skip LLM coverage/apply/preserve/reasoning checks
   --alpha <p>               Regression significance threshold (default: ${DEFAULT_ALPHA})
   --no-save                 Do not auto-save full-corpus run JSON for rolling-baseline fuel
 
 Baselines/reports:
-  --update-baseline         Overwrite committed baseline (full corpus only; needs --force if one exists)
+  --update-baseline         Overwrite committed baseline (complete full-corpus run at a clean Git revision only; needs --force if one exists)
+  --reason <text>           Operator justification recorded in the baseline update summary (required with --update-baseline)
   --force                   Consent to overwrite existing baseline/report/HTML outputs
   --rolling-baseline [days] Compare against recent run reports (default: 7)
   --report [path]           Write JSON scorecard
   --html [path]             Write standalone HTML scorecard
+
+Exit codes:
+  0 pass · 1 measured regression · 2 execution/artifact error · 3 insufficient strict evidence
 
 Other:
   --help, -h                Show this help
@@ -95,6 +102,12 @@ async function main(): Promise<void> {
   }
   const listCases = has("--list-cases");
   const updateBaseline = has("--update-baseline");
+  const evidencePolicy: EvalEvidencePolicy = has("--strict-evidence") || updateBaseline ? "strict" : "normal";
+  const attemptTimeoutMs = Number(arg("--attempt-timeout-ms") ?? PROFILE_EVAL_ATTEMPT_TIMEOUT_MS);
+  if (!Number.isFinite(attemptTimeoutMs) || attemptTimeoutMs <= 0) {
+    console.error(`--attempt-timeout-ms must be a positive number (got "${arg("--attempt-timeout-ms")}")`);
+    process.exit(2);
+  }
   const noJudge = has("--no-judge");
   const report = has("--report");
   const html = has("--html");
@@ -133,9 +146,23 @@ async function main(): Promise<void> {
     console.error(`No cases match selected filters`);
     process.exit(2);
   }
+  const updateReason = flagValue("--reason");
   if (updateBaseline && !fullCorpus) {
     console.error(`--update-baseline requires a full-corpus run (remove --rule/--case/--tier filters)`);
     process.exit(2);
+  }
+  if (updateBaseline && !updateReason) {
+    console.error(`--update-baseline requires --reason "<operator justification>" for the auditable update summary`);
+    process.exit(2);
+  }
+  if (updateBaseline) {
+    // Fail fast before any provider spend: baseline updates require an
+    // identifiable clean Git revision (re-verified at write time).
+    const git = readEvalGitProvenance(import.meta.dir);
+    if (git.revision === "unknown" || git.dirty !== false) {
+      console.error(`--update-baseline requires a clean, identifiable Git revision; commit or stash local changes first`);
+      process.exit(2);
+    }
   }
 
   // Assert every declared output before running anything: no output may
@@ -146,7 +173,7 @@ async function main(): Promise<void> {
     await assertEvalWritePlan({
       inputs: [BASELINE_PATH],
       outputs: [
-        ...(updateBaseline ? [{ path: BASELINE_PATH, updatesInput: true }] : []),
+        ...(updateBaseline ? [{ path: BASELINE_PATH, updatesInput: true }, { path: baselineUpdateSummaryPath(BASELINE_PATH), updatesInput: true }] : []),
         ...(explicitReportPath ? [explicitReportPath] : []),
         ...(explicitHtmlPath ? [explicitHtmlPath] : []),
       ],
@@ -163,14 +190,20 @@ async function main(): Promise<void> {
 
   const startedAt = new Date().toISOString();
   const results: CaseResult[] = [];
+  const batches: Array<Awaited<ReturnType<typeof runCase>>> = [];
+  const cancellation = installEvalProcessCancellation();
   for (const c of selected) {
     process.stdout.write(`  ${c.id} … `);
-    const details = await runCase(generator, c, runs);
-    const result = await scoreCase(c, details, judge);
+    const batch = await runCase(generator, c, runs, { policy: evidencePolicy, attemptTimeoutMs, signal: cancellation.signal });
+    batches.push(batch);
+    const scored = await scoreCase(c, batch.outputs, judge);
+    const result = attachScoredRunProvenance(scored, batch.successfulRuns) as CaseResult;
     results.push(result);
     console.log(`${result.passes}/${result.runs}${result.flaky ? " (flaky)" : ""}`);
   }
 
+  const execution = buildExecutionEvidence(batches, evidencePolicy);
+  const executionSummary = summarizeExecution(execution);
   const scorecard = buildScorecard(results, { model, runs }) as Scorecard;
   const completedAt = new Date().toISOString();
   const filters: Record<string, string> = {};
@@ -185,18 +218,67 @@ async function main(): Promise<void> {
     runs,
     selection: { fullCorpus, filters },
     corpusFingerprint: fingerprintEvalCorpus(selected),
-    configFingerprint: fingerprintEvalConfig({ runs, alpha, judge: !noJudge, filters, models }),
+    configFingerprint: buildEvalScoringConfigFingerprint({ judge: !noJudge }),
     git: readEvalGitProvenance(import.meta.dir),
     startedAt,
     completedAt,
+    execution,
   };
-  const baseline =
-    rollingBaselineDays !== null
-      ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
-      : await readBaseline<Scorecard>(BASELINE_PATH, { harness: HARNESS });
-  const { regressions, skippedCaseIds } = diffBaseline(scorecard, baseline, alpha);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
+  const autoSaved = fullCorpus && !noSave;
+  const flow = await runEvalEvidenceFlow<GovernedComparison>({
+    evidencePolicy,
+    execution: executionSummary,
+    noComparison: emptyGovernedComparison(),
+    compareBaseline: () =>
+      compareAgainstGovernedBaseline({
+        scorecard,
+        alpha,
+        evidencePolicy,
+        meta,
+        execution: executionSummary,
+        baselinePath: BASELINE_PATH,
+        rolling: rollingBaselineDays !== null ? { runsDir: RUNS_DIR, days: rollingBaselineDays } : undefined,
+        forUpdate: updateBaseline,
+      }),
+    regressionCount: governedRegressionCount,
+    comparisonStatus: (comparison) => governedComparisonExitStatus(comparison, { forUpdate: updateBaseline }),
+    updateBaseline: updateBaseline
+      ? async (comparison) => {
+          const summary = await performGovernedBaselineUpdate({
+            baselinePath: BASELINE_PATH,
+            scorecard,
+            meta,
+            execution: executionSummary,
+            reason: updateReason,
+            force,
+            comparison,
+            writeBaselineArtifact: () =>
+              writeBaseline(BASELINE_PATH, scorecard, {
+                meta,
+                force,
+                leanCase: (c) => ({ ...c, runResults: c.runResults.map(({ detail: _detail, ...rest }) => rest) }),
+              }),
+          });
+          console.log(formatBaselineUpdateSummary(summary));
+          console.log(`\nBaseline updated at ${BASELINE_PATH}; update summary at ${baselineUpdateSummaryPath(BASELINE_PATH)}`);
+        }
+      : undefined,
+    persistDiagnosticReport: async () => {
+      if (autoSaved) await writeRunReport(autoRunPath, scorecard, { meta });
+      if (report) {
+        const reportPath = flagValue("--report") ?? autoRunPath;
+        if (!(autoSaved && reportPath === autoRunPath)) await writeRunReport(reportPath, scorecard, { meta, force });
+        console.log(`\nRun report written to ${reportPath}`);
+      }
+    },
+  });
+  const { baseline, regressions, skippedCaseIds } = flow.comparison;
 
-  if (rollingBaselineDays !== null) {
+  if (!flow.compared) {
+    console.log("\nSkipping baseline comparison: incomplete execution evidence.");
+  } else if (rollingBaselineDays !== null) {
     console.log(
       baseline
         ? `\nComparing against rolling ${rollingBaselineDays}-day baseline (${baseline.model}, α=${alpha}).`
@@ -204,37 +286,22 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(formatConsole(scorecard, regressions, skippedCaseIds, { title: "Profile Quality Scorecard" }));
+  const governanceReport = flow.compared ? formatGovernedComparison(flow.comparison, { fullCorpus }) : null;
+  if (governanceReport) console.log(`\n${governanceReport}`);
 
-  if (updateBaseline) {
-    await writeBaseline(BASELINE_PATH, scorecard, {
-      meta,
-      force,
-      leanCase: (c) => ({ ...c, runResults: c.runResults.map(({ detail: _detail, ...rest }) => rest) }),
-    });
-    console.log(`\nBaseline updated at ${BASELINE_PATH}`);
-  }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
-  const autoSaved = fullCorpus && !noSave;
-  if (autoSaved) {
-    await writeRunReport(autoRunPath, scorecard, { meta });
-  }
-
-  if (report) {
-    const reportPath = flagValue("--report") ?? autoRunPath;
-    if (!(autoSaved && reportPath === autoRunPath)) await writeRunReport(reportPath, scorecard, { meta, force });
-    console.log(`\nRun report written to ${reportPath}`);
+  console.log(formatConsole(scorecard, regressions, skippedCaseIds, { title: "Profile Quality Scorecard", execution }));
+  if (!executionSummary.complete) {
+    console.error(`\nIncomplete execution evidence: ${executionSummary.completedRuns}/${executionSummary.requestedRuns} requested runs completed.`);
   }
 
   if (html) {
     const htmlPath = flagValue("--html") ?? path.resolve(RUNS_DIR, `${stamp}.html`);
-    await writeHtmlReport(htmlPath, scorecard, regressions, CASES);
+    await writeHtmlReport(htmlPath, scorecard, regressions, CASES, execution);
     console.log(`\nHTML report written to ${htmlPath}`);
   }
 
-  process.exit(regressions.length > 0 ? 1 : 0);
+  cancellation.dispose();
+  process.exit(flow.exitCode);
 }
 
 main().catch((err) => {

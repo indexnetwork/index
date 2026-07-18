@@ -61,13 +61,13 @@ export class EnrichmentGenerator {
   }
 
   @Timed()
-  public async invoke(input: string) {
+  public async invoke(input: string, options: { signal?: AbortSignal } = {}) {
     logger.verbose("Received input", { inputLength: input?.length });
     const messages = [
       new SystemMessage(systemPrompt),
       new HumanMessage(`Here is the raw data:\n${input}`)
     ];
-    const result = await invokeWithAbortSignal(this.model, messages);
+    const result = await invokeWithAbortSignal(this.model, messages, options.signal);
     const output = responseFormat.parse(result);
     const textToEmbed = this.toString(output);
     logger.verbose("Generated profile", {

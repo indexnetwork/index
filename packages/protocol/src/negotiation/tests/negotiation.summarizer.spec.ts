@@ -5,7 +5,7 @@ config({ path: '.env.test', override: true });
 import { describe, it, expect } from "bun:test";
 
 import { NegotiationSummarizer, buildFallbackDigest } from "../negotiation.summarizer.js";
-import type { DiscoveryNegotiation } from "../../opportunity/question.prompt.js";
+import type { DiscoveryNegotiation } from "../../shared/schemas/discovery-question.schema.js";
 
 const summarizer = new NegotiationSummarizer();
 

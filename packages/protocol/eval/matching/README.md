@@ -119,3 +119,11 @@ contemporary distractors in one shared network, and asserts the evaluator surfac
 (band `[60, 100]`) while the distractors do not (`[0, 29]`). Evaluator input names stay
 anonymized so the model judges on fit, not fame, but `reportNames` exposes the real-world
 referents in HTML/reports. Run with `bun run eval:matching -- --rule historical`.
+
+## Execution evidence
+
+The runner records every requested slot and invocation attempt in schema-v2 run reports,
+including retries, timeout/cancellation, sanitized errors, retryability, and backoff. Only
+terminal successful outputs are scored. Use `--strict-evidence` for release evidence and
+`--attempt-timeout-ms N` to override the 90-second per-attempt deadline. Exit codes are
+0 pass, 1 regression, 2 execution/artifact error, and 3 incomplete strict evidence.

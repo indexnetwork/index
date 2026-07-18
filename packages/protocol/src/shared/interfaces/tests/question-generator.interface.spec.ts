@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import type { QuestionGenerationResult, Question, QuestionStrategy } from "../../schemas/question.schema.js";
-import type { DiscoveryQuestionInput } from "../../../opportunity/question.prompt.js";
+import type { DiscoveryQuestionInput } from "../../schemas/discovery-question.schema.js";
 import type { QuestionGeneratorReader } from "../question-generator.interface.js";
 
 describe("QuestionGeneratorReader contract", () => {

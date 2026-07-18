@@ -138,6 +138,55 @@ describe("verifyAxis", () => {
     });
   });
 
+  it("collapses duplicate assignments to the same normalized side without inflating evidence", () => {
+    const verified = verifyAxis(
+      rawAxis([
+        { id: "opp-2", side: "Advisor", evidence: "made-up evidence" },
+        { id: "opp-2", side: " Advisor ", evidence: "Fractional CTO advising" },
+      ]),
+      candidates,
+    );
+    expect(verified.assignments.find((a) => a.id === "opp-2")).toEqual({
+      id: "opp-2",
+      side: "Advisor",
+      evidence: "Fractional CTO advising",
+      verified: true,
+    });
+    expect(verified.evidenceRate).toBe(1);
+  });
+
+  it("demotes conflicting side assignments to unknown regardless of proposal order", () => {
+    const proposals = [
+      { id: "opp-1", side: "Hands-on builder", evidence: "Hands-on Rust engineer" },
+      { id: "opp-1", side: "Advisor", evidence: "Hands-on Rust engineer" },
+    ];
+    for (const assignments of [proposals, [...proposals].reverse()]) {
+      const verified = verifyAxis(rawAxis(assignments), candidates);
+      expect(verified.assignments.find((a) => a.id === "opp-1")).toEqual({
+        id: "opp-1",
+        side: null,
+        evidence: null,
+        verified: false,
+      });
+      expect(verified.assignments.filter((a) => a.verified)).toHaveLength(0);
+      expect(verified.evidenceRate).toBe(0);
+    }
+  });
+
+  it("keeps a candidate ambiguous when conflicting proposals are repeated", () => {
+    const verified = verifyAxis(
+      rawAxis([
+        { id: "opp-1", side: "Hands-on builder", evidence: "Hands-on Rust engineer" },
+        { id: "opp-1", side: "Advisor", evidence: "Hands-on Rust engineer" },
+        { id: "opp-1", side: "Hands-on builder", evidence: "embedded firmware" },
+      ]),
+      candidates,
+    );
+    expect(verified.assignments.find((a) => a.id === "opp-1")?.verified).toBe(false);
+    expect(verified.assignments.find((a) => a.id === "opp-1")?.side).toBeNull();
+    expect(verified.evidenceRate).toBe(0);
+  });
+
   it("has evidenceRate 0 when the LLM proposes no sides", () => {
     const verified = verifyAxis(
       rawAxis(candidates.map((c) => ({ id: c.id, side: null, evidence: null }))),

@@ -65,3 +65,11 @@ Re-run with `--update-baseline --force` after an intentional change.
 - `baselines/opportunity.baseline.json` — committed baseline (per-run detail stripped).
 - `runs/*.json` — gitignored full run reports (rolling-baseline fuel).
 - `tests/` — unit tests (no live agents).
+
+## Execution evidence
+
+Schema-v2 run reports retain every presenter invocation attempt, including recovered
+fallback retries, timeout/cancellation, sanitized errors, retryability, and backoff. Only
+terminal successful cards are scored. Use `--strict-evidence` for release evidence and
+`--attempt-timeout-ms N` to override the 90-second per-attempt deadline. Exit codes are
+0 pass, 1 regression, 2 execution/artifact error, and 3 incomplete strict evidence.

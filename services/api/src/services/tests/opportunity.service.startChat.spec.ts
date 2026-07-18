@@ -13,6 +13,7 @@ import { describe, it, expect, mock } from 'bun:test';
 import type { Opportunity, OpportunityControllerDatabase } from '@indexnetwork/protocol';
 import { OpportunityService } from '../opportunity.service';
 import type { UptakeAcceptanceGuardLike } from '../../lib/opportunity/uptake-acceptance.guard';
+import type { OutcomeFeedbackRecorderLike } from '../../lib/opportunity/outcome-feedback.recorder';
 
 const VIEWER_ID = 'user-viewer-001';
 const PEER_ID = 'user-peer-002';
@@ -51,6 +52,7 @@ function makeServiceWithDb(
   opp: Opportunity,
   overrides: DbStubOverrides = {},
   guard: UptakeAcceptanceGuardLike = { check: async () => null },
+  outcomeRecorder?: OutcomeFeedbackRecorderLike,
 ) {
   const updated = { ...opp, status: 'accepted' as const };
   const db = {
@@ -64,7 +66,7 @@ function makeServiceWithDb(
     ...overrides,
   } as unknown as OpportunityControllerDatabase;
 
-  return { service: new OpportunityService(db, undefined, guard), db };
+  return { service: new OpportunityService(db, undefined, guard, outcomeRecorder), db };
 }
 
 describe('OpportunityService.startChat', () => {
@@ -146,6 +148,37 @@ describe('OpportunityService.startChat', () => {
       networkId: undefined,
     }));
     expect(db.stampOpportunityActorAction).toHaveBeenCalled();
+  });
+
+  it('preserves an unscoped connect action when duplicate recipient scopes make Lens B ineligible', async () => {
+    const opp = makeOpportunity({
+      actors: [
+        { networkId: 'idx-1', userId: VIEWER_ID, role: 'patient', intent: SELECTED_INTENT_ID },
+        { networkId: 'idx-2', userId: VIEWER_ID, role: 'patient', intent: OTHER_INTENT_ID },
+        { networkId: 'idx-1', userId: PEER_ID, role: 'agent', intent: 'peer-intent' },
+      ],
+    });
+    const recorder = {
+      prepare: mock(async () => null),
+      triggerMine: mock(() => {}),
+    } satisfies OutcomeFeedbackRecorderLike;
+    const { service, db } = makeServiceWithDb(opp, {}, { check: async () => null }, recorder);
+
+    const result = await service.startChat(OPP_ID, VIEWER_ID, {
+      actionProvenance: 'user_session',
+    });
+
+    expect('error' in result).toBe(false);
+    expect(recorder.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      selectedIntentId: undefined,
+    }));
+    expect(db.stampOpportunityActorAction).toHaveBeenCalledWith(
+      OPP_ID,
+      VIEWER_ID,
+      'accepted',
+      VIEWER_ID,
+    );
+    expect(recorder.triggerMine).not.toHaveBeenCalled();
   });
 
   it('does not gate an already accepted opportunity', async () => {

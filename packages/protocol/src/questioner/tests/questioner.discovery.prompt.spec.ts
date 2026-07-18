@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 
-import { SYSTEM_PROMPT, buildQuestionPrompt, type DiscoveryQuestionInput } from "../question.prompt.js";
+import { DISCOVERY_SYSTEM_PROMPT, buildDiscoveryQuestionPrompt } from "../questioner.discovery.prompt.js";
+import type { DiscoveryQuestionInput } from "../../shared/schemas/discovery-question.schema.js";
 import type { DiscoveryNegotiationDigest } from "../../shared/schemas/negotiation-digest.schema.js";
 import type { ChatContextDigest } from "../../shared/schemas/chat-context.schema.js";
 
@@ -33,27 +34,27 @@ function makeInput(overrides: Partial<DiscoveryQuestionInput> = {}): DiscoveryQu
   };
 }
 
-describe("buildQuestionPrompt", () => {
+describe("buildDiscoveryQuestionPrompt", () => {
   it("requires generated prompts to stand alone with discovery context", () => {
-    expect(SYSTEM_PROMPT).toContain("Standalone prompt rule");
-    expect(SYSTEM_PROMPT).toContain("Every generated `prompt` must be understandable outside the conversation where it was created");
-    expect(SYSTEM_PROMPT).toContain("question text itself");
-    expect(SYSTEM_PROMPT).toContain("original query");
-    expect(SYSTEM_PROMPT).toContain("discovery pattern");
-    expect(SYSTEM_PROMPT).toContain("connection pattern");
-    expect(SYSTEM_PROMPT).toContain("concrete learned fact");
-    expect(SYSTEM_PROMPT).toContain("Do not rely on `title`, UI labels, hidden metadata, or surrounding digest/chat text");
-    expect(SYSTEM_PROMPT).toContain("For your AI crypto decentralized deep-tech search");
-    expect(SYSTEM_PROMPT).toContain("Which area is most critical right now?");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("Standalone prompt rule");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("Every generated `prompt` must be understandable outside the conversation where it was created");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("question text itself");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("original query");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("discovery pattern");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("connection pattern");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("concrete learned fact");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("Do not rely on `title`, UI labels, hidden metadata, or surrounding digest/chat text");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("For your AI crypto decentralized deep-tech search");
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("Which area is most critical right now?");
   });
 
   it("includes the query verbatim", () => {
-    const out = buildQuestionPrompt(makeInput({ query: "find me a Rust mentor" }));
+    const out = buildDiscoveryQuestionPrompt(makeInput({ query: "find me a Rust mentor" }));
     expect(out).toContain("find me a Rust mentor");
   });
 
   it("includes the summary counters using user-facing language", () => {
-    const out = buildQuestionPrompt(makeInput({
+    const out = buildDiscoveryQuestionPrompt(makeInput({
       summary: {
         totalCandidates: 5,
         opportunitiesFound: 2,
@@ -72,7 +73,7 @@ describe("buildQuestionPrompt", () => {
   });
 
   it("indicates absent chat context", () => {
-    const out = buildQuestionPrompt(makeInput({ chatContext: undefined }));
+    const out = buildDiscoveryQuestionPrompt(makeInput({ chatContext: undefined }));
     expect(out).toContain("(no chat context available)");
   });
 
@@ -83,7 +84,7 @@ describe("buildQuestionPrompt", () => {
       rejectionReasons: ["All US-based people"],
       surfacedFindings: ["Two people mentioned the same VC"],
     };
-    const out = buildQuestionPrompt(makeInput({ chatContext }));
+    const out = buildDiscoveryQuestionPrompt(makeInput({ chatContext }));
     expect(out).toContain("Pre-revenue");
     expect(out).toContain("What stage?");
     expect(out).toContain("All US-based people");
@@ -91,12 +92,12 @@ describe("buildQuestionPrompt", () => {
   });
 
   it("includes the now timestamp", () => {
-    const out = buildQuestionPrompt(makeInput({ now: "2026-12-25T00:00:00.000Z" }));
+    const out = buildDiscoveryQuestionPrompt(makeInput({ now: "2026-12-25T00:00:00.000Z" }));
     expect(out).toContain("2026-12-25T00:00:00.000Z");
   });
 
   it("includes counterpartyHint, indexContext, and keyTake per digest", () => {
-    const out = buildQuestionPrompt(makeInput({
+    const out = buildDiscoveryQuestionPrompt(makeInput({
       negotiationDigests: [makeDigest({
         counterpartyHint: "AI infra founder, Berlin",
         indexContext: "Builders network",
@@ -109,7 +110,7 @@ describe("buildQuestionPrompt", () => {
   });
 
   it("renders zero connection reviews without internal negotiation language", () => {
-    const out = buildQuestionPrompt(makeInput({ negotiationDigests: [] }));
+    const out = buildDiscoveryQuestionPrompt(makeInput({ negotiationDigests: [] }));
     expect(out).toContain("(no connection reviews)");
     expect(out).not.toContain("(no negotiations)");
   });
@@ -117,7 +118,7 @@ describe("buildQuestionPrompt", () => {
 
 
   it("redacts internal outcome reasons", () => {
-    const out = buildQuestionPrompt(makeInput({
+    const out = buildDiscoveryQuestionPrompt(makeInput({
       negotiationDigests: [makeDigest({ outcomeReason: "turn_cap" })],
     }));
     expect(out).toContain("needed more detail");
@@ -125,7 +126,7 @@ describe("buildQuestionPrompt", () => {
   });
 
   it("renders screened_out with user-facing copy and no protocol jargon (P2.2)", () => {
-    const out = buildQuestionPrompt(makeInput({
+    const out = buildDiscoveryQuestionPrompt(makeInput({
       negotiationDigests: [makeDigest({ outcomeReason: "screened_out" })],
     }));
     expect(out).toContain("didn't look like a strong enough fit to pursue");
@@ -134,7 +135,7 @@ describe("buildQuestionPrompt", () => {
   });
 
   it("renders suggestedRoles as user-facing relationship signals", () => {
-    const out = buildQuestionPrompt(makeInput({
+    const out = buildDiscoveryQuestionPrompt(makeInput({
       negotiationDigests: [makeDigest({
         suggestedRoles: { ownUser: "agent", otherUser: "patient" },
       })],

@@ -3,7 +3,7 @@ import type { CaseResultLike, RuleResult, ScorecardLike } from "./types.js";
 
 /** Mean of case pass-rates within a list (0 for empty). */
 export function meanRate(list: CaseResultLike[]): number {
-  return mean(list.map((c) => c.passRate));
+  return mean(list.filter((entry) => entry.runs > 0).map((entry) => entry.passRate));
 }
 
 /**

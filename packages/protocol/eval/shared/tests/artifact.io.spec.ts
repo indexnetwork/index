@@ -7,7 +7,7 @@ import { EVAL_BASELINE_ARTIFACT_TYPE, buildEvalArtifact } from "../artifact.js";
 import { assertEvalWritePlan, readEvalArtifact, writeEvalArtifact } from "../artifact.io.js";
 import { buildScorecard } from "../scorecard.js";
 import type { CaseResultLike } from "../types.js";
-import { makeTestMeta } from "./artifact.fixtures.js";
+import { makeSuccessfulExecution, makeTestMeta } from "./artifact.fixtures.js";
 
 const caseResult = (caseId: string, passes: number, runs = 3): CaseResultLike => ({
   caseId,
@@ -16,13 +16,14 @@ const caseResult = (caseId: string, passes: number, runs = 3): CaseResultLike =>
   passes,
   passRate: passes / runs,
   flaky: passes > 0 && passes < runs,
+  scoredRunIds: Array.from({ length: runs }, (_, runIndex) => `${encodeURIComponent(caseId)}::run:${runIndex + 1}`),
 });
 
 const envelope = (passes = 3) =>
   buildEvalArtifact(
     EVAL_BASELINE_ARTIFACT_TYPE,
     buildScorecard([caseResult("a", passes)], { model: "test/model", runs: 3 }),
-    makeTestMeta({ runs: 3 }),
+    makeTestMeta({ runs: 3, execution: makeSuccessfulExecution(["a"], 3) }),
   );
 
 const freshDir = async (): Promise<string> => {
@@ -72,6 +73,24 @@ describe("writeEvalArtifact + readEvalArtifact", () => {
     await writeEvalArtifact(p, envelope(2), { force: true });
     const replaced = await readEvalArtifact(p, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE });
     expect(replaced!.payload.cases[0].passes).toBe(2);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("allows exactly one simultaneous non-force writer without overwriting the winner", async () => {
+    const dir = await freshDir();
+    const p = join(dir, "contended-report.json");
+    const settled = await Promise.allSettled([
+      writeEvalArtifact(p, envelope(3)),
+      writeEvalArtifact(p, envelope(2)),
+    ]);
+
+    expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = settled.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(String(rejected[0].reason)).toMatch(/Refusing to overwrite.*--force/);
+    const back = await readEvalArtifact(p, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE });
+    expect([2, 3]).toContain(back!.payload.cases[0].passes);
+    expect(await readdir(dir)).toEqual(["contended-report.json"]);
     await rm(dir, { recursive: true, force: true });
   });
 

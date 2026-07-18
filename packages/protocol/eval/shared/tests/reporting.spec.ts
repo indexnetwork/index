@@ -4,6 +4,7 @@ import { buildScorecard } from "../scorecard.js";
 import { formatConsole } from "../console.js";
 import { renderScorecardShell, renderRuleTable, htmlEscape, rateClass, computeVerdict, groupStatus, renderHumanReport, type HumanReport } from "../html.js";
 import type { CaseResultLike } from "../types.js";
+import { makeSuccessfulExecution } from "./artifact.fixtures.js";
 
 const s = (caseId: string, rule: string, passRate: number, runs = 3): CaseResultLike => ({
   caseId,
@@ -34,6 +35,13 @@ describe("formatConsole", () => {
     const sc = buildScorecard([s("c1", "g", 1)], { model: "m", runs: 1 });
     expect(formatConsole(sc, [])).toContain("=== Quality Scorecard ===");
   });
+
+  it("renders execution completeness and attempt counts", () => {
+    const sc = buildScorecard([s("c1", "g", 1, 1)], { model: "m", runs: 1 });
+    const out = formatConsole(sc, [], [], { execution: makeSuccessfulExecution(["c1"], 1) });
+    expect(out).toContain("requested=1 completed=1");
+    expect(out).toContain("attempts=1");
+  });
 });
 
 describe("html shell", () => {
@@ -51,6 +59,7 @@ describe("html shell", () => {
       intro: "<h2>About</h2><p>hi</p>",
       sections: [{ heading: "By rule", html: renderRuleTable(sc) }],
       caseCardsHtml: "<article class='case'>card</article>",
+      execution: makeSuccessfulExecution(["c1", "c2"], 3),
     });
     expect(html).toContain("<!doctype html>");
     expect(html).toContain("Premise eval");
@@ -58,6 +67,8 @@ describe("html shell", () => {
     expect(html).toContain("By rule");
     expect(html).toContain("card");
     expect(html).toContain("CI₉₅");
+    expect(html).toContain("Execution evidence — complete");
+    expect(html).toContain("attempts 6");
   });
 });
 
@@ -115,6 +126,18 @@ describe("human-readable report", () => {
     const html = renderHumanReport(sc, [], human);
     expect(html).toContain("of 2 scenarios passed every time");
     expect(html).toContain("One was occasionally off.");
+  });
+
+  it("labels zero-output scenarios as unscored instead of successful or failed domain checks", () => {
+    const sc = buildScorecard([
+      s("c1", "g", 1, 1),
+      { caseId: "c2", rule: "g", runs: 0, passes: 0, passRate: 0, flaky: false },
+    ], { model: "m", runs: 1 });
+    const html = renderHumanReport(sc, [], human);
+    expect(sc.aggregatePassRate).toBe(1);
+    expect(html).toContain("Not scored — execution incomplete");
+    expect(html).toContain("not scored because execution did not complete");
+    expect(html).not.toContain("Correct all 0 times");
   });
 
   it("hero reports a clean sweep when every scenario passes every run", () => {

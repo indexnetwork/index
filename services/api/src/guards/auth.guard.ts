@@ -6,6 +6,7 @@ import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { apikeys, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
+import { recordRequestAuthContext } from '../lib/request-auth-context';
 
 const logger = log.server.from('auth.guard');
 
@@ -41,11 +42,13 @@ const resolveJwtUser = async (req: Request): Promise<AuthenticatedUser> => {
   }
   try {
     const { payload } = await jwtVerify(token, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
-    return {
+    const user = {
       id: payload.id as string,
       email: (payload.email as string) ?? null,
       name: payload.name as string,
     };
+    recordRequestAuthContext(req, { kind: 'session' });
+    return user;
   } catch {
     throw new Error('Invalid or expired access token');
   }
@@ -92,6 +95,34 @@ export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser>
   throw new Error('Access token required');
 };
 
+function parseApiKeyAgentId(metadata: string | null): string | null {
+  if (!metadata) return null;
+  try {
+    const parsed = JSON.parse(metadata) as Record<string, unknown>;
+    return typeof parsed.agentId === 'string' ? parsed.agentId : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True iff the request is authenticated by a genuine Better Auth session JWT
+ * (`Authorization: Bearer` header or `?token=`), i.e. a human acting in the
+ * product — NOT an agent/API-key principal. Mirrors the JWT gate used by
+ * `resolveJwtUser`/`AuthGuard`, so it stays in lockstep with how auth is
+ * actually resolved.
+ *
+ * Used to prove owner-action provenance for Lens B outcome capture (IND-434):
+ * only explicit human session actions may become preference labels; API-key /
+ * agent-mediated status mutations must never be recorded as owner decisions.
+ */
+export const isSessionAuthenticated = (req: Request): boolean => {
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) return true;
+  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
+  return Boolean(queryToken);
+};
+
 /**
  * Resolve the `metadata.agentId` of the API key on the request, or null if
  * the request is JWT-authenticated, has no key, or the key has no agent
@@ -115,14 +146,7 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
     .where(eq(apikeys.key, hashed))
     .limit(1);
 
-  if (!row?.metadata) return null;
-
-  try {
-    const parsed = JSON.parse(row.metadata) as Record<string, unknown>;
-    return typeof parsed.agentId === 'string' ? parsed.agentId : null;
-  } catch {
-    return null;
-  }
+  return parseApiKeyAgentId(row?.metadata ?? null);
 };
 
 /**
@@ -152,6 +176,7 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
       userId: apikeys.userId,
       enabled: apikeys.enabled,
       expiresAt: apikeys.expiresAt,
+      metadata: apikeys.metadata,
     })
     .from(apikeys)
     .where(eq(apikeys.key, hashed))
@@ -192,6 +217,11 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
     logger.warn('API key rejected', { reason: 'user_not_found', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
+
+  recordRequestAuthContext(req, {
+    kind: 'api_key',
+    agentId: parseApiKeyAgentId(row.metadata),
+  });
 
   return {
     id: user.id,
