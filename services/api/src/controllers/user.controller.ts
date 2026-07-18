@@ -5,6 +5,7 @@ import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { ContactsEnabledGuard } from '../guards/contacts.guard';
+import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { userService } from '../services/user.service';
 import { contactService } from '../services/contact.service';
 import { TaskService } from '../services/task.service';
@@ -564,6 +565,7 @@ export class UserController {
    * @returns Updated user or validation error
    */
   @Put('/me/key')
+  @deprecatedRoute('user.update-key')
   @UseGuards(RateLimit('write'), AuthGuard)
   async updateKey(req: Request, user: AuthenticatedUser) {
     let body: { key?: string };

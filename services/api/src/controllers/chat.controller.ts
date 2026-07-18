@@ -4,6 +4,7 @@ import { AuthGuard, type AuthenticatedUser } from "../guards/auth.guard";
 import { RateLimit } from "../guards/limiter.guard";
 import { requestContext } from "../lib/request-context";
 import { log } from "../lib/log";
+import { deprecatedRoute } from "../lib/router/deprecated-route";
 import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
 import { chatSessionService } from "../services/chat.service";
 import { fileService } from "../services/file.service";
@@ -138,6 +139,7 @@ export class ChatController {
    * @returns JSON response with graph execution result including responseText
    */
   @Post("/message")
+  @deprecatedRoute('chat.message')
   @UseGuards(RateLimit('write'), AuthGuard)
   async message(req: Request, user: AuthenticatedUser) {
     // 1. Parse request body for message
