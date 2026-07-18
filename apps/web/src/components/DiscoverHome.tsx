@@ -40,13 +40,7 @@ export default function DiscoverHome() {
     apiClient
       .post<{ intents?: HomeIntent[] }>("/intents/list", { page: 1, limit: 100 })
       .then((res) => {
-        // TEMP DEBUG: force a visible question count to preview the badge.
-        // Overrides real counts — REVERT before merge.
-        const debugged = (res.intents ?? []).map((i, idx) => ({
-          ...i,
-          pendingQuestionCount: (idx % 5) + 1,
-        }));
-        if (active) setIntents(debugged);
+        if (active) setIntents(res.intents ?? []);
       })
       .catch((err) => {
         logger.error("Failed to load signals", { error: err });
