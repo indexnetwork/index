@@ -7,6 +7,7 @@ import type { CreateOpportunityData, Opportunity, OpportunityNetworkEligibility,
 import type { Embedder } from '../shared/interfaces/embedder.interface.js';
 import type { EnricherDatabase } from './opportunity.enricher.js';
 import { enrichOrCreate } from './opportunity.enricher.js';
+import { normalizeCreateOpportunityActorIntents } from './opportunity.actor.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('OpportunityPersist');
@@ -65,8 +66,9 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
   for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
     const data = items[itemIndex];
     try {
-      const enrichment = await enrichOrCreate(database, embedder, data);
-      const toCreate = enrichment.data;
+      const normalizedData = normalizeCreateOpportunityActorIntents(data);
+      const enrichment = await enrichOrCreate(database, embedder, normalizedData);
+      const toCreate = normalizeCreateOpportunityActorIntents(enrichment.data);
       if (enrichment.enriched) {
         toCreate.status = enrichment.resolvedStatus;
       }
