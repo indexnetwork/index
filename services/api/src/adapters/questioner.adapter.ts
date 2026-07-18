@@ -169,6 +169,22 @@ export interface PendingQuestionCounts {
   personalAgentPending: number;
 }
 
+/**
+ * One aggregate funnel cell: questions grouped by generation mode, lifecycle
+ * status, and whether the row is past its TTL. Counts and dates only — never
+ * question text, payloads, answers, or user identifiers (IND-439 telemetry).
+ */
+export interface QuestionFunnelStage {
+  mode: string;
+  status: 'pending' | 'answered' | 'dismissed';
+  expired: boolean;
+  count: number;
+  oldestCreatedAt: string | null;
+  newestCreatedAt: string | null;
+  nearestExpiresAt: string | null;
+  latestExpiresAt: string | null;
+}
+
 /** Successful claim data required by the deterministic delivery worker. */
 export interface PoolPushClaim {
   kind: 'claimed';
@@ -659,6 +675,47 @@ export class QuestionerAdapter {
       pushedPoolPending,
       personalAgentPending: globalPending + pushedPoolPending,
     };
+  }
+
+  /**
+   * Aggregate funnel telemetry (IND-439 visibility audit): counts of ALL
+   * questions grouped by (detection mode, status, expired-past-TTL), with
+   * group-level created/expiry date bounds for diagnosing TTL decay.
+   *
+   * Deliberately unscoped (whole-funnel observability) and deliberately
+   * shape-restricted: the projection contains counts and timestamps only —
+   * no question text, payloads, answers, evidence, or user IDs can leave
+   * this query.
+   *
+   * @returns One row per (mode, status, expired) cell, largest cells first.
+   */
+  async aggregateQuestionFunnel(): Promise<QuestionFunnelStage[]> {
+    const modeExpression = sql<string>`coalesce(${questions.detection}->>'mode', 'unknown')`;
+    const expiredExpression = sql<boolean>`(${questions.expiresAt} IS NOT NULL AND ${questions.expiresAt} < NOW())`;
+    const rows = await this.db
+      .select({
+        mode: modeExpression,
+        status: questions.status,
+        expired: expiredExpression,
+        count: count(),
+        oldestCreatedAt: sql<string | null>`min(${questions.createdAt})`,
+        newestCreatedAt: sql<string | null>`max(${questions.createdAt})`,
+        nearestExpiresAt: sql<string | null>`min(${questions.expiresAt})`,
+        latestExpiresAt: sql<string | null>`max(${questions.expiresAt})`,
+      })
+      .from(questions)
+      .groupBy(modeExpression, questions.status, expiredExpression)
+      .orderBy(desc(count()));
+    return rows.map((row) => ({
+      mode: row.mode,
+      status: row.status,
+      expired: Boolean(row.expired),
+      count: Number(row.count),
+      oldestCreatedAt: row.oldestCreatedAt ? new Date(row.oldestCreatedAt).toISOString() : null,
+      newestCreatedAt: row.newestCreatedAt ? new Date(row.newestCreatedAt).toISOString() : null,
+      nearestExpiresAt: row.nearestExpiresAt ? new Date(row.nearestExpiresAt).toISOString() : null,
+      latestExpiresAt: row.latestExpiresAt ? new Date(row.latestExpiresAt).toISOString() : null,
+    }));
   }
 
   /**

@@ -4,6 +4,7 @@ import { questionService } from '../services/question.service';
 import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
+import { maybeEnqueueVisitPoolMining } from '../queues/pool/visitmining.queue';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import { resolveAgentNetworkScope } from '../guards/agent-scope.guard';
@@ -165,6 +166,18 @@ export class QuestionController {
 
     const hasFilters = Object.keys(filters).length > 0;
     const questions = await questionService.findPending(user.id, hasFilters ? filters : undefined);
+
+    // IND-439: an owner's intent-page fetch with no live pending pool question
+    // may re-mine the pool (flag-gated, debounced, fire-and-forget — default
+    // off is a strict no-op). Network-scoped keys never see pool questions and
+    // never trigger; the worker enforces ownership authoritatively.
+    if (scope.scopeType === 'intent' && scope.scopeId && !networkScopeId) {
+      maybeEnqueueVisitPoolMining({
+        userId: user.id,
+        intentId: scope.scopeId,
+        hasLivePoolQuestion: questions.some((q) => q.detection.mode === 'pool_discovery'),
+      });
+    }
 
     logger.verbose('Questions listed', { userId: user.id, count: questions.length });
     return Response.json({ questions });
