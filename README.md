@@ -50,7 +50,7 @@ Four primitives make up the protocol:
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/media/trace-video-github-dark.webp">
     <source media="(prefers-color-scheme: light)" srcset="apps/web/public/media/trace-video-github-light.webp">
-    <img alt="Index Network discovery protocol" src="apps/web/public/media/trace-video-github-light.webp" width="600">
+    <img alt="Index Network discovery protocol" src="apps/web/public/media/trace-video-github-light.webp" width="800">
   </picture>
 </p>
 
