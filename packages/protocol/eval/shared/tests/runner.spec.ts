@@ -133,31 +133,96 @@ describe("executeRuns", () => {
     expect(batch.runs[0].attempts[0]).toMatchObject({ retryable: false, backoffMs: 0 });
   });
 
-  it("records legal non-Error rejection values instead of losing the attempt", async () => {
-    for (const rejected of [undefined, Symbol("provider"), () => "provider"] as unknown[]) {
+  it("appends the provider attempt when retry classification throws", async () => {
+    const batch = await executeRuns(async () => {
+      throw new Error("original provider failure");
+    }, 1, {
+      caseId: "classifier-failure",
+      attemptTimeoutMs: 100,
+      maxAttempts: 3,
+      isRetryable: () => {
+        throw new Error("classifier bookkeeping failure");
+      },
+    });
+
+    expect(batch.runs[0]).toMatchObject({ outcome: "failed", recovered: false });
+    expect(batch.runs[0].attempts).toHaveLength(1);
+    expect(batch.runs[0].attempts[0]).toMatchObject({
+      outcome: "failure",
+      retryable: false,
+      backoffMs: 0,
+      error: { message: "original provider failure" },
+    });
+  });
+
+  it("records arbitrary and hostile rejection values without losing the attempt", async () => {
+    const hostile = new Proxy(Object.create(null) as object, {
+      get: () => {
+        throw new Error("throwing getter raw-hostile-secret-901");
+      },
+      getPrototypeOf: () => {
+        throw new Error("throwing prototype raw-hostile-secret-902");
+      },
+    });
+    for (const rejected of [undefined, Symbol("provider"), () => "provider", hostile] as unknown[]) {
       const batch = await executeRuns(async () => await Promise.reject(rejected), 1, {
         caseId: "odd-rejection",
         attemptTimeoutMs: 100,
         maxAttempts: 1,
       });
+      expect(batch.runs[0].attempts).toHaveLength(1);
       expect(batch.runs[0].attempts[0].outcome).toBe("failure");
       expect(typeof batch.runs[0].attempts[0].error?.message).toBe("string");
+      expect(JSON.stringify(batch.runs[0].attempts[0].error)).not.toContain("raw-hostile-secret");
     }
   });
 
-  it("sanitizes keys, headers, bearer tokens, and raw environment values", () => {
+  it("sanitizes quoted headers, full cookies, bearer tokens, and raw environment values", () => {
     process.env.TEST_EVAL_SECRET = "raw-environment-secret-123";
-    const error = Object.assign(
-      new Error("Authorization: Bearer abc.def.ghi x-api-key=sk-secretvalue raw-environment-secret-123?token=visible"),
-      { code: "AUTH_raw-environment-secret-123" },
-    );
-    const sanitized = sanitizeEvalError(error);
-    const serialized = JSON.stringify(sanitized);
-    expect(serialized).not.toContain("abc.def.ghi");
-    expect(serialized).not.toContain("sk-secretvalue");
-    expect(serialized).not.toContain("raw-environment-secret-123");
-    expect(serialized).not.toContain("token=visible");
-    expect(serialized).toContain("REDACTED");
+    const fixtures = [
+      {
+        message: '{"x-api-key":"quoted-json-header-secret-1001","Authorization":"Bearer quoted-auth-secret-1002"}',
+        secrets: ["quoted-json-header-secret-1001", "quoted-auth-secret-1002"],
+      },
+      {
+        message: '{"Cookie":"session=quoted-cookie-secret-2001; refresh=quoted-cookie-secret-2002"}',
+        secrets: ["quoted-cookie-secret-2001", "quoted-cookie-secret-2002"],
+      },
+      {
+        message: "Cookie: session=plain-cookie-secret-3001; refresh=plain-cookie-secret-3002\nstatus=failed",
+        secrets: ["plain-cookie-secret-3001", "plain-cookie-secret-3002"],
+      },
+      {
+        message: "provider response Set-Cookie: session=set-cookie-secret-4001; Path=/; refresh=set-cookie-secret-4002; HttpOnly\nstatus=failed",
+        secrets: ["set-cookie-secret-4001", "set-cookie-secret-4002"],
+      },
+      {
+        message: "Authorization: Bearer abc.def.ghi x-api-key=sk-secretvalue raw-environment-secret-123?token=visible",
+        secrets: ["abc.def.ghi", "sk-secretvalue", "raw-environment-secret-123", "token=visible"],
+      },
+    ];
+
+    for (const fixture of fixtures) {
+      const serialized = JSON.stringify(sanitizeEvalError(new Error(fixture.message)));
+      for (const secret of fixture.secrets) expect(serialized).not.toContain(secret);
+      expect(serialized).toContain("REDACTED");
+    }
+  });
+
+  it("keeps sanitization total for throwing getters, proxies, and coercion traps", () => {
+    const hostile = new Proxy(Object.create(null) as object, {
+      get: () => {
+        throw new Error("getter-secret-5001");
+      },
+      getPrototypeOf: () => {
+        throw new Error("prototype-secret-5002");
+      },
+    });
+    expect(() => sanitizeEvalError(hostile)).not.toThrow();
+    const serialized = JSON.stringify(sanitizeEvalError(hostile));
+    expect(serialized).not.toContain("getter-secret-5001");
+    expect(serialized).not.toContain("prototype-secret-5002");
+    expect(serialized).toContain("Unserializable provider error");
   });
 });
 

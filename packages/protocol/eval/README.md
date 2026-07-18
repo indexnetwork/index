@@ -116,10 +116,11 @@ incompatible artifact types with actionable errors. Fingerprint inputs must neve
 embeddings, API keys, secret-bearing prompts, or raw environment values (secret-like
 config keys are rejected).
 
-Persistence is collision-safe (`eval/shared/artifact.io.ts`): writes validate first, go
-through a same-directory temp file + atomic rename (an interrupted write can never replace
-a valid artifact with a partial one), and refuse to overwrite existing files unless
-`--force` is passed. Each harness asserts its full write plan up front, so an output can
+Persistence is collision-safe (`eval/shared/artifact.io.ts`): writes validate first and
+go through a same-directory temp file. Non-force writes commit with an atomic no-replace
+hard link, while `--force` opts into atomic rename replacement; interrupted or concurrent
+writes can never replace a valid artifact with a partial or stale contender. Each harness
+asserts its full write plan up front, so an output can
 never clobber an input (e.g. `--report <baseline path>` is rejected) and multi-output runs
 fail before anything is written rather than leaving partial combinations behind.
 

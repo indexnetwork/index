@@ -31,7 +31,7 @@ import { MATCHING_EVAL_ATTEMPT_TIMEOUT_MS } from "./matching.constants.js";
 import { runCase } from "./matching.runner.js";
 import { scoreCase, type Judge } from "./matching.scorer.js";
 import { formatCaseList, hasRule, parseTier, selectCases } from "./matching.selection.js";
-import { assertEvalWritePlan, attachScoredRunProvenance, buildExecutionEvidence, fingerprintEvalConfig, fingerprintEvalCorpus, installEvalProcessCancellation, readEvalGitProvenance, resolveEvalExitCode, summarizeExecution, type EvalEvidencePolicy, type EvalRunMeta } from "../shared/index.js";
+import { assertEvalWritePlan, attachScoredRunProvenance, buildExecutionEvidence, fingerprintEvalConfig, fingerprintEvalCorpus, installEvalProcessCancellation, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, type EvalEvidencePolicy, type EvalRunMeta } from "../shared/index.js";
 import { buildScorecard, computeRollingBaseline, diffBaseline, formatConsole, readBaseline, writeBaseline, writeHtmlReport, writeRunReport } from "./matching.reporter.js";
 import type { CaseResult } from "./matching.types.js";
 
@@ -223,17 +223,45 @@ async function main(): Promise<void> {
     completedAt,
     execution,
   };
-  const comparisonAllowed = evidencePolicy !== "strict" || executionSummary.complete;
-  const baseline = !comparisonAllowed
-    ? null
-    : rollingBaselineDays !== null
-      ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays, new Date(), { evidencePolicy })
-      : await readBaseline(BASELINE_PATH);
-  const { regressions, skippedCaseIds } = comparisonAllowed
-    ? diffBaseline(scorecard, baseline, alpha)
-    : { regressions: [], skippedCaseIds: [] };
+  type BaselineComparison = {
+    baseline: Awaited<ReturnType<typeof computeRollingBaseline>>;
+    regressions: ReturnType<typeof diffBaseline>["regressions"];
+    skippedCaseIds: string[];
+  };
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
+  const autoSaved = fullCorpus && !noSave;
+  const flow = await runEvalEvidenceFlow<BaselineComparison>({
+    evidencePolicy,
+    execution: executionSummary,
+    noComparison: { baseline: null, regressions: [], skippedCaseIds: [] },
+    compareBaseline: async () => {
+      const baseline = rollingBaselineDays !== null
+        ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays, new Date(), { evidencePolicy })
+        : await readBaseline(BASELINE_PATH);
+      return { baseline, ...diffBaseline(scorecard, baseline, alpha) };
+    },
+    regressionCount: (comparison) => comparison.regressions.length,
+    updateBaseline: updateBaseline
+      ? async () => {
+          await writeBaseline(BASELINE_PATH, scorecard, { meta, force });
+          console.log(`\nBaseline updated at ${BASELINE_PATH}`);
+        }
+      : undefined,
+    persistDiagnosticReport: async () => {
+      if (autoSaved) await writeRunReport(autoRunPath, scorecard, { meta });
+      if (report) {
+        const reportPath = flagValue("--report") ?? autoRunPath;
+        if (!(autoSaved && reportPath === autoRunPath)) await writeRunReport(reportPath, scorecard, { meta, force });
+        console.log(`\nRun report written to ${reportPath}`);
+      }
+    },
+  });
+  const { baseline, regressions, skippedCaseIds } = flow.comparison;
 
-  if (rollingBaselineDays !== null) {
+  if (!flow.compared) {
+    console.log("\nSkipping baseline comparison: incomplete execution evidence.");
+  } else if (rollingBaselineDays !== null) {
     console.log(
       baseline
         ? `\nComparing against rolling ${rollingBaselineDays}-day baseline (${baseline.model}, α=${alpha}).`
@@ -246,24 +274,6 @@ async function main(): Promise<void> {
     console.error(`\nIncomplete execution evidence: ${executionSummary.completedRuns}/${executionSummary.requestedRuns} requested runs completed.`);
   }
 
-  if (updateBaseline && executionSummary.complete) {
-    await writeBaseline(BASELINE_PATH, scorecard, { meta, force });
-    console.log(`\nBaseline updated at ${BASELINE_PATH}`);
-  }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
-  const autoSaved = fullCorpus && !noSave;
-  if (autoSaved) {
-    await writeRunReport(autoRunPath, scorecard, { meta });
-  }
-
-  if (report) {
-    const reportPath = flagValue("--report") ?? autoRunPath;
-    if (!(autoSaved && reportPath === autoRunPath)) await writeRunReport(reportPath, scorecard, { meta, force });
-    console.log(`\nRun report written to ${reportPath}`);
-  }
-
   if (html) {
     const htmlPath = flagValue("--html") ?? path.resolve(RUNS_DIR, `${stamp}.html`);
     await writeHtmlReport(htmlPath, scorecard, regressions, CASES, execution);
@@ -271,7 +281,7 @@ async function main(): Promise<void> {
   }
 
   cancellation.dispose();
-  process.exit(resolveEvalExitCode({ regressionCount: regressions.length, evidencePolicy, execution: executionSummary }));
+  process.exit(flow.exitCode);
 }
 
 main().catch((err) => {

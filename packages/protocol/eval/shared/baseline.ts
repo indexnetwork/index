@@ -100,8 +100,8 @@ export async function readBaseline<T extends ScorecardLike>(
  * per-run candidate payloads); the full detail lives in the run report instead
  * (see {@link writeRunReport}).
  *
- * Writes are atomic (same-directory temp file + rename) and refuse to replace
- * an existing baseline unless `force` is set (the CLI's `--force`).
+ * Writes use a same-directory temp file plus an atomic no-replace commit by
+ * default; `force` opts into atomic rename replacement (the CLI's `--force`).
  *
  * @param path - Absolute or relative path to write to.
  * @param sc - The scorecard to persist.

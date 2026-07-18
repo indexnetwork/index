@@ -76,6 +76,24 @@ describe("writeEvalArtifact + readEvalArtifact", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("allows exactly one simultaneous non-force writer without overwriting the winner", async () => {
+    const dir = await freshDir();
+    const p = join(dir, "contended-report.json");
+    const settled = await Promise.allSettled([
+      writeEvalArtifact(p, envelope(3)),
+      writeEvalArtifact(p, envelope(2)),
+    ]);
+
+    expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = settled.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(String(rejected[0].reason)).toMatch(/Refusing to overwrite.*--force/);
+    const back = await readEvalArtifact(p, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE });
+    expect([2, 3]).toContain(back!.payload.cases[0].passes);
+    expect(await readdir(dir)).toEqual(["contended-report.json"]);
+    await rm(dir, { recursive: true, force: true });
+  });
+
   it("never lets an invalid artifact replace a previous valid one", async () => {
     const dir = await freshDir();
     const p = join(dir, "baseline.json");

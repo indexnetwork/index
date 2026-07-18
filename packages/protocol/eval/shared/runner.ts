@@ -139,50 +139,103 @@ function deterministicAttemptId(runId: string, attemptNumber: number): string {
   return `${runId}::attempt:${attemptNumber}`;
 }
 
+function safeInstanceOf(error: unknown, constructor: object): boolean {
+  try {
+    return Function.prototype[Symbol.hasInstance].call(constructor, error) as boolean;
+  } catch {
+    return false;
+  }
+}
+
+function safeProperty(error: unknown, property: string): unknown {
+  if ((typeof error !== "object" || error === null) && typeof error !== "function") return undefined;
+  try {
+    return Reflect.get(error, property);
+  } catch {
+    return undefined;
+  }
+}
+
+function safeString(value: unknown): string | undefined {
+  try {
+    return String(value);
+  } catch {
+    return undefined;
+  }
+}
+
 function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
+  const message = safeProperty(error, "message");
+  if (typeof message === "string") return message;
   try {
     const serialized = JSON.stringify(error);
-    return typeof serialized === "string" ? serialized : String(error);
+    if (typeof serialized === "string") return serialized;
   } catch {
-    return String(error);
+    // Hostile provider values may throw from toJSON/getters/proxy traps.
   }
+  return safeString(error) ?? "Unserializable provider error";
 }
 
 /** Redacts common credential/header forms plus exact raw environment values. */
 export function sanitizeEvalErrorMessage(value: string): string {
-  let message = value
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
-    .replace(/\b(sk|pk|rk|key)-[A-Za-z0-9_-]{8,}\b/gi, "[REDACTED]")
-    .replace(/([?&](?:api_?key|token|access_?token|secret|password)=)[^&\s]+/gi, "$1[REDACTED]")
-    .replace(/\b(authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)\s*[:=]\s*[^,;\n]+/gi, "$1: [REDACTED]")
-    .replace(/\b(api_?key|token|access_?token|secret|password|credential)\s*[:=]\s*["']?[^\s,"'};]+/gi, "$1=[REDACTED]");
+  try {
+    let message = value
+      // Consume complete quoted JSON header values before the plain-header rules.
+      .replace(/(["']?(?:cookie|set-cookie)["']?\s*[:=]\s*)"(?:\\.|[^"\\])*"/gi, "$1\"[REDACTED]\"")
+      .replace(/(["']?(?:cookie|set-cookie)["']?\s*[:=]\s*)'(?:\\.|[^'\\])*'/gi, "$1'[REDACTED]'")
+      .replace(/(["']?(?:authorization|proxy-authorization|x-api-key|api-key)["']?\s*[:=]\s*)"(?:\\.|[^"\\])*"/gi, "$1\"[REDACTED]\"")
+      .replace(/(["']?(?:authorization|proxy-authorization|x-api-key|api-key)["']?\s*[:=]\s*)'(?:\\.|[^'\\])*'/gi, "$1'[REDACTED]'")
+      .replace(/(["']?(?:api_?key|token|access_?token|secret|password|credential)["']?\s*[:=]\s*)"(?:\\.|[^"\\])*"/gi, "$1\"[REDACTED]\"")
+      .replace(/(["']?(?:api_?key|token|access_?token|secret|password|credential)["']?\s*[:=]\s*)'(?:\\.|[^'\\])*'/gi, "$1'[REDACTED]'")
+      // A Cookie/Set-Cookie field is one security-sensitive unit. Redact the
+      // whole plain-header line, including every cookie and attribute.
+      .replace(/\b(cookie|set-cookie)\s*[:=][^\r\n]*/gi, "$1: [REDACTED]")
+      .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
+      .replace(/\b(sk|pk|rk|key)-[A-Za-z0-9_-]{8,}\b/gi, "[REDACTED]")
+      .replace(/([?&](?:api_?key|token|access_?token|secret|password)=)[^&\s]+/gi, "$1[REDACTED]")
+      .replace(/\b(authorization|proxy-authorization|x-api-key|api-key)\s*[:=]\s*[^,;\n}\]]+/gi, "$1: [REDACTED]")
+      .replace(/\b(api_?key|token|access_?token|secret|password|credential)\s*[:=]\s*[^\s,"'};\]]+/gi, "$1=[REDACTED]");
 
-  const rawEnvironmentValues = new Set(
-    Object.values(process.env).filter((entry): entry is string => typeof entry === "string" && entry.length >= 8),
-  );
-  for (const secret of rawEnvironmentValues) {
-    if (message.includes(secret)) message = message.split(secret).join("[REDACTED_ENV]");
+    let rawEnvironmentValues: string[] = [];
+    try {
+      rawEnvironmentValues = Object.values(process.env)
+        .filter((entry): entry is string => typeof entry === "string" && entry.length >= 8);
+    } catch {
+      // Sanitization must remain total even if the environment is unavailable.
+    }
+    for (const secret of new Set(rawEnvironmentValues)) {
+      if (message.includes(secret)) message = message.split(secret).join("[REDACTED_ENV]");
+    }
+    if (message.length > MAX_ERROR_MESSAGE_LENGTH) {
+      message = `${message.slice(0, MAX_ERROR_MESSAGE_LENGTH)}…`;
+    }
+    return message;
+  } catch {
+    return "[REDACTED_UNAVAILABLE_ERROR_DETAILS]";
   }
-  if (message.length > MAX_ERROR_MESSAGE_LENGTH) {
-    message = `${message.slice(0, MAX_ERROR_MESSAGE_LENGTH)}…`;
-  }
-  return message;
 }
 
 /** Converts an arbitrary provider error to the only safe error shape persisted in artifacts. */
 export function sanitizeEvalError(error: unknown): SanitizedEvalError {
-  const candidate = error && typeof error === "object" ? error as Record<string, unknown> : undefined;
-  const rawCode = candidate?.code;
-  const code = typeof rawCode === "string" || typeof rawCode === "number"
-    ? sanitizeEvalErrorMessage(String(rawCode)).slice(0, 100)
-    : undefined;
-  return {
-    class: error instanceof Error ? sanitizeEvalErrorMessage(error.name || "Error").slice(0, 100) : "Error",
-    ...(code ? { code } : {}),
-    message: sanitizeEvalErrorMessage(errorMessage(error)),
-  };
+  try {
+    const rawCode = safeProperty(error, "code");
+    const rawCodeString = typeof rawCode === "string" || typeof rawCode === "number"
+      ? safeString(rawCode)
+      : undefined;
+    const code = rawCodeString ? sanitizeEvalErrorMessage(rawCodeString).slice(0, 100) : undefined;
+    const rawName = safeProperty(error, "name");
+    const className = safeInstanceOf(error, Error) && typeof rawName === "string" && rawName.length > 0
+      ? sanitizeEvalErrorMessage(rawName).slice(0, 100)
+      : "Error";
+    return {
+      class: className,
+      ...(code ? { code } : {}),
+      message: sanitizeEvalErrorMessage(errorMessage(error)),
+    };
+  } catch {
+    return { class: "Error", message: "[REDACTED_UNAVAILABLE_ERROR_DETAILS]" };
+  }
 }
 
 function publicRun<T>(run: EvalRunResult<T>): EvalRunEvidence {
@@ -348,9 +401,19 @@ export async function executeRuns<T>(
         break;
       } catch (error) {
         const completedMs = Date.now();
-        const cancelled = error instanceof EvalCancelledError || options.signal?.aborted === true;
-        const timedOut = error instanceof EvalAttemptTimeoutError;
-        const retryable = !cancelled && (options.isRetryable?.(error) ?? true);
+        const cancelled = safeInstanceOf(error, EvalCancelledError) || options.signal?.aborted === true;
+        const timedOut = safeInstanceOf(error, EvalAttemptTimeoutError);
+        const sanitizedError = sanitizeEvalError(error);
+        let retryable = !cancelled;
+        if (retryable && options.isRetryable) {
+          try {
+            retryable = options.isRetryable(error);
+          } catch {
+            // A classifier failure must never erase the provider invocation.
+            // Fail closed rather than guessing that another paid attempt is safe.
+            retryable = false;
+          }
+        }
         const willRetry = retryable && attemptNumber < maxAttempts;
         const backoffMs = willRetry ? retryDelayMs * 2 ** (attemptNumber - 1) : 0;
         attempts.push({
@@ -362,7 +425,7 @@ export async function executeRuns<T>(
           completedAt: new Date(completedMs).toISOString(),
           durationMs: Math.max(0, completedMs - startedMs),
           outcome: cancelled ? "cancelled" : timedOut ? "timeout" : "failure",
-          error: sanitizeEvalError(error),
+          error: sanitizedError,
           retryable,
           backoffMs,
         });
@@ -374,10 +437,14 @@ export async function executeRuns<T>(
           outcome = "failed";
           break;
         }
-        console.warn(
-          `[${label}] call failed (run ${runIndex + 1}, attempt ${attemptNumber}/${maxAttempts}); `
-            + `retrying in ${backoffMs}ms: ${sanitizeEvalError(error).message}`,
-        );
+        try {
+          console.warn(
+            `[${label}] call failed (run ${runIndex + 1}, attempt ${attemptNumber}/${maxAttempts}); `
+              + `retrying in ${backoffMs}ms: ${sanitizedError.message}`,
+          );
+        } catch {
+          // Logging is non-evidence bookkeeping and must not abort execution.
+        }
         try {
           await abortableSleep(backoffMs, options.signal);
         } catch {

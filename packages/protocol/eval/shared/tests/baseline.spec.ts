@@ -5,7 +5,10 @@ import { mkdir, rm, unlink } from "node:fs/promises";
 
 import { buildScorecard } from "../scorecard.js";
 import { diffBaseline, readBaseline, writeBaseline, writeRunReport } from "../baseline.js";
+import { EVAL_RUN_REPORT_ARTIFACT_TYPE } from "../artifact.js";
+import { readEvalArtifact } from "../artifact.io.js";
 import { computeRollingBaseline } from "../rolling.js";
+import { buildExecutionEvidence, executeRuns } from "../runner.js";
 import type { CaseResultLike, ScorecardLike } from "../types.js";
 import { makeSuccessfulExecution, makeTestMeta } from "./artifact.fixtures.js";
 
@@ -116,6 +119,62 @@ describe("writeBaseline leanCase transform", () => {
   it("readBaseline returns null when the file is missing", async () => {
     const back = await readBaseline(join(tmpdir(), `missing-${Date.now()}.json`), { harness: "test-harness" });
     expect(back).toBeNull();
+  });
+});
+
+describe("attempt evidence persistence", () => {
+  it("round-trips recovered and exhausted attempts through a run report", async () => {
+    const startedAt = new Date(Date.now() - 1_000).toISOString();
+    const batch = await executeRuns(async ({ runIndex, attemptNumber }) => {
+      if (runIndex === 0 && attemptNumber === 1) throw new Error("temporary provider failure");
+      if (runIndex === 1) throw Object.assign(new Error("exhausted provider failure"), { code: "503" });
+      return "recovered-output";
+    }, 2, {
+      caseId: "attempt-e2e",
+      attemptTimeoutMs: 100,
+      maxAttempts: 2,
+      retryDelayMs: 0,
+    });
+    const execution = buildExecutionEvidence([batch]);
+    const scorecard = buildScorecard([{
+      caseId: "attempt-e2e",
+      rule: "g",
+      runs: 1,
+      passes: 1,
+      passRate: 1,
+      flaky: false,
+      scoredRunIds: batch.successfulRuns.map((run) => run.runId),
+    }], { model: "m", runs: 2 });
+    const reportPath = join(tmpdir(), `attempt-evidence-${Date.now()}-${Math.random()}.json`);
+    await writeRunReport(reportPath, scorecard, {
+      meta: makeTestMeta({
+        runs: 2,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        execution,
+      }),
+    });
+
+    const artifact = await readEvalArtifact(reportPath, {
+      expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE,
+      expectedHarness: "test-harness",
+    });
+    expect(artifact?.schemaVersion).toBe(2);
+    if (!artifact || artifact.schemaVersion !== 2) throw new Error("expected a v2 run report");
+    expect(artifact.execution.runs.map((run) => run.outcome)).toEqual(["success", "failed"]);
+    expect(artifact.execution.runs[0]).toMatchObject({
+      recovered: true,
+      attempts: [{ outcome: "failure" }, { outcome: "success" }],
+    });
+    expect(artifact.execution.runs[1]).toMatchObject({
+      recovered: false,
+      attempts: [
+        { outcome: "failure", error: { code: "503" } },
+        { outcome: "failure", error: { code: "503" } },
+      ],
+    });
+    expect(artifact.payload.cases[0].scoredRunIds).toEqual(["attempt-e2e::run:1"]);
+    await unlink(reportPath);
   });
 });
 

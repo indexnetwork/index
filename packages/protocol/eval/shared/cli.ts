@@ -33,6 +33,50 @@ export function assertBaselineEvidenceComplete(execution: EvalExecutionSummary):
   }
 }
 
+export interface EvalEvidenceFlowOptions<TComparison> {
+  evidencePolicy: EvalEvidencePolicy;
+  execution: EvalExecutionSummary;
+  noComparison: TComparison;
+  compareBaseline: () => Promise<TComparison>;
+  regressionCount: (comparison: TComparison) => number;
+  /** Present only when the CLI was asked to update its baseline. */
+  updateBaseline?: () => Promise<void>;
+  /** Persists an enabled automatic or explicit diagnostic report. */
+  persistDiagnosticReport: () => Promise<void>;
+}
+
+export interface EvalEvidenceFlowResult<TComparison> {
+  comparison: TComparison;
+  exitCode: number;
+  compared: boolean;
+  baselineUpdated: boolean;
+}
+
+/**
+ * Applies the shared complete-evidence gate around CLI comparison and writes.
+ * Diagnostic reports remain persistable for incomplete runs, while neither a
+ * baseline read/comparison nor baseline update can consume partial evidence.
+ */
+export async function runEvalEvidenceFlow<TComparison>(
+  options: EvalEvidenceFlowOptions<TComparison>,
+): Promise<EvalEvidenceFlowResult<TComparison>> {
+  const compared = options.execution.complete;
+  const comparison = compared ? await options.compareBaseline() : options.noComparison;
+  let baselineUpdated = false;
+  if (options.execution.complete && options.updateBaseline) {
+    await options.updateBaseline();
+    baselineUpdated = true;
+  }
+  await options.persistDiagnosticReport();
+  const regressionCount = compared ? options.regressionCount(comparison) : 0;
+  return {
+    comparison,
+    exitCode: resolveEvalExitCode({ regressionCount, evidencePolicy: options.evidencePolicy, execution: options.execution }),
+    compared,
+    baselineUpdated,
+  };
+}
+
 export interface EvalProcessCancellation {
   signal: AbortSignal;
   dispose: () => void;
