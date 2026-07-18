@@ -90,6 +90,8 @@ export interface NegotiationGraphLike {
     seedAssessment: Omit<SeedAssessment, "actors">;
     discoveryQuery?: string;
     opportunityId?: string;
+    /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+    opportunityUpdatedAt?: Date;
     maxTurns?: number;
     timeoutMs?: number;
     /**
@@ -204,6 +206,11 @@ export const NegotiationGraphState = Annotation.Root({
   opportunityId: Annotation<string>({
     reducer: (curr, next) => next ?? curr,
     default: () => "",
+  }),
+  /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+  opportunityUpdatedAt: Annotation<Date | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
   conversationId: Annotation<string>({
     reducer: (curr, next) => next ?? curr,

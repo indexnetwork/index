@@ -19,6 +19,7 @@ import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../o
 import type { Id } from '../../types/common.types.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
+import type { NegotiationGraphLike } from '../../negotiation/negotiation.state.js';
 
 // ---------------------------------------------------------------------------
 // Shared constants
@@ -154,6 +155,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     getOrCreateDM: async () => ({ id: 'conv-1' }),
     getIntent: async () => null,
     getNegotiationTaskForOpportunity: async () => null,
+    compensateTasklessNegotiatingOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
     getPremisesForUser: async () => [],
     searchPremisesBySimilarity: async () => [],
@@ -164,7 +166,11 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
 function buildGraph(
   db: OpportunityGraphDatabase,
   stamper?: StampNewbornOpportunitiesFn,
-  overrides?: { embedder?: Embedder; evaluator?: OpportunityEvaluatorLike },
+  overrides?: {
+    embedder?: Embedder;
+    evaluator?: OpportunityEvaluatorLike;
+    negotiationGraph?: NegotiationGraphLike;
+  },
 ) {
   return new OpportunityGraphFactory(
     db,
@@ -172,11 +178,30 @@ function buildGraph(
     dummyHyde,
     overrides?.evaluator ?? mockEvaluator,
     async () => undefined,
-    undefined,
+    overrides?.negotiationGraph,
     undefined,
     undefined,
     stamper,
   ).createGraph();
+}
+
+function resolvedNegotiationGraph(
+  onInvoke?: (input: Parameters<NegotiationGraphLike['invoke']>[0]) => void,
+): NegotiationGraphLike {
+  return {
+    invoke: async (input) => {
+      onInvoke?.(input);
+      return {
+        outcome: {
+          hasOpportunity: false,
+          agreedRoles: [],
+          reasoning: 'No agreement',
+          turnCount: 0,
+        },
+        messages: [],
+      };
+    },
+  };
 }
 
 const discoveryInput = {
@@ -184,6 +209,23 @@ const discoveryInput = {
   operationMode: 'discover' as const,
   searchQuery: 'co-founder',
   options: { initialStatus: 'latent' as const },
+};
+
+const continuationInput = {
+  userId: USER_A,
+  operationMode: 'continue_discovery' as const,
+  trigger: 'orchestrator' as const,
+  searchQuery: 'co-founder',
+  candidates: [{
+    candidateUserId: USER_B,
+    candidateIntentId: 'intent-bob' as Id<'intents'>,
+    networkId: NET_ID,
+    similarity: 0.9,
+    lens: 'mirror',
+    candidatePayload: 'Looking to join a startup',
+    candidateSummary: 'Potential co-founder',
+  }],
+  options: {},
 };
 
 // ---------------------------------------------------------------------------
@@ -318,6 +360,140 @@ describe('opportunity graph — newborn stamping seam', () => {
   });
 });
 
+describe('opportunity graph — continuation negotiation lifecycle', () => {
+  test('continuation negotiates a newly persisted orchestrator candidate and observes its task boundary', async () => {
+    const persistedBoundary = new Date('2026-06-01T12:00:00.000Z');
+    const negotiationInputs: Array<Parameters<NegotiationGraphLike['invoke']>[0]> = [];
+    const observedTaskBoundaries: string[] = [];
+    const compensationCalls: Array<[string, Date, 'latent' | 'draft']> = [];
+    const db = buildDb({
+      createOpportunity: async (data) => ({
+        ...data,
+        id: 'opp-continuation-new',
+        status: 'negotiating',
+        createdAt: new Date(),
+        updatedAt: persistedBoundary,
+        expiresAt: null,
+      }),
+      compensateTasklessNegotiatingOpportunity: async (id, expectedUpdatedAt, fallbackStatus) => {
+        compensationCalls.push([id, expectedUpdatedAt, fallbackStatus]);
+        return null;
+      },
+    });
+
+    await buildGraph(db, undefined, {
+      negotiationGraph: resolvedNegotiationGraph((input) => {
+        negotiationInputs.push(input);
+        if (input.opportunityId) observedTaskBoundaries.push(input.opportunityId);
+      }),
+    }).invoke(continuationInput);
+
+    expect(negotiationInputs).toHaveLength(1);
+    expect(negotiationInputs[0].opportunityId).toBe('opp-continuation-new');
+    expect(negotiationInputs[0].opportunityUpdatedAt).toEqual(persistedBoundary);
+    expect(observedTaskBoundaries).toEqual(['opp-continuation-new']);
+    expect(compensationCalls).toEqual([
+      ['opp-continuation-new', persistedBoundary, 'draft'],
+    ]);
+  });
+
+  test('continuation leaves an active input-required task out of negotiation and compensation beyond five minutes', async () => {
+    const existing = makeOpportunity({
+      status: 'negotiating',
+      createdAt: new Date(Date.now() - 60_000),
+    });
+    let negotiationInvocations = 0;
+    let compensationInvocations = 0;
+    const now = new Date();
+    const db = buildDb({
+      findOpportunitiesByActors: async () => [existing],
+      getNegotiationTaskForOpportunity: async () => ({
+        id: 'task-active',
+        conversationId: 'conversation-active',
+        state: 'input_required',
+        metadata: { type: 'negotiation', opportunityId: existing.id },
+        createdAt: new Date(now.getTime() - 10 * 60 * 1000),
+        updatedAt: new Date(now.getTime() - 10 * 60 * 1000),
+      }),
+      compensateTasklessNegotiatingOpportunity: async () => {
+        compensationInvocations += 1;
+        return null;
+      },
+    });
+
+    const result = await buildGraph(db, undefined, {
+      negotiationGraph: resolvedNegotiationGraph(() => { negotiationInvocations += 1; }),
+    }).invoke(continuationInput);
+
+    expect(negotiationInvocations).toBe(0);
+    expect(compensationInvocations).toBe(0);
+    expect(result.opportunities).toHaveLength(0);
+    expect(result.existingBetweenActors).toHaveLength(1);
+  });
+
+  test('pre-task negotiation init failure compensates the exact persisted version to draft', async () => {
+    const persistedBoundary = new Date('2026-06-01T13:00:00.000Z');
+    const compensationCalls: Array<[string, Date, 'latent' | 'draft']> = [];
+    const db = buildDb({
+      createOpportunity: async (data) => ({
+        ...data,
+        id: 'opp-init-failure',
+        status: 'negotiating',
+        createdAt: new Date(),
+        updatedAt: persistedBoundary,
+        expiresAt: null,
+      }),
+      compensateTasklessNegotiatingOpportunity: async (id, expectedUpdatedAt, fallbackStatus) => {
+        compensationCalls.push([id, expectedUpdatedAt, fallbackStatus]);
+        return null;
+      },
+    });
+    const failingNegotiationGraph: NegotiationGraphLike = {
+      invoke: async () => { throw new Error('init failed before task creation'); },
+    };
+
+    await buildGraph(db, undefined, { negotiationGraph: failingNegotiationGraph })
+      .invoke(continuationInput);
+
+    expect(compensationCalls).toEqual([
+      ['opp-init-failure', persistedBoundary, 'draft'],
+    ]);
+  });
+
+  test('unapproved introducer filtering compensates taskless negotiating state to latent', async () => {
+    const persistedBoundary = new Date('2026-06-01T14:00:00.000Z');
+    const compensationCalls: Array<[string, Date, 'latent' | 'draft']> = [];
+    let negotiationInvocations = 0;
+    const db = buildDb({
+      createOpportunity: async (data) => ({
+        ...data,
+        id: 'opp-unapproved-introducer',
+        actors: [
+          ...data.actors,
+          { userId: USER_C, role: 'introducer', networkId: NET_ID, approved: false },
+        ],
+        status: 'negotiating',
+        createdAt: new Date(),
+        updatedAt: persistedBoundary,
+        expiresAt: null,
+      }),
+      compensateTasklessNegotiatingOpportunity: async (id, expectedUpdatedAt, fallbackStatus) => {
+        compensationCalls.push([id, expectedUpdatedAt, fallbackStatus]);
+        return null;
+      },
+    });
+
+    await buildGraph(db, undefined, {
+      negotiationGraph: resolvedNegotiationGraph(() => { negotiationInvocations += 1; }),
+    }).invoke(continuationInput);
+
+    expect(negotiationInvocations).toBe(0);
+    expect(compensationCalls).toEqual([
+      ['opp-unapproved-introducer', persistedBoundary, 'latent'],
+    ]);
+  });
+});
+
 describe('opportunity graph — time-based dedup (Persist node)', () => {
   test('parallel job dedup: recent existing opp skips creation (IND-166 regression)', async () => {
     // Existing opportunity created 2 minutes ago — within the 30-day window.
@@ -420,36 +596,47 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     expect(updateCalledWith![1]).toBe('pending');
   });
 
-  test('stuck negotiating fix: orphaned negotiating opp is reactivated instead of creating new', async () => {
-    // Existing negotiating opportunity created 15 minutes ago — within the 30-day window,
-    // but the orphan-heal path reactivates regardless of age when no active task exists.
-    // getNegotiationTaskForOpportunity returns null (no active task), so persist node
-    // reactivates the orphaned opp via updateOpportunityStatus instead of creating a new one.
+  test('taskless negotiating dedup reactivates and invokes negotiation on a fresh orchestrator run', async () => {
     const oldNegotiatingOpp = makeOpportunity({
       status: 'negotiating',
       createdAt: new Date(Date.now() - 15 * 60 * 1000),
     });
+    const reactivatedBoundary = new Date('2026-06-01T15:00:00.000Z');
 
     let createCalled = false;
     let updateCalledWith: [string, string] | null = null;
+    const negotiationInputs: Array<Parameters<NegotiationGraphLike['invoke']>[0]> = [];
     const db = buildDb({
       findOpportunitiesByActors: async () => [oldNegotiatingOpp],
       updateOpportunityStatus: async (id, status) => {
         updateCalledWith = [id, status];
-        return { ...oldNegotiatingOpp, status: 'latent' } as unknown as Opportunity;
+        return {
+          ...oldNegotiatingOpp,
+          status: 'negotiating',
+          updatedAt: reactivatedBoundary,
+        } as Opportunity;
       },
       createOpportunity: async (data) => {
         createCalled = true;
-        return { ...data, id: 'opp-new', status: 'latent' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+        return { ...data, id: 'opp-new', status: 'negotiating' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
       },
     });
 
-    const graph = buildGraph(db);
-    const result = await graph.invoke(discoveryInput);
+    const graph = buildGraph(db, undefined, {
+      negotiationGraph: resolvedNegotiationGraph((input) => negotiationInputs.push(input)),
+    });
+    const result = await graph.invoke({
+      userId: USER_A,
+      operationMode: 'create' as const,
+      trigger: 'orchestrator' as const,
+      searchQuery: 'co-founder',
+      options: {},
+    });
 
     expect(createCalled).toBe(false);
-    expect(updateCalledWith).not.toBeNull();
-    expect(updateCalledWith![0]).toBe(OPP_ID);
+    expect(updateCalledWith).toEqual([OPP_ID, 'negotiating']);
+    expect(negotiationInputs).toHaveLength(1);
+    expect(negotiationInputs[0].opportunityId).toBe(OPP_ID);
     expect(result.opportunities?.length).toBeGreaterThanOrEqual(1);
   });
 

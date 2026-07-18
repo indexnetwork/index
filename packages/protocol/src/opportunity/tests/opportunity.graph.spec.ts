@@ -1474,6 +1474,7 @@ describe('Opportunity Graph', () => {
           ownerUserId: 'a0000000-0000-4000-8000-000000000001',
           allowedNetworkIds: ['idx-1'],
         },
+        'expired',
       );
       expect(result.opportunities.length).toBe(1);
       expect(result.opportunities[0].id).toBe('opp-expired');

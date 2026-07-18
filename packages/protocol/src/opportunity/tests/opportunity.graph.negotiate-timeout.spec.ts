@@ -14,7 +14,10 @@ import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js
 
 const dummyEmbedding = new Array(2000).fill(0.1);
 
-function makeFactory(opts: { hangNegotiationForever: boolean }) {
+function makeFactory(opts: {
+  hangNegotiationForever: boolean;
+  onCompensate?: (opportunityId: string) => void;
+}) {
   const persistedOpp = {
     id: 'opp-hang-1',
     detection: { source: 'auto' },
@@ -71,6 +74,10 @@ function makeFactory(opts: { hangNegotiationForever: boolean }) {
     getNetworkMemberContext: async () => null,
     getOrCreateDM: async () => ({ id: 'conv-1' }),
     getNegotiationTaskForOpportunity: async () => null,
+    compensateTasklessNegotiatingOpportunity: async (opportunityId: string) => {
+      opts.onCompensate?.(opportunityId);
+      return null;
+    },
     stampOpportunityActorAction: async () => null,
     getPremisesForUser: async () => [],
     searchPremisesBySimilarity: async () => [],
@@ -156,8 +163,12 @@ function makeFactory(opts: { hangNegotiationForever: boolean }) {
 }
 
 describe('opportunity graph: negotiateTimeoutMs', () => {
-  test('returns within the budget with a timed_out trace when negotiateCandidates hangs', async () => {
-    const factory = makeFactory({ hangNegotiationForever: true });
+  test('returns within the budget with a timed_out trace and compensates a pre-task hang', async () => {
+    const compensatedOpportunityIds: string[] = [];
+    const factory = makeFactory({
+      hangNegotiationForever: true,
+      onCompensate: (opportunityId) => compensatedOpportunityIds.push(opportunityId),
+    });
     const graph = factory.createGraph();
 
     const start = Date.now();
@@ -173,6 +184,7 @@ describe('opportunity graph: negotiateTimeoutMs', () => {
     expect(negotiateTrace).toBeDefined();
     expect(negotiateTrace?.detail).toBe('timed_out');
     expect(negotiateTrace?.data).toMatchObject({ negotiateTimeoutMs: 50 });
+    expect(compensatedOpportunityIds).toEqual(['opp-hang-1']);
   });
 
   test('returns the normal trace shape when negotiate finishes before the budget', async () => {

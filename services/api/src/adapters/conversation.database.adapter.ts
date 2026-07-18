@@ -1,5 +1,6 @@
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
+import { acquireNegotiationAttemptLock, qualifyingNegotiationAttemptTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
 /**
  * Persona value for the user's negotiator DM session (P4.1 / IND-402).
@@ -28,6 +29,56 @@ const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } a
  * is identical to any intent-scoped session.
  */
 const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
+
+export interface CreateNegotiationTaskForAttemptInput {
+  conversationId: string;
+  opportunityId: string;
+  expectedUpdatedAt: Date;
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * Claim an exact negotiating opportunity version and insert its task while the
+ * shared attempt lock and opportunity row lock are held.
+ */
+export async function createNegotiationTaskForAttemptInTransaction(
+  tx: NegotiationAttemptTransaction,
+  input: CreateNegotiationTaskForAttemptInput,
+): Promise<Task | null> {
+  if (input.metadata.type !== 'negotiation' || input.metadata.opportunityId !== input.opportunityId) {
+    throw new Error('Negotiation task metadata does not match the claimed opportunity');
+  }
+
+  await acquireNegotiationAttemptLock(tx, input.opportunityId);
+
+  const [opportunity] = await tx
+    .select({ status: opportunities.status, updatedAt: opportunities.updatedAt })
+    .from(opportunities)
+    .where(eq(opportunities.id, input.opportunityId))
+    .for('update');
+  if (
+    opportunity?.status !== 'negotiating'
+    || opportunity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+  ) {
+    return null;
+  }
+
+  const [qualifyingTask] = await tx
+    .select({ id: schema.tasks.id })
+    .from(schema.tasks)
+    .where(qualifyingNegotiationAttemptTaskWhere(input.opportunityId, input.expectedUpdatedAt))
+    .limit(1);
+  if (qualifyingTask) return null;
+
+  const [task] = await tx
+    .insert(schema.tasks)
+    .values({
+      conversationId: input.conversationId,
+      metadata: input.metadata,
+    })
+    .returning();
+  return task ?? null;
+}
 
 function isExactPoolPushParts(parts: unknown, expectedText: string): boolean {
   if (!Array.isArray(parts) || parts.length !== 1) return false;
@@ -860,6 +911,20 @@ export class ConversationDatabaseAdapter {
   // ─────────────────────────────────────────────────────────────────────────
   // Tasks
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Atomically creates a negotiation task for an exact persisted opportunity attempt.
+   * Task creation and fallback compensation serialize on the same advisory lock;
+   * the opportunity row is then locked and revalidated before insertion.
+   *
+   * @param input - Conversation, opportunity version, and unchanged task metadata
+   * @returns The created task, or null when the attempt is stale or already claimed
+   */
+  async createNegotiationTaskForAttempt(
+    input: CreateNegotiationTaskForAttemptInput,
+  ): Promise<Task | null> {
+    return db.transaction((tx) => createNegotiationTaskForAttemptInTransaction(tx, input));
+  }
 
   /**
    * Creates a task in the submitted state.

@@ -51,6 +51,7 @@ import type { CreateOpportunityData, Opportunity, OpportunityActor, OpportunityN
 import { persistOpportunities } from './opportunity.persist.js';
 import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from "../negotiation/negotiation.graph.js";
+import { ASK_USER_LOCK_SLACK_MS, askUserAnswerWindowMs } from "../negotiation/negotiation.protocol.js";
 import { AMBIENT_PARK_WINDOW_MS } from "../negotiation/negotiation.tools.js";
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from "./negotiation-summary.builder.js";
 import type { NegotiationGraphLike, UserNegotiationContext } from "../negotiation/negotiation.state.js";
@@ -86,6 +87,21 @@ const routingLog = protocolLogger('OpportunityGraph:Routing');
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
 const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const NEGOTIATION_INTENT_LIMIT = 5;
+const ACTIVE_NEGOTIATION_TASK_STATES = new Set([
+  'submitted',
+  'working',
+  'input_required',
+  'waiting_for_agent',
+  'claimed',
+]);
+
+function isActiveNegotiationTaskFresh(task: { state: string; updatedAt: Date }): boolean {
+  if (!ACTIVE_NEGOTIATION_TASK_STATES.has(task.state)) return false;
+  const freshnessMs = task.state === 'input_required'
+    ? askUserAnswerWindowMs() + ASK_USER_LOCK_SLACK_MS
+    : 5 * 60 * 1000;
+  return Date.now() - new Date(task.updatedAt).getTime() < freshnessMs;
+}
 
 interface NegotiationIntentSource {
   id?: string | null;
@@ -2047,6 +2063,30 @@ export class OpportunityGraphFactory {
 
       const traceEmitter = requestContext.getStore()?.traceEmitter;
       const graphStart = Date.now();
+      const persistedById = new Map(
+        state.opportunities.map((opportunity) => [opportunity.id, opportunity] as const),
+      );
+      const attemptBoundaryById = new Map(
+        state.opportunities.map((opportunity) => [opportunity.id, opportunity.updatedAt] as const),
+      );
+      const compensateTasklessNegotiatingOpportunity = async (opportunityId: string): Promise<void> => {
+        const opportunity = persistedById.get(opportunityId);
+        const expectedUpdatedAt = attemptBoundaryById.get(opportunityId);
+        if (opportunity?.status !== 'negotiating' || !expectedUpdatedAt) return;
+        const fallbackStatus = opportunity.actors.some((actor) => actor.role === 'introducer')
+          ? 'latent'
+          : 'draft';
+        await this.database
+          .compensateTasklessNegotiatingOpportunity(opportunityId, expectedUpdatedAt, fallbackStatus)
+          .catch((error: unknown) => {
+            negotiateLog.warn('Failed to compensate taskless negotiating opportunity', {
+              opportunityId,
+              expectedUpdatedAt,
+              fallbackStatus,
+              error,
+            });
+          });
+      };
       traceEmitter?.({ type: "graph_start", name: "Negotiation graph" });
 
       try {
@@ -2088,6 +2128,7 @@ export class OpportunityGraphFactory {
           discoveryUserId,
         });
 
+        const filteredBeforeInvocation: string[] = [];
         const candidateEntries = state.opportunities
           .map(opp => {
             // Skip opportunities where any introducer exists but has not yet approved.
@@ -2099,6 +2140,7 @@ export class OpportunityGraphFactory {
                 introducerCount: introducerActors.length,
                 approvedCount: introducerActors.filter(a => a.approved === true).length,
               });
+              filteredBeforeInvocation.push(opp.id);
               return null;
             }
 
@@ -2115,11 +2157,14 @@ export class OpportunityGraphFactory {
                 discoveryUserId,
                 actors: (opp.actors as OpportunityActor[])?.map(a => ({ userId: a.userId, role: a.role })) ?? [],
               });
+              filteredBeforeInvocation.push(opp.id);
               return null;
             }
             return { opp, candidateActor };
           })
           .filter((e): e is NonNullable<typeof e> => e !== null);
+
+        await Promise.all(filteredBeforeInvocation.map(compensateTasklessNegotiatingOpportunity));
 
         negotiateLog.verbose('Candidate filtering complete', {
           inputOpportunities: state.opportunities.length,
@@ -2149,6 +2194,7 @@ export class OpportunityGraphFactory {
             return {
               userId,
               opportunityId: opp.id as string,
+              opportunityUpdatedAt: opp.updatedAt,
               reasoning: (opp.interpretation as { reasoning?: string } | null)?.reasoning ?? '',
               valencyRole: candidateActor.role ?? 'peer',
               networkId: candidateActor.networkId as string,
@@ -2251,8 +2297,10 @@ export class OpportunityGraphFactory {
         candidates.forEach((c, i) => candidateOrderById.set(c.userId, i));
 
         const resolutions: Array<NegotiationResolution & { __order: number }> = [];
+        const resolvedOpportunityIds = new Set<string>();
 
         const onCandidateResolved: OnNegotiationResolved = async ({ candidate, accepted, turns, outcome }) => {
+          if (candidate.opportunityId) resolvedOpportunityIds.add(candidate.opportunityId);
           resolutions.push({
             __order: candidateOrderById.get(candidate.userId) ?? Number.MAX_SAFE_INTEGER,
             candidateUserId: candidate.userId,
@@ -2267,6 +2315,10 @@ export class OpportunityGraphFactory {
             turns,
             outcome,
           });
+
+          if (candidate.opportunityId) {
+            await compensateTasklessNegotiatingOpportunity(candidate.opportunityId);
+          }
 
           if (state.trigger !== 'orchestrator') return;
           // ─── orchestrator streaming body ───
@@ -2361,6 +2413,14 @@ export class OpportunityGraphFactory {
             if (timerId !== undefined) clearTimeout(timerId);
           }
           if (raced === NEGOTIATE_TIMER_SENTINEL) {
+            // Restore any attempt that is still before its task boundary. A running or
+            // parked negotiation already has a task and makes the CAS a no-op; a hung
+            // pre-task init becomes owner-actionable while its floating work may retry.
+            await Promise.all(
+              candidates
+                .filter((candidate) => candidate.opportunityId && !resolvedOpportunityIds.has(candidate.opportunityId))
+                .map((candidate) => compensateTasklessNegotiatingOpportunity(candidate.opportunityId!)),
+            );
             // Floating promise is intentional — see comment above.
             void negotiationWork.catch((err) => {
               negotiateLog.warn('background negotiation failed after timer fired', { error: err });
@@ -2447,6 +2507,8 @@ export class OpportunityGraphFactory {
           discoverySummary,
         };
       } catch (err) {
+        await Promise.all(state.opportunities.map((opportunity) =>
+          compensateTasklessNegotiatingOpportunity(opportunity.id)));
         negotiateLog.error("Negotiation stage failed", { error: err });
         traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
         return {
@@ -2820,6 +2882,7 @@ export class OpportunityGraphFactory {
             opportunityId: string,
             status: Opportunity['status'],
             existingActors: OpportunityActor[],
+            expectedStatus: Opportunity['status'],
           ): Promise<Opportunity | null> => {
             // Reactivation preserves the existing opportunity row, so lock the
             // existing participant anchors rather than the evaluator's current
@@ -2839,6 +2902,7 @@ export class OpportunityGraphFactory {
               status,
               anchors,
               networkEligibility,
+              expectedStatus,
             );
           };
 
@@ -3011,7 +3075,9 @@ export class OpportunityGraphFactory {
                   if (existing.status === 'stalled' || sameIntroducer) {
                     // Introduction path always targets 'draft' (chat-only surface) rather than using
                     // initialStatus, because introductions are always chat-initiated, not background-discovered.
-                    const reactivated = await updateStatusIfStillEligible(existing.id, 'draft', existing.actors);
+                    const reactivated = await updateStatusIfStillEligible(
+                      existing.id, 'draft', existing.actors, existing.status,
+                    );
                     if (reactivated) {
                       persistLog.verbose('Reactivated opportunity (introduction path)', {
                         opportunityId: existing.id,
@@ -3025,25 +3091,23 @@ export class OpportunityGraphFactory {
                 } else if (existing.status === 'negotiating') {
                   // Orphan heal (introduction path): same logic as discovery path
                   const priorTask = await this.database.getNegotiationTaskForOpportunity(existing.id);
-                  if (priorTask) {
-                    const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
-                    const isFresh = (Date.now() - new Date(priorTask.updatedAt).getTime()) < 5 * 60 * 1000;
-                    if (activeStates.includes(priorTask.state) && isFresh) {
-                      existingBetweenActors.push({
-                        candidateUserId: candidateUserId as Id<'users'>,
-                        networkId: (state.networkId ?? indexIdForActors ?? '') as Id<'networks'>,
-                        existingOpportunityId: existing.id as Id<'opportunities'>,
-                        existingStatus: existing.status,
-                      });
-                      persistLog.verbose('Skipping negotiating opportunity with active task (introduction path)', {
-                        opportunityId: existing.id,
-                        candidateUserId,
-                        taskState: priorTask.state,
-                      });
-                      continue;
-                    }
+                  if (priorTask && isActiveNegotiationTaskFresh(priorTask)) {
+                    existingBetweenActors.push({
+                      candidateUserId: candidateUserId as Id<'users'>,
+                      networkId: (state.networkId ?? indexIdForActors ?? '') as Id<'networks'>,
+                      existingOpportunityId: existing.id as Id<'opportunities'>,
+                      existingStatus: existing.status,
+                    });
+                    persistLog.verbose('Skipping negotiating opportunity with active task (introduction path)', {
+                      opportunityId: existing.id,
+                      candidateUserId,
+                      taskState: priorTask.state,
+                    });
+                    continue;
                   }
-                  const reactivated = await updateStatusIfStillEligible(existing.id, 'draft', existing.actors);
+                  const reactivated = await updateStatusIfStillEligible(
+                    existing.id, 'draft', existing.actors, existing.status,
+                  );
                   if (reactivated) {
                     persistLog.info('Resuming orphaned negotiating opportunity (introduction path)', {
                       opportunityId: existing.id,
@@ -3055,7 +3119,9 @@ export class OpportunityGraphFactory {
                   continue;
                 } else if (existing.status === 'latent') {
                   // Upgrade latent to draft for introduction path
-                  const upgraded = await updateStatusIfStillEligible(existing.id, 'draft', existing.actors);
+                  const upgraded = await updateStatusIfStillEligible(
+                    existing.id, 'draft', existing.actors, existing.status,
+                  );
                   if (upgraded) {
                     persistLog.verbose('Upgraded latent opportunity to draft (introduction path)', {
                       opportunityId: existing.id,
@@ -3184,7 +3250,9 @@ export class OpportunityGraphFactory {
                   // Reactivate expired or stalled opportunities.
                   // Stalled opportunities are reactivated regardless of age: a stalled negotiation
                   // is still in-flight for this pair, so we resume it rather than create a parallel one.
-                  const reactivated = await updateStatusIfStillEligible(existing.id, initialStatus, existing.actors);
+                  const reactivated = await updateStatusIfStillEligible(
+                    existing.id, initialStatus, existing.actors, existing.status,
+                  );
                   if (reactivated) {
                     persistLog.verbose('Reactivated opportunity', {
                       opportunityId: existing.id,
@@ -3199,27 +3267,25 @@ export class OpportunityGraphFactory {
                   // Orphan heal: if a prior opportunity is stuck in 'negotiating' with a stale task,
                   // reactivate it so the new discovery run can reuse it instead of creating a duplicate.
                   const priorTask = await this.database.getNegotiationTaskForOpportunity(existing.id);
-                  if (priorTask) {
-                    const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
-                    const isFresh = (Date.now() - new Date(priorTask.updatedAt).getTime()) < 5 * 60 * 1000;
-                    if (activeStates.includes(priorTask.state) && isFresh) {
-                      // Still active — skip (lock gate in init node will handle)
-                      existingBetweenActors.push({
-                        candidateUserId: candidateUserId as Id<'users'>,
-                        networkId: existingIndexId,
-                        existingOpportunityId: existing.id as Id<'opportunities'>,
-                        existingStatus: existing.status,
-                      });
-                      persistLog.verbose('Skipping negotiating opportunity with active task', {
-                        opportunityId: existing.id,
-                        candidateUserId,
-                        taskState: priorTask.state,
-                      });
-                      continue;
-                    }
+                  if (priorTask && isActiveNegotiationTaskFresh(priorTask)) {
+                    // Still active — skip (lock gate in init node will handle)
+                    existingBetweenActors.push({
+                      candidateUserId: candidateUserId as Id<'users'>,
+                      networkId: existingIndexId,
+                      existingOpportunityId: existing.id as Id<'opportunities'>,
+                      existingStatus: existing.status,
+                    });
+                    persistLog.verbose('Skipping negotiating opportunity with active task', {
+                      opportunityId: existing.id,
+                      candidateUserId,
+                      taskState: priorTask.state,
+                    });
+                    continue;
                   }
                   // Task is stale or missing — reactivate the orphaned negotiating opportunity
-                  const reactivated = await updateStatusIfStillEligible(existing.id, initialStatus, existing.actors);
+                  const reactivated = await updateStatusIfStillEligible(
+                    existing.id, initialStatus, existing.actors, existing.status,
+                  );
                   if (reactivated) {
                     persistLog.info('Resuming orphaned negotiating opportunity', {
                       opportunityId: existing.id,
@@ -3231,7 +3297,9 @@ export class OpportunityGraphFactory {
                   continue;
                 } else if (existing.status === 'latent' && initialStatus !== 'latent') {
                   // Upgrade latent (background-discovered) to the higher-priority status (e.g. pending)
-                  const upgraded = await updateStatusIfStillEligible(existing.id, initialStatus, existing.actors);
+                  const upgraded = await updateStatusIfStillEligible(
+                    existing.id, initialStatus, existing.actors, existing.status,
+                  );
                   if (upgraded) {
                     persistLog.verbose('Upgraded latent opportunity to higher-priority status', {
                       opportunityId: existing.id,
@@ -4110,15 +4178,13 @@ export class OpportunityGraphFactory {
       })
 
       // Discovery → Ranking → Persist → Negotiate (post-persist).
-      // Negotiation runs against persisted opportunities so each negotiation receives the
-      // opportunity's id and its outcome flips status (pending|stalled|rejected) via the
-      // negotiation graph's finalize node. Skipped for continue_discovery and when no
-      // negotiation graph or no opportunities were persisted (negotiateNode returns early).
+      // Fresh and continuation discovery both negotiate newly created/reactivated
+      // opportunities. The stage is skipped only when no negotiation graph is wired or
+      // persistence produced no negotiation targets (negotiateNode also guards both cases).
       .addNode('negotiate', negotiateNode)
       .addEdge('evaluation', 'ranking')
       .addEdge('ranking', 'persist')
       .addConditionalEdges('persist', (state) => {
-        if (state.operationMode === 'continue_discovery') return END;
         if (!this.negotiationGraph) return END;
         if (!state.opportunities || state.opportunities.length === 0) return END;
         return 'negotiate';
