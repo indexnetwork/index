@@ -1213,6 +1213,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const _scopeIndexMs = Date.now() - _scopeGraphStart;
         _scopeIndexTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _scopeIndexMs });
         _scopeGraphTimings.push({ name: 'index', durationMs: _scopeIndexMs, agents: [] });
+        if (indexResult.error) {
+          return error(indexResult.error);
+        }
         indexScope = (indexResult.readResult?.memberOf || []).map(
           (m: { networkId: string }) => m.networkId,
         );

@@ -47,6 +47,11 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 - Made trigger-intent discovery fail closed over current intent assignments, active owner memberships, and explicit caller scope; enforced active candidate membership across intent/premise/context retrieval plus pre-evaluation/pre-persistence rechecks and selected-intent Radar reads.
 - Removed network-derived co-attendance inference and added deterministic affiliation/presence claim rejection across evaluation, presenter/fallback/MCP/REST/delivery/chat/invite surfaces, with versioned presentation caches that do not retain degraded fallback copy.
 
+## [6.2.1] - 2026-07-18
+
+### Fixed
+- Restored unscoped asynchronous MCP discovery by wiring the background worker to real network and membership graphs, and surfaced network-read failures instead of misreporting them as zero memberships (IND-466).
+
 ## [4.3.0] - 2026-06-21
 
 ### Added

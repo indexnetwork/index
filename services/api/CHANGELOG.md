@@ -31,6 +31,7 @@ section before promoting to `main`).
   consent primitive; deferred to IND-467).
 
 ### Fixed
+- Restored unscoped asynchronous MCP discovery by wiring discovery-run workers to real network and membership graphs instead of no-op placeholders (IND-466).
 - Lens C shadow network binding is now derived from capture-time negotiation
   task metadata instead of `opportunity.context.networkId` (IND-465 slice 1,
   unblocking the IND-433 NO-GO where the context field was empty on all
