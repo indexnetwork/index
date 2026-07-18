@@ -13,8 +13,9 @@ const logger = log.ui.from('TopBar');
 
 /**
  * Top navigation bar. Replaces the retired left sidebar: logo on the left
- * (links to Discover), primary nav (Chat / Networks / Agent) and the profile
- * menu on the right. Discover is reached via the logo, not a nav item.
+ * (links to Discover), primary nav (Signals / Chat / Networks / Agent) and the
+ * profile menu on the right. Signals is the Discover home, also reachable via
+ * the logo.
  */
 export default function TopBar() {
   const navigate = useNavigate();
@@ -30,6 +31,8 @@ export default function TopBar() {
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   // Active-route detection ported from the sidebar so deep routes highlight.
+  // Signals covers Discover (/) plus the signal detail and creation routes.
+  const isSignalsView = pathname === '/' || pathname?.startsWith('/i/');
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isNetworksView = pathname?.startsWith('/networks');
   const isAgentView = pathname?.startsWith('/agent') || pathname?.startsWith('/d/');
@@ -99,6 +102,9 @@ export default function TopBar() {
 
   const navItems = (
     <>
+      <button onClick={() => navigate('/')} className={navItemClass(!!isSignalsView)}>
+        Signals
+      </button>
       <button
         onClick={handleChatClick}
         disabled={navigatingToChat}

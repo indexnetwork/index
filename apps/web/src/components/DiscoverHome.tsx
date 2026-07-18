@@ -86,9 +86,9 @@ export default function DiscoverHome() {
         <button
           type="button"
           onClick={() => navigate("/i/new")}
-          className="group w-full flex items-center gap-3 p-4 rounded-lg border border-dashed border-gray-300 bg-white hover:border-[#041729] hover:shadow-sm transition-all mb-6"
+          className="group w-full flex items-center gap-3 p-4 rounded-lg border border-dashed border-gray-300 bg-white hover:border-[#4091BB] hover:shadow-sm transition-all mb-6"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#041729] text-white group-hover:bg-[#0a2d4a] transition-colors">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#4091BB] text-white group-hover:bg-[#35799C] transition-colors">
             <Plus className="w-4 h-4" strokeWidth={2.5} />
           </span>
           <span className="text-sm font-medium text-gray-900 group-hover:text-black">
