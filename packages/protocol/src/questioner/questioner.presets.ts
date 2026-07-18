@@ -5,7 +5,7 @@
  * until their implementation slices land.
  */
 import type { QuestionMode } from "../shared/schemas/question.schema.js";
-import { SYSTEM_PROMPT as DISCOVERY_SYSTEM_PROMPT, buildQuestionPrompt as buildDiscoveryPrompt } from "../opportunity/question.prompt.js";
+import { DISCOVERY_SYSTEM_PROMPT, buildDiscoveryQuestionPrompt } from "./questioner.discovery.prompt.js";
 
 import { QUD_UNDERSPECIFICATION_RULES } from "./questioner.qud.js";
 import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, ProfileContext, UptakeNegotiationContext } from "./questioner.types.js";
@@ -439,7 +439,7 @@ const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
   discovery: {
     systemPrompt: withQudMetadataRules(DISCOVERY_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) =>
-      buildDiscoveryPrompt(context as Parameters<typeof buildDiscoveryPrompt>[0]),
+      buildDiscoveryQuestionPrompt(context as Parameters<typeof buildDiscoveryQuestionPrompt>[0]),
   },
   intent: {
     systemPrompt: withQudMetadataRules(INTENT_SYSTEM_PROMPT),

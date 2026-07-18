@@ -243,7 +243,6 @@ export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/oppo
 export { createOpportunityTools } from "./opportunity/opportunity.tools.js";
 export { createEnrichmentTools } from "./enrichment/enrichment.tools.js";
 export type { PresenterDatabase } from "./opportunity/opportunity.presenter.js";
-export { QuestionGenerator } from "./opportunity/question.generator.js";
 
 // ─── Support utilities ────────────────────────────────────────────────────────
 

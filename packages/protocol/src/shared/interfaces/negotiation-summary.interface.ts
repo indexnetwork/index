@@ -6,7 +6,7 @@
  * Pattern mirrors ChatSummaryReader: protocol defines the read shape, the
  * backend (or any consumer) provides the implementation.
  */
-import type { DiscoveryNegotiation } from "../../opportunity/question.prompt.js";
+import type { DiscoveryNegotiation } from "../schemas/discovery-question.schema.js";
 import type { DiscoveryNegotiationDigest } from "../schemas/negotiation-digest.schema.js";
 
 export interface NegotiationSummaryReader {

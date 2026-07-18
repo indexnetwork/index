@@ -43,7 +43,7 @@ Implemented a canonical three-value QUD taxonomy across IntentClarifier and the 
 
 **Work items:**
 - The entropy verdict is produced by `intent/intent.verifier.ts` and gated by `isVague(...)` in `intent/intent.graph.ts`; the clarifier's output schema (`intent/intent.clarifier.ts`) is untyped `{needsClarification, reason, suggestedDescription, clarificationMessage}`. Add a typed underspecification category — missing constituent (who/what), missing constraint (where/when/how much), or open alternative set — and emit the clarification question accordingly. (`intent.specificity.ts` is a one-line warning constant, not a check — ignore it.)
-- Reuse the typology in the Questioner agent's discovery mode — **not** `opportunity/question.generator.ts`, which is `@deprecated` in favor of `QuestionerAgent`.
+- Reuse the typology in the Questioner agent's discovery mode (`questioner/questioner.discovery.prompt.ts`) — the deprecated `opportunity/question.generator.ts` was removed in IND-458 in favor of `QuestionerAgent`.
 - Eval hook: extend `eval/premise` / `eval/matching` fixtures (case files + runners exist on both sides) with under-specified inputs and assert question type.
 
 ## 4. Frame-constrained HyDE generation — **M** — Implemented (IND-426)

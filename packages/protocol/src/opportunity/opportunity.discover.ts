@@ -12,7 +12,7 @@
 import type { Opportunity, ChatGraphCompositeDatabase, UserRecord } from "../shared/interfaces/database.interface.js";
 import type { Cache } from "../shared/interfaces/cache.interface.js";
 import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
-import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
+import type { DiscoveryNegotiation, DiscoverySummary } from "../shared/schemas/discovery-question.schema.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import { discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs } from "../questioner/questioner.env.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";

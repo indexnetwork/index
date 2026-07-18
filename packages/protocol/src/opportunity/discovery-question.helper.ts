@@ -5,7 +5,7 @@
 
 import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
 import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
-import type { DiscoveryQuestionInput, DiscoverySummary } from "./question.prompt.js";
+import type { DiscoveryQuestionInput, DiscoverySummary } from "../shared/schemas/discovery-question.schema.js";
 
 export interface BuildDiscoveryQuestionInputArgs {
   query: string;
