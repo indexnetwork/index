@@ -78,9 +78,9 @@ interface ProviderUsage {
 }
 
 const USAGE_PROVIDERS = [
-	{ authKey: "anthropic", icon: "✳️", name: "Claude" },
-	{ authKey: "openai-codex", icon: "🌀", name: "Codex" },
-	{ authKey: "kimi-coding", icon: "🌙", name: "Kimi" },
+	{ authKey: "anthropic", name: "Claude" },
+	{ authKey: "openai-codex", name: "Codex" },
+	{ authKey: "kimi-coding", name: "Kimi" },
 ] as const;
 
 const USAGE_POLL_MS = 5 * 60_000; // Claude's usage endpoint asks for >=180s between polls
@@ -335,11 +335,12 @@ function installFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 
 				// ── Line 3: subscription usage — Claude · Codex · Kimi ──
 				const usageParts: string[] = [];
-				for (const { authKey, icon } of USAGE_PROVIDERS) {
+				for (const { authKey, name } of USAGE_PROVIDERS) {
 					const state = usageByProvider.get(authKey);
 					if (!state) continue;
+					const label = theme.bold(dim(name));
 					if (!state.windows || state.windows.length === 0) {
-						usageParts.push(`${icon} ${dim(state.error ? "✗" : "…")}`);
+						usageParts.push(`${label} ${dim(state.error ? "✗" : "…")}`);
 						continue;
 					}
 					const rendered = state.windows
@@ -349,7 +350,7 @@ function installFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 							return `${dim(w.label)} ${colored}`;
 						})
 						.join(dim(" · "));
-					usageParts.push(`${icon} ${rendered}${state.error ? dim(" ✗") : ""}`);
+					usageParts.push(`${label} ${rendered}${state.error ? dim(" ✗") : ""}`);
 				}
 
 				const lines = [
