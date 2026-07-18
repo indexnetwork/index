@@ -1,4 +1,5 @@
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
+import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 
 /**
  * Persona value for the user's negotiator DM session (P4.1 / IND-402).
@@ -15,6 +16,39 @@ const NEGOTIATOR_PERSONA = 'negotiator';
  * ignores it, so the negotiator session presents as an unscoped chat session.
  */
 const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } as const;
+
+/**
+ * Registry scope_type for intent-pinned negotiator sessions (P4.2/IND-403).
+ * Keying the `chat_session_scopes` unique index as ('negotiator-intent',
+ * intentId) makes the negotiator's per-intent session distinct from the
+ * orchestrator's ('intent', intentId) session for the same user — persona is
+ * part of the key without a migration. Like 'persona', this value never
+ * appears in the `ChatScopeType` envelope: conversation_metadata still says
+ * scopeType 'intent' so scope-driven behavior (graph seeding, session load)
+ * is identical to any intent-scoped session.
+ */
+const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
+
+function isExactPoolPushParts(parts: unknown, expectedText: string): boolean {
+  if (!Array.isArray(parts) || parts.length !== 1) return false;
+  const part = parts[0];
+  if (typeof part !== 'object' || part === null || Array.isArray(part)) return false;
+  const record = part as Record<string, unknown>;
+  return Object.keys(record).sort().join(',') === 'text,type'
+    && record.type === 'text'
+    && record.text === expectedText;
+}
+
+function isExactPoolPushMetadata(
+  metadata: unknown,
+  expected: Record<string, string>,
+): boolean {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return false;
+  const record = metadata as Record<string, unknown>;
+  const keys = Object.keys(expected).sort();
+  return Object.keys(record).sort().join(',') === keys.join(',')
+    && keys.every((key) => record[key] === expected[key]);
+}
 
 export class ConversationDatabaseAdapter {
   /**
@@ -139,16 +173,64 @@ export class ConversationDatabaseAdapter {
       hiddenAtByConv.set(r.conversationId, r.hiddenAt);
     }
 
-    const convs = await db
-      .select()
-      .from(schema.conversations)
-      .where(inArray(schema.conversations.id, ids))
-      .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`);
-
-    const allParticipants = await db
-      .select()
-      .from(schema.conversationParticipants)
-      .where(inArray(schema.conversationParticipants.conversationId, ids));
+    // Everything below only needs `ids` — run the lookups in one parallel
+    // wave instead of sequential round trips; this method is on the chat
+    // sidebar's critical path (GET /conversations and /conversations/negotiations).
+    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta] = await Promise.all([
+      db
+        .select()
+        .from(schema.conversations)
+        .where(inArray(schema.conversations.id, ids))
+        .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`),
+      db
+        .select()
+        .from(schema.conversationParticipants)
+        .where(inArray(schema.conversationParticipants.conversationId, ids)),
+      // System negotiator name — fallback label when no personal agent drove a
+      // side. Well-known UUID from agent.database.adapter.ts SYSTEM_AGENT_IDS.
+      db
+        .select({ name: schema.agents.name })
+        .from(schema.agents)
+        .where(eq(schema.agents.id, '00000000-0000-0000-0000-000000000002'))
+        .limit(1),
+      // The *actual* agent that drove each user's side. For polling-backed
+      // turns, tasks.claimed_by_agent_id is the personal agent that picked the
+      // turn up. Deterministic ordering: most recent claim per owner wins.
+      db
+        .select({
+          conversationId: schema.tasks.conversationId,
+          agentId: schema.tasks.claimedByAgentId,
+          agentName: schema.agents.name,
+          agentType: schema.agents.type,
+          ownerId: schema.agents.ownerId,
+          avatar: schema.users.avatar,
+        })
+        .from(schema.tasks)
+        .innerJoin(schema.agents, eq(schema.agents.id, schema.tasks.claimedByAgentId))
+        .leftJoin(schema.users, eq(schema.users.id, schema.agents.ownerId))
+        .where(
+          and(
+            inArray(schema.tasks.conversationId, ids),
+            eq(schema.agents.type, 'external'),
+          ),
+        )
+        .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id)),
+      // Last message per conversation via DISTINCT ON.
+      db
+        .selectDistinctOn([schema.messages.conversationId], {
+          conversationId: schema.messages.conversationId,
+          parts: schema.messages.parts,
+          senderId: schema.messages.senderId,
+          createdAt: schema.messages.createdAt,
+        })
+        .from(schema.messages)
+        .where(inArray(schema.messages.conversationId, ids))
+        .orderBy(schema.messages.conversationId, desc(schema.messages.createdAt)),
+      db
+        .select()
+        .from(schema.conversationMetadata)
+        .where(inArray(schema.conversationMetadata.conversationId, ids)),
+    ]);
 
     // Resolve user names/avatars for participants
     const userIds = [...new Set(allParticipants.filter(p => p.participantType === 'user').map(p => p.participantId))];
@@ -170,56 +252,18 @@ export class ConversationDatabaseAdapter {
       }
     }
 
-    // Resolve the system negotiator agent name (used as the fallback label when no
-    // personal agent drove any turn on a user's side). Well-known UUID from
-    // agent.database.adapter.ts SYSTEM_AGENT_IDS.negotiator.
-    let systemNegotiatorName = 'Index Negotiator';
-    const negotiatorRow = await db
-      .select({ name: schema.agents.name })
-      .from(schema.agents)
-      .where(eq(schema.agents.id, '00000000-0000-0000-0000-000000000002'))
-      .limit(1);
-    if (negotiatorRow.length > 0) {
-      systemNegotiatorName = negotiatorRow[0].name;
-    }
+    const systemNegotiatorName = negotiatorRow.length > 0 ? negotiatorRow[0].name : 'Index Negotiator';
 
-    // Resolve the *actual* agent that drove each user's side. For polling-backed turns,
-    // tasks.claimed_by_agent_id is set to the personal agent that picked the turn up.
-    // Fall back to the system negotiator when no claim exists (sync system-driven turns).
-    // Map: conversationId → (ownerUserId → agent { id, name, avatar })
+    // Map: conversationId → (ownerUserId → agent { name, avatar })
     const claimedAgentByConv = new Map<string, Map<string, { name: string; avatar: string | null }>>();
-    if (ids.length > 0) {
-      const claimRows = await db
-        .select({
-          conversationId: schema.tasks.conversationId,
-          agentId: schema.tasks.claimedByAgentId,
-          agentName: schema.agents.name,
-          agentType: schema.agents.type,
-          ownerId: schema.agents.ownerId,
-          avatar: schema.users.avatar,
-        })
-        .from(schema.tasks)
-        .innerJoin(schema.agents, eq(schema.agents.id, schema.tasks.claimedByAgentId))
-        .leftJoin(schema.users, eq(schema.users.id, schema.agents.ownerId))
-        .where(
-          and(
-            inArray(schema.tasks.conversationId, ids),
-            eq(schema.agents.type, 'external'),
-          ),
-        )
-        // Deterministic ordering so that if a conversation ever has claims
-        // from multiple external (poller) agents for the same owner, the displayed
-        // agent name is stable across requests. Most recent claim wins.
-        .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id));
-      for (const r of claimRows) {
-        if (!r.ownerId) continue;
-        const convMap = claimedAgentByConv.get(r.conversationId) ?? new Map();
-        // First row wins after deterministic ordering — most recent claim per owner.
-        if (!convMap.has(r.ownerId)) {
-          convMap.set(r.ownerId, { name: r.agentName, avatar: r.avatar });
-        }
-        claimedAgentByConv.set(r.conversationId, convMap);
+    for (const r of claimRows) {
+      if (!r.ownerId) continue;
+      const convMap = claimedAgentByConv.get(r.conversationId) ?? new Map();
+      // First row wins after deterministic ordering — most recent claim per owner.
+      if (!convMap.has(r.ownerId)) {
+        convMap.set(r.ownerId, { name: r.agentName, avatar: r.avatar });
       }
+      claimedAgentByConv.set(r.conversationId, convMap);
     }
 
     const participantsByConv = new Map<string, ResolvedParticipant[]>();
@@ -248,38 +292,16 @@ export class ConversationDatabaseAdapter {
       participantsByConv.set(p.conversationId, list);
     }
 
-    // Fetch last message per conversation efficiently using DISTINCT ON
     const lastMessageByConv = new Map<string, { parts: unknown[]; senderId: string; createdAt: Date }>();
-    if (ids.length > 0) {
-      const lastMessages = await db
-        .selectDistinctOn([schema.messages.conversationId], {
-          conversationId: schema.messages.conversationId,
-          parts: schema.messages.parts,
-          senderId: schema.messages.senderId,
-          createdAt: schema.messages.createdAt,
-        })
-        .from(schema.messages)
-        .where(inArray(schema.messages.conversationId, ids))
-        .orderBy(schema.messages.conversationId, desc(schema.messages.createdAt));
-
-      for (const r of lastMessages) {
-        const hiddenAt = hiddenAtByConv.get(r.conversationId);
-        if (hiddenAt && r.createdAt <= hiddenAt) continue;
-        lastMessageByConv.set(r.conversationId, {
-          parts: r.parts as unknown[],
-          senderId: r.senderId,
-          createdAt: r.createdAt,
-        });
-      }
+    for (const r of lastMessages) {
+      const hiddenAt = hiddenAtByConv.get(r.conversationId);
+      if (hiddenAt && r.createdAt <= hiddenAt) continue;
+      lastMessageByConv.set(r.conversationId, {
+        parts: r.parts as unknown[],
+        senderId: r.senderId,
+        createdAt: r.createdAt,
+      });
     }
-
-    // Fetch metadata per conversation
-    const allMeta = ids.length > 0
-      ? await db
-          .select()
-          .from(schema.conversationMetadata)
-          .where(inArray(schema.conversationMetadata.conversationId, ids))
-      : [];
 
     const metaByConv = new Map<string, Record<string, unknown>>();
     for (const m of allMeta) {
@@ -426,6 +448,182 @@ export class ConversationDatabaseAdapter {
       ));
 
     return msg;
+  }
+
+  /**
+   * Deliver a claimed pool-question push atomically with its message ledger.
+   * The question row is locked before lifecycle recheck, so answer/dismiss and
+   * message insertion cannot cross. The question ID is the deterministic
+   * message ID and retries verify, rather than duplicate, an existing insert.
+   *
+   * @param input - Claimed question, stable negotiator DM, and public template.
+   * @returns Whether a message was freshly delivered or delivery was suppressed.
+   * @throws When the session or deterministic message conflicts with the claim.
+   */
+  async deliverClaimedPoolQuestionPush(input: {
+    questionId: string;
+    recipientId: string;
+    intentId: string;
+    cycleKey: string;
+    conversationId: string;
+    messageText: string;
+  }): Promise<{ status: 'delivered'; inserted: boolean } | { status: 'suppressed' }> {
+    return db.transaction(async (tx) => {
+      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now;
+      const [question] = await tx
+        .select()
+        .from(schema.questions)
+        .where(eq(schema.questions.id, input.questionId))
+        .limit(1)
+        .for('update');
+      if (!question) throw new Error(`Pool push question ${input.questionId} is missing`);
+
+      const detection = question.detection as import('../schemas/database.schema').QuestionDetection;
+      const push = detection.push;
+      if (
+        !push
+        || push.recipientId !== input.recipientId
+        || push.intentId !== input.intentId
+        || push.cycleKey !== input.cycleKey
+        || push.messageId !== input.questionId
+      ) {
+        throw new Error(`Pool push claim conflict for question ${input.questionId}`);
+      }
+      if (push.deliveryStatus === 'suppressed' || push.deliveryStatus === 'failed') {
+        return { status: 'suppressed' } as const;
+      }
+      const suppress = async (): Promise<{ status: 'suppressed' }> => {
+        if (!detection.pushedAt && push.deliveryStatus !== 'delivered') {
+          await tx.update(schema.questions)
+            .set({
+              detection: {
+                ...detection,
+                push: {
+                  ...push,
+                  deliveryStatus: 'suppressed',
+                  suppressedAt: transactionNow.toISOString(),
+                },
+              },
+            })
+            .where(eq(schema.questions.id, input.questionId));
+        }
+        return { status: 'suppressed' };
+      };
+
+      if (
+        question.status !== 'pending'
+        || (question.expiresAt !== null && question.expiresAt <= transactionNow)
+      ) return suppress();
+
+      const [intent] = await tx
+        .select({
+          userId: schema.intents.userId,
+          status: schema.intents.status,
+          archivedAt: schema.intents.archivedAt,
+          lastVisitedAt: schema.intents.lastVisitedAt,
+        })
+        .from(schema.intents)
+        .where(eq(schema.intents.id, input.intentId))
+        .limit(1)
+        .for('update');
+      if (
+        !intent
+        || intent.userId !== input.recipientId
+        || intent.archivedAt !== null
+        || (intent.status !== null && intent.status !== 'ACTIVE')
+        || (intent.lastVisitedAt !== null && intent.lastVisitedAt > question.createdAt)
+      ) return suppress();
+
+      const [session] = await tx
+        .select({
+          conversationId: schema.chatSessionScopes.conversationId,
+          userId: schema.chatSessionScopes.userId,
+          scopeType: schema.chatSessionScopes.scopeType,
+          scopeId: schema.chatSessionScopes.scopeId,
+          persona: schema.conversations.persona,
+        })
+        .from(schema.chatSessionScopes)
+        .innerJoin(
+          schema.conversations,
+          eq(schema.conversations.id, schema.chatSessionScopes.conversationId),
+        )
+        .where(eq(schema.chatSessionScopes.conversationId, input.conversationId))
+        .limit(1)
+        .for('update');
+      if (
+        !session
+        || session.userId !== input.recipientId
+        || session.scopeType !== NEGOTIATOR_SCOPE.scopeType
+        || session.scopeId !== NEGOTIATOR_SCOPE.scopeId
+        || session.persona !== NEGOTIATOR_PERSONA
+      ) {
+        throw new Error(`Pool push requires the recipient's stable unscoped negotiator DM`);
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(schema.messages)
+        .where(eq(schema.messages.id, input.questionId))
+        .limit(1);
+      const messageMetadata: Record<string, string> = {
+        source: 'pool_question_push',
+        questionId: input.questionId,
+        recipientId: input.recipientId,
+        intentId: input.intentId,
+        cycleKey: input.cycleKey,
+      };
+      let inserted = false;
+      const expectedParts = [{ type: 'text', text: input.messageText }];
+      if (existing) {
+        if (
+          existing.conversationId !== input.conversationId
+          || existing.senderId !== SYSTEM_AGENT_ID
+          || existing.role !== 'agent'
+          || !isExactPoolPushMetadata(existing.metadata, messageMetadata)
+          || !isExactPoolPushParts(existing.parts, input.messageText)
+        ) {
+          throw new Error(`Deterministic pool push message ${input.questionId} conflicts with existing data`);
+        }
+      } else {
+        await tx.insert(schema.messages).values({
+          id: input.questionId,
+          conversationId: input.conversationId,
+          senderId: SYSTEM_AGENT_ID,
+          role: 'agent',
+          parts: expectedParts,
+          metadata: messageMetadata,
+          createdAt: transactionNow,
+        });
+        await tx.update(schema.conversations)
+          .set({ lastMessageAt: transactionNow, updatedAt: transactionNow })
+          .where(eq(schema.conversations.id, input.conversationId));
+        await tx.update(schema.conversationParticipants)
+          .set({ hiddenAt: null })
+          .where(and(
+            eq(schema.conversationParticipants.conversationId, input.conversationId),
+            eq(schema.conversationParticipants.participantId, input.recipientId),
+          ));
+        inserted = true;
+      }
+
+      const deliveredAt = detection.pushedAt ?? transactionNow.toISOString();
+      await tx.update(schema.questions)
+        .set({
+          detection: {
+            ...detection,
+            pushedAt: deliveredAt,
+            push: {
+              ...push,
+              deliveryStatus: 'delivered',
+              conversationId: input.conversationId,
+              deliveredAt,
+            },
+          },
+        })
+        .where(eq(schema.questions.id, input.questionId));
+      return { status: 'delivered', inserted } as const;
+    });
   }
 
   /**
@@ -725,6 +923,43 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Merges a screen-gate decision (P2.1 shadow mode) into the task's metadata
+   * JSONB under the `screenDecision` key, preserving other metadata keys.
+   * Sibling of {@link setTaskTurnContext}.
+   *
+   * @param taskId - Task to update
+   * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
+   */
+  async setTaskScreenDecision(taskId: string, screenDecision: Record<string, unknown>): Promise<void> {
+    await db
+      .update(schema.tasks)
+      .set({
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('screenDecision', ${JSON.stringify(screenDecision)}::jsonb)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.id, taskId));
+  }
+
+  /**
+   * Merges an applied deadlock→bargaining shift record (IND-428) into the
+   * task's metadata JSONB under the `deadlockShift` key, preserving other
+   * metadata keys. Sibling of {@link setTaskScreenDecision}. Internal
+   * analytics only — no API surface projects this key.
+   *
+   * @param taskId - Task to update
+   * @param deadlockShift - DeadlockShiftRecord (run length, threshold, turn, seat, timing)
+   */
+  async setTaskDeadlockShift(taskId: string, deadlockShift: Record<string, unknown>): Promise<void> {
+    await db
+      .update(schema.tasks)
+      .set({
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('deadlockShift', ${JSON.stringify(deadlockShift)}::jsonb)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.id, taskId));
+  }
+
+  /**
    * Retrieves a task by ID.
    * @param taskId - Task ID
    * @returns The task, or null if not found
@@ -884,6 +1119,85 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Looks up every negotiation task attached to an opportunity, ordered from
+   * oldest to newest so continuation provenance remains stable.
+   *
+   * @param opportunityId - Opportunity id stored on task metadata
+   * @returns All matching task records, oldest first
+   */
+  async getNegotiationTasksForOpportunity(opportunityId: string): Promise<Array<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }>> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+        ),
+      )
+      .orderBy(asc(schema.tasks.createdAt));
+
+    return rows.map((row) => ({
+      id: row.id,
+      conversationId: row.conversationId,
+      state: row.state as string,
+      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+  }
+
+  /**
+   * Returns the most-recently-created negotiation task on a conversation,
+   * regardless of opportunityId or direction. Used by the negotiation init
+   * node's conversation-scoped initiator tie-break: symmetric concurrent
+   * starts carry different opportunityIds, so the opportunity-scoped lookup
+   * cannot see the competing task on the same agent-pair DM.
+   *
+   * @param conversationId - The agent-pair DM conversation id
+   * @returns The task record or null
+   */
+  async getLatestNegotiationTaskForConversation(conversationId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.conversationId, conversationId),
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        ),
+      )
+      .orderBy(desc(schema.tasks.createdAt))
+      .limit(1);
+
+    const [row] = rows;
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      conversationId: row.conversationId,
+      state: row.state as string,
+      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  /**
    * Returns user answers collected by the questioner for a given opportunity.
    * Reads `metadata.userAnswers` from the opportunities table.
    */
@@ -1005,7 +1319,15 @@ export class ConversationDatabaseAdapter {
    */
   async getNegotiationsByUser(
     userId: string,
-    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'has_opportunity' | 'no_opportunity' | 'in_progress'; since?: Date },
+    opts?: {
+      limit?: number;
+      offset?: number;
+      mutualWithUserId?: string;
+      result?: 'has_opportunity' | 'no_opportunity' | 'in_progress';
+      since?: Date;
+      unpaginated?: boolean;
+      includeScreenedOut?: boolean;
+    },
   ): Promise<Array<Task & { artifact: Artifact | null }>> {
     const limit = opts?.limit ?? 10;
     const offset = opts?.offset ?? 0;
@@ -1044,10 +1366,21 @@ export class ConversationDatabaseAdapter {
       ? sql`${schema.tasks.createdAt} >= ${opts.since.toISOString()}`
       : undefined;
 
-    const allFilters = [userFilter, resultFilter, sinceFilter].filter(Boolean);
+    // P2.2: screened_out negotiations are the owner's private outreach-gate
+    // decisions — zero turns, no counterparty involvement. They stay visible
+    // to the owner (self view) but are excluded from the mutual (non-self
+    // viewer) list so the counterparty never learns a gate decision was made.
+    const screenedOutFilter = opts?.mutualWithUserId && !opts.includeScreenedOut
+      ? or(
+          isNull(schema.artifacts.id),
+          sql`coalesce(${schema.artifacts.parts}->0->'data'->>'reason', '') <> 'screened_out'`,
+        )
+      : undefined;
+
+    const allFilters = [userFilter, resultFilter, sinceFilter, screenedOutFilter].filter(Boolean);
     const combinedFilter = allFilters.length > 1 ? and(...allFilters) : allFilters[0];
 
-    const rows = await db
+    const query = db
       .select({
         task: schema.tasks,
         artifact: schema.artifacts,
@@ -1061,9 +1394,13 @@ export class ConversationDatabaseAdapter {
         ),
       )
       .where(combinedFilter)
-      .orderBy(desc(schema.tasks.createdAt))
-      .limit(limit)
-      .offset(offset);
+      .orderBy(desc(schema.tasks.createdAt));
+
+    // Thread pagination must see every continuation segment before grouping.
+    // The ordinary row-oriented callers retain the existing SQL pagination.
+    const rows = opts?.unpaginated
+      ? await query
+      : await query.limit(limit).offset(offset);
 
     return rows.map((r) => ({ ...r.task, artifact: r.artifact }));
   }
@@ -1524,6 +1861,77 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Find the user's negotiator session pinned to a specific intent, if any
+   * (P4.2/IND-403).
+   */
+  async getNegotiatorIntentChatSession(userId: string, intentId: string): Promise<ChatSession | null> {
+    const normalizedIntentId = intentId.trim();
+    if (!normalizedIntentId) return null;
+    const [row] = await db
+      .select({ conversationId: schema.chatSessionScopes.conversationId })
+      .from(schema.chatSessionScopes)
+      .where(
+        and(
+          eq(schema.chatSessionScopes.userId, userId),
+          eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_INTENT_SCOPE_TYPE),
+          eq(schema.chatSessionScopes.scopeId, normalizedIntentId),
+        ),
+      )
+      .limit(1);
+    return row ? this.getChatSession(row.conversationId) : null;
+  }
+
+  /**
+   * Create a negotiator session pinned to one of the user's intents
+   * (one per user+intent, P4.2/IND-403).
+   *
+   * Same transaction shape as {@link createNegotiatorChatSession}, but the
+   * registry row is keyed ('negotiator-intent', intentId) and the
+   * conversation metadata carries the canonical intent scope so the session
+   * behaves like any intent-scoped chat (graph seeding, scope echo on load)
+   * while staying a distinct conversation from the orchestrator's session
+   * for the same intent.
+   */
+  async createNegotiatorIntentChatSession(data: {
+    id: string;
+    userId: string;
+    intentId: string;
+    title?: string;
+  }): Promise<void> {
+    const now = new Date();
+    const intentId = data.intentId.trim();
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.conversations).values({
+        id: data.id,
+        persona: NEGOTIATOR_PERSONA,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
+        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
+      ]);
+
+      const meta: ChatConversationMeta = { scopeType: 'intent', scopeId: intentId };
+      if (data.title) meta.title = data.title;
+      await tx.insert(schema.conversationMetadata).values({
+        conversationId: data.id,
+        metadata: meta,
+      });
+
+      await tx.insert(schema.chatSessionScopes).values({
+        conversationId: data.id,
+        userId: data.userId,
+        scopeType: NEGOTIATOR_INTENT_SCOPE_TYPE,
+        scopeId: intentId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+  }
+
+  /**
    * Find a stable H2A chat session by canonical scope.
    */
   async getChatSessionByScope(
@@ -1922,6 +2330,7 @@ export class ConversationDatabaseAdapter {
       .set(updates)
       .where(eq(opportunities.id, id))
       .returning({ id: opportunities.id, status: opportunities.status });
+    if (row) emitOpportunityPendingBestEffort(row);
     return row ?? null;
   }
 

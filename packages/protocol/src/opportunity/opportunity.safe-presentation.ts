@@ -21,6 +21,7 @@
  */
 
 import { truncateAtBoundary, viewerCentricCardSummary } from "./opportunity.presentation.js";
+import { stripUnsupportedOpportunityClaims } from "./opportunity.claim-safety.js";
 
 /** Default max length for fallback summaries (matches presenter internal fallback). */
 export const SAFE_FALLBACK_MAX_CHARS = 300;
@@ -69,19 +70,25 @@ export function safeFallbackSummary(
 
   const normalized = (rawReasoning ?? "").replace(/\s+/g, " ").trim();
   if (!normalized) return emptyText;
+  const claimSafeInput = stripUnsupportedOpportunityClaims(normalized);
+  if (!claimSafeInput) return emptyText;
 
   // viewerCentricCardSummary handles UUID stripping, introducer-mention
   // stripping, and the viewer-centric rewrite. Pass Infinity so truncation is
   // handled by boundary-aware logic below instead of a mid-word hard slice.
   const rewritten = viewerCentricCardSummary(
-    normalized,
+    claimSafeInput,
     opts.counterpartName ?? "",
     Number.POSITIVE_INFINITY,
     opts.viewerName,
     opts.introducerName ?? undefined,
   );
 
-  const truncated = truncateAtBoundary(rewritten, maxChars);
+  // Claim validation intentionally runs after viewer-centric rewriting: rewrite
+  // heuristics may select or join different source sentences, and the final
+  // user-facing sentence set is what must be safe.
+  const claimSafe = stripUnsupportedOpportunityClaims(rewritten);
+  const truncated = truncateAtBoundary(claimSafe, maxChars);
   return truncated || emptyText;
 }
 
@@ -127,7 +134,7 @@ export interface SafePresentation {
  *
  * Resolution order:
  * 1. Genuine presenter output (`homeCardPresentation` present, non-empty, and
- *    NOT tagged `isFallback` by the presenter) — returned as-is.
+ *    NOT tagged `isFallback` by the presenter) — claim-validated before return.
  * 2. Otherwise, if `allowFallback` (default true): sanitized fallback copy
  *    built from `matchReason` / `interpretation.reasoning` via
  *    {@link safeFallbackSummary}.
@@ -142,13 +149,19 @@ export function getSafePresentationOrSkip(
 ): SafePresentation | null {
   const candidate = source.homeCardPresentation;
   if (candidate?.personalizedSummary?.trim() && !candidate.isFallback) {
-    return {
-      headline: candidate.headline?.trim() || DEFAULT_FALLBACK_HEADLINE,
-      summary: candidate.personalizedSummary,
-      suggestedAction:
-        candidate.suggestedAction?.trim() || DEFAULT_FALLBACK_ACTION,
-      isFallback: false,
-    };
+    const summary = stripUnsupportedOpportunityClaims(candidate.personalizedSummary);
+    if (summary) {
+      return {
+        headline:
+          stripUnsupportedOpportunityClaims(candidate.headline) ||
+          DEFAULT_FALLBACK_HEADLINE,
+        summary,
+        suggestedAction:
+          stripUnsupportedOpportunityClaims(candidate.suggestedAction) ||
+          DEFAULT_FALLBACK_ACTION,
+        isFallback: false,
+      };
+    }
   }
 
   if (opts.allowFallback === false) return null;

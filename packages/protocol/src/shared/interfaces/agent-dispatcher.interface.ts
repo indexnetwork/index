@@ -7,6 +7,7 @@
  */
 
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';
+import type { NegotiatorMemoryEntry } from '../../negotiation/negotiation.memory.js';
 
 /** Payload sent to the dispatcher for each negotiation turn. */
 export interface NegotiationTurnPayload {
@@ -21,6 +22,19 @@ export interface NegotiationTurnPayload {
   isDiscoverer: boolean;
   /** The explicit search query that triggered this discovery (if any). Takes priority over background intents. */
   discoveryQuery?: string;
+  /** The acting user's seat under the v2 client-advocate protocol (`initiator` | `counterparty`). */
+  seat?: string;
+  /** Negotiation protocol version for this task (`v1` | `v2`). */
+  protocolVersion?: string;
+  /** Actions the acting seat may submit on this turn (seat + version + final-turn scoped). */
+  allowedActions?: string[];
+  /**
+   * The acting user's OWN negotiator memories (P5.3 read path) — private
+   * context for the dispatched agent. Never contains the counterparty's
+   * memory; absent when `NEGOTIATOR_MEMORY_INJECT` is off or nothing was
+   * retrieved.
+   */
+  negotiatorMemory?: NegotiatorMemoryEntry[];
 }
 
 /** Result of a dispatch attempt. */

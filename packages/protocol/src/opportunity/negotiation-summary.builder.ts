@@ -4,7 +4,7 @@
  * generator. No DB access, no LLM — safe to import from anywhere.
  */
 import type { NegotiationTurn, NegotiationOutcome } from "../negotiation/negotiation.state.js";
-import type { DiscoveryNegotiation, DiscoveryOutcome, DiscoverySummary, DiscoveryTurn, NegotiationRole } from "./question.prompt.js";
+import type { DiscoveryNegotiation, DiscoveryOutcome, DiscoverySummary, DiscoveryTurn, NegotiationRole } from "../shared/schemas/discovery-question.schema.js";
 
 /**
  * The input shape collected by the opportunity graph's negotiate node for

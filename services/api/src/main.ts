@@ -10,7 +10,6 @@ import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
 import { NetworkExperimentController } from './controllers/network-experiment.controller';
 import { IntentController } from './controllers/intent.controller';
-import { LinkController } from './controllers/link.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
 import { ConnectLinkController } from './controllers/connect-link.controller';
 import { AuthController } from './controllers/auth.controller';
@@ -55,6 +54,7 @@ import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
+import { frameDriftQueue } from './queues/frame-drift.queue';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
@@ -62,17 +62,29 @@ import { emailQueue } from './queues/email.queue';
 import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
+import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
+import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
+import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
+import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { IntentEvents } from './events/intent.event';
+import { IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
+import { OpportunityEvents } from './events/opportunity.event';
+import { uptakeQuestionService } from './services/uptake-question.service';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
+import { handlePoolAnswerFactory } from './events/handlers/question.answer.pool';
+import { beatTwoMessage } from './queues/pool/answer.shared';
+import { stampNewbornOpportunities } from './queues/pool/newborn.shared';
+import { computeIntentFingerprint } from './lib/intent/intent.fingerprint';
 import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
+import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
 import { QuestionerAdapter } from './adapters/questioner.adapter';
 import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
@@ -123,10 +135,17 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   // source user (mode='negotiation', sourceType='opportunity') so the intent
   // page can surface what would unblock the next attempt.
   questionerEnqueueIfEnabled(),
+  // Finished negotiations enqueue memory distillation for both sides (P5.2,
+  // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
+  reflectEnqueueIfEnabled(),
+  // Screen/turn prompts read the speaker's own negotiator memories (P5.3,
+  // gated on NEGOTIATOR_MEMORY_INJECT).
+  negotiatorMemoryRetrieve(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
+  stampNewbornOpportunities,
 });
 fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -139,6 +158,7 @@ fromEnrichmentQueue.setRuntimeDeps({
 discoveryRunQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
+  stampNewbornOpportunities,
 });
 negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -146,6 +166,10 @@ negotiationRunExistingQueue.setRuntimeDeps({
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
+OpportunityEvents.onPending = async ({ opportunity }) => {
+  await uptakeQuestionService.handlePending(opportunity.id);
+};
+
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
     log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, networkId, error: err });
@@ -220,56 +244,147 @@ const profileAnswerPremiseGraph = new PremiseGraphFactory(
 ).createGraph();
 
 const answerQuestionerAdapter = new QuestionerAdapter(db);
+
+const appendPoolNarration = async (input: {
+  userId: string;
+  intentId: string;
+  message: string;
+}): Promise<void> => {
+  const resolved = await chatSessionService.resolveNegotiatorIntentSession(input.userId, input.intentId);
+  if ('error' in resolved) {
+    log.job.from('PoolAnswerNarration').warn('Intent negotiator session unavailable', {
+      userId: input.userId,
+      intentId: input.intentId,
+      error: resolved.error,
+    });
+    return;
+  }
+  await chatSessionService.addMessage({
+    sessionId: resolved.session.id,
+    role: 'assistant',
+    content: input.message,
+  });
+};
+
+// The delayed Tier-1 worker reads every valid answer after the debounce window,
+// so a burst coalesces into one run without dropping later preferences.
+fromIntentQueue.setRuntimeDeps({
+  getPoolAnswerContext: async (userId, intentId) => {
+    const intent = await chatDatabaseAdapter.getIntent(intentId);
+    if (!intent || intent.userId !== userId) return '';
+    const fingerprint = computeIntentFingerprint(intent.payload, intent.summary);
+    const preferences = await answerQuestionerAdapter.listAnsweredPoolPreferences(userId, intentId, fingerprint);
+    if (preferences.length === 0) return '';
+    return [
+      'User-stated matching preferences (apply when finding fresh candidates):',
+      ...preferences.map((preference) => `- ${preference.label}: ${preference.chosenSide}`),
+    ].join('\n');
+  },
+  narratePoolRerun: async ({ userId, intentId, newCandidates }) => {
+    await appendPoolNarration({
+      userId,
+      intentId,
+      message: beatTwoMessage(newCandidates),
+    });
+  },
+});
+
 // Intent graph for answer-driven refinements — same update path as the chat
 // update_intent tool. The graph owns merge, verification, sanitization,
 // re-embedding, persistence, and HyDE regeneration.
 const answerIntentGraph = new IntentGraphFactory(chatDatabaseAdapter, embedderAdapter, intentQueue).createGraph();
+
+// Shared by the `negotiation` (post-stall) and `negotiation_inflight`
+// (ask_user pause) answer reactions — both store the answer on the
+// opportunity's metadata.userAnswers channel.
+const storeNegotiationContext = storeNegotiationContextFactory({
+  getOpportunity: async (opportunityId) => {
+    const opp = await chatDatabaseAdapter.getOpportunity(opportunityId);
+    if (!opp) return null;
+    return {
+      id: opp.id,
+      status: opp.status,
+      metadata: (opp.metadata ?? {}) as Record<string, unknown>,
+    };
+  },
+  updateOpportunityMetadata: async (opportunityId, metadata) => {
+    await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
+  },
+});
+
+const enqueueIntentRefinement = enqueueIntentRefinementFactory({
+  getQuestionPrompt: async (questionId) => {
+    const question = await answerQuestionerAdapter.getById(questionId);
+    return question?.payload.prompt ?? null;
+  },
+  getUserProfile: async (userId) => {
+    const profile = await chatDatabaseAdapter.getProfile(userId);
+    return profile ? JSON.stringify(profile) : '';
+  },
+  runIntentUpdate: async ({ userId, userProfile, inputContent, targetIntentIds }) => {
+    const result = await answerIntentGraph.invoke(
+      { userId, userProfile, operationMode: 'update' as const, inputContent, targetIntentIds },
+      { recursionLimit: 100 },
+    );
+    const executionResults = (result as {
+      executionResults?: Array<{
+        actionType: 'create' | 'update' | 'expire';
+        success: boolean;
+        intentId?: string;
+        payload?: string;
+      }>;
+    }).executionResults;
+    const targetIds = new Set(targetIntentIds);
+    const appliedUpdate = executionResults?.find((execution) =>
+      execution.success
+      && execution.actionType === 'update'
+      && execution.intentId !== undefined
+      && targetIds.has(execution.intentId));
+    if (!appliedUpdate || appliedUpdate.payload === undefined) return { applied: false };
+    return { applied: true, payload: appliedUpdate.payload };
+  },
+  getIntent: async (intentId) => {
+    const intent = await chatDatabaseAdapter.getIntent(intentId);
+    if (!intent) return null;
+    return {
+      id: intent.id,
+      userId: intent.userId,
+      description: intent.payload,
+      summary: intent.summary,
+      status: (intent.status ?? 'ACTIVE').toLowerCase(),
+    };
+  },
+});
 
 const questionAnswerDeps = {
   createPremiseFromAnswer: createPremiseFromAnswerFactory({
     runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
     emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
   }),
-  enqueueIntentRefinement: enqueueIntentRefinementFactory({
-    getQuestionPrompt: async (questionId) => {
-      const question = await answerQuestionerAdapter.getById(questionId);
-      return question?.payload.prompt ?? null;
+  enqueueIntentRefinement,
+  storeNegotiationContext,
+  resumeInflightNegotiation: resumeInflightNegotiationFactory({
+    storeNegotiationContext,
+    getNegotiationTaskForOpportunity: (opportunityId) =>
+      conversationDatabaseAdapter.getNegotiationTaskForOpportunity(opportunityId),
+    cancelAskUserExpiry: (negotiationId) => negotiationTimeoutQueue.cancelAskUserExpiry(negotiationId),
+    closeTask: async (taskId, reason) => {
+      await conversationDatabaseAdapter.updateTaskState(taskId, 'canceled', { reason });
     },
-    getUserProfile: async (userId) => {
-      const profile = await chatDatabaseAdapter.getProfile(userId);
-      return profile ? JSON.stringify(profile) : '';
+    enqueueResume: async (opportunityId, userId) => {
+      await negotiationRunExistingQueue.addJob({ opportunityId, userId });
     },
-    runIntentUpdate: async ({ userId, userProfile, inputContent, targetIntentIds }) => {
-      const result = await answerIntentGraph.invoke(
-        { userId, userProfile, operationMode: 'update' as const, inputContent, targetIntentIds },
-        { recursionLimit: 100 },
-      );
-      const executionResults = (result as { executionResults?: Array<{ success: boolean }> }).executionResults;
-      return { applied: !!executionResults?.some((r) => r.success) };
-    },
-    getIntent: async (intentId) => {
-      const intent = await chatDatabaseAdapter.getIntent(intentId);
-      if (!intent) return null;
-      return {
-        id: intent.id,
-        userId: intent.userId,
-        description: intent.payload,
-        status: (intent.status ?? 'ACTIVE').toLowerCase(),
-      };
-    },
-  }),
-  storeNegotiationContext: storeNegotiationContextFactory({
-    getOpportunity: async (opportunityId) => {
-      const opp = await chatDatabaseAdapter.getOpportunity(opportunityId);
-      if (!opp) return null;
-      return {
-        id: opp.id,
-        status: opp.status,
-        metadata: (opp.metadata ?? {}) as Record<string, unknown>,
-      };
-    },
-    updateOpportunityMetadata: async (opportunityId, metadata) => {
-      await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
+    // P5.2: the answer is already a distilled disclosure policy — record it
+    // as a negotiator memory (no-op while NEGOTIATOR_MEMORY_WRITE_ENABLED is off).
+    recordDisclosureRule: async ({ userId, questionId, selectedOptions, freeText }) => {
+      const question = await answerQuestionerAdapter.getById(questionId).catch(() => null);
+      await negotiatorMemoryWriteService.recordDisclosureRuleFromAnswer({
+        userId,
+        questionId,
+        ...(question?.payload.prompt && { questionPrompt: question.payload.prompt }),
+        selectedOptions,
+        ...(freeText !== undefined && { freeText }),
+      });
     },
   }),
   resolveChatQuestionWait: ({ questionId, answer }: {
@@ -278,6 +393,20 @@ const questionAnswerDeps = {
   }) => {
     emitChatQuestionResolution({ questionId, status: 'answered', answer });
   },
+  handlePoolAnswer: handlePoolAnswerFactory({
+    adapter: answerQuestionerAdapter,
+    poolQuestionPostPersist: enqueuePoolQuestionPush,
+    refineIntent: enqueueIntentRefinement,
+    getIntentAdmission: async (userId, intentId) => {
+      const intent = await chatDatabaseAdapter.getIntentForIndexing(intentId);
+      if (!intent || intent.userId !== userId || intent.archivedAt) return 'unavailable';
+      if (intent.status === 'PAUSED') return 'paused';
+      return intent.status == null || intent.status === 'ACTIVE' ? 'active' : 'unavailable';
+    },
+    narrateBeatOne: async ({ userId, intentId, message }) => {
+      await appendPoolNarration({ userId, intentId, message });
+    },
+  }),
 };
 
 QuestionEvents.onAnswered = (payload) => {
@@ -304,16 +433,27 @@ enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
+void frameDriftQueue.start().catch((error) => {
+  log.queue.from('FrameDriftQueue').error('Frame-drift queue startup failed', {
+    event: 'frame_drift_monitoring_startup_failed',
+    error,
+  });
+});
 notificationQueue.startWorker();
 enrichmentQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
+negotiationReflectQueue.startWorker();
+negotiationReflectQueue.startCrons();
 integrationSyncQueue.startWorker();
 if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
+poolQuestionPushQueue.startWorker();
+poolQuestionPushQueue.startRecoveryScheduler();
+poolVisitMiningQueue.startWorker();
 premiseQueue.startWorker();
 userContextQueue.startWorker();
 premiseQueue.startCrons();
@@ -325,6 +465,33 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
     { priority: 10, jobId: `rediscovery-${userId}-${intentId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
   ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue discovery on create', { intentId, userId, error: err }));
   opportunityService.triggerMaintenance(userId, 'intent-created');
+};
+
+IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: number) => {
+  log.job.from('IntentEvents').verbose('Intent paused', { intentId, userId, lifecycleVersionMs });
+};
+
+IntentEvents.onMaterialUpdated = async (event) => {
+  const result = await answerQuestionerAdapter.handleMaterialIntentUpdate(event);
+  log.job.from('IntentEvents').verbose('Material intent update reconciled pool lifecycle', {
+    ...event,
+    ...result,
+  });
+};
+
+IntentEvents.onResumed = async (intentId: string, userId: string, lifecycleVersionMs: number) => {
+  log.job.from('IntentEvents').verbose('Intent resumed, triggering discovery', {
+    intentId,
+    userId,
+    lifecycleVersionMs,
+  });
+  await fromIntentQueue.addJob(
+    { intentId, userId, trigger: 'intent_resume' },
+    {
+      priority: 10,
+      jobId: intentResumeDiscoveryJobId(userId, intentId, lifecycleVersionMs),
+    },
+  );
 };
 
 IntentEvents.onArchived = (intentId: string, userId: string) => {
@@ -405,7 +572,6 @@ controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(NetworkExperimentController, new NetworkExperimentController());
 controllerInstances.set(IntentController, new IntentController());
-controllerInstances.set(LinkController, new LinkController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
 controllerInstances.set(ConnectLinkController, new ConnectLinkController());
@@ -751,8 +917,11 @@ const shutdown = async () => {
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
     questionerQueue.close(),
+    poolQuestionPushQueue.close(),
+    poolVisitMiningQueue.close(),
     premiseQueue.close(),
     userContextQueue.close(),
+    frameDriftQueue.close(),
   ]);
   logger.info('Workers closed');
   await Sentry.close(2000);

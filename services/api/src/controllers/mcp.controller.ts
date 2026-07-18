@@ -22,6 +22,7 @@ import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import type { AdapterPersistableQuestion } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
+import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
@@ -42,6 +43,10 @@ import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
+import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
+import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
+import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
@@ -141,6 +146,7 @@ const protocolDeps = {
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
+  stampNewbornOpportunities,
   mintConnectToken: signConnectToken,
   mintConnectLink,
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
@@ -151,6 +157,18 @@ const protocolDeps = {
   ...(isQuestionerEnabled() && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
       await questionerQueue.addGenerateJob(input);
+    },
+  }),
+  // P5.4 (IND-408): host bridge for the negotiator persona's remember/forget
+  // memory tools. Injected only while memory writes are enabled — when the
+  // flag is off the tools are simply not registered. Consumed exclusively by
+  // createNegotiatorTools; the orchestrator registry never sees these tools.
+  ...(isNegotiatorMemoryWriteEnabled() && {
+    negotiatorMemoryTools: {
+      remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>
+        negotiatorMemoryWriteService.rememberFromChat({ userId, ...input }),
+      forget: async (userId: string, input: { memoryId?: string; description?: string }) =>
+        negotiatorMemoryWriteService.forgetFromChat({ userId, ...input }),
     },
   }),
 };
@@ -192,12 +210,17 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.agentDispatcher!,
     protocolDeps.negotiationTimeoutQueue,
     qEnqueue,
+    // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
+    reflectEnqueueIfEnabled(),
+    // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+    negotiatorMemoryRetrieve(),
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
     undefined, undefined, negotiationGraph,
     protocolDeps.agentDispatcher,
     protocolDeps.queueNegotiateExisting,
+    protocolDeps.stampNewbornOpportunities,
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
@@ -617,6 +640,7 @@ function createMcpServerInstance(): McpServer {
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
     agentDispatcher: protocolDeps.agentDispatcher,
+    stampNewbornOpportunities: protocolDeps.stampNewbornOpportunities,
     negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
@@ -652,14 +676,17 @@ function createMcpServerInstance(): McpServer {
       filters?: {
         sourceType?: string;
         sourceId?: string;
+        purpose?: import('@indexnetwork/protocol').QuestionPurpose;
         networkId?: string;
         scopeType?: 'intent';
         scopeId?: string;
-        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat'>;
+        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery'>;
         limit?: number;
       },
     ) => {
-      const rows = await questionerAdapter.findPending(userId, filters);
+      const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
+        ? filters
+        : { ...filters, excludeModes: ['pool_discovery'] });
       return rows.map((row): PendingQuestionSummary => ({
         id: row.id,
         title: row.payload.title,
@@ -667,6 +694,7 @@ function createMcpServerInstance(): McpServer {
         options: row.payload.options,
         multiSelect: row.payload.multiSelect,
         mode: row.detection.mode,
+        ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
         sourceType: row.detection.sourceType,
         sourceId: row.detection.sourceId,
         createdAt: row.createdAt,

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
+import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
-import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
-import { AuthGuard } from '../guards/auth.guard';
+import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
+import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
@@ -25,6 +26,30 @@ const INTRODUCTION_APPROVED_HTML = `<!DOCTYPE html><html><head><meta charset="ut
 <div style="text-align:center"><h1 style="font-size:1.5rem">Introduction approved</h1>
 <p style="color:#666">You approved the introduction. Both parties will be connected shortly.</p>
 </div></body></html>`;
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[char] ?? char);
+}
+
+function renderLegacyUptakeAdvisory(
+  advisory: { questions: Array<{ id: string; title: string; prompt: string }> },
+  continueUrl: string,
+): string {
+  const questions = advisory.questions.map((question) => `
+    <section style="border:1px solid #ddd;border-radius:8px;padding:16px;margin:12px 0;text-align:left">
+      <strong>${escapeHtml(question.title)}</strong>
+      <p>${escapeHtml(question.prompt)}</p>
+    </section>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Questions before connecting</title></head>
+  <body style="font-family:system-ui;max-width:640px;margin:48px auto;padding:0 20px">
+    <h1>Questions before connecting</h1>
+    <p>Review these preparatory questions in Index before accepting, or explicitly continue anyway.</p>
+    ${questions}
+    <a href="${escapeHtml(continueUrl)}" style="display:inline-block;background:#041729;color:white;padding:10px 16px;border-radius:4px;text-decoration:none">Continue anyway</a>
+  </body></html>`;
+}
 
 const discoverBodySchema = z.object({
   query: z.string().min(1),
@@ -64,11 +89,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeId?: string } | Response {
+function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeId?: string; acknowledgedUptakeQuestionIds?: string[] } | Response {
   if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   const rawScopeType = typeof body.scopeType === 'string' ? body.scopeType : undefined;
   const rawScopeId = typeof body.scopeId === 'string' ? body.scopeId : undefined;
   const rawIntentId = typeof body.intentId === 'string' ? body.intentId : undefined;
+  const rawAcknowledgedIds = body.acknowledgedUptakeQuestionIds;
+  if (rawAcknowledgedIds !== undefined && (
+    !Array.isArray(rawAcknowledgedIds)
+    || rawAcknowledgedIds.some((id) => typeof id !== 'string' || !id.trim())
+  )) {
+    return Response.json({ error: 'acknowledgedUptakeQuestionIds must be an array of non-empty strings' }, { status: 400 });
+  }
+  const acknowledgedUptakeQuestionIds = Array.isArray(rawAcknowledgedIds)
+    ? [...new Set(rawAcknowledgedIds.map((id) => (id as string).trim()))]
+    : undefined;
 
   if (rawScopeType || rawScopeId) {
     const parsedScopeType = scopeTypeQuerySchema.safeParse(rawScopeType);
@@ -76,16 +111,16 @@ function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeI
     const parsedScopeId = uuidQuerySchema.safeParse(rawScopeId);
     if (!parsedScopeId.success) return Response.json({ error: 'Invalid scopeId; must be a UUID' }, { status: 400 });
     if (rawIntentId && rawIntentId !== rawScopeId) return Response.json({ error: 'intentId must match scopeId when both are provided' }, { status: 400 });
-    return { scopeType: 'intent', scopeId: rawScopeId };
+    return { scopeType: 'intent', scopeId: rawScopeId, acknowledgedUptakeQuestionIds };
   }
 
   if (rawIntentId) {
     const parsedIntentId = uuidQuerySchema.safeParse(rawIntentId);
     if (!parsedIntentId.success) return Response.json({ error: 'Invalid intentId; must be a UUID' }, { status: 400 });
-    return { scopeType: 'intent', scopeId: rawIntentId };
+    return { scopeType: 'intent', scopeId: rawIntentId, acknowledgedUptakeQuestionIds };
   }
 
-  return {};
+  return { acknowledgedUptakeQuestionIds };
 }
 
 /** Route params when path has :id or :networkId */
@@ -296,11 +331,21 @@ export class OpportunityController {
 
     const scope = parseIntentScopeFromBody(body);
     if (scope instanceof Response) return scope;
+    const { networkScopeId } = await withAgentScope(req, user);
 
-    const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, scope);
+    const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, {
+      ...scope,
+      ...(networkScopeId ? { networkScopeId } : {}),
+      // Provenance: only a genuine human session may become a preference label
+      // (IND-434). API-key/agent REST calls are excluded from outcome capture.
+      actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
+    });
 
     if (result && 'error' in result) {
-      return Response.json({ error: result.error }, { status: result.status as number });
+      return Response.json(
+        'advisory' in result ? { error: result.error, advisory: result.advisory } : { error: result.error },
+        { status: result.status as number },
+      );
     }
 
     return Response.json(result);
@@ -342,10 +387,18 @@ export class OpportunityController {
     }
     const scope = parseIntentScopeFromBody(body);
     if (scope instanceof Response) return scope;
+    const { networkScopeId } = await withAgentScope(req, user);
 
-    const result = await opportunityService.startChat(resolved.id, user.id, scope);
+    const result = await opportunityService.startChat(resolved.id, user.id, {
+      ...scope,
+      ...(networkScopeId ? { networkScopeId } : {}),
+      actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
+    });
     if ('error' in result) {
-      return Response.json({ error: result.error }, { status: result.status });
+      return Response.json(
+        'advisory' in result ? { error: result.error, advisory: result.advisory } : { error: result.error },
+        { status: result.status },
+      );
     }
     return Response.json(result);
   }
@@ -359,6 +412,7 @@ export class OpportunityController {
    * Requires x-api-key (agent polling) or session auth.
    */
   @Post('/:id/connect-token')
+  @deprecatedRoute('opportunity.connect-token')
   @UseGuards(RateLimit('write'), AuthGuard)
   async createConnectToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
@@ -435,6 +489,7 @@ export class OpportunityController {
    * is required.
    */
   @Get('/:id/connect')
+  @deprecatedRoute('opportunity.connect')
   @UseGuards(RateLimit('read'))
   async connect(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;
@@ -459,8 +514,29 @@ export class OpportunityController {
       return new Response('Token does not match opportunity', { status: 403 });
     }
 
-    const result = await opportunityService.startChat(payload.opp, payload.sub);
+    const rawAcknowledged = url.searchParams.get('acknowledgedUptakeQuestionIds');
+    const acknowledgedUptakeQuestionIds = rawAcknowledged
+      ? [...new Set(rawAcknowledged.split(',').map((questionId) => questionId.trim()).filter(Boolean))]
+      : undefined;
+    const result = await opportunityService.startChat(payload.opp, payload.sub, {
+      acknowledgedUptakeQuestionIds,
+      // A legacy connect token is recipient-bound but can be minted/invoked by
+      // an API-key principal, so it is NOT proof of an explicit human session.
+      // Preserve the redirect behavior, but exclude it from Lens B labels.
+      actionProvenance: 'api_key',
+    });
     if ('error' in result) {
+      if ('advisory' in result && result.advisory.code === 'unresolved_uptake_questions') {
+        const continueUrl = new URL(url);
+        continueUrl.searchParams.set(
+          'acknowledgedUptakeQuestionIds',
+          result.advisory.acknowledgedUptakeQuestionIds.join(','),
+        );
+        return new Response(renderLegacyUptakeAdvisory(result.advisory, continueUrl.toString()), {
+          status: 409,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      }
       return new Response(result.error, { status: result.status });
     }
 
@@ -498,6 +574,7 @@ export class OpportunityController {
    * mechanism as the `/connect` endpoint).
    */
   @Get('/:id/approve-introduction')
+  @deprecatedRoute('opportunity.approve-introduction')
   @UseGuards(RateLimit('read'))
   async approveIntroduction(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;

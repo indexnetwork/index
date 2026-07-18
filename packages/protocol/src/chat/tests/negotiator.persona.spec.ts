@@ -18,7 +18,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it } from "bun:test";
 
-import { NEGOTIATOR_PERSONA_ID, NEGOTIATOR_TOOL_NAMES, createNegotiatorPersona, filterNegotiatorTools } from "../negotiator.persona.js";
+import { NEGOTIATOR_PERSONA_ID, NEGOTIATOR_TOOL_NAMES, createNegotiatorPersona, filterNegotiatorTools, filterNegotiatorToolsForContext } from "../negotiator.persona.js";
 import { buildNegotiatorSystemContent } from "../negotiator.prompt.js";
 import { ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
@@ -103,10 +103,11 @@ describe("buildNegotiatorSystemContent", () => {
     expect(prompt).toContain("alice@example.com");
   });
 
-  it("references every allowlisted tool and no others in the tools table", () => {
+  it("references every allowlisted tool and retains opportunity listing in the unscoped DM", () => {
     for (const name of NEGOTIATOR_TOOL_NAMES) {
       expect(prompt).toContain(name);
     }
+    expect(prompt).toContain("Review and act on opportunities");
   });
 
   it("omits the description line when the agent row has none", () => {
@@ -118,6 +119,83 @@ describe("buildNegotiatorSystemContent", () => {
   it("is deterministic (snapshot-safe across iterations)", () => {
     expect(buildNegotiatorSystemContent(ctx, AGENT_OPTS)).toBe(prompt);
     expect(buildNegotiatorSystemContent(ctx, AGENT_OPTS, { iteration: 3 } as never)).toBe(prompt);
+  });
+});
+
+// ─── Intent pin (P4.2 / IND-403) ─────────────────────────────────────────────
+
+describe("buildNegotiatorSystemContent — pinned signal (intent scope)", () => {
+  const scopedCtx = makeCtx({ scopeType: "intent", scopeId: "intent-42" } as Partial<ResolvedToolContext>);
+
+  it("renders the pinned-signal section without offering bulk opportunity listing", () => {
+    const prompt = buildNegotiatorSystemContent(scopedCtx, AGENT_OPTS);
+    expect(prompt).toContain("## Pinned signal");
+    expect(prompt).toContain("intent id: intent-42");
+    expect(prompt).not.toContain("list_opportunities");
+    expect(prompt).toContain("adjacent Radar");
+    expect(prompt).toContain("Do not repeat or bulk-list");
+    // Awareness, not a sandbox — the prompt must say the focus is not a wall.
+    expect(prompt).toContain("This is a focus, not a wall");
+  });
+
+  it("retains referenced-opportunity actions, negotiation reporting, and pending questions", () => {
+    const prompt = buildNegotiatorSystemContent(scopedCtx, AGENT_OPTS);
+    for (const retainedTool of [
+      "update_opportunity",
+      "list_negotiations",
+      "get_negotiation",
+      "respond_to_negotiation",
+      "read_pending_questions",
+      "answer_pending_question",
+    ]) {
+      expect(prompt).toContain(retainedTool);
+    }
+  });
+
+  it("includes the human-readable label when provided", () => {
+    const prompt = buildNegotiatorSystemContent(scopedCtx, {
+      ...AGENT_OPTS,
+      pinnedIntentLabel: "Technical co-founder in Berlin",
+    });
+    expect(prompt).toContain("intent id: intent-42");
+    expect(prompt).toContain("Technical co-founder in Berlin");
+  });
+
+  it("omits the section entirely for the unscoped DM", () => {
+    const prompt = buildNegotiatorSystemContent(makeCtx(), AGENT_OPTS);
+    expect(prompt).not.toContain("## Pinned signal");
+    // A stray label without an intent scope must not leak into the prompt.
+    const withLabel = buildNegotiatorSystemContent(makeCtx(), { ...AGENT_OPTS, pinnedIntentLabel: "Stray" });
+    expect(withLabel).not.toContain("Stray");
+  });
+
+  it("treats network scope like the unscoped DM", () => {
+    const networkCtx = makeCtx({ scopeType: "network", scopeId: "net-1" } as Partial<ResolvedToolContext>);
+    const prompt = buildNegotiatorSystemContent(networkCtx, AGENT_OPTS);
+    expect(prompt).not.toContain("## Pinned signal");
+    expect(prompt).toContain("list_opportunities");
+    expect(prompt).toContain("Review and act on opportunities");
+  });
+});
+
+// ─── Question inbox (P4.3 / IND-404) ─────────────────────────────────────────
+
+describe("buildNegotiatorSystemContent — client question inbox (DM)", () => {
+  it("renders the inbox section for the unscoped DM", () => {
+    const prompt = buildNegotiatorSystemContent(makeCtx(), AGENT_OPTS);
+    expect(prompt).toContain("## Client question inbox");
+    expect(prompt).toContain("answer_pending_question");
+    // Explicit-answer contract: never record inferred answers.
+    expect(prompt).toContain("never an answer you inferred");
+  });
+
+  it("does not render the inbox section in intent-pinned sessions (pin guidance replaces it)", () => {
+    const scopedCtx = makeCtx({ scopeType: "intent", scopeId: "intent-42" } as Partial<ResolvedToolContext>);
+    const prompt = buildNegotiatorSystemContent(scopedCtx, AGENT_OPTS);
+    expect(prompt).not.toContain("## Client question inbox");
+    expect(prompt).toContain("## Pinned signal");
+    // The pin section still teaches conversational answering.
+    expect(prompt).toContain("answer_pending_question");
   });
 });
 
@@ -182,8 +260,46 @@ const ORCHESTRATOR_REGISTRY_NAMES = [
   "update_premise",
   "retract_premise",
   "read_pending_questions",
+  "answer_pending_question",
   "ask_user_question",
 ];
+
+describe("filterNegotiatorToolsForContext", () => {
+  const tools = [
+    "list_opportunities",
+    "update_opportunity",
+    "list_negotiations",
+    "get_negotiation",
+    "respond_to_negotiation",
+    "read_pending_questions",
+    "answer_pending_question",
+  ].map((name) => ({ name }));
+
+  it("removes only opportunity listing from intent-scoped tools", () => {
+    const filteredNames = filterNegotiatorToolsForContext(tools, {
+      scopeType: "intent",
+      scopeId: "intent-42",
+    }).map((tool) => tool.name);
+
+    expect(filteredNames).not.toContain("list_opportunities");
+    expect(filteredNames).toEqual([
+      "update_opportunity",
+      "list_negotiations",
+      "get_negotiation",
+      "respond_to_negotiation",
+      "read_pending_questions",
+      "answer_pending_question",
+    ]);
+  });
+
+  it("retains opportunity listing for unscoped and network-scoped tools", () => {
+    expect(filterNegotiatorToolsForContext(tools, {}).map((tool) => tool.name)).toContain("list_opportunities");
+    expect(filterNegotiatorToolsForContext(tools, {
+      scopeType: "network",
+      scopeId: "net-1",
+    }).map((tool) => tool.name)).toContain("list_opportunities");
+  });
+});
 
 describe("filterNegotiatorTools", () => {
   const registry = ORCHESTRATOR_REGISTRY_NAMES.map((name) => ({ name }));
@@ -196,6 +312,8 @@ describe("filterNegotiatorTools", () => {
 
   it("keeps the P4.5 capability groups (signals, knowledge writes, joins, contacts)", () => {
     for (const allowed of [
+      "read_pending_questions",
+      "answer_pending_question",
       "create_intent",
       "update_intent",
       "delete_intent",

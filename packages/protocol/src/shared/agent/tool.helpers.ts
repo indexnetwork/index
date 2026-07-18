@@ -7,6 +7,7 @@ import type { ChatGraphCompositeDatabase, NetworkMembership, UserRecord, UserDat
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
 import type { CompiledOpportunityGraph } from "../../opportunity/opportunity.discover.js";
+import type { StampNewbornOpportunitiesFn } from "../../opportunity/opportunity.graph.js";
 import type { IntegrationAdapter } from "../interfaces/integration.interface.js";
 import type { ContactServiceAdapter } from "../interfaces/contact.interface.js";
 import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
@@ -23,9 +24,10 @@ import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.j
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
 import type { MintConnectLink } from "../interfaces/connect-link.interface.js";
 import type { ChatQuestionsHost, QuestionerDatabase } from "../interfaces/questioner.interface.js";
+import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
-import type { QuestionMode } from "../schemas/question.schema.js";
+import type { QuestionMode, QuestionPurpose } from "../schemas/question.schema.js";
 import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
 
@@ -191,9 +193,22 @@ export interface ToolContext {
       scopeId?: string;
       networkId?: string;
       modes?: QuestionMode[];
+      purpose?: QuestionPurpose;
       limit?: number;
     },
   ) => Promise<PendingQuestionSummary[]>;
+  /**
+   * Record the client's explicit answer to a pending question through the
+   * host's question-answer pipeline (atomic pending→answered flip + answered
+   * events). Returns false when the question is not pending for this user
+   * (already answered/dismissed, expired, or not theirs). Injected by the
+   * composition root — absent when question delivery is disabled.
+   */
+  answerPendingQuestion?: (
+    userId: string,
+    questionId: string,
+    answer: { selectedOptions: string[]; freeText?: string },
+  ) => Promise<boolean>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /**
@@ -202,6 +217,14 @@ export interface ToolContext {
    * the backend composition root; when absent the tool is not registered.
    */
   chatQuestions?: ChatQuestionsHost;
+  /**
+   * Host bridge for the negotiator persona's `remember`/`forget` memory
+   * tools (P5.4). Injected by the composition root only when negotiator
+   * memory writes are enabled; when absent the tools are not registered.
+   * Consumed exclusively by the negotiator persona toolset — the
+   * orchestrator registry never sees these tools.
+   */
+  negotiatorMemoryTools?: NegotiatorMemoryToolsHost;
   /**
    * Resolve a user's global user_context paragraph (profile-replacing identity
    * text), generating it on demand when absent. Mirrors `ToolDeps.getUserContextText`
@@ -237,6 +260,8 @@ export interface ToolContext {
   agentDispatcher?: AgentDispatcher;
   /** Enqueue a negotiate_existing job after introducer approval (optional). */
   queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>;
+  /** Host callback for pre-insert newborn pool-preference stamping (optional). */
+  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
   /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */
@@ -541,10 +566,23 @@ export interface ToolDeps {
       networkId?: string;
       /** Restrict to questions whose detection mode is in this set. */
       modes?: QuestionMode[];
+      /** Restrict to an internal generation purpose. */
+      purpose?: QuestionPurpose;
       /** Maximum rows to return; hosts should apply this in the query. */
       limit?: number;
     },
   ) => Promise<PendingQuestionSummary[]>;
+  /**
+   * Record the client's explicit answer to a pending question through the
+   * host's question-answer pipeline (atomic pending→answered flip + answered
+   * events). Returns false when the question is not pending for this user.
+   * Injected by the composition root — absent when question delivery is disabled.
+   */
+  answerPendingQuestion?: (
+    userId: string,
+    questionId: string,
+    answer: { selectedOptions: string[]; freeText?: string },
+  ) => Promise<boolean>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /**
@@ -561,6 +599,8 @@ export interface ToolDeps {
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
   /** Dispatcher for routing negotiation turns to personal agents (optional — falls back to system AI). */
   agentDispatcher?: AgentDispatcher;
+  /** Host callback for pre-insert newborn pool-preference stamping (optional). */
+  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
   /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */

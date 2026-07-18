@@ -1,4 +1,4 @@
-import type { CaseResultLike, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
+import type { CaseResultLike, ScoredRunProvenance, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
 
 /** Which premise agent a case exercises. */
 export type PremiseComponent = "decompose" | "analyze";
@@ -109,7 +109,7 @@ export interface PremiseRunDetail {
   semanticEntropy?: number;
 }
 
-export interface RunResult {
+export interface RunResult extends ScoredRunProvenance {
   passed: boolean;
   assertions: AssertionResult[];
   /** Present in run reports; stripped from the committed baseline to keep diffs lean. */

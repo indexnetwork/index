@@ -15,7 +15,7 @@ bun run eval:profile -- --case extraction/     # one case or id prefix
 bun run eval:profile -- --tier 1               # one tier
 bun run eval:profile -- --list-cases           # print selected cases and exit
 bun run eval:profile -- --no-judge             # skip LLM coverage/apply/preserve checks (free)
-bun run eval:profile -- --update-baseline      # overwrite the committed baseline
+bun run eval:profile -- --update-baseline --force # replace the committed baseline
 bun run eval:profile -- --report [path]        # write a full run report incl. generated profiles
 bun run eval:profile -- --html [path]          # write a standalone HTML scorecard
 bun run eval:profile -- --rolling-baseline [d] # compare against trailing run average (default 7d)
@@ -46,7 +46,7 @@ realistic), the raw `input`, and `expect`. Prefer deterministic expectations; re
 judged `mustHaveSkills` / `mustApply` / `mustPreserve` / `reasoningCriteria` only when a
 code check can't express it. Privacy cases should feed contact identifiers in the input and
 rely on the default `privacy` assertion to prove they were redacted. Re-run with
-`--update-baseline` after an intentional change.
+`--update-baseline --force` after an intentional change.
 
 ## Layout
 
@@ -61,3 +61,12 @@ rely on the default `privacy` assertion to prove they were redacted. Re-run with
 - `baselines/profile.baseline.json` — committed baseline (per-run detail stripped).
 - `runs/*.json` — gitignored full run reports (rolling-baseline fuel).
 - `tests/` — unit tests (no live agents).
+
+## Execution evidence
+
+Schema-v2 run reports retain every generator invocation attempt, including retries,
+timeout/cancellation, sanitized errors, retryability, and backoff. Only terminal successful
+profiles are scored; provider errors never share raw secrets with profile evidence. Use
+`--strict-evidence` for release evidence and `--attempt-timeout-ms N` to override the
+90-second per-attempt deadline. Exit codes are 0 pass, 1 regression, 2 execution/artifact
+error, and 3 incomplete strict evidence.

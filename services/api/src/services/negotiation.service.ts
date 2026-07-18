@@ -4,6 +4,8 @@ import { ChatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/da
 import { NegotiationGraphFactory } from '@indexnetwork/protocol';
 import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/protocol';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 
 const logger = log.service.from('NegotiationService');
 
@@ -41,6 +43,10 @@ export class NegotiationService {
       undefined,
       // Stalled negotiations enqueue follow-up questions for the source user.
       questionerEnqueueIfEnabled(),
+      // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
+      reflectEnqueueIfEnabled(),
+      // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+      negotiatorMemoryRetrieve(),
     ).createGraph();
 
     logger.info('Starting discovery negotiation', { sourceUserId, candidateUserId });
@@ -51,6 +57,10 @@ export class NegotiationService {
       indexContext: { networkId: '', prompt: '' },
       seedAssessment: { reasoning: 'Discovery negotiation', valencyRole: 'peer' },
       maxTurns: 4,
+      // v2 initiator stamp: explicit user-triggered negotiation — the viewer
+      // who requested it holds the initiating seat. This path has no
+      // opportunityId, so the stamp must ride the invoke input directly.
+      initiatorUserId: sourceUserId,
     });
 
     logger.info('Discovery negotiation completed', {

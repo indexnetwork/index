@@ -1,10 +1,18 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
+import type { ScreenDecisionRecord } from "./negotiation.screen.js";
+import type { DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
+import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
-/** Zod schema for a single negotiation turn (DataPart payload in A2A message). */
+/**
+ * Zod schema for a single negotiation turn (DataPart payload in A2A message).
+ * Accepts the full v1+v2 action union — which subset is valid for a given turn
+ * is enforced by the seat-scoped schemas in `negotiation.protocol.ts`.
+ */
 export const NegotiationTurnSchema = z.object({
-  action: z.enum(["propose", "accept", "reject", "counter", "question"]),
+  action: z.enum(NEGOTIATION_ACTIONS),
   assessment: z.object({
     reasoning: z.string(),
     suggestedRoles: z.object({
@@ -13,9 +21,11 @@ export const NegotiationTurnSchema = z.object({
     }),
   }),
   message: z.string().nullable().optional(),
+  /** Present when action is `ask_user` (v2, P3.2). */
+  askUser: AskUserPayloadSchema.nullable().optional(),
 });
 
-/** Restricted turn schema for the system agent (no question action). */
+/** Restricted v1 turn schema for the system agent (no question action). */
 export const SystemNegotiationTurnSchema = z.object({
   action: z.enum(["propose", "accept", "reject", "counter"]),
   assessment: z.object({
@@ -28,7 +38,7 @@ export const SystemNegotiationTurnSchema = z.object({
   message: z.string().nullable().optional(),
 });
 
-/** Turn schema for system agent's final allowed turn (must decide). */
+/** v1 turn schema for system agent's final allowed turn (must decide). */
 export const FinalNegotiationTurnSchema = z.object({
   action: z.enum(["accept", "reject"]),
   assessment: z.object({
@@ -52,7 +62,7 @@ export const NegotiationOutcomeSchema = z.object({
   })),
   reasoning: z.string(),
   turnCount: z.number(),
-  reason: z.enum(["turn_cap", "timeout"]).optional(),
+  reason: z.enum(["turn_cap", "timeout", "screened_out"]).optional(),
 });
 
 export type NegotiationOutcome = z.infer<typeof NegotiationOutcomeSchema>;
@@ -82,6 +92,13 @@ export interface NegotiationGraphLike {
     opportunityId?: string;
     maxTurns?: number;
     timeoutMs?: number;
+    /**
+     * The user who holds the initiating seat for this match (v2 client-advocate
+     * protocol). Stamped into task metadata by the init node. When omitted, the
+     * init node resolves it: inherit from the prior task for the same
+     * opportunity → conversation-scoped tie-break → fall back to sourceUser.id.
+     */
+    initiatorUserId?: string;
   }): Promise<{
     outcome: NegotiationOutcome | null;
     messages?: NegotiationMessage[];
@@ -119,11 +136,66 @@ export const NegotiationGraphState = Annotation.Root({
     default: () => ({ reasoning: "", valencyRole: "" }),
   }),
 
+  /**
+   * Explicit initiator seat for this match (purely additive metadata — no seat
+   * rules attach to it yet). Resolution when unset happens in the init node;
+   * the resolved value is written back to state and into task metadata.
+   */
+  initiatorUserId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   /** The explicit search query that triggered discovery (if any). */
   discoveryQuery: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
+  /**
+   * Negotiation protocol version for this session's task. Resolved by the
+   * init node: inherited from the prior task on the conversation when one
+   * exists (never re-stamped — a v1 conversation stays v1 mid-flight), else
+   * stamped from `NEGOTIATION_PROTOCOL_VERSION` for genuinely fresh runs.
+   */
+  protocolVersion: Annotation<NegotiationProtocolVersion>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => "v1" as const,
+  }),
+
+  /**
+   * Screen-gate decision for this fresh run (P2.1 shadow mode). Written by the
+   * screen node; null when the gate is off, on continuations, or before the
+   * node runs. Mirrors `tasks.metadata.screenDecision`.
+   */
+  screenDecision: Annotation<ScreenDecisionRecord | null>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => null,
+  }),
+
+  /**
+   * First applied deadlock→bargaining shift in this session (IND-428).
+   * Written by the turn node when the system agent first drafts in the
+   * bargaining stance; used to record the shift exactly once per session.
+   * Internal analytics only — mirrored to `tasks.metadata.deadlockShift`,
+   * never into any turn payload or public projection.
+   */
+  deadlockShift: Annotation<DeadlockShiftRecord | null>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => null,
+  }),
+
+  /**
+   * Per-side negotiator-memory cache (P5.3 read path). Populated lazily the
+   * first time each side's memory is retrieved (screen node for the client,
+   * turn node for the speaker) so a multi-turn session pays for retrieval at
+   * most once per side. `undefined` per side = not yet retrieved; `[]` =
+   * retrieved and empty (flag off / no rows / retrieval failed).
+   */
+  memoryBySide: Annotation<Partial<Record<"source" | "candidate", NegotiatorMemoryEntry[]>>>({
+    reducer: (curr, next) => ({ ...curr, ...next }),
+    default: () => ({}),
+  }),
+
   /** Whether this run is continuing a prior conversation with the same pair. */
   isContinuation: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
@@ -178,9 +250,11 @@ export const NegotiationGraphState = Annotation.Root({
    * Graph status.
    * - `active` — agents are exchanging turns (default)
    * - `waiting_for_agent` — graph suspended; awaiting external agent response or timeout
+   * - `input_required` — graph suspended on an `ask_user` pause; awaiting the
+   *   negotiator's own client (answer or 24 h window expiry resumes it)
    * - `completed` — negotiation finalized (accept/reject/turn-cap/timeout)
    */
-  status: Annotation<'active' | 'waiting_for_agent' | 'completed'>({
+  status: Annotation<'active' | 'waiting_for_agent' | 'input_required' | 'completed'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'active' as const,
   }),

@@ -95,6 +95,12 @@ export interface OpportunitySignal {
   type: string;
   weight: number;
   detail?: string;
+  /** Optional source question for reversible pool-preference provenance. */
+  questionId?: string;
+  /** Recipient provenance for pool-discriminator signals. */
+  recipientUserId?: string;
+  /** Intent-pool provenance for pool-discriminator signals. */
+  intentId?: string;
 }
 
 /** LLM-generated interpretation of an opportunity's category and confidence. */
@@ -251,6 +257,8 @@ export interface IntentRecord extends CreatedIntent {
   sourceType?: string | null;
   /** Source ID for provenance */
   sourceId?: string | null;
+  /** Lifecycle admission state; null is a legacy ACTIVE row. */
+  status?: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null;
 }
 
 /**
@@ -285,6 +293,11 @@ export interface SimilarIntentSearchOptions {
  * Represents a user's membership in an index with full details.
  * Used for displaying network memberships in chat (index_query).
  */
+export interface ActiveNetworkMembershipPair {
+  userId: string;
+  networkId: string;
+}
+
 export interface NetworkMembership {
   /** Unique identifier of the index */
   networkId: string;
@@ -499,6 +512,15 @@ export interface Opportunity {
   updatedAt: Date;
   expiresAt: Date | null;
   metadata?: Record<string, unknown> | null;
+}
+
+export interface OpportunityNetworkEligibility {
+  /** User whose active memberships define the discovery boundary. */
+  ownerUserId: string;
+  /** Request/intent-authorized networks after the latest graph-side recomputation. */
+  allowedNetworkIds: string[];
+  /** When present, each actor network must remain assigned to this intent through commit. */
+  triggerIntentId?: string;
 }
 
 export interface CreateOpportunityData {
@@ -783,6 +805,15 @@ export interface Database {
    * @returns The membership or null if not found
    */
   getNetworkMembership(networkId: string, userId: string): Promise<NetworkMembership | null>;
+
+  /**
+   * Return only requested user/network pairs backed by a live membership row
+   * and a non-deleted network. Permissions are intentionally not filtered:
+   * personal-network contacts are valid discovery participants.
+   */
+  getActiveNetworkMembershipPairs(
+    pairs: ActiveNetworkMembershipPair[],
+  ): Promise<ActiveNetworkMembershipPair[]>;
 
   /**
    * Get index by ID with core fields. Used for opportunity presentation and context rendering.
@@ -1232,6 +1263,27 @@ export interface Database {
   createOpportunity(data: CreateOpportunityData): Promise<Opportunity>;
 
   /**
+   * Atomically create only while every actor still has an active membership on
+   * the actor's network. Implementations lock the membership rows through the
+   * insert commit so concurrent removal cannot race opportunity creation.
+   */
+  createOpportunityIfNetworkEligible?(
+    data: CreateOpportunityData,
+    eligibility: OpportunityNetworkEligibility,
+  ): Promise<Opportunity | null>;
+
+  /**
+   * Atomically update status only while the supplied participant anchors remain
+   * active. Used for discovery dedup reactivation races.
+   */
+  updateOpportunityStatusIfNetworkEligible?(
+    id: string,
+    status: OpportunityStatus,
+    actors: OpportunityActor[],
+    eligibility: OpportunityNetworkEligibility,
+  ): Promise<Opportunity | null>;
+
+  /**
    * Get a single opportunity by ID.
    *
    * @param id - Opportunity ID
@@ -1281,6 +1333,16 @@ export interface Database {
   ): Promise<Opportunity[]>;
 
   /**
+   * Get the live candidate pool created exactly by one intent and visible to
+   * its recipient. Unlike selected-intent reads, this never falls back to an
+   * actor.intent match.
+   */
+  getLivePoolOpportunitiesForIntent(
+    recipientUserId: string,
+    intentId: string,
+  ): Promise<Opportunity[]>;
+
+  /**
    * Get opportunities in an index (for index admins).
    *
    * @param networkId - Network ID
@@ -1297,12 +1359,15 @@ export interface Database {
    *
    * @param id - Opportunity ID
    * @param status - New status
+   * @param acceptedBy - Required when `status === 'accepted'`
+   * @param outbox - Optional IND-434 atomic outcome-capture (same-txn insert)
    * @returns The updated opportunity or null if not found
    */
   updateOpportunityStatus(
     id: string,
     status: OpportunityStatus,
     acceptedBy?: string,
+    outbox?: OutcomeOutbox,
   ): Promise<Opportunity | null>;
 
   /**
@@ -1318,6 +1383,7 @@ export interface Database {
    * @param actorUserId - The user whose actor entry should be stamped
    * @param status - New opportunity status
    * @param acceptedBy - Required when `status === 'accepted'`
+   * @param outbox - Optional IND-434 atomic outcome-capture (same-txn insert)
    * @returns The updated opportunity, or null if not found
    */
   stampOpportunityActorAction(
@@ -1325,6 +1391,7 @@ export interface Database {
     actorUserId: string,
     status: OpportunityStatus,
     acceptedBy?: string,
+    outbox?: OutcomeOutbox,
   ): Promise<Opportunity | null>;
 
   /**
@@ -1351,6 +1418,13 @@ export interface Database {
     data: CreateOpportunityData,
     expireIds: string[]
   ): Promise<{ created: Opportunity; expired: Opportunity[] }>;
+
+  /** Eligibility-locked variant of create+expire for discovery persistence. */
+  createOpportunityAndExpireIdsIfNetworkEligible?(
+    data: CreateOpportunityData,
+    expireIds: string[],
+    eligibility: OpportunityNetworkEligibility,
+  ): Promise<{ created: Opportunity; expired: Opportunity[] } | null>;
 
   /**
    * Check if an opportunity already exists between the given actors in the index (deduplication).
@@ -2080,6 +2154,9 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'archiveIntent'
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
+  | 'createOpportunityIfNetworkEligible'
+  | 'createOpportunityAndExpireIdsIfNetworkEligible'
+  | 'updateOpportunityStatusIfNetworkEligible'
   | 'getOpportunity'
   | 'getOpportunitiesByIds'
   | 'opportunityExistsBetweenActors'
@@ -2101,6 +2178,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getAssignmentNetworkIdsForUser'
   | 'getNetworkMemberships'
   | 'getNetworkMembership'
+  | 'getActiveNetworkMembershipPairs'
   | 'getNetwork'
   | 'getNetworkWithPermissions'
   | 'getIntentForIndexing'
@@ -2166,10 +2244,14 @@ export type OpportunityGraphDatabase = Pick<
   Database,
   | 'getProfile'
   | 'createOpportunity'
+  | 'createOpportunityIfNetworkEligible'
+  | 'createOpportunityAndExpireIdsIfNetworkEligible'
+  | 'updateOpportunityStatusIfNetworkEligible'
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'
   | 'getUserIndexIds'
   | 'getNetworkMemberships'
+  | 'getActiveNetworkMembershipPairs'
   | 'getActiveIntents'
   | 'getNetworkIdsForIntent'
   | 'getNetwork'
@@ -2230,11 +2312,50 @@ export interface NegotiationQueries {
   setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void>;
 
   /**
+   * Merges a screen-gate decision (P2.1 shadow mode) into
+   * `metadata.screenDecision`, leaving other metadata keys intact. Optional so
+   * existing fakes/wireups remain valid; when absent the screen node logs the
+   * decision and proceeds without persisting.
+   * @param taskId - Task whose metadata to enrich
+   * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
+   */
+  setTaskScreenDecision?(taskId: string, screenDecision: Record<string, unknown>): Promise<void>;
+
+  /**
+   * Merges an applied deadlock→bargaining shift record (IND-428) into
+   * `metadata.deadlockShift`, leaving other metadata keys intact. Internal
+   * analytics only — API surfaces must never project this key. Optional so
+   * existing fakes/wireups remain valid; when absent the turn node logs the
+   * shift and proceeds without persisting.
+   * @param taskId - Task whose metadata to enrich
+   * @param deadlockShift - DeadlockShiftRecord (run length, threshold, turn, seat, timing)
+   */
+  setTaskDeadlockShift?(taskId: string, deadlockShift: Record<string, unknown>): Promise<void>;
+
+  /**
    * Returns the most-recently-created task whose metadata carries
    * `type: 'negotiation'` and `opportunityId: <id>`. Returns null if no
    * negotiation has been started for that opportunity yet.
    */
   getNegotiationTaskForOpportunity(opportunityId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null>;
+
+  /**
+   * Returns the most-recently-created task whose metadata carries
+   * `type: 'negotiation'` on the given conversation, regardless of
+   * opportunityId or direction. Used by the init node's conversation-scoped
+   * tie-break: symmetric concurrent starts carry different opportunityIds, so
+   * the opportunity-scoped lookup above cannot see the competing task.
+   * Optional so existing fakes/wireups remain valid; when absent the
+   * tie-break is skipped (pre-stamp behavior).
+   */
+  getLatestNegotiationTaskForConversation?(conversationId: string): Promise<{
     id: string;
     conversationId: string;
     state: string;
@@ -2335,6 +2456,28 @@ export type NegotiationGraphDatabase = Pick<
  *
  * Access layer: Both UserDatabase + SystemDatabase (API handles auth)
  */
+/**
+ * Optional atomic outbox for Lens B outcome capture (IND-434). Passed to a
+ * winning owner-action transition so the append-only outcome event is written
+ * in the SAME transaction as the status change:
+ *   - a rolled-back action leaves NO event;
+ *   - a committed eligible action produces EXACTLY one event;
+ *   - `result.inserted` is set to true by the adapter only when a NEW row was
+ *     written (idempotent retries / duplicates set it false), so the caller can
+ *     gate post-commit mining on a genuine first insert.
+ *
+ * `event` is typed `unknown` (the api-side outcome-event insert row, cast by the
+ * adapter) to keep the protocol layer free of database-schema imports. The
+ * actor-resolution mode is a transaction-time precondition: selected-intent
+ * captures require that exact actor intent, while unscoped captures require the
+ * recipient to still have one unambiguous actor-intent scope.
+ */
+export interface OutcomeOutbox {
+  event: unknown;
+  actorResolution: 'selected_intent' | 'unique_owned_scope';
+  result: { inserted: boolean };
+}
+
 export type OpportunityControllerDatabase = Pick<
   Database,
   | 'getOpportunity'

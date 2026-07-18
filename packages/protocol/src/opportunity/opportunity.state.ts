@@ -5,7 +5,7 @@ import type { Lens } from '../shared/interfaces/embedder.interface.js';
 import type { EvaluatorEntity } from './opportunity.evaluator.js';
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
-import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
+import type { DiscoveryNegotiation, DiscoverySummary } from "../shared/schemas/discovery-question.schema.js";
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -373,7 +373,7 @@ export const OpportunityGraphState = Annotation.Root({
   }),
 
   /** User context embeddings per network (from prep). Used for context-to-intent discovery. */
-  sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; embedding: number[] }>>({
+  sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; text: string; embedding: number[] }>>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),

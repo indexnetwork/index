@@ -11,6 +11,8 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import { renderOpportunityEvidenceForPrompt } from './opportunity.evidence.js';
+import { hasUnsupportedOpportunityClaim } from './opportunity.claim-safety.js';
+import { normalizeOpportunityActorIntent } from './opportunity.actor.js';
 
 const logger = protocolLogger("OpportunityEvaluator");
 const invokeLog = protocolLogger("OpportunityEvaluator:invoke");
@@ -71,6 +73,7 @@ const systemPrompt = `
     5. DEDUPLICATION: Do NOT suggest opportunities that duplicate "Existing Opportunities".
     6. Do not suggest an opportunity if the source and candidate clearly already know each other (e.g. same company, co-founders, same team).
     7. SAME-SIDE MATCHING: If both the source and candidate are SEEKING the same resource (e.g., both looking for investors, both seeking a co-founder), this is not an opportunity. Return an empty list unless one side clearly OFFERS what the other SEEKS.
+    8. NETWORK CONTEXT IS NOT PERSON EVIDENCE: A network assignment, title, type, or metadata is retrieval and thematic context only. It is never proof that a person attended an event, belongs to a group, resides in a place, knows anyone else from the network, or shared a session, time, or location with anyone. Do not state or infer those claims in opportunity reasoning.
 `;
 
 // Entity-bundle system prompt (C2): entities + four match patterns + actors output
@@ -152,12 +155,10 @@ Rules:
    b. If a candidate's profile.location is UNKNOWN, EMPTY, or AMBIGUOUS, do NOT penalize — allow them through and score based on other factors. Note in reasoning that their location is unverified.
    c. If a candidate's profile.location matches or is reasonably close (e.g., "Bay Area" matches "San Francisco", "Remote" matches any location), score normally.
    d. "Remote" or "Global" locations are compatible with any requested location.
-10. EVENT NETWORK AWARENESS: When NETWORK CONTEXTS includes an event-type network (identified by dates, location, schedule, or themes):
-   a. TEMPORAL RELEVANCE: If the event has start/end dates, factor time into scoring. Intents about meeting at the event, sharing logistics, or collaborating during the event are highly relevant when the event is upcoming or in progress. After the event ends, such intents lose relevance — score lower unless the connection has lasting value beyond the event.
-   b. THEME ALIGNMENT: Event networks may list themes or tracks. Candidates whose expertise or intents align with event themes should score higher for that network's entities.
-   c. CO-ATTENDANCE SIGNAL: Two entities found through the same event network share a co-attendance signal — they will likely be in the same place at the same time. This is a positive signal for in-person collaboration opportunities.
-   d. SCHEDULE CONTEXT: If the event network includes upcoming events or sessions, use them as additional matching context. Two people attending the same session or interested in the same topic track are stronger matches.
-   e. CO-ATTENDANCE ROLE: When two co-attendees express mutual or reciprocal collaboration intent — each seeking to work with the other's type, with no clear one-directional provider/seeker split — assign the "peer" role to both. Symmetric, two-sided collaboration is a peer relationship, not an agent/patient one; default to "peer" rather than "agent" for co-attendance matches.
+10. EVENT NETWORK CONTEXT: When NETWORK CONTEXTS includes an event-type network (identified by dates, location, schedule, or themes):
+   a. TEMPORAL RELEVANCE: Event start/end dates may affect whether an explicitly stated event-related intent is timely. After an event ends, event-specific intents lose relevance unless the connection has lasting value.
+   b. THEME ALIGNMENT: Event themes or tracks may be used as thematic retrieval context when a person's own profile or intent independently aligns with them.
+   c. PROHIBITED INFERENCE: Network assignment, title, type, schedule, location, and metadata are retrieval context only. They are never proof that any person attended or will attend, belongs to the event or network, resides in its location, knows another person from it, or shared a session, time, place, or location with anyone. Do not infer co-attendance, same-place/same-time presence, session attendance, or peer roles from network co-membership.
 `;
 
 // ──────────────────────────────────────────────────────────────
@@ -222,7 +223,9 @@ export interface EvaluatorInput {
 const ActorSchema = z.object({
   userId: z.string(),
   role: z.enum(['agent', 'patient', 'peer']),
-  intentId: z.string().nullable().describe('If the match is intent-driven, the specific intent ID; null otherwise'),
+  intentId: z.string().nullable()
+    .transform((value) => normalizeOpportunityActorIntent(value) ?? null)
+    .describe('If the match is intent-driven, the specific intent ID; null otherwise'),
   evidenceKey: z.string().nullable().optional().describe('Stable evidence key for the matched entity; null if unknown'),
 });
 
@@ -266,6 +269,8 @@ interface OpportunityEvaluatorOptions {
   candidates?: CandidateProfile[]; // For direct evaluation
   filter?: Record<string, unknown>;
   initialStatus?: OpportunityStatus;
+  /** Optional caller cancellation; does not change retry/fallback policy. */
+  signal?: AbortSignal;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -319,7 +324,7 @@ export class OpportunityEvaluator {
     const promises = candidates.map(async (candidate) => {
       // Pass existing opportunities context if provided
       const existingContext = options.existingOpportunities || '';
-      return this.analyzeMatch(sourceProfileContext, candidate, candidate.userId, existingContext);
+      return this.analyzeMatch(sourceProfileContext, candidate, candidate.userId, existingContext, options.signal);
     });
 
     const results = await Promise.all(promises);
@@ -342,7 +347,8 @@ export class OpportunityEvaluator {
     sourceProfileContext: string,
     candidateProfile: CandidateProfile,
     candidateUserId: string,
-    existingOpportunities: string
+    existingOpportunities: string,
+    signal?: AbortSignal,
   ): Promise<Opportunity[]> {
     try {
       // Construct the source context part of the prompt
@@ -369,7 +375,7 @@ export class OpportunityEvaluator {
         new HumanMessage(`${sourceContext}\n${existingContextPart}\nCANDIDATE PROFILE:\n${candidateContext}`)
       ];
 
-      const result = await invokeWithAbortSignal(this.model, messages);
+      const result = await invokeWithAbortSignal(this.model, messages, signal);
       const output = responseFormat.parse(result);
 
       const mappedOpportunities = output.opportunities.map((op: Opportunity) => ({
@@ -392,7 +398,7 @@ export class OpportunityEvaluator {
   @Timed()
   public async invokeEntityBundle(
     input: EvaluatorInput,
-    options: { minScore?: number; returnAll?: boolean } = {}
+    options: { minScore?: number; returnAll?: boolean; signal?: AbortSignal } = {}
   ): Promise<EvaluatedOpportunityWithActors[]> {
     const minScore = options.minScore ?? 70;
     const returnAll = options.returnAll ?? false;
@@ -498,19 +504,26 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
     ];
     let parsedTotal = 0;
     try {
-      const result = await invokeWithAbortSignal(this.entityBundleModel, messages);
+      const result = await invokeWithAbortSignal(this.entityBundleModel, messages, options.signal);
       const parsed = entityBundleResponseFormat.parse(result);
       for (const op of parsed.opportunities) {
         op.reasoning = stripUuids(op.reasoning);
       }
       parsedTotal = parsed.opportunities.length;
+      // Persistence safety is deterministic and precedes every score/returnAll
+      // path. Network/context placement is not typed support provenance, so an
+      // unsupported affiliation or presence claim rejects the whole result.
+      const claimSafe = parsed.opportunities.filter(
+        (op) => !hasUnsupportedOpportunityClaim(op.reasoning),
+      );
       const introGuard =
         input.introductionMode
-          ? parsed.opportunities.filter((op) => op.actors.length === 2)
-          : parsed.opportunities;
+          ? claimSafe.filter((op) => op.actors.length === 2)
+          : claimSafe;
       const filtered = introGuard.filter((op) => op.score >= minScore);
       invokeEntityBundleLog.verbose('Done', {
         total: parsed.opportunities.length,
+        afterClaimGuard: claimSafe.length,
         afterIntroGuard: introGuard.length,
         accepted: filtered.length,
         returnAll,

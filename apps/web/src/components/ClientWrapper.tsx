@@ -16,7 +16,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c', '/l', '/index'];
-  const bareRoutes = ['/', '/onboarding', '/oauth/callback', '/found-in-translation', '/blog', '/about', '/pages'];
+  const bareRoutes = ['/', '/onboarding', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages'];
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.
@@ -54,9 +54,11 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   [pathname]);
 
   // Agent chat routes get the conversation-history aside (relocated from the
-  // retired sidebar). Covers the agent landing and specific /d/:sessionId chats.
+  // retired sidebar): the agent chat landing and specific /d/:sessionId chats.
+  // The Personal Agent dashboard (/agent and /agent/:tab) is excluded — it is
+  // a full-width page, not a conversation.
   const isAgentView = useMemo(() =>
-    pathname === '/agent' || pathname?.startsWith('/agent/') || pathname?.startsWith('/d/'),
+    pathname === '/agent/chat' || pathname?.startsWith('/d/'),
   [pathname]);
 
   if (isBareRoute) {

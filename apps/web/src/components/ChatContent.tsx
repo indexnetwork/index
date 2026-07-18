@@ -55,6 +55,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     loadSession,
     sessionId,
     sessionTitle,
+    sessionPersona,
     suggestions: contextSuggestions,
     chatScope,
     setChatScope,
@@ -191,7 +192,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // Fetch conversation-linked questions on session load. In intent-scoped
   // sessions, also include pending questions derived from that selected intent,
-  // its opportunities, and their negotiations.
+  // its opportunities, and their negotiations. In the negotiator DM (persona
+  // 'negotiator', no intent pin), include the client's full question inbox —
+  // the same noConversation set the /questions page shows (P4.3/IND-404).
+  const isNegotiatorDm = sessionPersona === "negotiator" && chatScope?.type !== "intent";
   useEffect(() => {
     if (!sessionId) {
       setInjectedQuestions([]);
@@ -200,7 +204,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     let active = true;
     const scopeQuestionPromise = chatScope?.type === "intent"
       ? questionsService.getPending({ scopeType: "intent", scopeId: chatScope.id })
-      : Promise.resolve([] as PendingQuestion[]);
+      : isNegotiatorDm
+        ? questionsService.getPending({ noConversation: true, excludeModes: ['pool_discovery'] })
+        : Promise.resolve([] as PendingQuestion[]);
     Promise.all([
       questionsService.getByConversation(sessionId),
       scopeQuestionPromise,
@@ -213,7 +219,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setInjectedQuestions([...deduped.values()]);
     }).catch(() => {});
     return () => { active = false; };
-  }, [sessionId, questionsService, chatScope]);
+  }, [sessionId, questionsService, chatScope, isNegotiatorDm]);
 
   // Merge live ask_user_question cards (streamed via the user_question SSE
   // event) into the inline injected-questions list at render time. The
@@ -1267,11 +1273,18 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               </div>
             ))}
             {injectedByMessageId.has(null) && (
-              <InjectedQuestions
-                questions={injectedByMessageId.get(null)!}
-                onAnswer={handleInjectedAnswer}
-                onDismiss={handleInjectedDismiss}
-              />
+              <div data-testid={isNegotiatorDm ? "negotiator-question-inbox" : undefined}>
+                {isNegotiatorDm && (
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mt-4 mb-2">
+                    Open questions for you
+                  </p>
+                )}
+                <InjectedQuestions
+                  questions={injectedByMessageId.get(null)!}
+                  onAnswer={handleInjectedAnswer}
+                  onDismiss={handleInjectedDismiss}
+                />
+              </div>
             )}
             <div ref={scrollRef} />
           </div>

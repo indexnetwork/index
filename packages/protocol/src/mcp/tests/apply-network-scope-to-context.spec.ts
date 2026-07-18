@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { applyNetworkScopeToContext, computeAgentAllowedNetworkIds } from '../mcp.server.js';
+import { applyNetworkScopeToContext } from '../mcp.server.js';
 import type { ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
 
 const memberships = [
@@ -122,7 +122,6 @@ describe('applyNetworkScopeToContext', () => {
   test('derives allowed network IDs as [boundNetwork, personalIndex] when scoped', () => {
     const ctx = baseContext();
     applyNetworkScopeToContext(ctx, 'experiment-net');
-    expect(computeAgentAllowedNetworkIds(ctx.userNetworks, ctx.scopeType, ctx.scopeId).sort()).toEqual(['experiment-net', 'personal-1'].sort());
     expect(ctx.indexScope.sort()).toEqual(['personal-1', 'experiment-net', 'community-B'].sort());
   });
 

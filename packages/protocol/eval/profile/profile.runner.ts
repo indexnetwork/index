@@ -1,11 +1,10 @@
-import { repeatRuns } from "../shared/index.js";
-import { PROFILE_EVAL_MAX_ATTEMPTS, PROFILE_EVAL_RETRY_DELAY_MS } from "./profile.constants.js";
+import { executeRuns, type EvalEvidencePolicy, type EvalRunBatch } from "../shared/index.js";
+import { PROFILE_EVAL_ATTEMPT_TIMEOUT_MS, PROFILE_EVAL_MAX_ATTEMPTS, PROFILE_EVAL_RETRY_DELAY_MS } from "./profile.constants.js";
 import { findPII } from "./profile.pii.js";
 import type { ProfileCase, ProfileRunDetail } from "./profile.types.js";
 
-/** Minimal generator surface the runner needs (real ProfileGenerator satisfies this). */
 export interface GeneratorLike {
-  invoke(input: string): Promise<{
+  invoke(input: string, options?: { signal?: AbortSignal }): Promise<{
     output: {
       identity: { name: string; bio: string; location: string };
       narrative: { context: string };
@@ -17,11 +16,13 @@ export interface GeneratorLike {
 export interface RunCaseOptions {
   maxAttempts?: number;
   retryDelayMs?: number;
+  attemptTimeoutMs?: number;
+  policy?: EvalEvidencePolicy;
+  signal?: AbortSignal;
 }
 
-/** Invoke the generator once and normalize its output (computing PII hits in public fields). */
-async function invokeOnce(generator: GeneratorLike, c: ProfileCase): Promise<ProfileRunDetail> {
-  const { output } = await generator.invoke(c.input);
+async function invokeOnce(generator: GeneratorLike, c: ProfileCase, signal: AbortSignal): Promise<ProfileRunDetail> {
+  const { output } = await generator.invoke(c.input, { signal });
   const { identity, narrative, attributes } = output;
   const piiHits = findPII([
     identity.name,
@@ -42,24 +43,20 @@ async function invokeOnce(generator: GeneratorLike, c: ProfileCase): Promise<Pro
   };
 }
 
-/**
- * Run a profile case `runs` times, retrying transient live-model failures.
- *
- * @param generator - The profile generator under test.
- * @param c - The case to run.
- * @param runs - Number of repetitions.
- * @param options - Retry tuning (defaults from profile constants).
- * @returns One normalized detail per run.
- */
+/** Run every configured slot and retain all retry/failure evidence. */
 export async function runCase(
   generator: GeneratorLike,
   c: ProfileCase,
   runs: number,
   options: RunCaseOptions = {},
-): Promise<ProfileRunDetail[]> {
-  return repeatRuns(() => invokeOnce(generator, c), runs, {
+): Promise<EvalRunBatch<ProfileRunDetail>> {
+  return executeRuns(({ signal }) => invokeOnce(generator, c, signal), runs, {
+    caseId: c.id,
     maxAttempts: options.maxAttempts ?? PROFILE_EVAL_MAX_ATTEMPTS,
     retryDelayMs: options.retryDelayMs ?? PROFILE_EVAL_RETRY_DELAY_MS,
+    attemptTimeoutMs: options.attemptTimeoutMs ?? PROFILE_EVAL_ATTEMPT_TIMEOUT_MS,
+    policy: options.policy,
+    signal: options.signal,
     label: "profile eval",
   });
 }

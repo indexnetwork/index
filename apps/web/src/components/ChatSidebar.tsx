@@ -52,7 +52,10 @@ export default function ChatSidebar() {
   const { user } = useAuthContext();
   const { conversations, negotiations, refreshConversations, refreshNegotiations, hideConversation } = useConversation();
 
-  const [loading, setLoading] = useState(true);
+  // Background revalidation flag. The ConversationProvider prefetches both
+  // lists on auth, so cached data renders immediately; this only gates the
+  // empty state (skeleton vs "No messages yet") on a genuinely cold cache.
+  const [refreshing, setRefreshing] = useState(true);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
   const [mode, setMode] = useState<'h2h' | 'a2a'>('h2h');
   const chatMenuRef = useRef<HTMLDivElement>(null);
@@ -61,7 +64,7 @@ export default function ChatSidebar() {
     if (!user?.id) return;
     let cancelled = false;
     Promise.all([refreshConversations(), refreshNegotiations()]).finally(() => {
-      if (!cancelled) setLoading(false);
+      if (!cancelled) setRefreshing(false);
     });
     return () => { cancelled = true; };
   }, [user?.id, refreshConversations, refreshNegotiations]);
@@ -89,7 +92,7 @@ export default function ChatSidebar() {
       const lastAction = dataPart?.data?.action;
       const negotiationStatus: NegotiationStatus = lastAction === 'accept'
         ? 'accepted'
-        : lastAction === 'reject'
+        : (lastAction === 'reject' || lastAction === 'withdraw' || lastAction === 'decline')
           ? 'rejected'
           : lastAction
             ? 'in_progress'
@@ -150,8 +153,19 @@ export default function ChatSidebar() {
             Negotiations
           </button>
         </div>
-        {loading ? (
-          <div className="text-sm text-gray-400">Loading...</div>
+        {recentChats.length === 0 && refreshing ? (
+          /* Cold cache — conversation-row skeletons while the first fetch lands. */
+          <div className="space-y-1" data-testid="chat-sidebar-skeleton" aria-hidden="true">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 py-2 px-2 -mx-2 animate-pulse">
+                <div className="h-7 w-7 rounded-full bg-gray-200 shrink-0" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="h-3.5 w-2/3 rounded bg-gray-200" />
+                  <div className="h-3 w-11/12 rounded bg-gray-200" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : recentChats.length === 0 ? (
           <div className="text-sm text-gray-400">No messages yet</div>
         ) : (

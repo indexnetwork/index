@@ -52,6 +52,25 @@ describe('presentOpportunity', () => {
     expect(result.description).toContain("Alice has skills that align");
   });
 
+  test('does not append unsupported raw reasoning claims', () => {
+    const unsafe: Opportunity = {
+      ...baseOpp,
+      interpretation: {
+        ...baseOpp.interpretation,
+        reasoning: 'Alice and Bob attended the same event.',
+      },
+    };
+    const result = presentOpportunity(
+      unsafe,
+      'alice',
+      { id: 'bob', name: 'Bob', avatar: null },
+      null,
+      'card',
+    );
+    expect(result.description).not.toContain('attended');
+    expect(result.description).toContain('A promising connection.');
+  });
+
   test('throws when viewer is not an actor', () => {
     expect(() =>
       presentOpportunity(

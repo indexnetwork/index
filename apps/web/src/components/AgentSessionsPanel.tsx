@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { Plus, BotMessageSquare } from 'lucide-react';
+import { Plus, BotMessageSquare, Brain } from 'lucide-react';
 
 import { apiClient } from '@/lib/api';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useQuestions } from '@/contexts/QuestionsContext';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('AgentSessionsPanel');
@@ -15,6 +16,8 @@ interface ChatSession {
   id: string;
   title: string | null;
   networkId: string | null;
+  /** Canonical scope; intent-pinned negotiator sessions carry 'intent' (IND-403). */
+  scopeType?: 'network' | 'intent' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +36,7 @@ export default function AgentSessionsPanel() {
   const { sessionsVersion } = useAIChatSessions();
   const { indexes } = useNetworksState();
   const { error } = useNotifications();
+  const { personalAgentPending } = useQuestions();
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
@@ -54,7 +58,9 @@ export default function AgentSessionsPanel() {
       .get<{ sessions: ChatSession[] }>('/chat/sessions?persona=negotiator')
       .then((data) => {
         if (!active) return;
-        const session = data.sessions?.[0];
+        // The pinned entry is the unscoped DM — intent-pinned negotiator
+        // sessions (IND-403) also carry persona=negotiator but have a scope.
+        const session = data.sessions?.find((s) => !s.scopeType);
         if (session) setNegotiatorSession({ id: session.id, title: session.title });
       })
       .catch((err) => {
@@ -87,8 +93,9 @@ export default function AgentSessionsPanel() {
     }
   };
 
-  const negotiatorLabel = negotiatorSession?.title
-    || (user?.name ? `${user.name.split(' ')[0]}'s Negotiator` : 'Personal Agent');
+  // Canonical branding: the pinned entry is "Personal Agent" unless the
+  // session carries the agent's real name (e.g. "Ada's Negotiator").
+  const negotiatorLabel = negotiatorSession?.title || 'Personal Agent';
 
   useEffect(() => {
     if (!user?.id) return;
@@ -111,7 +118,7 @@ export default function AgentSessionsPanel() {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 px-4 py-4 border-b border-gray-100">
         <button
-          onClick={() => navigate('/agent')}
+          onClick={() => navigate('/agent/chat')}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-black hover:bg-gray-50 transition-colors border border-gray-200"
         >
           <Plus className="w-4 h-4" />
@@ -121,18 +128,42 @@ export default function AgentSessionsPanel() {
 
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
         {negotiatorEnabled && (
-          <button
-            onClick={handleNegotiatorClick}
-            disabled={openingNegotiator}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm transition-colors ${
-              isNegotiatorView
-                ? 'bg-gray-100 text-black font-bold'
-                : 'text-black font-medium hover:bg-gray-50'
-            } ${openingNegotiator ? 'opacity-50 cursor-wait' : ''}`}
+          <div
+            className={`group flex items-center rounded-md transition-colors ${
+              isNegotiatorView ? 'bg-gray-100' : 'hover:bg-gray-50'
+            }`}
           >
-            <BotMessageSquare className="w-4 h-4 shrink-0" />
-            <span className="flex-1 text-left truncate">{negotiatorLabel}</span>
-          </button>
+            <button
+              onClick={handleNegotiatorClick}
+              disabled={openingNegotiator}
+              className={`min-w-0 flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm text-black ${
+                isNegotiatorView ? 'font-bold' : 'font-medium'
+              } ${openingNegotiator ? 'opacity-50 cursor-wait' : ''}`}
+            >
+              <BotMessageSquare className="w-4 h-4 shrink-0" />
+              <span className="flex-1 text-left truncate">{negotiatorLabel}</span>
+              {/* Personal Agent combines the global inbox with successfully
+                  delivered pool pushes; the Questions page remains global-only. */}
+              {personalAgentPending > 0 && (
+                <span
+                  data-testid="negotiator-question-badge"
+                  className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center"
+                >
+                  {personalAgentPending > 99 ? '99+' : personalAgentPending}
+                </span>
+              )}
+            </button>
+            {/* Memory shortcut — everything the agent remembers is inspectable
+                at /agent/memory (P5.4); revealed on hover to keep the row calm. */}
+            <button
+              onClick={() => navigate('/agent/memory')}
+              aria-label="Personal Agent memory"
+              data-testid="negotiator-memory-link"
+              className="p-1.5 mr-1.5 rounded text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-black transition-opacity"
+            >
+              <Brain className="w-4 h-4" />
+            </button>
+          </div>
         )}
 
         {loadingSessions ? (

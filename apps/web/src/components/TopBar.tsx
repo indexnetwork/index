@@ -92,7 +92,7 @@ export default function TopBar() {
   const handleAgentClick = () => {
     clearChat({ abortStream: false });
     setSelectedNetworkIds([]);
-    navigate('/agent');
+    navigate('/agent/chat');
   };
 
   const navItemClass = (active: boolean) =>

@@ -2,6 +2,10 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, afterAll } from 'bun:test';
+
+import db from '../../lib/drizzle/drizzle';
+import { artifacts, tasks } from '../../schemas/database.schema';
+
 import { ConversationService } from '../conversation.service';
 import { TaskService } from '../task.service';
 
@@ -10,13 +14,15 @@ const taskService = new TaskService();
 const cleanupIds: string[] = [];
 
 afterAll(async () => {
-  for (const id of cleanupIds) {
+  const { conversationDatabaseAdapter } = await import('../../adapters/database.adapter');
+  await Promise.all(cleanupIds.map(async (id) => {
     try {
-      const { conversationDatabaseAdapter } = await import('../../adapters/database.adapter');
       await conversationDatabaseAdapter.deleteConversation(id);
-    } catch {}
-  }
-});
+    } catch {
+      // Best-effort cleanup; test assertions have already completed.
+    }
+  }));
+}, 30000);
 
 describe('ConversationService', () => {
   it('creates conversation and sends message', async () => {
@@ -146,6 +152,83 @@ describe('TaskService', () => {
 
     const artifacts = await taskService.getArtifacts(task.id, conv.id);
     expect(artifacts).toHaveLength(1);
+  }, 15000);
+
+  it('groups and filters negotiation threads by their newest segment', async () => {
+    const run = crypto.randomUUID();
+    const userId = `thread-owner-${run}`;
+    const counterpartyId = `thread-counterparty-${run}`;
+    const conv = await conversationService.createConversation([
+      { participantId: `agent:${userId}`, participantType: 'agent' },
+      { participantId: `agent:${counterpartyId}`, participantType: 'agent' },
+    ]);
+    cleanupIds.push(conv.id);
+
+    const opportunityId = crypto.randomUUID();
+    const originalTaskId = crypto.randomUUID();
+    const currentTaskId = crypto.randomUUID();
+    const fallbackTaskId = opportunityId;
+    const metadata = {
+      type: 'negotiation',
+      sourceUserId: userId,
+      candidateUserId: counterpartyId,
+    };
+
+    await db.insert(tasks).values([
+      {
+        id: originalTaskId,
+        conversationId: conv.id,
+        state: 'completed',
+        metadata: { ...metadata, opportunityId },
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T01:00:00.000Z'),
+      },
+      {
+        id: currentTaskId,
+        conversationId: conv.id,
+        state: 'completed',
+        metadata: { ...metadata, opportunityId, isContinuation: true },
+        createdAt: new Date('2026-01-03T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-03T01:00:00.000Z'),
+      },
+      {
+        id: fallbackTaskId,
+        conversationId: conv.id,
+        state: 'working',
+        metadata,
+        createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-02T01:00:00.000Z'),
+      },
+    ]);
+    await db.insert(artifacts).values([
+      {
+        taskId: originalTaskId,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: false } }],
+      },
+      {
+        taskId: currentTaskId,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: true } }],
+      },
+    ]);
+
+    const threads = await taskService.getNegotiationThreadsByUser(userId, { limit: 10 });
+    expect(threads).toHaveLength(2);
+    expect(threads[0].current.id).toBe(currentTaskId);
+    expect(threads[0].segmentRows.map((row) => row.id)).toEqual([currentTaskId, originalTaskId]);
+    expect(threads[1].current.id).toBe(fallbackTaskId);
+    expect(threads[1].segmentRows).toHaveLength(1);
+
+    const successful = await taskService.getNegotiationThreadsByUser(userId, {
+      result: 'has_opportunity',
+    });
+    expect(successful.map((thread) => thread.current.id)).toEqual([currentTaskId]);
+
+    const inProgress = await taskService.getNegotiationThreadsByUser(userId, {
+      result: 'in_progress',
+    });
+    expect(inProgress.map((thread) => thread.current.id)).toEqual([fallbackTaskId]);
   }, 15000);
 });
 

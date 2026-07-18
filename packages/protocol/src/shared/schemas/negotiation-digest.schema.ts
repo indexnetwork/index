@@ -27,7 +27,7 @@ export const DiscoveryNegotiationDigestSchema = z.object({
   /** Whether the negotiation produced an opportunity. */
   outcomeRole: z.enum(["opportunity", "no-opportunity"]),
   /** When `outcomeRole === "no-opportunity"`, why the negotiation didn't yield one. Null otherwise. */
-  outcomeReason: z.enum(["turn_cap", "timeout", "rejected", "stalled"]).nullable(),
+  outcomeReason: z.enum(["turn_cap", "timeout", "rejected", "stalled", "screened_out"]).nullable(),
   /**
    * One-sentence (≤180 chars) summary of the decisive moment or pattern in
    * this negotiation. Written for the downstream question generator — should

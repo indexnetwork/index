@@ -1,14 +1,17 @@
 import { z } from 'zod';
 
-import { Controller, Delete, Get, Post, Put, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { ContactsEnabledGuard } from '../guards/contacts.guard';
+import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { userService } from '../services/user.service';
 import { contactService } from '../services/contact.service';
 import { TaskService } from '../services/task.service';
 import { NegotiationService } from '../services/negotiation.service';
+import { negotiatorMemoryInspectionService } from '../services/negotiator-memory-inspection.service';
+import type { NegotiatorMemory, NegotiatorMemoryKind } from '../schemas/database.schema';
 import { NegotiationInsightsGenerator } from '@indexnetwork/protocol';
 import type { NegotiationDigest } from '@indexnetwork/protocol';
  
@@ -23,7 +26,35 @@ const AddContactBodySchema = z.object({
 
 const BATCH_MAX_IDS = 100;
 
-type NegotiationRow = Awaited<ReturnType<TaskService['getNegotiationsByUser']>>[number];
+const NEGOTIATOR_MEMORY_KINDS = ['playbook', 'disclosure_rule', 'counterparty_dossier', 'threshold'] as const;
+
+const UpdateNegotiatorMemoryBodySchema = z
+  .object({
+    content: z.string().trim().min(1).max(4000).optional(),
+    confidence: z.number().min(0).max(1).optional(),
+  })
+  .refine((b) => b.content !== undefined || b.confidence !== undefined, {
+    message: 'Provide content and/or confidence',
+  });
+
+/** Maps a memory row to the owner-facing DTO (no embedding — it's an implementation detail). */
+function mapNegotiatorMemory(row: NegotiatorMemory, subjectMap: ReadonlyMap<string, SpeakerUser>) {
+  const subject = row.subjectUserId ? subjectMap.get(row.subjectUserId) : undefined;
+  return {
+    id: row.id,
+    kind: row.kind,
+    content: row.content,
+    confidence: row.confidence,
+    subjectUser: row.subjectUserId
+      ? { id: row.subjectUserId, name: subject?.name ?? 'Unknown user', avatar: subject?.avatar ?? null }
+      : null,
+    sourceRefs: row.sourceRefs,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+type NegotiationThread = Awaited<ReturnType<TaskService['getNegotiationThreadsByUser']>>[number];
 type NegotiationMessages = Awaited<ReturnType<TaskService['getMessagesByTaskIds']>>;
 type SpeakerUser = { id: string; name: string; avatar: string | null };
 
@@ -31,19 +62,20 @@ type NegotiationTurnData = { action?: string; assessment?: { reasoning?: string;
 type NegotiationOutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
 
 /**
- * Maps a negotiation task row into the API negotiation DTO.
- * @param row - Negotiation task with its outcome artifact
+ * Maps a negotiation thread into the API negotiation DTO.
+ * @param thread - Current task and every continuation segment in the thread
  * @param messagesMap - Messages keyed by task id (turn data source)
  * @param userMap - Participant users keyed by id (counterparty + speaker resolution)
  * @param selfId - The id treated as "self" for counterparty/role selection
  * @returns Negotiation DTO with counterparty, outcome, and turns
  */
-function mapNegotiationRow(
-  row: NegotiationRow,
+function mapNegotiationThread(
+  thread: NegotiationThread,
   messagesMap: NegotiationMessages,
   userMap: ReadonlyMap<string, SpeakerUser>,
   selfId: string,
 ) {
+  const row = thread.current;
   const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
   const counterpartyId = meta?.sourceUserId === selfId ? meta?.candidateUserId : meta?.sourceUserId;
   const counterparty = counterpartyId ? userMap.get(counterpartyId) : null;
@@ -52,7 +84,17 @@ function mapNegotiationRow(
   const outcomeData = outcomePart?.data;
   const viewerRole = outcomeData?.agreedRoles?.find((r) => r.userId === selfId)?.role ?? null;
 
-  const rawMessages = messagesMap.get(row.id) ?? [];
+  const oldestSegments = [...thread.segmentRows].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
+  );
+  const segmentOrder = new Map(oldestSegments.map((segment, index) => [segment.id, index]));
+  const rawMessages = oldestSegments
+    .flatMap((segment) => messagesMap.get(segment.id) ?? [])
+    .sort((a, b) =>
+      a.createdAt.getTime() - b.createdAt.getTime()
+      || (segmentOrder.get(a.taskId ?? '') ?? 0) - (segmentOrder.get(b.taskId ?? '') ?? 0)
+      || a.id.localeCompare(b.id),
+    );
   const turns = rawMessages.map((msg) => {
     const agentUserId = msg.senderId.replace(/^agent:/, '');
     const speakerUser = userMap.get(agentUserId);
@@ -71,6 +113,10 @@ function mapNegotiationRow(
 
   return {
     id: row.id,
+    segments: thread.segmentRows.length,
+    state: row.state,
+    statusMessage: row.statusMessage,
+    statusTimestamp: row.statusTimestamp?.toISOString() ?? null,
     counterparty: counterparty
       ? { id: counterparty.id, name: counterparty.name, avatar: counterparty.avatar }
       : { id: counterpartyId ?? 'unknown', name: 'Unknown user', avatar: null },
@@ -84,6 +130,7 @@ function mapNegotiationRow(
       : null,
     turns,
     createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -216,7 +263,7 @@ export class UserController {
         : [];
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
-      const negotiation = mapNegotiationRow(row, messagesMap, userMap, viewer.id);
+      const negotiation = mapNegotiationThread({ current: row, segmentRows: [row] }, messagesMap, userMap, viewer.id);
 
       return Response.json({ negotiation }, { status: 201 });
     } catch (err) {
@@ -257,16 +304,18 @@ export class UserController {
     const mutualWithUserId = isSelf ? undefined : viewer.id;
 
     try {
-      const rows = await this.taskService.getNegotiationsByUser(params.userId, { limit, offset, mutualWithUserId, result, since: validSince });
+      const threads = await this.taskService.getNegotiationThreadsByUser(params.userId, { limit, offset, mutualWithUserId, result, since: validSince });
 
-      const taskIds = rows.map((r) => r.id);
+      const taskIds = threads.flatMap((thread) => thread.segmentRows.map((row) => row.id));
       const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);
 
       const participantIds = new Set<string>();
-      for (const row of rows) {
-        const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
-        if (meta?.sourceUserId) participantIds.add(meta.sourceUserId);
-        if (meta?.candidateUserId) participantIds.add(meta.candidateUserId);
+      for (const thread of threads) {
+        for (const row of thread.segmentRows) {
+          const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
+          if (meta?.sourceUserId) participantIds.add(meta.sourceUserId);
+          if (meta?.candidateUserId) participantIds.add(meta.candidateUserId);
+        }
       }
 
       const participantUsers = participantIds.size > 0
@@ -274,7 +323,7 @@ export class UserController {
         : [];
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
-      const negotiations = rows.map((row) => mapNegotiationRow(row, messagesMap, userMap, params.userId));
+      const negotiations = threads.map((thread) => mapNegotiationThread(thread, messagesMap, userMap, params.userId));
 
       return Response.json({ negotiations });
     } catch (err) {
@@ -405,12 +454,118 @@ export class UserController {
   }
 
   /**
+   * GET /users/:userId/negotiator/memories — list the user's negotiator's
+   * private memory (P5.4). Optional `?kind=` and `?intentId=` filters
+   * (intentId narrows to memories learned from that intent's negotiations).
+   *
+   * Strict self-only — stricter than the neighbor negotiations route, which
+   * permits other viewers with mutual filtering. Negotiator memories are
+   * private operational knowledge: ANY non-self caller gets 403, mutuals
+   * included, no carve-outs.
+   */
+  @Get('/:userId/negotiator/memories')
+  @UseGuards(RateLimit('read'), AuthGuard)
+  async listNegotiatorMemories(req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
+    if (viewer.id !== params.userId) {
+      return Response.json({ error: 'Negotiator memories are only available to their owner' }, { status: 403 });
+    }
+
+    const url = new URL(req.url);
+    const kindParam = url.searchParams.get('kind');
+    if (kindParam && !NEGOTIATOR_MEMORY_KINDS.includes(kindParam as never)) {
+      return Response.json({ error: `Invalid kind: "${kindParam}". Use one of: ${NEGOTIATOR_MEMORY_KINDS.join(', ')}` }, { status: 400 });
+    }
+    const intentIdParam = url.searchParams.get('intentId')?.trim() || undefined;
+
+    try {
+      const rows = await negotiatorMemoryInspectionService.list(
+        params.userId,
+        kindParam || intentIdParam
+          ? {
+            ...(kindParam ? { kind: kindParam as NegotiatorMemoryKind } : {}),
+            ...(intentIdParam ? { intentId: intentIdParam } : {}),
+          }
+          : undefined,
+      );
+
+      const subjectIds = [...new Set(rows.map((r) => r.subjectUserId).filter((id): id is string => !!id))];
+      const subjectUsers = subjectIds.length > 0 ? await userService.findByIds(subjectIds) : [];
+      const subjectMap = new Map<string, SpeakerUser>(subjectUsers.map((u) => [u.id, u]));
+
+      return Response.json({ memories: rows.map((row) => mapNegotiatorMemory(row, subjectMap)) });
+    } catch (err) {
+      logger.error('Failed to list negotiator memories', { userId: params.userId, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to list negotiator memories' }, { status: 500 });
+    }
+  }
+
+  /**
+   * PATCH /users/:userId/negotiator/memories/:memoryId — edit a memory's
+   * content and/or confidence (P5.4). Content edits re-embed so similarity
+   * retrieval never serves stale meaning. Strict self-only (403 otherwise).
+   */
+  @Patch('/:userId/negotiator/memories/:memoryId')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async updateNegotiatorMemory(req: Request, viewer: AuthenticatedUser, params: { userId: string; memoryId: string }) {
+    if (viewer.id !== params.userId) {
+      return Response.json({ error: 'Negotiator memories are only available to their owner' }, { status: 403 });
+    }
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const parsed = UpdateNegotiatorMemoryBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid body' }, { status: 400 });
+    }
+
+    try {
+      const updated = await negotiatorMemoryInspectionService.update(params.userId, params.memoryId, parsed.data);
+      if (!updated) {
+        return Response.json({ error: 'Memory not found' }, { status: 404 });
+      }
+      return Response.json({ memory: mapNegotiatorMemory(updated, new Map()) });
+    } catch (err) {
+      logger.error('Failed to update negotiator memory', { userId: params.userId, memoryId: params.memoryId, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to update negotiator memory' }, { status: 500 });
+    }
+  }
+
+  /**
+   * DELETE /users/:userId/negotiator/memories/:memoryId — remove a memory
+   * (P5.4). Takes effect for the next retrieval immediately (P5.3 reads live
+   * rows per session). Strict self-only (403 otherwise).
+   */
+  @Delete('/:userId/negotiator/memories/:memoryId')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async deleteNegotiatorMemory(_req: Request, viewer: AuthenticatedUser, params: { userId: string; memoryId: string }) {
+    if (viewer.id !== params.userId) {
+      return Response.json({ error: 'Negotiator memories are only available to their owner' }, { status: 403 });
+    }
+
+    try {
+      const deleted = await negotiatorMemoryInspectionService.remove(params.userId, params.memoryId);
+      if (!deleted) {
+        return Response.json({ error: 'Memory not found' }, { status: 404 });
+      }
+      return Response.json({ success: true });
+    } catch (err) {
+      logger.error('Failed to delete negotiator memory', { userId: params.userId, memoryId: params.memoryId, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ error: 'Failed to delete negotiator memory' }, { status: 500 });
+    }
+  }
+
+  /**
    * PUT /users/me/key — update the authenticated user's key.
    * @param req - Request with JSON body `{ key: string }`
    * @param user - Authenticated user from AuthGuard
    * @returns Updated user or validation error
    */
   @Put('/me/key')
+  @deprecatedRoute('user.update-key')
   @UseGuards(RateLimit('write'), AuthGuard)
   async updateKey(req: Request, user: AuthenticatedUser) {
     let body: { key?: string };

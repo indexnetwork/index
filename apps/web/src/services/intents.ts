@@ -1,4 +1,49 @@
-import { Intent, PaginatedResponse, APIResponse } from '../types';
+import type { Intent, PaginatedResponse, APIResponse } from '../types';
+
+export type IntentLifecycleStatus = 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
+export type MutableIntentLifecycleStatus = Extract<IntentLifecycleStatus, 'ACTIVE' | 'PAUSED'>;
+
+export interface IntentStatusResult {
+  id: string;
+  status: MutableIntentLifecycleStatus;
+  lifecycleVersionMs: number;
+  changed: boolean;
+}
+
+function isMutableIntentLifecycleStatus(value: unknown): value is MutableIntentLifecycleStatus {
+  return value === 'ACTIVE' || value === 'PAUSED';
+}
+
+function parseIntentStatusResponse(value: unknown): IntentStatusResult {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid intent status response');
+  }
+
+  const response = value as Record<string, unknown>;
+  const intent = response.intent;
+  if (!intent || typeof intent !== 'object') {
+    throw new Error('Invalid intent status response');
+  }
+
+  const authoritativeIntent = intent as Record<string, unknown>;
+  if (
+    response.success !== true ||
+    typeof response.changed !== 'boolean' ||
+    typeof authoritativeIntent.id !== 'string' ||
+    !isMutableIntentLifecycleStatus(authoritativeIntent.status) ||
+    typeof authoritativeIntent.lifecycleVersionMs !== 'number' ||
+    !Number.isFinite(authoritativeIntent.lifecycleVersionMs)
+  ) {
+    throw new Error('Invalid intent status response');
+  }
+
+  return {
+    id: authoritativeIntent.id,
+    status: authoritativeIntent.status,
+    lifecycleVersionMs: authoritativeIntent.lifecycleVersionMs,
+    changed: response.changed,
+  };
+}
 
 // Service functions factory that takes an authenticated API instance
 export const createIntentsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
@@ -30,9 +75,23 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     return response.intent;
   },
 
+  // Best-effort explicit human visit ping; generic GET intentionally does not stamp.
+  visitIntent: async (id: string): Promise<void> => {
+    await api.post(`/intents/${id}/visit`, {});
+  },
+
   // Archive intent
   archiveIntent: async (id: string): Promise<void> => {
     await api.patch(`/intents/${id}/archive`);
+  },
+
+  // Pause or resume intent background discovery
+  setIntentStatus: async (
+    id: string,
+    status: MutableIntentLifecycleStatus,
+  ): Promise<IntentStatusResult> => {
+    const response = await api.patch<unknown>(`/intents/${id}/status`, { status });
+    return parseIntentStatusResponse(response);
   },
 
   // Refine intent with followup text

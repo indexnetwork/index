@@ -1,8 +1,12 @@
 # Matching Quality Eval Harness
 
 Measures whether the opportunity evaluator (`invokeEntityBundle`) makes the right
-matching judgments, against a curated golden set. Standalone and opt-in — NOT part of
-`bun test`.
+matching judgments, against a curated golden set. The harness invokes
+`OpportunityEvaluator` **directly**; it does not run `LensInferrer`, HyDE generation,
+validation, embedding, or vector retrieval. For IND-426 it is therefore only a
+**secondary evaluator-regression check**, not evidence that frame-v1 improves HyDE
+retrieval. Use the separately labeled [`eval/hyde`](../hyde/README.md) paired eval for
+retrieval evidence. Standalone and opt-in — NOT part of `bun test`.
 
 ## Run
 
@@ -15,7 +19,7 @@ bun run eval:matching -- --case location/known-mismatch-penalized # one case/pre
 bun run eval:matching -- --tier 4             # one tier
 bun run eval:matching -- --list-cases         # print selected cases and exit
 bun run eval:matching -- --no-judge           # skip LLM reasoning checks (free)
-bun run eval:matching -- --update-baseline    # overwrite the committed baseline
+bun run eval:matching -- --update-baseline --force # replace the committed baseline
 bun run eval:matching -- --report             # write a full run report incl. evaluator reasoning
 bun run eval:matching -- --report out.json    # ...to a specific path
 bun run eval:matching -- --html              # write a standalone HTML scorecard
@@ -91,7 +95,7 @@ report can show whether failures cluster by domain rather than only by evaluator
 check can't express the expectation. Only assert `role` when the case is explicitly about
 valency; query-primary and score-calibration cases should usually avoid role assertions so
 component metrics stay isolated. Negative cases are best authored as minimal-pair
-perturbations of a positive. Re-run with `--update-baseline` after an intentional change.
+perturbations of a positive. Re-run with `--update-baseline --force` after an intentional change.
 
 The eval runner uses `returnAll: true` to capture diagnostic low scores, but the scorer only
 counts a candidate as surfaced when `score >= MATCHING_MIN_SCORE` (currently 30). A returned
@@ -115,3 +119,11 @@ contemporary distractors in one shared network, and asserts the evaluator surfac
 (band `[60, 100]`) while the distractors do not (`[0, 29]`). Evaluator input names stay
 anonymized so the model judges on fit, not fame, but `reportNames` exposes the real-world
 referents in HTML/reports. Run with `bun run eval:matching -- --rule historical`.
+
+## Execution evidence
+
+The runner records every requested slot and invocation attempt in schema-v2 run reports,
+including retries, timeout/cancellation, sanitized errors, retryability, and backoff. Only
+terminal successful outputs are scored. Use `--strict-evidence` for release evidence and
+`--attempt-timeout-ms N` to override the 90-second per-attempt deadline. Exit codes are
+0 pass, 1 regression, 2 execution/artifact error, and 3 incomplete strict evidence.

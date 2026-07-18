@@ -245,6 +245,9 @@ index opportunity show <id>
 # Accept — starts a conversation thread
 index opportunity accept <id>
 
+# If preparatory questions are returned, resolve them first or explicitly continue
+index opportunity accept <id> --acknowledge-uptake <question-id[,question-id...]>
+
 # Or reject
 index opportunity reject <id>
 ```

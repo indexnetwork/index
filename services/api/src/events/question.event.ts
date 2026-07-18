@@ -5,7 +5,7 @@ interface QuestionAnswer {
   answeredAt: string;
 }
 
-type QuestionMode = 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'chat';
+type QuestionMode = 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
 
 interface QuestionCreatedPayload {
   questionId: string;
@@ -19,6 +19,8 @@ interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
   mode: QuestionMode;
+  /** Internal generation purpose; uptake answers remain private to the question row. */
+  purpose?: 'uptake';
   sourceType: string;
   sourceId: string;
   answer: QuestionAnswer;

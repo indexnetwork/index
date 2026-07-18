@@ -1,4 +1,4 @@
-import { htmlEscape, rateClass, htmlRateCI, renderRuleTable, renderScorecardShell, type HumanReport, type Regression } from "../shared/index.js";
+import { htmlEscape, rateClass, htmlRateCI, renderRuleTable, renderScorecardShell, type EvalExecutionEvidence, type HumanReport, type Regression } from "../shared/index.js";
 import type { AssertionKind, CaseResult, ProfileCase, Rule, Scorecard, ProfileRunDetail } from "./profile.types.js";
 
 // ─── Plain-language copy for the non-technical report ────────────────────────
@@ -63,10 +63,10 @@ function buildHumanReport(sc: Scorecard, cases: ProfileCase[]): HumanReport {
 }
 
 /** Render one run's generated profile behind a collapsible block. */
-function detailHtml(d: ProfileRunDetail, i: number): string {
+function detailHtml(d: ProfileRunDetail, runIndex: number): string {
   const pii = d.piiHits.length > 0 ? ` <span class="bad">PII: ${htmlEscape(d.piiHits.join(", "))}</span>` : "";
   return `<div class="reason">
-    <span class="muted">run ${i + 1} · ${d.skills.length} skill(s) · ${d.interests.length} interest(s)</span>${pii}
+    <span class="muted">run ${runIndex + 1} · ${d.skills.length} skill(s) · ${d.interests.length} interest(s)</span>${pii}
     <p><strong>${htmlEscape(d.name)}</strong> · ${htmlEscape(d.location)}</p>
     <p class="muted">${htmlEscape(d.bio)}</p>
     <p class="muted">skills: ${htmlEscape(d.skills.join(", "))}</p>
@@ -79,7 +79,7 @@ function failedChecks(c: CaseResult): string {
   const failed = c.runResults.flatMap((rr, i) =>
     rr.assertions
       .filter((a) => !a.passed)
-      .map((a) => `<li><span class="muted">run ${i + 1}</span> <span class="component">${htmlEscape(a.kind)}</span>: ${htmlEscape(a.detail)}</li>`),
+      .map((a) => `<li><span class="muted">run ${(rr.runIndex ?? i) + 1}</span> <span class="component">${htmlEscape(a.kind)}</span>: ${htmlEscape(a.detail)}</li>`),
   );
   if (failed.length === 0) return "";
   return `<details class="failures" open><summary>failed checks (${failed.length})</summary><ul>${failed.join("")}</ul></details>`;
@@ -91,7 +91,7 @@ function caseCard(c: CaseResult, meta: ProfileCase | undefined): string {
   const flaky = c.flaky ? `<span class="badge flaky">flaky</span>` : "";
   const desc = meta?.description ? `<p class="desc">${htmlEscape(meta.description)}</p>` : "";
   const input = meta ? `<p class="desc"><span class="muted">input:</span> <code>${htmlEscape(meta.input.slice(0, 240))}${meta.input.length > 240 ? "…" : ""}</code></p>` : "";
-  const details = c.runResults.map((rr, i) => (rr.detail ? detailHtml(rr.detail, i) : "")).join("");
+  const details = c.runResults.map((rr, i) => (rr.detail ? detailHtml(rr.detail, rr.runIndex ?? i) : "")).join("");
   return `
   <article class="case ${rateClass(c.passRate)}">
     <header>
@@ -115,7 +115,12 @@ const INTRO = `<h2>What this report is measuring</h2>
  * @param regressions - Regressions vs the baseline.
  * @param cases - The corpus, joined by id for input text, tier, and description.
  */
-export function renderHtml(sc: Scorecard, regressions: Regression[], cases: ProfileCase[]): string {
+export function renderHtml(
+  sc: Scorecard,
+  regressions: Regression[],
+  cases: ProfileCase[],
+  execution?: EvalExecutionEvidence,
+): string {
   const byId = new Map(cases.map((c) => [c.id, c]));
   const caseCards = [...sc.rules]
     .sort((x, y) => x.passRate - y.passRate)
@@ -131,6 +136,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Prof
     sections: [{ heading: "By rule", html: renderRuleTable(sc) }],
     caseCardsHtml: caseCards,
     human: buildHumanReport(sc, cases),
+    execution,
   });
 }
 
@@ -140,6 +146,7 @@ export async function writeHtmlReport(
   sc: Scorecard,
   regressions: Regression[],
   cases: ProfileCase[],
+  execution?: EvalExecutionEvidence,
 ): Promise<void> {
-  await Bun.write(path, renderHtml(sc, regressions, cases));
+  await Bun.write(path, renderHtml(sc, regressions, cases, execution));
 }

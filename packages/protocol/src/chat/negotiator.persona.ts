@@ -1,6 +1,8 @@
 import { createChatTools, type ChatTools, type ToolContext, type ResolvedToolContext } from "../shared/agent/tool.factory.js";
+import { focusedIntentId, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
 import { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./negotiator.prompt.js";
+import { createNegotiatorMemoryTools } from "./negotiator.tools.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NEGOTIATOR PERSONA (P4.1)
@@ -44,6 +46,13 @@ export const NEGOTIATOR_TOOL_NAMES = [
   "respond_to_negotiation",
   "list_opportunities",
   "update_opportunity",
+  // Pending questions — the system's open questions for the client. Added for
+  // intent-pinned sessions (P4.2/IND-403); the tool clamps itself to the
+  // focused intent scope when one is set. answer_pending_question (P4.3/IND-404)
+  // records the client's explicit answers through the same pipeline the
+  // question cards use.
+  "read_pending_questions",
+  "answer_pending_question",
   // Signals — the input surface of signal-based discovery (P4.5)
   "read_intents",
   "create_intent",
@@ -93,6 +102,20 @@ export function filterNegotiatorTools<T extends { name: string }>(tools: T[]): T
 }
 
 /**
+ * Applies negotiator tool availability rules that depend on the focused scope.
+ * Intent-pinned chats use the adjacent Radar for opportunity listing, while all
+ * other negotiator capabilities remain available.
+ */
+export function filterNegotiatorToolsForContext<T extends { name: string }>(
+  tools: T[],
+  context: ToolScopeEnvelope,
+): T[] {
+  return focusedIntentId(context)
+    ? tools.filter((tool) => tool.name !== "list_opportunities")
+    : tools;
+}
+
+/**
  * Creates the negotiator persona's client-scoped toolset.
  *
  * Reuses the standard chat tool factory (so context resolution, scope
@@ -106,7 +129,24 @@ export async function createNegotiatorTools(
   preResolvedContext?: ResolvedToolContext,
 ): Promise<ChatTools> {
   const tools = await createChatTools(deps, preResolvedContext);
-  return filterNegotiatorTools(tools);
+  const filtered = filterNegotiatorTools(tools);
+  // A supplied resolved context is authoritative. Direct callers without one
+  // still get the canonical explicit scope envelope from ToolContext.
+  const toolScope = preResolvedContext ?? { scopeType: deps.scopeType, scopeId: deps.scopeId };
+  const contextFiltered = filterNegotiatorToolsForContext(filtered, toolScope);
+  // P5.4 (IND-408): `remember`/`forget` are negotiator-exclusive — appended
+  // AFTER the allowlist filter, and only when the composition root injected
+  // the host bridge (i.e. negotiator memory writes are enabled). They never
+  // enter the shared registry, so the orchestrator cannot see them.
+  if (deps.negotiatorMemoryTools) {
+    const memoryTools = createNegotiatorMemoryTools({
+      host: deps.negotiatorMemoryTools,
+      userId: deps.userId,
+      ...(deps.sessionId ? { sessionId: deps.sessionId } : {}),
+    });
+    return [...contextFiltered, ...memoryTools] as ChatTools;
+  }
+  return contextFiltered;
 }
 
 /**

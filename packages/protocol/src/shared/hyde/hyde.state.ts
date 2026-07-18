@@ -6,7 +6,11 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Id } from '../interfaces/database.interface.js';
 import type { Lens, HydeTargetCorpus } from './lens.inferrer.js';
+import type { HydeSourceFrame } from './hyde.frame.js';
 import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
+
+export type HydeDocumentOrigin = 'cache' | 'db' | 'generated';
+export type HydeValidationStatus = 'valid' | 'invalid' | 'failed_open';
 
 /** Single HyDE document (text + embedding) for one lens. */
 export interface HydeDocumentState {
@@ -14,6 +18,12 @@ export interface HydeDocumentState {
   targetCorpus: HydeTargetCorpus;
   hydeText: string;
   hydeEmbedding: number[];
+  origin?: HydeDocumentOrigin;
+  validationStatus?: HydeValidationStatus;
+  hydeGenerationVersion?: 'frame-v1';
+  frameFingerprint?: string;
+  sourceTextHash?: string;
+  generatedAt?: string;
 }
 
 /** State for the HyDE generation graph. */
@@ -58,12 +68,36 @@ export const HydeGraphState = Annotation.Root({
     default: () => [],
   }),
 
+  /** Sanitized source-grounded frame produced by frame-v1 inference. */
+  sourceFrame: Annotation<HydeSourceFrame | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Exact sourceText + sanitized sourceFrame identity for frame-v1 reuse. */
+  frameFingerprint: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Hash of the exact source text for persisted frame-v1 freshness checks. */
+  sourceTextHash: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Shared cohort marker assigned when this run generates any missing document. */
+  generatedAt: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   /**
-   * HyDE documents per lens (from cache, DB, or newly generated).
-   * Keyed by lens label; values include hydeText and hydeEmbedding.
+   * Complete HyDE document snapshot keyed by lens label. Writers replace the
+   * snapshot so rejected documents can be removed before embedding.
    */
   hydeDocuments: Annotation<Record<string, HydeDocumentState>>({
-    reducer: (curr, next) => (next ? { ...curr, ...next } : curr),
+    reducer: (curr, next) => next ?? curr,
     default: () => ({}),
   }),
 

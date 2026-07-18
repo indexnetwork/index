@@ -65,7 +65,7 @@ describe("runDiscoverFromQuery — decision-question integration", () => {
   it("returns questions when trigger=orchestrator and the generator yields a result", async () => {
     const chatSummary: ChatSummaryReader = { getDigest: async () => null };
     const questionGenerator: QuestionGeneratorReader = {
-      generate: async () => ({ questions: [baseQuestion], strategies: ["refine_intent"] }),
+      generate: async () => ({ questions: [baseQuestion], strategies: ["refine_intent"], underspecificationTypes: [null] }),
     };
     const result = await runDiscoverFromQuery({
       opportunityGraph: makeFakeGraph(),

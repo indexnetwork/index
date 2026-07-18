@@ -55,6 +55,22 @@ describe("safeFallbackSummary", () => {
     );
     expect(out).not.toContain("Maya");
   });
+
+  it("removes unsafe claims while retaining safe sentences", () => {
+    const out = safeFallbackSummary(
+      "Alex Chen builds agent tooling. You both attended the same session. Alex is looking for design feedback.",
+      { counterpartName: "Alex Chen" },
+    );
+    expect(out).toContain("Alex Chen builds agent tooling.");
+    expect(out).toContain("Alex is looking for design feedback.");
+    expect(out).not.toContain("attended");
+  });
+
+  it("uses deterministic empty copy when all reasoning is unsafe", () => {
+    expect(
+      safeFallbackSummary("Alice and Bob attended the same event."),
+    ).toBe(DEFAULT_EMPTY_FALLBACK_TEXT);
+  });
 });
 
 describe("getSafePresentationOrSkip", () => {
@@ -138,5 +154,34 @@ describe("getSafePresentationOrSkip", () => {
     });
     expect(res?.isFallback).toBe(true);
     expect(res?.summary).toContain("Fallback source text");
+  });
+
+  it("validates genuine presenter fields before returning them", () => {
+    const res = getSafePresentationOrSkip({
+      homeCardPresentation: {
+        headline: "Both attended the same event.",
+        personalizedSummary:
+          "You both attended the same event. Alex builds privacy tools.",
+        suggestedAction: "Message this fellow member of the network.",
+      },
+    });
+    expect(res).toEqual({
+      headline: DEFAULT_FALLBACK_HEADLINE,
+      summary: "Alex builds privacy tools.",
+      suggestedAction: DEFAULT_FALLBACK_ACTION,
+      isFallback: false,
+    });
+  });
+
+  it("fails closed when a genuine presenter summary is fully unsafe", () => {
+    const res = getSafePresentationOrSkip({
+      homeCardPresentation: {
+        ...genuine,
+        personalizedSummary: "You both attended the same session.",
+      },
+      matchReason: "They are fellow members of the event network.",
+    });
+    expect(res?.isFallback).toBe(true);
+    expect(res?.summary).toBe(DEFAULT_EMPTY_FALLBACK_TEXT);
   });
 });

@@ -5,7 +5,7 @@ config({ path: '.env.test', override: true });
 import { describe, it, expect } from "bun:test";
 import type { Opportunity, CreateOpportunityData, OpportunityStatus } from "../../shared/interfaces/database.interface.js";
 import type { Embedder } from "../../shared/interfaces/embedder.interface.js";
-import { persistOpportunities } from "../opportunity.persist.js";
+import { persistOpportunities, type PersistOpportunityDatabase } from "../opportunity.persist.js";
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 
@@ -25,13 +25,19 @@ function makeOpportunity(overrides: Partial<Opportunity> = {}): Opportunity {
 
 function makeCreateData(overrides: Partial<CreateOpportunityData> = {}): CreateOpportunityData {
   return {
-    payload: 'New opportunity',
-    actors: [{ userId: 'user-1', role: 'patient', intentId: null }],
-    score: 80,
-    reasoning: 'Good fit',
+    detection: { source: 'manual', timestamp: new Date().toISOString() },
+    actors: [{ networkId: 'net-1' as never, userId: 'user-1' as never, role: 'patient' }],
+    interpretation: {
+      category: 'collaboration',
+      reasoning: 'Good fit',
+      confidence: 0.8,
+      signals: [],
+    },
+    context: { networkId: 'net-1' as never },
+    confidence: '0.8',
     status: 'pending',
     ...overrides,
-  } as CreateOpportunityData;
+  };
 }
 
 const mockEmbedder: Embedder = {
@@ -184,5 +190,202 @@ describe('persistOpportunities', () => {
     expect(atomicCalled).toBe(true);
     expect(result.created).toHaveLength(1);
     expect(result.expired).toHaveLength(1);
+  });
+
+  it('normalizes null-like runtime actor intents without mutating inputs', async () => {
+    const nullLikeValues: unknown[] = [null, undefined, '', '   ', 'null', ' NULL ', 'undefined'];
+
+    for (const value of nullLikeValues) {
+      const inputActor = {
+        networkId: 'net-1',
+        userId: 'user-1',
+        role: 'patient',
+        intent: value,
+        preserved: { source: 'test' },
+      };
+      let persisted: CreateOpportunityData | undefined;
+      const database = {
+        findOpportunitiesByActors: async () => [],
+        createOpportunity: async (data: CreateOpportunityData) => {
+          persisted = data;
+          return makeOpportunity({ actors: data.actors });
+        },
+        updateOpportunityStatus: async () => {},
+      };
+
+      await persistOpportunities({
+        database,
+        embedder: mockEmbedder,
+        items: [makeCreateData({ actors: [inputActor] as never })],
+      });
+
+      const persistedActor = persisted?.actors[0] as unknown as Record<string, unknown>;
+      expect(Object.prototype.hasOwnProperty.call(persistedActor, 'intent')).toBe(false);
+      expect(persistedActor.preserved).toEqual({ source: 'test' });
+      expect(persistedActor).not.toBe(inputActor);
+      expect(inputActor.intent).toBe(value);
+      expect(inputActor.preserved).toEqual({ source: 'test' });
+    }
+  });
+
+  it('preserves and trims valid non-UUID actor intents', async () => {
+    const inputActor = {
+      networkId: 'net-1',
+      userId: 'user-1',
+      role: 'patient',
+      intent: '  intent-1  ',
+    };
+    let persisted: CreateOpportunityData | undefined;
+    const database = {
+      findOpportunitiesByActors: async () => [],
+      createOpportunity: async (data: CreateOpportunityData) => {
+        persisted = data;
+        return makeOpportunity({ actors: data.actors });
+      },
+      updateOpportunityStatus: async () => {},
+    };
+
+    await persistOpportunities({
+      database,
+      embedder: mockEmbedder,
+      items: [makeCreateData({ actors: [inputActor] as never })],
+    });
+
+    expect(persisted?.actors[0]?.intent).toBe('intent-1');
+    expect(inputActor.intent).toBe('  intent-1  ');
+  });
+
+  it('removes malformed intents before enrichment overlap checks', async () => {
+    const existing = makeOpportunity({
+      actors: [{
+        networkId: 'net-1',
+        userId: 'user-1',
+        role: 'patient',
+        intent: 'null',
+      }] as never,
+      interpretation: {
+        category: 'collaboration',
+        reasoning: 'short',
+        confidence: 0.5,
+        signals: [],
+      },
+    });
+    let atomicCalled = false;
+    let persisted: CreateOpportunityData | undefined;
+    const database = {
+      findOpportunitiesByActors: async () => [existing],
+      createOpportunity: async (data: CreateOpportunityData) => {
+        persisted = data;
+        return makeOpportunity({ actors: data.actors });
+      },
+      createOpportunityAndExpireIds: async () => {
+        atomicCalled = true;
+        return { created: makeOpportunity(), expired: [existing] };
+      },
+      updateOpportunityStatus: async () => {},
+    };
+    const input = makeCreateData({
+      actors: [{ networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'null' }] as never,
+      interpretation: {
+        category: 'collaboration',
+        reasoning: 'short',
+        confidence: 0.8,
+        signals: [],
+      },
+    });
+
+    await persistOpportunities({ database, embedder: mockEmbedder, items: [input] });
+
+    expect(atomicCalled).toBe(false);
+    expect(persisted).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(persisted!.actors[0], 'intent')).toBe(false);
+    expect(input.actors[0]?.intent).toBe('null');
+  });
+
+  it('normalizes actors immediately before every create path', async () => {
+    const existing = makeOpportunity({
+      id: 'opp-existing',
+      actors: [
+        { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'intent-shared' },
+        {
+          networkId: 'net-1',
+          userId: 'user-2',
+          role: 'agent',
+          intent: ' undefined ',
+          preserved: 'legacy-key',
+        },
+      ] as never,
+    });
+    const eligibility = { ownerUserId: 'user-1', allowedNetworkIds: ['net-1'] };
+
+    async function runPath(
+      path: 'plain' | 'atomic' | 'eligible' | 'eligible-atomic',
+    ): Promise<CreateOpportunityData> {
+      let persisted: CreateOpportunityData | undefined;
+      const enrichedPath = path !== 'eligible';
+      const database: PersistOpportunityDatabase = {
+        findOpportunitiesByActors: async () => enrichedPath ? [existing] : [],
+        createOpportunity: async (data) => {
+          persisted = data;
+          return makeOpportunity({ id: `opp-${path}`, actors: data.actors });
+        },
+        updateOpportunityStatus: async () => {},
+      };
+
+      if (path === 'atomic') {
+        database.createOpportunityAndExpireIds = async (data) => {
+          persisted = data;
+          return {
+            created: makeOpportunity({ id: 'opp-atomic', actors: data.actors }),
+            expired: [existing],
+          };
+        };
+      }
+      if (path === 'eligible') {
+        database.createOpportunityIfNetworkEligible = async (data) => {
+          persisted = data;
+          return makeOpportunity({ id: 'opp-eligible', actors: data.actors });
+        };
+      }
+      if (path === 'eligible-atomic') {
+        database.createOpportunityAndExpireIdsIfNetworkEligible = async (data) => {
+          persisted = data;
+          return {
+            created: makeOpportunity({ id: 'opp-eligible-atomic', actors: data.actors }),
+            expired: [existing],
+          };
+        };
+      }
+
+      const actors = enrichedPath
+        ? [{ networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'intent-shared' }]
+        : [{ networkId: 'net-1', userId: 'user-1', role: 'patient', intent: ' NULL ' }];
+      const result = await persistOpportunities({
+        database,
+        embedder: mockEmbedder,
+        items: [makeCreateData({ actors: actors as never })],
+        ...(path.startsWith('eligible') ? { networkEligibility: eligibility } : {}),
+      });
+
+      expect(result.errors).toBeUndefined();
+      expect(result.created).toHaveLength(1);
+      expect(persisted).toBeDefined();
+      return persisted!;
+    }
+
+    for (const path of ['plain', 'atomic', 'eligible', 'eligible-atomic'] as const) {
+      const persisted = await runPath(path);
+      for (const actor of persisted.actors) {
+        expect(actor.intent).not.toBe('null');
+        expect(actor.intent).not.toBe('undefined');
+        expect(actor.intent?.trim().toLowerCase()).not.toBe('null');
+        expect(actor.intent?.trim().toLowerCase()).not.toBe('undefined');
+      }
+      if (path !== 'eligible') {
+        const legacyActor = persisted.actors.find((actor) => actor.userId === 'user-2') as unknown as Record<string, unknown>;
+        expect(legacyActor.preserved).toBe('legacy-key');
+        expect(Object.prototype.hasOwnProperty.call(legacyActor, 'intent')).toBe(false);
+      }
+    }
   });
 });

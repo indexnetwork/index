@@ -26,7 +26,7 @@ import { UserDatabaseAdapter, conversationDatabaseAdapter } from "../../adapters
 import { chatSessionService } from "../../services/chat.service";
 import type { ChatGraphFactory, ChatPersonaConfig } from "@indexnetwork/protocol";
 import db from "../../lib/drizzle/drizzle";
-import { agents } from "../../schemas/database.schema";
+import { agents, intents } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 const EMAIL = "test-chat-negotiator@example.com";
@@ -41,7 +41,10 @@ describe("Negotiator chat persona (IND-402)", () => {
   /** Personas captured whenever the controller derives a persona factory. */
   const capturedPersonas: ChatPersonaConfig[] = [];
   /** Inputs captured from streamChatEventsWithContext calls. */
-  const capturedStreamInputs: Array<{ userId: string; sessionId: string; message: string }> = [];
+  const capturedStreamInputs: Array<{ userId: string; sessionId: string; message: string; scopeType?: string; scopeId?: string }> = [];
+  /** Intent owned by the test user (IND-403 pinning). */
+  let testIntentId: string;
+  const INTENT_PAYLOAD = "Looking for a technical co-founder in Berlin";
 
   const stubFactory = {
     withPersona(persona: ChatPersonaConfig) {
@@ -62,8 +65,13 @@ describe("Negotiator chat persona (IND-402)", () => {
     name: "Test Negotiator User",
   });
 
-  const negotiatorSessionReq = () =>
-    new Request("http://localhost/chat/negotiator/session", { method: "POST" });
+  const negotiatorSessionReq = (body?: Record<string, unknown>) =>
+    new Request("http://localhost/chat/negotiator/session", {
+      method: "POST",
+      ...(body
+        ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+        : {}),
+    });
 
   const streamReq = (body: Record<string, unknown>) =>
     new Request("http://localhost/chat/stream", {
@@ -87,6 +95,13 @@ describe("Negotiator chat persona (IND-402)", () => {
     });
     testUserId = user.id;
 
+    const [intent] = await db.insert(intents).values({
+      payload: INTENT_PAYLOAD,
+      summary: INTENT_PAYLOAD,
+      userId: testUserId,
+    }).returning({ id: intents.id });
+    testIntentId = intent.id;
+
     chatSessionService.setFactory(stubFactory);
     controller = new ChatController();
   });
@@ -99,6 +114,7 @@ describe("Negotiator chat persona (IND-402)", () => {
       await conversationDatabaseAdapter.deleteChatSession(sessionId).catch(() => {});
     }
     if (testUserId) {
+      await db.delete(intents).where(eq(intents.userId, testUserId));
       await db.delete(agents).where(eq(agents.ownerId, testUserId));
       await userAdapter.deleteById(testUserId);
     }
@@ -270,7 +286,7 @@ describe("Negotiator chat persona (IND-402)", () => {
 
   // ── Guardrails ─────────────────────────────────────────────────────────────
 
-  test("negotiator chat cannot be scoped", async () => {
+  test("negotiator chat cannot be network-scoped", async () => {
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     const res = await controller.messageStream(
       streamReq({
@@ -283,7 +299,157 @@ describe("Negotiator chat persona (IND-402)", () => {
     );
     expect(res.status).toBe(400);
     const data = (await res.json()) as { error: string };
-    expect(data.error).toContain("cannot be scoped");
+    expect(data.error).toContain("cannot be network-scoped");
+  }, 60000);
+
+  // ── Intent-pinned sessions (P4.2 / IND-403) ───────────────────────────
+
+  test("intent-pinned get-or-create is idempotent and distinct from the DM and the orchestrator intent session", async () => {
+    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
+
+    const first = await controller.negotiatorSession(negotiatorSessionReq({ intentId: testIntentId }), mockUser());
+    expect(first.status).toBe(200);
+    const firstData = (await first.json()) as {
+      session: { id: string; persona: string; title: string | null; scopeType: string | null; scopeId: string | null };
+      created: boolean;
+    };
+    createdSessionIds.push(firstData.session.id);
+
+    expect(firstData.created).toBe(true);
+    expect(firstData.session.persona).toBe("negotiator");
+    // The pinned session carries the canonical intent scope…
+    expect(firstData.session.scopeType).toBe("intent");
+    expect(firstData.session.scopeId).toBe(testIntentId);
+    // …and is titled after the signal, not the agent.
+    expect(firstData.session.title).toBe(INTENT_PAYLOAD);
+
+    // Idempotent.
+    const second = await controller.negotiatorSession(negotiatorSessionReq({ intentId: testIntentId }), mockUser());
+    const secondData = (await second.json()) as { session: { id: string }; created: boolean };
+    expect(secondData.created).toBe(false);
+    expect(secondData.session.id).toBe(firstData.session.id);
+
+    // Distinct from the unscoped DM.
+    const dm = await conversationDatabaseAdapter.getNegotiatorChatSession(testUserId);
+    expect(dm?.id).not.toBe(firstData.session.id);
+
+    // Keying spec: the orchestrator's session for the SAME (user, intent) is a
+    // different conversation — persona is part of the key.
+    const orchestrator = await chatSessionService.resolveSessionForScope(testUserId, {
+      scopeType: "intent",
+      scopeId: testIntentId,
+    });
+    if ('error' in orchestrator) throw new Error(orchestrator.error);
+    createdSessionIds.push(orchestrator.session.id);
+    expect(orchestrator.session.id).not.toBe(firstData.session.id);
+    expect(orchestrator.session.persona).toBe("orchestrator");
+    expect(orchestrator.session.scopeType).toBe("intent");
+  }, 60000);
+
+  test("streaming persona=negotiator with intent scope resolves the pinned session and seeds the scope + prompt pin", async () => {
+    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
+    capturedPersonas.length = 0;
+    capturedStreamInputs.length = 0;
+
+    const res = await controller.messageStream(
+      streamReq({
+        message: "What's happening with this signal?",
+        persona: "negotiator",
+        scopeType: "intent",
+        scopeId: testIntentId,
+      }),
+      mockUser(),
+    );
+    expect(res.status).toBe(200);
+    await res.text();
+
+    const pinned = (await conversationDatabaseAdapter.getNegotiatorIntentChatSession(testUserId, testIntentId))!;
+    expect(res.headers.get("X-Session-Id")).toBe(pinned.id);
+
+    // Negotiator persona factory with the intent scope threaded to the graph.
+    expect(capturedPersonas.length).toBe(1);
+    expect(capturedPersonas[0].id).toBe("negotiator");
+    expect(capturedStreamInputs.length).toBe(1);
+    expect(capturedStreamInputs[0].scopeType).toBe("intent");
+    expect(capturedStreamInputs[0].scopeId).toBe(testIntentId);
+
+    // The prompt pins the signal (id + human-readable label) when built with
+    // an intent-scoped context.
+    const prompt = capturedPersonas[0].buildSystemContent(
+      {
+        userId: testUserId,
+        userName: "Test Negotiator User",
+        userEmail: EMAIL,
+        user: { id: testUserId },
+        userProfile: null,
+        userNetworks: [],
+        scopeType: "intent",
+        scopeId: testIntentId,
+      } as never,
+      { iteration: 1 } as never,
+    );
+    expect(prompt).toContain("## Pinned signal");
+    expect(prompt).toContain(testIntentId);
+    expect(prompt).toContain(INTENT_PAYLOAD);
+  }, 60000);
+
+  test("streaming the pinned session by sessionId alone inherits the intent scope and negotiator persona", async () => {
+    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
+    capturedPersonas.length = 0;
+    capturedStreamInputs.length = 0;
+
+    const pinned = (await conversationDatabaseAdapter.getNegotiatorIntentChatSession(testUserId, testIntentId))!;
+    const res = await controller.messageStream(
+      streamReq({ message: "Any progress?", sessionId: pinned.id }),
+      mockUser(),
+    );
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(capturedPersonas.length).toBe(1);
+    expect(capturedPersonas[0].id).toBe("negotiator");
+    expect(capturedStreamInputs[0].scopeType).toBe("intent");
+    expect(capturedStreamInputs[0].scopeId).toBe(testIntentId);
+  }, 60000);
+
+  test("the unscoped DM cannot be scoped after the fact", async () => {
+    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
+    const dm = (await conversationDatabaseAdapter.getNegotiatorChatSession(testUserId))!;
+
+    const res = await controller.messageStream(
+      streamReq({ message: "hello", sessionId: dm.id, scopeType: "intent", scopeId: testIntentId }),
+      mockUser(),
+    );
+    expect(res.status).toBe(400);
+    const data = (await res.json()) as { error: string };
+    expect(data.error).toContain("DM cannot be scoped");
+  }, 60000);
+
+  test("intent-pinned session for a nonexistent intent is a 404; ?persona=negotiator lists DM and pinned sessions distinguishably", async () => {
+    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
+
+    const missing = await controller.negotiatorSession(
+      negotiatorSessionReq({ intentId: crypto.randomUUID() }),
+      mockUser(),
+    );
+    expect(missing.status).toBe(404);
+
+    // The sidebar finds the DM among negotiator sessions by its null scope.
+    const listed = await controller.getSessions(
+      new Request("http://localhost/chat/sessions?persona=negotiator"),
+      mockUser(),
+    );
+    const listedData = (await listed.json()) as { sessions: Array<{ id: string; scopeType: string | null }> };
+    const dm = (await conversationDatabaseAdapter.getNegotiatorChatSession(testUserId))!;
+    const pinned = (await conversationDatabaseAdapter.getNegotiatorIntentChatSession(testUserId, testIntentId))!;
+    const byId = new Map(listedData.sessions.map((s) => [s.id, s.scopeType]));
+    expect(byId.get(dm.id)).toBeNull();
+    expect(byId.get(pinned.id)).toBe("intent");
+
+    // And the pinned session stays out of default history like the DM.
+    const defaults = await controller.getSessions(new Request("http://localhost/chat/sessions"), mockUser());
+    const defaultData = (await defaults.json()) as { sessions: Array<{ id: string }> };
+    expect(defaultData.sessions.map((s) => s.id)).not.toContain(pinned.id);
   }, 60000);
 
   test("persona=negotiator with an orchestrator session is a 409 mismatch", async () => {

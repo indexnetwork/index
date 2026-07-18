@@ -178,7 +178,12 @@ export class PremiseDecomposer {
   }
 
   @Timed()
-  public async invoke(input: string, existingPremises?: ExistingPremiseRef[], currentBio?: string): Promise<PremiseDecomposerOutput> {
+  public async invoke(
+    input: string,
+    existingPremises?: ExistingPremiseRef[],
+    currentBio?: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PremiseDecomposerOutput> {
     invokeLog.verbose('Decomposing input', {
       inputChars: input.length,
       existingPremiseCount: existingPremises?.length ?? 0,
@@ -202,7 +207,7 @@ export class PremiseDecomposer {
       new HumanMessage(prompt),
     ];
 
-    const result = await invokeWithAbortSignal(this.model, messages);
+    const result = await invokeWithAbortSignal(this.model, messages, options.signal);
     const output = responseFormat.parse(result);
 
     // Guard against hallucinated ids: only keep retractions that reference premises we offered.

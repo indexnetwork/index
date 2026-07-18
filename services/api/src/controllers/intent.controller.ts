@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { assertAgentNetworkScope, ScopeViolationError, withAgentScope } from '../guards/agent-scope.guard';
+import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -22,6 +22,9 @@ const CreateSchema = z.object({
 });
 const ProposalStatusesSchema = z.object({
   proposalIds: z.array(z.string().min(1)).default([]),
+});
+const StatusSchema = z.object({
+  status: z.enum(['ACTIVE', 'PAUSED']),
 });
 
 @Controller('/intents')
@@ -182,6 +185,30 @@ export class IntentController {
   }
 
   /**
+   * POST /intents/:id/visit — explicit human intent-page visit ping.
+   * Session-only, owner-only, monotonic, and intentionally independent from
+   * the generic GET so API reads never suppress proactive delivery.
+   *
+   * @param _req - Session-authenticated request.
+   * @param user - Authenticated owner from SessionOnlyGuard.
+   * @param params - Intent UUID or short prefix.
+   * @returns The authoritative monotonic visit timestamp.
+   */
+  @Post('/:id/visit')
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async visit(_req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const resolved = await intentService.resolveId(params.id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const lastVisitedAt = await intentService.visit(resolved.id, user.id);
+    if (!lastVisitedAt) {
+      return Response.json({ error: 'Intent not found' }, { status: 404 });
+    }
+    return Response.json({ success: true, lastVisitedAt: lastVisitedAt.toISOString() });
+  }
+
+  /**
    * Get a single intent by ID or short prefix.
    */
   @Get('/:id')
@@ -205,6 +232,73 @@ export class IntentController {
         updatedAt: r.updatedAt.toISOString(),
         archivedAt: r.archivedAt?.toISOString() ?? null,
       },
+    });
+  }
+
+  /**
+   * Pause or resume an intent by UUID or short prefix.
+   *
+   * @param req - Request with body `{ status: 'ACTIVE' | 'PAUSED' }`.
+   * @param user - Authenticated owner.
+   * @param params - Route parameters containing the intent identifier.
+   * @returns Idempotent lifecycle transition result.
+   */
+  @Patch('/:id/status')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async updateStatus(req: Request, user: AuthenticatedUser, params: { id: string }) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = StatusSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+
+    const { networkScopeId } = await withAgentScope(req, user);
+    const resolved = await intentService.resolveId(params.id, user.id, networkScopeId);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const result = await intentService.transitionStatus(
+      resolved.id,
+      user.id,
+      parsed.data.status,
+      networkScopeId,
+    );
+    if (result.kind === 'not_found') {
+      return Response.json({ error: 'Intent not found' }, { status: 404 });
+    }
+    if (result.kind === 'scope_violation') {
+      throw new ScopeViolationError('Agent is restricted to its bound network scope and cannot act on this intent');
+    }
+    if (result.kind === 'conflict') {
+      return Response.json(
+        { error: result.archived ? 'Archived intents cannot change status' : 'Terminal intents cannot change status' },
+        { status: 409 },
+      );
+    }
+    if (result.kind === 'enqueue_failed') {
+      return Response.json({
+        error: 'Failed to enqueue intent resume',
+        code: 'enqueue_failed',
+        retryable: true,
+        intent: {
+          id: result.id,
+          status: result.status,
+        },
+      }, { status: 503 });
+    }
+
+    return Response.json({
+      success: true,
+      intent: {
+        id: result.id,
+        status: result.status,
+        lifecycleVersionMs: result.lifecycleVersionMs,
+      },
+      changed: result.changed,
     });
   }
 

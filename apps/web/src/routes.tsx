@@ -54,6 +54,14 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/found-in-translation/page"),
       },
       {
+        path: "/overview",
+        lazy: () => import("@/app/overview/page"),
+      },
+      {
+        path: "/protocol",
+        lazy: () => import("@/app/protocol/page"),
+      },
+      {
         path: "/blog",
         lazy: () => import("@/app/blog/page"),
       },
@@ -169,6 +177,11 @@ export const router = createBrowserRouter([
       {
         path: "/dev/intent-proposal",
         lazy: () => import("@/app/dev/intent-proposal/page"),
+      },
+      {
+        // Must precede /agent/:tab? — "chat" is not a dashboard tab.
+        path: "/agent/chat",
+        lazy: () => import("@/app/agent/chat/page"),
       },
       {
         path: "/agent/:tab?",

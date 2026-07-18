@@ -274,20 +274,6 @@ export interface ScopedDepsFactory {
 }
 
 /**
- * Computes the concrete network IDs passed to the per-request scoped DB factory.
- * When a network scope is present, the agent reaches that network plus the
- * user's personal network. Otherwise the full membership set is returned.
- */
-export const computeAgentAllowedNetworkIds = (
-  userNetworks: { networkId: string; isPersonal?: boolean | null }[],
-  scopeType: 'network' | undefined,
-  scopeId: string | null | undefined,
-): string[] => deriveAllowedNetworkIds({
-  memberships: userNetworks,
-  ...(scopeType && scopeId ? { scopeType, scopeId } : {}),
-});
-
-/**
  * Promotes a network-scoped agent's bound network into the resolved tool
  * context as the implicit chat scope. Every tool derives its focused network
  * from the `scopeType`/`scopeId` envelope; without this step scoped API-key

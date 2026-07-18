@@ -387,22 +387,26 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls.every((c) => c.toolName === "read_network_memberships")).toBe(true);
     });
 
-    it("accept calls update_opportunity with status accepted (CLI: opportunity accept)", async () => {
+    it("accept uses the REST preflight and passes uptake acknowledgement IDs", async () => {
       mock.onRest("GET", "/api/opportunities/abc", () =>
         Response.json({ id: "full-uuid-abc", status: "pending" }),
       );
-      mock.setToolResponse("update_opportunity", { success: true, data: {} });
+      let body: unknown;
+      mock.onRest("PATCH", "/api/opportunities/full-uuid-abc/status", async (req) => {
+        body = await req.json();
+        return Response.json({ opportunity: { id: "full-uuid-abc", status: "accepted" } });
+      });
 
       await handleOpportunity(client, "accept", {
         targetId: "abc",
+        acknowledgeUptake: ["q-1", "q-2"],
         json: true,
       });
 
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("update_opportunity");
-      expect(mock.toolCalls[0].query).toEqual({
-        opportunityId: "full-uuid-abc",
+      expect(mock.toolCalls).toHaveLength(0);
+      expect(body).toEqual({
         status: "accepted",
+        acknowledgedUptakeQuestionIds: ["q-1", "q-2"],
       });
     });
 

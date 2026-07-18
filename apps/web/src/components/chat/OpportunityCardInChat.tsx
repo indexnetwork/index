@@ -44,6 +44,8 @@ export interface OpportunityCardData {
   status?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Template-only pool-answer demotion explanation from server metadata. */
+  deprioritizedReason?: string;
   /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
   secondParty?: {
     name: string;
@@ -115,6 +117,16 @@ function getNarratorHoverClass(status?: string): string {
     default:
       return "hover:bg-[#E8E8E8]";
   }
+}
+
+/** Keep only the user's own selected side; never expose an axis/evaluator rationale. */
+function formatDeprioritizedReason(detail: string): string {
+  const marker = ": you chose ";
+  const markerIndex = detail.lastIndexOf(marker);
+  const chosenSide = markerIndex >= 0
+    ? detail.slice(markerIndex + marker.length).trim()
+    : detail.trim();
+  return `Deprioritized — you chose ${chosenSide}`;
 }
 
 interface OpportunityCardProps {
@@ -440,12 +452,20 @@ export default function OpportunityCard({
         )}
       </div>
 
+      {card.deprioritizedReason && (
+        <div>
+          <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+            {formatDeprioritizedReason(card.deprioritizedReason)}
+          </span>
+        </div>
+      )}
+
       {/* Main Text (Personalized Summary) — shimmer while the presenter text is still being generated */}
       {card.presentationPending ? (
         <div className="space-y-2 animate-pulse" aria-hidden="true">
-          <div className="h-4 w-full bg-gray-100 rounded-sm" />
-          <div className="h-4 w-[85%] bg-gray-100 rounded-sm" />
-          <div className="h-4 w-[55%] bg-gray-100 rounded-sm" />
+          <div className="h-4 w-full bg-gray-200 rounded-sm" />
+          <div className="h-4 w-[85%] bg-gray-200 rounded-sm" />
+          <div className="h-4 w-[55%] bg-gray-200 rounded-sm" />
         </div>
       ) : (
         <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">

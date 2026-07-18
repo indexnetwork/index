@@ -191,15 +191,20 @@ Keep the changelog concise but complete. For a long release, group changes under
 
 ### 5. Create and push the release branch
 
-Create the release branch from `origin/dev`:
+Create the release branch **as a remote ref** from `origin/dev` — do **not** `git switch`
+to it. This skill is usually invoked from the canonical-root session, where switching
+branches violates the root-stays-on-`dev` rule (root-dev-guard flags it) and is
+unnecessary: the PR only needs the branch to exist on `origin`.
+
+First check the branch does not already exist, then push the ref:
 
 ```bash
-git switch --detach origin/dev
-git switch -c "$BRANCH"
-git push -u origin "$BRANCH"
+git ls-remote --heads origin "$BRANCH"          # must print nothing
+git push origin origin/dev:refs/heads/$BRANCH   # creates the branch on origin
 ```
 
-If branch creation or push fails because the branch already exists, stop and ask the user how to proceed.
+If the branch already exists, stop and ask the user how to proceed — never force-update
+an existing release branch.
 
 ### 6. Open the GitHub PR into main
 

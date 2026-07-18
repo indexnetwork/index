@@ -4,11 +4,13 @@ import { AuthGuard, type AuthenticatedUser } from "../guards/auth.guard";
 import { RateLimit } from "../guards/limiter.guard";
 import { requestContext } from "../lib/request-context";
 import { log } from "../lib/log";
+import { deprecatedRoute } from "../lib/router/deprecated-route";
 import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
 import { chatSessionService } from "../services/chat.service";
 import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
+import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
@@ -92,6 +94,11 @@ function getSuggestionGenerator(): SuggestionGenerator {
   return suggestionGeneratorInstance;
 }
 
+/** Optional body for POST /chat/negotiator/session (P4.2 intent pinning). */
+const negotiatorSessionBodySchema = z.object({
+  intentId: z.string().min(1).nullish(),
+});
+
 const resolveSessionBodySchema = z.object({
   scopeType: z.enum(['intent']),
   scopeId: z.string().min(1),
@@ -132,6 +139,7 @@ export class ChatController {
    * @returns JSON response with graph execution result including responseText
    */
   @Post("/message")
+  @deprecatedRoute('chat.message')
   @UseGuards(RateLimit('write'), AuthGuard)
   async message(req: Request, user: AuthenticatedUser) {
     // 1. Parse request body for message
@@ -229,29 +237,37 @@ export class ChatController {
     const requestedScope = normalizeChatScope(body);
     if (requestedScope instanceof Response) return requestedScope;
 
+    // Captured by validateScope when an intent scope validates — used to pin
+    // the signal by name in the negotiator prompt (P4.2) without re-fetching.
+    let pinnedIntentLabel: string | undefined;
+
     const validateScope = async (scope: ChatScope | undefined) => {
       if (!scope) return undefined;
-      const validation = scope.scopeType === 'network'
-        ? await chatSessionService.validateIndexScope(user.id, scope.scopeId)
-        : await chatSessionService.validateIntentScope(user.id, scope.scopeId);
-      if (!validation.ok) {
-        return Response.json(
-          { error: validation.error },
-          { status: validation.status },
-        );
+      if (scope.scopeType === 'network') {
+        const validation = await chatSessionService.validateIndexScope(user.id, scope.scopeId);
+        if (!validation.ok) {
+          return Response.json({ error: validation.error }, { status: validation.status });
+        }
+        return undefined;
       }
+      const validation = await chatSessionService.validateIntentScope(user.id, scope.scopeId);
+      if (!validation.ok) {
+        return Response.json({ error: validation.error }, { status: validation.status });
+      }
+      pinnedIntentLabel = validation.title;
       return undefined;
     };
 
-    // Negotiator persona routing (P4.1): flag-gated, never scoped. Checked
-    // before scope validation — both rejections are cheap and unambiguous.
+    // Negotiator persona routing (P4.1): flag-gated. Intent scope is allowed
+    // (P4.2 pinned-signal sessions); network scope is not. Checked before
+    // scope validation — both rejections are cheap and unambiguous.
     const requestedPersona = body.persona ?? undefined;
     if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
       if (!isNegotiatorChatEnabled()) {
         return Response.json({ error: "Not found" }, { status: 404 });
       }
-      if (requestedScope) {
-        return Response.json({ error: "Negotiator chat cannot be scoped" }, { status: 400 });
+      if (requestedScope?.scopeType === 'network') {
+        return Response.json({ error: "Negotiator chat cannot be network-scoped" }, { status: 400 });
       }
     }
 
@@ -267,7 +283,10 @@ export class ChatController {
       if (!negotiatorAgent) {
         return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
       }
-      const resolved = await chatSessionService.resolveNegotiatorSession(user.id, negotiatorAgent.name);
+      // Intent scope → the per-intent pinned session (P4.2); otherwise the DM.
+      const resolved = requestedScope?.scopeType === 'intent'
+        ? await chatSessionService.resolveNegotiatorIntentSession(user.id, requestedScope.scopeId)
+        : await chatSessionService.resolveNegotiatorSession(user.id, negotiatorAgent.name);
       if ('error' in resolved) {
         return Response.json({ error: resolved.error }, { status: resolved.status });
       }
@@ -304,8 +323,15 @@ export class ChatController {
         if (!isNegotiatorChatEnabled()) {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        if (requestedScope) {
-          return Response.json({ error: "Negotiator chat cannot be scoped" }, { status: 400 });
+        if (requestedScope?.scopeType === 'network') {
+          return Response.json({ error: "Negotiator chat cannot be network-scoped" }, { status: 400 });
+        }
+        // Negotiator sessions are born with their scope (or born as the
+        // unscoped DM) — they are never re-scoped after the fact. A scope
+        // request against the DM would otherwise fall through to the generic
+        // updateSessionScope path and corrupt the persona keying.
+        if (requestedScope && !sessionScope(loadedSession)) {
+          return Response.json({ error: "Negotiator DM cannot be scoped" }, { status: 400 });
         }
       } else if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
         return Response.json({ error: "Session persona mismatch" }, { status: 409 });
@@ -334,7 +360,13 @@ export class ChatController {
     // Capture for closure
     const sessionId = currentSessionId;
     const factory = sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
-      ? chatSessionService.getNegotiatorGraphFactory(negotiatorAgent)
+      ? await chatSessionService.getNegotiatorGraphFactory(
+          negotiatorAgent,
+          user.id,
+          effectiveScope?.scopeType === 'intent' && pinnedIntentLabel
+            ? { label: pinnedIntentLabel }
+            : undefined,
+        )
       : chatSessionService.getGraphFactory();
     const useCheckpointer = body.useCheckpointer ?? true;
     const runId = crypto.randomUUID();
@@ -511,6 +543,15 @@ export class ChatController {
             });
           }
 
+          // Negotiator DM turns debounce-schedule a chat reflection (P5.2):
+          // the job fires once the session has been idle for the delay window,
+          // distilling stated preferences into negotiator memories. No-op when
+          // NEGOTIATOR_MEMORY_WRITE_ENABLED is off; never blocks the stream.
+          if (sessionPersona === NEGOTIATOR_PERSONA_ID && fullResponse) {
+            negotiationReflectQueue.scheduleChatReflect({ sessionId, userId: user.id })
+              .catch((err) => logger.error("Failed to schedule negotiator chat reflection", { sessionId, error: err }));
+          }
+
           // Persist debug metadata (non-blocking for user experience)
           if (assistantMessageId && debugMeta) {
             try {
@@ -646,9 +687,26 @@ export class ChatController {
    */
   @Post("/negotiator/session")
   @UseGuards(RateLimit('write'), AuthGuard)
-  async negotiatorSession(_req: Request, user: AuthenticatedUser) {
+  async negotiatorSession(req: Request, user: AuthenticatedUser) {
     if (!isNegotiatorChatEnabled()) {
       return Response.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Body is optional (the sidebar posts none). `intentId` selects the
+    // per-intent pinned session (P4.2) instead of the DM.
+    let intentId: string | undefined;
+    try {
+      const raw: unknown = await req.json();
+      const parsed = negotiatorSessionBodySchema.safeParse(raw);
+      if (!parsed.success) {
+        return Response.json(
+          { error: "Invalid request body. Expected { intentId?: string }" },
+          { status: 400 },
+        );
+      }
+      intentId = parsed.data.intentId?.trim() || undefined;
+    } catch {
+      // No body / empty body — DM variant.
     }
 
     const agent = await resolveNegotiatorAgent(user.id);
@@ -656,7 +714,9 @@ export class ChatController {
       return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
     }
 
-    const result = await chatSessionService.resolveNegotiatorSession(user.id, agent.name);
+    const result = intentId
+      ? await chatSessionService.resolveNegotiatorIntentSession(user.id, intentId)
+      : await chatSessionService.resolveNegotiatorSession(user.id, agent.name);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
     }

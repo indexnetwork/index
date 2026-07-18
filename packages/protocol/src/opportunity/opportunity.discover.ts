@@ -12,7 +12,7 @@
 import type { Opportunity, ChatGraphCompositeDatabase, UserRecord } from "../shared/interfaces/database.interface.js";
 import type { Cache } from "../shared/interfaces/cache.interface.js";
 import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
-import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
+import type { DiscoveryNegotiation, DiscoverySummary } from "../shared/schemas/discovery-question.schema.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import { discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs } from "../questioner/questioner.env.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
@@ -592,10 +592,15 @@ async function enrichOpportunities(
         name: item.profile?.identity?.name ?? nameByUserId.get(item.candidateUserId) ?? undefined,
         avatar: avatarByUserId.get(item.candidateUserId) ?? null,
         bio: truncateForChat(item.profile?.identity?.bio),
-        matchReason:
-          truncateForChat(
-            item.opportunity.interpretation?.reasoning ?? "",
-          ) ?? "",
+        matchReason: safeFallbackSummary(
+          item.opportunity.interpretation?.reasoning,
+          {
+            counterpartName: item.profile?.identity?.name ?? nameByUserId.get(item.candidateUserId) ?? undefined,
+            viewerName,
+            maxChars: MAX_FIELD_CHARS,
+            emptyText: "A suggested connection.",
+          },
+        ),
         score: item.confidence,
         status: chatSessionId && !existingOpportunityIds?.has(item.opportunity.id) ? "draft" : item.opportunity.status,
         viewerRole: item.viewerRole,

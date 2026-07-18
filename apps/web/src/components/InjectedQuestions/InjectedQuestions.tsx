@@ -1,5 +1,6 @@
 import { useState, useCallback, KeyboardEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
+import { OptionRow } from '@/components/DecisionQuestions/OptionRow';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
 
 interface InjectedQuestionCardProps {
@@ -11,9 +12,13 @@ interface InjectedQuestionCardProps {
 function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestionCardProps) {
   const [otherText, setOtherText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Multi-select questions (LLM-authored via ask_user_question) can't use the
+  // one-tap flow, so they accumulate selections behind an explicit Submit.
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
 
   const { payload } = question;
   const questionId = question.id;
+  const multiSelect = payload.multiSelect === true;
 
   // Options are click-to-submit buttons — picking one answers the question
   // directly (no separate Submit step).
@@ -29,6 +34,16 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
     },
     [submitting, onAnswer, questionId],
   );
+
+  const submitSelected = useCallback(async () => {
+    if (selectedLabels.length === 0 || submitting) return;
+    setSubmitting(true);
+    try {
+      await onAnswer(questionId, { selectedOptions: selectedLabels });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedLabels, submitting, onAnswer, questionId]);
 
   const submitFreeText = useCallback(async () => {
     const text = otherText.trim();
@@ -60,22 +75,65 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
+      {payload.evidence && (
+        <div className="mb-2">
+          <span
+            data-testid="question-evidence-chip"
+            className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+          >
+            {`\u25CE ${payload.evidence}`}
+          </span>
+        </div>
+      )}
       <p className="text-[15px] font-semibold leading-snug text-gray-900">
         {payload.prompt}
       </p>
+      {multiSelect && (
+        <p className="mt-1 text-xs text-gray-400">Select all that apply.</p>
+      )}
 
       <div className="mt-4 flex flex-col gap-2">
-        {payload.options.map((opt) => (
-          <button
-            key={opt.label}
-            type="button"
-            disabled={submitting}
-            onClick={() => submitOption(opt.label)}
-            className="w-full text-left px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all disabled:opacity-50"
-          >
-            {opt.label}
-          </button>
-        ))}
+        {multiSelect ? (
+          <>
+            {payload.options.map((opt) => (
+              <OptionRow
+                key={opt.label}
+                name={questionId}
+                value={opt.label}
+                type="checkbox"
+                label={opt.label}
+                description={opt.description}
+                checked={selectedLabels.includes(opt.label)}
+                disabled={submitting}
+                onChange={(checked) =>
+                  setSelectedLabels((prev) =>
+                    checked ? [...prev, opt.label] : prev.filter((l) => l !== opt.label),
+                  )
+                }
+              />
+            ))}
+            <button
+              type="button"
+              onClick={submitSelected}
+              disabled={selectedLabels.length === 0 || submitting}
+              className="self-end mt-1 px-4 py-2 rounded-lg bg-[#041729] text-white text-sm hover:bg-[#0a2d4a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Submit
+            </button>
+          </>
+        ) : (
+          payload.options.map((opt) => (
+            <button
+              key={opt.label}
+              type="button"
+              disabled={submitting}
+              onClick={() => submitOption(opt.label)}
+              className="w-full text-left px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all disabled:opacity-50"
+            >
+              {opt.label}
+            </button>
+          ))
+        )}
 
         {/* Last option is always a free-text input for a custom response */}
         <div className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white focus-within:border-[#041729] transition-colors">
@@ -112,14 +170,39 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
   );
 }
 
+/**
+ * Three-dot typing indicator shown while the agent may be preparing a
+ * follow-up pool-discovery question (interview-mode chaining, IND-418).
+ */
+function TypingDots() {
+  return (
+    <div
+      data-testid="question-chain-typing"
+      aria-label="Your agent is preparing a follow-up"
+      className="flex items-center gap-1 px-2 py-2"
+    >
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400 [animation-delay:150ms]" />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400 [animation-delay:300ms]" />
+    </div>
+  );
+}
+
 interface InjectedQuestionsProps {
   questions: PendingQuestion[];
   onAnswer: (questionId: string, body: AnswerBody) => Promise<void>;
   onDismiss: (questionId: string) => Promise<void>;
+  /** Show a typing indicator below the cards (follow-up may be incoming). */
+  showTypingIndicator?: boolean;
 }
 
-export function InjectedQuestions({ questions, onAnswer, onDismiss }: InjectedQuestionsProps) {
-  if (questions.length === 0) return null;
+export function InjectedQuestions({
+  questions,
+  onAnswer,
+  onDismiss,
+  showTypingIndicator,
+}: InjectedQuestionsProps) {
+  if (questions.length === 0 && !showTypingIndicator) return null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -131,6 +214,7 @@ export function InjectedQuestions({ questions, onAnswer, onDismiss }: InjectedQu
           onDismiss={onDismiss}
         />
       ))}
+      {showTypingIndicator && <TypingDots />}
     </div>
   );
 }

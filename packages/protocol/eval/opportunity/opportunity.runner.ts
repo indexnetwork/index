@@ -1,5 +1,5 @@
-import { repeatRuns } from "../shared/index.js";
-import { OPPORTUNITY_EVAL_MAX_ATTEMPTS, OPPORTUNITY_EVAL_RETRY_DELAY_MS } from "./opportunity.constants.js";
+import { executeRuns, type EvalEvidencePolicy, type EvalRunBatch } from "../shared/index.js";
+import { OPPORTUNITY_EVAL_ATTEMPT_TIMEOUT_MS, OPPORTUNITY_EVAL_MAX_ATTEMPTS, OPPORTUNITY_EVAL_RETRY_DELAY_MS } from "./opportunity.constants.js";
 import { hasInternalLabel, hasUuid } from "./opportunity.leakage.js";
 import type { OpportunityCase, OpportunityRunDetail } from "./opportunity.types.js";
 
@@ -16,39 +16,59 @@ export interface PresenterLike {
     viewerRole: string;
     isIntroduction?: boolean;
     introducerName?: string;
-  }): Promise<{ headline: string; personalizedSummary: string; suggestedAction: string; greeting: string }>;
+  }, options?: { signal?: AbortSignal }): Promise<{
+    headline: string;
+    personalizedSummary: string;
+    suggestedAction: string;
+    greeting: string;
+    isFallback?: boolean;
+    fallbackReason?: "timeout" | "error" | "sanitization";
+  }>;
 }
 
 export interface RunCaseOptions {
   maxAttempts?: number;
   retryDelayMs?: number;
+  attemptTimeoutMs?: number;
+  policy?: EvalEvidencePolicy;
+  signal?: AbortSignal;
 }
 
-/**
- * The presenter swallows LLM timeouts/failures and returns a fixed fallback card:
- * headline "A promising connection", the raw matchReasoning as the summary, and an
- * empty greeting (both the party and introducer fallback branches share this — only
- * the suggestedAction copy differs between them). That degraded path is a resilience
- * concern, not card quality, so detect it and let the runner retry past it so the
- * eval measures real model output. A genuine card always populates the greeting and
- * never reuses the fixed fallback headline, so this signature does not false-positive.
- */
-function isFallbackCard(p: { headline: string; greeting: string }): boolean {
-  return p.headline === "A promising connection" && p.greeting === "";
-}
+class OpportunityPresenterFallbackError extends Error {
+  readonly code: string;
 
-/** Invoke the presenter once and normalize its card output (collecting leakage findings). */
-async function invokeOnce(presenter: PresenterLike, c: OpportunityCase): Promise<OpportunityRunDetail> {
-  const p = await presenter.present(c.input);
-  if (isFallbackCard(p)) {
-    // Throwing lets the shared retry loop re-run past a transient timeout fallback.
-    throw new Error("opportunity presenter returned its timeout fallback card");
+  constructor(reason: "timeout" | "error" | "sanitization" | "legacy-shape") {
+    super(`opportunity presenter returned fallback output (${reason})`);
+    this.name = "OpportunityPresenterFallbackError";
+    this.code = `OPPORTUNITY_PRESENTER_FALLBACK_${reason.toUpperCase().replace("-", "_")}`;
   }
-  const fields: [string, string][] = [
-    ["headline", p.headline],
-    ["summary", p.personalizedSummary],
-    ["suggestedAction", p.suggestedAction],
-    ["greeting", p.greeting],
+}
+
+function fallbackReason(presentation: {
+  headline: string;
+  greeting: string;
+  isFallback?: boolean;
+  fallbackReason?: "timeout" | "error" | "sanitization";
+}): "timeout" | "error" | "sanitization" | "legacy-shape" | null {
+  if (presentation.isFallback) return presentation.fallbackReason ?? "error";
+  return presentation.headline === "A promising connection" && presentation.greeting === ""
+    ? "legacy-shape"
+    : null;
+}
+
+async function invokeOnce(
+  presenter: PresenterLike,
+  c: OpportunityCase,
+  signal: AbortSignal,
+): Promise<OpportunityRunDetail> {
+  const presentation = await presenter.present(c.input, { signal });
+  const fallback = fallbackReason(presentation);
+  if (fallback) throw new OpportunityPresenterFallbackError(fallback);
+  const fields: Array<[string, string]> = [
+    ["headline", presentation.headline],
+    ["summary", presentation.personalizedSummary],
+    ["suggestedAction", presentation.suggestedAction],
+    ["greeting", presentation.greeting],
   ];
   const leaks: string[] = [];
   for (const [name, value] of fields) {
@@ -56,32 +76,28 @@ async function invokeOnce(presenter: PresenterLike, c: OpportunityCase): Promise
     if (hasInternalLabel(value)) leaks.push(`internal label in ${name}`);
   }
   return {
-    headline: p.headline,
-    personalizedSummary: p.personalizedSummary,
-    suggestedAction: p.suggestedAction,
-    greeting: p.greeting,
+    headline: presentation.headline,
+    personalizedSummary: presentation.personalizedSummary,
+    suggestedAction: presentation.suggestedAction,
+    greeting: presentation.greeting,
     leaks,
   };
 }
 
-/**
- * Run an opportunity card case `runs` times, retrying transient live-model failures.
- *
- * @param presenter - The opportunity presenter under test.
- * @param c - The case to run.
- * @param runs - Number of repetitions.
- * @param options - Retry tuning (defaults from opportunity constants).
- * @returns One normalized card detail per run.
- */
+/** Run every configured slot and retain all retry/failure evidence. */
 export async function runCase(
   presenter: PresenterLike,
   c: OpportunityCase,
   runs: number,
   options: RunCaseOptions = {},
-): Promise<OpportunityRunDetail[]> {
-  return repeatRuns(() => invokeOnce(presenter, c), runs, {
+): Promise<EvalRunBatch<OpportunityRunDetail>> {
+  return executeRuns(({ signal }) => invokeOnce(presenter, c, signal), runs, {
+    caseId: c.id,
     maxAttempts: options.maxAttempts ?? OPPORTUNITY_EVAL_MAX_ATTEMPTS,
     retryDelayMs: options.retryDelayMs ?? OPPORTUNITY_EVAL_RETRY_DELAY_MS,
+    attemptTimeoutMs: options.attemptTimeoutMs ?? OPPORTUNITY_EVAL_ATTEMPT_TIMEOUT_MS,
+    policy: options.policy,
+    signal: options.signal,
     label: "opportunity eval",
   });
 }

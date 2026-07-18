@@ -17,7 +17,7 @@ bun run eval:opportunity -- --case greeting/        # one case or id prefix
 bun run eval:opportunity -- --tier 1               # one tier
 bun run eval:opportunity -- --list-cases           # print selected cases and exit
 bun run eval:opportunity -- --no-judge             # skip LLM grounding/framing/tone checks (free)
-bun run eval:opportunity -- --update-baseline      # overwrite the committed baseline
+bun run eval:opportunity -- --update-baseline --force # replace the committed baseline
 bun run eval:opportunity -- --report [path]        # write a full run report incl. generated cards
 bun run eval:opportunity -- --html [path]          # write a standalone HTML scorecard
 bun run eval:opportunity -- --rolling-baseline [d] # compare against trailing run average (default 7d)
@@ -50,7 +50,7 @@ Append an `OpportunityCase` to `CASES`. Set `rule`, `tier` (1 surgical, 2 realis
 `expect`. The deterministic guarantees are on by default; add judged `mustReference` /
 `framingCriteria` / `toneCriteria` for grounding, framing, and tone. To stress leakage, embed
 a UUID or an internal label in the `input` and rely on the default `no_leakage` assertion.
-Re-run with `--update-baseline` after an intentional change.
+Re-run with `--update-baseline --force` after an intentional change.
 
 ## Layout
 
@@ -65,3 +65,11 @@ Re-run with `--update-baseline` after an intentional change.
 - `baselines/opportunity.baseline.json` — committed baseline (per-run detail stripped).
 - `runs/*.json` — gitignored full run reports (rolling-baseline fuel).
 - `tests/` — unit tests (no live agents).
+
+## Execution evidence
+
+Schema-v2 run reports retain every presenter invocation attempt, including recovered
+fallback retries, timeout/cancellation, sanitized errors, retryability, and backoff. Only
+terminal successful cards are scored. Use `--strict-evidence` for release evidence and
+`--attempt-timeout-ms N` to override the 90-second per-attempt deadline. Exit codes are
+0 pass, 1 regression, 2 execution/artifact error, and 3 incomplete strict evidence.

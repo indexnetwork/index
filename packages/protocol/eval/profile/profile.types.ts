@@ -1,4 +1,4 @@
-import type { CaseResultLike, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
+import type { CaseResultLike, ScoredRunProvenance, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
 
 /** Each rule maps to a distinct profile-generator behaviour the corpus exercises. */
 export type Rule = "extraction" | "location" | "privacy" | "skills_interests" | "update";
@@ -69,7 +69,7 @@ export interface ProfileRunDetail {
   piiHits: string[];
 }
 
-export interface RunResult {
+export interface RunResult extends ScoredRunProvenance {
   passed: boolean;
   assertions: AssertionResult[];
   detail?: ProfileRunDetail;

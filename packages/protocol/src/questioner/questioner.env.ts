@@ -5,6 +5,10 @@
  *
  *   QUESTIONER_ENABLED                  master switch — QuestionerQueue worker +
  *                                       enqueue closures at every composition site.
+ *   QUESTIONER_UPTAKE_ENABLED           per-surface switch — advisory pre-accept uptake
+ *                                       interlock. Requires the master switch.
+ *   QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD
+ *                                       authority threshold (0-100, default 70).
  *   QUESTIONER_DISCOVERY_ENABLED        per-surface switch — decision questions during
  *                                       chat/MCP opportunity discovery. Only effective
  *                                       when the master switch is on (the discovery
@@ -31,6 +35,7 @@
  */
 export const DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT = 12_000;
 export const CHAT_QUESTION_WAIT_TIMEOUT_MS_DEFAULT = 240_000;
+export const UPTAKE_AUTHORITY_THRESHOLD_DEFAULT = 70;
 
 /**
  * Parse a positive integer env var, clamped to the safe-integer range so a
@@ -56,6 +61,20 @@ export function isQuestionerEnabled(): boolean {
  */
 export function isDiscoveryQuestionsEnabled(): boolean {
   return isQuestionerEnabled() && process.env.QUESTIONER_DISCOVERY_ENABLED === "true";
+}
+
+/** Advisory uptake interlock. Flag-off by default and subordinate to the master switch. */
+export function isUptakeGuardEnabled(): boolean {
+  return isQuestionerEnabled() && process.env.QUESTIONER_UPTAKE_ENABLED === "true";
+}
+
+/** Authority threshold below which hosts may generate uptake questions. */
+export function uptakeAuthorityThreshold(): number {
+  const raw = process.env.QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD;
+  if (!raw?.trim()) return UPTAKE_AUTHORITY_THRESHOLD_DEFAULT;
+  if (!/^-?\d+$/.test(raw.trim())) return UPTAKE_AUTHORITY_THRESHOLD_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
+  return Math.min(100, Math.max(0, parsed));
 }
 
 /**

@@ -4,6 +4,7 @@ import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.g
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
+import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { networkService } from '../services/network.service';
 
@@ -442,6 +443,7 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/my-intents')
+  @deprecatedRoute('network.my-intents')
   @UseGuards(RateLimit('read'), AuthGuard)
   async getMyIntents(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {

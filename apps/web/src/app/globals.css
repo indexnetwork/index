@@ -3,28 +3,17 @@
 @import url('https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap');
 @import "tailwindcss";
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
-}
-
 @layer base {
   html {
     @apply scroll-smooth;
     overscroll-behavior: none;
+    /* The app is light-only: pin the UA color scheme so form controls,
+       scrollbars, and inherited colors never follow the OS dark mode. */
+    color-scheme: light;
   }
   
   body {
-    @apply text-gray-900 dark:text-gray-100;
+    @apply text-gray-900;
     font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: #FDFDFD;
     overscroll-behavior: none;
@@ -48,7 +37,7 @@
 
 @layer components {
   .btn-primary {
-    @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors dark:bg-blue-500 dark:hover:bg-blue-600;
+    @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors;
   }
   
   .btn-secondary {
@@ -57,7 +46,7 @@
   }
   
   .card {
-    @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-6;
+    @apply bg-white rounded-lg shadow-md p-6;
   }
 
   .input {

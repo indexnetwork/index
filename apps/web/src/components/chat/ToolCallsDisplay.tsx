@@ -381,7 +381,7 @@ interface GraphNode {
 export interface NegotiationTurnRow {
   turnIndex: number;
   actor: "source" | "candidate";
-  action: "propose" | "accept" | "reject" | "counter" | "question";
+  action: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };
@@ -397,7 +397,7 @@ export interface NegotiationNode {
   startTimestamp: number;
   durationMs?: number;
   turns: NegotiationTurnRow[];
-  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap";
+  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap" | "screened_out";
   turnCount?: number;
   outcomeReasoning?: string;
   isRunning: boolean;
@@ -1160,7 +1160,7 @@ function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) 
               )}
               {n.isRunning ? (
                 <Loader2 className="w-2.5 h-2.5 text-gray-500 animate-spin flex-shrink-0" />
-              ) : n.outcome === "timed_out" || n.outcome === "rejected_stalled" || n.outcome === "turn_cap" ? (
+              ) : n.outcome === "timed_out" || n.outcome === "rejected_stalled" || n.outcome === "turn_cap" || n.outcome === "screened_out" ? (
                 <Square className="w-2.5 h-2.5 text-amber-600 fill-amber-600 flex-shrink-0" />
               ) : (
                 <MessagesSquare className="w-2.5 h-2.5 text-gray-800 flex-shrink-0" />

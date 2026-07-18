@@ -1,3 +1,4 @@
+import { summarizeExecution, type EvalExecutionEvidence } from "./runner.js";
 import { rateWithCI } from "./stats.js";
 import type { Regression, ScorecardLike } from "./types.js";
 
@@ -9,6 +10,8 @@ export interface ConsoleOptions {
   title?: string;
   /** Column width for the rule/group label. */
   ruleWidth?: number;
+  /** Genuine v2 attempt evidence for completeness/retry reporting. */
+  execution?: EvalExecutionEvidence;
 }
 
 /**
@@ -32,12 +35,30 @@ export function formatConsole(
   const lines: string[] = [];
   lines.push(`\n=== ${title} ===`);
   lines.push(`model=${sc.model}  runs=${sc.runs}  cases=${sc.cases.length}`);
-  // Per-run observations drive the CI; case-level pass-rates drive the aggregate display.
-  lines.push(`aggregate pass-rate: ${rateWithCI(sc.cases.reduce((s, c) => s + c.passes, 0), sc.cases.length * sc.runs)}\n`);
+  const totalScoredRuns = sc.cases.reduce((sum, entry) => sum + entry.runs, 0);
+  lines.push(`aggregate pass-rate: ${rateWithCI(sc.cases.reduce((s, c) => s + c.passes, 0), totalScoredRuns)}\n`);
+  if (opts.execution) {
+    const summary = summarizeExecution(opts.execution);
+    lines.push(
+      `execution (${opts.execution.policy}): requested=${summary.requestedRuns} completed=${summary.completedRuns} `
+        + `failed=${summary.failedRuns} recovered=${summary.recoveredRuns} attempts=${summary.totalAttempts}`,
+    );
+    const noteworthy = opts.execution.runs.filter((run) => run.outcome !== "success" || run.recovered);
+    for (const run of noteworthy.slice(0, 20)) {
+      const last = run.attempts[run.attempts.length - 1];
+      lines.push(
+        `  ${run.runId}  ${run.outcome}${run.recovered ? " (recovered)" : ""}  attempts=${run.attempts.length}`
+          + `${last?.error ? `  ${last.error.class}: ${last.error.message}` : ""}`,
+      );
+    }
+    if (noteworthy.length > 20) lines.push(`  …and ${noteworthy.length - 20} more noteworthy run(s)`);
+    lines.push("");
+  }
   lines.push(`Per rule:`);
   for (const r of [...sc.rules].sort((a, b) => a.passRate - b.passRate)) {
-    const n = r.caseCount * sc.runs;
-    const passes = Math.round(r.passRate * n);
+    const members = sc.cases.filter((entry) => entry.rule === r.rule);
+    const n = members.reduce((sum, entry) => sum + entry.runs, 0);
+    const passes = members.reduce((sum, entry) => sum + entry.passes, 0);
     lines.push(`  ${r.rule.padEnd(ruleWidth)} ${rateWithCI(passes, n)}  (${r.caseCount} case(s))`);
   }
   const flaky = sc.cases.filter((c) => c.flaky);

@@ -1,4 +1,5 @@
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
+import { withAgentScope } from '../guards/agent-scope.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
 import { resolveConnectLinkForUser } from '../services/connect-link.service';
@@ -76,13 +77,14 @@ export class ConnectLinkController {
    */
   @Get('/:code/go')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async go(_req: Request, user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
+  async go(req: Request, user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
     const code = params?.code;
     if (!code) return jsonError('Missing code', 400);
     if (!CODE_PATTERN.test(code)) return notFoundJson();
 
     const link = await resolveConnectLinkForUser(code, user.id);
     if (!link) return notFoundJson();
+    const { networkScopeId } = await withAgentScope(req, user);
 
     const frontendUrl = getFrontendUrl();
     const greetingForRecipient = async () => (
@@ -90,7 +92,9 @@ export class ConnectLinkController {
     );
 
     if (link.kind === 'approve_introduction') {
-      const result = await opportunityService.approveIntroduction(link.opportunityId, user.id);
+      const result = await opportunityService.approveIntroduction(link.opportunityId, user.id, {
+        ...(networkScopeId ? { networkScopeId } : {}),
+      });
       if ('error' in result) return jsonError(result.error, result.status);
       return Response.json({ kind: 'approve_introduction' } satisfies ConnectLinkGoResponse);
     }
@@ -101,8 +105,18 @@ export class ConnectLinkController {
     // statuses; the semantic difference lives in the matrix that picked `kind`.
     if (link.kind === 'connect' || link.kind === 'send_direct') {
       const greeting = await greetingForRecipient();
-      const result = await opportunityService.startChat(link.opportunityId, user.id);
-      if ('error' in result) return jsonError(result.error, result.status);
+      const rawAcknowledged = new URL(req.url).searchParams.get('acknowledgedUptakeQuestionIds');
+      const acknowledgedUptakeQuestionIds = rawAcknowledged
+        ? [...new Set(rawAcknowledged.split(',').map((id) => id.trim()).filter(Boolean))]
+        : undefined;
+      const result = await opportunityService.startChat(link.opportunityId, user.id, {
+        acknowledgedUptakeQuestionIds,
+        ...(networkScopeId ? { networkScopeId } : {}),
+        // Connect-link accept is a verified explicit human owner action when
+        // driven by a session; API-key resolution is excluded (IND-434).
+        actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
+      });
+      if ('error' in result) return Response.json(result, { status: result.status });
 
       if (link.preferredSurface === 'telegram') {
         const handle = await opportunityService.getCounterpartTelegramHandle(result.counterpartUserId);

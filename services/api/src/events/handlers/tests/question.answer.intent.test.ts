@@ -7,11 +7,12 @@ function makeDeps(overrides?: Partial<IntentRefinementDeps>): IntentRefinementDe
       id: "int-1",
       userId: "u-1",
       description: "Looking for a React developer",
+      summary: "React hiring",
       status: "active",
     })),
     getQuestionPrompt: mock(async () => "What kind of developer are you looking for?"),
     getUserProfile: mock(async () => '{"identity":"Founder"}'),
-    runIntentUpdate: mock(async () => ({ applied: true })),
+    runIntentUpdate: mock(async () => ({ applied: true, payload: "Looking for a senior React developer" })),
     ...overrides,
   };
 }
@@ -21,7 +22,7 @@ describe("enqueueIntentRefinementFactory", () => {
     const deps = makeDeps();
     const fn = enqueueIntentRefinementFactory(deps);
 
-    await fn({
+    const result = await fn({
       userId: "u-1",
       intentId: "int-1",
       questionId: "q-1",
@@ -29,6 +30,11 @@ describe("enqueueIntentRefinementFactory", () => {
       freeText: "Must know TypeScript well",
     });
 
+    expect(result).toEqual({
+      applied: true,
+      payload: "Looking for a senior React developer",
+      summary: "React hiring",
+    });
     expect(deps.runIntentUpdate).toHaveBeenCalledTimes(1);
     const call = (deps.runIntentUpdate as ReturnType<typeof mock>).mock.calls[0][0];
     expect(call.userId).toBe("u-1");
@@ -63,13 +69,14 @@ describe("enqueueIntentRefinementFactory", () => {
     const deps = makeDeps({ runIntentUpdate: mock(async () => ({ applied: false })) });
     const fn = enqueueIntentRefinementFactory(deps);
 
-    await fn({
+    const result = await fn({
       userId: "u-1",
       intentId: "int-1",
       questionId: "q-1",
       selectedOptions: ["A"],
     });
 
+    expect(result).toEqual({ applied: false });
     expect(deps.runIntentUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -77,13 +84,14 @@ describe("enqueueIntentRefinementFactory", () => {
     const deps = makeDeps({ getIntent: mock(async () => null) });
     const fn = enqueueIntentRefinementFactory(deps);
 
-    await fn({
+    const result = await fn({
       userId: "u-1",
       intentId: "int-404",
       questionId: "q-1",
       selectedOptions: ["A"],
     });
 
+    expect(result).toEqual({ applied: false });
     expect(deps.runIntentUpdate).not.toHaveBeenCalled();
   });
 

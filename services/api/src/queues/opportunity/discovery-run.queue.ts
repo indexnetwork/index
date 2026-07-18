@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
-import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
-import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, NetworkGraphFactory, NetworkMembershipGraphFactory, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
+import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, StampNewbornOpportunitiesFn, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { captureAppException } from '../../lib/sentry';
@@ -16,6 +16,7 @@ import { resolveProtocolBaseUrl } from '../../lib/protocol-url';
 import type { ConnectLinkKind } from '../../services/connect-link.service';
 import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
 import { questionerEnqueueIfEnabled } from '../questioner.queue';
+import { maybeMinePoolDiscriminators } from '../pool/mining.shared';
 
 export const QUEUE_NAME = 'opportunity-discovery-run';
 
@@ -26,6 +27,7 @@ export interface DiscoveryRunJobData {
 export interface DiscoveryRunQueueDeps {
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
+  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
 }
 
 const apiBaseUrl = resolveProtocolBaseUrl();
@@ -49,6 +51,14 @@ function assertDiscoveryRunOutputFits(raw: string): void {
       `Discovery run result exceeded MCP output cap: ${outputBytes} bytes > ${policy.maxOutputBytes} bytes`,
     );
   }
+}
+
+/** Build the real network graphs required when replaying discovery outside the MCP request. */
+export function createDiscoveryRunScopeGraphs(database: ToolDeps['database']): Pick<ToolDeps['graphs'], 'index' | 'networkMembership'> {
+  return {
+    index: new NetworkGraphFactory(database).createGraph(),
+    networkMembership: new NetworkMembershipGraphFactory(database).createGraph(),
+  };
 }
 
 export class DiscoveryRunQueue {
@@ -145,6 +155,7 @@ export class DiscoveryRunQueue {
       }
       await discoveryRunAdapter.markSucceeded(runId, result);
       this.logger.info('Completed', { runId, userId: run.userId });
+      this.maybeMinePoolDiscriminators(run);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (abortController.signal.aborted || await discoveryRunAdapter.isCancelRequested(runId)) {
@@ -213,7 +224,9 @@ export class DiscoveryRunQueue {
       async (opportunityId: string, userId: string) => {
         await negotiationRunExistingQueue.addJob({ opportunityId, userId });
       },
+      this.deps?.stampNewbornOpportunities,
     ).createGraph();
+    const scopeGraphs = createDiscoveryRunScopeGraphs(chatDatabaseAdapter);
 
     // Env-gated questioner enqueue: queued/async discovery runs generate
     // discovery-mode questions exactly like synchronous MCP discover calls
@@ -254,8 +267,8 @@ export class DiscoveryRunQueue {
       graphs: {
         profile: { invoke: async () => ({}) } as CompiledGraph,
         intent: { invoke: async () => ({}) } as CompiledGraph,
-        index: { invoke: async () => ({}) } as CompiledGraph,
-        networkMembership: { invoke: async () => ({}) } as CompiledGraph,
+        index: scopeGraphs.index,
+        networkMembership: scopeGraphs.networkMembership,
         intentIndex: { invoke: async () => ({}) } as CompiledGraph,
         opportunity: opportunityGraph,
         premise: { invoke: async () => ({}) } as CompiledGraph,
@@ -272,6 +285,23 @@ export class DiscoveryRunQueue {
       return raw;
     }
   }
+
+  /**
+   * Pool-discriminator mining + question enqueue on run completion
+   * (IND-417/418) — shared with FromIntentQueue, see queues/pool/mining.shared.ts.
+   */
+  private maybeMinePoolDiscriminators(run: DiscoveryRunRecord): void {
+    maybeMinePoolDiscriminators({
+      source: 'discovery_run',
+      runId: run.id,
+      userId: run.userId,
+      ...(run.input.intentId ? { intentId: run.input.intentId } : {}),
+      ...(run.context.sessionId ? { sessionId: run.context.sessionId } : {}),
+      isIntroducerFlow: Boolean(run.input.introTargetUserId),
+      ...(run.input.searchQuery ?? run.input.hint ? { searchQuery: run.input.searchQuery ?? run.input.hint } : {}),
+    });
+  }
 }
 
 export const discoveryRunQueue = new DiscoveryRunQueue();
+

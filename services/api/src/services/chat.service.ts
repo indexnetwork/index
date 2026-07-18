@@ -4,6 +4,8 @@ import type { ChatScopeType } from '../adapters/database.shared';
 import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
+import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
+import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { HumanMessage } from '@langchain/core/messages';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -252,8 +254,69 @@ export class ChatSessionService {
     }
   }
 
+  /**
+   * Resolve or create the user's negotiator session pinned to one of their
+   * intents (P4.2/IND-403). One session per (user, intent, negotiator
+   * persona): keyed in `chat_session_scopes` as ('negotiator-intent',
+   * intentId), so it never collides with the orchestrator's ('intent',
+   * intentId) session for the same intent. Race-safe via the unique index
+   * (concurrent creates re-read on 23505).
+   *
+   * @param userId - The client user (must own the intent)
+   * @param intentId - The intent to pin
+   * @returns The session plus the validated intent title (for prompt pinning)
+   */
+  async resolveNegotiatorIntentSession(
+    userId: string,
+    intentId: string,
+  ): Promise<
+    | { session: NonNullable<Awaited<ReturnType<ChatSessionService['getSession']>>>; created: boolean; intentTitle: string }
+    | { error: string; status: 400 | 403 | 404 | 500 }
+  > {
+    const normalizedIntentId = intentId.trim();
+    if (!normalizedIntentId) {
+      return { error: 'intentId is required', status: 400 as const };
+    }
+
+    const validation = await this.validateIntentScope(userId, normalizedIntentId);
+    if (!validation.ok) return validation;
+
+    const existing = await this.db.getNegotiatorIntentChatSession(userId, normalizedIntentId);
+    if (existing) return { session: existing, created: false, intentTitle: validation.title };
+
+    try {
+      const id = crypto.randomUUID();
+      await this.db.createNegotiatorIntentChatSession({
+        id,
+        userId,
+        intentId: normalizedIntentId,
+        title: validation.title,
+      });
+      const session = await this.getSession(id, userId);
+      if (!session) return { error: 'Failed to create negotiator session', status: 500 as const };
+      return { session, created: true, intentTitle: validation.title };
+    } catch (err) {
+      if (this.isUniqueViolation(err)) {
+        const raced = await this.db.getNegotiatorIntentChatSession(userId, normalizedIntentId);
+        if (raced) return { session: raced, created: false, intentTitle: validation.title };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * True when the error (or any error in its `cause` chain) is a Postgres
+   * unique violation. Drizzle wraps driver errors in `DrizzleQueryError`
+   * with the pg error on `cause`, so checking only the top level misses the
+   * 23505 and turns a benign create race into a 500.
+   */
   private isUniqueViolation(err: unknown): boolean {
-    return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === '23505';
+    let current: unknown = err;
+    for (let depth = 0; current !== null && typeof current === 'object' && depth < 5; depth++) {
+      if ((current as { code?: unknown }).code === '23505') return true;
+      current = (current as { cause?: unknown }).cause;
+    }
+    return false;
   }
 
   /**
@@ -475,12 +538,30 @@ export class ChatSessionService {
    * factory; only prompt/toolset/loop behaviors differ.
    *
    * @param agent - Identity from the user's `type='personal'` agent row
+   * @param pinnedIntent - Optional pinned-signal label for intent-scoped
+   *                       sessions (P4.2); rendered in the prompt's pinned
+   *                       signal section
    */
-  getNegotiatorGraphFactory(agent: { name: string; description?: string | null }): ChatGraphFactory {
+  async getNegotiatorGraphFactory(
+    agent: { name: string; description?: string | null },
+    userId: string,
+    pinnedIntent?: { label?: string },
+  ): Promise<ChatGraphFactory> {
+    // P5.3: the client's accumulated negotiator memories inform the DM
+    // persona (gated on NEGOTIATOR_MEMORY_INJECT; [] → byte-identical
+    // prompt). The adapter never throws — the catch is belt and braces so a
+    // memory failure can never take down the chat surface.
+    const memory = await negotiatorMemoryRetrievalAdapter.retrieveForChat(userId).catch(() => []);
     return this.factory.withPersona(
       createNegotiatorPersona({
         agentName: agent.name,
         ...(agent.description?.trim() ? { agentDescription: agent.description } : {}),
+        ...(pinnedIntent?.label?.trim() ? { pinnedIntentLabel: pinnedIntent.label.trim() } : {}),
+        ...(memory.length > 0 ? { memory } : {}),
+        // P5.4: the remember/forget tools are registered by the composition
+        // root under the same flag — the prompt advertises them only when
+        // they actually exist for this session.
+        ...(isNegotiatorMemoryWriteEnabled() ? { memoryToolsEnabled: true } : {}),
       }),
     );
   }

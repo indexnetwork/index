@@ -23,6 +23,7 @@ src/queues/tests/enrichment-run.queue.spec.ts
 src/queues/tests/enrichment.queue.jobs.spec.ts
 src/queues/tests/enrichment.queue.spec.ts
 src/queues/tests/expiration.queue.spec.ts
+src/queues/tests/frame-drift.queue.spec.ts
 src/queues/tests/from-enrichment.queue.spec.ts
 src/queues/tests/from-intent.queue.spec.ts
 src/queues/tests/from-introducer.queue.spec.ts

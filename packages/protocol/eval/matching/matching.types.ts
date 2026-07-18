@@ -1,5 +1,5 @@
 import type { EvaluatorInput } from "../../src/opportunity/opportunity.evaluator.js";
-import type { CaseResultLike, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
+import type { CaseResultLike, ScoredRunProvenance, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
 
 /** Each rule maps to a distinct evaluator behaviour the corpus exercises. */
 export type Rule =
@@ -76,7 +76,7 @@ export interface CandidateOutcome {
   reasoning: string;
 }
 
-export interface RunResult {
+export interface RunResult extends ScoredRunProvenance {
   passed: boolean;
   assertions: AssertionResult[];
   /**

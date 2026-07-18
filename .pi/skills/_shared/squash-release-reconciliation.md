@@ -31,7 +31,7 @@ git diff --quiet origin/main origin/dev && echo "main and dev trees match"
 git merge-tree "$(git merge-base origin/main origin/dev)" origin/dev origin/main | grep -E '<<<<<<<|CONFLICT|^changed in both$|^added in both$' || echo "main into dev merge simulation clean"
 ```
 
-Then create a no-content merge and push:
+Then create a no-content merge and push. This runs from the **canonical root** (which is on `dev`) and is a **sanctioned exception** to the root-is-read-only rule: the reconciliation merge can only be created on a local `dev` checkout, it is invoked by `finish-pr` step 7 from the main session, and root-dev-guard's warn-mode advisory is expected and accepted here. Do not generalize this escape to other root mutations.
 
 ```bash
 git switch dev

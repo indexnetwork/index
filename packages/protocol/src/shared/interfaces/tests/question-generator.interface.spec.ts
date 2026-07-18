@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import type { QuestionGenerationResult, Question, QuestionStrategy } from "../../schemas/question.schema.js";
-import type { DiscoveryQuestionInput } from "../../../opportunity/question.prompt.js";
+import type { DiscoveryQuestionInput } from "../../schemas/discovery-question.schema.js";
 import type { QuestionGeneratorReader } from "../question-generator.interface.js";
 
 describe("QuestionGeneratorReader contract", () => {
@@ -27,7 +27,7 @@ describe("QuestionGeneratorReader contract", () => {
   it("permits implementations that return a non-null QuestionGenerationResult", async () => {
     const q: Question = { title: "T", prompt: "P?", options: [{ label: "a", description: "x" }, { label: "b", description: "y" }], multiSelect: false };
     const s: QuestionStrategy[] = ["refine_intent"];
-    const ok: QuestionGeneratorReader = { generate: async () => ({ questions: [q], strategies: s }) };
+    const ok: QuestionGeneratorReader = { generate: async () => ({ questions: [q], strategies: s, underspecificationTypes: [null] }) };
     const r = await ok.generate({ query: "x", userContext: "", negotiationDigests: [], summary: { totalCandidates: 0, opportunitiesFound: 0, noOpportunityCount: 0, timeoutCount: 0, roleDistribution: {} }, now: "" });
     expect(r?.questions).toHaveLength(1);
   });
