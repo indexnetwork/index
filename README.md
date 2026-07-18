@@ -54,7 +54,6 @@ Four primitives make up the protocol:
   </picture>
 </p>
 
----
 
 ## CLI
 
