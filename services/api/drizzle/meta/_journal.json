@@ -673,6 +673,13 @@
       "when": 1784291736818,
       "tag": "0095_add_outcome_feedback_events",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1784397197143,
+      "tag": "0096_normalize_opportunity_actor_intents",
+      "breakpoints": true
     }
   ]
 }

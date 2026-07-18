@@ -12,6 +12,7 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import { renderOpportunityEvidenceForPrompt } from './opportunity.evidence.js';
 import { hasUnsupportedOpportunityClaim } from './opportunity.claim-safety.js';
+import { normalizeOpportunityActorIntent } from './opportunity.actor.js';
 
 const logger = protocolLogger("OpportunityEvaluator");
 const invokeLog = protocolLogger("OpportunityEvaluator:invoke");
@@ -222,7 +223,9 @@ export interface EvaluatorInput {
 const ActorSchema = z.object({
   userId: z.string(),
   role: z.enum(['agent', 'patient', 'peer']),
-  intentId: z.string().nullable().describe('If the match is intent-driven, the specific intent ID; null otherwise'),
+  intentId: z.string().nullable()
+    .transform((value) => normalizeOpportunityActorIntent(value) ?? null)
+    .describe('If the match is intent-driven, the specific intent ID; null otherwise'),
   evidenceKey: z.string().nullable().optional().describe('Stable evidence key for the matched entity; null if unknown'),
 });
 

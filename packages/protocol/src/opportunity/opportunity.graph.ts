@@ -61,6 +61,7 @@ import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { requestContext } from "../shared/observability/request-context.js";
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
+import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from './opportunity.actor.js';
 
 const logger = protocolLogger('OpportunityGraph');
 const prepLog = protocolLogger('OpportunityGraph:Prep');
@@ -2128,7 +2129,7 @@ export class OpportunityGraphFactory {
         const candidates: NegotiationCandidate[] = await Promise.all(
           candidateEntries.map(async ({ opp, candidateActor }) => {
             const userId = candidateActor.userId as string;
-            const candidateIntentId = candidateActor.intentId ?? candidateActor.intent;
+            const candidateIntentId = resolveOpportunityActorIntent(candidateActor);
             const [profile, user, activeIntents, intent] = await Promise.all([
               this.database.getProfile(userId).catch(() => null),
               this.database.getUser(userId).catch(() => null),
@@ -2918,12 +2919,15 @@ export class OpportunityGraphFactory {
                 continue;
               }
               // Introduction path: manual detection, introducer actor, curator_judgment signal.
-              const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
-                networkId: a.networkId ?? indexIdForActors,
-                userId: a.userId,
-                role: a.role,
-                ...(a.intentId ? { intent: a.intentId } : {}),
-              }));
+              const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => {
+                const intent = normalizeOpportunityActorIntent(a.intentId);
+                return {
+                  networkId: a.networkId ?? indexIdForActors,
+                  userId: a.userId,
+                  role: a.role,
+                  ...(intent ? { intent: intent as Id<'intents'> } : {}),
+                };
+              });
               const viewerAlreadyInActors = evaluatorActors.some(a => a.userId === state.userId);
               actors = viewerAlreadyInActors
                 ? evaluatorActors
@@ -2967,12 +2971,15 @@ export class OpportunityGraphFactory {
                 continue;
               }
               // Introducer discovery path: introducer is state.userId, target is onBehalfOfUserId.
-              const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
-                networkId: a.networkId ?? indexIdForActors,
-                userId: a.userId,
-                role: a.role,
-                ...(a.intentId ? { intent: a.intentId } : {}),
-              }));
+              const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => {
+                const intent = normalizeOpportunityActorIntent(a.intentId);
+                return {
+                  networkId: a.networkId ?? indexIdForActors,
+                  userId: a.userId,
+                  role: a.role,
+                  ...(intent ? { intent: intent as Id<'intents'> } : {}),
+                };
+              });
               const viewerAlreadyInActors = evaluatorActors.some(a => a.userId === state.userId);
               actors = viewerAlreadyInActors
                 ? evaluatorActors
@@ -3120,13 +3127,16 @@ export class OpportunityGraphFactory {
                 }
               }
 
-              const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
-                networkId: a.networkId ?? indexIdForActors,
-                userId: a.userId,
-                role: a.role,
-                ...(a.intentId ? { intent: a.intentId } : {}),
-                ...(premiseLookup.has(a.userId) ? { premise: premiseLookup.get(a.userId)!.premiseId as Id<'premises'> } : {}),
-              }));
+              const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => {
+                const intent = normalizeOpportunityActorIntent(a.intentId);
+                return {
+                  networkId: a.networkId ?? indexIdForActors,
+                  userId: a.userId,
+                  role: a.role,
+                  ...(intent ? { intent: intent as Id<'intents'> } : {}),
+                  ...(premiseLookup.has(a.userId) ? { premise: premiseLookup.get(a.userId)!.premiseId as Id<'premises'> } : {}),
+                };
+              });
               actors = evaluatorActors;
 
               const hasIntroducerActor = actors.some(a => a.role === 'introducer');
@@ -3805,8 +3815,8 @@ export class OpportunityGraphFactory {
           return {};
         }
 
-        const sourceIntentId = sourceActor.intentId ?? sourceActor.intent;
-        const candidateIntentId = candidateActor.intentId ?? candidateActor.intent;
+        const sourceIntentId = resolveOpportunityActorIntent(sourceActor);
+        const candidateIntentId = resolveOpportunityActorIntent(candidateActor);
 
         // Load user data for both actors in parallel
         const [sourceUserAccount, sourceProfile, sourceIntents, candidateAccount, candidateProfile, candidateIntents] =

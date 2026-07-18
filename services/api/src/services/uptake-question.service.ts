@@ -32,7 +32,18 @@ function isRecipient(actor: OpportunityActor): boolean {
 }
 
 function exactActorIntent(actor: OpportunityActor): string | null {
-  return typeof actor.intent === 'string' && actor.intent.trim() ? actor.intent : null;
+  if (typeof actor.intent !== 'string') return null;
+
+  const normalized = actor.intent.trim();
+  if (
+    normalized.length === 0
+    || normalized.toLowerCase() === 'null'
+    || normalized.toLowerCase() === 'undefined'
+  ) {
+    return null;
+  }
+
+  return normalized;
 }
 
 function sharedActorNetworks(

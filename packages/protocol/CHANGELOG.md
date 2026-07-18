@@ -41,6 +41,7 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 - Included protocol documentation files in the published package tarball so README links remain available to package consumers.
 
 ### Fixed
+- Normalized opportunity actor intent IDs at evaluator, graph, and shared persistence boundaries so blank or null-like model sentinels are omitted, valid branded string IDs remain supported, enrichment cannot use or reintroduce malformed provenance, and legacy negotiation reads fail closed (IND-469).
 - Forwarded per-attempt `AbortSignal`s through eval provider paths and hardened failure provenance against secret leakage, hostile rejection objects, classifier failures, and concurrent artifact writers (IND-444).
 - Aligned HyDE evidence scoring with the live background `0.30` cutoff, retained per-lens cosines for score/ranking revalidation, required report-stage parent recomputation, and prevented forced outputs from overwriting input evidence artifacts (IND-426).
 - Scoped pool-question adjustments to the exact answering recipient and selected intent, ignored legacy unscoped factors, and restricted Tier-0/newborn writes to exact trigger-intent provenance so shared opportunities cannot re-rank another viewer or intent.

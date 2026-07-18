@@ -1223,6 +1223,50 @@ describe('Opportunity Graph', () => {
       expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
     });
 
+    test('does not persist a literal null evaluator actor intent', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
+        evaluatorResult: [{
+          reasoning: 'A strong provider-free regression match.',
+          score: 90,
+          actors: [
+            {
+              userId: 'a0000000-0000-4000-8000-000000000001',
+              role: 'patient',
+              intentId: 'null',
+            },
+            {
+              userId: 'b0000000-0000-4000-8000-000000000002',
+              role: 'agent',
+              intentId: '  intent-1  ',
+            },
+          ],
+        }],
+      });
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([{
+        type: 'intent',
+        id: 'intent-bob',
+        userId: 'b0000000-0000-4000-8000-000000000002',
+        score: 0.9,
+        matchedVia: 'mirror',
+        networkId: 'idx-1',
+      }]);
+
+      await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput);
+
+      const persisted = createSpy.mock.calls[0]?.[0];
+      const sourceActor = persisted?.actors.find((actor) =>
+        actor.userId === 'a0000000-0000-4000-8000-000000000001');
+      const candidateActor = persisted?.actors.find((actor) =>
+        actor.userId === 'b0000000-0000-4000-8000-000000000002');
+      expect(Object.prototype.hasOwnProperty.call(sourceActor ?? {}, 'intent')).toBe(false);
+      expect(candidateActor?.intent).toBe('intent-1');
+    });
+
     test('when evaluator assigns discoverer as agent (no introducer), persist swaps discoverer to patient', async () => {
       // Evaluator thinks the discoverer (a0000000-0000-4000-8000-000000000001) is the agent (provider) and
       // the candidate (b0000000-0000-4000-8000-000000000002) is the patient (seeker). The lifecycle guard in the
@@ -2568,8 +2612,9 @@ describe('Opportunity Graph', () => {
       expect(negotiationInvocations).toHaveLength(0);
     });
 
-    test('invokes the negotiation graph when introducer actor has approved: true', async () => {
+    test('invokes negotiation and ignores a null-like exact actor intent from persisted data', async () => {
       const negotiationInvocations: unknown[] = [];
+      const exactIntentLookups: string[] = [];
 
       const mockNegotiationGraph = {
         invoke: async (input: unknown) => {
@@ -2586,7 +2631,9 @@ describe('Opportunity Graph', () => {
             id: 'opp-approved',
             detection: data.detection,
             actors: [
-              ...data.actors,
+              ...data.actors.map((actor) => actor.userId === 'b0000000-0000-4000-8000-000000000002'
+                ? { ...actor, intentId: ' NULL ' }
+                : actor),
               {
                 networkId: 'idx-1' as Id<'networks'>,
                 userId: 'introducer-user' as Id<'users'>,
@@ -2673,7 +2720,37 @@ describe('Opportunity Graph', () => {
           }),
       };
 
-      const evaluator = createMockEvaluator(defaultMockEvaluatorResult);
+      mockDb.getIntent = (intentId) => {
+        exactIntentLookups.push(intentId);
+        return Promise.resolve({
+          id: intentId as Id<'intents'>,
+          userId: 'b0000000-0000-4000-8000-000000000002',
+          payload: 'Candidate exact intent',
+          summary: 'Candidate exact',
+          isIncognito: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          archivedAt: null,
+          status: 'ACTIVE',
+        });
+      };
+
+      const evaluator = createMockEvaluator([{
+        reasoning: 'Candidate intent should be loaded exactly.',
+        score: 90,
+        actors: [
+          {
+            userId: 'a0000000-0000-4000-8000-000000000001',
+            role: 'patient',
+            intentId: null,
+          },
+          {
+            userId: 'b0000000-0000-4000-8000-000000000002',
+            role: 'agent',
+            intentId: 'intent-bob',
+          },
+        ],
+      }]);
       const factory = new OpportunityGraphFactory(
         mockDb,
         mockEmbedder,
@@ -2691,17 +2768,19 @@ describe('Opportunity Graph', () => {
         options: { initialStatus: 'latent' as const },
       });
 
-      // The gate should allow negotiation when introducer is approved.
       expect(negotiationInvocations.length).toBeGreaterThan(0);
+      expect(exactIntentLookups.length).toBeGreaterThan(0);
+      expect(new Set(exactIntentLookups)).toEqual(new Set(['intent-bob']));
     });
   });
 
   // ─── negotiate_existing mode tests ───────────────────────────────────────────
 
   describe('negotiate_existing mode', () => {
-    test('invokes negotiation with source and candidate actors, notifies non-introducer actors on acceptance', async () => {
+    test('normalizes both actor intent fields before exact negotiation reads', async () => {
       const negotiationInvocations: unknown[] = [];
       const notifiedUserIds: string[] = [];
+      const exactIntentLookups: string[] = [];
 
       // Mock negotiation graph that records invocations and returns acceptance
       const mockNegotiationGraph = {
@@ -2726,14 +2805,16 @@ describe('Opportunity Graph', () => {
             userId: 'patient-user' as Id<'users'>,
             role: 'patient' as const,
             networkId: 'idx-1' as Id<'networks'>,
-            intentId: 'intent-patient' as Id<'intents'>,
+            intentId: ' NULL ' as Id<'intents'>,
+            intent: 'intent-patient' as Id<'intents'>,
             approved: undefined,
           },
           {
             userId: 'agent-user' as Id<'users'>,
             role: 'agent' as const,
             networkId: 'idx-1' as Id<'networks'>,
-            intentId: 'intent-agent' as Id<'intents'>,
+            intentId: ' undefined ' as Id<'intents'>,
+            intent: 'intent-agent' as Id<'intents'>,
             approved: undefined,
           },
           {
@@ -2801,7 +2882,9 @@ describe('Opportunity Graph', () => {
         getOpportunitiesForUser: () => Promise.resolve([]),
         updateOpportunityStatus: () => Promise.resolve(null),
         updateOpportunityActorApproval: () => Promise.resolve(null),
-        getIntent: (intentId: string) => Promise.resolve({
+        getIntent: (intentId: string) => {
+          exactIntentLookups.push(intentId);
+          return Promise.resolve({
           id: intentId as Id<'intents'>,
           userId: intentId === 'intent-patient' ? 'patient-user' : 'agent-user',
           payload: `Exact payload for ${intentId}`,
@@ -2811,7 +2894,8 @@ describe('Opportunity Graph', () => {
           updatedAt: new Date(),
           archivedAt: null,
           status: 'ACTIVE' as const,
-        }),
+          });
+        },
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
         getNegotiationTaskForOpportunity: async () => null,
@@ -2865,6 +2949,7 @@ describe('Opportunity Graph', () => {
       expect(invocation.candidateUser.intents).toHaveLength(5);
       expect(invocation.sourceUser.intents[0]?.id).toBe('intent-patient');
       expect(invocation.candidateUser.intents[0]?.id).toBe('intent-agent');
+      expect(exactIntentLookups).toEqual(['intent-patient', 'intent-agent']);
       expect(new Set(invocation.sourceUser.intents.map((intent) => intent.id)).size).toBe(5);
       expect(new Set(invocation.candidateUser.intents.map((intent) => intent.id)).size).toBe(5);
 
