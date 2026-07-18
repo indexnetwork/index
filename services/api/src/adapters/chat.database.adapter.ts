@@ -2460,6 +2460,13 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getLivePoolOpportunitiesForIntent(recipientUserId, intentId);
   }
+  /** Lens-C-only (IND-465): exact intent pool including terminal statuses. */
+  async getEvidencePoolOpportunitiesForIntent(
+    recipientUserId: string,
+    intentId: string,
+  ): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.getEvidencePoolOpportunitiesForIntent(recipientUserId, intentId);
+  }
   async getOpportunitiesForNetwork(
     networkId: string,
     options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }

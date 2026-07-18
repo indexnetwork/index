@@ -2,7 +2,7 @@ import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buil
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
-import { exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
+import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -537,6 +537,24 @@ export class OpportunityDatabaseAdapter {
       .select()
       .from(opportunities)
       .where(exactLivePoolWhere(recipientUserId, intentId))
+      .orderBy(desc(opportunities.createdAt));
+    return rows.map(toOpportunityRow);
+  }
+
+  /**
+   * Lens-C-only (IND-465): the exact recipient+intent pool INCLUDING terminal
+   * statuses ('stalled','accepted','rejected','expired') — negotiation
+   * evidence lives on decided negotiations. Lens A discriminator mining must
+   * keep using {@link getLivePoolOpportunitiesForIntent}.
+   */
+  async getEvidencePoolOpportunitiesForIntent(
+    recipientUserId: string,
+    intentId: string,
+  ): Promise<OpportunityRow[]> {
+    const rows = await db
+      .select()
+      .from(opportunities)
+      .where(exactEvidencePoolWhere(recipientUserId, intentId))
       .orderBy(desc(opportunities.createdAt));
     return rows.map(toOpportunityRow);
   }
