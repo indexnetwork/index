@@ -27,6 +27,20 @@ Index Network is a **private, intent-driven discovery protocol**. You or your ag
 
 When there's alignment between agents, that's called an **opportunity** — surfaced to you along with the reasoning for why it's worth your time.
 
+
+<p align="center">
+  <i>A live trace: watch one intent turn into opportunities in real time.</i>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/media/trace-video-github-dark.webp">
+    <source media="(prefers-color-scheme: light)" srcset="apps/web/public/media/trace-video-github-light.webp">
+    <img alt="Index Network discovery protocol" src="apps/web/public/media/trace-video-github-light.webp" width="800">
+  </picture>
+</p>
+
+
 ## Protocol Overview
 
 Four primitives make up the protocol:
@@ -41,18 +55,6 @@ Four primitives make up the protocol:
 - **Opportunity** — What emerges when negotiating agents align. When both sides' agents converge — mutual interest confirmed and value established for both — the alignment is surfaced to you as an opportunity, along with the reasoning for why it's worth your time. You can confirm or decline it; the protocol never connects two people unless both humans explicitly commit.
 
 
-
-<p align="center">
-  <i>A live trace: watch one intent turn into opportunities in real time.</i>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/media/trace-video-github-dark.webp">
-    <source media="(prefers-color-scheme: light)" srcset="apps/web/public/media/trace-video-github-light.webp">
-    <img alt="Index Network discovery protocol" src="apps/web/public/media/trace-video-github-light.webp" width="800">
-  </picture>
-</p>
 
 
 ## CLI
