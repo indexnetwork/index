@@ -156,7 +156,7 @@ export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from
 export { negotiationEvidenceQuestionsMode, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES } from "./opportunity/negotiation-evidence/negotiation-evidence.env.js";
 export { NegotiationEvidenceMiner } from "./opportunity/negotiation-evidence/negotiation-evidence.miner.js";
 export { runNegotiationEvidenceShadow } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
-export type { RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceSegment } from "./opportunity/negotiation-evidence/negotiation-evidence.types.js";
+export type { RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment } from "./opportunity/negotiation-evidence/negotiation-evidence.types.js";
 
 // Lens B — outcome-question shadow (IND-434)
 export { isOutcomeQuestionsActivated, OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunity/outcome/outcome.env.js";

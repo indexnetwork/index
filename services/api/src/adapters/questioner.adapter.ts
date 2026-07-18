@@ -155,6 +155,21 @@ export interface AnsweredPoolPreference {
   chosenSide: string;
 }
 
+/**
+ * One answeredBy-verified owner answer to a negotiation-family question
+ * (IND-465 Lens C evidence). Never carries question text or detection
+ * payloads — only the answer content plus verification fields.
+ */
+export interface AnsweredNegotiationOwnerAnswer {
+  questionId: string;
+  answeredBy: string;
+  answeredAt: string;
+  selectedOptions: string[];
+  freeText?: string;
+  /** Capture-time intent fingerprint, when the detection recorded one. */
+  capturedIntentFingerprint?: string;
+}
+
 export interface PoolQuestionFreshnessOptions {
   /** Fingerprint of the full current intent payload + summary. */
   currentIntentFingerprint?: string;
@@ -1441,6 +1456,99 @@ export class QuestionerAdapter {
         chosenSide,
       }];
     }).slice(0, 10);
+  }
+
+  /**
+   * Read answeredBy-verified owner answers to negotiation-family questions
+   * for one opportunity (IND-465 slice 2 — Lens C owner_answer evidence).
+   *
+   * AUTHORITATIVE SOURCE: the questions table ONLY. Never read
+   * `opportunity.metadata.userAnswers` for evidence — it carries no
+   * `answeredBy` (authority unverifiable), is a counterparty-visible channel,
+   * and ask_user expiry writes synthetic entries containing disclosure text.
+   *
+   * Fail-closed constraints, enforced in SQL AND re-checked in projection:
+   * - status = 'answered' and answer.answeredBy === recipientUserId;
+   * - detection mode restricted to `negotiation` / `negotiation_inflight` —
+   *   the only modes whose detection.sourceId is an opportunityId
+   *   (pool_discovery and intent/message-scoped modes are excluded);
+   * - detection.sourceType = 'opportunity' and detection.sourceId = opportunityId;
+   * - recipient is a subject actor on the question row;
+   * - a capture-time intent fingerprint, when present on the detection, must
+   *   equal `currentIntentFingerprint`; absence is tolerated (the Lens C
+   *   segment-level task fingerprint guard already covers intent drift).
+   *
+   * @param recipientUserId - Segment recipient; must be actor AND answerer.
+   * @param opportunityId - Opportunity the questions must be bound to.
+   * @param currentIntentFingerprint - Current capture-time intent fingerprint.
+   * @returns Verified owner answers, newest first.
+   */
+  async getAnsweredNegotiationQuestionsForOpportunity(
+    recipientUserId: string,
+    opportunityId: string,
+    currentIntentFingerprint: string,
+  ): Promise<AnsweredNegotiationOwnerAnswer[]> {
+    const rows = await this.db
+      .select({
+        id: questions.id,
+        detection: questions.detection,
+        actors: questions.actors,
+        answer: questions.answer,
+      })
+      .from(questions)
+      .where(and(
+        eq(questions.status, 'answered'),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: recipientUserId, role: 'subject' }])}::jsonb`,
+        or(
+          sql`${questions.detection}->>'mode' = 'negotiation'`,
+          sql`${questions.detection}->>'mode' = 'negotiation_inflight'`,
+        ),
+        sql`${questions.detection}->>'sourceType' = 'opportunity'`,
+        sql`${questions.detection}->>'sourceId' = ${opportunityId}`,
+        sql`${questions.answer}->>'answeredBy' = ${recipientUserId}`,
+        or(
+          sql`${questions.detection}->>'intentFingerprint' IS NULL`,
+          sql`${questions.detection}->>'intentFingerprint' = ${currentIntentFingerprint}`,
+        ),
+      ))
+      .orderBy(desc(questions.createdAt));
+
+    return rows.flatMap((row) => {
+      const detection = row.detection as AdapterQuestionDetection;
+      const answer = row.answer as AdapterQuestionAnswer | null;
+      const actorOwned = (row.actors as AdapterQuestionActor[]).some(
+        (actor) => actor.userId === recipientUserId && actor.role === 'subject',
+      );
+      if (!actorOwned
+        || !answer
+        || answer.answeredBy !== recipientUserId
+        || (detection.mode !== 'negotiation' && detection.mode !== 'negotiation_inflight')
+        || detection.sourceType !== 'opportunity'
+        || detection.sourceId !== opportunityId) {
+        return [];
+      }
+      const capturedIntentFingerprint = (detection as unknown as Record<string, unknown>).intentFingerprint;
+      if (capturedIntentFingerprint !== undefined
+        && capturedIntentFingerprint !== currentIntentFingerprint) {
+        return [];
+      }
+      if (!Array.isArray(answer.selectedOptions)
+        || !answer.selectedOptions.every((option) => typeof option === 'string')) {
+        return [];
+      }
+      const freeText = typeof answer.freeText === 'string' && answer.freeText.trim().length > 0
+        ? answer.freeText
+        : undefined;
+      if (answer.selectedOptions.length === 0 && freeText === undefined) return [];
+      return [{
+        questionId: row.id,
+        answeredBy: answer.answeredBy,
+        answeredAt: answer.answeredAt,
+        selectedOptions: answer.selectedOptions,
+        ...(freeText !== undefined ? { freeText } : {}),
+        ...(typeof capturedIntentFingerprint === 'string' ? { capturedIntentFingerprint } : {}),
+      }];
+    });
   }
 
   /**

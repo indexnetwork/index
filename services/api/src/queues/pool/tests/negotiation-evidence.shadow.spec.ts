@@ -79,6 +79,7 @@ function makeDeps(overrides: Partial<NegotiationEvidenceShadowDeps> = {}): {
       ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: 'hello' } }] }]],
     ])),
     getArtifactsForTask: mock(async () => []),
+    getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
   };
   const runShadow: NegotiationEvidenceShadowDeps['runShadow'] = async (input) => {
     capturedSegments.push(input.segments);
@@ -154,6 +155,7 @@ describe('negotiation evidence task isolation and validation', () => {
       getNegotiationTasksForOpportunity: mock(async () => [task('task-1'), task('task-2')]),
       getMessagesByTaskIds,
       getArtifactsForTask,
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
 
     const segments = await collectNegotiationEvidenceSegments({
@@ -192,6 +194,7 @@ describe('negotiation evidence task isolation and validation', () => {
       ]),
       getMessagesByTaskIds: mock(async () => new Map()),
       getArtifactsForTask: mock(async () => []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
     const segments = await collectNegotiationEvidenceSegments({
       opportunities: [OPPORTUNITY],
@@ -220,6 +223,7 @@ describe('negotiation evidence task isolation and validation', () => {
         { senderId: 'agent:third-user', parts: [{ kind: 'data', data: { action: 'decline' } }] },
       ]]])),
       getArtifactsForTask: mock(async () => []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
     const [segment] = await collectNegotiationEvidenceSegments({
       opportunities: [OPPORTUNITY],
@@ -284,6 +288,7 @@ describe('negotiation evidence task isolation and validation', () => {
       ]),
       getMessagesByTaskIds: mock(async () => new Map()),
       getArtifactsForTask: mock(async () => []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
     const segments = await collectNegotiationEvidenceSegments({
       opportunities: [OPPORTUNITY],
@@ -329,6 +334,7 @@ describe('negotiation evidence task isolation and validation', () => {
       ]),
       getMessagesByTaskIds: mock(async () => new Map()),
       getArtifactsForTask: mock(async (taskId: string) => artifactsByTaskId[taskId] ?? []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
 
     const segments = await collectNegotiationEvidenceSegments({
@@ -577,5 +583,104 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
     const atFloor = await run(5);
     expect(atFloor.mine).toHaveBeenCalledTimes(1);
     expect(atFloor.infos[0]).toMatchObject({ distinctOpportunities: 5 });
+  });
+});
+
+describe('IND-465 slice 2 — answeredBy-verified owner answers', () => {
+  const COLLECT_INPUT = {
+    opportunities: [OPPORTUNITY],
+    recipientUserId: 'owner-1',
+    intentId: 'intent-1',
+    currentIntentFingerprint: FINGERPRINT,
+    networkId: 'net-1',
+  };
+
+  function databaseWithAnswers(
+    answers: Awaited<ReturnType<ShadowDatabase['getAnsweredNegotiationQuestionsForOpportunity']>>,
+    tasks: ShadowTask[] = [task('task-1')],
+  ): ShadowDatabase {
+    return {
+      getIntent: mock(async () => INTENT),
+      getNegotiationTasksForOpportunity: mock(async () => tasks),
+      getMessagesByTaskIds: mock(async () => new Map()),
+      getArtifactsForTask: mock(async () => []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => answers),
+    };
+  }
+
+  it('projects answers answered by the recipient and re-checks authority and fingerprint fail-closed', async () => {
+    const database = databaseWithAnswers([
+      // Verified: recipient answered, no captured fingerprint.
+      { answeredBy: 'owner-1', selectedOptions: ['Yes, share it'], freeText: 'Prefer async collaboration' },
+      // Verified: matching captured fingerprint tolerated and kept.
+      { answeredBy: 'owner-1', selectedOptions: ['Fresh answer'], capturedIntentFingerprint: FINGERPRINT },
+      // Excluded: answered by the counterparty (authority re-check).
+      { answeredBy: 'counterparty-1', selectedOptions: ['Leaked counterparty answer'] },
+      // Excluded: captured fingerprint drifted from the current intent.
+      { answeredBy: 'owner-1', selectedOptions: ['Stale answer'], capturedIntentFingerprint: 'drifted-fingerprint' },
+      // Excluded: empty answer content.
+      { answeredBy: 'owner-1', selectedOptions: [], freeText: '   ' },
+    ]);
+
+    const [segment] = await collectNegotiationEvidenceSegments(COLLECT_INPUT, database);
+
+    expect(database.getAnsweredNegotiationQuestionsForOpportunity)
+      .toHaveBeenCalledWith('owner-1', 'opp-1', FINGERPRINT);
+    expect(segment.ownerAnswers).toEqual([
+      { answererUserId: 'owner-1', selectedOptions: ['Yes, share it'], freeText: 'Prefer async collaboration' },
+      { answererUserId: 'owner-1', selectedOptions: ['Fresh answer'] },
+    ]);
+    expect(JSON.stringify(segment)).not.toContain('Leaked counterparty answer');
+    expect(JSON.stringify(segment)).not.toContain('Stale answer');
+  });
+
+  it('keeps ownerAnswers undefined when no verified answers exist', async () => {
+    const [segment] = await collectNegotiationEvidenceSegments(COLLECT_INPUT, databaseWithAnswers([]));
+    expect(segment.ownerAnswers).toBeUndefined();
+    expect('ownerAnswers' in segment).toBe(false);
+  });
+
+  it('fetches answers once per opportunity, scoped to that opportunity id, and shares them across continuations', async () => {
+    const database = databaseWithAnswers(
+      [{ answeredBy: 'owner-1', selectedOptions: ['Shared across continuations'] }],
+      [task('task-1'), task('task-2')],
+    );
+
+    const segments = await collectNegotiationEvidenceSegments(COLLECT_INPUT, database);
+
+    expect(database.getAnsweredNegotiationQuestionsForOpportunity).toHaveBeenCalledTimes(1);
+    expect(database.getAnsweredNegotiationQuestionsForOpportunity)
+      .toHaveBeenCalledWith('owner-1', 'opp-1', FINGERPRINT);
+    expect(segments.map((segment) => [segment.taskId, segment.ownerAnswers])).toEqual([
+      ['task-1', [{ answererUserId: 'owner-1', selectedOptions: ['Shared across continuations'] }]],
+      ['task-2', [{ answererUserId: 'owner-1', selectedOptions: ['Shared across continuations'] }]],
+    ]);
+  });
+
+  it('never fetches answers for opportunities without validated tasks', async () => {
+    const database = databaseWithAnswers(
+      [{ answeredBy: 'owner-1', selectedOptions: ['Should never be fetched'] }],
+      [task('wrong-participant', { candidateUserId: 'third-user' })],
+    );
+
+    const segments = await collectNegotiationEvidenceSegments(COLLECT_INPUT, database);
+
+    expect(segments).toEqual([]);
+    expect(database.getAnsweredNegotiationQuestionsForOpportunity).not.toHaveBeenCalled();
+  });
+
+  it('projects verified owner answers end-to-end through the shadow pass', async () => {
+    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
+    const { deps, capturedSegments } = makeDeps();
+    deps.database.getAnsweredNegotiationQuestionsForOpportunity = mock(async () => [
+      { answeredBy: 'owner-1', selectedOptions: ['Weekly sync works'] },
+    ]);
+
+    await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
+
+    expect(capturedSegments).toHaveLength(1);
+    expect(capturedSegments[0][0].ownerAnswers).toEqual([
+      { answererUserId: 'owner-1', selectedOptions: ['Weekly sync works'] },
+    ]);
   });
 });
