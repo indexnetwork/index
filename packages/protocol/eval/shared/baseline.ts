@@ -1,7 +1,21 @@
-import { buildEvalArtifact, EVAL_BASELINE_ARTIFACT_TYPE, EVAL_RUN_REPORT_ARTIFACT_TYPE, type EvalRunMeta } from "./artifact.js";
+import { buildEvalArtifact, EVAL_BASELINE_ARTIFACT_TYPE, EVAL_RUN_REPORT_ARTIFACT_TYPE, type EvalArtifactEnvelope, type EvalRunMeta } from "./artifact.js";
 import { readEvalArtifact, writeEvalArtifact } from "./artifact.io.js";
+import { summarizeExecution } from "./runner.js";
 import { predictivePValue } from "./stats.js";
 import type { CaseResultLike, Regression, ScorecardLike } from "./types.js";
+
+/** The explicit added/removed/skipped case report attached to every baseline diff. */
+export interface BaselineDiff {
+  regressions: Regression[];
+  /** Current cases with scored runs that are absent from the baseline (never regressions). */
+  skippedCaseIds: string[];
+  /** Every current case absent from the baseline, including unscored ones. */
+  addedCaseIds: string[];
+  /** Baseline cases absent from the current run. */
+  removedCaseIds: string[];
+  /** Current cases with zero terminal successful runs (execution failures, not scoring failures). */
+  unscoredCaseIds: string[];
+}
 
 /**
  * Compares a current scorecard against a baseline and returns any regressions.
@@ -14,14 +28,14 @@ import type { CaseResultLike, Regression, ScorecardLike } from "./types.js";
  * @param current - The scorecard produced by the current run.
  * @param baseline - The previously saved baseline scorecard, or `null` if none exists.
  * @param alpha - Significance level for the one-sided test.
- * @returns Detected regressions plus the ids of current cases absent from the baseline.
+ * @returns Detected regressions plus explicit added/removed/skipped case reports.
  */
 export function diffBaseline(
   current: ScorecardLike,
   baseline: ScorecardLike | null,
   alpha = 0.05,
-): { regressions: Regression[]; skippedCaseIds: string[] } {
-  if (!baseline) return { regressions: [], skippedCaseIds: [] };
+): BaselineDiff {
+  if (!baseline) return { regressions: [], skippedCaseIds: [], addedCaseIds: [], removedCaseIds: [], unscoredCaseIds: [] };
   const regressions: Regression[] = [];
   const skippedCaseIds: string[] = [];
 
@@ -65,7 +79,14 @@ export function diffBaseline(
     }
   }
 
-  return { regressions, skippedCaseIds };
+  const currentIds = new Set(current.cases.map((c) => c.caseId));
+  return {
+    regressions,
+    skippedCaseIds,
+    addedCaseIds: current.cases.filter((c) => !baseCases.has(c.caseId)).map((c) => c.caseId),
+    removedCaseIds: baseline.cases.filter((c) => !currentIds.has(c.caseId)).map((c) => c.caseId),
+    unscoredCaseIds: current.cases.filter((c) => c.runs === 0).map((c) => c.caseId),
+  };
 }
 
 /**
@@ -84,11 +105,47 @@ export async function readBaseline<T extends ScorecardLike>(
   path: string,
   options: { harness: string },
 ): Promise<T | null> {
-  const envelope = await readEvalArtifact<T>(path, {
+  const envelope = await readBaselineArtifact<T>(path, options);
+  return envelope?.payload ?? null;
+}
+
+/**
+ * Reads a committed baseline as its full versioned envelope, preserving the
+ * provenance (fingerprints, models, selection, git, completeness) the ER4
+ * comparability assessment gates on. Returns `null` when the file is missing.
+ */
+export async function readBaselineArtifact<T extends ScorecardLike>(
+  path: string,
+  options: { harness: string },
+): Promise<EvalArtifactEnvelope<T> | null> {
+  return readEvalArtifact<T>(path, {
     expectedType: EVAL_BASELINE_ARTIFACT_TYPE,
     expectedHarness: options.harness,
   });
-  return envelope?.payload ?? null;
+}
+
+/**
+ * The write-eligibility gate for committed baselines (IND-445): complete
+ * evidence with no missing terminal slots, a full-corpus unfiltered
+ * selection, and an identifiable clean Git revision. Enforced at the shared
+ * writer choke point so no harness can bypass it.
+ */
+export function assertBaselineWriteEligible(meta: EvalRunMeta): void {
+  const execution = summarizeExecution(meta.execution);
+  if (!execution.complete) {
+    throw new Error(
+      `Refusing to write baseline from incomplete evidence: ${execution.completedRuns}/${execution.requestedRuns} requested runs completed`,
+    );
+  }
+  if (!meta.selection.fullCorpus || Object.keys(meta.selection.filters).length > 0) {
+    throw new Error("Refusing to write baseline from a filtered run: committed baselines require a full-corpus, unfiltered run");
+  }
+  if (meta.git.revision === "unknown") {
+    throw new Error("Refusing to write baseline without an identifiable Git revision: run from a Git checkout");
+  }
+  if (meta.git.dirty !== false) {
+    throw new Error("Refusing to write baseline from a dirty (or unverifiable) working tree: commit or stash local changes first");
+  }
 }
 
 /**
@@ -114,6 +171,7 @@ export async function writeBaseline<C extends CaseResultLike>(
   sc: ScorecardLike<C>,
   opts: { meta: EvalRunMeta; leanCase?: (c: C) => C; force?: boolean },
 ): Promise<void> {
+  assertBaselineWriteEligible(opts.meta);
   const leanCase = opts.leanCase ?? ((c: C) => c);
   const lean: ScorecardLike<C> = { ...sc, cases: sc.cases.map(leanCase) };
   const envelope = buildEvalArtifact(EVAL_BASELINE_ARTIFACT_TYPE, lean, opts.meta);

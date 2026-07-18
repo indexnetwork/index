@@ -18,8 +18,38 @@ export { binomialCI, binomialPValue, predictivePValue, binomialSignificance, mea
 
 // ─── Scorecard + baseline ──────────────────────────────────────────────────
 export { buildScorecard, meanRate } from "./scorecard.js";
-export { diffBaseline, readBaseline, writeBaseline, writeRunReport } from "./baseline.js";
-export { computeRollingBaseline } from "./rolling.js";
+export { assertBaselineWriteEligible, diffBaseline, readBaseline, readBaselineArtifact, writeBaseline, writeRunReport, type BaselineDiff } from "./baseline.js";
+export { computeRollingBaseline, type RollingBaselineOptions, type RollingBaselineResult, type RollingCompatibility, type RollingExclusion } from "./rolling.js";
+
+// ─── Baseline governance (IND-445) ────────────────────────────────────
+export {
+  EVAL_BASELINE_UPDATE_SUMMARY_TYPE,
+  assessBaselineComparability,
+  assertBaselineUpdatePermitted,
+  baselineUpdateSummaryPath,
+  buildBaselineUpdateSummary,
+  buildEvalScoringConfigFingerprint,
+  compareAgainstGovernedBaseline,
+  comparisonSubjectFromMeta,
+  emptyGovernedComparison,
+  formatBaselineUpdateSummary,
+  formatGovernedComparison,
+  governedComparisonExitStatus,
+  governedRegressionCount,
+  performGovernedBaselineUpdate,
+  resolveEvalJudgeModelId,
+  type BaselineArtifactDigest,
+  type BaselineUpdateSummary,
+  type EvalComparability,
+  type EvalComparabilityDimension,
+  type EvalComparabilityFinding,
+  type EvalComparabilityStatus,
+  type EvalComparisonSubject,
+  type EvalComparisonVerdict,
+  type GovernedBaselineUpdateOptions,
+  type GovernedComparison,
+  type GovernedComparisonOptions,
+} from "./governance.js";
 
 // ─── Versioned artifact envelope ───────────────────────────────────────────
 export {
@@ -62,6 +92,7 @@ export {
 export {
   readEvalArtifact,
   writeEvalArtifact,
+  writeEvalJsonFile,
   assertEvalWritePlan,
   type EvalWritePlan,
   type EvalWriteOutput,
@@ -121,6 +152,7 @@ export {
   assertBaselineEvidenceComplete,
   runEvalEvidenceFlow,
   installEvalProcessCancellation,
+  type EvalComparisonExitStatus,
   type EvalEvidenceFlowOptions,
   type EvalEvidenceFlowResult,
   type EvalProcessCancellation,
