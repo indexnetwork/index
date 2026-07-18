@@ -278,6 +278,8 @@ interface EnrichOpportunitiesInput {
   debugSteps: DiscoverDebugStep[];
   /** IDs of pre-existing opportunities merged into the list; these preserve their real status. */
   existingOpportunityIds?: Set<string>;
+  /** Preserve refreshed lifecycle status instead of applying the chat-session draft projection. */
+  preserveLifecycleStatus?: boolean;
   /** When set, bypass the embedding filter for this specific user (direct connection mode). */
   targetUserId?: string;
 }
@@ -303,6 +305,7 @@ async function enrichOpportunities(
     useHomeCardFormat,
     debugSteps,
     existingOpportunityIds,
+    preserveLifecycleStatus,
     targetUserId,
   } = input;
 
@@ -602,7 +605,9 @@ async function enrichOpportunities(
           },
         ),
         score: item.confidence,
-        status: chatSessionId && !existingOpportunityIds?.has(item.opportunity.id) ? "draft" : item.opportunity.status,
+        status: !preserveLifecycleStatus && chatSessionId && !existingOpportunityIds?.has(item.opportunity.id)
+          ? "draft"
+          : item.opportunity.status,
         viewerRole: item.viewerRole,
         viewerApproved: item.viewerApproved,
         viewerActedAt: item.viewerActedAt,
@@ -1322,10 +1327,18 @@ export async function continueDiscovery(input: {
     });
   }
 
-  // Check for opportunities in result
+  // Check for opportunities in result. Negotiation mutates lifecycle state after
+  // persistence, so continuation must refresh before enrichment/presentation rather
+  // than returning the graph state's persist-time `negotiating` snapshots.
   const opportunities: Opportunity[] = Array.isArray(result.opportunities) ? result.opportunities : [];
+  const refreshed = opportunities.length > 0
+    ? await database.getOpportunitiesByIds(opportunities.map((opportunity) => opportunity.id))
+    : [];
+  const refreshedById = new Map(refreshed.map((opportunity) => [opportunity.id, opportunity] as const));
+  const currentOpportunities = opportunities.map((opportunity) =>
+    refreshedById.get(opportunity.id) ?? opportunity);
 
-  if (opportunities.length === 0) {
+  if (currentOpportunities.length === 0) {
     return {
       found: false,
       count: 0,
@@ -1336,7 +1349,7 @@ export async function continueDiscovery(input: {
   }
 
   const enriched = await enrichOpportunities({
-    opportunities,
+    opportunities: currentOpportunities,
     database,
     userId,
     chatSessionId,
@@ -1344,6 +1357,7 @@ export async function continueDiscovery(input: {
     presenter: input.presenter,
     useHomeCardFormat: input.useHomeCardFormat,
     debugSteps,
+    preserveLifecycleStatus: true,
   });
 
   return {

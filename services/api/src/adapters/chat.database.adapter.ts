@@ -2495,13 +2495,52 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy, outbox);
   }
+
+  /**
+   * Delegates exact-version, active-task-aware compensation for a taskless
+   * `negotiating` opportunity to OpportunityDatabaseAdapter.
+   *
+   * @param id - Opportunity ID
+   * @param expectedUpdatedAt - Persistence boundary for the negotiation attempt
+   * @param fallbackStatus - Status restored when the guarded update succeeds
+   * @returns The compensated opportunity, or null on a status, version, or task race
+   */
+  async compensateTasklessNegotiatingOpportunity(
+    id: string,
+    expectedUpdatedAt: Date,
+    fallbackStatus: 'latent' | 'draft',
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.compensateTasklessNegotiatingOpportunity(
+      id,
+      expectedUpdatedAt,
+      fallbackStatus,
+    );
+  }
+
+  /**
+   * Delegates network-eligible status compare-and-set reactivation.
+   *
+   * @param id - Opportunity ID
+   * @param status - Target lifecycle status
+   * @param actors - Participant network anchors
+   * @param eligibility - Authoritative owner/network/intent scope
+   * @param expectedStatus - Optional compare-and-set source status
+   * @returns The updated opportunity, or null after scope/status drift
+   */
   async updateOpportunityStatusIfNetworkEligible(
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     actors: Array<{ userId: string; networkId: string }>,
     eligibility: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[3],
+    expectedStatus?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[4],
   ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityStatusIfNetworkEligible(id, status, actors, eligibility);
+    return this.opportunityAdapter.updateOpportunityStatusIfNetworkEligible(
+      id,
+      status,
+      actors,
+      eligibility,
+      expectedStatus,
+    );
   }
   async updateOpportunityActorApproval(
     id: string,

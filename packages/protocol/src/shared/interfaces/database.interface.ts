@@ -1274,13 +1274,22 @@ export interface Database {
 
   /**
    * Atomically update status only while the supplied participant anchors remain
-   * active. Used for discovery dedup reactivation races.
+   * active and, when supplied, the opportunity still has `expectedStatus`.
+   * Used for discovery dedup reactivation races.
+   *
+   * @param id - Opportunity ID
+   * @param status - Target lifecycle status
+   * @param actors - Participant anchors that must remain network-eligible
+   * @param eligibility - Authoritative owner/network/intent scope
+   * @param expectedStatus - Optional compare-and-set source status
+   * @returns The updated opportunity, or null after eligibility/status drift
    */
   updateOpportunityStatusIfNetworkEligible?(
     id: string,
     status: OpportunityStatus,
     actors: OpportunityActor[],
     eligibility: OpportunityNetworkEligibility,
+    expectedStatus?: OpportunityStatus,
   ): Promise<Opportunity | null>;
 
   /**
@@ -1368,6 +1377,22 @@ export interface Database {
     status: OpportunityStatus,
     acceptedBy?: string,
     outbox?: OutcomeOutbox,
+  ): Promise<Opportunity | null>;
+
+  /**
+   * Atomically restores a taskless negotiation attempt to its pre-negotiation status.
+   * Transitions only the exact still-current `negotiating` version and only when no
+   * active negotiation task exists and no task was created at or after `expectedUpdatedAt`.
+   *
+   * @param id - Opportunity ID
+   * @param expectedUpdatedAt - Persistence boundary for this negotiation attempt
+   * @param fallbackStatus - Status restored when the guarded transition succeeds
+   * @returns The compensated opportunity, or null on a status, version, or task race
+   */
+  compensateTasklessNegotiatingOpportunity(
+    id: string,
+    expectedUpdatedAt: Date,
+    fallbackStatus: 'latent' | 'draft',
   ): Promise<Opportunity | null>;
 
   /**
@@ -2163,6 +2188,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'findOpportunitiesByActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
+  | 'compensateTasklessNegotiatingOpportunity'
   | 'updateOpportunityActorApproval'
   | 'stampOpportunityActorAction'
   | 'getOrCreateDM'
@@ -2263,6 +2289,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOpportunity'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
+  | 'compensateTasklessNegotiatingOpportunity'
   | 'stampOpportunityActorAction'
   | 'updateOpportunityActorApproval'
   | 'isNetworkMember'

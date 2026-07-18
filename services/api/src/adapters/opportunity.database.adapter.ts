@@ -173,6 +173,7 @@ export class OpportunityDatabaseAdapter {
         context: data.context,
         confidence: data.confidence,
         status: data.status ?? 'pending',
+        updatedAt: new Date(),
         expiresAt: data.expiresAt ?? null,
         ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
       })
@@ -250,6 +251,7 @@ export class OpportunityDatabaseAdapter {
           context: data.context,
           confidence: data.confidence,
           status: data.status ?? 'pending',
+          updatedAt: new Date(),
           expiresAt: data.expiresAt ?? null,
           ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
         })
@@ -261,11 +263,23 @@ export class OpportunityDatabaseAdapter {
     return created;
   }
 
+  /**
+   * Reactivates an opportunity only while participant scope and optional source
+   * status remain current.
+   *
+   * @param id - Opportunity ID
+   * @param status - Target lifecycle status
+   * @param actors - Participant network anchors
+   * @param eligibility - Authoritative owner/network/intent scope
+   * @param expectedStatus - Optional compare-and-set source status
+   * @returns The updated opportunity, or null after scope/status drift
+   */
   async updateOpportunityStatusIfNetworkEligible(
     id: string,
     status: OpportunityRow['status'],
     actors: Array<{ userId: string; networkId: string }>,
     eligibility: OpportunityNetworkEligibilityInput,
+    expectedStatus?: OpportunityRow['status'],
   ): Promise<OpportunityRow | null> {
     const actorNetworkIds = [...new Set(actors.map((actor) => actor.networkId))];
     const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
@@ -324,12 +338,57 @@ export class OpportunityDatabaseAdapter {
       const [row] = await tx
         .update(opportunities)
         .set({ status, acceptedBy: null, updatedAt: new Date() })
-        .where(eq(opportunities.id, id))
+        .where(and(
+          eq(opportunities.id, id),
+          ...(expectedStatus ? [eq(opportunities.status, expectedStatus)] : []),
+        ))
         .returning();
       return row ? toOpportunityRow(row) : null;
     });
     if (updated) emitOpportunityPendingBestEffort(updated);
     return updated;
+  }
+
+  /**
+   * Atomically restores an exact taskless negotiation attempt to its fallback status.
+   * The update succeeds only while the opportunity remains at the expected
+   * `negotiating` version, no active task exists, and no task was created at or
+   * after that boundary.
+   *
+   * @param id - Opportunity ID
+   * @param expectedUpdatedAt - Persistence boundary for the negotiation attempt
+   * @param fallbackStatus - Status to restore when the guarded update succeeds
+   * @returns The compensated opportunity, or null on a status, version, or task race
+   */
+  async compensateTasklessNegotiatingOpportunity(
+    id: string,
+    expectedUpdatedAt: Date,
+    fallbackStatus: 'latent' | 'draft',
+  ): Promise<OpportunityRow | null> {
+    const [row] = await db
+      .update(opportunities)
+      .set({ status: fallbackStatus, acceptedBy: null, updatedAt: new Date() })
+      .where(and(
+        eq(opportunities.id, id),
+        eq(opportunities.status, 'negotiating'),
+        eq(opportunities.updatedAt, expectedUpdatedAt),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM ${schema.tasks}
+          WHERE ${schema.tasks.metadata}->>'type' = 'negotiation'
+            AND ${schema.tasks.metadata}->>'opportunityId' = ${id}
+            AND (
+              ${schema.tasks.createdAt} >= ${expectedUpdatedAt.toISOString()}::timestamptz
+              OR ${schema.tasks.state} = 'input_required'
+              OR (
+                ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
+                AND ${schema.tasks.updatedAt} >= NOW() - INTERVAL '5 minutes'
+              )
+            )
+        )`,
+      ))
+      .returning();
+    return row ? toOpportunityRow(row) : null;
   }
 
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
@@ -888,6 +947,7 @@ export class OpportunityDatabaseAdapter {
           context: data.context,
           confidence: data.confidence,
           status: data.status ?? 'pending',
+          updatedAt: new Date(),
           expiresAt: data.expiresAt ?? null,
           ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
         })
@@ -979,6 +1039,7 @@ export class OpportunityDatabaseAdapter {
           context: data.context,
           confidence: data.confidence,
           status: data.status ?? 'pending',
+          updatedAt: new Date(),
           expiresAt: data.expiresAt ?? null,
           ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
         })

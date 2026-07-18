@@ -904,8 +904,31 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           });
         }
 
+        // Continuation now negotiates just like fresh discovery. For MCP callers,
+        // surface only post-negotiation drafts; keep in-flight attempts count-only
+        // and never render rejected/stalled or fallback latent rows as cards.
+        let negotiatingCount = 0;
+        const continuationCards = context.isMcp
+          ? (result.opportunities ?? []).filter((opportunity) => {
+              if (opportunity.status === 'draft') return true;
+              if (opportunity.status === 'negotiating') {
+                negotiatingCount += 1;
+                return false;
+              }
+              if (opportunity.status === 'rejected' || opportunity.status === 'stalled' || opportunity.status === 'latent') {
+                return false;
+              }
+              discoverOpportunitiesLog.warn('unexpected continuation status — counting as negotiating', {
+                opportunityId: opportunity.opportunityId,
+                status: opportunity.status,
+              });
+              negotiatingCount += 1;
+              return false;
+            })
+          : (result.opportunities ?? []);
+
         // Build card data; cap at CHAT_DISPLAY_LIMIT (remaining feeds into pagination)
-        const allCardData = (result.opportunities ?? []).map((opp) => ({
+        const allCardData = continuationCards.map((opp) => ({
           opportunityId: opp.opportunityId,
           userId: opp.userId,
           name: opp.name,
@@ -930,14 +953,21 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           isMcp: context.isMcp ?? false,
           leadIn: `Found ${displayedCards.length} more potential connection(s).`,
         });
+        if (context.isMcp && negotiatingCount > 0) {
+          message = displayedCards.length > 0
+            ? `${message}\n\n${negotiatingCount} more opportunit${negotiatingCount === 1 ? 'y is' : 'ies are'} still being evaluated — check back via \`list_opportunities\` shortly.`
+            : `Found candidates, but they're still being evaluated. Try \`list_opportunities\` in a minute — ${negotiatingCount} pending.`;
+        } else if (context.isMcp && displayedCards.length === 0) {
+          message = 'No additional actionable matches were found in this continuation.';
+        }
 
         const isIntroducerContinuation = !!query.introTargetUserId?.trim();
         const totalRemaining = (result.pagination?.remaining ?? 0) + extraFromCap;
         if (totalRemaining > 0 && result.pagination?.discoveryId) {
           message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call discover_opportunities with continueFrom="${result.pagination.discoveryId}".`;
-        } else if (isIntroducerContinuation) {
+        } else if (displayedCards.length > 0 && isIntroducerContinuation) {
           message += `\n\nThese are all the introduction candidates I found for this person.`;
-        } else {
+        } else if (displayedCards.length > 0) {
           message += `\n\nThese are all the connections I found. If the user wants to attract more connections, suggest they create a signal — e.g. "Would you like to create a signal so others looking for someone like you can find you?" If they agree, call create_intent with a description based on what they were searching for.`;
         }
 
