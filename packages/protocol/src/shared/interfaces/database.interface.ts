@@ -2322,6 +2322,17 @@ export interface NegotiationQueries {
   setTaskScreenDecision?(taskId: string, screenDecision: Record<string, unknown>): Promise<void>;
 
   /**
+   * Merges an applied deadlock→bargaining shift record (IND-428) into
+   * `metadata.deadlockShift`, leaving other metadata keys intact. Internal
+   * analytics only — API surfaces must never project this key. Optional so
+   * existing fakes/wireups remain valid; when absent the turn node logs the
+   * shift and proceeds without persisting.
+   * @param taskId - Task whose metadata to enrich
+   * @param deadlockShift - DeadlockShiftRecord (run length, threshold, turn, seat, timing)
+   */
+  setTaskDeadlockShift?(taskId: string, deadlockShift: Record<string, unknown>): Promise<void>;
+
+  /**
    * Returns the most-recently-created task whose metadata carries
    * `type: 'negotiation'` and `opportunityId: <id>`. Returns null if no
    * negotiation has been started for that opportunity yet.

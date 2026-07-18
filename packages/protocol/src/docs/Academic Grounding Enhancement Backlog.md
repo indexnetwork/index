@@ -71,6 +71,8 @@ Implemented a canonical three-value QUD taxonomy across IntentClarifier and the 
 
 ## 6. Formal dialogue-game framing for negotiation — **M**
 
+> **Status: shipped (IND-428).** The formal framing is documented in `docs/design/negotiation-dialogue-game.md` (monorepo) — locutions, combination rules via `allowedActionsFor`, commitment store as the persisted turn history, termination via `isTerminalAction` + turn cap — cross-linked from `docs/domain/negotiation.md`. The same PR ships the one genuinely new mechanism: deterministic deadlock detection (N consecutive `counter`/`question` turns, `NEGOTIATION_DEADLOCK_THRESHOLD`, no LLM in the decision) with a flag-gated (`NEGOTIATION_DEADLOCK_SHIFT_ENABLED`, strict default-off) persuasion→bargaining drafting-stance shift for v2 system-agent turns — concessions/scope reductions, or `ask_user` escalation where already legal. The shift changes stance only: locutions, seat vocabularies, termination, and turn-cap semantics are untouched.
+
 **Theory:** McBurney & Parsons (2001) dialogue games; Wells & Reed (2006) persuasion→negotiation (PP0→NP0) shift. *(Report rank #5, Ch. 8.)*
 
 **Mostly formalizes what exists:** `negotiation/negotiation.protocol.ts` already defines versioned per-seat turn schemas (`outreach/counter/question/withdraw/accept/decline/ask_user`), terminality (`isTerminalAction`), and seat resolution — that *is* a dialogue game, undocumented as such.
