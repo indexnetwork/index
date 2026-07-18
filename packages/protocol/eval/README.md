@@ -24,6 +24,21 @@ Each harness has its own README with full flag docs:
 [`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
 [`opportunity`](./opportunity/README.md) · [`clarification`](./clarification/README.md).
 
+## Public artifact viewer
+
+`bun run eval:view -- --input <artifact.json> --out <viewer.html>` generates a
+provider-free, deterministic, self-contained HTML inspector through the explicit adapters
+in [`eval/viewer/`](./viewer). It accepts shared schema-v1 and attempt-aware schema-v2
+baseline/run-report artifacts for the four baseline-backed harnesses plus strictly
+validated HyDE blind public batches.
+It uses an allowlisted public projection rather than recursively rendering JSON, rejects
+private/unblinding HyDE artifact families, refuses input/output collisions, and never
+modifies source bytes. See the [viewer README](./viewer/README.md) for its supported
+matrix, redaction boundary, baseline comparison, offline CSP, controls, and safe-failure
+behavior. Shared v1 did not record execution retry/attempt telemetry, so the viewer states
+that limitation rather than inferring it. For v2 it displays only structural run/attempt
+evidence and completeness; provider error text and model output/reasoning remain redacted.
+
 The IND-426 `hyde` harness is retrieval-only and has no committed baseline or run
 artifacts. Evidence-v2 is a staged collect -> blind export -> independent human
 adjudication -> resolve -> analyze -> report study over 90 frozen background cases, 900
@@ -86,6 +101,7 @@ eval/
 ├── profile/                # profile corpus, scorer, PII detectors, reporter
 ├── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
 ├── clarification/          # IntentClarifier QUD taxonomy corpus + scorer
+├── viewer/                 # provider-free, privacy-aware static artifact viewer
 └── verify.ts               # provider-free CI gate: per-suite typecheck + tests (see below)
 ```
 
@@ -214,6 +230,7 @@ bun run eval:verify              # the CI gate: everything below, plus typecheck
 bun test eval/shared/tests/      # the shared lib
 bun test eval/matching/tests/    # a harness
 bun test eval/premise/tests/ eval/profile/tests/
+bun test eval/viewer/tests/      # privacy, offline HTML, adapters, I/O
 ```
 
 These are standard `bun test` specs — they do NOT invoke live agents; they validate types,
@@ -228,7 +245,7 @@ One command verifies every suite without touching a provider:
    have a `tsconfig.json` and a `tests/` directory. New suites cannot escape CI
    unnoticed: an unlisted directory fails the run.
 2. **Per-suite typecheck** — `tsc --noEmit -p eval/<suite>/tsconfig.json` for all
-   seven suites (including `shared`; the regular protocol build only covers `src/`).
+   eight suites (including `shared` and the provider-free `viewer`; the regular protocol build only covers `src/`).
 3. **Provider-free tests** — `bun test --timeout 30000 eval/<suite>/tests/` per
    suite, each in its own process (so `mock.module()` state never leaks between
    suites). The per-test timeout is capped at 30 seconds (vs Bun's 5s default)
@@ -240,7 +257,7 @@ child environment, calls no models or embedders, and writes no baselines or run
 artifacts — so it needs no secrets. CI runs it in the `eval-verify` job of
 [`.github/workflows/lint.yml`](../../../.github/workflows/lint.yml) on every PR and
 push to `dev`/`main` (typically ~1–2 minutes; local runtime is dominated by the
-seven `tsc` invocations plus the `hyde` specs).
+eight `tsc` invocations plus the `hyde` specs).
 
 ## Baseline contract
 

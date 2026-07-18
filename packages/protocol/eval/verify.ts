@@ -36,6 +36,7 @@ const SUITES = [
   "premise",
   "profile",
   "shared",
+  "viewer",
 ] as const;
 
 const PROVIDER_ENV_VARS = ["OPENROUTER_API_KEY", "OPENAI_API_KEY"];
