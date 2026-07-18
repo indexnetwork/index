@@ -20,12 +20,13 @@
  *     unless the recipient still owns it, its lifecycle is active, and its
  *     fingerprint still matches the one captured at event time (IND-434 §4).
  */
-import { OUTCOME_MAX_CANDIDATES, OUTCOME_MIN_INDEPENDENT_EXAMPLES, PoolDiscriminatorMiner, isOutcomeQuestionsActivated, runOutcomeShadow, type OutcomeExample } from '@indexnetwork/protocol';
+import { OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, OUTCOME_MIN_INDEPENDENT_EXAMPLES, PoolDiscriminatorMiner, isOutcomeQuestionsActivated, runOutcomeShadow, type OutcomeExample } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { buildFullIntentText, computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { getOutcomeEventsForScope } from '../../lib/opportunity/outcome-events.store';
+import { computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash, isOutcomeHash } from '../../lib/opportunity/outcome-feedback.identity';
 
 /** Intent lifecycle states in which a scope is still eligible for mining. */
 const ELIGIBLE_INTENT_STATUS = 'ACTIVE';
@@ -121,15 +122,37 @@ export async function mineOutcomeHypotheses(
 
     const examples: OutcomeExample[] = events.flatMap((event) => {
       if (event.action !== 'accepted' && event.action !== 'rejected') return [];
-      // Fail closed on malformed legacy rows: an empty independence key cannot
-      // prove a canonical counterpart identity/set and must never count.
-      const dedupKey = event.dedupKey.trim();
-      if (!dedupKey) return [];
+      // Treat injected/malformed rows as inert. Only exact-scope events with a
+      // bounded, content-hashed presentation snapshot and canonical hashes may
+      // reach the blind miner.
+      if (
+        event.recipientUserId !== scope.recipientUserId
+        || event.intentId !== scope.intentId
+        || event.intentFingerprint !== scope.intentFingerprint
+        || !event.opportunityId.trim()
+        || !isOutcomeHash(event.dedupKey)
+        || !isOutcomeHash(event.snapshotHash)
+        || !isOutcomeHash(event.idempotencyKey)
+      ) return [];
+      const candidateSnapshot = event.candidateSnapshot.trim();
+      if (
+        !candidateSnapshot
+        || candidateSnapshot !== event.candidateSnapshot
+        || candidateSnapshot.length > OUTCOME_MAX_PUBLIC_CONTEXT_CHARS
+        || computeOutcomeSnapshotHash(candidateSnapshot) !== event.snapshotHash
+        || computeOutcomeIdempotencyKey({
+          recipientUserId: event.recipientUserId,
+          intentId: event.intentId,
+          intentFingerprint: event.intentFingerprint,
+          opportunityId: event.opportunityId,
+          action: event.action,
+        }) !== event.idempotencyKey
+      ) return [];
       return [{
         opportunityId: event.opportunityId,
-        publicContext: event.candidateSnapshot,
+        publicContext: candidateSnapshot,
         label: event.action,
-        dedupKey,
+        dedupKey: event.dedupKey,
         occurredAt: event.createdAt.toISOString(),
       }];
     });

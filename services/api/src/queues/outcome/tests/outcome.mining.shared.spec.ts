@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import type { DiscriminatorMiningInput, MinedDiscriminator, OutcomeShadowResult } from '@indexnetwork/protocol';
 
 import { computeIntentFingerprint } from '../../../lib/intent/intent.fingerprint';
+import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../../../lib/opportunity/outcome-feedback.identity';
 import type { OpportunityOutcomeEvent } from '../../../schemas/database.schema';
 import { mineOutcomeHypotheses, toShadowTelemetry, type MiningIntent, type OutcomeMiningDeps } from '../outcome.mining.shared';
 
@@ -13,8 +14,9 @@ const CURRENT_FINGERPRINT = computeIntentFingerprint(INTENT_PAYLOAD, INTENT_SUMM
 function event(
   opportunityId: string,
   action: 'accepted' | 'rejected',
-  dedupKey: string,
+  counterpartUserId: string,
 ): OpportunityOutcomeEvent {
+  const candidateSnapshot = 'presentation-safe candidate context';
   return {
     id: `e-${opportunityId}`,
     recipientUserId: 'owner-1',
@@ -23,10 +25,16 @@ function event(
     opportunityId,
     networkId: 'net-1',
     action,
-    candidateSnapshot: 'presentation-safe candidate context',
-    snapshotHash: 'h',
-    dedupKey,
-    idempotencyKey: `idem-${opportunityId}`,
+    candidateSnapshot,
+    snapshotHash: computeOutcomeSnapshotHash(candidateSnapshot),
+    dedupKey: computeOutcomeCounterpartDedupKey('owner-1', counterpartUserId),
+    idempotencyKey: computeOutcomeIdempotencyKey({
+      recipientUserId: 'owner-1',
+      intentId: 'intent-1',
+      intentFingerprint: CURRENT_FINGERPRINT,
+      opportunityId,
+      action,
+    }),
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
   };
 }
@@ -161,13 +169,26 @@ describe('mineOutcomeHypotheses', () => {
     expect(pausedMiner.seen.length).toBe(0);
   });
 
-  it('fails closed when the current intent fingerprint drifted', async () => {
+  it('keeps captured old-revision events inert when the intent drifts before mining', async () => {
     process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const miner = recordingMiner();
     await mineOutcomeHypotheses(
       scope,
       deps(enoughEvents(), miner, activeIntent({ payload: 'materially edited intent' })),
     );
+    expect(miner.seen.length).toBe(0);
+  });
+
+  it('never sends malformed or evaluator-only snapshots to the Lens B miner', async () => {
+    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
+    const malformed = enoughEvents().map((item) => ({
+      ...item,
+      candidateSnapshot: 'PRIVATE EVALUATOR RATIONALE',
+      // Deliberately retain the approved snapshot hash: integrity validation
+      // must make every tampered row inert before the LLM boundary.
+    }));
+    const miner = recordingMiner();
+    await mineOutcomeHypotheses(scope, deps(malformed, miner));
     expect(miner.seen.length).toBe(0);
   });
 

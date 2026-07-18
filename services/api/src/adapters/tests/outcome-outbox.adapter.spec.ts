@@ -3,23 +3,45 @@ import { describe, expect, it, mock } from 'bun:test';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
 
 import { applyOutcomeOutbox, runAtomicOutcomeTransition, type AtomicTransactionRunner } from '../opportunity.database.adapter';
-import { opportunityOutcomeEvents } from '../../schemas/database.schema';
+import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
+import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../../lib/opportunity/outcome-feedback.identity';
+import { opportunityOutcomeEvents, type OpportunityActor } from '../../schemas/database.schema';
 
-function outbox(): OutcomeOutbox {
+const recipientUserId = 'owner-1';
+const intentId = 'intent-1';
+const opportunityId = 'opp-1';
+const intentPayload = 'build hardware';
+const intentFingerprint = computeIntentFingerprint(intentPayload, null);
+const candidateSnapshot = 'Presenter-approved summary.';
+
+const actors: OpportunityActor[] = [
+  { networkId: 'network-1', userId: recipientUserId, role: 'patient', intent: intentId },
+  { networkId: 'network-1', userId: 'counter-1', role: 'agent', intent: 'intent-counter' },
+];
+
+function outbox(overrides: Partial<OutcomeOutbox> = {}): OutcomeOutbox {
   return {
     event: {
-      recipientUserId: 'owner-1',
-      intentId: 'intent-1',
-      intentFingerprint: 'fingerprint-1',
-      opportunityId: 'opp-1',
+      recipientUserId,
+      intentId,
+      intentFingerprint,
+      opportunityId,
       networkId: 'network-1',
       action: 'accepted',
-      candidateSnapshot: 'safe snapshot',
-      snapshotHash: 'snapshot-hash',
-      dedupKey: 'counterpart-hash',
-      idempotencyKey: 'idempotency-hash',
+      candidateSnapshot,
+      snapshotHash: computeOutcomeSnapshotHash(candidateSnapshot),
+      dedupKey: computeOutcomeCounterpartDedupKey(recipientUserId, 'counter-1'),
+      idempotencyKey: computeOutcomeIdempotencyKey({
+        recipientUserId,
+        intentId,
+        intentFingerprint,
+        opportunityId,
+        action: 'accepted',
+      }),
     },
+    actorResolution: 'unique_owned_scope',
     result: { inserted: false },
+    ...overrides,
   };
 }
 
@@ -37,15 +59,33 @@ function transactionReturning(rows: Array<{ id: string }>) {
 }
 
 describe('runAtomicOutcomeTransition', () => {
-  function harness(options: { duplicate?: boolean; failInsert?: boolean } = {}) {
+  function harness(options: {
+    duplicate?: boolean;
+    failInsert?: boolean;
+    lockedIntentPayload?: string;
+  } = {}) {
     const state = {
       status: 'pending',
-      events: options.duplicate ? ['idempotency-hash'] : [] as string[],
+      events: options.duplicate
+        ? [(outbox().event as { idempotencyKey: string }).idempotencyKey]
+        : [] as string[],
     };
     const database: AtomicTransactionRunner = {
       async transaction<T>(callback: (tx: Parameters<typeof applyOutcomeOutbox>[0]) => Promise<T>): Promise<T> {
         const before = { status: state.status, events: [...state.events] };
+        const select = mock(() => ({
+          from: mock(() => ({
+            where: mock(() => ({
+              for: mock(async () => [{
+                payload: options.lockedIntentPayload ?? intentPayload,
+                summary: null,
+                userId: recipientUserId,
+              }]),
+            })),
+          })),
+        }));
         const tx = {
+          select,
           insert: mock(() => ({
             values: mock((event: { idempotencyKey: string }) => ({
               onConflictDoNothing: mock(() => ({
@@ -62,7 +102,6 @@ describe('runAtomicOutcomeTransition', () => {
         try {
           return await callback(tx);
         } catch (error) {
-          // Model database transaction rollback for the test harness.
           state.status = before.status;
           state.events = before.events;
           throw error;
@@ -72,7 +111,7 @@ describe('runAtomicOutcomeTransition', () => {
     return { state, database };
   }
 
-  it('commits the winning status and exactly one event together', async () => {
+  it('commits the winning status and exactly one revalidated event together', async () => {
     const box = outbox();
     const { state, database } = harness();
 
@@ -80,13 +119,14 @@ describe('runAtomicOutcomeTransition', () => {
       database,
       async () => {
         state.status = 'accepted';
-        return { id: 'opp-1' };
+        return { id: opportunityId, actors };
       },
       box,
     );
 
-    expect(result).toEqual({ id: 'opp-1' });
-    expect(state).toEqual({ status: 'accepted', events: ['idempotency-hash'] });
+    expect(result).toEqual({ id: opportunityId, actors });
+    expect(state.events).toHaveLength(1);
+    expect(state.status).toBe('accepted');
     expect(box.result.inserted).toBe(true);
   });
 
@@ -98,7 +138,7 @@ describe('runAtomicOutcomeTransition', () => {
       database,
       async () => {
         state.status = 'accepted';
-        return { id: 'opp-1' };
+        return { id: opportunityId, actors };
       },
       box,
     )).rejects.toThrow('insert failed');
@@ -115,13 +155,72 @@ describe('runAtomicOutcomeTransition', () => {
       database,
       async () => {
         state.status = 'accepted';
-        return { id: 'opp-1' };
+        return { id: opportunityId, actors };
       },
       box,
     );
 
-    expect(state).toEqual({ status: 'accepted', events: ['idempotency-hash'] });
+    expect(state.events).toHaveLength(1);
+    expect(state.status).toBe('accepted');
     expect(box.result.inserted).toBe(false);
+  });
+
+  it('rolls back both action and event when the locked intent revision drifted after preparation', async () => {
+    const box = outbox();
+    const { state, database } = harness({ lockedIntentPayload: 'materially revised intent' });
+
+    await expect(runAtomicOutcomeTransition(
+      database,
+      async () => {
+        state.status = 'accepted';
+        return { id: opportunityId, actors };
+      },
+      box,
+    )).rejects.toThrow('Outcome capture precondition failed');
+
+    expect(state).toEqual({ status: 'pending', events: [] });
+    expect(box.result.inserted).toBe(false);
+  });
+
+  it('rolls back an unscoped capture when recipient actor scopes become ambiguous', async () => {
+    const box = outbox();
+    const { state, database } = harness();
+    const driftedActors: OpportunityActor[] = [
+      ...actors,
+      { networkId: 'network-2', userId: recipientUserId, role: 'patient', intent: 'intent-2' },
+    ];
+
+    await expect(runAtomicOutcomeTransition(
+      database,
+      async () => {
+        state.status = 'accepted';
+        return { id: opportunityId, actors: driftedActors };
+      },
+      box,
+    )).rejects.toThrow('Outcome capture precondition failed');
+
+    expect(state).toEqual({ status: 'pending', events: [] });
+  });
+
+  it('allows exact selected-intent capture despite other recipient actor scopes', async () => {
+    const box = outbox({ actorResolution: 'selected_intent' });
+    const { state, database } = harness();
+    const duplicateScopes: OpportunityActor[] = [
+      ...actors,
+      { networkId: 'network-2', userId: recipientUserId, role: 'patient', intent: 'intent-2' },
+    ];
+
+    await runAtomicOutcomeTransition(
+      database,
+      async () => {
+        state.status = 'accepted';
+        return { id: opportunityId, actors: duplicateScopes };
+      },
+      box,
+    );
+
+    expect(state.status).toBe('accepted');
+    expect(state.events).toHaveLength(1);
   });
 });
 

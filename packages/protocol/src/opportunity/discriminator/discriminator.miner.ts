@@ -183,41 +183,77 @@ export function buildMiningPrompt(input: DiscriminatorMiningInput): string {
  * - drops assignments for ids not in the pool,
  * - demotes to unknown: sides not in the axis's side list, missing evidence,
  *   and evidence that does not substring-match the candidate's publicContext,
+ * - collapses duplicate proposals to the same trim-normalized side,
+ * - demotes a candidate proposed for different sides to unknown (zero support),
  * - guarantees exactly one assignment per pool candidate (missing → unknown),
- * - computes evidenceRate = verified / side-proposals.
+ * - computes evidenceRate = verified / distinct candidate-side proposals.
  */
 export function verifyAxis(
   axis: AxisMiningResponse["axes"][number],
   candidates: DiscriminatorMiningInput["candidates"],
 ): MinedDiscriminator {
   const contextById = new Map(candidates.map((c) => [c.id, c.publicContext]));
+  const normalizedAxisSides = axis.sides.map((side) => side.trim());
+  const axisSidesAreValid = normalizedAxisSides.every(Boolean)
+    && new Set(normalizedAxisSides).size === normalizedAxisSides.length;
+  const canonicalSideByNormalized = new Map(
+    axis.sides.map((side) => [side.trim(), side] as const),
+  );
+  const proposalsById = new Map<string, Map<string, typeof axis.assignments>>();
+
+  for (const assignment of axis.assignments) {
+    if (!contextById.has(assignment.id) || assignment.side === null) continue;
+    const normalizedSide = assignment.side.trim();
+    let sides = proposalsById.get(assignment.id);
+    if (!sides) {
+      sides = new Map();
+      proposalsById.set(assignment.id, sides);
+    }
+    const sameSide = sides.get(normalizedSide) ?? [];
+    sameSide.push(assignment);
+    sides.set(normalizedSide, sameSide);
+  }
+
   const byId = new Map<string, VerifiedAssignment>();
   let proposed = 0;
   let verified = 0;
 
-  for (const a of axis.assignments) {
-    const context = contextById.get(a.id);
-    if (context === undefined) continue; // hallucinated candidate id
-    if (byId.has(a.id)) continue; // first proposal wins
-    if (a.side === null) {
-      byId.set(a.id, { id: a.id, side: null, evidence: null, verified: false });
+  for (const [id, sides] of proposalsById) {
+    proposed += sides.size;
+    // Conflicting classifier output is permanently ambiguous regardless of
+    // proposal order or evidence quality. It must contribute zero support.
+    if (sides.size !== 1 || !axisSidesAreValid) {
+      byId.set(id, { id, side: null, evidence: null, verified: false });
       continue;
     }
-    proposed++;
-    const sideOk = axis.sides.includes(a.side);
-    const evidenceOk = poolEvidenceMatches(context, a.evidence);
-    if (sideOk && evidenceOk) {
+
+    const [[normalizedSide, sameSideProposals]] = [...sides];
+    const canonicalSide = canonicalSideByNormalized.get(normalizedSide);
+    const context = contextById.get(id)!;
+    const evidenceValid = canonicalSide
+      ? sameSideProposals.find((proposal) => poolEvidenceMatches(context, proposal.evidence))
+      : undefined;
+    if (canonicalSide && evidenceValid) {
       verified++;
-      byId.set(a.id, { id: a.id, side: a.side, evidence: a.evidence, verified: true });
+      byId.set(id, {
+        id,
+        side: canonicalSide,
+        evidence: evidenceValid.evidence,
+        verified: true,
+      });
     } else {
-      // Demoted: keep the (failed) evidence for audit logging, but unknown side.
-      byId.set(a.id, { id: a.id, side: null, evidence: a.evidence, verified: false });
+      byId.set(id, {
+        id,
+        side: null,
+        evidence: sameSideProposals[0]?.evidence ?? null,
+        verified: false,
+      });
     }
   }
 
-  // Every pool candidate gets exactly one assignment.
   const assignments: VerifiedAssignment[] = candidates.map(
-    (c) => byId.get(c.id) ?? { id: c.id, side: null, evidence: null, verified: false },
+    (candidate) => byId.get(candidate.id)
+      ?? { id: candidate.id, side: null, evidence: null, verified: false },
   );
 
   return {

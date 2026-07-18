@@ -5,8 +5,9 @@
  * to outcome (the miner never saw which side the user chose), this module joins
  * the explicit owner-outcome labels and produces aggregate-only telemetry:
  *
- *   - Independence: the caller passes already-deduplicated examples (one entry
- *     per distinct counterpart). Every entry counts as one independent example.
+ *   - Independence: capture admits only one unique counterpart per opportunity;
+ *     the caller then deduplicates by that recipient-scoped counterpart hash.
+ *     Every retained entry therefore represents one distinct counterpart.
  *   - Threshold: a discriminator side is "qualified" only when it holds at
  *     least `minIndependentSupport` (k) independent examples. A hypothesis is
  *     eligible only when at least `minComparedSides` sides qualify.

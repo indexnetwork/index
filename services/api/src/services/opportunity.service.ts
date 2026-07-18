@@ -94,11 +94,25 @@ async function buildOutcomeOutbox(
   recipientUserId: string,
   action: 'accepted' | 'rejected',
   provenance: OwnerActionProvenance | undefined,
+  selectedIntentId?: string,
 ): Promise<{ outbox?: OutcomeOutbox; prepared: PreparedOutcomeCapture | null }> {
   if (!provenance) return { prepared: null };
-  const prepared = await recorder.prepare({ opportunity, recipientUserId, action, provenance });
+  const prepared = await recorder.prepare({
+    opportunity,
+    recipientUserId,
+    action,
+    provenance,
+    selectedIntentId,
+  });
   if (!prepared) return { prepared: null };
-  return { outbox: { event: prepared.event, result: { inserted: false } }, prepared };
+  return {
+    outbox: {
+      event: prepared.event,
+      actorResolution: prepared.actorResolution,
+      result: { inserted: false },
+    },
+    prepared,
+  };
 }
 
 function matchesSelectedIntentScope(
@@ -646,7 +660,14 @@ export class OpportunityService {
     // no event. Only verified explicit human owner actions are eligible.
     const captureAction = status === 'accepted' || status === 'rejected' ? status : undefined;
     const { outbox, prepared } = captureAction
-      ? await buildOutcomeOutbox(this.outcomeRecorder, opp, userId, captureAction, options?.actionProvenance)
+      ? await buildOutcomeOutbox(
+          this.outcomeRecorder,
+          opp,
+          userId,
+          captureAction,
+          options?.actionProvenance,
+          options?.scopeType === 'intent' ? options.scopeId : undefined,
+        )
       : { outbox: undefined, prepared: null };
 
     let updated: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
@@ -918,7 +939,12 @@ export class OpportunityService {
     // decision. Prepare an atomic capture outbox so the append-only event is
     // written in the same transaction as the accept stamp (rollback → no event).
     const { outbox, prepared } = await buildOutcomeOutbox(
-      this.outcomeRecorder, opp, userId, 'accepted', options?.actionProvenance,
+      this.outcomeRecorder,
+      opp,
+      userId,
+      'accepted',
+      options?.actionProvenance,
+      options?.scopeType === 'intent' ? options.scopeId : undefined,
     );
 
     // Only flip status once we know the chat destination exists.

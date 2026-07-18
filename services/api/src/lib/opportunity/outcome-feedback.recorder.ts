@@ -11,77 +11,108 @@
  * Eligibility (fail-closed — any doubt ⇒ no capture):
  *   1. Flag OUTCOME_QUESTIONS_MODE != off.
  *   2. Provenance is a VERIFIED explicit human owner action ('user_session').
- *      Agent / API-key / system / internal callers never pass this, so their
- *      status mutations are never recorded as preferences (the generic
- *      MCP/agent graph path stays deferred to IND-438).
  *   3. The caller is a genuine non-introducer actor on the opportunity.
- *   4. The scope is the caller's OWN intent: the recipient actor's `intent`,
- *      re-read and confirmed owned by the recipient (intent.userId ===
- *      recipientUserId). A counterparty's intent, or a missing intent, is
- *      excluded.
- *   5. A deterministic canonical counterpart identity exists. Counterpart-less
- *      opportunities are skipped — there is no independence key, and the
- *      opportunity id must NEVER be used as one (it would make every event look
- *      independent).
+ *   4. An exact selected intent must match a recipient actor; otherwise the
+ *      recipient must have exactly one actor-intent scope. The resolved intent
+ *      is re-read and confirmed owned by the recipient.
+ *   5. Exactly one unique non-introducer counterpart exists. Multiparty,
+ *      counterpart-less, and ambiguous opportunities are excluded.
+ *   6. A genuine recipient-specific presenter snapshot already exists in the
+ *      trusted presentation cache. Raw evaluator reasoning is never a fallback.
  *
- * The stored snapshot is presentation-safe (sanitized reasoning summary); the
- * counterpart is stored only as a non-reversible dedup hash.
+ * The stored snapshot is presentation-approved and bounded; the sole
+ * counterpart is stored only as a recipient-scoped, non-reversible hash.
  */
-import { createHash } from 'node:crypto';
+import { OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, buildDeliveryCardPresentationCacheKey, buildHomeCardPresentationCacheKey, isOutcomeQuestionsActivated, stripUnsupportedOpportunityClaims, stripUuids, truncateAtBoundary, type Opportunity, type OutcomeLabel } from '@indexnetwork/protocol';
 
-import { OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, isOutcomeQuestionsActivated, safeFallbackSummary, type Opportunity, type OutcomeLabel } from '@indexnetwork/protocol';
-
-import { computeIntentFingerprint } from '../intent/intent.fingerprint';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
-import type { NewOpportunityOutcomeEvent } from '../../schemas/database.schema';
+import { cacheAdapter } from '../../adapters/cache.adapter';
 import { type OutcomeMiningScope, maybeMineOutcomeHypotheses } from '../../queues/outcome/outcome.mining.shared';
+import type { NewOpportunityOutcomeEvent } from '../../schemas/database.schema';
+import { computeIntentFingerprint } from '../intent/intent.fingerprint';
+import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from './outcome-feedback.identity';
 
-/**
- * Provenance of an owner action. Only a verified explicit human session may
- * become a preference label; every other principal is excluded upstream.
- */
+/** Provenance of an owner action. Only a verified human session is eligible. */
 export type OwnerActionProvenance = 'user_session' | 'api_key';
 
 /** One explicit owner action to (maybe) record. */
 export interface OutcomeFeedbackRecord {
-  /** The full pre-write opportunity (source of intent, actors, reasoning). */
   opportunity: Opportunity;
-  /** The owner (recipient) who took the action. */
   recipientUserId: string;
-  /** The explicit owner decision. */
   action: OutcomeLabel;
-  /** Verified provenance from the controller boundary. */
   provenance: OwnerActionProvenance;
+  /** Exact selected-intent scope supplied by a scoped user action, when any. */
+  selectedIntentId?: string;
 }
 
-/** A prepared, eligible capture: the event row + the mining scope to fire post-commit. */
+export type OutcomeActorResolution = 'selected_intent' | 'unique_owned_scope';
+
+/** A prepared, eligible capture: event + transaction precondition + mining scope. */
 export interface PreparedOutcomeCapture {
   event: NewOpportunityOutcomeEvent;
+  actorResolution: OutcomeActorResolution;
   scope: OutcomeMiningScope;
 }
 
 export interface OutcomeFeedbackRecorderLike {
-  /** Build an eligible capture (read-only), or null when ineligible. */
   prepare(input: OutcomeFeedbackRecord): Promise<PreparedOutcomeCapture | null>;
-  /** Fire the fire-and-forget shadow mining pass for a committed capture. */
   triggerMine(scope: OutcomeMiningScope): void;
 }
 
-/** SHA-256 hex of a canonical JSON tuple. */
-function sha256(parts: unknown[]): string {
-  return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
+interface CachedHomePresentation {
+  opportunityId: string;
+  mainText: string;
+}
+
+interface CachedDeliveryPresentation {
+  opportunityId: string;
+  personalizedSummary: string;
+}
+
+function normalizeApprovedSnapshot(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const safe = stripUuids(stripUnsupportedOpportunityClaims(value)).trim();
+  if (!safe) return null;
+  return truncateAtBoundary(safe, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS).trim() || null;
+}
+
+async function getCachedApprovedSnapshot(
+  opportunity: Opportunity,
+  recipientUserId: string,
+): Promise<string | null> {
+  try {
+    const [home, delivery] = await cacheAdapter.mget<CachedHomePresentation | CachedDeliveryPresentation>([
+      buildHomeCardPresentationCacheKey(opportunity.id, opportunity.status, recipientUserId),
+      buildDeliveryCardPresentationCacheKey(opportunity.id, opportunity.status, recipientUserId),
+    ]);
+    if (home?.opportunityId === opportunity.id && 'mainText' in home) {
+      const snapshot = normalizeApprovedSnapshot(home.mainText);
+      if (snapshot) return snapshot;
+    }
+    if (delivery?.opportunityId === opportunity.id && 'personalizedSummary' in delivery) {
+      return normalizeApprovedSnapshot(delivery.personalizedSummary);
+    }
+    return null;
+  } catch {
+    // Cache unavailability makes the event ineligible, never a reason to use
+    // evaluator reasoning or to fail the underlying owner action.
+    return null;
+  }
 }
 
 /** Injectable collaborators (defaults wire the real adapters) for tests. */
 export interface OutcomeFeedbackRecorderDeps {
   /** Raw intent read INCLUDING owner — must not enforce caller ownership itself. */
   getIntent: (intentId: string) => Promise<{ payload: string; summary: string | null; userId: string } | null>;
+  /** Read only a previously cached, genuine recipient-facing presentation. */
+  getApprovedCandidateSnapshot: (opportunity: Opportunity, recipientUserId: string) => Promise<string | null>;
   triggerMine: (scope: OutcomeMiningScope) => void;
 }
 
 function defaultDeps(): OutcomeFeedbackRecorderDeps {
   return {
     getIntent: (intentId) => chatDatabaseAdapter.getIntent(intentId),
+    getApprovedCandidateSnapshot: getCachedApprovedSnapshot,
     triggerMine: maybeMineOutcomeHypotheses,
   };
 }
@@ -95,55 +126,69 @@ export class OutcomeFeedbackRecorder implements OutcomeFeedbackRecorderLike {
 
   async prepare(input: OutcomeFeedbackRecord): Promise<PreparedOutcomeCapture | null> {
     if (!isOutcomeQuestionsActivated()) return null;
-    // Only verified explicit human owner actions become labels.
     if (input.provenance !== 'user_session') return null;
 
-    const { opportunity: opp, recipientUserId, action } = input;
+    const { opportunity, recipientUserId, action } = input;
+    const recipientActors = opportunity.actors.filter(
+      (actor) => actor.userId === recipientUserId && actor.role !== 'introducer',
+    );
+    if (recipientActors.length === 0) return null;
 
-    // The caller must be a genuine non-introducer actor on this opportunity.
-    const recipientActor = opp.actors.find((a) => a.userId === recipientUserId);
-    if (!recipientActor || recipientActor.role === 'introducer') return null;
-
-    // Scope to the recipient's OWN intent (the intent they contributed to
-    // this opportunity), never the counterparty-triggered intent.
-    const intentId = recipientActor.intent;
-    if (!intentId) return null;
+    let intentId: string;
+    let actorResolution: OutcomeActorResolution;
+    if (input.selectedIntentId) {
+      if (!recipientActors.some((actor) => actor.intent === input.selectedIntentId)) return null;
+      intentId = input.selectedIntentId;
+      actorResolution = 'selected_intent';
+    } else {
+      const recipientIntentIds = [...new Set(
+        recipientActors
+          .map((actor) => actor.intent?.trim())
+          .filter((value): value is string => Boolean(value)),
+      )];
+      if (recipientIntentIds.length !== 1) return null;
+      [intentId] = recipientIntentIds;
+      actorResolution = 'unique_owned_scope';
+    }
 
     const intent = await this.deps.getIntent(intentId);
-    if (!intent) return null; // intent gone — nothing safe to scope to
-    // Ownership proof: the scoping intent must belong to the recipient.
-    if (intent.userId !== recipientUserId) return null;
-
+    if (!intent || intent.userId !== recipientUserId) return null;
     const intentFingerprint = computeIntentFingerprint(intent.payload, intent.summary);
 
-    // Deterministic canonical counterpart identity/set. No counterpart ⇒ no
-    // independence key ⇒ skip (never fall back to the opportunity id).
-    const counterpartIds = [
-      ...new Set(
-        opp.actors
-          .filter((a) => a.userId !== recipientUserId && a.role !== 'introducer')
-          .map((a) => a.userId),
-      ),
-    ].sort();
-    if (counterpartIds.length === 0) return null;
-    const dedupKey = sha256(['counterpart-set', ...counterpartIds]);
+    const participantIds = new Set(
+      opportunity.actors
+        .filter((actor) => actor.role !== 'introducer')
+        .map((actor) => actor.userId),
+    );
+    if (participantIds.size !== 2 || !participantIds.has(recipientUserId)) return null;
+    const counterpartUserId = [...participantIds].find((userId) => userId !== recipientUserId);
+    if (!counterpartUserId) return null;
+    const dedupKey = computeOutcomeCounterpartDedupKey(recipientUserId, counterpartUserId);
 
-    const networkId = recipientActor.networkId ?? null;
-
-    // Presentation-safe, bounded candidate snapshot (no raw reasoning/UUIDs).
-    const candidateSnapshot = safeFallbackSummary(opp.interpretation?.reasoning, {
-      maxChars: OUTCOME_MAX_PUBLIC_CONTEXT_CHARS,
+    const candidateSnapshot = await this.deps.getApprovedCandidateSnapshot(opportunity, recipientUserId);
+    if (!candidateSnapshot) return null;
+    const snapshotHash = computeOutcomeSnapshotHash(candidateSnapshot);
+    const idempotencyKey = computeOutcomeIdempotencyKey({
+      recipientUserId,
+      intentId,
+      intentFingerprint,
+      opportunityId: opportunity.id,
+      action,
     });
-    const snapshotHash = sha256(['snapshot', candidateSnapshot]);
 
-    // One event per (recipient, opportunity, action) — retry-idempotent.
-    const idempotencyKey = sha256(['outcome', recipientUserId, opp.id, action]);
+    const matchingNetworkIds = [...new Set(
+      recipientActors
+        .filter((actor) => actor.intent === intentId)
+        .map((actor) => actor.networkId)
+        .filter((value): value is string => Boolean(value)),
+    )];
+    const networkId = matchingNetworkIds.length === 1 ? matchingNetworkIds[0] : null;
 
     const event: NewOpportunityOutcomeEvent = {
       recipientUserId,
       intentId,
       intentFingerprint,
-      opportunityId: opp.id,
+      opportunityId: opportunity.id,
       networkId,
       action,
       candidateSnapshot,
@@ -152,9 +197,12 @@ export class OutcomeFeedbackRecorder implements OutcomeFeedbackRecorderLike {
       idempotencyKey,
     };
 
-    return { event, scope: { recipientUserId, intentId, intentFingerprint } };
+    return {
+      event,
+      actorResolution,
+      scope: { recipientUserId, intentId, intentFingerprint },
+    };
   }
 }
 
-/** Shared singleton, mirroring uptakeAcceptanceGuard. */
 export const outcomeFeedbackRecorder = new OutcomeFeedbackRecorder();

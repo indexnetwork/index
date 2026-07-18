@@ -1024,9 +1024,9 @@ export const opportunityOutcomeEvents = pgTable(
     candidateSnapshot: text('candidate_snapshot').notNull(),
     /** SHA-256 of the snapshot text (content hash for audit/change detection). */
     snapshotHash: text('snapshot_hash').notNull(),
-    /** Non-reversible related-opportunity dedup key (counterpart identity). */
+    /** Recipient-scoped, non-reversible hash of the sole counterpart identity. */
     dedupKey: text('dedup_key').notNull(),
-    /** SHA-256(recipient, opportunity, action) — collapses idempotent retries. */
+    /** SHA-256(recipient, intent, fingerprint, opportunity, action). */
     idempotencyKey: text('idempotency_key').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

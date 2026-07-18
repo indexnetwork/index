@@ -283,6 +283,7 @@ const preparedCapture: PreparedOutcomeCapture = {
     dedupKey: "counterpart-hash",
     idempotencyKey: "idempotency-hash",
   },
+  actorResolution: "unique_owned_scope",
   scope: {
     recipientUserId: USER_A,
     intentId: "intent-owner-a",
@@ -320,6 +321,35 @@ describe("OpportunityService.updateOpportunityStatus — atomic Lens B capture",
     expect(db.stampOpportunityActorAction).toHaveBeenCalledTimes(1);
     expect(recorder.triggerMine).toHaveBeenCalledTimes(1);
     expect(recorder.triggerMine).toHaveBeenCalledWith(preparedCapture.scope);
+  });
+
+  it("forwards exact selected-intent scope into recorder preparation", async () => {
+    const recorder = recorderStub();
+    const scopedOpportunity: Opportunity = {
+      ...twoActorOpportunity,
+      actors: [
+        { ...twoActorOpportunity.actors[0], intent: "intent-owner-a" },
+        twoActorOpportunity.actors[1],
+      ],
+    };
+    const db = createMockDb(scopedOpportunity);
+    db.stampOpportunityActorAction = mock(async (_id, _userId, _status, _acceptedBy, outbox) => {
+      outbox!.result.inserted = true;
+      return { ...scopedOpportunity, status: "accepted" };
+    });
+    const service = new OpportunityService(db, undefined, { check: async () => null }, recorder);
+
+    await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, {
+      scopeType: "intent",
+      scopeId: "intent-owner-a",
+      actionProvenance: "user_session",
+    });
+
+    expect(recorder.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      selectedIntentId: "intent-owner-a",
+    }));
+    const forwardedOutbox = (db.stampOpportunityActorAction as ReturnType<typeof mock>).mock.calls[0]?.[4];
+    expect(forwardedOutbox?.actorResolution).toBe("unique_owned_scope");
   });
 
   it("duplicate action launches no duplicate mining pass", async () => {

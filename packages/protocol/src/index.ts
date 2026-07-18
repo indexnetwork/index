@@ -262,7 +262,7 @@ export { stripUuids, stripIntroducerMentions, truncateAtBoundary } from "./oppor
 export { hasUnsupportedOpportunityClaim, stripUnsupportedOpportunityClaims } from "./opportunity/opportunity.claim-safety.js";
 export { safeFallbackSummary, getSafePresentationOrSkip, SAFE_FALLBACK_MAX_CHARS, DEFAULT_FALLBACK_HEADLINE, DEFAULT_FALLBACK_ACTION, DEFAULT_EMPTY_FALLBACK_TEXT } from "./opportunity/opportunity.safe-presentation.js";
 export type { SafeFallbackOptions, SafePresentation, SafePresentationOptions, SafePresentationSource } from "./opportunity/opportunity.safe-presentation.js";
-export { buildApiChatCardPresentationCacheKey } from "./opportunity/opportunity.presentation-cache.js";
+export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildHomeCardPresentationCacheKey } from "./opportunity/opportunity.presentation-cache.js";
 export { getOrCreateDeliveryCardBatch, DELIVERY_CARD_CACHE_TTL, type CachedDeliveryCard, type OpportunityWithContext } from "./opportunity/delivery-card.cache.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────

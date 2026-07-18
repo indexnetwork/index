@@ -2456,10 +2456,14 @@ export type NegotiationGraphDatabase = Pick<
  *     gate post-commit mining on a genuine first insert.
  *
  * `event` is typed `unknown` (the api-side outcome-event insert row, cast by the
- * adapter) to keep the protocol layer free of database-schema imports.
+ * adapter) to keep the protocol layer free of database-schema imports. The
+ * actor-resolution mode is a transaction-time precondition: selected-intent
+ * captures require that exact actor intent, while unscoped captures require the
+ * recipient to still have one unambiguous actor-intent scope.
  */
 export interface OutcomeOutbox {
   event: unknown;
+  actorResolution: 'selected_intent' | 'unique_owned_scope';
   result: { inserted: boolean };
 }
 
