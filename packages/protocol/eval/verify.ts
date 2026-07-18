@@ -29,6 +29,7 @@ import { join } from "node:path";
 
 /** Explicit suite manifest. Add new eval suites here (discovery check enforces it). */
 const SUITES = [
+  "canary",
   "clarification",
   "hyde",
   "matching",

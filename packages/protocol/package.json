@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "5.3.0",
+  "version": "5.3.1",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -28,6 +28,7 @@
     "eval:profile": "bun --env-file=../../.env.test ./eval/profile/profile.eval.ts",
     "eval:opportunity": "bun --env-file=../../.env.test ./eval/opportunity/opportunity.eval.ts",
     "eval:clarification": "bun --env-file=../../.env.test ./eval/clarification/clarification.eval.ts",
+    "eval:canary": "bun --env-file=../../.env.test ./eval/canary/canary.eval.ts",
     "eval:view": "bun ./eval/viewer/viewer.eval.ts",
     "eval:verify": "bun ./eval/verify.ts"
   },
