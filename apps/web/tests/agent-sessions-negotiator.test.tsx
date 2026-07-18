@@ -1,16 +1,19 @@
 /**
- * Pinned Personal Agent (negotiator DM) sidebar entry (IND-411).
+ * Pinned Personal Agent (negotiator DM) entry (IND-411).
  *
  * Verifies the flag-gated pinned entry: hidden when the backend does not
  * report `features.negotiatorChat`, visible and labeled from the negotiator
  * agent row when it does, get-or-create on first click, direct navigation on
  * subsequent clicks, and exclusion of the negotiator DM from the history list.
+ *
+ * The entry moved from the retired Sidebar to AgentSessionsPanel, which the
+ * shell renders as the aside on agent chat routes.
  */
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { useLocation } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import Sidebar from '@/components/Sidebar';
+import AgentSessionsPanel from '@/components/AgentSessionsPanel';
 import { renderWithRouter } from '@/test/test-utils';
 
 const mocks = vi.hoisted(() => {
@@ -26,7 +29,7 @@ const mocks = vi.hoisted(() => {
       user: null as Record<string, unknown> | null,
       features: null as Record<string, unknown> | null,
     },
-    questionsState: { count: 0 },
+    questionsState: { personalAgentPending: 0 },
   };
 });
 
@@ -51,36 +54,13 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('@/contexts/IndexFilterContext', () => ({
-  useNetworkFilter: () => ({
-    selectedNetworkIds: [],
-    setSelectedNetworkIds: vi.fn(),
-  }),
-}));
-
 vi.mock('@/contexts/AIChatSessionsContext', () => ({
   useAIChatSessions: () => ({ sessionsVersion: 0, refetchSessions: vi.fn() }),
-}));
-
-vi.mock('@/contexts/AIChatContext', () => ({
-  useAIChat: () => new Proxy({}, { get: () => vi.fn() }),
-}));
-
-vi.mock('@/contexts/ConversationContext', () => ({
-  useConversation: () => new Proxy({}, { get: () => vi.fn() }),
 }));
 
 vi.mock('@/contexts/IndexesContext', () => ({
   useNetworksState: () => ({ indexes: [], addIndex: vi.fn() }),
 }));
-
-vi.mock('@/contexts/APIContext', () => {
-  const noopService = new Proxy({}, { get: () => vi.fn().mockResolvedValue([]) });
-  return {
-    useNetworks: () => noopService,
-    useOpportunities: () => noopService,
-  };
-});
 
 vi.mock('@/contexts/NotificationContext', () => ({
   useNotifications: () => ({
@@ -91,19 +71,9 @@ vi.mock('@/contexts/NotificationContext', () => ({
 }));
 
 vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({ count: mocks.questionsState.count }),
-}));
-
-vi.mock('@/components/modals/CreateIndexModal', () => ({
-  default: () => null,
-}));
-
-vi.mock('@/components/MasterKeyDialog', () => ({
-  default: () => null,
-}));
-
-vi.mock('@/components/UserAvatar', () => ({
-  default: () => <div data-testid="avatar" />,
+  useQuestions: () => ({
+    personalAgentPending: mocks.questionsState.personalAgentPending,
+  }),
 }));
 
 function LocationProbe() {
@@ -111,10 +81,10 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
-function renderSidebar(route = '/') {
+function renderPanel(route = '/agent/chat') {
   return renderWithRouter(
     <>
-      <Sidebar />
+      <AgentSessionsPanel />
       <LocationProbe />
     </>,
     { route }
@@ -142,17 +112,17 @@ function mockSessions({
   });
 }
 
-describe('Sidebar pinned Personal Agent entry', () => {
+describe('AgentSessionsPanel pinned Personal Agent entry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authState.user = aliceUser;
     mocks.authState.features = null;
-    mocks.questionsState.count = 0;
+    mocks.questionsState.personalAgentPending = 0;
     mockSessions({});
   });
 
   test('flag off → no negotiator entry, no persona lookup', async () => {
-    renderSidebar();
+    renderPanel();
 
     // Let the history-session fetch settle.
     await waitFor(() => expect(mocks.apiClient.get).toHaveBeenCalledWith('/chat/sessions'));
@@ -169,7 +139,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
       agent: { id: 'agent-1', name: "Alice's Negotiator", description: null },
     });
 
-    renderSidebar();
+    renderPanel();
 
     // Canonical branding until the session (which carries the agent's real
     // name) resolves.
@@ -187,7 +157,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
   test('memory shortcut on the pinned entry navigates to /agent/memory', async () => {
     mocks.authState.features = { negotiatorChat: true };
 
-    renderSidebar();
+    renderPanel();
 
     const link = await screen.findByTestId('negotiator-memory-link');
     fireEvent.click(link);
@@ -205,7 +175,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
       negotiator: [{ id: 'neg-session-1', title: "Alice's Negotiator", networkId: null, createdAt: '', updatedAt: '' }],
     });
 
-    renderSidebar();
+    renderPanel();
 
     const entry = await screen.findByText("Alice's Negotiator");
     fireEvent.click(entry);
@@ -221,13 +191,13 @@ describe('Sidebar pinned Personal Agent entry', () => {
     mockSessions({
       negotiator: [
         // Most-recent first: an intent-pinned negotiator session must NOT
-        // become the pinned sidebar entry.
+        // become the pinned entry.
         { id: 'pinned-intent-1', title: 'Find a co-founder', scopeType: 'intent', networkId: null, createdAt: '', updatedAt: '' },
         { id: 'neg-dm-1', title: "Alice's Negotiator", scopeType: null, networkId: null, createdAt: '', updatedAt: '' },
       ],
     });
 
-    renderSidebar();
+    renderPanel();
 
     const entry = await screen.findByText("Alice's Negotiator");
     expect(screen.queryByText('Find a co-founder')).toBeNull();
@@ -241,12 +211,12 @@ describe('Sidebar pinned Personal Agent entry', () => {
 
   test('pending-question badge renders on the entry when the inbox has open questions (IND-404)', async () => {
     mocks.authState.features = { negotiatorChat: true };
-    mocks.questionsState.count = 3;
+    mocks.questionsState.personalAgentPending = 3;
     mockSessions({
       negotiator: [{ id: 'neg-session-1', title: "Alice's Negotiator", networkId: null, createdAt: '', updatedAt: '' }],
     });
 
-    renderSidebar();
+    renderPanel();
 
     await screen.findByText("Alice's Negotiator");
     expect(screen.getByTestId('negotiator-question-badge')).toHaveTextContent('3');
@@ -254,18 +224,18 @@ describe('Sidebar pinned Personal Agent entry', () => {
 
   test('badge caps at 99+ and disappears at zero (IND-404)', async () => {
     mocks.authState.features = { negotiatorChat: true };
-    mocks.questionsState.count = 120;
+    mocks.questionsState.personalAgentPending = 120;
     mockSessions({
       negotiator: [{ id: 'neg-session-1', title: "Alice's Negotiator", networkId: null, createdAt: '', updatedAt: '' }],
     });
 
-    const { unmount } = renderSidebar();
+    const { unmount } = renderPanel();
     await screen.findByText("Alice's Negotiator");
     expect(screen.getByTestId('negotiator-question-badge')).toHaveTextContent('99+');
     unmount();
 
-    mocks.questionsState.count = 0;
-    renderSidebar();
+    mocks.questionsState.personalAgentPending = 0;
+    renderPanel();
     await screen.findByText("Alice's Negotiator");
     expect(screen.queryByTestId('negotiator-question-badge')).toBeNull();
   });
@@ -274,7 +244,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
     mocks.authState.features = { negotiatorChat: true };
     mockSessions({
       // Defensive path: even if the backend ever leaked the negotiator DM
-      // into the history payload, the sidebar filters it out of History.
+      // into the history payload, the panel filters it out of History.
       history: [
         { id: 'neg-session-1', title: "Alice's Negotiator", networkId: null, createdAt: '', updatedAt: '' },
         { id: 'other-1', title: 'Other chat', networkId: null, createdAt: '', updatedAt: '' },
@@ -282,10 +252,20 @@ describe('Sidebar pinned Personal Agent entry', () => {
       negotiator: [{ id: 'neg-session-1', title: "Alice's Negotiator", networkId: null, createdAt: '', updatedAt: '' }],
     });
 
-    renderSidebar();
+    renderPanel();
 
     await screen.findByText('Other chat');
     // Exactly one occurrence: the pinned entry, not a history row.
     expect(screen.getAllByText("Alice's Negotiator")).toHaveLength(1);
+  });
+
+  test('New conversation targets the agent chat route', async () => {
+    renderPanel('/d/some-session');
+
+    fireEvent.click(await screen.findByText('New conversation'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/agent/chat')
+    );
   });
 });
