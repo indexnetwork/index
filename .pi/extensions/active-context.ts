@@ -3,8 +3,8 @@ import path from "node:path";
 import { Type } from "typebox";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-const STATUS_KEY = "active-context";
 const AUTO_NAME_ENABLED = process.env.PI_WORKTREE_AUTO_NAME !== "0";
 
 interface ActiveContext {
@@ -12,24 +12,16 @@ interface ActiveContext {
 	issue?: string;
 }
 
-/** Current footer context for this session. */
+/** Current PR / Linear context for this session. */
 const active: ActiveContext = {};
 
-/** Last UI-capable context, used to re-render the status from tool/command handlers. */
-let lastCtx: ExtensionContext | undefined;
+/** Re-render hook, set while the custom footer is mounted. */
+let requestRender: (() => void) | undefined;
 
 function normalizeIssue(raw: string): string {
 	const trimmed = raw.trim();
 	if (/^\d+$/.test(trimmed)) return `IND-${trimmed}`;
 	return trimmed.toUpperCase();
-}
-
-function render(ctx: ExtensionContext | undefined): void {
-	if (!ctx?.hasUI) return;
-	const parts: string[] = [];
-	if (active.pr !== undefined) parts.push(ctx.ui.theme.bold(ctx.ui.theme.fg("accent", `PR#${active.pr}`)));
-	if (active.issue) parts.push(ctx.ui.theme.bold(ctx.ui.theme.fg("accent", active.issue)));
-	ctx.ui.setStatus(STATUS_KEY, parts.length > 0 ? `${ctx.ui.theme.fg("muted", "◆")} ${parts.join(ctx.ui.theme.fg("muted", " · "))}` : undefined);
 }
 
 function describe(): string {
@@ -42,7 +34,96 @@ function describe(): string {
 function update(patch: { pr?: number | null; issue?: string | null }): void {
 	if (patch.pr !== undefined) active.pr = patch.pr === null ? undefined : patch.pr;
 	if (patch.issue !== undefined) active.issue = patch.issue === null ? undefined : normalizeIssue(patch.issue);
-	render(lastCtx);
+	requestRender?.();
+}
+
+function formatTokens(count: number): string {
+	if (count < 1000) return `${count}`;
+	if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
+	if (count < 1000000) return `${Math.round(count / 1000)}k`;
+	if (count < 10000000) return `${(count / 1000000).toFixed(1)}M`;
+	return `${Math.round(count / 1000000)}M`;
+}
+
+/** Replace the home-directory prefix with ~. */
+function shortenPath(cwd: string): string {
+	const home = process.env.HOME || process.env.USERPROFILE;
+	if (home && (cwd === home || cwd.startsWith(home + path.sep))) return `~${cwd.slice(home.length)}`;
+	return cwd;
+}
+
+/** Left + right on one line: right-aligned when it fits, truncated otherwise. */
+function composeLine(left: string, right: string, width: number): string {
+	const leftWidth = visibleWidth(left);
+	const rightWidth = visibleWidth(right);
+	if (leftWidth + 2 + rightWidth <= width) {
+		return left + " ".repeat(width - leftWidth - rightWidth) + right;
+	}
+	return truncateToWidth(`${left}  ${right}`, width, "…");
+}
+
+/** Install the fully custom footer (replaces the built-in one). */
+function installFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
+	ctx.ui.setFooter((tui, theme, footerData) => {
+		const unsubscribeBranch = footerData.onBranchChange(() => tui.requestRender());
+		requestRender = () => tui.requestRender();
+
+		const dim = (s: string) => theme.fg("dim", s);
+		const accent = (s: string) => theme.fg("accent", s);
+
+		return {
+			dispose() {
+				unsubscribeBranch();
+				requestRender = undefined;
+			},
+			invalidate() {},
+			render(width: number): string[] {
+				// ── Line 1: place — folder · branch · session name ──
+				const cwd = shortenPath(ctx.sessionManager.getCwd());
+				const branch = footerData.getGitBranch();
+				const sessionName = ctx.sessionManager.getSessionName();
+
+				const placeParts = [`📁 ${dim(cwd)}`];
+				if (branch) placeParts.push(`🌿 ${dim(branch)}`);
+				const sessionPart = `💬 ${sessionName ? accent(sessionName) : dim("unnamed")}`;
+
+				// ── Line 2 left: work context — PR · Linear (always visible) ──
+				const prPart = `🔀 ${active.pr !== undefined ? theme.bold(accent(`PR#${active.pr}`)) : dim("—")}`;
+				const issuePart = `🎯 ${active.issue ? theme.bold(accent(active.issue)) : dim("—")}`;
+
+				// ── Line 2 right: model — model · thinking · cost · context ──
+				let cost = 0;
+				for (const entry of ctx.sessionManager.getEntries()) {
+					if (entry.type === "message" && entry.message.role === "assistant") {
+						const usage = (entry.message as { usage?: { cost?: { total?: number } } }).usage;
+						cost += usage?.cost?.total ?? 0;
+					}
+				}
+
+				const modelParts = [`🤖 ${dim(ctx.model?.id ?? "no-model")}`];
+				if (ctx.model?.reasoning) modelParts.push(`🧠 ${dim(pi.getThinkingLevel())}`);
+				modelParts.push(`💰 ${dim(`$${cost.toFixed(2)}`)}`);
+
+				const usage = ctx.getContextUsage();
+				if (usage) {
+					const percent = usage.percent;
+					const display = `${percent === null ? "?" : `${percent.toFixed(0)}%`}/${formatTokens(usage.contextWindow)}`;
+					const colored =
+						percent !== null && percent > 90
+							? theme.fg("error", display)
+							: percent !== null && percent > 70
+								? theme.fg("warning", display)
+								: dim(display);
+					modelParts.push(`📊 ${colored}`);
+				}
+
+				return [
+					composeLine(placeParts.join("  "), sessionPart, width),
+					composeLine(`${prPart}  ${issuePart}`, modelParts.join("  "), width),
+				];
+			},
+		};
+	});
 }
 
 /** Best-effort PR prefill from the current branch's open GitHub PR. */
@@ -53,10 +134,11 @@ async function prefillPrFromBranch(pi: ExtensionAPI, cwd: string): Promise<void>
 	const pr = Number.parseInt(result.stdout.trim(), 10);
 	if (Number.isFinite(pr)) {
 		active.pr = pr;
+		requestRender?.();
 	}
 }
 
-/** Name linked-worktree sessions after the worktree folder (no footer label). */
+/** Name linked-worktree sessions after the worktree folder. */
 async function autoNameWorktreeSession(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
 	if (!AUTO_NAME_ENABLED || pi.getSessionName()) return;
 	const topLevel = await pi.exec("git", ["-C", ctx.cwd, "rev-parse", "--show-toplevel"], { timeout: 5000 });
@@ -71,10 +153,8 @@ async function autoNameWorktreeSession(pi: ExtensionAPI, ctx: ExtensionContext):
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		await autoNameWorktreeSession(pi, ctx);
-		if (!ctx.hasUI) return;
-		lastCtx = ctx;
+		if (ctx.mode === "tui") installFooter(pi, ctx);
 		await prefillPrFromBranch(pi, ctx.cwd);
-		render(ctx);
 	});
 
 	pi.registerTool({
@@ -99,8 +179,7 @@ export default function (pi: ExtensionAPI) {
 				}),
 			),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (ctx.hasUI) lastCtx = ctx;
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			update({ pr: params.pr, issue: params.issue });
 			const text = `Active context: ${describe()}`;
 			return { content: [{ type: "text", text }], details: { ...active } };
@@ -110,7 +189,6 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("context", {
 		description: "Show or set the active PR / Linear footer badge: /context [pr <n|->] [issue <code|->] | /context clear",
 		handler: async (args, ctx) => {
-			lastCtx = ctx;
 			const tokens = args.trim().split(/\s+/).filter(Boolean);
 			if (tokens.length === 0) {
 				ctx.ui.notify(`Active context: ${describe()}`, "info");
