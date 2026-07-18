@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
+import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
 import { AuthGuard } from '../guards/auth.guard';
@@ -407,6 +408,7 @@ export class OpportunityController {
    * Requires x-api-key (agent polling) or session auth.
    */
   @Post('/:id/connect-token')
+  @deprecatedRoute('opportunity.connect-token')
   @UseGuards(RateLimit('write'), AuthGuard)
   async createConnectToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const id = params?.id;
@@ -483,6 +485,7 @@ export class OpportunityController {
    * is required.
    */
   @Get('/:id/connect')
+  @deprecatedRoute('opportunity.connect')
   @UseGuards(RateLimit('read'))
   async connect(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;
@@ -563,6 +566,7 @@ export class OpportunityController {
    * mechanism as the `/connect` endpoint).
    */
   @Get('/:id/approve-introduction')
+  @deprecatedRoute('opportunity.approve-introduction')
   @UseGuards(RateLimit('read'))
   async approveIntroduction(req: Request, _user: unknown, params?: RouteParams) {
     const id = params?.id;

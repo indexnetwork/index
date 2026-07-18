@@ -3,6 +3,7 @@ import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/experiment.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
+import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { Controller, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { experimentService, SignupNotCompleteError, type ImportRow } from '../services/experiment.service';
 import { networkInvitationService } from '../services/network-invitation.service';
@@ -355,6 +356,7 @@ export class NetworkExperimentController {
    * @returns Updated network or validation error
    */
   @Put('/:id/key')
+  @deprecatedRoute('network.update-key')
   @UseGuards(RateLimit('write'), AuthGuard)
   async updateKey(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     let body: { key?: string };
