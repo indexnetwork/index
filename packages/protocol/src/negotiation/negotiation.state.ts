@@ -2,6 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 import type { ScreenDecisionRecord } from "./negotiation.screen.js";
+import type { DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
@@ -167,6 +168,18 @@ export const NegotiationGraphState = Annotation.Root({
    * node runs. Mirrors `tasks.metadata.screenDecision`.
    */
   screenDecision: Annotation<ScreenDecisionRecord | null>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => null,
+  }),
+
+  /**
+   * First applied deadlock→bargaining shift in this session (IND-428).
+   * Written by the turn node when the system agent first drafts in the
+   * bargaining stance; used to record the shift exactly once per session.
+   * Internal analytics only — mirrored to `tasks.metadata.deadlockShift`,
+   * never into any turn payload or public projection.
+   */
+  deadlockShift: Annotation<DeadlockShiftRecord | null>({
     reducer: (curr, next) => next ?? curr,
     default: () => null,
   }),

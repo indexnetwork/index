@@ -941,6 +941,25 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Merges an applied deadlock→bargaining shift record (IND-428) into the
+   * task's metadata JSONB under the `deadlockShift` key, preserving other
+   * metadata keys. Sibling of {@link setTaskScreenDecision}. Internal
+   * analytics only — no API surface projects this key.
+   *
+   * @param taskId - Task to update
+   * @param deadlockShift - DeadlockShiftRecord (run length, threshold, turn, seat, timing)
+   */
+  async setTaskDeadlockShift(taskId: string, deadlockShift: Record<string, unknown>): Promise<void> {
+    await db
+      .update(schema.tasks)
+      .set({
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('deadlockShift', ${JSON.stringify(deadlockShift)}::jsonb)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.id, taskId));
+  }
+
+  /**
    * Retrieves a task by ID.
    * @param taskId - Task ID
    * @returns The task, or null if not found

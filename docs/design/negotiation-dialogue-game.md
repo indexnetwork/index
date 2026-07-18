@@ -101,7 +101,14 @@ In Walton & Krabbe's (1995) typology the game as shipped is a **persuasion dialo
 
 Wells & Reed (2006), *Knowing When to Bargain*, formalize what a persuasion-typed game needs when the merits are exhausted: a **legal shift** from persuasion (PP0 — justify standpoints with evidence) to negotiation (NP0 — trade concessions that need not pertain to the original standpoint). The shipped protocol has the shift's precondition detector's raw material (the commitment store makes "N consecutive challenges without convergence" decidable from state) but historically had no stalemate rule: a deadlocked game simply ran to the turn cap.
 
-That gap — deterministic deadlock detection plus a persuasion→bargaining stance shift within the existing locution vocabulary — is the second half of backlog item 6 (IND-428), designed under a hard constraint from the game framing: **the shift changes drafting stance, not the game rules.** Locutions, combination rules, commitment rules, and termination rules are untouched; a shifted agent still speaks only its seat's vocabulary.
+That gap is closed by the second half of backlog item 6 (IND-428), under a hard constraint from the game framing: **the shift changes drafting stance, not the game rules.**
+
+### The shipped shift (IND-428)
+
+- **Detection** (`negotiation.deadlock.ts`, `assessDeadlock`): the maximal *trailing* run of `counter`/`question` turns in the persisted history — the commitment store makes this decidable without any LLM. Openings, terminal actions, `ask_user` (fresh principal input incoming), and unreadable actions reset the run. Deadlock at run ≥ `NEGOTIATION_DEADLOCK_THRESHOLD` (integer ≥ 2, default 4).
+- **Gate**: `NEGOTIATION_DEADLOCK_SHIFT_ENABLED === "true"` (strict, default off), applied only under protocol v2 — checked alongside the version plumbing so v1 semantics stay untouched. Detection errors fail open to "no deadlock".
+- **Shift**: the turn node passes a `bargaining` stance to the *system agent's* prompt only (concessions/scope reductions; `ask_user` escalation only when the action is already legally held on the turn; conclude decisively otherwise). Locutions, combination rules (`allowedActionsFor`), commitment rules, and termination rules are untouched — a shifted agent still speaks only its seat's vocabulary, and externally dispatched turns never receive the stance.
+- **Record**: the first applied shift per session is persisted to internal task metadata (`metadata.deadlockShift`, never projected by API surfaces — same posture as `screenDecision`) and emitted as a `negotiation_deadlock_shift` trace event.
 
 ## Readings
 

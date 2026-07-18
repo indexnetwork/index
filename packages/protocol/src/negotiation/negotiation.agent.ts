@@ -5,6 +5,7 @@ import { turnSchemaFor, fallbackActionFor } from "./negotiation.protocol.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
+import { renderBargainingShiftSection } from "./negotiation.deadlock.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 
 const agentLog = protocolLogger("IndexNegotiator");
@@ -23,7 +24,7 @@ Rules:
 - Focus on concrete intent alignment, not vague overlap.
 - Do NOT reference internal system details like scores, pre-screens, or evaluator outputs.
 - suggestedRoles: "agent" = can help, "patient" = seeks help, "peer" = mutual benefit.
-{finalTurnInstruction}{negotiatorMemory}`;
+{finalTurnInstruction}{bargainingShift}{negotiatorMemory}`;
 
 /** v1 action rules — byte-identical to the pre-seat-rules prompt. */
 const V1_ACTION_RULES = `- On the FIRST turn: Propose the connection case. Explain why it would benefit both parties. Set action to "propose".
@@ -92,6 +93,14 @@ export interface NegotiationAgentInput {
    * negotiation. When true, the seat schema and prompt gain the action.
    */
   canAskUser?: boolean;
+  /**
+   * Deadlock→bargaining drafting stance (IND-428, flag-gated by the caller).
+   * Present = the graph detected a stalemate (N consecutive counter/question
+   * turns) and this turn should be drafted in the bargaining stance —
+   * concessions/scope reductions instead of re-arguing merits. v2 only;
+   * ignored under v1. Absent → the prompt is byte-identical to before.
+   */
+  bargaining?: { consecutiveNonConvergent: number };
   /**
    * Retrieved negotiator memories for the acting user (P5.3 read path).
    * Rendered as a private prompt section — hard disclosure constraints plus
@@ -162,6 +171,9 @@ export class IndexNegotiator {
     const seat: NegotiationSeat = input.seat ?? (input.isDiscoverer ? "initiator" : "counterparty");
     const isFinalTurn = input.isFinalTurn ?? false;
     const canAskUser = input.canAskUser === true && version === "v2" && !isFinalTurn;
+    // Deadlock→bargaining stance (IND-428): v2 only — defense in depth on top
+    // of the graph-side gating, mirroring the canAskUser guard above.
+    const bargainingActive = input.bargaining != null && version === "v2";
     const schema = turnSchemaFor(version, seat, isFinalTurn, {
       system: SystemNegotiationTurnSchema,
       final: FinalNegotiationTurnSchema,
@@ -203,6 +215,12 @@ QUERY PRIORITY RULE: This search query is the PRIMARY criterion for this negotia
       .replace("{role}", role)
       .replace("{networkContext}", networkContext)
       .replace("{finalTurnInstruction}", finalTurnInstruction)
+      .replace("{bargainingShift}", renderBargainingShiftSection({
+        active: bargainingActive,
+        userName,
+        canAskUser,
+        consecutiveNonConvergent: input.bargaining?.consecutiveNonConvergent ?? 0,
+      }))
       .replace("{negotiatorMemory}", renderNegotiatorMemorySection(input.memory ?? []));
 
     const historyText = input.history.length > 0

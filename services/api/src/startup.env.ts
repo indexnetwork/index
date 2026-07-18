@@ -114,6 +114,8 @@ const envSchema = z.object({
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
   NEGOTIATION_ASK_USER_WINDOW_MS: optionalInt,
+  NEGOTIATION_DEADLOCK_SHIFT_ENABLED: optionalBoolean,
+  NEGOTIATION_DEADLOCK_THRESHOLD: optionalInt,
   NEGOTIATOR_MEMORY_WRITE_ENABLED: optionalBoolean,
   NEGOTIATOR_CHAT_REFLECT_DELAY_MS: optionalInt,
   NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
