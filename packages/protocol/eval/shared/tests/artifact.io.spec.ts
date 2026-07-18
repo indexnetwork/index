@@ -7,7 +7,7 @@ import { EVAL_BASELINE_ARTIFACT_TYPE, buildEvalArtifact } from "../artifact.js";
 import { assertEvalWritePlan, readEvalArtifact, writeEvalArtifact } from "../artifact.io.js";
 import { buildScorecard } from "../scorecard.js";
 import type { CaseResultLike } from "../types.js";
-import { makeTestMeta } from "./artifact.fixtures.js";
+import { makeSuccessfulExecution, makeTestMeta } from "./artifact.fixtures.js";
 
 const caseResult = (caseId: string, passes: number, runs = 3): CaseResultLike => ({
   caseId,
@@ -16,13 +16,14 @@ const caseResult = (caseId: string, passes: number, runs = 3): CaseResultLike =>
   passes,
   passRate: passes / runs,
   flaky: passes > 0 && passes < runs,
+  scoredRunIds: Array.from({ length: runs }, (_, runIndex) => `${encodeURIComponent(caseId)}::run:${runIndex + 1}`),
 });
 
 const envelope = (passes = 3) =>
   buildEvalArtifact(
     EVAL_BASELINE_ARTIFACT_TYPE,
     buildScorecard([caseResult("a", passes)], { model: "test/model", runs: 3 }),
-    makeTestMeta({ runs: 3 }),
+    makeTestMeta({ runs: 3, execution: makeSuccessfulExecution(["a"], 3) }),
   );
 
 const freshDir = async (): Promise<string> => {

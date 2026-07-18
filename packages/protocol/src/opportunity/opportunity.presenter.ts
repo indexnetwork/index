@@ -64,8 +64,10 @@ const responseFormat = z.object({
 });
 
 export type OpportunityPresentationResult = z.infer<typeof PresentationSchema> & {
-  /** True when the LLM call failed and this is fallback-shaped copy built from raw reasoning. */
+  /** True when any output field used resilience fallback copy. */
   isFallback?: boolean;
+  /** Diagnostic category; never changes production fallback policy. */
+  fallbackReason?: "timeout" | "error" | "sanitization";
 };
 
 /** Input for home-card presenter call; extends PresenterInput with optional mutual intent count. */
@@ -316,14 +318,14 @@ export class OpportunityPresenter {
   private async invokeWithTimeout(
     targetModel: Runnable,
     messages: (SystemMessage | HumanMessage)[],
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const timeoutReason = `LLM invoke timed out after ${LLM_TIMEOUT_MS}ms`;
     const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-    const invokePromise = targetModel.invoke(messages, {
-      signal: controller.signal,
-    });
+    const combinedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    const invokePromise = targetModel.invoke(messages, { signal: combinedSignal });
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
@@ -347,6 +349,7 @@ export class OpportunityPresenter {
   @Timed()
   public async present(
     input: PresenterInput,
+    options: { signal?: AbortSignal } = {},
   ): Promise<OpportunityPresentationResult> {
     const introContext = input.isIntroduction
       ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
@@ -375,7 +378,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
         new SystemMessage(systemPrompt),
         new HumanMessage(humanContent),
       ];
-      const result = await this.invokeWithTimeout(this.model, messages);
+      const result = await this.invokeWithTimeout(this.model, messages, options.signal);
       const parsed = responseFormat.parse(result);
       const headline = sanitizePresenterField(
         parsed.presentation.headline,
@@ -396,9 +399,10 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
         personalizedSummary: summary.value,
         suggestedAction: action.value,
         greeting: greeting.value,
-        ...(usedFallback ? { isFallback: true } : {}),
+        ...(usedFallback ? { isFallback: true, fallbackReason: "sanitization" as const } : {}),
       };
     } catch (e) {
+      if (options.signal?.aborted) throw e;
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
       presentLog.warn(
@@ -417,6 +421,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
         suggestedAction: DEFAULT_FALLBACK_ACTION,
         greeting: "",
         isFallback: true,
+        fallbackReason: timeoutReason ? "timeout" : "error",
       };
     }
   }

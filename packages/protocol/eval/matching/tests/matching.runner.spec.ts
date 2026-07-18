@@ -16,7 +16,7 @@ const c: MatchingCase = {
 
 describe("runCase", () => {
   it("invokes the evaluator once per run with returnAll and collects outputs", async () => {
-    const calls: Array<{ minScore?: number; returnAll?: boolean }> = [];
+    const calls: Array<{ minScore?: number; returnAll?: boolean; signal?: AbortSignal }> = [];
     const fake: EvaluatorLike = {
       async invokeEntityBundle(_input, opts) {
         calls.push(opts);
@@ -27,11 +27,13 @@ describe("runCase", () => {
       },
     };
 
-    const runs = await runCase(fake, c, 3);
-    expect(runs).toHaveLength(3);
+    const batch = await runCase(fake, c, 3);
+    expect(batch.runs).toHaveLength(3);
+    expect(batch.outputs).toHaveLength(3);
     expect(calls).toHaveLength(3);
-    expect(calls[0]).toEqual({ minScore: MATCHING_MIN_SCORE, returnAll: true });
-    expect(runs[0][0].score).toBe(80);
+    expect(calls[0]).toMatchObject({ minScore: MATCHING_MIN_SCORE, returnAll: true });
+    expect(calls[0].signal).toBeInstanceOf(AbortSignal);
+    expect(batch.outputs[0][0].score).toBe(80);
   });
 
   it("retries transient evaluator failures", async () => {
@@ -44,9 +46,11 @@ describe("runCase", () => {
       },
     };
 
-    const runs = await runCase(fake, c, 1, { maxAttempts: 2, retryDelayMs: 0 });
+    const batch = await runCase(fake, c, 1, { maxAttempts: 2, retryDelayMs: 0 });
     expect(attempts).toBe(2);
-    expect(runs).toHaveLength(1);
-    expect(runs[0][0].score).toBe(80);
+    expect(batch.runs).toHaveLength(1);
+    expect(batch.runs[0].recovered).toBe(true);
+    expect(batch.runs[0].attempts).toHaveLength(2);
+    expect(batch.outputs[0][0].score).toBe(80);
   });
 });

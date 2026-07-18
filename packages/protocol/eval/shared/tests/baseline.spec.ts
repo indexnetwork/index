@@ -7,7 +7,7 @@ import { buildScorecard } from "../scorecard.js";
 import { diffBaseline, readBaseline, writeBaseline, writeRunReport } from "../baseline.js";
 import { computeRollingBaseline } from "../rolling.js";
 import type { CaseResultLike, ScorecardLike } from "../types.js";
-import { makeTestMeta } from "./artifact.fixtures.js";
+import { makeSuccessfulExecution, makeTestMeta } from "./artifact.fixtures.js";
 
 const R = 7;
 const BS = 0.8;
@@ -15,7 +15,15 @@ const BS = 0.8;
 /** Aggregate-only case fixture (runResults omitted — shared layer never reads them). */
 const s = (caseId: string, rule: string, passRate: number, runs = R): CaseResultLike => {
   const passes = Math.round(passRate * runs);
-  return { caseId, rule, runs, passes, passRate, flaky: passRate > 0 && passRate < 1 };
+  return {
+    caseId,
+    rule,
+    runs,
+    passes,
+    passRate,
+    flaky: passRate > 0 && passRate < 1,
+    scoredRunIds: Array.from({ length: runs }, (_, runIndex) => `${encodeURIComponent(caseId)}::run:${runIndex + 1}`),
+  };
 };
 
 describe("buildScorecard", () => {
@@ -28,6 +36,16 @@ describe("buildScorecard", () => {
     const gx = sc.rules.find((r) => r.rule === "groupX")!;
     expect(gx.caseCount).toBe(2);
     expect(gx.passRate).toBeCloseTo(0.5, 5);
+  });
+
+  it("excludes cases with no terminal successful outputs from domain rates", () => {
+    const sc = buildScorecard([
+      s("scored", "g", 1, 1),
+      { caseId: "failed", rule: "g", runs: 0, passes: 0, passRate: 0, flaky: false, scoredRunIds: [] },
+    ], { model: "m", runs: 1 });
+    expect(sc.aggregatePassRate).toBe(1);
+    expect(sc.rules[0].passRate).toBe(1);
+    expect(sc.cases).toHaveLength(2);
   });
 });
 
@@ -72,7 +90,7 @@ describe("writeBaseline leanCase transform", () => {
   }
   const rich = (): ScorecardLike<RichCase> =>
     buildScorecard<RichCase>(
-      [{ caseId: "a", rule: "g", runs: 1, passes: 1, passRate: 1, flaky: false, runResults: [{ passed: true, detail: "verbose" }] }],
+      [{ caseId: "a", rule: "g", runs: 1, passes: 1, passRate: 1, flaky: false, scoredRunIds: ["a::run:1"], runResults: [{ passed: true, detail: "verbose" }] }],
       { model: "m", runs: 1 },
     );
 
@@ -115,10 +133,41 @@ describe("computeRollingBaseline", () => {
       ...buildScorecard([s("a", "g", passRate, 3)], { model: "m", runs: 3 }),
       generatedAt: at,
     });
-    const meta = makeTestMeta({ runs: 3, startedAt: "2026-04-30T00:00:00.000Z", completedAt: "2026-04-30T00:01:00.000Z" });
+    const meta = makeTestMeta({ runs: 3, execution: makeSuccessfulExecution(["a"], 3) });
     await writeRunReport(join(dir, "recent-perfect.json"), mk(1, "2026-05-27T00:00:00.000Z"), { meta });
     await writeRunReport(join(dir, "recent-partial.json"), mk(1 / 3, "2026-05-26T00:00:00.000Z"), { meta });
     await writeRunReport(join(dir, "old.json"), mk(0, "2026-05-01T00:00:00.000Z"), { meta });
+
+    const failedRun = {
+      policy: "normal" as const,
+      runs: [{
+        runId: "a::run:1",
+        caseId: "a",
+        runIndex: 0,
+        outcome: "failed" as const,
+        recovered: false,
+        attempts: [{
+          attemptId: "a::run:1::attempt:1",
+          runId: "a::run:1",
+          runIndex: 0,
+          attemptNumber: 1,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:00:00.010Z",
+          durationMs: 10,
+          outcome: "failure" as const,
+          error: { class: "Error", message: "sanitized" },
+          retryable: false,
+          backoffMs: 0,
+        }],
+      }],
+    };
+    const incomplete = {
+      ...buildScorecard([{ caseId: "a", rule: "g", runs: 0, passes: 0, passRate: 0, flaky: false, scoredRunIds: [] }], { model: "m", runs: 1 }),
+      generatedAt: "2026-05-27T12:00:00.000Z",
+    };
+    await writeRunReport(join(dir, "recent-incomplete.json"), incomplete, {
+      meta: makeTestMeta({ runs: 1, execution: failedRun }),
+    });
 
     const rolling = await computeRollingBaseline(dir, 7, now);
     expect(rolling).not.toBeNull();

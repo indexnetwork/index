@@ -27,6 +27,7 @@ export function diffBaseline(
 
   const baseCases = new Map(baseline.cases.map((c) => [c.caseId, c]));
   for (const c of current.cases) {
+    if (c.runs === 0) continue; // execution failures are not domain-scoring failures
     const base = baseCases.get(c.caseId);
     if (base === undefined) {
       skippedCaseIds.push(c.caseId);
@@ -47,7 +48,7 @@ export function diffBaseline(
   }
   const comparableByRule = new Map<string, { passes: number; runs: number }>();
   for (const c of current.cases) {
-    if (!baseCases.has(c.caseId)) continue;
+    if (c.runs === 0 || !baseCases.has(c.caseId)) continue;
     const acc = comparableByRule.get(c.rule) ?? { passes: 0, runs: 0 };
     acc.passes += c.passes;
     acc.runs += c.runs;

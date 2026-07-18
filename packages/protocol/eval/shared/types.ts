@@ -16,6 +16,13 @@ export interface RuleResult {
   passRate: number;
 }
 
+/** Provenance attached to each scored terminal-success output in v2 reports. */
+export interface ScoredRunProvenance {
+  runId?: string;
+  /** Zero-based requested slot index; absent from v1 artifacts. */
+  runIndex?: number;
+}
+
 /** Minimal per-case fields every shared function reads. Harness CaseResult types extend this. */
 export interface CaseResultLike {
   caseId: string;
@@ -24,8 +31,13 @@ export interface CaseResultLike {
   runs: number;
   passes: number;
   passRate: number;
-  /** True when the case passed some runs and failed others. */
+  /** True when the case passed some successful runs and failed others. */
   flaky: boolean;
+  /**
+   * Deterministic ids of terminal successful runs consumed by the scorer.
+   * Required in v2 artifacts; absent from v1 artifacts and legacy payloads.
+   */
+  scoredRunIds?: string[];
 }
 
 /** Minimal scorecard shape. Harness Scorecard types extend this with their CaseResult. */

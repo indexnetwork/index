@@ -61,3 +61,12 @@ rely on the default `privacy` assertion to prove they were redacted. Re-run with
 - `baselines/profile.baseline.json` — committed baseline (per-run detail stripped).
 - `runs/*.json` — gitignored full run reports (rolling-baseline fuel).
 - `tests/` — unit tests (no live agents).
+
+## Execution evidence
+
+Schema-v2 run reports retain every generator invocation attempt, including retries,
+timeout/cancellation, sanitized errors, retryability, and backoff. Only terminal successful
+profiles are scored; provider errors never share raw secrets with profile evidence. Use
+`--strict-evidence` for release evidence and `--attempt-timeout-ms N` to override the
+90-second per-attempt deadline. Exit codes are 0 pass, 1 regression, 2 execution/artifact
+error, and 3 incomplete strict evidence.

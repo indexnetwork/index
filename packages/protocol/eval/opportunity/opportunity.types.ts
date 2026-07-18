@@ -1,4 +1,4 @@
-import type { CaseResultLike, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
+import type { CaseResultLike, ScoredRunProvenance, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
 
 /** Each rule maps to a distinct presenter behaviour the corpus exercises. */
 export type Rule = "viewer_voice" | "no_leakage" | "greeting" | "grounding" | "introducer_role" | "tone";
@@ -80,7 +80,7 @@ export interface OpportunityRunDetail {
   leaks: string[];
 }
 
-export interface RunResult {
+export interface RunResult extends ScoredRunProvenance {
   passed: boolean;
   assertions: AssertionResult[];
   detail?: OpportunityRunDetail;

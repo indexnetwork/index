@@ -1,18 +1,25 @@
 import type { PremiseAnalyzerOutput } from "../../src/premise/premise.analyzer.js";
 import type { PremiseDecomposerOutput } from "../../src/premise/premise.decomposer.js";
 
-import { repeatRuns } from "../shared/index.js";
-import { PREMISE_EVAL_MAX_ATTEMPTS, PREMISE_EVAL_RETRY_DELAY_MS } from "./premise.constants.js";
+import { executeRuns, type EvalEvidencePolicy, type EvalRunBatch } from "../shared/index.js";
+import { PREMISE_EVAL_ATTEMPT_TIMEOUT_MS, PREMISE_EVAL_MAX_ATTEMPTS, PREMISE_EVAL_RETRY_DELAY_MS } from "./premise.constants.js";
 import type { PremiseCase, PremiseRunDetail } from "./premise.types.js";
 
-/** Minimal decomposer surface the runner needs (real PremiseDecomposer satisfies this). */
 export interface DecomposerLike {
-  invoke(input: string): Promise<PremiseDecomposerOutput>;
+  invoke(
+    input: string,
+    existingPremises?: undefined,
+    currentBio?: undefined,
+    options?: { signal?: AbortSignal },
+  ): Promise<PremiseDecomposerOutput>;
 }
 
-/** Minimal analyzer surface the runner needs (real PremiseAnalyzer satisfies this). */
 export interface AnalyzerLike {
-  invoke(premiseText: string, profileContext?: string): Promise<PremiseAnalyzerOutput>;
+  invoke(
+    premiseText: string,
+    profileContext?: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<PremiseAnalyzerOutput>;
 }
 
 export interface PremiseDeps {
@@ -23,15 +30,17 @@ export interface PremiseDeps {
 export interface RunCaseOptions {
   maxAttempts?: number;
   retryDelayMs?: number;
+  attemptTimeoutMs?: number;
+  policy?: EvalEvidencePolicy;
+  signal?: AbortSignal;
 }
 
-/** Invoke the right agent for `c` once and normalize its output to a {@link PremiseRunDetail}. */
-async function invokeOnce(deps: PremiseDeps, c: PremiseCase): Promise<PremiseRunDetail> {
+async function invokeOnce(deps: PremiseDeps, c: PremiseCase, signal: AbortSignal): Promise<PremiseRunDetail> {
   if (c.component === "decompose") {
-    const out = await deps.decomposer.invoke(c.input);
+    const out = await deps.decomposer.invoke(c.input, undefined, undefined, { signal });
     return { component: "decompose", reasoning: out.reasoning, premises: out.premises };
   }
-  const out = await deps.analyzer.invoke(c.input, c.profileContext);
+  const out = await deps.analyzer.invoke(c.input, c.profileContext, { signal });
   return {
     component: "analyze",
     reasoning: out.reasoning,
@@ -41,24 +50,20 @@ async function invokeOnce(deps: PremiseDeps, c: PremiseCase): Promise<PremiseRun
   };
 }
 
-/**
- * Run a premise case `runs` times, retrying transient live-model failures.
- *
- * @param deps - The decomposer + analyzer under test.
- * @param c - The case to run.
- * @param runs - Number of repetitions.
- * @param options - Retry tuning (defaults from premise constants).
- * @returns One normalized detail per run.
- */
+/** Run every configured slot and retain all retry/failure evidence. */
 export async function runCase(
   deps: PremiseDeps,
   c: PremiseCase,
   runs: number,
   options: RunCaseOptions = {},
-): Promise<PremiseRunDetail[]> {
-  return repeatRuns(() => invokeOnce(deps, c), runs, {
+): Promise<EvalRunBatch<PremiseRunDetail>> {
+  return executeRuns(({ signal }) => invokeOnce(deps, c, signal), runs, {
+    caseId: c.id,
     maxAttempts: options.maxAttempts ?? PREMISE_EVAL_MAX_ATTEMPTS,
     retryDelayMs: options.retryDelayMs ?? PREMISE_EVAL_RETRY_DELAY_MS,
+    attemptTimeoutMs: options.attemptTimeoutMs ?? PREMISE_EVAL_ATTEMPT_TIMEOUT_MS,
+    policy: options.policy,
+    signal: options.signal,
     label: "premise eval",
   });
 }

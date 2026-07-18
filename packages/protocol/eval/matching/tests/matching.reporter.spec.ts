@@ -4,9 +4,13 @@ import { join } from "node:path";
 import { mkdir, rm, unlink } from "node:fs/promises";
 import { binomialCI, binomialPValue, binomialSignificance, predictivePValue, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole, renderHtml, writeBaseline, writeRunReport, readBaseline } from "../matching.reporter.js";
 import type { CaseResult, MatchingCase, Scorecard } from "../matching.types.js";
-import { makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
+import { makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
 
-const matchingMeta = (runs: number) => makeTestMeta({ harness: "matching", runs });
+const matchingMeta = (runs: number, caseIds: string[] = ["a"]) => makeTestMeta({
+  harness: "matching",
+  runs,
+  execution: makeSuccessfulExecution(caseIds, runs),
+});
 
 const caseResult = (caseId: string, rule: CaseResult["rule"], passRate: number): CaseResult => ({
   caseId,
@@ -15,6 +19,7 @@ const caseResult = (caseId: string, rule: CaseResult["rule"], passRate: number):
   passes: Math.round(passRate * 3),
   passRate,
   flaky: passRate > 0 && passRate < 1,
+  scoredRunIds: Array.from({ length: 3 }, (_, runIndex) => `${encodeURIComponent(caseId)}::run:${runIndex + 1}`),
   runResults: [],
 });
 
@@ -102,7 +107,16 @@ const BS = 0.8; // null baseline pass-rate for regression tests (stable but not 
 /** Build a case result fixture. */
 const s = (caseId: string, rule: CaseResult["rule"], passRate: number): CaseResult => {
   const passes = Math.round(passRate * R);
-  return { caseId, rule, runs: R, passes, passRate, flaky: passRate > 0 && passRate < 1, runResults: [] };
+  return {
+    caseId,
+    rule,
+    runs: R,
+    passes,
+    passRate,
+    flaky: passRate > 0 && passRate < 1,
+    scoredRunIds: Array.from({ length: R }, (_, runIndex) => `${encodeURIComponent(caseId)}::run:${runIndex + 1}`),
+    runResults: [],
+  };
 };
 
 describe("diffBaseline", () => {
@@ -338,7 +352,11 @@ describe("computeRollingBaseline", () => {
       generatedAt: "2026-05-01T00:00:00.000Z",
     };
 
-    const meta = makeTestMeta({ harness: "matching", runs: 3, startedAt: "2026-04-30T00:00:00.000Z", completedAt: "2026-04-30T00:01:00.000Z" });
+    const meta = makeTestMeta({
+      harness: "matching",
+      runs: 3,
+      execution: makeSuccessfulExecution(["a"], 3),
+    });
     await writeRunReport(join(dir, "recent-perfect.json"), recentPerfect, { meta });
     await writeRunReport(join(dir, "recent-partial.json"), recentPartial, { meta });
     await writeRunReport(join(dir, "old.json"), oldRun, { meta });
@@ -364,8 +382,11 @@ describe("baseline vs run-report reasoning handling", () => {
       passes: 1,
       passRate: 1,
       flaky: false,
+      scoredRunIds: ["a::run:1"],
       runResults: [
         {
+          runId: "a::run:1",
+          runIndex: 0,
           passed: true,
           assertions: [],
           candidates: [
