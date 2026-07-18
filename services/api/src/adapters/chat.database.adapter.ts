@@ -8,6 +8,7 @@ import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { _convDb } from './conversation.database.adapter';
+import { QuestionerAdapter, type AnsweredNegotiationOwnerAnswer } from './questioner.adapter';
 
 export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
@@ -15,6 +16,11 @@ export class ChatDatabaseAdapter {
   private get opportunityAdapter(): OpportunityDatabaseAdapter {
     if (!this._opportunityAdapter) this._opportunityAdapter = new OpportunityDatabaseAdapter();
     return this._opportunityAdapter;
+  }
+  private _questionerAdapter: QuestionerAdapter | null = null;
+  private get questionerAdapter(): QuestionerAdapter {
+    if (!this._questionerAdapter) this._questionerAdapter = new QuestionerAdapter(db);
+    return this._questionerAdapter;
   }
 
   // Negotiation context methods — required by HomeGraphDatabase
@@ -2466,6 +2472,14 @@ export class ChatDatabaseAdapter {
     intentId: string,
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getEvidencePoolOpportunitiesForIntent(recipientUserId, intentId);
+  }
+  /** Lens-C-only (IND-465 slice 2): answeredBy-verified owner answers for one opportunity. */
+  async getAnsweredNegotiationQuestionsForOpportunity(
+    recipientUserId: string,
+    opportunityId: string,
+    currentIntentFingerprint: string,
+  ): Promise<AnsweredNegotiationOwnerAnswer[]> {
+    return this.questionerAdapter.getAnsweredNegotiationQuestionsForOpportunity(recipientUserId, opportunityId, currentIntentFingerprint);
   }
   async getOpportunitiesForNetwork(
     networkId: string,

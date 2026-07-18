@@ -9,6 +9,27 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- Lens C evidence segments now carry answeredBy-verified owner answers
+  (IND-465 slice 2, wiring the `owner_answer` evidence family the extractor
+  already supports). AUTHORITATIVE SOURCE is the questions table only: a new
+  `getAnsweredNegotiationQuestionsForOpportunity` questioner-adapter query
+  (delegated through `ChatDatabaseAdapter`) returns answers whose
+  `answer.answeredBy` equals the segment recipient, restricted to the
+  negotiation-family detection modes bound to an opportunityId
+  (`negotiation`, `negotiation_inflight`), `detection.sourceType =
+  'opportunity'`, `detection.sourceId = opportunityId`, subject-actor
+  scoping, and capture-time intent-fingerprint equality when a fingerprint
+  is present (absence tolerated — the segment-level task fingerprint guard
+  covers intent drift). Every constraint is enforced in SQL AND re-checked
+  in the projection; `opportunity.metadata.userAnswers` stays banned as an
+  evidence source (no `answeredBy` authority, counterparty-visible, and
+  expiry writes synthetic disclosure text). Segments set `ownerAnswers`
+  only when non-empty; question text, detection payloads, and other users'
+  IDs are never projected, and telemetry stays aggregate-only.
+  `shared_message` remains impossible-by-construction (no per-message
+  consent primitive; deferred to IND-467).
+
 ### Fixed
 - Lens C shadow network binding is now derived from capture-time negotiation
   task metadata instead of `opportunity.context.networkId` (IND-465 slice 1,

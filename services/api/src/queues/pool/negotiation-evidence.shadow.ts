@@ -21,9 +21,18 @@
  * guard and never overrides tasks. The Lens-C-local pool selection also
  * includes terminal statuses — evidence lives on decided negotiations —
  * without touching the shared Lens A live-pool selection.
+ *
+ * IND-465 slice 2: answeredBy-verified owner answers are projected into
+ * evidence segments from the questions table ONLY — negotiation-family
+ * question rows carry `answer.answeredBy`, giving verifiable authority.
+ * `opportunity.metadata.userAnswers` is deliberately NEVER read for evidence:
+ * it has no answeredBy, is a counterparty-visible channel, and ask_user
+ * expiry writes synthetic entries containing disclosure-subject text.
+ * shared_message stays impossible-by-construction (no per-message consent
+ * primitive exists; deferred to IND-467).
  */
 import { NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES, NegotiationEvidenceMiner, negotiationEvidenceQuestionsMode, runNegotiationEvidenceShadow } from '@indexnetwork/protocol';
-import type { RawEvidenceOutcome, RawEvidenceSegment, RawEvidenceTurn } from '@indexnetwork/protocol';
+import type { RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment, RawEvidenceTurn } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { POOL_TERMINAL_STATUSES } from '../../adapters/poolquery.shared';
@@ -75,6 +84,15 @@ interface ShadowArtifact {
   parts: unknown[];
 }
 
+/** AnsweredBy-verified owner answer row returned by the questions-table fetch. */
+interface ShadowOwnerAnswer {
+  answeredBy: string;
+  selectedOptions: string[];
+  freeText?: string;
+  /** Capture-time intent fingerprint, when the question detection recorded one. */
+  capturedIntentFingerprint?: string;
+}
+
 interface ShadowLogger {
   debug: (message: string, metadata?: Record<string, unknown>) => void;
   info: (message: string, metadata?: Record<string, unknown>) => void;
@@ -88,6 +106,11 @@ export interface NegotiationEvidenceShadowDeps {
     getNegotiationTasksForOpportunity: (opportunityId: string) => Promise<ShadowTask[]>;
     getMessagesByTaskIds: (taskIds: string[]) => Promise<Map<string, ShadowMessage[]>>;
     getArtifactsForTask: (taskId: string) => Promise<ShadowArtifact[]>;
+    getAnsweredNegotiationQuestionsForOpportunity: (
+      recipientUserId: string,
+      opportunityId: string,
+      currentIntentFingerprint: string,
+    ) => Promise<ShadowOwnerAnswer[]>;
   };
   selectPool: (
     userId: string,
@@ -381,6 +404,41 @@ function projectOutcome(
   };
 }
 
+/**
+ * Re-check every fetch-side owner-answer constraint observable here (IND-465
+ * slice 2), fail closed on any mismatch, and project only answer content:
+ * - answerer MUST equal the segment recipient (authority re-verification);
+ * - a present capture-time fingerprint MUST equal the current one (absence
+ *   is tolerated — the segment-level task fingerprint guard covers drift);
+ * - empty answers are dropped; question text, detection payloads, and other
+ *   users' IDs are never projected.
+ */
+function projectOwnerAnswers(
+  answers: ShadowOwnerAnswer[],
+  recipientUserId: string,
+  currentIntentFingerprint: string,
+): RawEvidenceOwnerAnswer[] {
+  return answers.flatMap((answer) => {
+    if (answer.answeredBy !== recipientUserId) return [];
+    if (answer.capturedIntentFingerprint !== undefined
+      && answer.capturedIntentFingerprint !== currentIntentFingerprint) {
+      return [];
+    }
+    const selectedOptions = Array.isArray(answer.selectedOptions)
+      ? answer.selectedOptions.filter((option): option is string => typeof option === 'string')
+      : [];
+    const freeText = typeof answer.freeText === 'string' && answer.freeText.trim().length > 0
+      ? answer.freeText
+      : undefined;
+    if (selectedOptions.length === 0 && freeText === undefined) return [];
+    return [{
+      answererUserId: answer.answeredBy,
+      selectedOptions,
+      ...(freeText !== undefined ? { freeText } : {}),
+    }];
+  });
+}
+
 /** Build one fail-closed evidence segment per exact validated task/continuation. */
 export async function collectNegotiationEvidenceSegments(
   input: {
@@ -418,6 +476,20 @@ export async function collectNegotiationEvidenceSegments(
     });
     if (validatedTasks.length === 0) continue;
 
+    // IND-465 slice 2: answeredBy-verified owner answers, fetched once per
+    // opportunity from the questions table ONLY (never metadata.userAnswers)
+    // and attached to every continuation segment of the opportunity — the
+    // extractor dedups identical content within an opportunity group.
+    const ownerAnswers = projectOwnerAnswers(
+      await database.getAnsweredNegotiationQuestionsForOpportunity(
+        input.recipientUserId,
+        opportunity.id,
+        input.currentIntentFingerprint,
+      ),
+      input.recipientUserId,
+      input.currentIntentFingerprint,
+    );
+
     const messagesByTaskId = await database.getMessagesByTaskIds(
       validatedTasks.map(({ task }) => task.id),
     );
@@ -443,6 +515,7 @@ export async function collectNegotiationEvidenceSegments(
           validation.candidateUserId,
         ),
         ...(outcome ? { outcome } : {}),
+        ...(ownerAnswers.length > 0 ? { ownerAnswers } : {}),
       });
     }
   }
