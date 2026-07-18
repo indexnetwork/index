@@ -69,8 +69,12 @@ describe("runOutcomeShadow", () => {
     expect(miner.seen.length).toBe(1);
     const passed = miner.seen[0].candidates;
     expect(passed.length).toBe(10);
-    // The classifier never receives outcome information in any field.
-    for (const c of passed) {
+    const rawOpportunityIds = new Set(examples.map((item) => item.opportunityId));
+    // The classifier never receives outcome information OR raw opportunity ids.
+    // Candidate ids are deterministic run-local aliases only.
+    for (const [index, c] of passed.entries()) {
+      expect(c.id).toBe(`c${index}`);
+      expect(rawOpportunityIds.has(c.id)).toBe(false);
       expect(JSON.stringify(c)).not.toContain("accepted");
       expect(JSON.stringify(c)).not.toContain("rejected");
       expect(Object.keys(c).sort()).toEqual(["id", "publicContext", "score"]);

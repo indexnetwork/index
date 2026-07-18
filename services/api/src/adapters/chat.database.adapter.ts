@@ -2470,8 +2470,9 @@ export class ChatDatabaseAdapter {
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
+    outbox?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatus']>[3],
   ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy);
+    return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy, outbox);
   }
   async updateOpportunityStatusIfNetworkEligible(
     id: string,
@@ -2509,8 +2510,9 @@ export class ChatDatabaseAdapter {
     actorUserId: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
+    outbox?: Parameters<OpportunityDatabaseAdapter['stampOpportunityActorAction']>[4],
   ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.stampOpportunityActorAction(id, actorUserId, status, acceptedBy);
+    return this.opportunityAdapter.stampOpportunityActorAction(id, actorUserId, status, acceptedBy, outbox);
   }
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, networkId);

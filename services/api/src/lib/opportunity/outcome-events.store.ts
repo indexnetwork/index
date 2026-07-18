@@ -1,37 +1,20 @@
 /**
- * Append-only store for Lens B outcome feedback events (IND-434).
+ * Append-only READ store for Lens B outcome feedback events (IND-434).
  *
- * Thin, testable data-access layer over `opportunity_outcome_events`. All
- * writes are idempotent on `idempotencyKey` (one row per recipient +
- * opportunity + action), so retries collapse to a single logical event and a
- * rolled-back owner action leaves no trace (the insert runs only after the
- * status write returns).
+ * Writes are NOT performed here: outcome events are inserted atomically inside
+ * the winning owner-action transition via the `OutcomeOutbox` threaded through
+ * the opportunity adapter (see `applyOutcomeOutbox`). This module is the
+ * read-side used by shadow mining; keeping writes out of it prevents any
+ * non-atomic capture path from existing.
  */
 import { and, asc, eq } from 'drizzle-orm/sql';
 
 import db from '../drizzle/drizzle';
-import { opportunityOutcomeEvents, type NewOpportunityOutcomeEvent, type OpportunityOutcomeEvent } from '../../schemas/database.schema';
+import { opportunityOutcomeEvents, type OpportunityOutcomeEvent } from '../../schemas/database.schema';
 
 /** Minimal DB surface used by the store — injectable for hermetic tests. */
 export interface OutcomeEventsDb {
-  insert: typeof db.insert;
   select: typeof db.select;
-}
-
-/**
- * Idempotently append one outcome event. Returns true when a NEW row was
- * written, false when the idempotency key already existed (duplicate retry).
- */
-export async function appendOutcomeEvent(
-  event: NewOpportunityOutcomeEvent,
-  database: OutcomeEventsDb = db,
-): Promise<boolean> {
-  const inserted = await database
-    .insert(opportunityOutcomeEvents)
-    .values(event)
-    .onConflictDoNothing({ target: opportunityOutcomeEvents.idempotencyKey })
-    .returning({ id: opportunityOutcomeEvents.id });
-  return inserted.length > 0;
 }
 
 /**

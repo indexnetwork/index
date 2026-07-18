@@ -43,28 +43,53 @@ export function joinOutcomeHypotheses(input: JoinOutcomeHypothesesInput): Outcom
   const hypotheses: OutcomeHypothesis[] = [];
 
   for (const discriminator of input.discriminators) {
-    // Tally per side over VERIFIED assignments that have an outcome label.
-    // Each opportunity id is one independent example (dedup done upstream).
-    const totalBySide = new Map<string, number>();
-    const acceptedBySide = new Map<string, number>();
+    // Normalize sides by trimming, then reject the ENTIRE discriminator if any
+    // side is empty or if labels are not unique after normalization. Silently
+    // deduplicating malformed model output would turn an ambiguous comparison
+    // into apparently valid evidence.
+    const normalizedSides = discriminator.sides.map((side) => side.trim());
+    if (normalizedSides.some((side) => side.length === 0)) continue;
+    if (new Set(normalizedSides).size !== normalizedSides.length) continue;
+    if (normalizedSides.length < minSides) continue;
+    const validSides = new Set(normalizedSides);
 
+    // First normalize VERIFIED, labelled assignments by candidate id. If the
+    // same independent example is assigned to different sides, mark it
+    // ambiguous and exclude it from every side; it must never support two cells.
+    const sideById = new Map<string, string>();
+    const ambiguousIds = new Set<string>();
     for (const assignment of discriminator.assignments) {
       if (assignment.side === null || !assignment.verified) continue;
-      if (!discriminator.sides.includes(assignment.side)) continue;
-      const label = input.examples.get(assignment.id);
-      if (label === undefined) continue; // no owner outcome for this candidate
-      totalBySide.set(assignment.side, (totalBySide.get(assignment.side) ?? 0) + 1);
+      const side = assignment.side.trim();
+      if (!validSides.has(side) || !input.examples.has(assignment.id)) continue;
+      const previous = sideById.get(assignment.id);
+      if (previous !== undefined && previous !== side) ambiguousIds.add(assignment.id);
+      else if (previous === undefined) sideById.set(assignment.id, side);
+    }
+
+    // Tally DISTINCT independent example ids per unambiguous side. Repeating
+    // the same assignment never increases support.
+    const idsBySide = new Map<string, Set<string>>();
+    const acceptedIdsBySide = new Map<string, Set<string>>();
+    for (const [id, side] of sideById) {
+      if (ambiguousIds.has(id)) continue;
+      const label = input.examples.get(id);
+      if (label === undefined) continue;
+      if (!idsBySide.has(side)) idsBySide.set(side, new Set());
+      idsBySide.get(side)!.add(id);
       if (label === "accepted") {
-        acceptedBySide.set(assignment.side, (acceptedBySide.get(assignment.side) ?? 0) + 1);
+        if (!acceptedIdsBySide.has(side)) acceptedIdsBySide.set(side, new Set());
+        acceptedIdsBySide.get(side)!.add(id);
       }
     }
 
-    // Keep only sides that clear the independent-support threshold.
+    // Keep only sides that clear the independent-support threshold (>= k
+    // genuinely distinct independent examples).
     const qualifiedSides: OutcomeSideSupport[] = [];
-    for (const side of discriminator.sides) {
-      const support = totalBySide.get(side) ?? 0;
+    for (const side of normalizedSides) {
+      const support = idsBySide.get(side)?.size ?? 0;
       if (support < minSupport) continue; // small-cell: never emitted
-      const accepted = acceptedBySide.get(side) ?? 0;
+      const accepted = acceptedIdsBySide.get(side)?.size ?? 0;
       qualifiedSides.push({
         side,
         independentSupport: support,

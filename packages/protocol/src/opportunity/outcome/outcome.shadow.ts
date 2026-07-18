@@ -90,15 +90,18 @@ export async function runOutcomeShadow(input: OutcomeShadowInput): Promise<Outco
     return { poolSize: independent.length, eligibleCount: 0, hypotheses: [] };
   }
 
-  // 3. Build the miner pool. PoolCandidate deliberately excludes the outcome
-  //    label — the miner cannot condition on which side the user chose.
-  const candidates: PoolCandidate[] = independent.map((example) => ({
-    id: example.opportunityId,
+  // 3. Build the miner pool with RUN-LOCAL aliases (c0, c1, …) as candidate ids
+  //    — raw opportunity ids are never sent to the LLM. The alias→outcome map is
+  //    kept internally for the join. PoolCandidate deliberately excludes the
+  //    outcome label, so the miner cannot condition on which side was chosen.
+  const aliased = independent.map((example, index) => ({ alias: `c${index}`, example }));
+  const candidates: PoolCandidate[] = aliased.map(({ alias, example }) => ({
+    id: alias,
     publicContext: example.publicContext,
     score: example.score ?? 1,
   }));
 
-  // 4. Blind assignment.
+  // 4. Blind assignment (assignments come back keyed by the run-local alias).
   const mined = await input.miner.mine(
     { intentText: input.intentText, candidates },
     input.signal ? { signal: input.signal } : undefined,
@@ -107,9 +110,9 @@ export async function runOutcomeShadow(input: OutcomeShadowInput): Promise<Outco
     return { poolSize: independent.length, eligibleCount: 0, hypotheses: [] };
   }
 
-  // 5. Join outcome labels (only now) and threshold.
+  // 5. Join outcome labels (only now) by alias, and threshold.
   const examples = new Map<string, OutcomeLabel>(
-    independent.map((example) => [example.opportunityId, example.label]),
+    aliased.map(({ alias, example }) => [alias, example.label]),
   );
   const result = joinOutcomeHypotheses({
     discriminators: mined,

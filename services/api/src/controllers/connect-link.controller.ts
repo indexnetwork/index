@@ -1,4 +1,4 @@
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, isSessionAuthenticated, type AuthenticatedUser } from '../guards/auth.guard';
 import { withAgentScope } from '../guards/agent-scope.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
@@ -112,6 +112,9 @@ export class ConnectLinkController {
       const result = await opportunityService.startChat(link.opportunityId, user.id, {
         acknowledgedUptakeQuestionIds,
         ...(networkScopeId ? { networkScopeId } : {}),
+        // Connect-link accept is a verified explicit human owner action when
+        // driven by a session; API-key resolution is excluded (IND-434).
+        actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
       });
       if ('error' in result) return Response.json(result, { status: result.status });
 

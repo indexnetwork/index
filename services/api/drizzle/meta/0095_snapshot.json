@@ -1,5 +1,5 @@
 {
-  "id": "733aeac9-b2cf-4131-ba4f-bdd4d11922d2",
+  "id": "25a0e6d8-e8ca-405f-b0bd-ff190280fa85",
   "prevId": "64406f87-4694-4ac4-a9ed-176d2a12aa3e",
   "version": "7",
   "dialect": "postgresql",
@@ -3771,32 +3771,6 @@
           "tableTo": "users",
           "columnsFrom": [
             "recipient_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "opportunity_outcome_events_intent_id_intents_id_fk": {
-          "name": "opportunity_outcome_events_intent_id_intents_id_fk",
-          "tableFrom": "opportunity_outcome_events",
-          "tableTo": "intents",
-          "columnsFrom": [
-            "intent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "opportunity_outcome_events_opportunity_id_opportunities_id_fk": {
-          "name": "opportunity_outcome_events_opportunity_id_opportunities_id_fk",
-          "tableFrom": "opportunity_outcome_events",
-          "tableTo": "opportunities",
-          "columnsFrom": [
-            "opportunity_id"
           ],
           "columnsTo": [
             "id"

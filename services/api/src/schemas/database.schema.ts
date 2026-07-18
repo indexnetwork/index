@@ -995,19 +995,27 @@ export const opportunityOutcomeEvents = pgTable(
   'opportunity_outcome_events',
   {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    /** The owner (recipient) who took the explicit action. */
+    /**
+     * The owner (recipient) who took the explicit action. Cascades on user
+     * deletion — a user's own outcome history is erased when the user is
+     * deleted (privacy), but never by routine intent/opportunity cleanup.
+     */
     recipientUserId: text('recipient_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    /** Triggering intent (detection.triggeredBy) that owns the scope. */
-    intentId: text('intent_id')
-      .notNull()
-      .references(() => intents.id, { onDelete: 'cascade' }),
+    /**
+     * Recipient-owned intent that scopes this decision. Retained as a plain
+     * provenance id with NO cascading source FK: append-only feedback history
+     * must survive routine intent deletion/cleanup (IND-434 hardening).
+     */
+    intentId: text('intent_id').notNull(),
     /** Stable hash of normalized intent payload + summary at event time. */
     intentFingerprint: text('intent_fingerprint').notNull(),
-    opportunityId: text('opportunity_id')
-      .notNull()
-      .references(() => opportunities.id, { onDelete: 'cascade' }),
+    /**
+     * Opportunity the decision was taken on. Retained as a plain provenance id
+     * with NO cascading source FK, for the same append-only reason as intentId.
+     */
+    opportunityId: text('opportunity_id').notNull(),
     /** Recipient actor's network at action time (context, not a label). */
     networkId: text('network_id'),
     /** Explicit owner action: 'accepted' | 'rejected'. */

@@ -14,7 +14,5 @@ CREATE TABLE "opportunity_outcome_events" (
 );
 --> statement-breakpoint
 ALTER TABLE "opportunity_outcome_events" ADD CONSTRAINT "opportunity_outcome_events_recipient_user_id_users_id_fk" FOREIGN KEY ("recipient_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "opportunity_outcome_events" ADD CONSTRAINT "opportunity_outcome_events_intent_id_intents_id_fk" FOREIGN KEY ("intent_id") REFERENCES "public"."intents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "opportunity_outcome_events" ADD CONSTRAINT "opportunity_outcome_events_opportunity_id_opportunities_id_fk" FOREIGN KEY ("opportunity_id") REFERENCES "public"."opportunities"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "uniq_opp_outcome_events_idempotency" ON "opportunity_outcome_events" USING btree ("idempotency_key");--> statement-breakpoint
 CREATE INDEX "idx_opp_outcome_events_scope" ON "opportunity_outcome_events" USING btree ("recipient_user_id","intent_id","intent_fingerprint");

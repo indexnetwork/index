@@ -52,7 +52,7 @@ export { NegotiationSummarizer, buildFallbackDigest } from "./negotiation/negoti
 export type { ContactServiceAdapter, ContactEntry, ContactImportResult, ContactInput, ContactResult, ContactSearchResult } from "./shared/interfaces/contact.interface.js";
 export type {
   ChatGraphCompositeDatabase, UserDatabase, SystemDatabase, Database,
-  OpportunityGraphDatabase, OpportunityControllerDatabase, HomeGraphDatabase,
+  OpportunityGraphDatabase, OpportunityControllerDatabase, OutcomeOutbox, HomeGraphDatabase,
   IntentGraphDatabase, IntentNetworkGraphDatabase, NetworkGraphDatabase, NetworkMembershipGraphDatabase,
   HydeGraphDatabase, EnrichmentGraphDatabase, PremiseGraphDatabase, NegotiationGraphDatabase,
   NegotiationQueries, NegotiationUserAnswer,

@@ -9,6 +9,59 @@ interface OpportunityNetworkEligibilityInput {
   triggerIntentId?: string;
 }
 
+/**
+ * API-local structural twin of protocol's OutcomeOutbox. Adapters must not
+ * import protocol interfaces; TypeScript verifies compatibility at the caller.
+ */
+export interface AtomicOutcomeOutbox {
+  event: unknown;
+  result: { inserted: boolean };
+}
+
+/** Drizzle transaction handle type (callback param of db.transaction). */
+type DrizzleTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Minimal transaction runner used by the testable atomic-transition wrapper. */
+export interface AtomicTransactionRunner {
+  transaction<T>(callback: (tx: DrizzleTx) => Promise<T>): Promise<T>;
+}
+
+/**
+ * Lens B atomic outbox (IND-434): insert the append-only outcome event in the
+ * SAME transaction as a winning owner-action transition. Idempotent on
+ * idempotencyKey — a duplicate retry writes no new row and sets
+ * `outbox.result.inserted = false`, so the caller never re-triggers mining.
+ * Callers MUST only invoke this after the transition row is confirmed written.
+ */
+export async function applyOutcomeOutbox(tx: DrizzleTx, outbox: AtomicOutcomeOutbox | undefined): Promise<void> {
+  if (!outbox) return;
+  const inserted = await tx
+    .insert(schema.opportunityOutcomeEvents)
+    .values(outbox.event as schema.NewOpportunityOutcomeEvent)
+    .onConflictDoNothing({ target: schema.opportunityOutcomeEvents.idempotencyKey })
+    .returning({ id: schema.opportunityOutcomeEvents.id });
+  outbox.result.inserted = inserted.length > 0;
+}
+
+/**
+ * Execute a winning owner-action transition and its optional outcome event in
+ * one database transaction. This is the single atomic choke point used by both
+ * status-update and actor-stamp paths: if either operation throws, the database
+ * rolls both back; if the idempotency key already exists, the transition may
+ * commit but `outbox.result.inserted` remains false and mining is not repeated.
+ */
+export async function runAtomicOutcomeTransition<T>(
+  database: AtomicTransactionRunner,
+  transition: (tx: DrizzleTx) => Promise<T | null>,
+  outbox?: AtomicOutcomeOutbox,
+): Promise<T | null> {
+  return database.transaction(async (tx) => {
+    const updated = await transition(tx);
+    if (updated !== null) await applyOutcomeOutbox(tx, outbox);
+    return updated;
+  });
+}
+
 export class OpportunityDatabaseAdapter {
   async getProfile(userId: string): Promise<UserIdentity | null> {
     return buildProfileFromUser(userId);
@@ -463,6 +516,7 @@ export class OpportunityDatabaseAdapter {
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
+    outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
     if (status === 'accepted' && !acceptedBy) {
       throw new Error('acceptedBy is required when status is accepted');
@@ -473,11 +527,29 @@ export class OpportunityDatabaseAdapter {
     } else {
       updates.acceptedBy = null;
     }
-    const [row] = await db
-      .update(opportunities)
-      .set(updates)
-      .where(eq(opportunities.id, id))
-      .returning();
+    // When an outbox is present, the flip and the outcome-event insert must be
+    // atomic (rollback → no event); otherwise keep the cheap single-statement path.
+    let row: typeof opportunities.$inferSelect | null | undefined;
+    if (outbox) {
+      row = await runAtomicOutcomeTransition(
+        db as unknown as AtomicTransactionRunner,
+        async (tx) => {
+          const [updatedRow] = await tx
+            .update(opportunities)
+            .set(updates)
+            .where(eq(opportunities.id, id))
+            .returning();
+          return updatedRow ?? null;
+        },
+        outbox,
+      );
+    } else {
+      [row] = await db
+        .update(opportunities)
+        .set(updates)
+        .where(eq(opportunities.id, id))
+        .returning();
+    }
     const updated = row ? toOpportunityRow(row) : null;
     if (updated) emitOpportunityPendingBestEffort(updated);
     return updated;
@@ -634,40 +706,45 @@ export class OpportunityDatabaseAdapter {
     actorUserId: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
+    outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
     if (status === 'accepted' && !acceptedBy) {
       throw new Error('acceptedBy is required when status is accepted');
     }
-    const updated = await db.transaction(async (tx) => {
-      const [locked] = await tx
-        .select({ actors: opportunities.actors })
-        .from(opportunities)
-        .where(eq(opportunities.id, id))
-        .for('update');
-      if (!locked) return null;
-      const nowIso = new Date().toISOString();
-      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
-        actor.userId === actorUserId
-          ? { ...actor, actedAt: actor.actedAt ?? nowIso }
-          : actor,
-      );
-      const updates: Record<string, unknown> = {
-        actors: updatedActors,
-        status,
-        updatedAt: new Date(),
-      };
-      if (status === 'accepted') {
-        updates.acceptedBy = acceptedBy;
-      } else {
-        updates.acceptedBy = null;
-      }
-      const [row] = await tx
-        .update(opportunities)
-        .set(updates)
-        .where(eq(opportunities.id, id))
-        .returning();
-      return row ? toOpportunityRow(row) : null;
-    });
+    const updated = await runAtomicOutcomeTransition(
+      db as unknown as AtomicTransactionRunner,
+      async (tx) => {
+        const [locked] = await tx
+          .select({ actors: opportunities.actors })
+          .from(opportunities)
+          .where(eq(opportunities.id, id))
+          .for('update');
+        if (!locked) return null;
+        const nowIso = new Date().toISOString();
+        const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
+          actor.userId === actorUserId
+            ? { ...actor, actedAt: actor.actedAt ?? nowIso }
+            : actor,
+        );
+        const updates: Record<string, unknown> = {
+          actors: updatedActors,
+          status,
+          updatedAt: new Date(),
+        };
+        if (status === 'accepted') {
+          updates.acceptedBy = acceptedBy;
+        } else {
+          updates.acceptedBy = null;
+        }
+        const [row] = await tx
+          .update(opportunities)
+          .set(updates)
+          .where(eq(opportunities.id, id))
+          .returning();
+        return row ? toOpportunityRow(row) : null;
+      },
+      outbox,
+    );
     if (updated) emitOpportunityPendingBestEffort(updated);
     return updated;
   }

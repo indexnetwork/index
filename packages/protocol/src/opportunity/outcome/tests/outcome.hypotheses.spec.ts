@@ -90,4 +90,52 @@ describe("joinOutcomeHypotheses", () => {
     const result = joinOutcomeHypotheses({ discriminators: [d], examples });
     expect(result.poolSize).toBe(10);
   });
+
+  it("does not let duplicate assignments inflate independent support", () => {
+    const d = discriminator("duplicate-assignments", A(4), B(5));
+    // Repeat a0 twice: raw assignment rows would reach 5, but there are only
+    // four genuinely distinct examples on side A, so the hypothesis must fail.
+    d.assignments.push(
+      { id: "a0", side: "A", evidence: "duplicate", verified: true },
+      { id: "a0", side: "A", evidence: "duplicate", verified: true },
+    );
+    const examples = labels([...A(4), ...B(5)], []);
+    const result = joinOutcomeHypotheses({ discriminators: [d], examples });
+    expect(result.eligibleCount).toBe(0);
+  });
+
+  it("rejects empty or duplicate normalized side sets", () => {
+    const ids = [...A(5), ...B(5)];
+    const examples = labels(ids, []);
+    const assignments: VerifiedAssignment[] = ids.map((id, index) => ({
+      id,
+      side: index < 5 ? "A" : "B",
+      evidence: "ev",
+      verified: true,
+    }));
+    const duplicate: MinedDiscriminator = {
+      label: "duplicate",
+      questionSeed: "q",
+      sides: ["A", " A ", "B"],
+      assignments,
+      evidenceRate: 1,
+    };
+    const empty: MinedDiscriminator = {
+      ...duplicate,
+      label: "empty",
+      sides: ["A", "B", "   "],
+    };
+    const result = joinOutcomeHypotheses({ discriminators: [duplicate, empty], examples });
+    expect(result.eligibleCount).toBe(0);
+  });
+
+  it("excludes an example assigned ambiguously to two sides", () => {
+    const d = discriminator("ambiguous", A(5), B(5));
+    // a0 is claimed by both sides. Excluding it leaves side A at four distinct
+    // examples, below k, so the hypothesis must not become eligible.
+    d.assignments.push({ id: "a0", side: "B", evidence: "conflict", verified: true });
+    const examples = labels([...A(5), ...B(5)], []);
+    const result = joinOutcomeHypotheses({ discriminators: [d], examples });
+    expect(result.eligibleCount).toBe(0);
+  });
 });
