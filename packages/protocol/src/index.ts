@@ -52,7 +52,7 @@ export { NegotiationSummarizer, buildFallbackDigest } from "./negotiation/negoti
 export type { ContactServiceAdapter, ContactEntry, ContactImportResult, ContactInput, ContactResult, ContactSearchResult } from "./shared/interfaces/contact.interface.js";
 export type {
   ChatGraphCompositeDatabase, UserDatabase, SystemDatabase, Database,
-  OpportunityGraphDatabase, OpportunityControllerDatabase, HomeGraphDatabase,
+  OpportunityGraphDatabase, OpportunityControllerDatabase, OutcomeOutbox, HomeGraphDatabase,
   IntentGraphDatabase, IntentNetworkGraphDatabase, NetworkGraphDatabase, NetworkMembershipGraphDatabase,
   HydeGraphDatabase, EnrichmentGraphDatabase, PremiseGraphDatabase, NegotiationGraphDatabase,
   NegotiationQueries, NegotiationUserAnswer,
@@ -229,6 +229,14 @@ export type { NegotiationEvidenceMinerConfig } from "./opportunity/negotiation-e
 export { runNegotiationEvidenceShadow } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
 export type { NegotiationEvidenceShadowInput } from "./opportunity/negotiation-evidence/negotiation-evidence.shadow.js";
 export type { EvidenceKind, EvidenceSpeaker, AllowlistedEvidence, RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment, EvidenceMiningScope, HypothesisClaimType, ProposedSupportRef, MinedEvidenceHypothesis, VerifiedSupportRef, RetainedEvidenceHypothesis, NegotiationEvidenceTelemetry, NegotiationEvidenceShadowResult } from "./opportunity/negotiation-evidence/negotiation-evidence.types.js";
+
+// Lens B — outcome-question shadow (IND-434)
+export { outcomeQuestionsMode, isOutcomeQuestionsActivated, OUTCOME_MIN_INDEPENDENT_SUPPORT, OUTCOME_MIN_COMPARED_SIDES, OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunity/outcome/outcome.env.js";
+export type { OutcomeQuestionsMode } from "./opportunity/outcome/outcome.env.js";
+export { joinOutcomeHypotheses } from "./opportunity/outcome/outcome.hypotheses.js";
+export { runOutcomeShadow, deduplicateOutcomeExamples } from "./opportunity/outcome/outcome.shadow.js";
+export type { OutcomeShadowInput } from "./opportunity/outcome/outcome.shadow.js";
+export type { OutcomeLabel, OutcomeExample, OutcomeSideSupport, OutcomeHypothesis, OutcomeShadowResult, JoinOutcomeHypothesesInput } from "./opportunity/outcome/outcome.types.js";
 export { OpportunityEvaluator } from "./opportunity/opportunity.evaluator.js";
 export type { EvaluatorInput, OpportunityEvaluatorOptionsConstructor } from "./opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/opportunity.presenter.js";
@@ -254,7 +262,7 @@ export { stripUuids, stripIntroducerMentions, truncateAtBoundary } from "./oppor
 export { hasUnsupportedOpportunityClaim, stripUnsupportedOpportunityClaims } from "./opportunity/opportunity.claim-safety.js";
 export { safeFallbackSummary, getSafePresentationOrSkip, SAFE_FALLBACK_MAX_CHARS, DEFAULT_FALLBACK_HEADLINE, DEFAULT_FALLBACK_ACTION, DEFAULT_EMPTY_FALLBACK_TEXT } from "./opportunity/opportunity.safe-presentation.js";
 export type { SafeFallbackOptions, SafePresentation, SafePresentationOptions, SafePresentationSource } from "./opportunity/opportunity.safe-presentation.js";
-export { buildApiChatCardPresentationCacheKey } from "./opportunity/opportunity.presentation-cache.js";
+export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildHomeCardPresentationCacheKey } from "./opportunity/opportunity.presentation-cache.js";
 export { getOrCreateDeliveryCardBatch, DELIVERY_CARD_CACHE_TTL, type CachedDeliveryCard, type OpportunityWithContext } from "./opportunity/delivery-card.cache.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────

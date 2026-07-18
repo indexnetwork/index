@@ -4,7 +4,7 @@ import { opportunityService } from '../services/opportunity.service';
 import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
-import { AuthGuard } from '../guards/auth.guard';
+import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
@@ -336,6 +336,9 @@ export class OpportunityController {
     const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id, {
       ...scope,
       ...(networkScopeId ? { networkScopeId } : {}),
+      // Provenance: only a genuine human session may become a preference label
+      // (IND-434). API-key/agent REST calls are excluded from outcome capture.
+      actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
     });
 
     if (result && 'error' in result) {
@@ -389,6 +392,7 @@ export class OpportunityController {
     const result = await opportunityService.startChat(resolved.id, user.id, {
       ...scope,
       ...(networkScopeId ? { networkScopeId } : {}),
+      actionProvenance: isSessionAuthenticated(req) ? 'user_session' : 'api_key',
     });
     if ('error' in result) {
       return Response.json(
@@ -516,6 +520,10 @@ export class OpportunityController {
       : undefined;
     const result = await opportunityService.startChat(payload.opp, payload.sub, {
       acknowledgedUptakeQuestionIds,
+      // A legacy connect token is recipient-bound but can be minted/invoked by
+      // an API-key principal, so it is NOT proof of an explicit human session.
+      // Preserve the redirect behavior, but exclude it from Lens B labels.
+      actionProvenance: 'api_key',
     });
     if ('error' in result) {
       if ('advisory' in result && result.advisory.code === 'unresolved_uptake_questions') {

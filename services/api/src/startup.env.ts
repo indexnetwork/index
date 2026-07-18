@@ -124,6 +124,7 @@ const envSchema = z.object({
   POOL_QUESTIONS_RANKING: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   POOL_QUESTIONS_STAMP_NEWBORN: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   NEGOTIATION_EVIDENCE_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
+  OUTCOME_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
 
   // 9. MCP / tool runtime
   MCP_MAX_REQUEST_BYTES: optionalInt,

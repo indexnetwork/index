@@ -14,6 +14,8 @@ import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 import { uptakeAcceptanceGuard, type UptakeAcceptanceAdvisoryResult, type UptakeAcceptanceGuardLike } from '../lib/opportunity/uptake-acceptance.guard';
+import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
+import type { OutcomeOutbox } from '@indexnetwork/protocol';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
@@ -70,6 +72,47 @@ interface IntentScopeOptions {
   acknowledgedUptakeQuestionIds?: string[];
   /** Internal clamp derived from a network-scoped API-key principal. */
   networkScopeId?: string;
+  /**
+   * Verified provenance of the owner action, set ONLY by controller entry
+   * points that represent a genuine explicit human owner action (REST session
+   * accept/reject/start-chat, connect-link, connect-token). Absent for
+   * internal, queue, agent, and API-key callers — so Lens B capture (IND-434)
+   * never records their status mutations as preference labels.
+   */
+  actionProvenance?: OwnerActionProvenance;
+}
+
+/**
+ * Build an atomic Lens B outbox for an eligible owner action, or return empty
+ * when capture is ineligible. The returned `outbox` is passed into the winning
+ * transition so the event is written in the same transaction; `prepared.scope`
+ * is used to trigger mining after commit iff a new row was inserted.
+ */
+async function buildOutcomeOutbox(
+  recorder: OutcomeFeedbackRecorderLike,
+  opportunity: Opportunity,
+  recipientUserId: string,
+  action: 'accepted' | 'rejected',
+  provenance: OwnerActionProvenance | undefined,
+  selectedIntentId?: string,
+): Promise<{ outbox?: OutcomeOutbox; prepared: PreparedOutcomeCapture | null }> {
+  if (!provenance) return { prepared: null };
+  const prepared = await recorder.prepare({
+    opportunity,
+    recipientUserId,
+    action,
+    provenance,
+    selectedIntentId,
+  });
+  if (!prepared) return { prepared: null };
+  return {
+    outbox: {
+      event: prepared.event,
+      actorResolution: prepared.actorResolution,
+      result: { inserted: false },
+    },
+    prepared,
+  };
 }
 
 function matchesSelectedIntentScope(
@@ -161,6 +204,8 @@ export class OpportunityService {
   private readonly presenterDb: PresenterDatabase;
   private readonly deliveryCache: RedisCacheAdapter;
   private readonly uptakeGuard: UptakeAcceptanceGuardLike;
+  /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
+  private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
@@ -171,6 +216,7 @@ export class OpportunityService {
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
     acceptanceGuard: UptakeAcceptanceGuardLike = uptakeAcceptanceGuard,
+    outcomeRecorder: OutcomeFeedbackRecorderLike = outcomeFeedbackRecorder,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
@@ -178,6 +224,7 @@ export class OpportunityService {
     this.presenterDb = chatDatabaseAdapter as unknown as PresenterDatabase;
     this.deliveryCache = new RedisCacheAdapter();
     this.uptakeGuard = acceptanceGuard;
+    this.outcomeRecorder = outcomeRecorder;
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -607,17 +654,43 @@ export class OpportunityService {
       }
     }
 
+    // Lens B (IND-434): prepare an atomic outcome-capture outbox for the two
+    // explicit owner decisions (accept/reject). The event is inserted in the
+    // SAME transaction as the winning transition, so a rolled-back flip leaves
+    // no event. Only verified explicit human owner actions are eligible.
+    const captureAction = status === 'accepted' || status === 'rejected' ? status : undefined;
+    const { outbox, prepared } = captureAction
+      ? await buildOutcomeOutbox(
+          this.outcomeRecorder,
+          opp,
+          userId,
+          captureAction,
+          options?.actionProvenance,
+          options?.scopeType === 'intent' ? options.scopeId : undefined,
+        )
+      : { outbox: undefined, prepared: null };
+
     let updated: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
     if (status === 'accepted') {
-      updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
+      updated = outbox
+        ? await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId, outbox)
+        : await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
     } else if (status === 'pending') {
       updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'pending');
     } else {
-      // Terminal flips (rejected, expired) — no actor stamp needed
-      updated = await this.db.updateOpportunityStatus(opportunityId, status);
+      // Terminal flips (rejected, expired) — no actor stamp needed.
+      updated = outbox
+        ? await this.db.updateOpportunityStatus(opportunityId, status, undefined, outbox)
+        : await this.db.updateOpportunityStatus(opportunityId, status);
     }
     if (!updated) {
       return { error: 'Opportunity not found', status: 404 };
+    }
+
+    // Fire shadow mining only when a genuinely NEW event was inserted (idempotent
+    // retries and duplicates set inserted=false), and only now — after commit.
+    if (prepared && outbox?.result.inserted) {
+      this.outcomeRecorder.triggerMine(prepared.scope);
     }
 
     if (!counterpart) {
@@ -862,10 +935,29 @@ export class OpportunityService {
       });
     });
 
+    // Lens B (IND-434): the Connect/Start-Chat accept is an explicit owner
+    // decision. Prepare an atomic capture outbox so the append-only event is
+    // written in the same transaction as the accept stamp (rollback → no event).
+    const { outbox, prepared } = await buildOutcomeOutbox(
+      this.outcomeRecorder,
+      opp,
+      userId,
+      'accepted',
+      options?.actionProvenance,
+      options?.scopeType === 'intent' ? options.scopeId : undefined,
+    );
+
     // Only flip status once we know the chat destination exists.
-    const updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
+    const updated = outbox
+      ? await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId, outbox)
+      : await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
     if (!updated) {
       return { error: 'Failed to accept opportunity', status: 500 };
+    }
+
+    // Trigger shadow mining only on a genuine new insert, after commit.
+    if (prepared && outbox?.result.inserted) {
+      this.outcomeRecorder.triggerMine(prepared.scope);
     }
 
     // Best-effort side effects — their failure must not block the user from

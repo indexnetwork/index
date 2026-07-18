@@ -106,6 +106,24 @@ function parseApiKeyAgentId(metadata: string | null): string | null {
 }
 
 /**
+ * True iff the request is authenticated by a genuine Better Auth session JWT
+ * (`Authorization: Bearer` header or `?token=`), i.e. a human acting in the
+ * product — NOT an agent/API-key principal. Mirrors the JWT gate used by
+ * `resolveJwtUser`/`AuthGuard`, so it stays in lockstep with how auth is
+ * actually resolved.
+ *
+ * Used to prove owner-action provenance for Lens B outcome capture (IND-434):
+ * only explicit human session actions may become preference labels; API-key /
+ * agent-mediated status mutations must never be recorded as owner decisions.
+ */
+export const isSessionAuthenticated = (req: Request): boolean => {
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) return true;
+  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
+  return Boolean(queryToken);
+};
+
+/**
  * Resolve the `metadata.agentId` of the API key on the request, or null if
  * the request is JWT-authenticated, has no key, or the key has no agent
  * binding. Authorization is intentionally NOT re-checked here — callers
