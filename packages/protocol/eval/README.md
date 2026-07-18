@@ -65,7 +65,7 @@ only a secondary evaluator-regression check, not retrieval evidence.
 actually reads* once a match exists — complementary surfaces of the same feature.
 
 Common flags (most baseline-backed harnesses): `--runs N`, `--rule R`, `--case ID`, `--tier N`,
-`--list-cases`, `--no-judge`, `--update-baseline`, `--force`, `--report [path]`, `--html [path]`,
+`--list-cases`, `--no-judge`, `--update-baseline`, `--reason "<text>"`, `--force`, `--report [path]`, `--html [path]`,
 `--rolling-baseline [days]`, `--alpha P`, `--no-save`, `--attempt-timeout-ms N`, and
 `--strict-evidence`. The `premise` harness additionally
 takes `--component decompose|analyze`. Baseline/report writes refuse to replace existing
@@ -88,7 +88,8 @@ eval/
 │   ├── artifact.io.ts      # atomic writes, overwrite refusal, write-plan collision checks
 │   ├── migrate-legacy-baselines.ts  # explicit legacy → v1 baseline conversion CLI
 │   ├── baseline.ts         # read/write/diff baselines, writeRunReport (envelope-backed)
-│   ├── rolling.ts          # computeRollingBaseline from recent run reports
+│   ├── governance.ts       # ER4 comparability assessment + governed update path (IND-445)
+│   ├── rolling.ts          # computeRollingBaseline from recent compatible run reports
 │   ├── console.ts          # formatConsole (parameterized title)
 │   ├── runner.ts           # attempt-aware execution + repeatRuns compatibility helper
 │   ├── html.ts             # renderScorecardShell: standalone HTML document shell
@@ -149,6 +150,46 @@ excluded from rolling inputs; strict rolling evidence excludes v1 reports becaus
 execution completeness is unknowable. A provider-free spec
 (`eval/shared/tests/migration.spec.ts`) keeps every committed baseline valid.
 
+## Baseline comparability & update governance (IND-445)
+
+Baseline comparisons are governed by `eval/shared/governance.ts`, the single path every
+baseline-backed harness uses. Before any statistics run, the current run's cohort
+identity (harness + harness version, configured model IDs, judge identity via the
+scoring-config fingerprint, selection/full-corpus status, corpus fingerprint, run
+protocol, completeness) is assessed against the baseline envelope's provenance:
+
+- **Provable mismatch** (both sides carry the evidence and it differs — different
+  models, corpus/scoring-config fingerprints, harness version, filtered baseline,
+  incomplete evidence) ⇒ the pair is **incompatible**. The comparison is refused, no
+  regression verdict is produced, and the run exits `2` with the mismatching dimensions
+  printed. Unlike cohorts are never silently compared.
+- **Unprovable dimension** (committed schema-v1 baselines with
+  `unavailable-legacy-migration` fingerprints, or a filtered current run whose corpus
+  fingerprint covers only the selected cases) ⇒ under the **normal** policy the
+  comparison proceeds with explicit notes; under `--strict-evidence` it is refused and
+  the run exits `3` (the same normal/strict split ER3 uses for v1 execution evidence).
+- Added/removed/skipped cases are always reported explicitly (`diffBaseline` returns
+  `addedCaseIds`/`removedCaseIds`/`unscoredCaseIds` alongside the legacy
+  `skippedCaseIds`); new cases only enter a committed baseline through a full
+  compatible `--update-baseline` run.
+
+The scoring-config fingerprint (`buildEvalScoringConfigFingerprint`) covers only
+cohort-defining scoring configuration — the judge toggle and judge model identity — not
+execution knobs (`--runs`, `--alpha`, `--attempt-timeout-ms`, evidence policy), which
+live in dedicated envelope fields and must not poison comparability.
+
+`--update-baseline` is permitted only from a complete, full-corpus, unfiltered run at an
+identifiable clean Git revision, and requires `--reason "<operator justification>"`. The
+gate is enforced twice: fail-fast in the CLI before any provider spend, and again inside
+the shared `writeBaseline` choke point (so a baseline can never be written from filtered,
+dirty, or incomplete evidence, and never as a side effect of report generation). Every
+update prints and persists a deterministic, reviewable summary at
+`baselines/<name>.baseline.update.json` — old/new fingerprints and model IDs, case/rule
+additions and removals, aggregate pass-rate delta, regressions vs the previous baseline,
+recovered-retry counts, Git provenance, and the operator reason — committed alongside the
+baseline for PR review. The statistics themselves (beta-binomial posterior-predictive
+comparison, Wilson intervals) are unchanged; governance filters inputs, never math.
+
 ## Anatomy of a harness
 
 Each harness lives in `eval/<name>/` and follows this layout:
@@ -195,15 +236,19 @@ eval/<name>/
    supply a title, an intro, summary sections (e.g. `renderRuleTable(sc)`), and your
    case-card HTML.
 
-7. **Write the CLI** in `<name>.eval.ts`, importing `buildScorecard`, `diffBaseline`,
-   `readBaseline`, `writeBaseline`, `writeRunReport`, `computeRollingBaseline`,
-   `formatConsole`, and `arg`/`has`/`flagValue` from `../shared/index.js`. Pass a
-   `leanCase` to `writeBaseline` that strips your per-run `detail`. Build an
-   `EvalRunMeta` (harness id/version, model IDs, `fingerprintEvalCorpus(selected)`,
-   `fingerprintEvalConfig({…})`, `readEvalGitProvenance(import.meta.dir)`,
-   started/completed timestamps plus `buildExecutionEvidence(batches)`) for the write calls,
-   score only `batch.outputs`, attach their deterministic run ids, support `--force`, and assert an
-   `assertEvalWritePlan({ inputs, outputs, force })` before running any cases.
+7. **Write the CLI** in `<name>.eval.ts`, importing `buildScorecard`,
+   `compareAgainstGovernedBaseline`, `performGovernedBaselineUpdate`,
+   `governedComparisonExitStatus`, `writeBaseline`, `writeRunReport`, `formatConsole`,
+   and `arg`/`has`/`flagValue` from `../shared/index.js`. Pass a `leanCase` to
+   `writeBaseline` that strips your per-run `detail`. Build an `EvalRunMeta` (harness
+   id/version, model IDs, `fingerprintEvalCorpus(selected)`,
+   `buildEvalScoringConfigFingerprint({ judge })`,
+   `readEvalGitProvenance(import.meta.dir)`, started/completed timestamps plus
+   `buildExecutionEvidence(batches)`) for the write calls, score only `batch.outputs`,
+   attach their deterministic run ids, require `--reason` with `--update-baseline`,
+   support `--force`, and assert an `assertEvalWritePlan({ inputs, outputs, force })`
+   before running any cases (declare the `*.baseline.update.json` summary as an output
+   when updating).
 
 8. **Add a package.json script**:
    ```json
@@ -217,10 +262,11 @@ eval/<name>/
 9. **Write tests** in `eval/<name>/tests/`: corpus invariants, scorer correctness,
    selection. These do NOT invoke live agents.
 
-10. **Commit the baseline** after a stable run:
+10. **Commit the baseline** after a stable run (full corpus, clean Git revision,
+    operator reason required):
     ```bash
-    bun run eval:<name> -- --runs 7 --update-baseline
-    git add eval/<name>/baselines/
+    bun run eval:<name> -- --runs 7 --update-baseline --reason "initial baseline"
+    git add eval/<name>/baselines/   # includes <name>.baseline.update.json
     ```
 
 ## Testing the evals themselves
@@ -268,8 +314,17 @@ noncanonical. The contract below applies to the baseline-backed harnesses.
 
 - **Committed baseline** (`baselines/<name>.baseline.json`): the scorecard with per-run
   `detail` stripped (via the harness's `leanCase`). Kept lean so diffs are meaningful.
-  Updated with `--update-baseline` after intentional eval changes. Updates require complete
-  v2 execution evidence; an incomplete run can never replace a baseline.
+  Updated with `--update-baseline --reason "<text>"` after intentional eval changes.
+  Updates require complete v2 execution evidence from a full-corpus, unfiltered run at a
+  clean identifiable Git revision; an incomplete, filtered, or dirty run can never
+  replace a baseline. Each update persists a reviewable
+  `baselines/<name>.baseline.update.json` provenance/diff summary.
+
+- **Comparability**: comparisons are governed (see “Baseline comparability & update
+  governance” above). Provably incompatible baselines (models/corpus/config/harness
+  version) exit `2` without a verdict; unprovable comparability (legacy v1 fingerprints,
+  filtered runs) compares with notes under the normal policy and exits `3` under
+  `--strict-evidence`.
 
 - **Run report** (`runs/<timestamp>.json`): the full scorecard with agent output/reasoning
   verbatim plus every successful, recovered, failed, timed-out, or cancelled attempt,
@@ -285,7 +340,9 @@ noncanonical. The contract below applies to the baseline-backed harnesses.
   error, `3` insufficient/incomplete strict evidence.
 
 - **Rolling baseline** (`--rolling-baseline [days]`): a synthetic baseline computed from
-  recent complete JSON reports in `runs/`. Default window is 7 days.
+  recent complete, *compatible* (same harness version, models, corpus/scoring-config
+  fingerprints, full-corpus) JSON reports in `runs/`. Default window is 7 days. Every
+  excluded artifact is reported with its reason — nothing is silently dropped.
 
 - **Regression detection**: run → scorecard → `diffBaseline()` → exit code 1 if any case
   or rule is significantly below the baseline by a one-sided beta-binomial

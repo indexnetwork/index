@@ -10,17 +10,30 @@ export const EVAL_EXIT_REGRESSION = 1;
 export const EVAL_EXIT_EXECUTION_ERROR = 2;
 export const EVAL_EXIT_INSUFFICIENT_EVIDENCE = 3;
 
-/** Pure exit-code policy shared by the baseline-backed harnesses. */
+/** How the governed baseline comparison resolved, for exit-code purposes (IND-445). */
+export type EvalComparisonExitStatus = "compared" | "incompatible" | "not-comparable-strict";
+
+/**
+ * Pure exit-code policy shared by the baseline-backed harnesses.
+ *
+ * Incomplete evidence keeps its ER3 contract (strict → 3, normal → 2). On top
+ * of it, a provably incompatible baseline is an artifact error (2) and a
+ * strict-mode unprovable comparison is insufficient evidence (3); neither can
+ * produce a normal pass/regression verdict.
+ */
 export function resolveEvalExitCode(options: {
   regressionCount: number;
   evidencePolicy: EvalEvidencePolicy;
   execution: EvalExecutionSummary;
+  comparison?: EvalComparisonExitStatus;
 }): number {
   if (!options.execution.complete) {
     return options.evidencePolicy === "strict"
       ? EVAL_EXIT_INSUFFICIENT_EVIDENCE
       : EVAL_EXIT_EXECUTION_ERROR;
   }
+  if (options.comparison === "incompatible") return EVAL_EXIT_EXECUTION_ERROR;
+  if (options.comparison === "not-comparable-strict") return EVAL_EXIT_INSUFFICIENT_EVIDENCE;
   return options.regressionCount > 0 ? EVAL_EXIT_REGRESSION : EVAL_EXIT_PASS;
 }
 
@@ -39,8 +52,10 @@ export interface EvalEvidenceFlowOptions<TComparison> {
   noComparison: TComparison;
   compareBaseline: () => Promise<TComparison>;
   regressionCount: (comparison: TComparison) => number;
-  /** Present only when the CLI was asked to update its baseline. */
-  updateBaseline?: () => Promise<void>;
+  /** Maps the comparison to its exit-code status (governed harnesses supply this). */
+  comparisonStatus?: (comparison: TComparison) => EvalComparisonExitStatus | undefined;
+  /** Present only when the CLI was asked to update its baseline. Receives the comparison against the old baseline. */
+  updateBaseline?: (comparison: TComparison) => Promise<void>;
   /** Persists an enabled automatic or explicit diagnostic report. */
   persistDiagnosticReport: () => Promise<void>;
 }
@@ -64,14 +79,20 @@ export async function runEvalEvidenceFlow<TComparison>(
   const comparison = compared ? await options.compareBaseline() : options.noComparison;
   let baselineUpdated = false;
   if (options.execution.complete && options.updateBaseline) {
-    await options.updateBaseline();
+    await options.updateBaseline(comparison);
     baselineUpdated = true;
   }
   await options.persistDiagnosticReport();
   const regressionCount = compared ? options.regressionCount(comparison) : 0;
+  const comparisonStatus = compared ? options.comparisonStatus?.(comparison) : undefined;
   return {
     comparison,
-    exitCode: resolveEvalExitCode({ regressionCount, evidencePolicy: options.evidencePolicy, execution: options.execution }),
+    exitCode: resolveEvalExitCode({
+      regressionCount,
+      evidencePolicy: options.evidencePolicy,
+      execution: options.execution,
+      comparison: comparisonStatus,
+    }),
     compared,
     baselineUpdated,
   };

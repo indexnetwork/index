@@ -331,7 +331,7 @@ describe("computeRollingBaseline", () => {
   it("returns null when the run directory is missing or empty", async () => {
     const missing = join(tmpdir(), `missing-rolling-${Date.now()}`);
     const rolling = await computeRollingBaseline(missing, 7, new Date("2026-05-28T00:00:00.000Z"));
-    expect(rolling).toBeNull();
+    expect(rolling.scorecard).toBeNull();
   });
 
   it("averages recent run reports and ignores old ones", async () => {
@@ -362,12 +362,13 @@ describe("computeRollingBaseline", () => {
     await writeRunReport(join(dir, "old.json"), oldRun, { meta });
 
     const rolling = await computeRollingBaseline(dir, 7, now);
-    expect(rolling).not.toBeNull();
-    expect(rolling!.model).toContain("rolling:7d:2runs");
-    expect(rolling!.cases).toHaveLength(1);
+    expect(rolling.scorecard).not.toBeNull();
+    expect(rolling.scorecard!.model).toContain("rolling:7d:2runs");
+    expect(rolling.scorecard!.cases).toHaveLength(1);
     // recentPerfect contributes 3/3, recentPartial contributes 1/3 → 4/6.
-    expect(rolling!.cases[0].passRate).toBeCloseTo(4 / 6, 5);
-    expect(rolling!.rules[0].passRate).toBeCloseTo(4 / 6, 5);
+    expect(rolling.scorecard!.cases[0].passRate).toBeCloseTo(4 / 6, 5);
+    expect(rolling.scorecard!.rules[0].passRate).toBeCloseTo(4 / 6, 5);
+    expect(rolling.excluded).toEqual([{ file: "old.json", reason: expect.stringContaining("rolling window") }]);
 
     await rm(dir, { recursive: true, force: true });
   });

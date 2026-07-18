@@ -61,6 +61,22 @@ export async function writeEvalArtifact(
   options: WriteEvalArtifactOptions = {},
 ): Promise<void> {
   const validated = parseEvalArtifact(envelope, { expectedType: envelope.artifactType });
+  await writeEvalJsonFile(filePath, validated, options);
+}
+
+/**
+ * Atomically writes an arbitrary JSON value with the same overwrite-safety
+ * contract as {@link writeEvalArtifact}: same-directory temp file, atomic
+ * no-replace hard-link commit by default, atomic rename replacement under
+ * `force`. Used for non-envelope governance artifacts (e.g. the ER4 baseline
+ * update summary); envelope writes must go through {@link writeEvalArtifact}
+ * so schema validation cannot be skipped.
+ */
+export async function writeEvalJsonFile(
+  filePath: string,
+  value: unknown,
+  options: WriteEvalArtifactOptions = {},
+): Promise<void> {
   const dir = path.dirname(filePath);
   await mkdir(dir, { recursive: true });
   const tempPath = path.join(
@@ -68,7 +84,7 @@ export async function writeEvalArtifact(
     `.${path.basename(filePath)}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`,
   );
   try {
-    await writeFile(tempPath, JSON.stringify(validated, null, 2) + "\n");
+    await writeFile(tempPath, JSON.stringify(value, null, 2) + "\n");
     if (options.force) {
       await rename(tempPath, filePath);
     } else {

@@ -179,9 +179,10 @@ describe("attempt evidence persistence", () => {
 });
 
 describe("computeRollingBaseline", () => {
-  it("returns null when the run directory is missing", async () => {
+  it("returns a null scorecard when the run directory is missing", async () => {
     const rolling = await computeRollingBaseline(join(tmpdir(), `missing-rolling-${Date.now()}`), 7, new Date("2026-05-28T00:00:00.000Z"));
-    expect(rolling).toBeNull();
+    expect(rolling.scorecard).toBeNull();
+    expect(rolling.excluded).toHaveLength(0);
   });
 
   it("averages recent run reports and ignores old ones", async () => {
@@ -229,11 +230,17 @@ describe("computeRollingBaseline", () => {
     });
 
     const rolling = await computeRollingBaseline(dir, 7, now);
-    expect(rolling).not.toBeNull();
-    expect(rolling!.model).toContain("rolling:7d:2runs");
-    expect(rolling!.cases).toHaveLength(1);
+    expect(rolling.scorecard).not.toBeNull();
+    expect(rolling.scorecard!.model).toContain("rolling:7d:2runs");
+    expect(rolling.scorecard!.cases).toHaveLength(1);
     // 3/3 + 1/3 → 4/6.
-    expect(rolling!.cases[0].passRate).toBeCloseTo(4 / 6, 5);
+    expect(rolling.scorecard!.cases[0].passRate).toBeCloseTo(4 / 6, 5);
+    expect(rolling.includedFiles).toEqual(["recent-partial.json", "recent-perfect.json"]);
+    // Every rejected artifact is reported with its reason (IND-445).
+    expect(rolling.excluded).toEqual([
+      { file: "old.json", reason: expect.stringContaining("7-day rolling window") },
+      { file: "recent-incomplete.json", reason: expect.stringContaining("incomplete execution evidence") },
+    ]);
     await rm(dir, { recursive: true, force: true });
   });
 });

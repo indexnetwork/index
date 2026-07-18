@@ -10,7 +10,7 @@
  *   bun run eval:opportunity -- --tier 1               # one tier
  *   bun run eval:opportunity -- --list-cases           # print selected cases and exit
  *   bun run eval:opportunity -- --no-judge             # skip LLM grounding/framing/tone checks
- *   bun run eval:opportunity -- --update-baseline --force # replace the committed baseline
+ *   bun run eval:opportunity -- --update-baseline --reason "why" --force # replace the committed baseline
  *   bun run eval:opportunity -- --report [path]        # write a full run report (incl. generated cards)
  *   bun run eval:opportunity -- --html [path]          # write a standalone HTML scorecard
  *   bun run eval:opportunity -- --rolling-baseline [d] # compare against recent runs (default 7d)
@@ -25,7 +25,7 @@ import path from "path";
 import { OpportunityPresenter } from "../../src/opportunity/opportunity.presenter.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
-import { arg, assertEvalWritePlan, attachScoredRunProvenance, buildExecutionEvidence, buildScorecard, computeRollingBaseline, diffBaseline, fingerprintEvalConfig, fingerprintEvalCorpus, flagValue, formatConsole, has, installEvalProcessCancellation, readBaseline, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, writeBaseline, writeRunReport, type EvalEvidencePolicy, type EvalRunMeta } from "../shared/index.js";
+import { arg, assertEvalWritePlan, attachScoredRunProvenance, baselineUpdateSummaryPath, buildEvalScoringConfigFingerprint, buildExecutionEvidence, buildScorecard, compareAgainstGovernedBaseline, emptyGovernedComparison, fingerprintEvalCorpus, flagValue, formatBaselineUpdateSummary, formatConsole, formatGovernedComparison, governedComparisonExitStatus, governedRegressionCount, has, installEvalProcessCancellation, performGovernedBaselineUpdate, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, writeBaseline, writeRunReport, type EvalEvidencePolicy, type EvalRunMeta, type GovernedComparison } from "../shared/index.js";
 import { CASES } from "./opportunity.cases.js";
 import { OPPORTUNITY_EVAL_ATTEMPT_TIMEOUT_MS } from "./opportunity.constants.js";
 import { runCase } from "./opportunity.runner.js";
@@ -61,7 +61,8 @@ Execution:
   --no-save                 Do not auto-save full-corpus run JSON for rolling-baseline fuel
 
 Baselines/reports:
-  --update-baseline         Overwrite committed baseline (full corpus only; needs --force if one exists)
+  --update-baseline         Overwrite committed baseline (complete full-corpus run at a clean Git revision only; needs --force if one exists)
+  --reason <text>           Operator justification recorded in the baseline update summary (required with --update-baseline)
   --force                   Consent to overwrite existing baseline/report/HTML outputs
   --rolling-baseline [days] Compare against recent run reports (default: 7)
   --report [path]           Write JSON scorecard
@@ -145,9 +146,23 @@ async function main(): Promise<void> {
     console.error(`No cases match selected filters`);
     process.exit(2);
   }
+  const updateReason = flagValue("--reason");
   if (updateBaseline && !fullCorpus) {
     console.error(`--update-baseline requires a full-corpus run (remove --rule/--case/--tier filters)`);
     process.exit(2);
+  }
+  if (updateBaseline && !updateReason) {
+    console.error(`--update-baseline requires --reason "<operator justification>" for the auditable update summary`);
+    process.exit(2);
+  }
+  if (updateBaseline) {
+    // Fail fast before any provider spend: baseline updates require an
+    // identifiable clean Git revision (re-verified at write time).
+    const git = readEvalGitProvenance(import.meta.dir);
+    if (git.revision === "unknown" || git.dirty !== false) {
+      console.error(`--update-baseline requires a clean, identifiable Git revision; commit or stash local changes first`);
+      process.exit(2);
+    }
   }
 
   // Assert every declared output before running anything: no output may
@@ -158,7 +173,7 @@ async function main(): Promise<void> {
     await assertEvalWritePlan({
       inputs: [BASELINE_PATH],
       outputs: [
-        ...(updateBaseline ? [{ path: BASELINE_PATH, updatesInput: true }] : []),
+        ...(updateBaseline ? [{ path: BASELINE_PATH, updatesInput: true }, { path: baselineUpdateSummaryPath(BASELINE_PATH), updatesInput: true }] : []),
         ...(explicitReportPath ? [explicitReportPath] : []),
         ...(explicitHtmlPath ? [explicitHtmlPath] : []),
       ],
@@ -203,39 +218,51 @@ async function main(): Promise<void> {
     runs,
     selection: { fullCorpus, filters },
     corpusFingerprint: fingerprintEvalCorpus(selected),
-    configFingerprint: fingerprintEvalConfig({ runs, alpha, judge: !noJudge, filters, models, evidencePolicy, attemptTimeoutMs }),
+    configFingerprint: buildEvalScoringConfigFingerprint({ judge: !noJudge }),
     git: readEvalGitProvenance(import.meta.dir),
     startedAt,
     completedAt,
     execution,
   };
-  type BaselineComparison = {
-    baseline: Awaited<ReturnType<typeof computeRollingBaseline>>;
-    regressions: ReturnType<typeof diffBaseline>["regressions"];
-    skippedCaseIds: string[];
-  };
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
   const autoSaved = fullCorpus && !noSave;
-  const flow = await runEvalEvidenceFlow<BaselineComparison>({
+  const flow = await runEvalEvidenceFlow<GovernedComparison>({
     evidencePolicy,
     execution: executionSummary,
-    noComparison: { baseline: null, regressions: [], skippedCaseIds: [] },
-    compareBaseline: async () => {
-      const baseline = rollingBaselineDays !== null
-        ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays, new Date(), { evidencePolicy })
-        : await readBaseline<Scorecard>(BASELINE_PATH, { harness: HARNESS });
-      return { baseline, ...diffBaseline(scorecard, baseline, alpha) };
-    },
-    regressionCount: (comparison) => comparison.regressions.length,
+    noComparison: emptyGovernedComparison(),
+    compareBaseline: () =>
+      compareAgainstGovernedBaseline({
+        scorecard,
+        alpha,
+        evidencePolicy,
+        meta,
+        execution: executionSummary,
+        baselinePath: BASELINE_PATH,
+        rolling: rollingBaselineDays !== null ? { runsDir: RUNS_DIR, days: rollingBaselineDays } : undefined,
+        forUpdate: updateBaseline,
+      }),
+    regressionCount: governedRegressionCount,
+    comparisonStatus: (comparison) => governedComparisonExitStatus(comparison, { forUpdate: updateBaseline }),
     updateBaseline: updateBaseline
-      ? async () => {
-          await writeBaseline(BASELINE_PATH, scorecard, {
+      ? async (comparison) => {
+          const summary = await performGovernedBaselineUpdate({
+            baselinePath: BASELINE_PATH,
+            scorecard,
             meta,
+            execution: executionSummary,
+            reason: updateReason,
             force,
-            leanCase: (c) => ({ ...c, runResults: c.runResults.map(({ detail: _detail, ...rest }) => rest) }),
+            comparison,
+            writeBaselineArtifact: () =>
+              writeBaseline(BASELINE_PATH, scorecard, {
+                meta,
+                force,
+                leanCase: (c) => ({ ...c, runResults: c.runResults.map(({ detail: _detail, ...rest }) => rest) }),
+              }),
           });
-          console.log(`\nBaseline updated at ${BASELINE_PATH}`);
+          console.log(formatBaselineUpdateSummary(summary));
+          console.log(`\nBaseline updated at ${BASELINE_PATH}; update summary at ${baselineUpdateSummaryPath(BASELINE_PATH)}`);
         }
       : undefined,
     persistDiagnosticReport: async () => {
@@ -258,6 +285,8 @@ async function main(): Promise<void> {
         : `\nNo rolling ${rollingBaselineDays}-day baseline found; skipping regression comparison.`,
     );
   }
+  const governanceReport = flow.compared ? formatGovernedComparison(flow.comparison, { fullCorpus }) : null;
+  if (governanceReport) console.log(`\n${governanceReport}`);
 
   console.log(formatConsole(scorecard, regressions, skippedCaseIds, { title: "Opportunity Card Quality Scorecard", execution }));
   if (!executionSummary.complete) {
