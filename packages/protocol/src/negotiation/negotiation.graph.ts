@@ -262,7 +262,7 @@ export class NegotiationGraphFactory {
           protocolVersion = configuredProtocolVersion();
         }
 
-        const task = await database.createTask(conversation.id, {
+        const taskMetadata = {
           type: 'negotiation',
           sourceUserId: state.sourceUser.id,
           initiatorUserId,
@@ -274,9 +274,24 @@ export class NegotiationGraphFactory {
           maxTurns,
           isContinuation,
           priorTurnCount: priorTurns.length,
-        });
+        };
+        const task = state.opportunityId && state.opportunityUpdatedAt
+          ? await database.createNegotiationTaskForAttempt({
+              conversationId: conversation.id,
+              opportunityId: state.opportunityId,
+              expectedUpdatedAt: state.opportunityUpdatedAt,
+              metadata: taskMetadata,
+            })
+          : await database.createTask(conversation.id, taskMetadata);
 
-        if (state.opportunityId) {
+        if (!task) {
+          throw new Error('Negotiation attempt is stale or already claimed');
+        }
+
+        // Attempt-bound discovery already persisted `negotiating` and the atomic
+        // task claim verified that exact version. Legacy/direct invocations with
+        // only an opportunity ID retain the prior best-effort status update.
+        if (state.opportunityId && !state.opportunityUpdatedAt) {
           await database.updateOpportunityStatus(state.opportunityId, 'negotiating').catch((err) => {
             initLog.error('Failed to set opportunity status to negotiating', { opportunityId: state.opportunityId, error: err });
           });
@@ -1055,6 +1070,8 @@ export interface NegotiationCandidate {
    * (`accept` → 'pending', `reject` → 'rejected', otherwise → 'stalled').
    */
   opportunityId?: string;
+  /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+  opportunityUpdatedAt?: Date;
 }
 
 export interface NegotiationResult {
@@ -1150,6 +1167,7 @@ export async function negotiateCandidates(
           },
           ...(candidate.discoveryQuery && { discoveryQuery: candidate.discoveryQuery }),
           ...(candidate.opportunityId && { opportunityId: candidate.opportunityId }),
+          ...(candidate.opportunityUpdatedAt && { opportunityUpdatedAt: candidate.opportunityUpdatedAt }),
           ...(initiatorUserId && { initiatorUserId }),
           ...(maxTurns !== undefined && { maxTurns }),
           ...(timeoutMs !== undefined && { timeoutMs }),

@@ -1381,8 +1381,8 @@ export interface Database {
 
   /**
    * Atomically restores a taskless negotiation attempt to its pre-negotiation status.
-   * Transitions only the exact still-current `negotiating` version and only when no
-   * active negotiation task exists and no task was created at or after `expectedUpdatedAt`.
+   * Serializes with exact-attempt task creation, then transitions only the exact
+   * still-current `negotiating` version when no qualifying negotiation task exists.
    *
    * @param id - Opportunity ID
    * @param expectedUpdatedAt - Persistence boundary for this negotiation attempt
@@ -2431,7 +2431,19 @@ export type NegotiationGraphDatabase = Pick<
     metadata?: Record<string, unknown> | null;
   }): Promise<{ id: string; senderId: string; role: 'user' | 'agent'; parts: unknown; createdAt: Date }>;
 
-  /** Creates a task to track the negotiation lifecycle within a conversation. */
+  /**
+   * Atomically claims an exact persisted opportunity attempt and creates its
+   * negotiation task. Returns null when the status/version is stale or another
+   * qualifying task already owns the attempt.
+   */
+  createNegotiationTaskForAttempt(input: {
+    conversationId: string;
+    opportunityId: string;
+    expectedUpdatedAt: Date;
+    metadata: Record<string, unknown>;
+  }): Promise<{ id: string; conversationId: string; state: string } | null>;
+
+  /** Creates a generic task to track a non-attempt-bound lifecycle. */
   createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
 
   /** Transitions a task to a new state (e.g. working, completed, failed). */

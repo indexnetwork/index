@@ -31,7 +31,7 @@ section before promoting to `main`).
   consent primitive; deferred to IND-467).
 
 ### Fixed
-- Added exact-version, task-aware compensation for taskless negotiating opportunities and expected-status compare-and-set reactivation so continuation recovery cannot overwrite concurrent lifecycle or negotiation-task changes (IND-470).
+- Serialized exact-version negotiation-task creation and taskless compensation on shared opportunity advisory/row locks, and added expected-status compare-and-set reactivation, so continuation recovery cannot race a late task insert or overwrite concurrent lifecycle changes (IND-470).
 - Normalized blank and null-like opportunity actor intents before uptake lookups and added the idempotent, order-preserving `0096_normalize_opportunity_actor_intents` data migration, which removes malformed `intent` keys while leaving unaffected rows and all other actor data unchanged. The Railway-dev audit scope was 7,690 affected opportunities, requiring explicit release review before rollout (IND-469).
 - Restored unscoped asynchronous MCP discovery by wiring discovery-run workers to real network and membership graphs instead of no-op placeholders (IND-466).
 - Lens C shadow network binding is now derived from capture-time negotiation

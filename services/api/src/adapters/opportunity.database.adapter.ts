@@ -3,6 +3,7 @@ import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
+import { acquireNegotiationAttemptLock, qualifyingNegotiationAttemptTaskWhere } from './negotiation-attempt.atomic';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -156,6 +157,50 @@ export async function runAtomicOutcomeTransition<T extends OutcomeTransitionResu
     }
     return updated;
   });
+}
+
+/**
+ * Restore an exact taskless attempt while holding the shared negotiation lock.
+ * The opportunity row and qualifying-task query run after lock acquisition, so
+ * they observe the committed winner rather than a pre-lock READ COMMITTED snapshot.
+ */
+export async function compensateTasklessNegotiatingOpportunityInTransaction(
+  tx: DrizzleTx,
+  id: string,
+  expectedUpdatedAt: Date,
+  fallbackStatus: 'latent' | 'draft',
+): Promise<OpportunityRow | null> {
+  await acquireNegotiationAttemptLock(tx, id);
+
+  const [opportunity] = await tx
+    .select({ status: opportunities.status, updatedAt: opportunities.updatedAt })
+    .from(opportunities)
+    .where(eq(opportunities.id, id))
+    .for('update');
+  if (
+    opportunity?.status !== 'negotiating'
+    || opportunity.updatedAt.getTime() !== expectedUpdatedAt.getTime()
+  ) {
+    return null;
+  }
+
+  const [qualifyingTask] = await tx
+    .select({ id: schema.tasks.id })
+    .from(schema.tasks)
+    .where(qualifyingNegotiationAttemptTaskWhere(id, expectedUpdatedAt))
+    .limit(1);
+  if (qualifyingTask) return null;
+
+  const [row] = await tx
+    .update(opportunities)
+    .set({ status: fallbackStatus, acceptedBy: null, updatedAt: new Date() })
+    .where(and(
+      eq(opportunities.id, id),
+      eq(opportunities.status, 'negotiating'),
+      eq(opportunities.updatedAt, expectedUpdatedAt),
+    ))
+    .returning();
+  return row ? toOpportunityRow(row) : null;
 }
 
 export class OpportunityDatabaseAdapter {
@@ -351,9 +396,8 @@ export class OpportunityDatabaseAdapter {
 
   /**
    * Atomically restores an exact taskless negotiation attempt to its fallback status.
-   * The update succeeds only while the opportunity remains at the expected
-   * `negotiating` version, no active task exists, and no task was created at or
-   * after that boundary.
+   * Compensation and attempt-bound task creation serialize on the same advisory
+   * lock before rechecking the opportunity row and qualifying task existence.
    *
    * @param id - Opportunity ID
    * @param expectedUpdatedAt - Persistence boundary for the negotiation attempt
@@ -365,30 +409,12 @@ export class OpportunityDatabaseAdapter {
     expectedUpdatedAt: Date,
     fallbackStatus: 'latent' | 'draft',
   ): Promise<OpportunityRow | null> {
-    const [row] = await db
-      .update(opportunities)
-      .set({ status: fallbackStatus, acceptedBy: null, updatedAt: new Date() })
-      .where(and(
-        eq(opportunities.id, id),
-        eq(opportunities.status, 'negotiating'),
-        eq(opportunities.updatedAt, expectedUpdatedAt),
-        sql`NOT EXISTS (
-          SELECT 1
-          FROM ${schema.tasks}
-          WHERE ${schema.tasks.metadata}->>'type' = 'negotiation'
-            AND ${schema.tasks.metadata}->>'opportunityId' = ${id}
-            AND (
-              ${schema.tasks.createdAt} >= ${expectedUpdatedAt.toISOString()}::timestamptz
-              OR ${schema.tasks.state} = 'input_required'
-              OR (
-                ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
-                AND ${schema.tasks.updatedAt} >= NOW() - INTERVAL '5 minutes'
-              )
-            )
-        )`,
-      ))
-      .returning();
-    return row ? toOpportunityRow(row) : null;
+    return db.transaction((tx) => compensateTasklessNegotiatingOpportunityInTransaction(
+      tx,
+      id,
+      expectedUpdatedAt,
+      fallbackStatus,
+    ));
   }
 
   async getOpportunity(id: string): Promise<OpportunityRow | null> {

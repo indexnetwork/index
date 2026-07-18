@@ -390,6 +390,7 @@ describe('opportunity graph — continuation negotiation lifecycle', () => {
 
     expect(negotiationInputs).toHaveLength(1);
     expect(negotiationInputs[0].opportunityId).toBe('opp-continuation-new');
+    expect(negotiationInputs[0].opportunityUpdatedAt).toEqual(persistedBoundary);
     expect(observedTaskBoundaries).toEqual(['opp-continuation-new']);
     expect(compensationCalls).toEqual([
       ['opp-continuation-new', persistedBoundary, 'draft'],

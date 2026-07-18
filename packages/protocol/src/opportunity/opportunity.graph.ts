@@ -2194,6 +2194,7 @@ export class OpportunityGraphFactory {
             return {
               userId,
               opportunityId: opp.id as string,
+              opportunityUpdatedAt: opp.updatedAt,
               reasoning: (opp.interpretation as { reasoning?: string } | null)?.reasoning ?? '',
               valencyRole: candidateActor.role ?? 'peer',
               networkId: candidateActor.networkId as string,

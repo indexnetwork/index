@@ -1,14 +1,18 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, describe, expect, test } from 'bun:test';
-import { eq, inArray } from 'drizzle-orm';
+import { afterAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { eq, inArray, sql } from 'drizzle-orm';
 
 import db from '../../lib/drizzle/drizzle';
-import { OpportunityDatabaseAdapter } from '../opportunity.database.adapter';
+import { ConversationDatabaseAdapter, createNegotiationTaskForAttemptInTransaction, type CreateNegotiationTaskForAttemptInput } from '../conversation.database.adapter';
+import { OpportunityDatabaseAdapter, compensateTasklessNegotiatingOpportunityInTransaction } from '../opportunity.database.adapter';
 import { conversations, networkMembers, networks, opportunities, tasks, users } from '../../schemas/database.schema';
 
+setDefaultTimeout(30_000);
+
 const adapter = new OpportunityDatabaseAdapter();
+const conversationAdapter = new ConversationDatabaseAdapter();
 const createdOpportunityIds: string[] = [];
 const createdConversationIds: string[] = [];
 const createdNetworkIds: string[] = [];
@@ -36,6 +40,68 @@ async function createNegotiatingOpportunity() {
   });
   createdOpportunityIds.push(opportunity.id);
   return opportunity;
+}
+
+async function createAttemptInput(
+  opportunity: Awaited<ReturnType<typeof createNegotiatingOpportunity>>,
+): Promise<CreateNegotiationTaskForAttemptInput> {
+  const [conversation] = await db.insert(conversations).values({}).returning();
+  createdConversationIds.push(conversation.id);
+  return {
+    conversationId: conversation.id,
+    opportunityId: opportunity.id,
+    expectedUpdatedAt: opportunity.updatedAt,
+    metadata: {
+      type: 'negotiation',
+      opportunityId: opportunity.id,
+      sourceUserId: opportunity.actors[0]?.userId,
+      candidateUserId: opportunity.actors[1]?.userId,
+      networkId: opportunity.actors[0]?.networkId,
+      intentSnapshots: [],
+    },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function currentBackendPid(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+): Promise<number> {
+  const rows = await tx.execute(sql`SELECT pg_backend_pid()::int AS pid`);
+  return Number((rows as unknown as Array<{ pid: number }>)[0]?.pid);
+}
+
+async function waitForAdvisoryWaiter(holderPid: number): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const rows = await db.execute(sql`
+      SELECT COUNT(*)::int AS count
+      FROM pg_locks holder
+      JOIN pg_locks waiter
+        ON waiter.locktype = holder.locktype
+       AND waiter.database IS NOT DISTINCT FROM holder.database
+       AND waiter.classid IS NOT DISTINCT FROM holder.classid
+       AND waiter.objid IS NOT DISTINCT FROM holder.objid
+       AND waiter.objsubid IS NOT DISTINCT FROM holder.objsubid
+      WHERE holder.pid = ${holderPid}
+        AND holder.locktype = 'advisory'
+        AND holder.granted = true
+        AND waiter.pid <> holder.pid
+        AND waiter.granted = false
+    `);
+    const count = Number((rows as unknown as Array<{ count: number }>)[0]?.count ?? 0);
+    if (count > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for an advisory-lock waiter behind backend ${holderPid}`);
 }
 
 async function createNetworkEligibleNegotiatingOpportunity() {
@@ -209,5 +275,103 @@ describe('OpportunityDatabaseAdapter.compensateTasklessNegotiatingOpportunity', 
 
     expect(compensated).toBeNull();
     expect(preserved?.status).toBe('negotiating');
+  });
+
+  test('waits behind task creation, then preserves negotiating with the committed task', async () => {
+    const opportunity = await createNegotiatingOpportunity();
+    const input = await createAttemptInput(opportunity);
+    const releaseWinner = deferred<void>();
+    const winnerReady = deferred<number>();
+
+    const taskWinner = db.transaction(async (tx) => {
+      const task = await createNegotiationTaskForAttemptInTransaction(tx, input);
+      winnerReady.resolve(await currentBackendPid(tx));
+      await releaseWinner.promise;
+      return task;
+    });
+
+    const holderPid = await winnerReady.promise;
+    const compensation = adapter.compensateTasklessNegotiatingOpportunity(
+      opportunity.id,
+      opportunity.updatedAt,
+      'draft',
+    );
+
+    try {
+      await waitForAdvisoryWaiter(holderPid);
+    } finally {
+      releaseWinner.resolve();
+    }
+
+    const [createdTask, compensated] = await Promise.all([taskWinner, compensation]);
+    const preserved = await adapter.getOpportunity(opportunity.id);
+    const persistedTasks = await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, createdTask?.id ?? ''));
+
+    expect(createdTask).not.toBeNull();
+    expect(compensated).toBeNull();
+    expect(preserved?.status).toBe('negotiating');
+    expect(persistedTasks).toHaveLength(1);
+  });
+
+  test('compensation wins the shared lock and late task creation fails closed', async () => {
+    const opportunity = await createNegotiatingOpportunity();
+    const input = await createAttemptInput(opportunity);
+    const releaseWinner = deferred<void>();
+    const winnerReady = deferred<number>();
+
+    const compensationWinner = db.transaction(async (tx) => {
+      const compensated = await compensateTasklessNegotiatingOpportunityInTransaction(
+        tx,
+        opportunity.id,
+        opportunity.updatedAt,
+        'draft',
+      );
+      winnerReady.resolve(await currentBackendPid(tx));
+      await releaseWinner.promise;
+      return compensated;
+    });
+
+    const holderPid = await winnerReady.promise;
+    const lateTask = conversationAdapter.createNegotiationTaskForAttempt(input);
+
+    try {
+      await waitForAdvisoryWaiter(holderPid);
+    } finally {
+      releaseWinner.resolve();
+    }
+
+    const [compensated, createdTask] = await Promise.all([compensationWinner, lateTask]);
+    const preserved = await adapter.getOpportunity(opportunity.id);
+    const persistedTasks = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.metadata}->>'opportunityId' = ${opportunity.id}`);
+
+    expect(compensated?.status).toBe('draft');
+    expect(createdTask).toBeNull();
+    expect(preserved?.status).toBe('draft');
+    expect(persistedTasks).toHaveLength(0);
+  });
+
+  test('stale task creation fails closed after a newer opportunity version/status', async () => {
+    const opportunity = await createNegotiatingOpportunity();
+    const input = await createAttemptInput(opportunity);
+    const newerUpdatedAt = new Date(opportunity.updatedAt.getTime() + 1_000);
+    await db
+      .update(opportunities)
+      .set({ status: 'pending', updatedAt: newerUpdatedAt })
+      .where(eq(opportunities.id, opportunity.id));
+
+    const createdTask = await conversationAdapter.createNegotiationTaskForAttempt(input);
+    const persistedTasks = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.metadata}->>'opportunityId' = ${opportunity.id}`);
+
+    expect(createdTask).toBeNull();
+    expect(persistedTasks).toHaveLength(0);
   });
 });
