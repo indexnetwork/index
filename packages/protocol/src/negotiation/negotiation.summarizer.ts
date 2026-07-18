@@ -16,7 +16,7 @@ import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { DiscoveryNegotiationDigestSchema, type DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
-import type { DiscoveryNegotiation } from "../opportunity/question.prompt.js";
+import type { DiscoveryNegotiation } from "../shared/schemas/discovery-question.schema.js";
 
 const logger = protocolLogger("NegotiationSummarizer");
 

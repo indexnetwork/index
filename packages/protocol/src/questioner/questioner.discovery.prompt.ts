@@ -1,100 +1,20 @@
 /**
- * @deprecated Use QuestionerAgent and questioner presets instead. Will be removed in a future version.
+ * Discovery-mode prompt for the QuestionerAgent: the system prompt constant
+ * and a pure string-building `buildDiscoveryQuestionPrompt` that assembles the
+ * user message from a `DiscoveryQuestionInput`.
  *
- * Prompt module for the decision-question generator: the system prompt
- * constant, the `DiscoveryQuestionInput` contract, and a pure string-building
- * `buildQuestionPrompt` that assembles the user message.
+ * Pure: no I/O, no LLM call. The QuestionerAgent (via the `discovery` preset
+ * in `questioner.presets.ts`) orchestrates this module + an LLM client.
  *
- * Pure: no I/O, no LLM call. The generator class (`question.generator.ts`)
- * orchestrates this module + an LLM client.
+ * Relocated from the removed `opportunity/question.prompt.ts` (IND-458); the
+ * input types live in `shared/schemas/discovery-question.schema.ts`.
  */
 import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
+import type { DiscoveryQuestionInput, NegotiationRole } from "../shared/schemas/discovery-question.schema.js";
 import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
 
-/** Roles used in the existing negotiation framework. */
-export type NegotiationRole = "agent" | "patient" | "peer";
-
-/** One turn within a negotiation. */
-export interface DiscoveryTurn {
-  action: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
-  reasoning: string;
-  suggestedRoles: { ownUser: NegotiationRole; otherUser: NegotiationRole };
-}
-
-/** Outcome of a negotiation. */
-export interface DiscoveryOutcome {
-  hasOpportunity: boolean;
-  reasoning: string;
-  agreedRoles?: Array<{ userId: string; role: NegotiationRole }>;
-  /** Why the negotiation stopped, when not by an explicit accept/reject. */
-  reason?: "turn_cap" | "timeout" | "screened_out";
-}
-
-/** One negotiation that ran during this discovery turn. */
-export interface DiscoveryNegotiation {
-  /** Opaque counterparty identifier; NEVER surfaced to the user (kept out of the prompt). */
-  counterpartyId: string;
-  /** Abstract profile slice for the LLM (e.g. "AI infra founder, Berlin"). */
-  counterpartyHint: string;
-  /** The network/community prompt this negotiation ran under. */
-  indexContext: string;
-  /** Last 6 turns are retained; earlier ones are dropped. */
-  turns: DiscoveryTurn[];
-  outcome: DiscoveryOutcome;
-  /**
-   * Optional pre-negotiation evaluator score (0..1). When more than
-   * `MAX_NEGOTIATIONS` candidates exist, this is used as a tie-breaker after
-   * `turns.length` to decide which to keep.
-   */
-  seedAssessmentScore?: number;
-}
-
-/** Aggregate counters across all negotiations in this discovery turn. */
-export interface DiscoverySummary {
-  totalCandidates: number;
-  opportunitiesFound: number;
-  noOpportunityCount: number;
-  /** Subset of `noOpportunityCount` where the negotiation hit a turn-cap or timeout. */
-  timeoutCount: number;
-  /** Map of role → count across all outcomes' `agreedRoles`. */
-  roleDistribution: Partial<Record<NegotiationRole, number>>;
-}
-
-/**
- * The seeker's profile slice the generator used to see. Retained as an exported
- * type for backward compatibility; the question prompt now consumes the global
- * `userContext` paragraph instead of these discrete fields.
- */
-export interface DiscoverySourceProfile {
-  name?: string;
-  bio?: string;
-  location?: string;
-  skills?: string[];
-  interests?: string[];
-}
-
-/** Full input to the question generator. */
-export interface DiscoveryQuestionInput {
-  /** The seeker's original natural-language query / signal that triggered discovery. */
-  query: string;
-  /** The seeker's global user_context paragraph (profile-replacing identity text). */
-  userContext: string;
-  /**
-   * Compact per-negotiation digests from THIS discovery turn. Each digest is a
-   * fixed-size structured summary (counterparty hint, index, outcome role,
-   * keyTake) — pre-summarized so this prompt stays small regardless of how
-   * many candidates were negotiated. Raw negotiations are NOT passed here.
-   */
-  negotiationDigests: DiscoveryNegotiationDigest[];
-  summary: DiscoverySummary;
-  /** Distilled chat-session digest, when a session is in scope. */
-  chatContext?: ChatContextDigest;
-  /** ISO timestamp used as the "now" anchor in the prompt. */
-  now: string;
-}
-
-/** @deprecated Use QuestionerAgent and questioner presets instead. Will be removed in a future version. */
-export const SYSTEM_PROMPT = `You help write user-facing follow-up questions after Index has reviewed potential connections for a human. Your job: surface the minimum set of structured decision questions the human must answer to make the next discovery turn sharper, or improve their outlook on the intent.
+/** System prompt for the QuestionerAgent's `discovery` mode. */
+export const DISCOVERY_SYSTEM_PROMPT = `You help write user-facing follow-up questions after Index has reviewed potential connections for a human. Your job: surface the minimum set of structured decision questions the human must answer to make the next discovery turn sharper, or improve their outlook on the intent.
 
 You may pick from five strategies. Choose contextually; mix when multiple questions genuinely complement.
 - refine_intent: ask the user to sharpen or pivot their original signal.
@@ -139,11 +59,10 @@ Anti-patterns — never do these.
 Output. Return at most 3 entries in the "questions" array. Each entry must include a "strategy" field (one of the five values). If nothing is worth asking, return "questions": [].`;
 
 /**
- * @deprecated Use QuestionerAgent and questioner presets instead. Will be removed in a future version.
- *
- * Pure builder: assembles the user message string from a structured input.
+ * Pure builder: assembles the discovery-mode user message string from a
+ * structured input.
  */
-export function buildQuestionPrompt(input: DiscoveryQuestionInput): string {
+export function buildDiscoveryQuestionPrompt(input: DiscoveryQuestionInput): string {
   const profileSummary = input.userContext?.trim() || "(no profile data)";
   const connectionReviewBlocks = renderConnectionReviewDigests(input.negotiationDigests);
   const chatContextBlock = input.chatContext
@@ -275,4 +194,3 @@ function renderDigest(d: ChatContextDigest): string {
   }
   return lines.length > 0 ? lines.join("\n") : "(digest is empty)";
 }
-

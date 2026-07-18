@@ -4,7 +4,7 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key-for
 
 import { describe, it, expect } from "bun:test";
 import { NegotiationSummarizer } from "../negotiation.summarizer.js";
-import type { DiscoveryNegotiation } from "../../opportunity/question.prompt.js";
+import type { DiscoveryNegotiation } from "../../shared/schemas/discovery-question.schema.js";
 
 function makeSummarizer(
   invokeImpl: (input: unknown, config?: { signal?: AbortSignal }) => Promise<unknown>,

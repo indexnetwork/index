@@ -47,7 +47,7 @@ function makeAgent(
   invokeImpl: (input: unknown, config?: { signal?: AbortSignal }) => Promise<unknown>,
 ): QuestionerAgent {
   const agent = new QuestionerAgent();
-  // Swap the internal model for a mock, same pattern as question.generator.spec.ts
+  // Swap the internal model for a mock, same pattern as the removed question.generator.spec.ts
   (agent as unknown as { model: { invoke: typeof invokeImpl } }).model = { invoke: invokeImpl };
   return agent;
 }

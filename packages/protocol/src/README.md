@@ -82,7 +82,7 @@ packages/protocol/src/
 | Opportunity Presenter | `opportunity/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 | Feed Categorizer | `opportunity/feed/feed.categorizer.ts` | Feed graph — classifies and curates feed items |
 | Opportunity Introducer | `opportunity/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
-| Opportunity Question Generator | `opportunity/question.generator.ts` | Discovery — generates clarifying questions that sharpen a discovery query |
+| Questioner Agent | `questioner/questioner.agent.ts` | Mode-driven decision-question generation (discovery, intent, enrichment, negotiation, chat) |
 | Contact Inviter | `contact/contact.inviter.ts` | Invite flow — generates personalized invite messages |
 | Index Negotiator | `negotiation/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
 | Negotiation Insights Generator | `negotiation/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |

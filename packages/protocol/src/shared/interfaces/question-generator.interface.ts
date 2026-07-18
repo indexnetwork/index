@@ -1,11 +1,13 @@
 /**
- * @deprecated Use QuestionerAgent instead. Will be removed in a future version.
+ * @deprecated Inline question generation is superseded by the async
+ * QuestionerQueue path (`questionerEnqueue`). Will be removed once the inline
+ * fallback in `opportunity.discover.ts` is retired.
  *
  * Protocol-level read contract for decision-question generation. Implementations
- * live in the backend (see `QuestionGeneratorService`) and are injected into the
- * protocol via `ProtocolDeps`/`ToolContext`. The protocol module never constructs
- * its own LLM-bound `QuestionGenerator` — callers inject one (or `undefined` to
- * opt out).
+ * live in the backend (see `QuestionGeneratorService`, which delegates to the
+ * QuestionerAgent's `discovery` mode) and are injected into the protocol via
+ * `ProtocolDeps`/`ToolContext`. The protocol module never constructs its own
+ * LLM-bound generator — callers inject one (or `undefined` to opt out).
  */
 import type { DiscoveryQuestionInput } from "../schemas/discovery-question.schema.js";
 import type { QuestionGenerationResult } from "../schemas/question.schema.js";
