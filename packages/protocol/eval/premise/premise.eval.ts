@@ -27,8 +27,9 @@ import { PremiseAnalyzer } from "../../src/premise/premise.analyzer.js";
 import { PremiseDecomposer } from "../../src/premise/premise.decomposer.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
-import { arg, assertEvalWritePlan, buildScorecard, computeRollingBaseline, diffBaseline, fingerprintEvalConfig, fingerprintEvalCorpus, flagValue, formatConsole, has, readBaseline, readEvalGitProvenance, writeBaseline, writeRunReport, type EvalRunMeta } from "../shared/index.js";
+import { arg, assertEvalWritePlan, attachScoredRunProvenance, buildExecutionEvidence, buildScorecard, computeRollingBaseline, diffBaseline, fingerprintEvalConfig, fingerprintEvalCorpus, flagValue, formatConsole, has, installEvalProcessCancellation, readBaseline, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, writeBaseline, writeRunReport, type EvalEvidencePolicy, type EvalRunMeta } from "../shared/index.js";
 import { CASES } from "./premise.cases.js";
+import { PREMISE_EVAL_ATTEMPT_TIMEOUT_MS } from "./premise.constants.js";
 import { runCase } from "./premise.runner.js";
 import { scoreCase, type Judge } from "./premise.scorer.js";
 import { writeHtmlReport } from "./premise.reporter.js";
@@ -56,6 +57,8 @@ Selection:
 
 Execution:
   --runs <n>                Runs per case (default: 3)
+  --attempt-timeout-ms <n>  Deadline for each invocation attempt (default: ${PREMISE_EVAL_ATTEMPT_TIMEOUT_MS})
+  --strict-evidence         Exit 3 when any requested run is incomplete
   --no-judge                Skip LLM coverage/exclusion/reasoning checks
   --alpha <p>               Regression significance threshold (default: ${DEFAULT_ALPHA})
   --no-save                 Do not auto-save full-corpus run JSON for rolling-baseline fuel
@@ -66,6 +69,9 @@ Baselines/reports:
   --rolling-baseline [days] Compare against recent run reports (default: 7)
   --report [path]           Write JSON scorecard
   --html [path]             Write standalone HTML scorecard
+
+Exit codes:
+  0 pass · 1 measured regression · 2 execution/artifact error · 3 insufficient strict evidence
 
 Other:
   --help, -h                Show this help
@@ -100,6 +106,12 @@ async function main(): Promise<void> {
   }
   const listCases = has("--list-cases");
   const updateBaseline = has("--update-baseline");
+  const evidencePolicy: EvalEvidencePolicy = has("--strict-evidence") || updateBaseline ? "strict" : "normal";
+  const attemptTimeoutMs = Number(arg("--attempt-timeout-ms") ?? PREMISE_EVAL_ATTEMPT_TIMEOUT_MS);
+  if (!Number.isFinite(attemptTimeoutMs) || attemptTimeoutMs <= 0) {
+    console.error(`--attempt-timeout-ms must be a positive number (got "${arg("--attempt-timeout-ms")}")`);
+    process.exit(2);
+  }
   const noJudge = has("--no-judge");
   const report = has("--report");
   const html = has("--html");
@@ -168,14 +180,20 @@ async function main(): Promise<void> {
 
   const startedAt = new Date().toISOString();
   const results: CaseResult[] = [];
+  const batches: Array<Awaited<ReturnType<typeof runCase>>> = [];
+  const cancellation = installEvalProcessCancellation();
   for (const c of selected) {
     process.stdout.write(`  ${c.id} … `);
-    const details = await runCase(deps, c, runs);
-    const result = await scoreCase(c, details, judge);
+    const batch = await runCase(deps, c, runs, { policy: evidencePolicy, attemptTimeoutMs, signal: cancellation.signal });
+    batches.push(batch);
+    const scored = await scoreCase(c, batch.outputs, judge);
+    const result = attachScoredRunProvenance(scored, batch.successfulRuns) as CaseResult;
     results.push(result);
     console.log(`${result.passes}/${result.runs}${result.flaky ? " (flaky)" : ""}`);
   }
 
+  const execution = buildExecutionEvidence(batches, evidencePolicy);
+  const executionSummary = summarizeExecution(execution);
   const scorecard = buildScorecard(results, { model, runs }) as Scorecard;
   const completedAt = new Date().toISOString();
   const filters: Record<string, string> = {};
@@ -191,18 +209,55 @@ async function main(): Promise<void> {
     runs,
     selection: { fullCorpus, filters },
     corpusFingerprint: fingerprintEvalCorpus(selected),
-    configFingerprint: fingerprintEvalConfig({ runs, alpha, judge: !noJudge, filters, models }),
+    configFingerprint: fingerprintEvalConfig({ runs, alpha, judge: !noJudge, filters, models, evidencePolicy, attemptTimeoutMs }),
     git: readEvalGitProvenance(import.meta.dir),
     startedAt,
     completedAt,
+    execution,
   };
-  const baseline =
-    rollingBaselineDays !== null
-      ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays)
-      : await readBaseline<Scorecard>(BASELINE_PATH, { harness: HARNESS });
-  const { regressions, skippedCaseIds } = diffBaseline(scorecard, baseline, alpha);
+  type BaselineComparison = {
+    baseline: Awaited<ReturnType<typeof computeRollingBaseline>>;
+    regressions: ReturnType<typeof diffBaseline>["regressions"];
+    skippedCaseIds: string[];
+  };
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
+  const autoSaved = fullCorpus && !noSave;
+  const flow = await runEvalEvidenceFlow<BaselineComparison>({
+    evidencePolicy,
+    execution: executionSummary,
+    noComparison: { baseline: null, regressions: [], skippedCaseIds: [] },
+    compareBaseline: async () => {
+      const baseline = rollingBaselineDays !== null
+        ? await computeRollingBaseline(RUNS_DIR, rollingBaselineDays, new Date(), { evidencePolicy })
+        : await readBaseline<Scorecard>(BASELINE_PATH, { harness: HARNESS });
+      return { baseline, ...diffBaseline(scorecard, baseline, alpha) };
+    },
+    regressionCount: (comparison) => comparison.regressions.length,
+    updateBaseline: updateBaseline
+      ? async () => {
+          await writeBaseline(BASELINE_PATH, scorecard, {
+            meta,
+            force,
+            leanCase: (c) => ({ ...c, runResults: c.runResults.map(({ detail: _detail, ...rest }) => rest) }),
+          });
+          console.log(`\nBaseline updated at ${BASELINE_PATH}`);
+        }
+      : undefined,
+    persistDiagnosticReport: async () => {
+      if (autoSaved) await writeRunReport(autoRunPath, scorecard, { meta });
+      if (report) {
+        const reportPath = flagValue("--report") ?? autoRunPath;
+        if (!(autoSaved && reportPath === autoRunPath)) await writeRunReport(reportPath, scorecard, { meta, force });
+        console.log(`\nRun report written to ${reportPath}`);
+      }
+    },
+  });
+  const { baseline, regressions, skippedCaseIds } = flow.comparison;
 
-  if (rollingBaselineDays !== null) {
+  if (!flow.compared) {
+    console.log("\nSkipping baseline comparison: incomplete execution evidence.");
+  } else if (rollingBaselineDays !== null) {
     console.log(
       baseline
         ? `\nComparing against rolling ${rollingBaselineDays}-day baseline (${baseline.model}, α=${alpha}).`
@@ -210,37 +265,19 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(formatConsole(scorecard, regressions, skippedCaseIds, { title: "Premise Quality Scorecard" }));
-
-  if (updateBaseline) {
-    await writeBaseline(BASELINE_PATH, scorecard, {
-      meta,
-      force,
-      leanCase: (c) => ({ ...c, runResults: c.runResults.map(({ detail: _detail, ...rest }) => rest) }),
-    });
-    console.log(`\nBaseline updated at ${BASELINE_PATH}`);
-  }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const autoRunPath = path.resolve(RUNS_DIR, `${stamp}.json`);
-  const autoSaved = fullCorpus && !noSave;
-  if (autoSaved) {
-    await writeRunReport(autoRunPath, scorecard, { meta });
-  }
-
-  if (report) {
-    const reportPath = flagValue("--report") ?? autoRunPath;
-    if (!(autoSaved && reportPath === autoRunPath)) await writeRunReport(reportPath, scorecard, { meta, force });
-    console.log(`\nRun report written to ${reportPath}`);
+  console.log(formatConsole(scorecard, regressions, skippedCaseIds, { title: "Premise Quality Scorecard", execution }));
+  if (!executionSummary.complete) {
+    console.error(`\nIncomplete execution evidence: ${executionSummary.completedRuns}/${executionSummary.requestedRuns} requested runs completed.`);
   }
 
   if (html) {
     const htmlPath = flagValue("--html") ?? path.resolve(RUNS_DIR, `${stamp}.html`);
-    await writeHtmlReport(htmlPath, scorecard, regressions, CASES);
+    await writeHtmlReport(htmlPath, scorecard, regressions, CASES, execution);
     console.log(`\nHTML report written to ${htmlPath}`);
   }
 
-  process.exit(regressions.length > 0 ? 1 : 0);
+  cancellation.dispose();
+  process.exit(flow.exitCode);
 }
 
 main().catch((err) => {

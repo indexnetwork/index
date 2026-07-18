@@ -25,6 +25,7 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 - QUD-typed intent clarification (`missing_constituent`, `missing_constraint`, and `open_alternative_set`) across the live intent elaboration and Questioner flows, with internal detection metadata and exact-match eval coverage (IND-425).
 
 ### Changed
+- Made matching, opportunity, premise, and profile eval retries, failures, timeouts, cancellations, and incomplete runs first-class attempt evidence; incomplete runs now persist diagnostics but never compare against or update baselines (IND-444).
 - Added the pool-question drift lifecycle: exact recipient+intent final freshness gates, shared inclusive `0.7` Jaccard admission, system-voided stale snapshots, durable MODE cadence suppression, intent-edit invalidation, and audit-preserved stale scoped adjustments excluded from ranking (IND-422).
 - Retargeted the HyDE evidence-v2 harness to background-only discovery: 75 saved-intent cases plus 15 independently authored user-context cases (90 cases/900 candidates), with private saved-intent -> internal `query` and user-context -> `context` graph-source provenance, production-shaped saved-intent discoverer context, source-specific non-gating diagnostics, and no direct-search cohort. The four counterbalanced paired runs, blinded independent human adjudication, hierarchical bootstrap intervals, eight fixed gates, and production agents remain unchanged; this changes eval evidence and documentation only (IND-426).
 - Marked atomically claimed, user-balanced and privacy-thresholded frame-centroid observation plus the privacy-thresholded non-causal yield proxy as shipped by IND-430, while explicitly leaving immutable per-discovery provenance and causal drift diagnosis as future work; protocol runtime behavior is unchanged.
@@ -34,6 +35,7 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 - Included protocol documentation files in the published package tarball so README links remain available to package consumers.
 
 ### Fixed
+- Forwarded per-attempt `AbortSignal`s through eval provider paths and hardened failure provenance against secret leakage, hostile rejection objects, classifier failures, and concurrent artifact writers (IND-444).
 - Aligned HyDE evidence scoring with the live background `0.30` cutoff, retained per-lens cosines for score/ranking revalidation, required report-stage parent recomputation, and prevented forced outputs from overwriting input evidence artifacts (IND-426).
 - Scoped pool-question adjustments to the exact answering recipient and selected intent, ignored legacy unscoped factors, and restricted Tier-0/newborn writes to exact trigger-intent provenance so shared opportunities cannot re-rank another viewer or intent.
 - Made trigger-intent discovery fail closed over current intent assignments, active owner memberships, and explicit caller scope; enforced active candidate membership across intent/premise/context retrieval plus pre-evaluation/pre-persistence rechecks and selected-intent Radar reads.

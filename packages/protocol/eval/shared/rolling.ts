@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
 
-import { EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact } from "./artifact.js";
+import { EVAL_RUN_REPORT_ARTIFACT_TYPE, isEvalArtifactV2, parseEvalArtifact, type EvalArtifactEnvelope } from "./artifact.js";
 import { buildScorecard } from "./scorecard.js";
+import type { EvalEvidencePolicy } from "./runner.js";
 import type { CaseResultLike, ScorecardLike } from "./types.js";
 
 interface RollingCaseAcc {
@@ -11,13 +12,7 @@ interface RollingCaseAcc {
   runs: number;
 }
 
-/**
- * Reads all versioned run-report envelopes in a run directory, ignoring
- * missing dirs plus malformed, legacy-unversioned, or non-report files. Only
- * payloads that pass full envelope validation contribute to the rolling
- * baseline, so a corrupt or stale-format report can never skew it.
- */
-async function readRunScorecards(runsDir: string): Promise<ScorecardLike[]> {
+async function readRunArtifacts(runsDir: string): Promise<EvalArtifactEnvelope[]> {
   let entries: string[];
   try {
     entries = await readdir(runsDir);
@@ -25,58 +20,63 @@ async function readRunScorecards(runsDir: string): Promise<ScorecardLike[]> {
     return [];
   }
 
-  const out: ScorecardLike[] = [];
+  const out: EvalArtifactEnvelope[] = [];
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue;
     try {
       const file = Bun.file(`${runsDir}/${entry}`);
-      const envelope = parseEvalArtifact(await file.json(), { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE });
-      out.push(envelope.payload);
+      out.push(parseEvalArtifact(await file.json(), { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE }));
     } catch {
-      // Run reports are diagnostic artifacts; one malformed or legacy file
-      // should not disable rolling-baseline computation for every other run.
+      // A malformed diagnostic file must not disable every other rolling input.
     }
   }
   return out;
 }
 
+export interface RollingBaselineOptions {
+  /** Strict rolling evidence excludes v1 reports because completeness is unknowable. */
+  evidencePolicy?: EvalEvidencePolicy;
+}
+
 /**
- * Computes a rolling baseline from recent run reports in `runsDir`.
+ * Computes a rolling baseline from recent, complete run reports.
  *
- * The resulting scorecard is synthetic: each case's baseline pass-rate is the
- * pass-weighted average across all recent scorecards containing that case. This
- * means filtered reports still contribute to the subset of cases they ran, while
- * absent cases simply fall back to no comparison.
- *
- * @param runsDir - Directory containing JSON scorecards written by `writeRunReport`.
- * @param days - Lookback window in days.
- * @param now - Clock injection for tests.
- * @returns A synthetic scorecard, or `null` when no reports fall in the window.
+ * Incomplete v2 reports never contribute. Normal mode can continue consuming
+ * valid v1 score-only reports; strict mode excludes them rather than inventing
+ * execution provenance they do not contain.
  */
 export async function computeRollingBaseline(
   runsDir: string,
   days: number,
   now = new Date(),
+  options: RollingBaselineOptions = {},
 ): Promise<ScorecardLike<CaseResultLike> | null> {
+  const policy = options.evidencePolicy ?? "normal";
   const cutoff = now.getTime() - days * 24 * 60 * 60 * 1000;
-  const scorecards = (await readRunScorecards(runsDir)).filter((sc) => {
-    const t = Date.parse(sc.generatedAt);
-    return Number.isFinite(t) && t >= cutoff && t < now.getTime();
+  const artifacts = (await readRunArtifacts(runsDir)).filter((artifact) => {
+    if (isEvalArtifactV2(artifact)) return artifact.completeness.complete;
+    return policy === "normal";
+  });
+  const scorecards = artifacts.map((artifact) => artifact.payload).filter((scorecard) => {
+    const timestamp = Date.parse(scorecard.generatedAt);
+    return Number.isFinite(timestamp) && timestamp >= cutoff && timestamp < now.getTime();
   });
   if (scorecards.length === 0) return null;
 
   const byCase = new Map<string, RollingCaseAcc>();
-  for (const sc of scorecards) {
-    for (const c of sc.cases) {
-      const acc = byCase.get(c.caseId) ?? { caseId: c.caseId, rule: c.rule, passes: 0, runs: 0 };
-      acc.passes += c.passes;
-      acc.runs += c.runs;
-      byCase.set(c.caseId, acc);
+  for (const scorecard of scorecards) {
+    for (const entry of scorecard.cases) {
+      if (entry.runs === 0) continue;
+      const acc = byCase.get(entry.caseId) ?? { caseId: entry.caseId, rule: entry.rule, passes: 0, runs: 0 };
+      acc.passes += entry.passes;
+      acc.runs += entry.runs;
+      byCase.set(entry.caseId, acc);
     }
   }
+  if (byCase.size === 0) return null;
 
   const cases: CaseResultLike[] = [...byCase.values()].map((acc) => {
-    const passRate = acc.runs === 0 ? 0 : acc.passes / acc.runs;
+    const passRate = acc.passes / acc.runs;
     return {
       caseId: acc.caseId,
       rule: acc.rule,

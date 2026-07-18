@@ -1,4 +1,4 @@
-import { binomialCI, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole as sharedFormatConsole, readBaseline as sharedReadBaseline, writeBaseline as sharedWriteBaseline, writeRunReport, binomialPValue, binomialSignificance, predictivePValue, renderHumanReport, HUMAN_CSS, type EvalRunMeta, type HumanReport, type Regression } from "../shared/index.js";
+import { binomialCI, buildScorecard, computeRollingBaseline, diffBaseline, formatConsole as sharedFormatConsole, readBaseline as sharedReadBaseline, writeBaseline as sharedWriteBaseline, writeRunReport, binomialPValue, binomialSignificance, predictivePValue, renderExecutionEvidence, renderHumanReport, HUMAN_CSS, type EvalExecutionEvidence, type EvalRunMeta, type HumanReport, type Regression } from "../shared/index.js";
 import type { CaseResult, Scorecard, MatchingCase, CandidateExpectation, CandidateOutcome, AssertionKind, Rule } from "./matching.types.js";
 
 // ── Shared machinery re-exported for matching consumers and tests ────────────
@@ -23,8 +23,13 @@ export function readBaseline(path: string): Promise<Scorecard | null> {
 }
 
 /** Console scorecard with the matching-specific title. */
-export function formatConsole(sc: Scorecard, regressions: Regression[], skippedCaseIds: string[] = []): string {
-  return sharedFormatConsole(sc, regressions, skippedCaseIds, { title: "Matching Quality Scorecard" });
+export function formatConsole(
+  sc: Scorecard,
+  regressions: Regression[],
+  skippedCaseIds: string[] = [],
+  execution?: EvalExecutionEvidence,
+): string {
+  return sharedFormatConsole(sc, regressions, skippedCaseIds, { title: "Matching Quality Scorecard", execution });
 }
 
 /**
@@ -111,12 +116,12 @@ function indexCases(cases: MatchingCase[]): Map<string, CaseMeta> {
 }
 
 /** Collect a candidate's outcome across every run that captured candidate detail. */
-function outcomesByCandidate(c: CaseResult): Map<string, CandidateOutcome[]> {
-  const byId = new Map<string, CandidateOutcome[]>();
-  for (const rr of c.runResults) {
+function outcomesByCandidate(c: CaseResult): Map<string, Array<{ outcome: CandidateOutcome; runIndex: number }>> {
+  const byId = new Map<string, Array<{ outcome: CandidateOutcome; runIndex: number }>>();
+  for (const [fallbackIndex, rr] of c.runResults.entries()) {
     for (const cand of rr.candidates ?? []) {
       const list = byId.get(cand.candidateId) ?? [];
-      list.push(cand);
+      list.push({ outcome: cand, runIndex: rr.runIndex ?? fallbackIndex });
       byId.set(cand.candidateId, list);
     }
   }
@@ -150,28 +155,28 @@ function expectText(exp: CandidateExpectation | undefined): string {
 function candidateRow(
   candidateId: string,
   meta: CaseMeta | undefined,
-  outcomes: CandidateOutcome[],
+  outcomes: Array<{ outcome: CandidateOutcome; runIndex: number }>,
 ): string {
   const exp = meta?.expectById.get(candidateId);
   const name = meta?.nameById.get(candidateId) ?? candidateId;
   const chips = outcomes
-    .map((o) => {
-      const ok = outcomeOk(exp, o);
-      const roleTxt = o.role ? ` ${esc(o.role)}` : "";
-      const returned = o.returned ?? o.score > 0;
-      const title = o.matched ? "surfaced" : returned ? "returned below surfacing threshold" : "not returned";
-      return `<span class="chip ${ok ? "good" : "bad"}" title="${title}">${o.score}${roleTxt}</span>`;
+    .map(({ outcome, runIndex }) => {
+      const ok = outcomeOk(exp, outcome);
+      const roleTxt = outcome.role ? ` ${esc(outcome.role)}` : "";
+      const returned = outcome.returned ?? outcome.score > 0;
+      const title = `run ${runIndex + 1}: ${outcome.matched ? "surfaced" : returned ? "returned below surfacing threshold" : "not returned"}`;
+      return `<span class="chip ${ok ? "good" : "bad"}" title="${title}">${outcome.score}${roleTxt}</span>`;
     })
     .join("");
   const reasoning = outcomes
-    .map((o, i) => {
-      const returned = o.returned ?? o.score > 0;
-      const text = o.reasoning.trim()
-        ? o.reasoning
+    .map(({ outcome, runIndex }) => {
+      const returned = outcome.returned ?? outcome.score > 0;
+      const text = outcome.reasoning.trim()
+        ? outcome.reasoning
         : returned
           ? "Returned by the evaluator, but the opportunity reasoning field was empty."
           : "Not returned by the evaluator. No opportunity object existed, so there is no evaluator reasoning for this candidate in this run.";
-      return `<div class="reason"><span class="muted">run ${i + 1} · score ${o.score}${o.role ? " · " + esc(o.role) : ""}</span><p>${esc(text)}</p></div>`;
+      return `<div class="reason"><span class="muted">run ${runIndex + 1} · score ${outcome.score}${outcome.role ? " · " + esc(outcome.role) : ""}</span><p>${esc(text)}</p></div>`;
     })
     .join("");
   return `
@@ -190,7 +195,7 @@ function failedChecks(c: CaseResult): string {
       .filter((a) => !a.passed)
       .map(
         (a) =>
-          `<li><span class="muted">run ${i + 1}</span> <span class="component">${esc(componentLabel(a.kind))}</span> <code>${esc(a.candidateId)}</code>: ${esc(a.detail)}</li>`,
+          `<li><span class="muted">run ${(rr.runIndex ?? i) + 1}</span> <span class="component">${esc(componentLabel(a.kind))}</span> <code>${esc(a.candidateId)}</code>: ${esc(a.detail)}</li>`,
       ),
   );
   if (failed.length === 0) return "";
@@ -366,7 +371,12 @@ function buildHumanReport(sc: Scorecard, cases: MatchingCase[]): HumanReport {
   };
 }
 
-export function renderHtml(sc: Scorecard, regressions: Regression[], cases: MatchingCase[]): string {
+export function renderHtml(
+  sc: Scorecard,
+  regressions: Regression[],
+  cases: MatchingCase[],
+  execution?: EvalExecutionEvidence,
+): string {
   const meta = indexCases(cases);
   const human = renderHumanReport(sc, regressions, buildHumanReport(sc, cases));
 
@@ -412,8 +422,9 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
     .sort((x, y) => x.passRate - y.passRate)
     .map(
       (r) => {
-        const n = r.caseCount * sc.runs;
-        const passes = Math.round(r.passRate * n);
+        const members = sc.cases.filter((entry) => entry.rule === r.rule);
+        const n = members.reduce((sum, entry) => sum + entry.runs, 0);
+        const passes = members.reduce((sum, entry) => sum + entry.passes, 0);
         return `<tr><td>${esc(r.rule)}</td><td>${r.caseCount}</td><td class="${rateClass(r.passRate)}">${htmlRateCI(r.passRate, passes, n)}</td></tr>`;
       },
     )
@@ -432,15 +443,16 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
   const caseSections = [...sc.rules]
     .sort((x, y) => x.passRate - y.passRate)
     .map((r) => {
-      const n = r.caseCount * sc.runs;
-      const passes = Math.round(r.passRate * n);
+      const members = sc.cases.filter((entry) => entry.rule === r.rule);
+      const n = members.reduce((sum, entry) => sum + entry.runs, 0);
+      const passes = members.reduce((sum, entry) => sum + entry.passes, 0);
       const cards = sc.cases.filter((c) => c.rule === r.rule).map((c) => caseCard(c, meta.get(c.caseId))).join("");
       return `<section class="rule"><h2>${esc(r.rule)} ${htmlRateCI(r.passRate, passes, n)} <span class="muted">(${r.caseCount} case${r.caseCount === 1 ? "" : "s"})</span></h2>${cards}</section>`;
     })
     .join("");
 
   const agg = rateClass(sc.aggregatePassRate);
-  const totalObs = sc.cases.length * sc.runs;
+  const totalObs = sc.cases.reduce((sum, entry) => sum + entry.runs, 0);
   const totalPasses = sc.cases.reduce((s, c) => s + c.passes, 0);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -500,6 +512,7 @@ export function renderHtml(sc: Scorecard, regressions: Regression[], cases: Matc
 <body><div class="wrap">
   ${human}
   <details class="tech"><summary>Technical details (for engineers)</summary>
+  ${execution ? renderExecutionEvidence(execution) : ""}
   <div class="banner">
     <div><div class="score ${agg}">${pctText(sc.aggregatePassRate)}</div><div class="meta">aggregate pass-rate</div><div class="ci">${htmlRateCI(sc.aggregatePassRate, totalPasses, totalObs)}</div></div>
     <div class="meta">
@@ -550,6 +563,7 @@ export async function writeHtmlReport(
   sc: Scorecard,
   regressions: Regression[],
   cases: MatchingCase[],
+  execution?: EvalExecutionEvidence,
 ): Promise<void> {
-  await Bun.write(path, renderHtml(sc, regressions, cases));
+  await Bun.write(path, renderHtml(sc, regressions, cases, execution));
 }

@@ -1,3 +1,4 @@
+import { summarizeExecution, type EvalExecutionEvidence } from "./runner.js";
 import { binomialCI } from "./stats.js";
 import type { Regression, ScorecardLike } from "./types.js";
 
@@ -20,6 +21,7 @@ const fmtPValue = (p: number): string => (p < 0.001 ? "p<0.001" : `p=${p.toFixed
 
 /** Pass-rate cell text with a 95% Wilson CI tooltip for HTML tables. */
 export function htmlRateCI(rate: number, passes: number, total: number): string {
+  if (total === 0) return `<span title="No terminal successful outputs">n/a</span>`;
   const [lo, hi] = binomialCI(passes, total);
   const ci = `CI₉₅ ${Math.round(lo * 100)}%–${Math.round(hi * 100)}%`;
   return `<span title="${ci}">${pctText(rate)}</span>`;
@@ -117,6 +119,8 @@ export interface ShellOptions {
   caseCardsHtml?: string;
   /** Extra CSS appended after the shared stylesheet. */
   extraCss?: string;
+  /** Genuine v2 attempt evidence rendered in the technical report. */
+  execution?: EvalExecutionEvidence;
   /**
    * Plain-language report for non-technical readers. When supplied, it renders
    * at the top and the technical banner/sections/cards collapse beneath it.
@@ -176,7 +180,7 @@ export interface Verdict {
 
 /** Plain-language overall verdict derived from the aggregate pass count + regressions. */
 export function computeVerdict(sc: ScorecardLike, regressions: Regression[]): Verdict {
-  const total = sc.cases.length * sc.runs;
+  const total = sc.cases.reduce((sum, entry) => sum + entry.runs, 0);
   const passes = sc.cases.reduce((s, c) => s + c.passes, 0);
   const rate = total === 0 ? 0 : passes / total;
   const hasReg = regressions.length > 0;
@@ -202,6 +206,7 @@ export function groupStatus(
   );
   const rate = runs === 0 ? 0 : passes / runs;
   if (regressed) return { tone: "bad", phrase: "newly slipping" };
+  if (runs === 0) return { tone: "bad", phrase: "not scored — execution incomplete" };
   if (rate === 1) return { tone: "good", phrase: "works reliably" };
   if (rate >= 0.5) return { tone: "ok", phrase: `inconsistent — missed ${runs - passes} of ${runs}` };
   return { tone: "bad", phrase: `often wrong — missed ${runs - passes} of ${runs}` };
@@ -209,6 +214,7 @@ export function groupStatus(
 
 /** Plain-language outcome for a single case across its repeated runs. */
 function caseOutcome(passes: number, runs: number): { tone: Tone; phrase: string } {
+  if (runs === 0) return { tone: "bad", phrase: "Not scored — execution incomplete" };
   if (passes === runs) return { tone: "good", phrase: runs === 1 ? "Correct" : `Correct all ${runs} times` };
   if (passes === 0) return { tone: "bad", phrase: runs === 1 ? "Incorrect" : `Missed all ${runs} times` };
   return { tone: "ok", phrase: `Missed ${runs - passes} of ${runs} times` };
@@ -232,7 +238,7 @@ function heroSummary(
   fallbackBlurb: string,
 ): { subline: string; blurb: string } {
   const total = sc.cases.length;
-  const fullPass = sc.cases.filter((c) => c.passes === c.runs).length;
+  const fullPass = sc.cases.filter((c) => c.runs > 0 && c.passes === c.runs).length;
   const runsTotal = sc.cases.reduce((s, c) => s + c.runs, 0);
   const passesTotal = sc.cases.reduce((s, c) => s + c.passes, 0);
   const pct = runsTotal === 0 ? 0 : Math.round((passesTotal / runsTotal) * 100);
@@ -242,8 +248,9 @@ function heroSummary(
   if (regressions.length > 0) return { subline, blurb: fallbackBlurb };
 
   const labelFor = (rule: string): string | undefined => human.groups.find((g) => g.ruleIds.includes(rule))?.label;
-  const alwaysFail = sc.cases.filter((c) => c.passes === 0);
-  const partial = sc.cases.filter((c) => c.passes > 0 && c.passes < c.runs);
+  const unscored = sc.cases.filter((c) => c.runs === 0);
+  const alwaysFail = sc.cases.filter((c) => c.runs > 0 && c.passes === 0);
+  const partial = sc.cases.filter((c) => c.runs > 0 && c.passes > 0 && c.passes < c.runs);
 
   const parts: string[] = [];
   if (alwaysFail.length === 1) {
@@ -260,6 +267,9 @@ function heroSummary(
       noun = partial.length === 1 ? "one was" : `${partial.length} were`;
     }
     parts.push(`${noun} occasionally off`);
+  }
+  if (unscored.length > 0) {
+    parts.push(`${unscored.length} scenario${unscored.length === 1 ? " was" : "s were"} not scored because execution did not complete`);
   }
   if (parts.length === 0) return { subline, blurb: "Every scenario passed every run." };
   const joined = parts.join("; ");
@@ -315,12 +325,31 @@ export function renderRuleTable(sc: ScorecardLike): string {
   const rows = [...sc.rules]
     .sort((x, y) => x.passRate - y.passRate)
     .map((r) => {
-      const n = r.caseCount * sc.runs;
-      const passes = Math.round(r.passRate * n);
+      const members = sc.cases.filter((entry) => entry.rule === r.rule);
+      const n = members.reduce((sum, entry) => sum + entry.runs, 0);
+      const passes = members.reduce((sum, entry) => sum + entry.passes, 0);
       return `<tr><td>${htmlEscape(r.rule)}</td><td>${r.caseCount}</td><td class="${rateClass(r.passRate)}">${htmlRateCI(r.passRate, passes, n)}</td></tr>`;
     })
     .join("");
   return `<table><thead><tr><th>rule</th><th>cases</th><th>pass</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/** Render execution completeness plus recovered/failed attempt provenance. */
+export function renderExecutionEvidence(execution: EvalExecutionEvidence): string {
+  const summary = summarizeExecution(execution);
+  const rows = execution.runs
+    .filter((run) => run.outcome !== "success" || run.recovered)
+    .map((run) => {
+      const attempts = run.attempts.map((attempt) => {
+        const error = attempt.error
+          ? `<div class="muted">${htmlEscape(attempt.error.class)}: ${htmlEscape(attempt.error.message)}</div>`
+          : "";
+        return `<li><code>${htmlEscape(attempt.attemptId)}</code> — ${htmlEscape(attempt.outcome)} · ${attempt.durationMs}ms · retryable=${String(attempt.retryable)} · backoff=${attempt.backoffMs}ms${error}</li>`;
+      }).join("");
+      return `<tr><td><code>${htmlEscape(run.runId)}</code></td><td>${htmlEscape(run.outcome)}${run.recovered ? " (recovered)" : ""}</td><td><ol>${attempts || "<li>not invoked (cancelled before start)</li>"}</ol></td></tr>`;
+    }).join("");
+  const status = summary.complete ? "complete" : "incomplete";
+  return `<section class="explain ${summary.complete ? "" : "failures"}"><h2>Execution evidence — ${status}</h2><p>policy=${execution.policy} · requested ${summary.requestedRuns} · completed ${summary.completedRuns} · failed/cancelled ${summary.failedRuns} · recovered ${summary.recoveredRuns} · attempts ${summary.totalAttempts}</p>${rows ? `<table><thead><tr><th>run</th><th>outcome</th><th>attempts</th></tr></thead><tbody>${rows}</tbody></table>` : "<p>Every run succeeded on its first attempt.</p>"}</section>`;
 }
 
 /**
@@ -336,7 +365,7 @@ export function renderRuleTable(sc: ScorecardLike): string {
  */
 export function renderScorecardShell(sc: ScorecardLike, regressions: Regression[], opts: ShellOptions): string {
   const agg = rateClass(sc.aggregatePassRate);
-  const totalObs = sc.cases.length * sc.runs;
+  const totalObs = sc.cases.reduce((sum, entry) => sum + entry.runs, 0);
   const totalPasses = sc.cases.reduce((s, c) => s + c.passes, 0);
 
   const regressionBlock =
@@ -367,7 +396,8 @@ export function renderScorecardShell(sc: ScorecardLike, regressions: Regression[
     </div>
   </div>`;
 
-  const technical = `${banner}${intro}${regressionBlock}${summary}${opts.caseCardsHtml ?? ""}`;
+  const executionBlock = opts.execution ? renderExecutionEvidence(opts.execution) : "";
+  const technical = `${banner}${executionBlock}${intro}${regressionBlock}${summary}${opts.caseCardsHtml ?? ""}`;
   // When a plain-language report is supplied, it leads and the technical view
   // collapses beneath it; otherwise the technical view is the whole document.
   const bodyHtml = opts.human

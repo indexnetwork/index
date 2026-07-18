@@ -27,6 +27,7 @@ export function diffBaseline(
 
   const baseCases = new Map(baseline.cases.map((c) => [c.caseId, c]));
   for (const c of current.cases) {
+    if (c.runs === 0) continue; // execution failures are not domain-scoring failures
     const base = baseCases.get(c.caseId);
     if (base === undefined) {
       skippedCaseIds.push(c.caseId);
@@ -47,7 +48,7 @@ export function diffBaseline(
   }
   const comparableByRule = new Map<string, { passes: number; runs: number }>();
   for (const c of current.cases) {
-    if (!baseCases.has(c.caseId)) continue;
+    if (c.runs === 0 || !baseCases.has(c.caseId)) continue;
     const acc = comparableByRule.get(c.rule) ?? { passes: 0, runs: 0 };
     acc.passes += c.passes;
     acc.runs += c.runs;
@@ -99,8 +100,8 @@ export async function readBaseline<T extends ScorecardLike>(
  * per-run candidate payloads); the full detail lives in the run report instead
  * (see {@link writeRunReport}).
  *
- * Writes are atomic (same-directory temp file + rename) and refuse to replace
- * an existing baseline unless `force` is set (the CLI's `--force`).
+ * Writes use a same-directory temp file plus an atomic no-replace commit by
+ * default; `force` opts into atomic rename replacement (the CLI's `--force`).
  *
  * @param path - Absolute or relative path to write to.
  * @param sc - The scorecard to persist.

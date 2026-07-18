@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
-import { EVAL_ARTIFACT_SCHEMA_VERSION, EVAL_BASELINE_ARTIFACT_TYPE, EVAL_LEGACY_UNAVAILABLE, EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, canonicalizeForFingerprint, fingerprintCanonicalJson, fingerprintEvalConfig, fingerprintEvalCorpus, looksLikeLegacyScorecard, migrateLegacyBaseline, parseEvalArtifact, readEvalGitProvenance } from "../artifact.js";
+import { EVAL_ARTIFACT_SCHEMA_VERSION, EVAL_BASELINE_ARTIFACT_TYPE, EVAL_LEGACY_UNAVAILABLE, EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, canonicalizeForFingerprint, fingerprintCanonicalJson, fingerprintEvalConfig, fingerprintEvalCorpus, getExecutionEvidence, isEvalArtifactV2, looksLikeLegacyScorecard, migrateLegacyBaseline, parseEvalArtifact, readEvalGitProvenance } from "../artifact.js";
 import { buildScorecard } from "../scorecard.js";
 import type { CaseResultLike, ScorecardLike } from "../types.js";
-import { TEST_REVISION, makeTestMeta } from "./artifact.fixtures.js";
+import { TEST_REVISION, makeSuccessfulExecution, makeTestMeta } from "./artifact.fixtures.js";
 
 const caseResult = (caseId: string, rule: string, passes: number, runs = 3): CaseResultLike => ({
   caseId,
@@ -12,6 +12,7 @@ const caseResult = (caseId: string, rule: string, passes: number, runs = 3): Cas
   passes,
   passRate: passes / runs,
   flaky: passes > 0 && passes < runs,
+  scoredRunIds: Array.from({ length: runs }, (_, runIndex) => `${encodeURIComponent(caseId)}::run:${runIndex + 1}`),
 });
 
 const scorecard = (): ScorecardLike =>
@@ -20,7 +21,17 @@ const scorecard = (): ScorecardLike =>
     runs: 3,
   });
 
-const validEnvelope = () => buildEvalArtifact(EVAL_BASELINE_ARTIFACT_TYPE, scorecard(), makeTestMeta({ runs: 3 }));
+const legacyScorecard = (): ScorecardLike => {
+  const legacy = JSON.parse(JSON.stringify(scorecard())) as ScorecardLike;
+  for (const entry of legacy.cases) delete entry.scoredRunIds;
+  return legacy;
+};
+
+const validEnvelope = () => buildEvalArtifact(
+  EVAL_BASELINE_ARTIFACT_TYPE,
+  scorecard(),
+  makeTestMeta({ runs: 3, execution: makeSuccessfulExecution(["a", "b", "c"], 3) }),
+);
 
 describe("buildEvalArtifact + parseEvalArtifact", () => {
   it("round-trips a valid baseline envelope", () => {
@@ -37,6 +48,12 @@ describe("buildEvalArtifact + parseEvalArtifact", () => {
       totalRuns: 9,
       totalPasses: 4,
       flakyCaseCount: 1,
+      requestedRuns: 9,
+      completedRuns: 9,
+      failedRuns: 0,
+      recoveredRuns: 0,
+      totalAttempts: 9,
+      complete: true,
     });
   });
 
@@ -59,7 +76,7 @@ describe("buildEvalArtifact + parseEvalArtifact", () => {
   it("rejects unknown schema versions with the supported version named", () => {
     const envelope = { ...validEnvelope(), schemaVersion: 999 };
     expect(() => parseEvalArtifact(envelope, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE }))
-      .toThrow(/schema version 999.*supports version 1/);
+      .toThrow(/schema version 999.*supports versions 1 and 2/);
   });
 
   it("rejects a harness mismatch", () => {
@@ -124,7 +141,7 @@ describe("buildEvalArtifact + parseEvalArtifact", () => {
       },
     };
     expect(() => parseEvalArtifact(badRule, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE }))
-      .toThrow(/passRate is inconsistent with its member cases/);
+      .toThrow(/passRate is inconsistent with its scored member cases/);
     const badCompleteness = { ...base, completeness: { ...base.completeness, totalPasses: 123 } };
     expect(() => parseEvalArtifact(badCompleteness, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE }))
       .toThrow(/completeness\.totalPasses/);
@@ -170,10 +187,66 @@ describe("buildEvalArtifact + parseEvalArtifact", () => {
     ).toThrow(/must not carry selection filters/);
   });
 
-  it("derives completeness from the payload rather than trusting the caller", () => {
+  it("derives completeness from payload plus execution rather than trusting callers", () => {
     const envelope = validEnvelope();
     expect(envelope.completeness.totalRuns).toBe(9);
+    expect(envelope.completeness.requestedRuns).toBe(9);
+    expect(envelope.completeness.totalAttempts).toBe(9);
     expect(envelope.completeness.flakyCaseCount).toBe(1);
+  });
+
+  it("rejects impossible attempt state transitions and out-of-window timing", () => {
+    const base = JSON.parse(JSON.stringify(validEnvelope())) as ReturnType<typeof validEnvelope>;
+    const run = base.execution.runs[0];
+    const success = { ...run.attempts[0], attemptId: `${run.runId}::attempt:2`, attemptNumber: 2 };
+    run.attempts = [{
+      ...run.attempts[0],
+      outcome: "cancelled",
+      error: { class: "Error", message: "cancelled" },
+      retryable: false,
+    }, success];
+    run.recovered = true;
+    base.completeness.totalAttempts += 1;
+    base.completeness.recoveredRuns += 1;
+    expect(() => parseEvalArtifact(base, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE }))
+      .toThrow(/cancelled attempts are terminal|only retryable attempts/);
+
+    const timing = JSON.parse(JSON.stringify(validEnvelope())) as ReturnType<typeof validEnvelope>;
+    timing.execution.runs[0].attempts[0].startedAt = "2025-12-31T23:59:59.000Z";
+    timing.execution.runs[0].attempts[0].completedAt = "2025-12-31T23:59:59.010Z";
+    expect(() => parseEvalArtifact(timing, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE }))
+      .toThrow(/within the envelope execution window/);
+  });
+
+  it("accepts incomplete v2 run reports but rejects incomplete v2 baselines", () => {
+    const failedRun = {
+      policy: "strict" as const,
+      runs: [{
+        runId: "a::run:1",
+        caseId: "a",
+        runIndex: 0,
+        outcome: "failed" as const,
+        recovered: false,
+        attempts: [{
+          attemptId: "a::run:1::attempt:1",
+          runId: "a::run:1",
+          runIndex: 0,
+          attemptNumber: 1,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:00:00.010Z",
+          durationMs: 10,
+          outcome: "failure" as const,
+          error: { class: "Error", message: "sanitized" },
+          retryable: false,
+          backoffMs: 0,
+        }],
+      }],
+    };
+    const incomplete = buildScorecard([{ caseId: "a", rule: "g", runs: 0, passes: 0, passRate: 0, flaky: false, scoredRunIds: [] }], { model: "test/model", runs: 1 });
+    const meta = makeTestMeta({ runs: 1, execution: failedRun });
+    const report = buildEvalArtifact(EVAL_RUN_REPORT_ARTIFACT_TYPE, incomplete, meta);
+    expect(report.completeness).toMatchObject({ requestedRuns: 1, completedRuns: 0, failedRuns: 1, complete: false });
+    expect(() => buildEvalArtifact(EVAL_BASELINE_ARTIFACT_TYPE, incomplete, meta)).toThrow(/baseline artifacts require complete/);
   });
 });
 
@@ -235,7 +308,7 @@ describe("readEvalGitProvenance", () => {
 
 describe("migrateLegacyBaseline", () => {
   it("preserves the legacy payload value-for-value with explicit sentinels", () => {
-    const legacy = scorecard();
+    const legacy = legacyScorecard();
     const envelope = migrateLegacyBaseline(JSON.parse(JSON.stringify(legacy)), {
       harness: "test-harness",
       harnessVersion: "1",
@@ -246,10 +319,13 @@ describe("migrateLegacyBaseline", () => {
     expect(envelope.git).toEqual({ revision: "unknown", dirty: null });
     expect(envelope.createdAt).toBe(legacy.generatedAt);
     expect(JSON.parse(JSON.stringify(envelope.payload))).toEqual(JSON.parse(JSON.stringify(legacy)));
+    expect(envelope.schemaVersion).toBe(1);
+    expect("execution" in envelope).toBe(false);
+    expect(getExecutionEvidence(envelope)).toBeNull();
   });
 
   it("splits legacy multi-model strings into unique model ids", () => {
-    const legacy = { ...scorecard(), model: "provider/a / provider/a" };
+    const legacy = { ...legacyScorecard(), model: "provider/a / provider/a" };
     const envelope = migrateLegacyBaseline(JSON.parse(JSON.stringify(legacy)), {
       harness: "test-harness",
       harnessVersion: "1",
@@ -263,15 +339,26 @@ describe("migrateLegacyBaseline", () => {
   });
 
   it("refuses an internally inconsistent legacy scorecard", () => {
-    const legacy = scorecard();
+    const legacy = legacyScorecard();
     const bad = { ...legacy, cases: legacy.cases.map((c, i) => (i === 0 ? { ...c, passRate: 0.5 } : c)) };
     expect(() => migrateLegacyBaseline(JSON.parse(JSON.stringify(bad)), { harness: "h", harnessVersion: "1" }))
       .toThrow(/inconsistent|Invalid eval artifact/);
   });
 
   it("detects legacy scorecards structurally", () => {
-    expect(looksLikeLegacyScorecard(scorecard())).toBe(true);
+    expect(looksLikeLegacyScorecard(legacyScorecard())).toBe(true);
     expect(looksLikeLegacyScorecard(validEnvelope())).toBe(false);
     expect(looksLikeLegacyScorecard("nope")).toBe(false);
+  });
+
+  it("reads v1 and v2 envelopes without normalizing v1 provenance", () => {
+    const v1 = migrateLegacyBaseline(legacyScorecard(), { harness: "test-harness", harnessVersion: "1" });
+    const v2 = validEnvelope();
+    const parsedV1 = parseEvalArtifact(v1, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE });
+    const parsedV2 = parseEvalArtifact(v2, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE });
+    expect(isEvalArtifactV2(parsedV1)).toBe(false);
+    expect(getExecutionEvidence(parsedV1)).toBeNull();
+    expect(isEvalArtifactV2(parsedV2)).toBe(true);
+    expect(getExecutionEvidence(parsedV2)?.runs).toHaveLength(9);
   });
 });

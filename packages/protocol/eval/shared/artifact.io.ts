@@ -4,14 +4,14 @@
  * - Reads parse + validate through the shared envelope schema and surface
  *   actionable errors for corrupt/truncated JSON.
  * - Writes validate first, then go through a same-directory temp file and an
- *   atomic rename, so an interrupted write can never replace a previous valid
- *   artifact with a partial one.
+ *   atomic commit: non-force writes hard-link without replacement, while force
+ *   writes atomically rename over the destination.
  * - Overwrites are refused by default (`force` opts in), and a write plan can
  *   be asserted up front so multi-output runs fail before *any* output is
  *   written and inputs can never double as outputs.
  */
 import { randomBytes } from "node:crypto";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { link, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { parseEvalArtifact, type EvalArtifactEnvelope, type ParseEvalArtifactOptions } from "./artifact.js";
@@ -51,8 +51,9 @@ export interface WriteEvalArtifactOptions {
  * Validates and atomically writes an eval artifact envelope.
  *
  * The envelope is re-parsed before serialization (invalid artifacts can never
- * reach disk), written to a same-directory temp file, and renamed into place.
- * Existing destinations are refused unless `force` is set.
+ * reach disk) and written to a same-directory temp file. Non-force writes use
+ * an atomic hard-link commit that cannot replace an existing destination;
+ * force writes retain atomic rename replacement.
  */
 export async function writeEvalArtifact(
   filePath: string,
@@ -60,11 +61,6 @@ export async function writeEvalArtifact(
   options: WriteEvalArtifactOptions = {},
 ): Promise<void> {
   const validated = parseEvalArtifact(envelope, { expectedType: envelope.artifactType });
-  if (!options.force && (await Bun.file(filePath).exists())) {
-    throw new Error(
-      `Refusing to overwrite existing eval artifact at ${filePath}; pass --force to replace it`,
-    );
-  }
   const dir = path.dirname(filePath);
   await mkdir(dir, { recursive: true });
   const tempPath = path.join(
@@ -73,9 +69,23 @@ export async function writeEvalArtifact(
   );
   try {
     await writeFile(tempPath, JSON.stringify(validated, null, 2) + "\n");
-    await rename(tempPath, filePath);
+    if (options.force) {
+      await rename(tempPath, filePath);
+    } else {
+      // link(2) is the atomic no-replace commit point: exactly one concurrent
+      // writer can create filePath, and EEXIST never overwrites the winner.
+      await link(tempPath, filePath);
+      await unlink(tempPath);
+    }
   } catch (err) {
     await unlink(tempPath).catch(() => {});
+    const code = err && typeof err === "object" ? Reflect.get(err, "code") : undefined;
+    if (!options.force && code === "EEXIST") {
+      throw new Error(
+        `Refusing to overwrite existing eval artifact at ${filePath}; pass --force to replace it`,
+        { cause: err },
+      );
+    }
     throw err;
   }
 }
