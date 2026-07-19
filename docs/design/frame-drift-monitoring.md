@@ -3,12 +3,12 @@ title: "Frame-Drift Monitoring"
 type: design
 tags: [measurement, embeddings, networks, bullmq, pgvector]
 created: 2026-07-16
-updated: 2026-07-16
+updated: 2026-07-19
 ---
 
 # Frame-Drift Monitoring
 
-IND-430 adds a disabled-by-default, backend-only observation pipeline. It records daily capture-time embedding centroids within networks and a non-causal intent-assignment-pair normalized opportunity-yield proxy between networks. It has no dashboard or API and does not mutate embeddings, prompts, vocabulary, assignments, opportunities, or networks. Its only writes are immutable observation headers and metric snapshots.
+IND-430 adds a disabled-by-default, backend-only observation pipeline. It records daily capture-time embedding centroids within networks and a non-causal intent-assignment-pair normalized opportunity-yield proxy between networks. It has no dashboard or API and does not mutate embeddings, prompts, vocabulary, assignments, opportunities, or networks. Its only writes are immutable observation headers and metric snapshots plus the separate, privacy-minimized scheduler execution-attempt ledger added by IND-468.
 
 ## Observation semantics and atomicity
 
@@ -30,7 +30,19 @@ FRAME_DRIFT_MONITORING_MIN_USERS=5
 
 The scheduler accepts exactly one fixed numeric minute and hour in a simple five-field UTC cron (`M H * * *`) and also validates it with node-cron. Invalid or potentially more-frequent expressions fall back to `15 0 * * *`. Network and pair limits are hard-clamped to 200 and 10,000. The privacy threshold defaults to 5 distinct users and is clamped to 2–100.
 
-BullMQ uses a stable scheduler identity. Disabled startup removes a scheduler left by an earlier deployment and does not create a worker. Enabled registration and disabled removal each retry automatically up to three times with short exponential delays; a terminal failure resets the startup promise so a later call can retry. The processor rechecks the feature flag, logs a structured skip when disabled, and rethrows service failures for BullMQ. Failure metadata includes `willRetry`; the final attempt is explicitly logged as final rather than promising another retry.
+BullMQ uses a stable scheduler identity. On enabled startup, reconciliation first reads the existing scheduler and compares the desired cron pattern, UTC timezone, job name, template data, attempts, backoff, and completed/failed retention. Runtime scheduler fields such as `next`, `iterationCount`, and `offset` are not configuration. A materially matching scheduler is reused without calling `upsertJobScheduler`, even when its `next` timestamp is overdue, so deployment startup cannot delete that pending iteration. Only a missing or materially changed scheduler is upserted. Registration logs `schedulerAction: created|reused|updated` with the scheduler's authoritative `next` timestamp.
+
+Disabled startup still removes a scheduler left by an earlier deployment and does not create a worker. Enabled lookup/upsert and disabled removal retry automatically up to three times with short exponential delays; a terminal failure resets the startup promise so a later call can retry. The processor rechecks the feature flag after durable attempt-start tracking, records a structured skip when disabled, and rethrows service or tracking failures for BullMQ. Failure metadata includes `willRetry`; the final attempt is explicitly logged as final rather than promising another retry.
+
+## Durable execution attempts
+
+`frame_drift_execution_attempts` is an operational ledger separate from `frame_drift_observation_runs`. It has no observation-run foreign key and never participates in the repeatable-read observation transaction. One row is unique on `(job_id, attempt)` and contains only queue/scheduler/job identity, the BullMQ scheduled time, daily bucket bounds, attempt/max-attempt numbers, start/completion times, terminal status, `willRetry`, and an allowlisted failure category. It contains no vectors, prompts, network/user/actor IDs, cohort sizes, raw error messages, stacks, or serialized errors.
+
+`recordStarted` is awaited before the runtime flag check or measurement call. Replaying the same job attempt retains the original start time, while conflicting identity is rejected. A replay also returns any existing terminal status: successful/skipped terminal attempts short-circuit without remeasurement, while failed terminal attempts rethrow a generic failure so BullMQ retry semantics are preserved. A started row transitions once to `inserted`, `duplicate`, `skipped`, or `failed`; a semantically identical terminal replay is accepted while preserving the first completion time, and missing or conflicting transitions are rejected. Successful outcomes and skips have no failure category. Failed measurement attempts store only `failureCategory='measurement'` and whether BullMQ has another configured attempt.
+
+A tracking failure fails the BullMQ job rather than allowing an untracked successful measurement. If terminal tracking fails after the observation transaction committed, the retry safely reaches the observation adapter's `duplicate` path and can record that later attempt. If failure bookkeeping also fails, the processor preserves and rethrows the original measurement error. A process crash can intentionally leave a started row incomplete; the partial index on `started_at WHERE completed_at IS NULL` supports diagnosis. The bucket-start index supports daily incident review.
+
+Checks enforce non-empty identities, one midnight-aligned UTC day with the scheduled fire in the following UTC day, bounded attempt numbers, terminal/failure allowlists, and coherent started versus completed state. Most importantly, absent attempt rows mean **unobserved/unknown**. They are not expected-fire materialization and are not proof that BullMQ never enqueued a job.
 
 ## Stable bounded cohort
 
@@ -82,7 +94,7 @@ Coverage diagnostics report aggregate total graph opportunities in the window, g
 
 Start, warning, failure, skip, and completion records use stable event names. Completion records state `observationStatus: inserted|duplicate`. Inserted completion/warning logs may include aggregate diagnostics and bounded top drift/proxy-delta lists. Duplicate completion logs include only the existing capture identity and zero inserted counts; they never emit recomputed diagnostics or top metrics. Vectors, actors, and suppressed cohort sizes are never logged.
 
-Database checks enforce one-day closed bucket shape, capture after bucket end, bounded capture configuration, a non-empty configured model, optional 64-character cohort hash, object-shaped diagnostics, a plain-text corpus allowlist, positive centroid sample counts, nonnegative opportunity counts, positive potential pair counts, nonnegative yield rates, cosine drift NULL or in `[0,2]`, canonical `A < B`, and valid metric bucket ranges. Unique metric keys also support latest-row lookup, so no redundant non-unique latest indexes are created.
+Observation-table checks enforce one-day closed bucket shape, capture after bucket end, bounded capture configuration, a non-empty configured model, optional 64-character cohort hash, object-shaped diagnostics, a plain-text corpus allowlist, positive centroid sample counts, nonnegative opportunity counts, positive potential pair counts, nonnegative yield rates, cosine drift NULL or in `[0,2]`, canonical `A < B`, and valid metric bucket ranges. Unique metric keys also support latest-row lookup, so no redundant non-unique latest indexes are created. Execution-attempt checks and indexes are described separately above; they do not weaken or couple to observation atomicity.
 
 The rollout intentionally does **not** add a transactional index to the live `opportunities` table. If production query performance requires a `created_at` index, assess it from observed plans and create it separately using an online/concurrent operational procedure.
 
@@ -94,3 +106,4 @@ The rollout intentionally does **not** add a transactional index to the live `op
 - Stable bounds mean monitoring may not be system-wide; aggregate counts and the cohort hash expose coverage.
 - Historical privacy-qualified aggregates are intentionally not recomputed after later user deletion.
 - Snapshot history grows daily. Retention/partitioning is deferred until observed storage growth justifies it.
+- There is no catch-up or expected-fire table. A missing execution-attempt row is unknown evidence, not proof that BullMQ did not enqueue or start an iteration.

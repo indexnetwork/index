@@ -9,6 +9,9 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Fixed
+- Hardened frame-drift scheduler observability (IND-468): startup now reconciles the stable BullMQ job scheduler non-destructively — reading it first, comparing pattern/timezone/name/template-data/attempts/backoff/removal-retention, reusing materially matching schedulers (including overdue `next` values, which previously risked losing the pending iteration to an `upsertJobScheduler` override), upserting only on missing or materially changed definitions, and logging `schedulerAction: created|reused|updated` with the authoritative next timestamp. Every BullMQ attempt is durably tracked in the new privacy-minimized `frame_drift_execution_attempts` table (migration `0097`, unique on `(job_id, attempt)`, no observation-run FK, no vectors/prompts/user-network IDs/raw errors — only an allowlisted failure category), with idempotent start/terminal recording, started-before-flag-before-measurement ordering, redelivery short-circuiting on existing terminal rows, and tracking failures failing the job so measurement never succeeds untracked. Absent attempt rows are unobserved/unknown, not proof BullMQ never enqueued.
+
 ### Added
 - Lens C evidence segments now carry answeredBy-verified owner answers
   (IND-465 slice 2, wiring the `owner_answer` evidence family the extractor

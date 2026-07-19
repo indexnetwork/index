@@ -649,6 +649,79 @@ export const networks = pgTable('networks', {
 }));
 
 export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
+export type FrameDriftExecutionTerminalStatus = 'inserted' | 'duplicate' | 'skipped' | 'failed';
+export type FrameDriftExecutionFailureCategory = 'measurement';
+
+export const frameDriftExecutionAttempts = pgTable('frame_drift_execution_attempts', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  queueName: text('queue_name').notNull(),
+  schedulerId: text('scheduler_id').notNull(),
+  jobId: text('job_id').notNull(),
+  jobName: text('job_name').notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
+  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
+  attempt: integer('attempt').notNull(),
+  maxAttempts: integer('max_attempts').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  terminalStatus: text('terminal_status').$type<FrameDriftExecutionTerminalStatus>(),
+  willRetry: boolean('will_retry'),
+  failureCategory: text('failure_category').$type<FrameDriftExecutionFailureCategory>(),
+}, (table) => ({
+  jobAttemptUnique: uniqueIndex('frame_drift_execution_attempts_job_attempt_uniq')
+    .on(table.jobId, table.attempt),
+  bucketStartIdx: index('frame_drift_execution_attempts_bucket_start_idx').on(table.bucketStart),
+  incompleteIdx: index('frame_drift_execution_attempts_incomplete_idx')
+    .on(table.startedAt)
+    .where(sql`${table.completedAt} IS NULL`),
+  identityCheck: check('frame_drift_execution_attempts_identity_check', sql`
+    length(btrim(${table.queueName})) > 0
+    AND length(btrim(${table.schedulerId})) > 0
+    AND length(btrim(${table.jobId})) > 0
+    AND length(btrim(${table.jobName})) > 0
+  `),
+  dailyBucketCheck: check('frame_drift_execution_attempts_daily_bucket_check', sql`
+    ${table.bucketEnd} = ${table.bucketStart} + interval '1 day'
+    AND date_trunc('day', ${table.bucketStart} AT TIME ZONE 'UTC') = ${table.bucketStart} AT TIME ZONE 'UTC'
+    AND date_trunc('day', ${table.bucketEnd} AT TIME ZONE 'UTC') = ${table.bucketEnd} AT TIME ZONE 'UTC'
+    AND ${table.scheduledAt} >= ${table.bucketEnd}
+    AND ${table.scheduledAt} < ${table.bucketEnd} + interval '1 day'
+  `),
+  attemptBoundsCheck: check('frame_drift_execution_attempts_attempt_bounds_check', sql`
+    ${table.attempt} BETWEEN 1 AND ${table.maxAttempts}
+    AND ${table.maxAttempts} BETWEEN 1 AND 100
+  `),
+  terminalStatusCheck: check('frame_drift_execution_attempts_terminal_status_check', sql`
+    ${table.terminalStatus} IS NULL
+    OR ${table.terminalStatus} IN ('inserted', 'duplicate', 'skipped', 'failed')
+  `),
+  failureCategoryCheck: check('frame_drift_execution_attempts_failure_category_check', sql`
+    ${table.failureCategory} IS NULL OR ${table.failureCategory} = 'measurement'
+  `),
+  terminalStateCheck: check('frame_drift_execution_attempts_terminal_state_check', sql`
+    (
+      ${table.terminalStatus} IS NULL
+      AND ${table.completedAt} IS NULL
+      AND ${table.willRetry} IS NULL
+      AND ${table.failureCategory} IS NULL
+    ) OR (
+      ${table.terminalStatus} IN ('inserted', 'duplicate', 'skipped')
+      AND ${table.completedAt} IS NOT NULL
+      AND ${table.completedAt} >= ${table.startedAt}
+      AND ${table.willRetry} IS NOT NULL
+      AND ${table.willRetry} = false
+      AND ${table.failureCategory} IS NULL
+    ) OR (
+      ${table.terminalStatus} = 'failed'
+      AND ${table.completedAt} IS NOT NULL
+      AND ${table.completedAt} >= ${table.startedAt}
+      AND ${table.willRetry} IS NOT NULL
+      AND ${table.failureCategory} IS NOT NULL
+      AND ${table.failureCategory} = 'measurement'
+    )
+  `),
+}));
 
 export const frameDriftObservationRuns = pgTable('frame_drift_observation_runs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

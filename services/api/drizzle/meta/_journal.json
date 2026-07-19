@@ -680,6 +680,13 @@
       "when": 1784397197143,
       "tag": "0096_normalize_opportunity_actor_intents",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1784452865791,
+      "tag": "0097_add_frame_drift_execution_attempts",
+      "breakpoints": true
     }
   ]
 }
