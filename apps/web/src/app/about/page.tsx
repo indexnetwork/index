@@ -13,19 +13,11 @@ const TEAM: Person[] = [
   { name: "Vicky Gu", href: "https://linkedin.com/in/vickygu" },
 ];
 
-const INVESTORS: Person[] = [
+const BACKERS: Person[] = [
   { name: "Frachtis", href: "https://frachtis.com" },
   { name: "dlab", href: "https://dlab.vc" },
   { name: "Blueyard", href: "https://blueyard.com" },
   { name: "Consensys Mesh", href: "https://mesh.xyz" },
-  { name: "imToken", href: "https://imtoken.ventures/" },
-  { name: "SunDAO", href: "https://sundao.ventures/" },
-  { name: "Oak", href: "https://x.com/tannedoaksprout" },
-  { name: "Billy Luedtke", href: "https://x.com/0xbilly" },
-  {
-    name: "Kobby Chen",
-    href: "https://www.linkedin.com/in/zhehao-kobby-chen-8b6a92a5",
-  },
 ];
 
 function PersonList({ kind, items }: { kind: string; items: Person[] }) {
@@ -85,7 +77,7 @@ function AboutPage() {
         <div className="how-inner">
           <div className="about-roster-stack">
             <PersonList kind="team" items={TEAM} />
-            <PersonList kind="investors" items={INVESTORS} />
+            <PersonList kind="backers" items={BACKERS} />
           </div>
         </div>
       </section>
