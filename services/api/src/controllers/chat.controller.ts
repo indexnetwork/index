@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { AuthGuard, type AuthenticatedUser } from "../guards/auth.guard";
+import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from "../guards/auth.guard";
 import { RateLimit } from "../guards/limiter.guard";
 import { requestContext } from "../lib/request-context";
 import { log } from "../lib/log";
@@ -11,7 +11,7 @@ import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
+import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
@@ -71,15 +71,15 @@ const streamBodySchema = z.object({
   message: z.string().nullish(),
   sessionId: z.string().nullish(),
   useCheckpointer: z.boolean().optional(),
-  fileIds: z.array(z.string()).optional(),
+  fileIds: z.array(z.string().min(1)).max(20).optional(),
   /** @deprecated Use scopeType/scopeId. Retained as the REST edge alias for network-scoped sessions. */
   networkId: z.string().nullish(),
   scopeType: z.enum(['network', 'intent']).nullish(),
   scopeId: z.string().nullish(),
   /** The recipient user ID for DM-style chats (used for ghost invite emails). */
   recipientUserId: z.string().nullish(),
-  /** Chat persona. 'negotiator' bootstraps/streams the user's negotiator DM (P4.1). */
-  persona: z.enum(['negotiator']).nullish(),
+  /** Explicit persona assertion for a newly bootstrapped persona chat. */
+  persona: z.enum(['negotiator', 'signal']).nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -102,6 +102,7 @@ const negotiatorSessionBodySchema = z.object({
 const resolveSessionBodySchema = z.object({
   scopeType: z.enum(['intent']),
   scopeId: z.string().min(1),
+  persona: z.enum(['signal']).optional(),
 });
 
 const interruptBodySchema = z.object({
@@ -189,6 +190,24 @@ export class ChatController {
     req: Request,
     user: AuthenticatedUser,
   ): Promise<Response> {
+    return this.messageStreamForSurface(req, user, 'non_web');
+  }
+
+  /** Main-web chat stream with server-selected Signal cutover policy. */
+  @Post("/web/stream")
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async webMessageStream(
+    req: Request,
+    user: AuthenticatedUser,
+  ): Promise<Response> {
+    return this.messageStreamForSurface(req, user, 'web');
+  }
+
+  private async messageStreamForSurface(
+    req: Request,
+    user: AuthenticatedUser,
+    surface: 'web' | 'non_web',
+  ): Promise<Response> {
     // 1. Parse and validate request body
     let body: z.infer<typeof streamBodySchema>;
     try {
@@ -215,18 +234,7 @@ export class ChatController {
 
     let messageContent = body.message?.trim() || "";
     const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
-    if (fileIds.length > 0) {
-      const fileContent = await fileService.loadAttachedFileContent(
-        user.id,
-        fileIds,
-      );
-      if (fileContent) {
-        messageContent = messageContent
-          ? `${messageContent}\n\n[Attached files]\n${fileContent}`
-          : `[Attached files]\n${fileContent}`;
-      }
-    }
-    if (!messageContent) {
+    if (!messageContent && fileIds.length === 0) {
       return Response.json(
         { error: "Message content or file attachments are required" },
         { status: 400 },
@@ -258,11 +266,60 @@ export class ChatController {
       return undefined;
     };
 
-    // Negotiator persona routing (P4.1): flag-gated. Intent scope is allowed
-    // (P4.2 pinned-signal sessions); network scope is not. Checked before
-    // scope validation — both rejections are cheap and unambiguous.
     const requestedPersona = body.persona ?? undefined;
     if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
+      if (!isNegotiatorChatEnabled()) {
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      if (requestedScope?.scopeType === 'network') {
+        return Response.json({ error: "Negotiator chat cannot be network-scoped" }, { status: 400 });
+      }
+    }
+
+    let currentSessionId = body.sessionId;
+    let loadedSession = currentSessionId
+      ? await chatSessionService.getSession(currentSessionId, user.id)
+      : null;
+    if (currentSessionId && !loadedSession) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
+      surface,
+      requestedPersona,
+      ...(loadedSession ? { storedPersona: loadedSession.persona } : {}),
+    });
+    if (!personaPolicy.ok) {
+      return Response.json(
+        {
+          error: personaPolicy.error,
+          code: personaPolicy.code,
+          ...(personaPolicy.action ? { action: personaPolicy.action } : {}),
+        },
+        { status: personaPolicy.status },
+      );
+    }
+
+    const sessionPersona = personaPolicy.persona;
+    if (fileIds.length > 0) {
+      const fileContent = await fileService.loadAttachedFileContent(
+        user.id,
+        fileIds,
+      );
+      if (fileContent) {
+        messageContent = messageContent
+          ? `${messageContent}\n\n[Attached files]\n${fileContent}`
+          : `[Attached files]\n${fileContent}`;
+      }
+    }
+    if (!messageContent) {
+      return Response.json(
+        { error: "Message content or file attachments are required" },
+        { status: 400 },
+      );
+    }
+
+    if (sessionPersona === NEGOTIATOR_PERSONA_ID) {
       if (!isNegotiatorChatEnabled()) {
         return Response.json({ error: "Not found" }, { status: 404 });
       }
@@ -274,16 +331,13 @@ export class ChatController {
     const requestScopeError = await validateScope(requestedScope);
     if (requestScopeError) return requestScopeError;
 
-    let currentSessionId = body.sessionId;
     let effectiveScope = requestedScope;
-    let sessionPersona: string = "orchestrator";
     let negotiatorAgent: Awaited<ReturnType<typeof resolveNegotiatorAgent>> = null;
-    if (!currentSessionId && requestedPersona === NEGOTIATOR_PERSONA_ID) {
+    if (!currentSessionId && sessionPersona === NEGOTIATOR_PERSONA_ID) {
       negotiatorAgent = await resolveNegotiatorAgent(user.id);
       if (!negotiatorAgent) {
         return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
       }
-      // Intent scope → the per-intent pinned session (P4.2); otherwise the DM.
       const resolved = requestedScope?.scopeType === 'intent'
         ? await chatSessionService.resolveNegotiatorIntentSession(user.id, requestedScope.scopeId)
         : await chatSessionService.resolveNegotiatorSession(user.id, negotiatorAgent.name);
@@ -291,13 +345,16 @@ export class ChatController {
         return Response.json({ error: resolved.error }, { status: resolved.status });
       }
       currentSessionId = resolved.session.id;
-      sessionPersona = NEGOTIATOR_PERSONA_ID;
     } else if (!currentSessionId) {
       const initialTitle = body.prefillMessages?.length
         ? "Set Up Your Social Agent"
         : undefined;
       if (requestedScope?.scopeType === 'intent') {
-        const resolved = await chatSessionService.resolveSessionForScope(user.id, requestedScope);
+        const resolved = await chatSessionService.resolveSessionForScope(
+          user.id,
+          requestedScope,
+          sessionPersona,
+        );
         if ('error' in resolved) {
           return Response.json({ error: resolved.error }, { status: resolved.status });
         }
@@ -308,39 +365,30 @@ export class ChatController {
           initialTitle,
           requestedScope?.scopeType === 'network' ? requestedScope.scopeId : undefined,
           requestedScope,
+          sessionPersona,
         );
       }
-    } else {
-      let loadedSession = await chatSessionService.getSession(
-        currentSessionId,
-        user.id,
-      );
-      if (!loadedSession) {
-        return Response.json({ error: "Session not found" }, { status: 404 });
-      }
-      sessionPersona = loadedSession.persona ?? "orchestrator";
+    } else if (loadedSession) {
       if (sessionPersona === NEGOTIATOR_PERSONA_ID) {
-        if (!isNegotiatorChatEnabled()) {
-          return Response.json({ error: "Not found" }, { status: 404 });
-        }
-        if (requestedScope?.scopeType === 'network') {
-          return Response.json({ error: "Negotiator chat cannot be network-scoped" }, { status: 400 });
-        }
-        // Negotiator sessions are born with their scope (or born as the
-        // unscoped DM) — they are never re-scoped after the fact. A scope
-        // request against the DM would otherwise fall through to the generic
-        // updateSessionScope path and corrupt the persona keying.
         if (requestedScope && !sessionScope(loadedSession)) {
           return Response.json({ error: "Negotiator DM cannot be scoped" }, { status: 400 });
         }
-      } else if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
-        return Response.json({ error: "Session persona mismatch" }, { status: 409 });
       }
       const persistedScope = sessionScope(loadedSession);
       if (requestedScope && persistedScope && !sameScope(requestedScope, persistedScope)) {
         return Response.json({ error: "Session is already scoped differently" }, { status: 409 });
       }
       if (requestedScope && !persistedScope) {
+        if (sessionPersona === SIGNAL_PERSONA_ID) {
+          return Response.json(
+            {
+              error: 'Start a separate Signal Agent chat for that focus.',
+              code: 'CHAT_SCOPE_REQUIRES_NEW_SESSION',
+              action: { type: 'start_signal_session', href: '/' },
+            },
+            { status: 409 },
+          );
+        }
         await chatSessionService.updateSessionScope(currentSessionId, user.id, requestedScope);
         loadedSession = await chatSessionService.getSession(currentSessionId, user.id);
       }
@@ -357,17 +405,26 @@ export class ChatController {
       }
     }
 
-    // Capture for closure
     const sessionId = currentSessionId;
-    const factory = sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
-      ? await chatSessionService.getNegotiatorGraphFactory(
-          negotiatorAgent,
-          user.id,
-          effectiveScope?.scopeType === 'intent' && pinnedIntentLabel
-            ? { label: pinnedIntentLabel }
-            : undefined,
-        )
-      : chatSessionService.getGraphFactory();
+    const factory = sessionPersona === SIGNAL_PERSONA_ID
+      ? chatSessionService.getSignalGraphFactory()
+      : sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
+        ? await chatSessionService.getNegotiatorGraphFactory(
+            negotiatorAgent,
+            user.id,
+            effectiveScope?.scopeType === 'intent' && pinnedIntentLabel
+              ? { label: pinnedIntentLabel }
+              : undefined,
+          )
+        : sessionPersona === ORCHESTRATOR_PERSONA_ID
+          ? chatSessionService.getGraphFactory()
+          : null;
+    if (!factory) {
+      return Response.json(
+        { error: 'This chat cannot be continued safely.', code: 'CHAT_PERSONA_UNSUPPORTED' },
+        { status: 409 },
+      );
+    }
     const useCheckpointer = body.useCheckpointer ?? true;
     const runId = crypto.randomUUID();
     const streamAbortController = new AbortController();
@@ -650,6 +707,7 @@ export class ChatController {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Session-Id": sessionId,
+        "X-Chat-Persona": sessionPersona,
       },
     });
   }
@@ -735,9 +793,20 @@ export class ChatController {
    * @param user - The authenticated user from AuthGuard
    * @returns JSON response with the resolved session and whether it was created
    */
+  /** Resolve an intent-scoped session for the dedicated main-web surface. */
+  @Post("/web/session/resolve")
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async webResolveSession(req: Request, user: AuthenticatedUser) {
+    return this.resolveSession(req, user, 'web');
+  }
+
   @Post("/session/resolve")
   @UseGuards(RateLimit('write'), AuthGuard)
-  async resolveSession(req: Request, user: AuthenticatedUser) {
+  async resolveSession(
+    req: Request,
+    user: AuthenticatedUser,
+    surface: 'web' | 'non_web' = 'non_web',
+  ) {
     let body: z.infer<typeof resolveSessionBodySchema>;
     try {
       const raw = await req.json();
@@ -756,10 +825,25 @@ export class ChatController {
       );
     }
 
+    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
+      surface,
+      requestedPersona: body.persona,
+    });
+    if (!personaPolicy.ok) {
+      return Response.json(
+        {
+          error: personaPolicy.error,
+          code: personaPolicy.code,
+          ...(personaPolicy.action ? { action: personaPolicy.action } : {}),
+        },
+        { status: personaPolicy.status },
+      );
+    }
+
     const result = await chatSessionService.resolveSessionForScope(user.id, {
       scopeType: body.scopeType,
       scopeId: body.scopeId,
-    });
+    }, personaPolicy.persona);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
     }

@@ -5,6 +5,7 @@ import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, Chevro
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useUploadServiceV2 } from "@/services/v2/upload.service";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunities, useQuestionsService } from "@/contexts/APIContext";
@@ -65,10 +66,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     stopStream,
     sendMessage,
     clearChat,
+    startSignalSession,
     loadSession,
     sessionId,
     sessionTitle,
     sessionPersona,
+    turnBlock,
     suggestions: contextSuggestions,
     chatScope,
     setChatScope,
@@ -80,6 +83,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     submitMidStreamMessage,
     liveQuestions,
   } = useAIChat();
+  const { features } = useAuthContext();
+  const signalAgentEnabled = features?.signalAgent === true;
+  const legacyOrchestratorReadOnly = signalAgentEnabled
+    && sessionPersona === "orchestrator"
+    && Boolean(sessionIdFromUrl);
+  const signalContinuationBlocked = turnBlock?.action?.type === "start_signal_session";
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, addNotification } = useNotifications();
   const [input, setInput] = useState("");
@@ -515,8 +524,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         duration: 10000,
         onAction: () => archiveProposalIntent(proposalId, res.intentId),
       });
+      navigate(`/i/${res.intentId}`);
     },
-    [addNotification, archiveProposalIntent, indexes],
+    [addNotification, archiveProposalIntent, indexes, navigate],
   );
 
   const handleIntentProposalReject = useCallback(
@@ -586,7 +596,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSend || isUploadingFiles) return;  // file upload blocks; stream does not
+    if (
+      legacyOrchestratorReadOnly
+      || signalContinuationBlocked
+      || !canSend
+      || isUploadingFiles
+    ) return;  // file upload blocks; stream does not
 
     const message = input.trim();
     setInput("");
@@ -621,7 +636,15 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       const streamingMsg = messages.find((m) => m.isStreaming);
       submitMidStreamMessage(msgContent, streamingMsg?.traceEvents ?? [], fileArg, nameArg);
     } else {
-      await sendMessage(msgContent, fileArg, nameArg);
+      await sendMessage(
+        msgContent,
+        fileArg,
+        nameArg,
+        {
+          surface: "web",
+          ...(!sessionId && signalAgentEnabled ? { persona: "signal" as const } : {}),
+        },
+      );
     }
     inputRef.current?.focus();
   };
@@ -1349,16 +1372,41 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         </ContentContainer>
       </div>
 
-      {/* Fixed input at bottom */}
+      {/* Fixed input or legacy-session continuation action at bottom */}
       <div className="sticky bottom-0 z-20">
         <div className="px-6 lg:px-8">
           <ContentContainer>
-            <SuggestionChips
-              suggestions={suggestions}
-              disabled={isUploadingFiles}
-              onSuggestionClick={handleSuggestionClick}
-            />
-            {renderInputForm()}
+            {legacyOrchestratorReadOnly || signalContinuationBlocked ? (
+              <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <p className="text-sm font-medium text-gray-900">
+                  {turnBlock?.message ?? "This earlier chat is read-only."}
+                </p>
+                <p className="mt-1 text-sm text-gray-600">
+                  Its messages are preserved. Continue in a separate Signal Agent chat.
+                </p>
+                <Button
+                  type="button"
+                  className="mt-3 bg-[#041729] text-white hover:bg-[#0a2d4a]"
+                  onClick={() => {
+                    startSignalSession();
+                    setChatScope(null);
+                    setSelectedNetworkIds([]);
+                    navigate("/");
+                  }}
+                >
+                  Start a Signal Agent chat
+                </Button>
+              </div>
+            ) : (
+              <>
+                <SuggestionChips
+                  suggestions={suggestions}
+                  disabled={isUploadingFiles}
+                  onSuggestionClick={handleSuggestionClick}
+                />
+                {renderInputForm()}
+              </>
+            )}
           </ContentContainer>
         </div>
       </div>

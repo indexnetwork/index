@@ -2,12 +2,17 @@ import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, C
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { acquireNegotiationAttemptLock, qualifyingNegotiationAttemptTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
-/**
- * Persona value for the user's negotiator DM session (P4.1 / IND-402).
- * Mirrors `NEGOTIATOR_PERSONA_ID` in @indexnetwork/protocol; kept as a local
- * literal so the data layer does not import the protocol package.
- */
+/** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
+const ORCHESTRATOR_PERSONA = 'orchestrator';
+const SIGNAL_PERSONA = 'signal';
 const NEGOTIATOR_PERSONA = 'negotiator';
+
+/** Persona-specific registry key for Signal Agent's canonical intent scope. */
+const SIGNAL_INTENT_SCOPE_TYPE = 'signal-intent';
+
+function intentRegistryScopeType(persona?: string): string {
+  return persona === SIGNAL_PERSONA ? SIGNAL_INTENT_SCOPE_TYPE : 'intent';
+}
 
 /**
  * Stable-session registry key for the negotiator DM in `chat_session_scopes`.
@@ -1580,7 +1585,7 @@ export class ConversationDatabaseAdapter {
         await tx.insert(schema.chatSessionScopes).values({
           conversationId: data.id,
           userId: data.userId,
-          scopeType: normalizedScopeType,
+          scopeType: intentRegistryScopeType(data.persona),
           scopeId: normalizedScopeId,
           createdAt: now,
           updatedAt: now,
@@ -2003,6 +2008,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     scopeType: ChatScopeType,
     scopeId: string,
+    persona = ORCHESTRATOR_PERSONA,
   ): Promise<ChatSession | null> {
     const normalizedScopeId = scopeId.trim();
     if (!normalizedScopeId) return null;
@@ -2014,12 +2020,14 @@ export class ConversationDatabaseAdapter {
         .where(
           and(
             eq(schema.chatSessionScopes.userId, userId),
-            eq(schema.chatSessionScopes.scopeType, scopeType),
+            eq(schema.chatSessionScopes.scopeType, intentRegistryScopeType(persona)),
             eq(schema.chatSessionScopes.scopeId, normalizedScopeId),
           ),
         )
         .limit(1);
-      return row ? this.getChatSession(row.conversationId) : null;
+      if (!row) return null;
+      const session = await this.getChatSession(row.conversationId);
+      return session?.userId === userId && session.persona === persona ? session : null;
     }
 
     // Network-scoped sessions predate chat_session_scopes; look them up through metadata.
@@ -2033,7 +2041,7 @@ export class ConversationDatabaseAdapter {
 
     for (const row of rows) {
       const session = await this.getChatSession(row.conversationId);
-      if (session?.userId === userId) return session;
+      if (session?.userId === userId && session.persona === persona) return session;
     }
     return null;
   }
@@ -2047,6 +2055,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     scopeType: ChatScopeType | null,
     scopeId: string | null,
+    persona = ORCHESTRATOR_PERSONA,
   ): Promise<void> {
     const normalizedScopeId = scopeId?.trim() || null;
     const networkId = scopeType === 'network' ? normalizedScopeId : null;
@@ -2058,7 +2067,7 @@ export class ConversationDatabaseAdapter {
       await db.insert(schema.chatSessionScopes).values({
         conversationId: sessionId,
         userId,
-        scopeType,
+        scopeType: intentRegistryScopeType(persona),
         scopeId: normalizedScopeId,
         createdAt: now,
         updatedAt: now,

@@ -348,6 +348,7 @@ export function ownIntentsListWhere(
  * Database adapter for intent CRUD (Intent Graph).
  */
 export type ChatScopeType = 'network' | 'intent';
+export type ChatPersonaId = 'orchestrator' | 'signal' | 'negotiator';
 
 export interface ChatSession {
   id: string;
@@ -416,7 +417,7 @@ export interface CreateSessionInput {
   userId: string;
   title?: string;
   /** Chat persona for this session. Omit for the default ('orchestrator'). */
-  persona?: string;
+  persona?: ChatPersonaId;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId?: string;
   scopeType?: ChatScopeType;

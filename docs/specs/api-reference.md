@@ -356,7 +356,7 @@ Send a message to the chat graph for synchronous processing.
 
 ### POST /api/chat/stream
 
-SSE streaming endpoint for chat messages with context support. Streams graph events and LLM tokens in real-time.
+Compatibility/non-web SSE endpoint for chat messages with context support. Streams graph events and LLM tokens in real-time and retains the orchestrator default for CLI and other non-web consumers. The main web composer uses `/api/chat/web/stream` below.
 
 **Auth**: AuthGuard
 
@@ -371,6 +371,7 @@ SSE streaming endpoint for chat messages with context support. Streams graph eve
   "scopeId": "string | null (required when scopeType is provided)",
   "networkId": "string | null (deprecated alias for scopeType=network)",
   "recipientUserId": "string | null (optional — DM recipient for ghost invites)",
+  "persona": "signal | negotiator | null (optional persona assertion; stored session persona is authoritative)",
   "prefillMessages": [
     { "role": "assistant | user", "content": "string (max 10000 chars)" }
   ]
@@ -389,6 +390,15 @@ SSE event types:
 
 **Response headers**:
 - `X-Session-Id` — The session ID for this chat
+- `X-Chat-Persona` — The authoritative persisted persona used for the turn
+
+Signal requests are rejected on this compatibility route; they must use the dedicated main-web route.
+
+### POST /api/chat/web/stream
+
+Main-web SSE endpoint. It accepts the same request and returns the same SSE events/headers as `/api/chat/stream`, but is protected by `SessionOnlyGuard` and applies the server-selected Signal cutover policy.
+
+When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly request `persona: "signal"`. Signal follow-ups may omit the assertion and inherit the persisted persona. Existing `orchestrator` web sessions remain readable through `POST /api/chat/session`, but a new web turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Explicit persona mismatch and unknown persisted personas also fail closed. The separate compatibility route preserves CLI and onboarding orchestrator behavior; Telegram, MCP, and direct-tool behavior is unchanged.
 
 ### GET /api/chat/sessions
 
@@ -405,7 +415,7 @@ List all chat sessions for the authenticated user.
 
 ### POST /api/chat/session/resolve
 
-Resolve or create the stable orchestrator chat session for a selected intent. Repeated calls by the same user for the same intent return the same session.
+Resolve or create the stable compatibility orchestrator chat session for a selected intent. Repeated calls by the same user and intent return the same session. The main web composer uses `/api/chat/web/session/resolve`.
 
 **Auth**: AuthGuard
 
@@ -427,6 +437,18 @@ Resolve or create the stable orchestrator chat session for a selected intent. Re
     "title": "..."
   },
   "created": false
+}
+```
+
+### POST /api/chat/web/session/resolve
+
+Session-only main-web variant of `/api/chat/session/resolve`. While the Signal cutover is enabled, add `persona: "signal"`; the returned stable intent-scoped session uses the Signal persona-distinct registry key, so it never rewrites or reuses legacy orchestrator history.
+
+```json
+{
+  "scopeType": "intent",
+  "scopeId": "intent UUID",
+  "persona": "signal"
 }
 ```
 

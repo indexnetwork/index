@@ -110,6 +110,8 @@ The chat graph is architecturally simple: a single node that delegates all compl
 
 The graph supports streaming via `config.writer()` so text tokens and tool-activity events are pushed to the client in real-time rather than batched at the end. Error handling includes one retry for retriable errors (5xx, connection resets).
 
+The runtime is persona-neutral: `ChatGraphFactory.withPersona()` reuses the same graph and injected dependencies while selecting a persona-owned prompt, toolset, and loop behaviors. Persisted `conversations.persona` is authoritative for follow-up turns. The main-web Signal Agent persona (`signal`) uses a positive allowlist limited to intent/signal management, intent-to-existing-community assignment, profile context and premise knowledge, read-only network/membership context, pasted-URL scraping, and chat clarification. It has no opportunity/discovery-run, negotiation, contact/import, agent-administration, network-administration, or membership-mutation tools. Its discovery-coupled create-intent callback is disabled while proposal hallucination recovery remains enabled. The default `orchestrator` runtime remains unchanged for non-web consumers.
+
 **Dependencies:** `ChatGraphCompositeDatabase`, `Embedder`, `Scraper`
 
 ### 3.2 Intent Graph

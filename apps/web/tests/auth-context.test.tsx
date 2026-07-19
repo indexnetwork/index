@@ -114,7 +114,7 @@ describe('AuthProvider onboarding routing', () => {
   test('captures the sibling features object from /auth/me', async () => {
     mocks.apiClient.get.mockResolvedValue({
       user: incompleteUser(),
-      features: { negotiatorChat: true },
+      features: { negotiatorChat: true, signalAgent: true },
     });
 
     renderWithRouter(
@@ -124,7 +124,9 @@ describe('AuthProvider onboarding routing', () => {
       { route: '/networks' }
     );
 
-    expect(await screen.findByTestId('features')).toHaveTextContent('{"negotiatorChat":true}');
+    expect(await screen.findByTestId('features')).toHaveTextContent(
+      '{"negotiatorChat":true,"signalAgent":true}',
+    );
   });
 
   test('features stays null when /auth/me omits the features object', async () => {

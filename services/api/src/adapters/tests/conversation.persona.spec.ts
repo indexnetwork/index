@@ -5,6 +5,7 @@
  * - sessions created without a persona read back as 'orchestrator' (DB default,
  *   which is also what every pre-migration row reads via the column default)
  * - CreateSessionInput.persona is persisted
+ * - orchestrator and Signal sessions use distinct intent registry keys
  * - getUserChatSessions: no filter → all sessions (today's behavior);
  *   persona filter → only matching sessions
  */
@@ -18,10 +19,13 @@ const adapter = new ConversationDatabaseAdapter();
 
 const USER_ID = `persona-test-user-${Date.now()}`;
 const ORCH_SESSION_ID = crypto.randomUUID();
-const STUB_SESSION_ID = crypto.randomUUID();
+const SIGNAL_SESSION_ID = crypto.randomUUID();
+const ORCH_INTENT_SESSION_ID = crypto.randomUUID();
+const SIGNAL_INTENT_SESSION_ID = crypto.randomUUID();
+const SHARED_INTENT_ID = crypto.randomUUID();
 
 afterAll(async () => {
-  for (const id of [ORCH_SESSION_ID, STUB_SESSION_ID]) {
+  for (const id of [ORCH_SESSION_ID, SIGNAL_SESSION_ID, ORCH_INTENT_SESSION_ID, SIGNAL_INTENT_SESSION_ID]) {
     try { await adapter.deleteChatSession(id); } catch { /* best effort */ }
   }
 });
@@ -37,14 +41,51 @@ describe('conversations.persona column', () => {
 
   it('persists an explicit persona from CreateSessionInput', async () => {
     await adapter.createChatSession({
-      id: STUB_SESSION_ID,
+      id: SIGNAL_SESSION_ID,
       userId: USER_ID,
-      persona: 'stub-persona',
+      persona: 'signal',
     });
 
-    const session = await adapter.getChatSession(STUB_SESSION_ID);
+    const session = await adapter.getChatSession(SIGNAL_SESSION_ID);
     expect(session).not.toBeNull();
-    expect(session!.persona).toBe('stub-persona');
+    expect(session!.persona).toBe('signal');
+  }, 15000);
+});
+
+describe('persona-specific intent scope registry', () => {
+  it('keeps Signal and orchestrator sessions distinct for the same intent', async () => {
+    await adapter.createChatSession({
+      id: ORCH_INTENT_SESSION_ID,
+      userId: USER_ID,
+      persona: 'orchestrator',
+      scopeType: 'intent',
+      scopeId: SHARED_INTENT_ID,
+    });
+    await adapter.createChatSession({
+      id: SIGNAL_INTENT_SESSION_ID,
+      userId: USER_ID,
+      persona: 'signal',
+      scopeType: 'intent',
+      scopeId: SHARED_INTENT_ID,
+    });
+
+    const orchestrator = await adapter.getChatSessionByScope(
+      USER_ID,
+      'intent',
+      SHARED_INTENT_ID,
+      'orchestrator',
+    );
+    const signal = await adapter.getChatSessionByScope(
+      USER_ID,
+      'intent',
+      SHARED_INTENT_ID,
+      'signal',
+    );
+
+    expect(orchestrator?.id).toBe(ORCH_INTENT_SESSION_ID);
+    expect(orchestrator?.persona).toBe('orchestrator');
+    expect(signal?.id).toBe(SIGNAL_INTENT_SESSION_ID);
+    expect(signal?.persona).toBe('signal');
   }, 15000);
 });
 
@@ -53,17 +94,18 @@ describe('getUserChatSessions persona filter', () => {
     const sessions = await adapter.getUserChatSessions(USER_ID, 10);
     const ids = sessions.map((s) => s.id);
     expect(ids).toContain(ORCH_SESSION_ID);
-    expect(ids).toContain(STUB_SESSION_ID);
+    expect(ids).toContain(SIGNAL_SESSION_ID);
   }, 15000);
 
   it('returns only matching sessions when a persona filter is given', async () => {
     const orchSessions = await adapter.getUserChatSessions(USER_ID, 10, 'orchestrator');
     expect(orchSessions.map((s) => s.id)).toContain(ORCH_SESSION_ID);
-    expect(orchSessions.map((s) => s.id)).not.toContain(STUB_SESSION_ID);
+    expect(orchSessions.map((s) => s.id)).not.toContain(SIGNAL_SESSION_ID);
     expect(orchSessions.every((s) => s.persona === 'orchestrator')).toBe(true);
 
-    const stubSessions = await adapter.getUserChatSessions(USER_ID, 10, 'stub-persona');
-    expect(stubSessions.map((s) => s.id)).toEqual([STUB_SESSION_ID]);
+    const signalSessions = await adapter.getUserChatSessions(USER_ID, 10, 'signal');
+    expect(signalSessions.map((s) => s.id)).toContain(SIGNAL_SESSION_ID);
+    expect(signalSessions.every((s) => s.persona === 'signal')).toBe(true);
   }, 15000);
 
   it('returns no sessions for an unknown persona', async () => {
