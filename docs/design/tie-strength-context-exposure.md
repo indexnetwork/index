@@ -52,7 +52,7 @@ The design is grounded at base commit `85af583363d16f4c97ac7be60f970d72cc16e840`
 | Opportunity evidence | Opportunities have mutable `updatedAt`, no dedicated accepted timestamp, and actor JSON may contain `actedAt`. Explicit accept paths stamp the acting actor. `updatedAt` alone is only an approximation and must not be presented as acceptance time. | `services/api/src/schemas/database.schema.ts:415-461`; `services/api/src/adapters/opportunity.database.adapter.ts:903-940` |
 | Introducer | `ContactWithIntents` contains intent freshness/count only. The adapter orders by the contact's maximum active-intent `updatedAt`; this is not owner↔contact interaction freshness. | `packages/protocol/src/opportunity/opportunity.introducer.ts:23-41,68-89`; `services/api/src/adapters/chat.database.adapter.ts:3278-3325` |
 | Premise assignment | Assignment is automatic. The centralized default threshold is `0.7`; `create_premise` returns an assigned-index count and message, not a preview or confirmation. | `packages/protocol/src/shared/assignment/network-assignment.policy.ts:5-6,75-100`; `packages/protocol/src/premise/premise.tools.ts:67-90` |
-| Exposure | Opportunity discovery searches assigned premises and per-network contexts inside network scope; the global context row is excluded from context-to-intent discovery. However, premise-similarity and context-to-intent queries do not currently share one canonical reachability predicate and diverge on filters such as active-user handling. Direct read surfaces are also different: `read_premises(userId)` delegates a user-ID read without a discovery-network predicate, while single-user context/profile tooling can use contact-derived shared scope. There is no uniform per-tie read gate. | `services/api/src/adapters/opportunity.database.adapter.ts:1284-1430`; `packages/protocol/src/opportunity/opportunity.graph.ts:420-438,1188-1269`; `packages/protocol/src/premise/premise.tools.ts:113-123`; `services/api/src/adapters/database.adapter.ts:220-258`; `packages/protocol/src/enrichment/enrichment.tools.ts:415-449` |
+| Exposure | Opportunity discovery searches assigned premises and per-network contexts inside network scope; the global context row is excluded from context-to-intent discovery. However, premise-similarity and context-to-intent queries do not currently share one canonical reachability predicate and diverge on filters such as active-user handling. Current assignment-scoped matching permits ghosts; contact tooling explicitly says a created ghost participates in opportunity matching before joining. A non-ghost preview count is therefore a separate recipient-eligibility rule, not semantic parity with discovery. Direct read surfaces are also different: `read_premises(userId)` delegates a user-ID read without a discovery-network predicate, while single-user context/profile tooling can use contact-derived shared scope. There is no uniform per-tie read gate. | `services/api/src/adapters/opportunity.database.adapter.ts:1284-1430`; `packages/protocol/src/opportunity/opportunity.graph.ts:420-438,1188-1269`; `packages/protocol/src/contact/contact.tools.ts:14-31`; `packages/protocol/src/premise/premise.tools.ts:113-123`; `services/api/src/adapters/database.adapter.ts:220-258`; `packages/protocol/src/enrichment/enrichment.tools.ts:415-449` |
 | Counting precedent | `getNetworkMemberCount` counts undeleted membership rows and includes the author; it is not the preview query needed here. | `services/api/src/adapters/chat.database.adapter.ts:1860-1863` |
 | Privacy threshold precedent | Frame-drift monitoring defaults its minimum cohort to five, hard-clamps it to `[2,100]`, suppresses sub-threshold output, and emits aggregate suppression diagnostics. | `services/api/src/lib/frame-drift.config.ts:3-8,19-29,53-82`; [Frame-Drift Monitoring](frame-drift-monitoring.md) |
 
@@ -102,22 +102,25 @@ They must not be used for advertising, public social graphs, member recommendati
 
 Storage remains on `network_members`; no contact-events table or metadata-only representation is introduced in v1.
 
-### Illustrative SQL
+### Canonical schema values and generated SQL
 
-```sql
-CREATE TYPE contact_source AS ENUM (
+```ts
+// Illustrative schema-layer declaration; this tuple is the single source of truth.
+import { pgEnum } from 'drizzle-orm/pg-core';
+
+export const contactSourceValues = [
   'manual',
   'csv_import',
   'integration_import',
   'opportunity_acceptance',
-  'conversation_started'
-);
+  'conversation_started',
+] as const;
 
-ALTER TABLE network_members
-  ADD COLUMN contact_source contact_source,
-  ADD COLUMN last_interaction_at timestamptz,
-  ADD COLUMN contact_signal_details jsonb;
+export type ContactSource = (typeof contactSourceValues)[number];
+export const contactSourceEnum = pgEnum('contact_source', contactSourceValues);
 ```
+
+The schema/API layer owns and exports the canonical tuple and derived `ContactSource` type. The Drizzle enum consumes the same tuple, and the generated migration creates the PostgreSQL `contact_source` enum plus nullable `network_members.contact_source`, `last_interaction_at timestamptz`, and `contact_signal_details jsonb` columns. Implementations must not redeclare an independent TypeScript union or second values array that can drift from the database enum.
 
 All three columns are nullable. They are meaningful only when the row is an active contact membership in a personal network. Existing rows, non-contact memberships, owner memberships, and evidence-free contacts remain SQL `NULL`, meaning unknown—not “weak,” “old,” or “untrusted.”
 
@@ -128,7 +131,7 @@ All three columns are nullable. They are meaningful only when the row is an acti
 | Source | Trusted meaning |
 | --- | --- |
 | `manual` | A direct add or generic contact-list import reached a trusted add/import tool or controller. This does not imply that the contact was typed one at a time. |
-| `csv_import` | The server or a trusted in-process wrapper actually parsed/attested a CSV contact import. The current experiment-network CSV flow does not create contact edges and therefore does not write this value. A generic public `import_contacts` array is `manual`, not `csv_import`. |
+| `csv_import` | Reserved for a separately approved server or trusted in-process parser that actually parses/attests a personal-contact CSV import. No such contact-edge writer exists in A3: the current experiment-network CSV flow creates network members, not personal contacts, and a generic public `import_contacts` array is `manual`. The value must remain unwritten until a trusted personal-contact CSV boundary and composition-root test are approved. |
 | `integration_import` | The API integration service fetched contacts from a supported provider. Toolkit/group belongs in allowlisted details, not in the enum. |
 | `opportunity_acceptance` | The edge was created or restored through explicit `updateOpportunityStatus('accepted')` semantics. Its recency timestamp is the persisted accepting actor's `actedAt`, not generic opportunity `updatedAt`. |
 | `conversation_started` | The edge was created or restored because the user invoked the new `startChat` transition. Although that path also stamps acceptance, this source records the acquisition boundary the user chose; it produces one `conversation_started` touch, not a duplicate acceptance touch. The already-accepted branch creates/restores no edge and performs no recency touch because it persists no new action timestamp. |
@@ -233,6 +236,15 @@ interface ContactEdgePersistence {
     options: { restore: boolean },
   ): Promise<'created' | 'restored' | 'existing' | 'opted_out'>;
 
+  upsertContactEdgesBulk(
+    ownerUserId: string,
+    edges: ReadonlyArray<{
+      contactUserId: string;
+      origin: TrustedContactOrigin;
+    }>,
+    options: { restore: boolean },
+  ): Promise<ReadonlyArray<'created' | 'restored' | 'existing' | 'opted_out'>>;
+
   touchContactInteraction(
     userA: string,
     userB: string,
@@ -244,7 +256,9 @@ interface ContactEdgePersistence {
 
 This is an API-side persistence boundary, not a protocol-layer dependency. `ContactService`, `OpportunityService`, message persistence, integration composition, and MCP composition should depend on the same adapter contract or SQL helper. Services must not import one another; the centralization belongs in an adapter/shared persistence primitive wired through existing service interfaces.
 
-For direct add/import, `upsertContactEdge` is the product persistence operation. While `CONTACT_SIGNAL_CAPTURE_ENABLED` is false, existing membership behavior remains unchanged and signal columns stay null. When capture is enabled, each directed membership insert/restore, trusted `contact_source`, and allowlisted acquisition details commit atomically in one transaction; provenance is not appended best-effort after reporting that edge successful. If that per-edge atomic write fails, that add/import item fails as it does for membership-persistence failure today. Bulk import retains its existing per-item/partial-success semantics rather than becoming one all-or-nothing transaction. Best-effort semantics begin only for secondary recency touches and for contact side effects triggered after a message, opportunity, or chat product action has already committed; reciprocal acceptance/chat directions are separate edge writes and may fail independently.
+For direct add, `upsertContactEdge` is the product persistence operation. While `CONTACT_SIGNAL_CAPTURE_ENABLED` is false, existing membership behavior remains unchanged and signal columns stay null. When capture is enabled, the directed membership insert/restore, trusted `contact_source`, and allowlisted acquisition details commit atomically in one transaction; provenance is not appended after reporting the edge successful.
+
+Bulk import preserves a different existing contract. Input resolution and deduplication happen before membership persistence and may report invalid or deduplicated inputs as `skipped`. The surviving edge set, including each edge's trusted origin/details when capture is enabled, is then written by one `upsertContactEdgesBulk` batched operation/transaction. That database persistence unit succeeds or fails as a batch: a successful batch leaves every successfully created/restored edge with its required origin/details, while a failed batch rolls back and throws before any `ImportResult.imported` count is returned. On commit, `ImportResult` retains its current API meaning: `imported` is the number of deduplicated surviving inputs processed by the batch, `details` is the retained resolution/dedup detail set, and `skipped` is the resolution-plus-dedup skip count; `imported` is not redefined as newly inserted/restored edge count. Mixed internal `created`/`restored`/`existing`/`opted_out` statuses are tested for correct provenance and lifecycle behavior without being converted into per-item database success or new skip semantics. V1 must not invent per-item database persistence or partial-success semantics; such a change requires separate product and persistence approval. Post-commit enrichment, secondary recency, reverse-edge/contact, and acceptance/chat side effects retain their own current awaited or best-effort behavior where already defined, but they are not evidence that the primary import batch persisted per item. Reciprocal acceptance/chat directions remain separate edge writes and may fail independently.
 
 Event-specific internal wrappers (`touchFromPersistedMessage`, `touchFromAcceptedOpportunity`, `touchFromNewStartChatTransition`) first derive and validate the two users, timestamp, role/action, and basis from the durable row or just-committed server action. They are the only production callers of `touchContactInteraction`; controllers, protocol tools, and public composition deps never receive the raw pair/timestamp method. This retains the locked shared boundary while preventing an internal caller from treating arbitrary IDs or request timestamps as evidence.
 
@@ -272,7 +286,7 @@ The already-accepted `startChat` branch only gets/returns or unhides the existin
 | MCP `add_contact` | `manual` | none |
 | Generic MCP/chat `import_contacts` list | `manual`; Hermes forwarding is observed only as MCP | none |
 | CLI | direct add is `manual`; Gmail command reaches integration import; no current list/CSV command | none |
-| Trusted CSV parser for personal contacts | `csv_import` | none |
+| Future separately approved trusted CSV parser for personal contacts | `csv_import`; remains unwritten in A3 | none |
 | Gmail/Slack integration fetch | `integration_import` plus allowlisted toolkit/group | none |
 | Explicit `updateOpportunityStatus('accepted')`, across REST and every protocol graph composition | create/restore as `opportunity_acceptance` | persisted accepting actor `actedAt`, both existing/new directional edges |
 | New `startChat` transition | create/restore as `conversation_started`, even though the path also stamps acceptance | one server action time tied to the transition; both existing/new directional edges |
@@ -402,11 +416,12 @@ sequenceDiagram
     Boundary->>Boundary: validate action; derive trusted context
 
     alt Direct add/import
-        Boundary->>Edge: add/import + trusted acquisition origin
-        Edge->>DB: insert/restore edge; atomically include source/details when capture enabled
-        DB-->>Edge: committed edge or failure
-        Edge-->>Boundary: product persistence result
-        Boundary-->>Owner: success only after atomic commit
+        Boundary->>Boundary: resolve/deduplicate import; record skipped inputs
+        Boundary->>Edge: single add or surviving import batch + trusted origins
+        Edge->>DB: atomically persist one edge or the whole batch with source/details
+        DB-->>Edge: persistence unit committed or rolled back
+        Edge-->>Boundary: success only after commit; failed batch returns no imported count
+        Boundary-->>Owner: skipped-input report + committed add/batch result
     else Message / acceptance / new startChat action
         Boundary->>Product: action without caller signal fields
         Product->>DB: commit primary product action + server evidence
@@ -431,8 +446,8 @@ sequenceDiagram
     Owner->>Premise: create_premise
     Premise->>DB: persist + automatic network assignment (unchanged)
     DB-->>Premise: assigned networks
-    Premise->>Preview: count active distinct recipients excluding Owner
-    Preview-->>Owner: network names + suppressed/bucketed advisory estimate
+    Premise->>Preview: canonical discovery scope + preview-only non-ghost/Owner exclusions
+    Preview-->>Owner: network names + suppressed/bucketed human-recipient estimate
     Note over Premise,Preview: No graph pause, confirmation, or read gate in v1
 ```
 
@@ -479,34 +494,44 @@ These are operational sufficiency floors, not scientific validation. If the popu
 
 After automatic premise assignment completes, `create_premise` may enrich its owner-only result with an advisory preview. Assignment, threshold `0.7`, persistence, and graph completion remain unchanged. Preview failure never rolls back the premise or assignment.
 
-The preview estimates a **potential assignment-scoped discovery audience upper bound** for each assigned network at query time. It is not an upper bound on every current direct/tool/admin read: today's read surfaces do not all apply the discovery network predicate. It is not a statement that anybody read, received, matched, or will discover the premise, and it is not causal reach. The UI label must say “potential network audience,” never “people who can read this.”
+The preview estimates a **potential active-human recipient audience** for each assigned network at query time. It is neither the complete discovery candidate count—current discovery can include ghosts—nor an upper bound on every current direct/tool/admin read, because those surfaces do not all apply the discovery network predicate. It is not a statement that anybody read, received, matched, or will discover the premise, and it is not causal reach. The UI label must say “potential network audience,” never “people who can read this.”
 
 ```ts
 // Illustrative owner-only response extension.
-type PremiseExposurePreview = {
-  status: 'estimated' | 'suppressed' | 'unavailable';
+type PremiseExposurePreviewBase = {
   networkId: string;
   networkName: string;
-  audience?: {
-    bucket: '2-4' | '5-9' | '10-24' | '25-49' | '50+';
-    basis: 'active_distinct_recipients_excluding_author';
-  };
-  notice: 'Potential audience, not actual exposure';
+  notice: 'Potential network audience, not actual exposure';
+};
+
+type PremiseExposurePreview = PremiseExposurePreviewBase & (
+  | {
+      status: 'estimated';
+      audience: {
+        bucket: '2-4' | '5-9' | '10-24' | '25-49' | '50+';
+        basis: 'active_distinct_non_ghost_recipients_excluding_author';
+      };
+    }
+  | {
+      status: 'suppressed' | 'unavailable';
+      audience?: never;
+    }
+);
+
+type CreatePremiseExposureExtension = {
+  // Present only when preview is enabled; one item per assigned network.
+  exposurePreviews?: ReadonlyArray<PremiseExposurePreview>;
 };
 ```
 
-For each assigned network, count distinct users satisfying all of:
+When preview is disabled, `create_premise` omits `exposurePreviews` for compatibility. When enabled, it returns exactly one item per assigned network: `estimated` requires a bucket, while `suppressed` and `unavailable` cannot serialize one.
 
-- network is active;
-- membership is active (`deletedAt IS NULL`);
-- user is active (`users.deletedAt IS NULL`);
-- user is not a ghost at preview time;
-- user is not the premise author; and
-- the recipient satisfies the canonical assignment-scoped discovery reachability predicate established and adopted by Phase D1.
+Two explicit predicate layers prevent preview privacy rules from silently narrowing discovery:
 
-No single canonical predicate exists today. Phase D1 must first inventory premise-similarity, context-to-intent, HyDE, and other assignment-scoped discovery queries; reconcile their divergent active-user and scope behavior; define one predicate covering active network, active membership, active/non-ghost recipient, author exclusion, personal-network ownership semantics, and explicit caller/agent scope rules; migrate every assignment-scoped discovery query to it; and prove per-query semantic parity. The canonical helper may require explicit policy parameters to preserve a path's stricter existing semantics. Any widening or narrowing is outside D1 and requires separate product plus privacy/security approval before migration or preview. Only after that migration may preview counting reuse the predicate. Permissions remain permission-agnostic only if the reconciled policy explicitly preserves that current behavior.
+1. **Canonical assignment-scoped discovery reachability.** Phase D1 inventories premise-similarity, context-to-intent, HyDE, and other assignment-scoped discovery queries; reconciles divergent active-network, active-membership, deleted-user, personal-network, and caller/agent-scope behavior; and migrates them to one tested policy surface. Explicit policy parameters may preserve stricter path-specific semantics. Per-query parity is required, including current ghost participation: the canonical discovery scope does not add `isGhost = false`. Permissions remain permission-agnostic only if reconciliation proves that current behavior. Changing whether ghosts participate in discovery is a separate product/privacy/security decision outside IND-429.
+2. **Preview-recipient eligibility.** Starting only from users reachable under that canonical discovery scope, the preview additionally requires `users.deletedAt IS NULL`, `users.isGhost = false`, and `userId != premiseAuthorId`. These are intentional owner-facing active-human audience rules, not claims that discovery applies identical ghost or author filters.
 
-Use `COUNT(DISTINCT userId)`, not `getNetworkMemberCount`, which counts membership rows and includes the author. The query returns no member identities. The direct-read inventory remains separately documented because this estimate cannot bound inconsistent tool/admin reads. Preview implementation and rollout are blocked until D1's canonicalization is complete.
+No single canonical discovery predicate exists today. D1 must prove semantic parity and migrate assignment-scoped discovery before preview code uses that policy; any other widening or narrowing requires separate product plus privacy/security approval. Preview then uses `COUNT(DISTINCT userId)` over its stricter recipient-eligibility layer, not `getNetworkMemberCount`, which counts membership rows and includes the author. The query returns no member identities. The direct-read inventory remains separately documented because this estimate cannot bound inconsistent tool/admin reads. Preview implementation and rollout are blocked until D1's canonicalization is complete.
 
 ### Suppression and configuration
 
@@ -528,7 +553,7 @@ A future pre-assignment gate could show the same estimate before persistence and
 | Failure | V1 behavior |
 | --- | --- |
 | Schema is absent or incompatible during deployment | Migration-first rollout prevents schema-dependent readers/writers from deploying before the migration. Capture remains disabled until migration and all compatible instances are complete. A mismatch is a deployment/startup failure to roll back or repair, never silently handled by runtime column feature detection. |
-| Direct add/import upsert fails | With capture disabled, existing membership behavior is unchanged and signals remain null. With capture enabled, each directed membership insert/restore and trusted origin/details roll back together; that item returns failure and never reports a successful edge missing required provenance. Existing bulk partial-success semantics remain. |
+| Direct add or bulk membership/provenance write fails | With capture disabled, existing membership behavior is unchanged and signals remain null. With capture enabled, a single add rolls back its edge+origin/details together. Import resolution/dedup may already have classified inputs as skipped, but the surviving edge set and all required origins/details commit or roll back in one existing batched persistence unit. A failed batch throws before returning an imported count; it never reports per-item database success or a successful edge missing provenance. |
 | Secondary contact edge/origin side effect fails after committed acceptance/new startChat | The opportunity/chat remains committed; the directional edge+origin write is atomic if retried, and aggregate diagnostics support idempotent repair without inventing provenance. |
 | Recency touch fails after message/accept/new startChat | The product action remains committed; later qualifying interaction or conservative backfill may repair recency. Already-accepted `startChat` performs no touch. |
 | One directional edge is missing | Update the existing direction only; do not create the missing edge except in existing acceptance/startChat creation flows. |
@@ -539,7 +564,7 @@ A future pre-assignment gate could show the same estimate before persistence and
 | Classifier receives malformed/future data | Fail closed to `unknown` or source-only `candidate_weak`; emit aggregate invalid-input count. |
 | Shadow evaluator fails | Current introducer selection and queueing continue unchanged. |
 | Ranking code fails while flag is on | Fall back to the exact current intent-freshness path and emit an aggregate fallback counter. |
-| Preview query fails | Return the successful premise result with preview `unavailable` (or omit the additive field under compatibility rules); never fail or undo assignment. |
+| Preview query fails | When preview is enabled, return the successful premise result with that assigned network's preview item set to `unavailable` and no audience bucket; never fail or undo assignment. Field omission is reserved for preview-disabled compatibility. |
 | Preview cohort is too small | Return `suppressed`; do not log the exact count. |
 | Backfill batch fails | Roll back that batch, retain checkpoint before it, retry idempotently. |
 
@@ -600,7 +625,7 @@ Until then, no classifier band may filter source premises, candidates, contexts,
 
 Boolean flags use exact literal `true`; unset, mixed-case, or any other value means disabled. Capture, shadow, ranking, and preview are independent. Ranking may require shadow infrastructure, but enabling capture must not implicitly enable any consumer.
 
-The existing `CONTACTS_ENABLED` gate remains authoritative for ordinary contact add/import tool availability. `CONTACT_SIGNAL_CAPTURE_ENABLED` only annotates contact writes that the product already permits; it never enables a disabled add/import surface. When false, permitted membership writes retain current behavior with null signal fields. When true, origin/details are atomic per directed edge, not across an entire bulk import or reciprocal pair. Existing acceptance/startChat contact side effects currently bypass `CONTACTS_ENABLED`; v1 preserves that product behavior unless a separate ticket changes it, while still gating their signal annotation. The flag matrix is tested in REST, MCP, REST tool, and in-process chat composition roots, including the current `ToolService` dependency wiring.
+The existing `CONTACTS_ENABLED` gate remains authoritative for ordinary contact add/import tool availability. `CONTACT_SIGNAL_CAPTURE_ENABLED` only annotates contact writes that the product already permits; it never enables a disabled add/import surface. When false, permitted membership writes retain current behavior with null signal fields. When true, origin/details are atomic with one directed single-add edge and, for import, across the surviving edge set in the existing batched persistence operation; reciprocal acceptance/chat directions remain independent. Existing acceptance/startChat contact side effects currently bypass `CONTACTS_ENABLED`; v1 preserves that product behavior unless a separate ticket changes it, while still gating their signal annotation. The flag matrix is tested in REST, MCP, REST tool, and in-process chat composition roots, including the current `ToolService` dependency wiring.
 
 Rollout proceeds additive migration → dark deploy → trusted capture cohort → backfill → shadow observation → separately approved limited ranking experiment. Preview is independent of tie capture, but remains blocked until D1 reconciles and migrates all assignment-scoped discovery queries to the canonical reachability predicate and D2's privacy query is verified. Rollback disables consumers first, then capture. Nullable columns remain for compatibility; rollback does not rewrite or expose data. A privacy incident additionally triggers signal-field erasure and cache invalidation. Read behavior is unchanged throughout v1, so no read-gate rollback is needed.
 
@@ -620,7 +645,7 @@ Rollout proceeds additive migration → dark deploy → trusted capture cohort �
 
 ### Surface coverage
 
-Create integration tests for REST add, MCP/chat generic import, Gmail and Slack import, `updateOpportunityStatus`, new and already-accepted `startChat`, human DM message, protocol graph acceptance through MCP/Hermes, REST tool API and in-process chat, CLI single-add/Gmail forwarding, connect-link routing, ghost unsubscribe/non-human cleanup, ghost merge, and account deletion. Each test asserts both the primary product result and exact signal side effect—or deliberate absence. Direct add/import fixtures also prove edge+origin/details atomicity; already-accepted `startChat` proves no edge or recency write because no durable action timestamp exists. The surface and flag matrices above are the acceptance oracle.
+Create integration tests for REST add, MCP/chat generic import, Gmail and Slack import, `updateOpportunityStatus`, new and already-accepted `startChat`, human DM message, protocol graph acceptance through MCP/Hermes, REST tool API and in-process chat, CLI single-add/Gmail forwarding, connect-link routing, ghost unsubscribe/non-human cleanup, ghost merge, and account deletion. Each test asserts both the primary product result and exact signal side effect—or deliberate absence. Direct-add fixtures prove edge+origin/details atomicity. Bulk-import fixtures distinguish resolution/dedup skips from database persistence: a successful batch gives every created/restored surviving edge its trusted origin/details, while an injected batch failure rolls back the whole surviving edge set and returns no false imported count. Committed mixed-status fixtures preserve the existing `ImportResult` mapping (`imported`/`details` from the deduplicated retained set and `skipped` from resolution/dedup) while independently asserting lifecycle/provenance status. They do not assert per-item database partial success. Already-accepted `startChat` proves no edge or recency write because no durable action timestamp exists. The surface and flag matrices above are the acceptance oracle.
 
 ### Backfill and classifier
 
@@ -640,8 +665,8 @@ Create integration tests for REST add, MCP/chat generic import, Gmail and Slack 
 
 ### Preview and privacy
 
-- D1 inventories divergent premise-similarity, context-to-intent, HyDE, and other assignment-scoped predicates, then migrates them to one tested canonical reachability policy before preview code exists;
-- count uses active distinct non-ghost users, applies network-type reachability, excludes author/deleted memberships/deleted users, and does not depend on `getNetworkMemberCount`;
+- D1 inventories divergent premise-similarity, context-to-intent, HyDE, and other assignment-scoped predicates, then migrates them to one tested canonical discovery-reachability policy before preview code exists, preserving current ghost participation;
+- the separately tested preview-recipient predicate builds on canonical discovery scope, then counts active distinct non-ghost users and excludes the author; these extra filters are not asserted as discovery parity and the count does not depend on `getNetworkMemberCount`;
 - counts below every configured/clamped threshold suppress normally;
 - `2–4` is reachable only below the default minimum; boundary buckets and high thresholds reveal no impossible lower bucket;
 - one-shot response and rate-limit tests cover repeated add/remove and sybil probing;
@@ -659,9 +684,9 @@ No read-gating test should be added in phases A–D because no read gate is appr
 
 **Depends on:** this design approval.
 
-**Scope:** Drizzle enum/columns/migration; internal trusted-origin/detail types; centralized API-side upsert/touch primitive; no capture consumers enabled.
+**Scope:** one canonical schema-layer `contactSourceValues` tuple; Drizzle enum/columns/migration; derived internal `ContactSource` and trusted-origin/detail types; centralized API-side single/bulk upsert and touch primitives; no capture consumers enabled.
 
-**Acceptance criteria:** migration is additive and migration-first; public `ContactInput` and serializers are unchanged; row-local and personal-network invariants are tested; monotonic writes and ordinary duplicate provenance pass; package versions are bumped only for packages actually touched.
+**Acceptance criteria:** the TypeScript type and Drizzle enum derive from the same exported tuple with no duplicate values list; migration is additive and migration-first; public `ContactInput` and serializers are unchanged; row-local and personal-network invariants are tested; monotonic writes and ordinary duplicate provenance pass; package versions are bumped only for packages actually touched.
 
 ### A2 — Converge contact lifecycle and tombstone semantics
 
@@ -677,7 +702,7 @@ No read-gating test should be added in phases A–D because no read gate is appr
 
 **Scope:** REST/manual, MCP/chat generic import, Gmail/Slack import with preserved toolkit/group, actual CLI forwarding semantics, and experiment-network CSV non-contact documentation.
 
-**Acceptance criteria:** every acquisition boundary has a composition-root test; capture-off preserves current membership writes with null signals; capture-on makes each directed membership insert/restore and origin/details one atomic direct-add/import item while preserving bulk partial-success semantics; generic arrays never claim CSV; Gmail/Slack origin unions reject impossible combinations; CLI/Hermes are not falsely attested as surfaces; no caller field/header/metadata can spoof origin or details; existing `CONTACTS_ENABLED` availability is unchanged.
+**Acceptance criteria:** every acquisition boundary has a composition-root test; capture-off preserves current membership writes with null signals; capture-on makes a single directed add and origin/details atomic, while each import's surviving post-resolution/dedup edge set plus all trusted origins/details succeeds or fails in one existing batched persistence operation; skipped-input reporting remains distinct from database success; committed mixed outcomes preserve the existing `ImportResult` mapping while lifecycle/provenance statuses are verified independently; a failed batch returns no false imported count; no per-item database persistence semantics are introduced; generic arrays never claim CSV and `csv_import` remains unwritten until a separately approved trusted personal-contact CSV parser/test exists; Gmail/Slack origin unions reject impossible combinations; CLI/Hermes are not falsely attested as surfaces; no caller field/header/metadata can spoof origin or details; existing `CONTACTS_ENABLED` availability is unchanged.
 
 ### A4 — Wire trusted interaction capture and acceptance parity
 
@@ -723,17 +748,17 @@ No read-gating test should be added in phases A–D because no read gate is appr
 
 **Depends on:** this design approval; can proceed in parallel with B.
 
-**Scope:** inventory discovery versus direct/tool reads and every assignment-scoped discovery query; reconcile premise-similarity/context-to-intent/HyDE filter differences; define and migrate those queries to one canonical reachability predicate; only then implement the active-distinct-recipient count, network-type/scope semantics, separately named minimum config, and suppression/buckets.
+**Scope:** inventory discovery versus direct/tool reads and every assignment-scoped discovery query; reconcile premise-similarity/context-to-intent/HyDE filter differences; define and migrate those queries to one canonical discovery-reachability policy without changing current ghost participation; then define the stricter preview-recipient predicate and implement its active-distinct-non-ghost, author-excluding count, network-type/scope semantics, separately named minimum config, and suppression/buckets.
 
-**Acceptance criteria:** all assignment-scoped discovery queries use the same tested predicate (with explicit policy parameters where required for existing stricter semantics) for active network, active membership, active/non-ghost user, author exclusion, personal-network semantics, and caller/agent scope; per-query semantic parity is proven; any widening/narrowing is rejected from D1 pending separate product and privacy/security approval; preview remains blocked until migration completes; the estimate is explicitly not claimed to bound all direct reads; `COUNT(DISTINCT)` and all threshold/bucket boundaries are tested; no identity leaves the adapter.
+**Acceptance criteria:** all assignment-scoped discovery queries use the same tested policy surface—with explicit parameters where required to preserve stricter path semantics—for active network, active membership, deleted-user handling, personal-network semantics, and caller/agent scope; per-query semantic parity is proven and no `isGhost = false` narrowing is introduced into discovery; changing ghost participation is rejected from IND-429 pending separate product/privacy/security approval; preview remains blocked until migration completes, then its separately tested recipient predicate adds non-ghost and author exclusions without claiming those filters are discovery parity; any other widening/narrowing is rejected from D1; the estimate is explicitly not claimed to equal the full discovery pool or bound all direct reads; `COUNT(DISTINCT)` and all threshold/bucket boundaries are tested; no identity leaves the adapter.
 
 ### D2 — Add owner-only post-assignment preview
 
 **Depends on:** D1.
 
-**Scope:** additive `create_premise` result after completed assignment; one-shot preview snapshot and owner-facing copy.
+**Scope:** optional `create_premise.exposurePreviews` array after completed assignment; one discriminated item per assigned network; one-shot preview snapshot and owner-facing copy.
 
-**Acceptance criteria:** no graph pause or confirmation; member identities and exact small counts never appear; repeated-probe tests pass; query failures do not fail premise creation; flag-off response remains compatible; UI copy says potential network audience, not actual readers/exposure.
+**Acceptance criteria:** no graph pause or confirmation; the count starts from canonical discovery scope but excludes the author and ghosts as preview-only active-human recipient rules; `estimated` requires a bucket and `suppressed`/`unavailable` forbid one; enabled query failure returns an `unavailable` item while flag-off omits the optional array; member identities and exact small counts never appear; repeated-probe tests pass; query failures do not fail premise creation; UI copy says potential network audience, not actual readers/exposure or the complete discovery candidate pool.
 
 ### E — Read-side gating research and design
 
