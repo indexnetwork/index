@@ -89,8 +89,8 @@ export class ChatSessionService {
   /**
    * Resolve the persona allowed to create or continue a streamed chat.
    *
-   * The dedicated web route participates in the Signal cutover; existing
-   * non-web routes retain the orchestrator default. A persisted persona is
+   * Web-surface routes participate in the Signal cutover; non-web routes
+   * retain the orchestrator default. A persisted persona is
    * authoritative and unknown values always fail closed.
    *
    * @param input - Server-selected route surface plus requested/persisted persona
@@ -500,16 +500,33 @@ export class ChatSessionService {
    *
    * @param userId - The user's UUID
    * @param limit - Maximum number of sessions to return (default: 10)
-   * @param persona - Optional persona filter (e.g. 'orchestrator'). Omit for all.
+   * @param persona - Exact persona to list (defaults to orchestrator)
    * @returns List of sessions
    */
-  async getUserSessions(userId: string, limit = 10, persona?: string) {
+  async getUserSessions(
+    userId: string,
+    limit = 10,
+    persona: string = ORCHESTRATOR_PERSONA_ID,
+  ) {
     logger.verbose('Getting user sessions', { userId, limit, persona });
+    return this.db.getUserChatSessions(userId, limit, persona);
+  }
 
-    // The negotiator DM is a pinned surface, not history: without an explicit
-    // persona filter it is excluded from the recent-sessions listing.
-    const excludePersona = persona ? undefined : NEGOTIATOR_PERSONA_ID;
-    return this.db.getUserChatSessions(userId, limit, persona, excludePersona);
+  /**
+   * Get ordinary main-web history across the legacy orchestrator and Signal
+   * personas while excluding the pinned negotiator surface.
+   *
+   * @param userId - The user's UUID
+   * @param limit - Maximum number of sessions to return
+   * @returns Web-visible chat sessions ordered by recency
+   */
+  async getWebUserSessions(userId: string, limit = 10) {
+    logger.verbose('Getting web user sessions', { userId, limit });
+    return this.db.getUserChatSessions(
+      userId,
+      limit,
+      [ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID],
+    );
   }
 
   /**

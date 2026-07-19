@@ -85,6 +85,73 @@ export class IntentDatabaseAdapter {
     }
   }
 
+  /**
+   * Atomically create a proposal intent and assign it to a network while the
+   * owner's current membership is locked. A null result means membership is
+   * no longer authoritative; no intent or assignment is persisted.
+   *
+   * @param data - Intent row values
+   * @param networkId - Network requiring current owner membership
+   * @returns The created intent, or null when membership is absent/stale
+   */
+  async createIntentForNetworkMember(
+    data: CreateIntentInput,
+    networkId: string,
+  ): Promise<CreatedIntentRow | null> {
+    return db.transaction(async (tx) => {
+      const [membership] = await tx
+        .select({ networkId: schema.networkMembers.networkId })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+        .where(and(
+          eq(schema.networkMembers.networkId, networkId),
+          eq(schema.networkMembers.userId, data.userId),
+          isNull(schema.networkMembers.deletedAt),
+          isNull(schema.networks.deletedAt),
+          sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
+        ))
+        .limit(1)
+        .for('update');
+      if (!membership) return null;
+
+      const [created] = await tx.insert(schema.intents)
+        .values({
+          userId: data.userId,
+          payload: data.payload,
+          summary: data.summary ?? null,
+          embedding: data.embedding,
+          isIncognito: data.isIncognito ?? false,
+          sourceType: data.sourceType,
+          sourceId: data.sourceId,
+          semanticEntropy: data.semanticEntropy ?? undefined,
+          referentialAnchor: data.referentialAnchor ?? undefined,
+          felicityAuthority: data.felicityAuthority ?? undefined,
+          felicitySincerity: data.felicitySincerity ?? undefined,
+          felicityClarity: data.felicityClarity ?? undefined,
+          intentMode: data.intentMode ?? undefined,
+          speechActType: data.speechActType ?? undefined,
+        })
+        .returning({
+          id: schema.intents.id,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+          isIncognito: schema.intents.isIncognito,
+          createdAt: schema.intents.createdAt,
+          updatedAt: schema.intents.updatedAt,
+          userId: schema.intents.userId,
+        });
+      if (!created) throw new Error('Insert did not return a row');
+
+      await tx.insert(schema.intentNetworks).values({
+        intentId: created.id,
+        networkId,
+        relevancyScore: null,
+      });
+
+      return created;
+    });
+  }
+
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {
     try {
       const updateData: Record<string, unknown> = { updatedAt: new Date() };
@@ -674,6 +741,7 @@ export class IntentDatabaseAdapter {
         and(
           eq(schema.networkMembers.networkId, networkId),
           eq(schema.networkMembers.userId, userId),
+          isNull(schema.networkMembers.deletedAt),
           isNull(schema.networks.deletedAt),
           sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )

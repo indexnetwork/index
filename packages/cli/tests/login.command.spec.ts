@@ -81,7 +81,7 @@ describe("handleLogin", () => {
     await callbackPromise.catch(() => {});
   });
 
-  it("saves tokens when callback is received", async () => {
+  it("saves CLI API keys with non-web credential provenance", async () => {
     const apiUrl = "http://localhost:3001";
     const controller = new AbortController();
     const fakeServer = createFakeLoginServer();
@@ -91,7 +91,7 @@ describe("handleLogin", () => {
       serverFactory: fakeServer.factory,
     });
 
-    await fakeServer.dispatch(`/callback?session_token=mock-jwt-token`);
+    await fakeServer.dispatch(`/callback?api_key=mock-cli-api-key`);
 
     // Wait a moment for the handler to complete
     const result = await callbackPromise;
@@ -99,8 +99,28 @@ describe("handleLogin", () => {
 
     const savedCreds = await store.load();
     expect(savedCreds).not.toBeNull();
-    expect(savedCreds?.token).toBe("mock-jwt-token");
+    expect(savedCreds?.token).toBe("mock-cli-api-key");
     expect(savedCreds?.apiUrl).toBe(apiUrl);
+    expect(savedCreds?.authKind).toBe("api_key");
+  });
+
+  it("retains backward compatibility with legacy session-token callbacks", async () => {
+    const apiUrl = "http://localhost:3001";
+    const controller = new AbortController();
+    const fakeServer = createFakeLoginServer();
+
+    const { callbackPromise } = await handleLogin(apiUrl, apiUrl, store, {
+      signal: controller.signal,
+      serverFactory: fakeServer.factory,
+    });
+    await fakeServer.dispatch(`/callback?session_token=mock-jwt-token`);
+
+    expect((await callbackPromise).success).toBe(true);
+    expect(await store.load()).toEqual({
+      token: "mock-jwt-token",
+      apiUrl,
+      authKind: "session",
+    });
   });
 
   it("times out if no callback is received", async () => {

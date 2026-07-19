@@ -1,4 +1,4 @@
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { acquireNegotiationAttemptLock, qualifyingNegotiationAttemptTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
@@ -1624,15 +1624,22 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Get all chat sessions for a user, ordered by most recent.
+   * Get persona-filtered chat sessions for a user, ordered by most recent.
    * Queries conversation_participants to find conversations with system-agent.
+   *
+   * @param userId - The user whose sessions to list
+   * @param limit - Maximum number of sessions to return
+   * @param persona - Allowed persona or personas; defaults to orchestrator
+   * @returns Matching chat sessions ordered by recency
    */
   async getUserChatSessions(
     userId: string,
     limit: number,
-    persona?: string,
-    excludePersona?: string,
+    persona: string | readonly string[] = ORCHESTRATOR_PERSONA,
   ): Promise<ChatSession[]> {
+    const personas = typeof persona === 'string' ? [persona] : [...persona];
+    if (personas.length === 0) return [];
+
     // Subquery: conversation IDs that include the system agent (i.e. chat sessions, not DMs)
     const chatSessionIds = db
       .select({ conversationId: schema.conversationParticipants.conversationId })
@@ -1662,8 +1669,7 @@ export class ConversationDatabaseAdapter {
           eq(schema.conversationParticipants.participantType, 'user'),
           isNull(schema.conversationParticipants.hiddenAt),
           inArray(schema.conversations.id, chatSessionIds),
-          ...(persona ? [eq(schema.conversations.persona, persona)] : []),
-          ...(excludePersona ? [ne(schema.conversations.persona, excludePersona)] : []),
+          inArray(schema.conversations.persona, personas),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1689,11 +1695,13 @@ export class ConversationDatabaseAdapter {
    *
    * @param userId - The user whose sessions to list
    * @param limit - Maximum number of sessions to return (default 25)
+   * @param persona - Exact persona to expose to the generic reader
    * @returns Array of chat session summaries
    */
   async listChatSessionSummaries(
     userId: string,
     limit = 25,
+    persona = ORCHESTRATOR_PERSONA,
   ): Promise<Array<{ sessionId: string; title: string | null; messageCount: number; lastMessageAt: Date | null; createdAt: Date }>> {
     // Subquery: conversation IDs that include the system agent
     const chatSessionIds = db
@@ -1727,9 +1735,9 @@ export class ConversationDatabaseAdapter {
             gt(schema.conversations.lastMessageAt, schema.conversationParticipants.hiddenAt),
           ),
           inArray(schema.conversations.id, chatSessionIds),
-          // The negotiator DM is a private persona surface — keep it out of
-          // generic chat-history summaries (MCP listSessions, chat summary).
-          ne(schema.conversations.persona, NEGOTIATOR_PERSONA),
+          // Generic history consumers are orchestrator-only. Signal and
+          // negotiator each have dedicated product surfaces.
+          eq(schema.conversations.persona, persona),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1781,6 +1789,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     sessionId: string,
     messageLimit = 50,
+    persona: string = ORCHESTRATOR_PERSONA,
   ): Promise<{
     sessionId: string;
     title: string | null;
@@ -1828,7 +1837,10 @@ export class ConversationDatabaseAdapter {
         updatedAt: schema.conversations.updatedAt,
       })
       .from(schema.conversations)
-      .where(eq(schema.conversations.id, sessionId))
+      .where(and(
+        eq(schema.conversations.id, sessionId),
+        eq(schema.conversations.persona, persona),
+      ))
       .limit(1);
 
     if (!conv) return null;

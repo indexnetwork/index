@@ -8,6 +8,16 @@ import { IntentEvents } from '../events/intent.event';
 
 const logger = log.service.from("IntentService");
 
+/** Stable typed failure for proposal assignment to a network the owner no longer belongs to. */
+export class IntentNetworkMembershipError extends Error {
+  readonly code = 'network_membership_required' as const;
+
+  constructor(readonly networkId: string) {
+    super('You are not a current member of this network');
+    this.name = 'IntentNetworkMembershipError';
+  }
+}
+
 /**
  * IntentService
  *
@@ -25,14 +35,23 @@ export class IntentService {
   private factory: IntentGraphFactory;
   private adapter: IntentDatabaseAdapter;
   private embedder: EmbedderAdapter;
+  private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+  private emitProposalCreated: (intentId: string, userId: string) => void;
 
   /**
-   * @param deps - Optional adapter override for focused service tests.
+   * @param deps - Optional dependency overrides for focused service tests.
    */
-  constructor(deps?: { adapter?: IntentDatabaseAdapter }) {
+  constructor(deps?: {
+    adapter?: IntentDatabaseAdapter;
+    embedder?: EmbedderAdapter;
+    proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+    emitProposalCreated?: (intentId: string, userId: string) => void;
+  }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.db = this.adapter;
-    this.embedder = new EmbedderAdapter();
+    this.embedder = deps?.embedder ?? new EmbedderAdapter();
+    this.proposalQueue = deps?.proposalQueue ?? intentQueue;
+    this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
     this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue);
   }
 
@@ -273,34 +292,33 @@ export class IntentService {
       return existing;
     }
 
+    if (networkId && !(await this.adapter.isNetworkMember(networkId, userId))) {
+      throw new IntentNetworkMembershipError(networkId);
+    }
+
     const embedding = await this.generateEmbeddingOrZero(
       description,
       'Embedding generation failed (intent will be created with zero vector)',
       { userId, proposalId },
     );
 
-    const created = await this.adapter.createIntent({
+    const intentData = {
       userId,
       payload: description,
       embedding,
-      sourceType: 'discovery_form',
+      sourceType: 'discovery_form' as const,
       sourceId: proposalId,
-    });
-
-    if (networkId) {
-      try {
-        await this.adapter.assignIntentToNetwork(created.id, networkId);
-      } catch (err) {
-        logger.warn('Failed to associate intent with index', {
-          intentId: created.id,
-          networkId,
-          error: err,
-        });
-      }
+    };
+    const created = networkId
+      ? await this.adapter.createIntentForNetworkMember(intentData, networkId)
+      : await this.adapter.createIntent(intentData);
+    if (!created) {
+      if (networkId) throw new IntentNetworkMembershipError(networkId);
+      throw new Error('Intent creation did not return a row');
     }
 
     try {
-      await intentQueue.addGenerateHydeJob({
+      await this.proposalQueue.addGenerateHydeJob({
         intentId: created.id,
         userId,
         ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
@@ -309,7 +327,7 @@ export class IntentService {
       logger.warn('Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
     }
 
-    IntentEvents.onCreated(created.id, userId);
+    this.emitProposalCreated(created.id, userId);
 
     return created;
   }

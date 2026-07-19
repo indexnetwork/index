@@ -21,14 +21,14 @@ The `index` CLI is a standalone Bun-based binary in `packages/cli/`. It communic
 1. Prints a URL pointing to the protocol's Better Auth OAuth flow (Google provider).
 2. Opens the user's default browser to that URL.
 3. Starts a temporary local HTTP server (ephemeral port) to receive the OAuth callback.
-4. On callback, exchanges the authorization parameters for a session token via the protocol's Better Auth endpoints.
-5. Stores the session credentials (bearer token + API base URL) in `~/.index/credentials.json`.
+4. The web bridge uses the authenticated session to mint a 90-day Better Auth API key tagged for the CLI, then returns it to the loopback callback.
+5. Stores the credential, API-key auth kind, and API base URL in `~/.index/credentials.json`. Requests send the key through `x-api-key`, so CLI chat remains on the non-web orchestrator compatibility surface without creating a session-authenticated browser bypass. Updated clients transparently exchange a still-valid legacy stored session JWT for this API key on first use; an expired legacy token produces an explicit `index login` refresh instruction.
 6. Prints confirmation with the authenticated user's name and email.
 7. The local server shuts down after receiving the callback (or after a 120-second timeout).
 
 ### `index login --token <token>`
 
-Manual token flow — skips the browser entirely. Stores the token and verifies it via `GET /api/auth/me`.
+Legacy manual session-token flow — skips the browser entirely. Stores the bearer token and verifies it via `GET /api/auth/me`.
 
 ### `index logout`
 

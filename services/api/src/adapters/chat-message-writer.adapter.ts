@@ -17,6 +17,7 @@ interface ChatSessionServiceLike {
   getUserSessions(
     userId: string,
     limit: number,
+    persona: string,
   ): Promise<Array<{ id: string }>>;
   addMessage(params: {
     sessionId: string;
@@ -37,7 +38,11 @@ export class ChatMessageWriterAdapter implements ChatMessageWriter {
     userId: string,
     content: string,
   ): Promise<{ sessionId: string } | null> {
-    const sessions = await this.chatSessionService.getUserSessions(userId, 1);
+    const sessions = await this.chatSessionService.getUserSessions(
+      userId,
+      1,
+      'orchestrator',
+    );
     const mostRecent = sessions[0];
     if (!mostRecent) return null;
 

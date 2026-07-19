@@ -40,14 +40,27 @@ export class ApiError extends Error {
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
+  private readonly authKind: "session" | "api_key";
 
   /**
    * @param baseUrl - Protocol server base URL (e.g. `http://localhost:3001`).
-   * @param token - Bearer JWT token for authentication.
+   * @param token - Session JWT or API key.
+   * @param authKind - Credential transport; defaults to legacy session JWT.
    */
-  constructor(baseUrl: string, token: string) {
+  constructor(
+    baseUrl: string,
+    token: string,
+    authKind: "session" | "api_key" = "session",
+  ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
+    this.authKind = authKind;
+  }
+
+  private authHeaders(): Record<string, string> {
+    return this.authKind === "api_key"
+      ? { "x-api-key": this.token }
+      : { Authorization: `Bearer ${this.token}` };
   }
 
   /**
@@ -60,6 +73,20 @@ export class ApiClient {
     const res = await this.get("/api/chat/sessions");
     const body = (await res.json()) as { sessions: ChatSession[] };
     return body.sessions;
+  }
+
+  /** Mint a time-bounded API key for non-web CLI compatibility. */
+  async mintCliApiKey(): Promise<string> {
+    const res = await this.post("/api/auth/api-key/create", {
+      name: "Index CLI",
+      expiresIn: 60 * 60 * 24 * 90,
+      metadata: { client: "cli" },
+    });
+    const body = (await res.json()) as { key?: unknown };
+    if (typeof body.key !== "string" || !body.key) {
+      throw new Error("CLI credential response did not include a key");
+    }
+    return body.key;
   }
 
   /**
@@ -141,7 +168,7 @@ export class ApiClient {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
+        ...this.authHeaders(),
       },
       body: JSON.stringify({
         message: params.message,
@@ -409,7 +436,7 @@ export class ApiClient {
   async streamConversationEvents(): Promise<Response> {
     const res = await fetch(`${this.baseUrl}/api/conversations/stream`, {
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        ...this.authHeaders(),
         Accept: "text/event-stream",
       },
     });
@@ -464,9 +491,7 @@ export class ApiClient {
 
   private async get(path: string): Promise<Response> {
     const res = await fetch(`${this.baseUrl}${path}`, {
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-      },
+      headers: this.authHeaders(),
     });
 
     if (!res.ok) {
@@ -481,7 +506,7 @@ export class ApiClient {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
+        ...this.authHeaders(),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
@@ -498,7 +523,7 @@ export class ApiClient {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
+        ...this.authHeaders(),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
@@ -510,9 +535,7 @@ export class ApiClient {
   private async del(path: string): Promise<Response> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-      },
+      headers: this.authHeaders(),
     });
 
     if (!res.ok) {

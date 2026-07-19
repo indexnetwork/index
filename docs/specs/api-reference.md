@@ -356,7 +356,7 @@ Send a message to the chat graph for synchronous processing.
 
 ### POST /api/chat/stream
 
-Compatibility/non-web SSE endpoint for chat messages with context support. Streams graph events and LLM tokens in real-time and retains the orchestrator default for CLI and other non-web consumers. The main web composer uses `/api/chat/web/stream` below.
+Compatibility SSE endpoint for chat messages with context support. API-key principals retain the orchestrator default for CLI and other non-web consumers. Session-authenticated callers are classified as the web surface from authenticated credential provenance and receive the same Signal policy (or typed refusal) as the dedicated route, preventing a browser from bypassing the cutover by selecting this endpoint. The main web composer uses `/api/chat/web/stream` below.
 
 **Auth**: AuthGuard
 
@@ -392,17 +392,17 @@ SSE event types:
 - `X-Session-Id` — The session ID for this chat
 - `X-Chat-Persona` — The authoritative persisted persona used for the turn
 
-Signal requests are rejected on this compatibility route; they must use the dedicated main-web route.
+API-key Signal assertions are rejected on this compatibility route. A session-authenticated caller is governed by the web policy and may continue an authoritative persisted Signal session, but main-web clients should always use the dedicated route.
 
 ### POST /api/chat/web/stream
 
 Main-web SSE endpoint. It accepts the same request and returns the same SSE events/headers as `/api/chat/stream`, but is protected by `SessionOnlyGuard` and applies the server-selected Signal cutover policy.
 
-When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly request `persona: "signal"`. Signal follow-ups may omit the assertion and inherit the persisted persona. Existing `orchestrator` web sessions remain readable through `POST /api/chat/session`, but a new web turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Explicit persona mismatch and unknown persisted personas also fail closed. The separate compatibility route preserves CLI and onboarding orchestrator behavior; Telegram, MCP, and direct-tool behavior is unchanged.
+When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly request `persona: "signal"`. Signal follow-ups may omit the assertion and inherit the persisted persona. Existing `orchestrator` web sessions remain readable through `POST /api/chat/session`, but a new web turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Explicit persona mismatch and unknown persisted personas also fail closed. Session-authenticated compatibility-route calls receive this same policy; API-key, Telegram, MCP, CLI, and direct-tool orchestrator behavior is unchanged.
 
 ### GET /api/chat/sessions
 
-List all chat sessions for the authenticated user.
+Compatibility history for the authenticated user. The default and all unrecognized persona filters are clamped to `orchestrator`; the explicit `persona=negotiator` lookup remains for the pinned Personal Agent surface. Signal sessions are never returned to CLI/MCP/legacy history consumers.
 
 **Auth**: AuthGuard
 
@@ -413,9 +413,17 @@ List all chat sessions for the authenticated user.
 }
 ```
 
+### GET /api/chat/web/sessions
+
+Session-only main-web history. Returns readable legacy `orchestrator` sessions plus `signal` sessions and excludes the pinned negotiator conversation.
+
+**Auth**: SessionOnlyGuard
+
+**Response**: same shape as `GET /api/chat/sessions`.
+
 ### POST /api/chat/session/resolve
 
-Resolve or create the stable compatibility orchestrator chat session for a selected intent. Repeated calls by the same user and intent return the same session. The main web composer uses `/api/chat/web/session/resolve`.
+Resolve or create a stable selected-intent chat session. API-key callers retain the compatibility orchestrator behavior. Session-authenticated callers are classified as web and receive Signal policy or a typed refusal before scope validation/session creation. Repeated calls by the same user, intent, and persona return the same session. The main web composer uses `/api/chat/web/session/resolve`.
 
 **Auth**: AuthGuard
 
@@ -454,7 +462,7 @@ Session-only main-web variant of `/api/chat/session/resolve`. While the Signal c
 
 ### POST /api/chat/session
 
-Get a specific session with its messages (including assistant metadata).
+Compatibility detail for a specific orchestrator session with its messages (including assistant metadata). Signal and other non-orchestrator personas return 404 so CLI/MCP/legacy clients cannot retrieve web-only history by UUID.
 
 **Auth**: AuthGuard
 
@@ -488,9 +496,15 @@ Get a specific session with its messages (including assistant metadata).
 }
 ```
 
+### POST /api/chat/web/session
+
+Session-only main-web detail endpoint using the same request/response shape. It permits the readable web personas (`orchestrator`, `signal`) plus the pinned negotiator conversation and fails closed for unknown personas.
+
+**Auth**: SessionOnlyGuard
+
 ### POST /api/chat/session/delete
 
-Delete a chat session.
+Delete a chat session. Delete, title, share, and unshare mutations all load the owned session first and enforce its persisted persona: API-key callers may mutate only orchestrator sessions; session-authenticated Signal sessions follow the web feature policy; flag-on legacy orchestrator web sessions are read-only and return the typed separate-session action.
 
 **Auth**: AuthGuard
 
@@ -2383,7 +2397,7 @@ List intents with pagination and filters.
 
 ### POST /api/intents/confirm
 
-Confirm a proposed intent from chat. Persists the pre-verified intent directly.
+Confirm a proposed intent from chat. Persists the pre-verified intent directly. When `networkId` is supplied, the authenticated owner must be a current member: membership is preflighted before embedding and locked/rechecked in the same transaction that inserts the intent and assignment. Missing or soft-deleted membership returns typed HTTP 403 `network_membership_required` with no intent persisted.
 
 **Auth**: AuthGuard
 
@@ -2392,7 +2406,7 @@ Confirm a proposed intent from chat. Persists the pre-verified intent directly.
 {
   "proposalId": "string (required)",
   "description": "string (required)",
-  "indexId": "string (optional)"
+  "networkId": "UUID (optional)"
 }
 ```
 

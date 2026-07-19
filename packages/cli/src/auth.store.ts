@@ -6,6 +6,8 @@ import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 export interface Credentials {
   token: string;
   apiUrl: string;
+  /** Credential transport. Missing means legacy session JWT. */
+  authKind?: "session" | "api_key";
 }
 
 const CREDENTIALS_FILE = "credentials.json";

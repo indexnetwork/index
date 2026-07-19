@@ -57,7 +57,7 @@ function closeServer(server: CallbackServer): Promise<void> {
  * 2. Constructs the OAuth URL pointing the callback to the local server.
  * 3. Returns the URL so the caller can open it in a browser.
  * 4. Waits for the callback (or timeout).
- * 5. Saves the received token to the credential store.
+ * 5. Saves the received API key (or a legacy session token) to the credential store.
  *
  * @param apiUrl - The protocol server base URL.
  * @param appUrl - The frontend app URL (serves the /cli-auth page).
@@ -86,10 +86,16 @@ export async function handleLogin(
     const url = new URL(req.url ?? "/", `http://localhost`);
 
     if (url.pathname === "/callback") {
+      const apiKey = url.searchParams.get("api_key");
       const sessionToken = url.searchParams.get("session_token");
+      const credential = apiKey ?? sessionToken;
 
-      if (sessionToken) {
-        await store.save({ token: sessionToken, apiUrl: baseUrl });
+      if (credential) {
+        await store.save({
+          token: credential,
+          apiUrl: baseUrl,
+          authKind: apiKey ? "api_key" : "session",
+        });
         resolveCallback({ success: true });
 
         res.writeHead(200, { "Content-Type": "text/html" });
@@ -99,11 +105,11 @@ export async function handleLogin(
 
       resolveCallback({
         success: false,
-        error: "No session token received in callback.",
+        error: "No CLI credential received in callback.",
       });
 
       res.writeHead(400, { "Content-Type": "text/html" });
-      res.end(callbackHtml("Authorization failed", "No session token received. Please try again."));
+      res.end(callbackHtml("Authorization failed", "No CLI credential received. Please try again."));
       return;
     }
 
@@ -121,7 +127,7 @@ export async function handleLogin(
   const callbackUrl = `http://${callbackHost}:${port}/callback`;
 
   // Construct the auth URL
-  // Default: session exchange page that converts existing browser session to CLI token
+  // Default: session bridge that mints a non-web CLI API credential
   // Falls back to OAuth if no session exists (handled by the frontend page)
   const authUrl =
     `${baseAppUrl}/cli-auth?callback=${encodeURIComponent(callbackUrl)}`;

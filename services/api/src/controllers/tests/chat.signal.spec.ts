@@ -6,7 +6,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spy
 import type { ChatGraphFactory } from '@indexnetwork/protocol';
 
 import { ChatController } from '../chat.controller';
-import type { AuthenticatedUser } from '../../guards/auth.guard';
+import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../../guards/auth.guard';
+import { recordRequestAuthContext } from '../../lib/request-auth-context';
+import { RouteRegistry } from '../../lib/router/router.decorators';
 import { chatSessionService } from '../../services/chat.service';
 import { fileService } from '../../services/file.service';
 
@@ -50,6 +52,7 @@ async function stream(
   controller: ChatController,
   body: Record<string, unknown>,
   surface: 'web' | 'non_web',
+  authKind?: 'session' | 'api_key',
 ) {
   const abortController = new AbortController();
   const req = new Request('http://localhost/chat/stream', {
@@ -58,6 +61,11 @@ async function stream(
     body: JSON.stringify({ useCheckpointer: false, ...body }),
     signal: abortController.signal,
   });
+  if (authKind === 'session') {
+    recordRequestAuthContext(req, { kind: 'session' });
+  } else if (authKind === 'api_key') {
+    recordRequestAuthContext(req, { kind: 'api_key', agentId: null });
+  }
   const response = surface === 'web'
     ? await controller.webMessageStream(req, USER)
     : await controller.messageStream(req, USER);
@@ -78,6 +86,7 @@ describe('Signal Agent web chat routing (IND-449)', () => {
   let getSignalFactorySpy: ReturnType<typeof spyOn>;
   let getOrchestratorFactorySpy: ReturnType<typeof spyOn>;
   let loadFilesSpy: ReturnType<typeof spyOn>;
+  let processMessageSpy: ReturnType<typeof spyOn>;
 
   beforeAll(() => {
     previousFlag = process.env.WEB_SIGNAL_AGENT_ENABLED;
@@ -100,6 +109,10 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     getSignalFactorySpy = spyOn(chatSessionService, 'getSignalGraphFactory').mockReturnValue(signalFactory);
     getOrchestratorFactorySpy = spyOn(chatSessionService, 'getGraphFactory').mockReturnValue(orchestratorFactory);
     loadFilesSpy = spyOn(fileService, 'loadAttachedFileContent').mockResolvedValue('file contents');
+    processMessageSpy = spyOn(chatSessionService, 'processMessage').mockResolvedValue({
+      responseText: 'Done.',
+      error: undefined,
+    });
   });
 
   afterEach(() => {
@@ -257,15 +270,23 @@ describe('Signal Agent web chat routing (IND-449)', () => {
         created: true,
       }),
     );
-    const request = (persona?: 'signal') => new Request('http://localhost/chat/session/resolve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scopeType: 'intent',
-        scopeId: 'intent-1',
-        ...(persona ? { persona } : {}),
-      }),
-    });
+    const request = (persona?: 'signal', authKind?: 'session' | 'api_key') => {
+      const req = new Request('http://localhost/chat/session/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scopeType: 'intent',
+          scopeId: 'intent-1',
+          ...(persona ? { persona } : {}),
+        }),
+      });
+      if (authKind === 'session') {
+        recordRequestAuthContext(req, { kind: 'session' });
+      } else if (authKind === 'api_key') {
+        recordRequestAuthContext(req, { kind: 'api_key', agentId: null });
+      }
+      return req;
+    };
 
     const webResponse = await controller.webResolveSession(request('signal'), USER);
     expect(webResponse.status).toBe(200);
@@ -275,8 +296,22 @@ describe('Signal Agent web chat routing (IND-449)', () => {
       'signal',
     );
 
-    const compatibilityResponse = await controller.resolveSession(request(), USER);
-    expect(compatibilityResponse.status).toBe(200);
+    const sessionCompatibilityResponse = await controller.resolveSession(
+      request('signal', 'session'),
+      USER,
+    );
+    expect(sessionCompatibilityResponse.status).toBe(200);
+    expect(resolveSpy).toHaveBeenLastCalledWith(
+      USER.id,
+      { scopeType: 'intent', scopeId: 'intent-1' },
+      'signal',
+    );
+
+    const apiKeyCompatibilityResponse = await controller.resolveSession(
+      request(undefined, 'api_key'),
+      USER,
+    );
+    expect(apiKeyCompatibilityResponse.status).toBe(200);
     expect(resolveSpy).toHaveBeenLastCalledWith(
       USER.id,
       { scopeType: 'intent', scopeId: 'intent-1' },
@@ -284,18 +319,222 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     );
   });
 
-  test('CLI/API non-web callers retain orchestrator behavior while the web flag is on', async () => {
+  test('compatibility stream denies a flag-on session before every side effect', async () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
+    const resolveScopeSpy = spyOn(chatSessionService, 'resolveSessionForScope');
+    const updateScopeSpy = spyOn(chatSessionService, 'updateSessionScope');
+
+    const response = await stream(
+      controller,
+      {
+        message: 'web compatibility chat',
+        fileIds: ['file-1'],
+        scopeType: 'intent',
+        scopeId: 'intent-1',
+      },
+      'non_web',
+      'session',
+    );
+    const payload = await response.json() as { code: string };
+
+    expect(response.status).toBe(409);
+    expect(payload.code).toBe('WEB_SIGNAL_PERSONA_REQUIRED');
+    expect(loadFilesSpy).not.toHaveBeenCalled();
+    expect(resolveScopeSpy).not.toHaveBeenCalled();
+    expect(createSessionSpy).not.toHaveBeenCalled();
+    expect(updateScopeSpy).not.toHaveBeenCalled();
+    expect(getSignalFactorySpy).not.toHaveBeenCalled();
+    expect(getOrchestratorFactorySpy).not.toHaveBeenCalled();
+    expect(addMessageSpy).not.toHaveBeenCalled();
+  });
+
+  test('compatibility stream derives web policy for session auth', async () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
+
+    const response = await stream(
+      controller,
+      { message: 'web compatibility chat', persona: 'signal' },
+      'non_web',
+      'session',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-Chat-Persona')).toBe('signal');
+    expect(getSignalFactorySpy).toHaveBeenCalledTimes(1);
+    expect(getOrchestratorFactorySpy).not.toHaveBeenCalled();
+  });
+
+  test('API-key compatibility stream retains orchestrator behavior while the web flag is on', async () => {
     process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
 
     const response = await stream(
       controller,
       { message: 'non-web chat' },
       'non_web',
+      'api_key',
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get('X-Chat-Persona')).toBe('orchestrator');
     expect(getOrchestratorFactorySpy).toHaveBeenCalledTimes(1);
     expect(getSignalFactorySpy).not.toHaveBeenCalled();
+  });
+
+  test('compatibility resolver denies a flag-on session before scope resolution', async () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
+    const resolveSpy = spyOn(chatSessionService, 'resolveSessionForScope');
+    const req = new Request('http://localhost/chat/session/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scopeType: 'intent', scopeId: 'intent-1' }),
+    });
+    recordRequestAuthContext(req, { kind: 'session' });
+
+    const response = await controller.resolveSession(req, USER);
+    const payload = await response.json() as { code: string };
+
+    expect(response.status).toBe(409);
+    expect(payload.code).toBe('WEB_SIGNAL_PERSONA_REQUIRED');
+    expect(resolveSpy).not.toHaveBeenCalled();
+  });
+
+  test('deprecated message endpoint refuses session-authenticated web calls before processing', async () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
+    const req = new Request('http://localhost/chat/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'legacy send' }),
+    });
+    recordRequestAuthContext(req, { kind: 'session' });
+
+    const response = await controller.message(req, USER);
+    const payload = await response.json() as { code: string; action?: { type: string } };
+
+    expect(response.status).toBe(409);
+    expect(payload.code).toBe('WEB_SIGNAL_PERSONA_REQUIRED');
+    expect(payload.action).toEqual({ type: 'start_signal_session', href: '/' });
+    expect(processMessageSpy).not.toHaveBeenCalled();
+  });
+
+  test('deprecated message endpoint preserves API-key orchestrator processing', async () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
+    const req = new Request('http://localhost/chat/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'agent send' }),
+    });
+    recordRequestAuthContext(req, { kind: 'api_key', agentId: null });
+
+    const response = await controller.message(req, USER);
+
+    expect(response.status).toBe(200);
+    expect(processMessageSpy).toHaveBeenCalledWith(USER.id, 'agent send');
+  });
+
+  test('session-list routes preserve persona boundaries and web-only guards', async () => {
+    const compatibilitySpy = spyOn(chatSessionService, 'getUserSessions').mockResolvedValue([]);
+    const webSpy = spyOn(chatSessionService, 'getWebUserSessions').mockResolvedValue([]);
+
+    await controller.getSessions(new Request('http://localhost/chat/sessions'), USER);
+    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, undefined, 'orchestrator');
+
+    await controller.getSessions(
+      new Request('http://localhost/chat/sessions?persona=negotiator'),
+      USER,
+    );
+    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, undefined, 'negotiator');
+
+    await controller.getSessions(
+      new Request('http://localhost/chat/sessions?persona=signal'),
+      USER,
+    );
+    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, undefined, 'orchestrator');
+
+    await controller.getSessions(
+      new Request('http://localhost/chat/sessions?persona=future-persona'),
+      USER,
+    );
+    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, undefined, 'orchestrator');
+    expect(compatibilitySpy).toHaveBeenCalledTimes(4);
+
+    await controller.getWebSessions(new Request('http://localhost/chat/web/sessions'), USER);
+    expect(webSpy).toHaveBeenCalledWith(USER.id);
+
+    const webGuards = RouteRegistry.getGuards(ChatController, 'getWebSessions');
+    expect(webGuards).toContain(SessionOnlyGuard);
+    expect(webGuards).not.toContain(AuthGuard);
+  });
+
+  test('compatibility detail hides Signal while the session-only web route can load it', async () => {
+    getSessionSpy.mockResolvedValue(session('signal-detail', 'signal'));
+    const messagesSpy = spyOn(chatSessionService, 'getSessionMessages').mockResolvedValue([]);
+    spyOn(chatSessionService, 'getMessageMetadataByMessageIds').mockResolvedValue([]);
+    const request = () => new Request('http://localhost/chat/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'signal-detail' }),
+    });
+
+    const compatibility = await controller.getSession(request(), USER);
+    expect(compatibility.status).toBe(404);
+    expect(messagesSpy).not.toHaveBeenCalled();
+
+    const web = await controller.getWebSession(request(), USER);
+    expect(web.status).toBe(200);
+    expect(messagesSpy).toHaveBeenCalledWith('signal-detail');
+
+    const guards = RouteRegistry.getGuards(ChatController, 'getWebSession');
+    expect(guards).toContain(SessionOnlyGuard);
+    expect(guards).not.toContain(AuthGuard);
+  });
+
+  test('session mutations enforce stored persona before writes or sharing', async () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
+    const shareSpy = spyOn(chatSessionService, 'shareSession').mockResolvedValue('share-token');
+    const titleSpy = spyOn(chatSessionService, 'updateSessionTitle').mockResolvedValue(true);
+    const request = (path: string, body: Record<string, unknown>, kind: 'session' | 'api_key') => {
+      const req = new Request(`http://localhost/chat${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      recordRequestAuthContext(req, kind === 'session'
+        ? { kind: 'session' }
+        : { kind: 'api_key', agentId: null });
+      return req;
+    };
+
+    getSessionSpy.mockResolvedValue(session('legacy-session', 'orchestrator'));
+    const legacyShare = await controller.shareSession(
+      request('/session/share', { sessionId: 'legacy-session' }, 'session'),
+      USER,
+    );
+    expect(legacyShare.status).toBe(409);
+    expect((await legacyShare.json() as { code: string }).code).toBe('WEB_SIGNAL_SESSION_REQUIRED');
+    expect(shareSpy).not.toHaveBeenCalled();
+
+    getSessionSpy.mockResolvedValue(session('signal-session', 'signal'));
+    const apiKeyShare = await controller.shareSession(
+      request('/session/share', { sessionId: 'signal-session' }, 'api_key'),
+      USER,
+    );
+    expect(apiKeyShare.status).toBe(404);
+    expect(shareSpy).not.toHaveBeenCalled();
+
+    const signalTitle = await controller.updateSessionTitle(
+      request('/session/title', { sessionId: 'signal-session', title: 'Updated' }, 'session'),
+      USER,
+    );
+    expect(signalTitle.status).toBe(200);
+    expect(titleSpy).toHaveBeenCalledWith('signal-session', USER.id, 'Updated');
+  });
+
+  test('interrupt is session-only in route metadata', () => {
+    const route = RouteRegistry.getRoutes(ChatController)
+      .find((candidate) => candidate.methodName === 'interrupt');
+    expect(route).toMatchObject({ method: 'POST', path: '/interrupt' });
+    const guards = RouteRegistry.getGuards(ChatController, 'interrupt');
+    expect(guards).toContain(SessionOnlyGuard);
+    expect(guards).not.toContain(AuthGuard);
   });
 });

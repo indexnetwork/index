@@ -93,13 +93,13 @@ describe('AuthProvider onboarding routing', () => {
   test('redirects an authenticated incomplete user from the home page to onboarding', async () => {
     renderAuthProviderAt('/');
 
-    expect(await screen.findByTestId('location')).toHaveTextContent('/onboarding');
+    expect((await screen.findByTestId('location')).textContent).toContain('/onboarding');
   });
 
   test('allows an authenticated incomplete user to stay on networks', async () => {
     renderAuthProviderAt('/networks');
 
-    expect(await screen.findByTestId('location')).toHaveTextContent('/networks');
+    expect((await screen.findByTestId('location')).textContent).toContain('/networks');
   });
 
   test('still redirects unauthenticated users away from networks', async () => {
@@ -107,7 +107,7 @@ describe('AuthProvider onboarding routing', () => {
 
     renderAuthProviderAt('/networks');
 
-    expect(await screen.findByTestId('location')).toHaveTextContent('/');
+    expect((await screen.findByTestId('location')).textContent).toContain('/');
     expect(mocks.apiClient.get).not.toHaveBeenCalled();
   });
 
@@ -124,7 +124,7 @@ describe('AuthProvider onboarding routing', () => {
       { route: '/networks' }
     );
 
-    expect(await screen.findByTestId('features')).toHaveTextContent(
+    expect((await screen.findByTestId('features')).textContent).toContain(
       '{"negotiatorChat":true,"signalAgent":true}',
     );
   });
@@ -141,7 +141,7 @@ describe('AuthProvider onboarding routing', () => {
 
     // Wait for the user fetch to settle, then assert features stayed null.
     await screen.findByTestId('features');
-    expect(await screen.findByTestId('features')).toHaveTextContent('null');
+    expect((await screen.findByTestId('features')).textContent).toContain('null');
   });
 
   test('opens the login modal with a preserved callbackURL when an unauthenticated user hits a protected deep link', async () => {
@@ -153,7 +153,7 @@ describe('AuthProvider onboarding routing', () => {
     // The user is bounced to home, but the login modal is opened so that after
     // authenticating Better Auth redirects them back to the captured URL
     // (real browser URL via createBrowserRouter; jsdom reports the origin).
-    expect(await screen.findByTestId('location')).toHaveTextContent('/');
+    expect((await screen.findByTestId('location')).textContent).toContain('/');
     const lastCall = mocks.authModal.mock.calls.at(-1)?.[0] as
       | { isOpen: boolean; callbackURL?: string }
       | undefined;

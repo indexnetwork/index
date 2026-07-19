@@ -207,7 +207,7 @@ export default function Sidebar() {
       try {
         if (isInitialLoad) setLoadingSessions(true);
 
-        const data = await apiClient.get<{ sessions: ChatSession[] }>('/chat/sessions');
+        const data = await apiClient.get<{ sessions: ChatSession[] }>('/chat/web/sessions');
         setChatSessions(data.sessions.slice(0, 10));
       } catch (error) {
         logger.error('Failed to fetch chat sessions', { error });
@@ -282,7 +282,7 @@ export default function Sidebar() {
 
         {/* Pinned Personal Agent DM (IND-411) — flag-gated, above History; a
             pinned surface, not a history entry (backend excludes it from
-            /chat/sessions). */}
+            /chat/web/sessions). */}
         {negotiatorEnabled && (
           <div
             className={`group flex items-center rounded-md transition-colors ${

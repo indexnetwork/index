@@ -232,7 +232,19 @@ async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
   }
 
   const apiUrl = apiUrlOverride ?? creds.apiUrl;
-  return new ApiClient(apiUrl, creds.token);
+  if (creds.authKind !== "api_key") {
+    try {
+      const sessionClient = new ApiClient(apiUrl, creds.token, "session");
+      const apiKey = await sessionClient.mintCliApiKey();
+      const migrated = { token: apiKey, apiUrl, authKind: "api_key" as const };
+      await store.save(migrated);
+      return new ApiClient(apiUrl, migrated.token, migrated.authKind);
+    } catch {
+      output.error("Stored CLI credentials need to be refreshed. Run `index login` again.", 1);
+      process.exit(1);
+    }
+  }
+  return new ApiClient(apiUrl, creds.token, creds.authKind);
 }
 
 // ── Login / Logout ──────────────────────────────────────────────────
@@ -299,7 +311,7 @@ async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, manual
     try {
       const creds = await store.load();
       if (creds) {
-        const client = new ApiClient(creds.apiUrl, creds.token);
+        const client = new ApiClient(creds.apiUrl, creds.token, creds.authKind);
         const user = await client.getMe();
         output.success(`Logged in as ${user.name} (${user.email})`);
       }

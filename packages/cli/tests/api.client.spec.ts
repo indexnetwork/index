@@ -58,6 +58,57 @@ describe("ApiClient", () => {
     });
   });
 
+  describe("CLI credential migration", () => {
+    it("mints a time-bounded CLI API key with a legacy session JWT", async () => {
+      let authorization = "";
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/auth/api-key/create", async (req) => {
+        authorization = req.headers.get("authorization") ?? "";
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({ key: "migrated-cli-key" });
+      });
+
+      await expect(client.mintCliApiKey()).resolves.toBe("migrated-cli-key");
+      expect(authorization).toBe("Bearer test-token-123");
+      expect(receivedBody).toEqual({
+        name: "Index CLI",
+        expiresIn: 60 * 60 * 24 * 90,
+        metadata: { client: "cli" },
+      });
+    });
+  });
+
+  describe("API-key credential transport", () => {
+    it("uses x-api-key for compatibility history and orchestrator streaming", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+      const received: Array<{ path: string; apiKey: string; authorization: string }> = [];
+      mock.on("GET", "/api/chat/sessions", (req) => {
+        received.push({
+          path: "/api/chat/sessions",
+          apiKey: req.headers.get("x-api-key") ?? "",
+          authorization: req.headers.get("authorization") ?? "",
+        });
+        return Response.json({ sessions: [] });
+      });
+      mock.on("POST", "/api/chat/stream", (req) => {
+        received.push({
+          path: "/api/chat/stream",
+          apiKey: req.headers.get("x-api-key") ?? "",
+          authorization: req.headers.get("authorization") ?? "",
+        });
+        return new Response("data: {}\n\n", { status: 200 });
+      });
+
+      await apiKeyClient.listSessions();
+      await apiKeyClient.streamChat({ message: "hello" });
+
+      expect(received).toEqual([
+        { path: "/api/chat/sessions", apiKey: "cli-key-123", authorization: "" },
+        { path: "/api/chat/stream", apiKey: "cli-key-123", authorization: "" },
+      ]);
+    });
+  });
+
   describe("getMe", () => {
     it("returns the current user", async () => {
       mock.on("GET", "/api/auth/me", () =>

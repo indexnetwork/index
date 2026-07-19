@@ -2,16 +2,18 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
 import { eq } from 'drizzle-orm/sql';
 
 import { IntentController } from "../intent.controller";
 import { IntentDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
 import { deleteNetworkAndMembers } from "./test-helpers";
+import { ScopeViolationError } from '../../guards/agent-scope.guard';
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import db from '../../lib/drizzle/drizzle';
 import { IntentEvents } from '../../events/intent.event';
-import { intents as intentsTable } from '../../schemas/database.schema';
+import { intents as intentsTable, networkMembers as networkMembersTable } from '../../schemas/database.schema';
+import { IntentNetworkMembershipError } from '../../services/intent.service';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // IntentDatabaseAdapter Integration Tests
@@ -75,6 +77,43 @@ describe("IntentDatabaseAdapter Integration", () => {
 
     testIntentId = created.id;
     console.log(`Created test intent: ${testIntentId}`);
+  });
+
+  test("proposal creation atomically requires a current membership", async () => {
+    const chatAdapter = new ChatDatabaseAdapter();
+    const network = await chatAdapter.createNetwork({
+      title: `Intent proposal membership ${Date.now()}`,
+    });
+    const allowedSourceId = `proposal-member-${crypto.randomUUID()}`;
+    const deniedSourceId = `proposal-stale-${crypto.randomUUID()}`;
+
+    try {
+      await chatAdapter.addMemberToNetwork(network.id, testUserId, 'member');
+      const created = await adapter.createIntentForNetworkMember({
+        userId: testUserId,
+        payload: 'Find climate founders',
+        sourceType: 'discovery_form',
+        sourceId: allowedSourceId,
+      }, network.id);
+      expect(created).not.toBeNull();
+      expect(await adapter.isNetworkMember(network.id, testUserId)).toBe(true);
+
+      await db.update(networkMembersTable)
+        .set({ deletedAt: new Date() })
+        .where(eq(networkMembersTable.networkId, network.id));
+      expect(await chatAdapter.isNetworkMember(network.id, testUserId)).toBe(false);
+
+      const denied = await adapter.createIntentForNetworkMember({
+        userId: testUserId,
+        payload: 'This must not persist',
+        sourceType: 'discovery_form',
+        sourceId: deniedSourceId,
+      }, network.id);
+      expect(denied).toBeNull();
+      expect(await adapter.getIntentBySourceId(deniedSourceId, testUserId)).toBeNull();
+    } finally {
+      await deleteNetworkAndMembers(network.id);
+    }
   });
 
   test("getActiveIntents should return active intents for user", async () => {
@@ -550,4 +589,144 @@ describe("IntentController Integration", () => {
     expect(conflict.status).toBe(409);
   });
 
+});
+
+describe('IntentController confirm authorization', () => {
+  const user: AuthenticatedUser = {
+    id: '11111111-1111-4111-8111-111111111111',
+    email: 'alice@example.com',
+    name: 'Alice',
+  };
+  const networkId = '22222222-2222-4222-8222-222222222222';
+
+  const request = (body: Record<string, unknown>) => new Request('http://localhost/intents/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  test('allows current members and preserves a typed success response', async () => {
+    const createFromProposal = mock(async () => ({ id: 'intent-member' }));
+    const assertNetworkScope = mock(async () => {});
+    const controller = new IntentController({
+      service: { createFromProposal } as never,
+      assertNetworkScope,
+    });
+
+    const response = await controller.confirm(request({
+      proposalId: 'proposal-member',
+      description: 'Find climate founders',
+      networkId,
+    }), user);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      proposalId: 'proposal-member',
+      intentId: 'intent-member',
+    });
+    expect(assertNetworkScope).toHaveBeenCalledWith(expect.any(Request), networkId);
+    expect(createFromProposal).toHaveBeenCalledWith(
+      user.id,
+      'Find climate founders',
+      'proposal-member',
+      networkId,
+    );
+  });
+
+  test('maps non-member and stale-membership failures to a typed 403', async () => {
+    const createFromProposal = mock(async () => {
+      throw new IntentNetworkMembershipError(networkId);
+    });
+    const controller = new IntentController({
+      service: { createFromProposal } as never,
+      assertNetworkScope: mock(async () => {}),
+    });
+
+    const response = await controller.confirm(request({
+      proposalId: 'proposal-stale',
+      description: 'Find climate founders',
+      networkId,
+    }), user);
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: 'forbidden',
+      code: 'network_membership_required',
+      detail: 'You are not a current member of this network',
+      networkId,
+    });
+  });
+
+  test('rejects malformed network IDs before scope or persistence checks', async () => {
+    const createFromProposal = mock(async () => ({ id: 'intent-invalid' }));
+    const assertNetworkScope = mock(async () => {});
+    const controller = new IntentController({
+      service: { createFromProposal } as never,
+      assertNetworkScope,
+    });
+
+    const response = await controller.confirm(request({
+      proposalId: 'proposal-invalid',
+      description: 'Find climate founders',
+      networkId: 'not-a-uuid',
+    }), user);
+
+    expect(response.status).toBe(400);
+    expect(assertNetworkScope).not.toHaveBeenCalled();
+    expect(createFromProposal).not.toHaveBeenCalled();
+  });
+
+  test('preserves no-network confirmation without agent-scope lookup', async () => {
+    const createFromProposal = mock(async () => ({ id: 'intent-global' }));
+    const assertNetworkScope = mock(async () => {});
+    const controller = new IntentController({
+      service: { createFromProposal } as never,
+      assertNetworkScope,
+    });
+
+    const response = await controller.confirm(request({
+      proposalId: 'proposal-global',
+      description: 'Find climate founders',
+    }), user);
+
+    expect(response.status).toBe(200);
+    expect(assertNetworkScope).not.toHaveBeenCalled();
+    expect(createFromProposal).toHaveBeenCalledWith(
+      user.id,
+      'Find climate founders',
+      'proposal-global',
+      undefined,
+    );
+  });
+
+  test('preserves matching agent scope and rejects mismatched scope before persistence', async () => {
+    const createFromProposal = mock(async () => ({ id: 'intent-scoped' }));
+    const matchingController = new IntentController({
+      service: { createFromProposal } as never,
+      assertNetworkScope: mock(async (_req, suppliedNetworkId) => {
+        if (suppliedNetworkId !== networkId) throw new ScopeViolationError('scope mismatch');
+      }),
+    });
+    const matching = await matchingController.confirm(request({
+      proposalId: 'proposal-scoped',
+      description: 'Find climate founders',
+      networkId,
+    }), user);
+    expect(matching.status).toBe(200);
+    expect(createFromProposal).toHaveBeenCalledTimes(1);
+
+    const mismatchController = new IntentController({
+      service: { createFromProposal } as never,
+      assertNetworkScope: mock(async () => {
+        throw new ScopeViolationError('scope mismatch');
+      }),
+    });
+    await expect(mismatchController.confirm(request({
+      proposalId: 'proposal-mismatch',
+      description: 'Find climate founders',
+      networkId,
+    }), user)).rejects.toBeInstanceOf(ScopeViolationError);
+    expect(createFromProposal).toHaveBeenCalledTimes(1);
+  });
 });

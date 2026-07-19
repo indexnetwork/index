@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useNavigate } from "react-router";
 import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users, MessageSquare } from "lucide-react";
@@ -64,10 +64,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     messages,
     isLoading,
     stopStream,
-    sendMessage,
+    sendWebMessage,
     clearChat,
     startSignalSession,
     loadSession,
+    sessionLoadState,
+    isSessionReady,
     sessionId,
     sessionTitle,
     sessionPersona,
@@ -78,17 +80,33 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setScopeNetworkId,
     sessionNetworkId,
     updateSessionTitle,
-    pendingQueue,
     cancelQueuedMessage,
     submitMidStreamMessage,
     liveQuestions,
   } = useAIChat();
   const { features } = useAuthContext();
   const signalAgentEnabled = features?.signalAgent === true;
+  const routedSessionReady = !sessionIdFromUrl
+    || isSessionReady(sessionIdFromUrl)
+    || (sessionId === sessionIdFromUrl && sessionLoadState.status === "idle");
+  const routedSessionError = sessionIdFromUrl
+    && sessionLoadState.status === "error"
+    && sessionLoadState.targetSessionId === sessionIdFromUrl
+      ? sessionLoadState.error
+      : null;
   const legacyOrchestratorReadOnly = signalAgentEnabled
     && sessionPersona === "orchestrator"
-    && Boolean(sessionIdFromUrl);
-  const signalContinuationBlocked = turnBlock?.action?.type === "start_signal_session";
+    && sessionId === sessionIdFromUrl
+    && routedSessionReady;
+  const routeSessionMismatch = sessionId !== sessionIdFromUrl
+    && Boolean(sessionId || sessionIdFromUrl);
+  const mutationsBlocked = legacyOrchestratorReadOnly
+    || routeSessionMismatch
+    || (Boolean(sessionIdFromUrl) && !routedSessionReady);
+  const mutationsBlockedRef = useRef(mutationsBlocked);
+  useLayoutEffect(() => {
+    mutationsBlockedRef.current = mutationsBlocked;
+  }, [mutationsBlocked]);
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, addNotification } = useNotifications();
   const [input, setInput] = useState("");
@@ -100,22 +118,21 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
   const navigatingToHomeRef = useRef(false);
-  const sessionIdRef = useRef(sessionId);
   const [isIndexDropdownOpen, setIsIndexDropdownOpen] = useState(false);
   const [isInputMultiline, setIsInputMultiline] = useState(false);
   const [isTextareaMultiline, setIsTextareaMultiline] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const { OAuthLink } = useGmailConnect(useCallback(() => {
-    sendMessage("I've connected my account, please continue with the import.", undefined, undefined, { hidden: true });
-  }, [sendMessage]));
+    if (mutationsBlockedRef.current) return;
+    void sendWebMessage("I've connected my account, please continue with the import.", undefined, undefined, { hidden: true });
+  }, [sendWebMessage]));
 
   const handleShare = useCallback(async () => {
-    if (!sessionId) return;
+    if (mutationsBlockedRef.current || !sessionId) return;
     try {
       const { shareToken } = await apiClient.post<{ shareToken: string }>("/chat/session/share", { sessionId });
       const shareUrl = `${window.location.origin}/s/${shareToken}`;
@@ -126,11 +143,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       showError("Failed to create share link");
     }
   }, [sessionId, showError]);
-
-  // Keep ref in sync with sessionId
-  useEffect(() => {
-    sessionIdRef.current = sessionId;
-  }, [sessionId]);
 
   const opportunitiesService = useOpportunities();
 
@@ -195,7 +207,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
     const timeoutId = setTimeout(fetchStatuses, 200);
     return () => clearTimeout(timeoutId);
-  }, [opportunityIdsKey, opportunitiesService]);
+  }, [opportunityIdsKey, opportunitiesService, setOpportunityStatusMap]);
 
   // Intent proposal status tracking
   const [intentProposalStatusMap, setIntentProposalStatusMap] = useState<
@@ -270,6 +282,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }, [mergedInjectedQuestions]);
 
   const handleInjectedAnswer = useCallback(async (questionId: string, body: AnswerBody) => {
+    if (mutationsBlockedRef.current) return;
     const question = mergedInjectedQuestions.find((q) => q.id === questionId);
     const res = await questionsService.answer(questionId, body);
     setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
@@ -286,12 +299,13 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       const parts = [...body.selectedOptions];
       if (body.freeText?.trim()) parts.push(body.freeText.trim());
       if (parts.length > 0) {
-        void sendMessage(`Re: "${question.payload.prompt}" — ${parts.join('; ')}`);
+        void sendWebMessage(`Re: "${question.payload.prompt}" — ${parts.join('; ')}`);
       }
     }
-  }, [questionsService, mergedInjectedQuestions, isLoading, sendMessage]);
+  }, [questionsService, mergedInjectedQuestions, isLoading, sendWebMessage]);
 
   const handleInjectedDismiss = useCallback(async (questionId: string) => {
+    if (mutationsBlockedRef.current) return;
     await questionsService.dismiss(questionId);
     setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
     setResolvedLiveQuestionIds((prev) => new Set([...prev, questionId]));
@@ -312,10 +326,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleNetworkJoin = useCallback(
     (networkId: string, networkTitle: string) => {
+      if (mutationsBlockedRef.current) return;
       setNetworkPanelPendingJoinIds((prev) => new Set([...prev, networkId]));
-      sendMessage(`I'd like to join ${networkTitle}`);
+      void sendWebMessage(`I'd like to join ${networkTitle}`);
     },
-    [sendMessage],
+    [sendWebMessage],
   );
 
   // Stable list of proposal IDs from assistant messages
@@ -455,23 +470,21 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   );
 
   useEffect(() => {
-    if (sessionIdFromUrl) {
-      // Skip loading if we already have this session in memory (e.g., we just created it)
-      if (sessionIdRef.current === sessionIdFromUrl) {
-        setSessionLoaded(true);
-        return;
-      }
-      loadSession(sessionIdFromUrl).finally(() => setSessionLoaded(true));
-    } else {
-      navigatingToHomeRef.current = true;
-      // Don't abort in-flight stream so the new session can finish and appear in the sidebar
-      clearChat({ abortStream: false });
-      setChatScope(null);
-      setSelectedNetworkIds([]);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSessionLoaded(true);
-    }
-  }, [sessionIdFromUrl, loadSession, clearChat, setChatScope, setSelectedNetworkIds]);
+    if (!sessionIdFromUrl || routedSessionReady) return;
+    const targetAlreadySettled = sessionLoadState.targetSessionId === sessionIdFromUrl
+      && (sessionLoadState.status === "loading" || sessionLoadState.status === "error");
+    if (!targetAlreadySettled) void loadSession(sessionIdFromUrl);
+  }, [sessionIdFromUrl, routedSessionReady, sessionLoadState, loadSession]);
+
+  useLayoutEffect(() => {
+    if (sessionIdFromUrl) return;
+    navigatingToHomeRef.current = true;
+    // Don't abort in-flight stream so the new session can finish and appear in the sidebar.
+    // Preserve a continuation's one-shot forced Signal persona across route cleanup.
+    clearChat({ abortStream: false, preserveForcedPersona: true });
+    setChatScope(null);
+    setSelectedNetworkIds([]);
+  }, [sessionIdFromUrl, clearChat, setChatScope, setSelectedNetworkIds]);
 
 
   useEffect(() => {
@@ -483,10 +496,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   // Snap to bottom immediately when a session finishes loading (covers the case
   // where an in-memory session is restored and messages don't change).
   useEffect(() => {
-    if (sessionLoaded && scrollRef.current) {
+    if (routedSessionReady && scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "instant" });
     }
-  }, [sessionLoaded]);
+  }, [routedSessionReady]);
 
   // Update URL when session changes: push so back from /d/id returns to /
   useEffect(() => {
@@ -501,6 +514,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const archiveProposalIntent = useCallback(
     async (proposalId: string, intentId: string) => {
+      if (mutationsBlockedRef.current) throw new Error("This chat is read-only.");
       await apiClient.patch(`/intents/${intentId}/archive`);
       setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
     },
@@ -509,6 +523,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleIntentProposalApprove = useCallback(
     async (proposalId: string, description: string, networkId?: string) => {
+      if (mutationsBlockedRef.current) return;
+      const originatingRoute = sessionIdFromUrl ? `/d/${sessionIdFromUrl}` : "/";
       const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
       setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
       setProposalIntentMap((prev) => ({ ...prev, [proposalId]: res.intentId }));
@@ -522,15 +538,24 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         title: targetNetwork ? `Broadcasting to ${targetNetwork.title}` : "Evaluating networks…",
         message: description,
         duration: 10000,
-        onAction: () => archiveProposalIntent(proposalId, res.intentId),
+        onAction: async () => {
+          try {
+            await archiveProposalIntent(proposalId, res.intentId);
+            navigate(originatingRoute);
+          } catch (error) {
+            showError("Failed to undo signal", error instanceof Error ? error.message : "Please try again.");
+            throw error;
+          }
+        },
       });
       navigate(`/i/${res.intentId}`);
     },
-    [addNotification, archiveProposalIntent, indexes, navigate],
+    [addNotification, archiveProposalIntent, indexes, navigate, sessionIdFromUrl, showError],
   );
 
   const handleIntentProposalReject = useCallback(
     async (proposalId: string) => {
+      if (mutationsBlockedRef.current) return;
       await apiClient.post("/intents/reject", { proposalId });
       setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
     },
@@ -539,6 +564,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleIntentProposalUndo = useCallback(
     async (proposalId: string) => {
+      if (mutationsBlockedRef.current) return;
       const intentId = proposalIntentMap[proposalId];
       if (!intentId) throw new Error("Intent ID not found for proposal");
       await archiveProposalIntent(proposalId, intentId);
@@ -597,8 +623,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
-      legacyOrchestratorReadOnly
-      || signalContinuationBlocked
+      mutationsBlockedRef.current
+      || Boolean(turnBlock)
       || !canSend
       || isUploadingFiles
     ) return;  // file upload blocks; stream does not
@@ -636,14 +662,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       const streamingMsg = messages.find((m) => m.isStreaming);
       submitMidStreamMessage(msgContent, streamingMsg?.traceEvents ?? [], fileArg, nameArg);
     } else {
-      await sendMessage(
+      await sendWebMessage(
         msgContent,
         fileArg,
         nameArg,
-        {
-          surface: "web",
-          ...(!sessionId && signalAgentEnabled ? { persona: "signal" as const } : {}),
-        },
+        !sessionId && signalAgentEnabled ? { persona: "signal" as const } : undefined,
       );
     }
     inputRef.current?.focus();
@@ -669,7 +692,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const displayTitle = sessionTitle || "Untitled chat";
 
   const startEditingTitle = () => {
-    if (!sessionId) return;
+    if (mutationsBlockedRef.current || !sessionId) return;
     setEditTitleValue(displayTitle);
     setIsEditingTitle(true);
     setTimeout(() => titleInputRef.current?.focus(), 0);
@@ -678,13 +701,36 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const saveTitle = async () => {
     setIsEditingTitle(false);
     const trimmed = editTitleValue.trim();
-    if (!sessionId || !trimmed || trimmed === displayTitle) return;
+    if (mutationsBlockedRef.current || !sessionId || !trimmed || trimmed === displayTitle) return;
     await updateSessionTitle(sessionId, trimmed);
   };
 
-  if (!sessionLoaded) {
+  if (sessionIdFromUrl && !routedSessionReady) {
+    if (routedSessionError) {
+      return (
+        <div className="px-6 lg:px-8 min-h-full flex items-center justify-center">
+          <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+            <h1 className="text-lg font-semibold text-gray-900">Could not load this chat</h1>
+            <p className="mt-2 text-sm text-gray-600">{routedSessionError}</p>
+            <div className="mt-5 flex justify-center gap-2">
+              <Button type="button" variant="outline" onClick={() => {
+                clearChat();
+                setChatScope(null);
+                setSelectedNetworkIds([]);
+                navigate("/");
+              }}>
+                Back to home
+              </Button>
+              <Button type="button" onClick={() => void loadSession(sessionIdFromUrl)}>
+                Retry
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
-      <div className="px-6 lg:px-8 min-h-full animate-pulse">
+      <div className="px-6 lg:px-8 min-h-full animate-pulse" aria-label={`Loading chat ${sessionIdFromUrl}`}>
         <div className="max-w-2xl mx-auto">
           <div className="mt-12 mb-6 flex justify-center">
             <div className="h-8 w-48 bg-gray-100 rounded-sm" />
@@ -703,6 +749,36 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       </div>
     );
   }
+
+  const renderContinuationPanel = () => {
+    const startsSignal = legacyOrchestratorReadOnly
+      || (turnBlock?.action?.type === "start_signal_session" && turnBlock.action.href === "/");
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <p className="text-sm font-medium text-gray-900">
+          {turnBlock?.message ?? "This earlier chat is read-only."}
+        </p>
+        <p className="mt-1 text-sm text-gray-600">
+          {startsSignal
+            ? "Its messages are preserved. Continue in a separate Signal Agent chat."
+            : "This chat is unchanged. Start a new chat to continue safely."}
+        </p>
+        <Button
+          type="button"
+          className="mt-3 bg-[#041729] text-white hover:bg-[#0a2d4a]"
+          onClick={() => {
+            if (startsSignal) startSignalSession();
+            else clearChat();
+            setChatScope(null);
+            setSelectedNetworkIds([]);
+            navigate("/");
+          }}
+        >
+          {startsSignal ? "Start a Signal Agent chat" : "Start a new chat"}
+        </Button>
+      </div>
+    );
+  };
 
   // Shared input form JSX
   const renderInputForm = () => (
@@ -945,6 +1021,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
           </div>
           <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
+            {turnBlock ? renderContinuationPanel() : (
             <form
               onSubmit={handleSubmit}
               className={cn("flex flex-col bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3", selectedFiles.length > 0 && "gap-2")}
@@ -1023,6 +1100,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 )}
               </div>
             </form>
+            )}
           </div>
           <div className="mt-8">
             <IntentList
@@ -1030,7 +1108,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               isLoading={homeIntentsLoading}
               emptyMessage="No signals yet"
               onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
-              onArchiveIntent={handleArchiveHomeIntent}
+              onArchiveIntent={turnBlock ? undefined : handleArchiveHomeIntent}
             />
           </div>
         </ContentContainer>
@@ -1044,7 +1122,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   return (
     <>
-      {inviteModalElement}
+      {!legacyOrchestratorReadOnly && inviteModalElement}
       {/* Sticky header - full width, min-h-17 matches ChatView header height */}
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-17">
         <button
@@ -1060,7 +1138,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        {isEditingTitle ? (
+        {isEditingTitle && !legacyOrchestratorReadOnly ? (
           <input
             ref={titleInputRef}
             type="text"
@@ -1084,38 +1162,40 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             <button
               type="button"
               onClick={startEditingTitle}
-              disabled={!sessionId}
+              disabled={!sessionId || legacyOrchestratorReadOnly}
               className="text-left font-bold font-ibm-plex-mono text-lg text-black truncate hover:text-gray-700 disabled:pointer-events-none focus:outline-none rounded"
             >
               {displayTitle}
             </button>
             {sessionId && (
               <>
-                <button
-                  type="button"
-                  onClick={startEditingTitle}
-                  title="Rename conversation"
-                  className="shrink-0 p-1 rounded text-gray-500 hover:text-[#4091BB] hover:bg-gray-100 focus:outline-none"
-                  aria-label="Rename conversation"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  title={shareCopied ? "Link copied!" : "Share conversation"}
-                  className="shrink-0 p-1 rounded text-gray-500 hover:text-[#4091BB] hover:bg-gray-100 focus:outline-none"
-                  aria-label="Share conversation"
-                >
-                  {shareCopied ? (
-                    <Check className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <Share2 className="h-4 w-4" />
-                  )}
-                </button>
-                {sessionId && (
-                  <DebugCopyButton fetchPath={`/debug/chat/${sessionId}`} title="Copy chat debug JSON" />
+                {!legacyOrchestratorReadOnly && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={startEditingTitle}
+                      title="Rename conversation"
+                      className="shrink-0 p-1 rounded text-gray-500 hover:text-[#4091BB] hover:bg-gray-100 focus:outline-none"
+                      aria-label="Rename conversation"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleShare}
+                      title={shareCopied ? "Link copied!" : "Share conversation"}
+                      className="shrink-0 p-1 rounded text-gray-500 hover:text-[#4091BB] hover:bg-gray-100 focus:outline-none"
+                      aria-label="Share conversation"
+                    >
+                      {shareCopied ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Share2 className="h-4 w-4" />
+                      )}
+                    </button>
+                  </>
                 )}
+                <DebugCopyButton fetchPath={`/debug/chat/${sessionId}`} title="Copy chat debug JSON" />
               </>
             )}
             {chatScope?.type === "intent" && (
@@ -1164,7 +1244,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             : "bg-blue-50 text-blue-500 border border-blue-200",
                         )}>
                           {msg.isPending ? "classifying…" : "queued"}
-                          {msg.isQueued && (
+                          {msg.isQueued && !legacyOrchestratorReadOnly && (
                             <button
                               type="button"
                               onClick={() => cancelQueuedMessage(msg.id)}
@@ -1206,46 +1286,48 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           <AssistantMessageContent
                             content={msg.content}
                             isStreaming={msg.isStreaming ?? false}
-                            onOpportunityPrimaryAction={(
+                            onOpportunityPrimaryAction={legacyOrchestratorReadOnly ? undefined : (
                               oppId,
                               userId,
                               viewerRole,
                               counterpartName,
                               isGhost,
-                            ) =>
-                              handleOpportunityAction(
+                            ) => {
+                              if (mutationsBlockedRef.current) return;
+                              return handleOpportunityAction(
                                 oppId,
                                 "accepted",
                                 userId,
                                 viewerRole,
                                 counterpartName,
                                 isGhost,
-                              )
-                            }
-                            onOpportunitySecondaryAction={(
+                              );
+                            }}
+                            onOpportunitySecondaryAction={legacyOrchestratorReadOnly ? undefined : (
                               oppId,
                               userId,
                               viewerRole,
                               counterpartName,
                               isGhost,
-                            ) =>
-                              handleOpportunityAction(
+                            ) => {
+                              if (mutationsBlockedRef.current) return;
+                              return handleOpportunityAction(
                                 oppId,
                                 "rejected",
                                 userId,
                                 viewerRole,
                                 counterpartName,
                                 isGhost,
-                              )
-                            }
+                              );
+                            }}
                             opportunityLoadingMap={opportunityActionLoading}
                             currentStatusMap={opportunityStatusMap}
-                            onIntentProposalApprove={handleIntentProposalApprove}
-                            onIntentProposalReject={handleIntentProposalReject}
-                            onIntentProposalUndo={handleIntentProposalUndo}
+                            onIntentProposalApprove={legacyOrchestratorReadOnly ? undefined : handleIntentProposalApprove}
+                            onIntentProposalReject={legacyOrchestratorReadOnly ? undefined : handleIntentProposalReject}
+                            onIntentProposalUndo={legacyOrchestratorReadOnly ? undefined : handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
-                            OAuthLink={OAuthLink}
-                            onNetworkJoin={handleNetworkJoin}
+                            OAuthLink={legacyOrchestratorReadOnly ? undefined : OAuthLink}
+                            onNetworkJoin={legacyOrchestratorReadOnly ? undefined : handleNetworkJoin}
                             networkPanelPendingJoinIds={networkPanelPendingJoinIds}
                           />
                         </article>
@@ -1315,9 +1397,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             key={draft.opportunityId}
                             card={cardData}
                             currentStatus={cardStatus}
-                            onPrimaryAction={(oppId, userId) =>
-                              handleStreamingDraftStartChat(oppId, userId)
-                            }
+                            onPrimaryAction={legacyOrchestratorReadOnly ? undefined : (oppId, userId) => {
+                              if (mutationsBlockedRef.current) return;
+                              return handleStreamingDraftStartChat(oppId, userId);
+                            }}
                             isLoading={opportunityActionLoading[draft.opportunityId]}
                           />
                         );
@@ -1325,6 +1408,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     </div>
                   )}
                 {msg.role === "assistant" &&
+                  !legacyOrchestratorReadOnly &&
                   msg.decisionQuestions &&
                   msg.decisionQuestions.length > 0 && (
                     <DecisionQuestions
@@ -1334,16 +1418,18 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         decisionQuestionsSubmittedIds.has(msg.id)
                       }
                       onSubmit={(flattened) => {
+                        if (mutationsBlockedRef.current) return;
                         setDecisionQuestionsSubmittedIds((prev) => {
                           const next = new Set(prev);
                           next.add(msg.id);
                           return next;
                         });
-                        sendMessage(flattened);
+                        void sendWebMessage(flattened);
                       }}
                     />
                   )}
                 {msg.role === "assistant" &&
+                  !legacyOrchestratorReadOnly &&
                   injectedByMessageId.has(msg.id) && (
                     <InjectedQuestions
                       questions={injectedByMessageId.get(msg.id)!}
@@ -1353,7 +1439,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   )}
               </div>
             ))}
-            {injectedByMessageId.has(null) && (
+            {!legacyOrchestratorReadOnly && injectedByMessageId.has(null) && (
               <div data-testid={isNegotiatorDm ? "negotiator-question-inbox" : undefined}>
                 {isNegotiatorDm && (
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mt-4 mb-2">
@@ -1376,27 +1462,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       <div className="sticky bottom-0 z-20">
         <div className="px-6 lg:px-8">
           <ContentContainer>
-            {legacyOrchestratorReadOnly || signalContinuationBlocked ? (
-              <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                <p className="text-sm font-medium text-gray-900">
-                  {turnBlock?.message ?? "This earlier chat is read-only."}
-                </p>
-                <p className="mt-1 text-sm text-gray-600">
-                  Its messages are preserved. Continue in a separate Signal Agent chat.
-                </p>
-                <Button
-                  type="button"
-                  className="mt-3 bg-[#041729] text-white hover:bg-[#0a2d4a]"
-                  onClick={() => {
-                    startSignalSession();
-                    setChatScope(null);
-                    setSelectedNetworkIds([]);
-                    navigate("/");
-                  }}
-                >
-                  Start a Signal Agent chat
-                </Button>
-              </div>
+            {legacyOrchestratorReadOnly || turnBlock ? (
+              <div className="mb-4">{renderContinuationPanel()}</div>
             ) : (
               <>
                 <SuggestionChips

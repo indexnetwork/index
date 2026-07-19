@@ -1292,6 +1292,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(networkMembers.networkId, networkId),
           eq(networkMembers.userId, userId),
+          isNull(networkMembers.deletedAt),
           isNull(networks.deletedAt),
           sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
@@ -1309,6 +1310,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(networkMembers.networkId, networkId),
           eq(networkMembers.userId, userId),
+          isNull(networkMembers.deletedAt),
           isNull(networks.deletedAt),
           sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )

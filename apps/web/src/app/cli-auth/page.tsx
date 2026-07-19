@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
+import { apiClient } from "@/lib/api";
+import { validateCliCallbackUrl } from "@/lib/cli-auth";
 
 /**
  * CLI authentication bridge page.
@@ -12,8 +14,8 @@ import { authClient } from "@/lib/auth-client";
  *   - callback: URL of the CLI's local callback server (required)
  *
  * Flow:
- *   1. If user has a session cookie, exchange it for a JWT via Better Auth
- *   2. Redirect to callback URL with ?session_token=<jwt>
+ *   1. If user has a session cookie, mint a scoped CLI API credential
+ *   2. Redirect to callback URL with ?api_key=<key>
  *   3. If no session, redirect to login with a return URL back here
  */
 function CliAuthPage() {
@@ -22,11 +24,11 @@ function CliAuthPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const callbackUrl = params.get("callback");
+    const callbackUrl = validateCliCallbackUrl(params.get("callback"));
 
     if (!callbackUrl) {
       setStatus("error");
-      setError("Missing callback parameter. Use `index login` from the CLI.");
+      setError("Invalid CLI callback. Use `index login` from the CLI.");
       return;
     }
 
@@ -42,18 +44,21 @@ function CliAuthPage() {
           return;
         }
 
-        // Exchange session cookie for JWT
-        const { data, error: tokenError } = await authClient.token();
-
-        if (tokenError || !data?.token) {
+        // Mint a non-web API-key principal so CLI chat keeps compatibility
+        // orchestrator behavior without creating a session-JWT web bypass.
+        const credential = await apiClient.post<{ key: string }>("/auth/api-key/create", {
+          name: "Index CLI",
+          expiresIn: 60 * 60 * 24 * 90,
+          metadata: { client: "cli" },
+        });
+        if (!credential.key) {
           setStatus("error");
-          setError("Failed to obtain token. Please try logging in again.");
+          setError("Failed to obtain CLI credentials. Please try logging in again.");
           return;
         }
 
-        // Redirect to CLI callback with token
         setStatus("redirecting");
-        const redirectUrl = `${callback}?session_token=${encodeURIComponent(data.token)}`;
+        const redirectUrl = `${callback}?api_key=${encodeURIComponent(credential.key)}`;
         window.location.href = redirectUrl;
       } catch {
         setStatus("error");

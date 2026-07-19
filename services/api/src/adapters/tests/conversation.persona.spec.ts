@@ -6,8 +6,9 @@
  *   which is also what every pre-migration row reads via the column default)
  * - CreateSessionInput.persona is persisted
  * - orchestrator and Signal sessions use distinct intent registry keys
- * - getUserChatSessions: no filter → all sessions (today's behavior);
- *   persona filter → only matching sessions
+ * - compatibility history defaults to orchestrator-only
+ * - web history can explicitly request orchestrator + Signal
+ * - generic summary history remains orchestrator-only
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
@@ -90,11 +91,24 @@ describe('persona-specific intent scope registry', () => {
 });
 
 describe('getUserChatSessions persona filter', () => {
-  it('returns all sessions when no persona filter is given (default behavior)', async () => {
+  it('defaults to orchestrator-only compatibility history', async () => {
     const sessions = await adapter.getUserChatSessions(USER_ID, 10);
     const ids = sessions.map((s) => s.id);
     expect(ids).toContain(ORCH_SESSION_ID);
+    expect(ids).not.toContain(SIGNAL_SESSION_ID);
+    expect(sessions.every((s) => s.persona === 'orchestrator')).toBe(true);
+  }, 15000);
+
+  it('returns orchestrator and Signal for the explicit web history filter', async () => {
+    const sessions = await adapter.getUserChatSessions(
+      USER_ID,
+      10,
+      ['orchestrator', 'signal'],
+    );
+    const ids = sessions.map((s) => s.id);
+    expect(ids).toContain(ORCH_SESSION_ID);
     expect(ids).toContain(SIGNAL_SESSION_ID);
+    expect(sessions.every((s) => s.persona !== 'negotiator')).toBe(true);
   }, 15000);
 
   it('returns only matching sessions when a persona filter is given', async () => {
@@ -111,5 +125,25 @@ describe('getUserChatSessions persona filter', () => {
   it('returns no sessions for an unknown persona', async () => {
     const sessions = await adapter.getUserChatSessions(USER_ID, 10, 'does-not-exist');
     expect(sessions).toEqual([]);
+  }, 15000);
+
+  it('keeps Signal out of generic MCP/session detail reads', async () => {
+    const orchestrator = await adapter.getChatSessionDetail(USER_ID, ORCH_SESSION_ID);
+    const signal = await adapter.getChatSessionDetail(USER_ID, SIGNAL_SESSION_ID);
+
+    expect(orchestrator?.sessionId).toBe(ORCH_SESSION_ID);
+    expect(signal).toBeNull();
+  }, 15000);
+
+  it('keeps Signal out of generic MCP/session summaries', async () => {
+    const summaries = await adapter.listChatSessionSummaries(
+      USER_ID,
+      25,
+      'orchestrator',
+    );
+    const ids = summaries.map((summary) => summary.sessionId);
+    expect(ids).toContain(ORCH_SESSION_ID);
+    expect(ids).not.toContain(SIGNAL_SESSION_ID);
+    expect(ids).not.toContain(SIGNAL_INTENT_SESSION_ID);
   }, 15000);
 });

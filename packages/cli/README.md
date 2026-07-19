@@ -41,15 +41,15 @@ Words you will see elsewhere in this doc: **network** = a community you are in; 
 
 ### `index login`
 
-Authenticate with Index Network. Opens a browser window that exchanges your existing session for a CLI token, or starts a fresh OAuth flow.
+Authenticate with Index Network. Opens a browser window that uses your existing session (or a fresh OAuth flow) to mint a 90-day CLI API credential, keeping CLI requests on the non-web compatibility surface.
 
 ```bash
 index login                     # Browser-based auth (default)
-index login --token <jwt>       # Manual token (skip browser)
+index login --token <jwt>       # Legacy manual session token (skip browser)
 index login --api-url <url>     # Custom server URL
 ```
 
-Credentials are stored in `~/.index/credentials.json`.
+Credentials are stored in `~/.index/credentials.json`. Existing valid session-token credentials are migrated to the CLI API-key transport on first use; expired credentials prompt a fresh `index login`.
 
 ### `index logout`
 

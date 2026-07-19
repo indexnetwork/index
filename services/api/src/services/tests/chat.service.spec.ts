@@ -144,6 +144,48 @@ function createMockDb(overrides: Partial<MockDb> = {}): MockDb {
 
 // ─── createSession ────────────────────────────────────────────────────────────
 
+describe("ChatSessionService.resolveSessionForScope", () => {
+  it("recovers the winning Signal session after a Drizzle-wrapped 23505", async () => {
+    const session = makeSession({ persona: "signal" });
+    const wrapped = new Error('Failed query: insert into "chat_session_scopes" (...)');
+    (wrapped as { cause?: unknown }).cause = Object.assign(
+      new Error("duplicate key value violates unique constraint"),
+      { code: "23505" },
+    );
+
+    let scopeLookups = 0;
+    const getChatSessionByScope = mock(
+      (_userId: string, _scopeType: string, _scopeId: string, persona: string) => {
+        expect(persona).toBe("signal");
+        scopeLookups += 1;
+        return Promise.resolve(scopeLookups === 1 ? null : session);
+      },
+    );
+    const db = createMockDb({
+      getChatSessionByScope,
+      createChatSession: mock(() => Promise.reject(wrapped)),
+    });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    const res = await svc.resolveSessionForScope(
+      USER_ID,
+      { scopeType: "intent", scopeId: "intent-001" },
+      "signal",
+    );
+
+    if ("error" in res) throw new Error(`expected session, got error: ${res.error}`);
+    expect(res.session).toEqual(session);
+    expect(res.created).toBe(false);
+    expect(getChatSessionByScope).toHaveBeenNthCalledWith(
+      2,
+      USER_ID,
+      "intent",
+      "intent-001",
+      "signal",
+    );
+  });
+});
+
 describe("ChatSessionService.resolveNegotiatorIntentSession", () => {
   it("recovers the raced session when create hits a Drizzle-wrapped 23505", async () => {
     // Drizzle wraps the pg error in DrizzleQueryError with the real error on
@@ -379,7 +421,7 @@ describe("ChatSessionService.getSession", () => {
 // ─── getUserSessions ──────────────────────────────────────────────────────────
 
 describe("ChatSessionService.getUserSessions", () => {
-  it("delegates to db and returns sessions, excluding the negotiator DM by default", async () => {
+  it("delegates to orchestrator history by default", async () => {
     const sessions = [makeSession(), makeSession({ id: "session-002" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
@@ -389,20 +431,37 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10);
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, undefined, "negotiator");
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator");
   });
 
-  it("passes the persona filter through to the adapter", async () => {
-    const sessions = [makeSession()];
+  it("passes an explicit persona filter through to the adapter", async () => {
+    const sessions = [makeSession({ persona: "negotiator" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
     });
     const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
 
-    const result = await svc.getUserSessions(USER_ID, 10, "orchestrator");
+    const result = await svc.getUserSessions(USER_ID, 10, "negotiator");
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator", undefined);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "negotiator");
+  });
+
+  it("lists only orchestrator and Signal sessions for web history", async () => {
+    const sessions = [makeSession(), makeSession({ id: "signal-session", persona: "signal" })];
+    const db = createMockDb({
+      getUserChatSessions: mock(() => Promise.resolve(sessions)),
+    });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    const result = await svc.getWebUserSessions(USER_ID, 10);
+
+    expect(result).toEqual(sessions);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(
+      USER_ID,
+      10,
+      ["orchestrator", "signal"],
+    );
   });
 });
 

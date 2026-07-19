@@ -3,10 +3,11 @@ import { z } from "zod";
 import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from "../guards/auth.guard";
 import { RateLimit } from "../guards/limiter.guard";
 import { requestContext } from "../lib/request-context";
+import { getRequestAuthContext } from '../lib/request-auth-context';
 import { log } from "../lib/log";
 import { deprecatedRoute } from "../lib/router/deprecated-route";
 import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
-import { chatSessionService } from "../services/chat.service";
+import { chatSessionService, type ChatStreamSurface } from "../services/chat.service";
 import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
@@ -131,6 +132,42 @@ function getInterruptClassifier(): ChatInterruptClassifier {
 
 @Controller("/chat")
 export class ChatController {
+  /** Map compatibility routes onto their authenticated product surface. */
+  private compatibilitySurface(req: Request): ChatStreamSurface {
+    return getRequestAuthContext(req)?.kind === 'session' ? 'web' : 'non_web';
+  }
+
+  /** Authorize an owned session mutation against its persisted persona. */
+  private async authorizeSessionMutation(
+    req: Request,
+    user: AuthenticatedUser,
+    sessionId: string,
+  ): Promise<Response | { persona: string }> {
+    const session = await chatSessionService.getSession(sessionId, user.id);
+    if (!session) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const surface = this.compatibilitySurface(req);
+    const storedPersona = session.persona ?? ORCHESTRATOR_PERSONA_ID;
+    if (surface === 'non_web' && storedPersona !== ORCHESTRATOR_PERSONA_ID) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const policy = chatSessionService.resolveStreamPersonaPolicy({
+      surface,
+      storedPersona,
+    });
+    if (!policy.ok) {
+      return Response.json({
+        error: policy.error,
+        code: policy.code,
+        ...(policy.action ? { action: policy.action } : {}),
+      }, { status: policy.status });
+    }
+    return { persona: policy.persona };
+  }
+
   /**
    * Send a message to the chat graph for processing.
    * The graph routes to appropriate subgraphs based on intent analysis.
@@ -143,6 +180,20 @@ export class ChatController {
   @deprecatedRoute('chat.message')
   @UseGuards(RateLimit('write'), AuthGuard)
   async message(req: Request, user: AuthenticatedUser) {
+    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
+      surface: this.compatibilitySurface(req),
+    });
+    if (!personaPolicy.ok) {
+      return Response.json(
+        {
+          error: personaPolicy.error,
+          code: personaPolicy.code,
+          ...(personaPolicy.action ? { action: personaPolicy.action } : {}),
+        },
+        { status: personaPolicy.status },
+      );
+    }
+
     // 1. Parse request body for message
     let messageContent: string;
     try {
@@ -190,7 +241,7 @@ export class ChatController {
     req: Request,
     user: AuthenticatedUser,
   ): Promise<Response> {
-    return this.messageStreamForSurface(req, user, 'non_web');
+    return this.messageStreamForSurface(req, user, this.compatibilitySurface(req));
   }
 
   /** Main-web chat stream with server-selected Signal cutover policy. */
@@ -722,14 +773,26 @@ export class ChatController {
   @Get("/sessions")
   @UseGuards(RateLimit('read'), AuthGuard)
   async getSessions(req: Request, user: AuthenticatedUser) {
-    // Optional persona filter (e.g. ?persona=orchestrator). Omitted → all
-    // sessions except the negotiator DM, which is a pinned surface, not history.
+    // Compatibility history is orchestrator-only. The explicit negotiator
+    // filter remains available for the pinned Personal Agent lookup, while
+    // Signal history is reserved for the session-only web endpoint below.
     const personaParam = new URL(req.url).searchParams.get("persona")?.trim();
+    const compatibilityPersona = personaParam === NEGOTIATOR_PERSONA_ID
+      ? NEGOTIATOR_PERSONA_ID
+      : ORCHESTRATOR_PERSONA_ID;
     const sessions = await chatSessionService.getUserSessions(
       user.id,
       undefined,
-      personaParam || undefined,
+      compatibilityPersona,
     );
+    return Response.json({ sessions });
+  }
+
+  /** Main-web history including orchestrator and Signal, but never negotiator. */
+  @Get("/web/sessions")
+  @UseGuards(RateLimit('read'), SessionOnlyGuard)
+  async getWebSessions(_req: Request, user: AuthenticatedUser) {
+    const sessions = await chatSessionService.getWebUserSessions(user.id);
     return Response.json({ sessions });
   }
 
@@ -797,15 +860,19 @@ export class ChatController {
   @Post("/web/session/resolve")
   @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async webResolveSession(req: Request, user: AuthenticatedUser) {
-    return this.resolveSession(req, user, 'web');
+    return this.resolveSessionForSurface(req, user, 'web');
   }
 
   @Post("/session/resolve")
   @UseGuards(RateLimit('write'), AuthGuard)
-  async resolveSession(
+  async resolveSession(req: Request, user: AuthenticatedUser) {
+    return this.resolveSessionForSurface(req, user, this.compatibilitySurface(req));
+  }
+
+  private async resolveSessionForSurface(
     req: Request,
     user: AuthenticatedUser,
-    surface: 'web' | 'non_web' = 'non_web',
+    surface: ChatStreamSurface,
   ) {
     let body: z.infer<typeof resolveSessionBodySchema>;
     try {
@@ -862,6 +929,25 @@ export class ChatController {
   @Post("/session")
   @UseGuards(RateLimit('write'), AuthGuard)
   async getSession(req: Request, user: AuthenticatedUser) {
+    return this.getSessionForPersonas(req, user, new Set([ORCHESTRATOR_PERSONA_ID]));
+  }
+
+  /** Session-only web detail across readable web and pinned chat personas. */
+  @Post("/web/session")
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async getWebSession(req: Request, user: AuthenticatedUser) {
+    return this.getSessionForPersonas(
+      req,
+      user,
+      new Set([ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
+    );
+  }
+
+  private async getSessionForPersonas(
+    req: Request,
+    user: AuthenticatedUser,
+    allowedPersonas: ReadonlySet<string>,
+  ) {
     let body: { sessionId?: string };
     try {
       body = (await req.json()) as { sessionId?: string };
@@ -880,7 +966,7 @@ export class ChatController {
       body.sessionId,
       user.id,
     );
-    if (!session) {
+    if (!session || !allowedPersonas.has(session.persona ?? ORCHESTRATOR_PERSONA_ID)) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 
@@ -938,6 +1024,9 @@ export class ChatController {
       return Response.json({ error: "sessionId is required" }, { status: 400 });
     }
 
+    const authorization = await this.authorizeSessionMutation(req, user, body.sessionId);
+    if (authorization instanceof Response) return authorization;
+
     const deleted = await chatSessionService.deleteSession(
       body.sessionId,
       user.id,
@@ -984,6 +1073,9 @@ export class ChatController {
       return Response.json({ error: "title cannot be empty" }, { status: 400 });
     }
 
+    const authorization = await this.authorizeSessionMutation(req, user, body.sessionId);
+    if (authorization instanceof Response) return authorization;
+
     const updated = await chatSessionService.updateSessionTitle(
       body.sessionId,
       user.id,
@@ -1013,6 +1105,9 @@ export class ChatController {
       return Response.json({ error: "sessionId is required" }, { status: 400 });
     }
 
+    const authorization = await this.authorizeSessionMutation(req, user, body.sessionId);
+    if (authorization instanceof Response) return authorization;
+
     const shareToken = await chatSessionService.shareSession(
       body.sessionId,
       user.id,
@@ -1040,6 +1135,9 @@ export class ChatController {
     if (!body.sessionId) {
       return Response.json({ error: "sessionId is required" }, { status: 400 });
     }
+
+    const authorization = await this.authorizeSessionMutation(req, user, body.sessionId);
+    if (authorization instanceof Response) return authorization;
 
     const unshared = await chatSessionService.unshareSession(
       body.sessionId,
@@ -1130,7 +1228,7 @@ export class ChatController {
    * @returns JSON `{ decision: 'steer' | 'queue', messageId }`
    */
   @Post("/interrupt")
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async interrupt(req: Request, user: AuthenticatedUser): Promise<Response> {
     let body: z.infer<typeof interruptBodySchema>;
     try {
