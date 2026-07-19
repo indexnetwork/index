@@ -2,7 +2,9 @@
 import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
-import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
+import { describe, it, expect, mock, beforeEach } from "bun:test";
+
+import { OpportunityService } from '../opportunity.service';
 
 import type { Opportunity } from '@indexnetwork/protocol';
 
@@ -146,67 +148,34 @@ const mockGatherPresenterContext = mock(() =>
   })
 );
 
-// Mock the presenter module — spread real module to preserve all other exports
-const realProtocol = await import("@indexnetwork/protocol");
-mock.module("@indexnetwork/protocol", () => ({
-  ...realProtocol,
-  OpportunityPresenter: class {
-    present = mockPresent;
-    presentHomeCard = mock(() => {
-      throw new Error("presentHomeCard should not be called in chat context");
-    });
-  },
-  gatherPresenterContext: mockGatherPresenterContext,
-}));
-
-// Mock adapters that OpportunityService constructor tries to initialize
-const MockChatDatabaseAdapter = class {
-  findOpportunitiesByActors: unknown;
-  getUser: unknown;
-  getHydeDocument() { return null; }
+const presenter = {
+  present: mockPresent,
+  presentHomeCard: mock(() => {
+    throw new Error("presentHomeCard should not be called in chat context");
+  }),
 };
-mock.module("../../adapters/database.adapter", () => ({
-  ChatDatabaseAdapter: MockChatDatabaseAdapter,
-  chatDatabaseAdapter: new MockChatDatabaseAdapter(),
-  userDatabaseAdapter: {},
-  conversationDatabaseAdapter: {
-    deliverClaimedPoolQuestionPush: mock(() => Promise.resolve(null)),
-  },
-  intentDatabaseAdapter: {},
-  fileDatabaseAdapter: {},
-  linkDatabaseAdapter: {},
-}));
-mock.module("../../adapters/embedder.adapter", () => ({
-  EmbedderAdapter: class {},
-  embedderAdapter: {},
-}));
-mock.module("../../adapters/cache.adapter", () => ({
-  RedisCacheAdapter: class {
-    mget() { return Promise.resolve([]); }
-    get() { return Promise.resolve(null); }
-    set() { return Promise.resolve(); }
-    del() { return Promise.resolve(); }
-  },
-}));
-
-afterAll(() => {
-  mock.restore();
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Import service AFTER mocks
-// ─────────────────────────────────────────────────────────────────────────────
-
-const { OpportunityService } = await import("../opportunity.service");
 
 function createService(rows: Opportunity[]) {
-  const service = new OpportunityService();
-  // Override the db methods used by getChatContext
-  (service as unknown as Record<string, unknown>).db = {
+  const database = {
     findOpportunitiesByActors: mock(() => Promise.resolve(rows)),
     getUser: mock(() => Promise.resolve(peerUser)),
   };
-  return service;
+  const cache = {
+    mget: async () => [],
+    get: async () => null,
+    set: async () => undefined,
+  };
+  return new OpportunityService(
+    database as never,
+    cache as never,
+    undefined,
+    undefined,
+    {
+      presenter: presenter as never,
+      presenterDatabase: {} as never,
+      gatherContext: mockGatherPresenterContext as never,
+    },
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -13,8 +13,9 @@ import { RedisCacheAdapter } from '../cache.adapter';
 const KEY_PREFIX = 'protocol:';
 
 const TEST_PREFIX = 'test:cache:' + Date.now() + ':';
+const describeRedis = process.env.RUN_REDIS_INTEGRATION_TESTS === '1' ? describe : describe.skip;
 
-describe('RedisCacheAdapter', () => {
+describeRedis('RedisCacheAdapter', () => {
   let cache: RedisCacheAdapter;
 
   beforeAll(() => {

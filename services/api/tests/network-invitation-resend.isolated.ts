@@ -83,7 +83,7 @@ describe('networkInvitationService.resendInvite', () => {
       .where(eq(apikeys.userId, memberId));
     expect(after.length).toBe(1);
     expect(after[0].id).not.toBe(originalKey.id);
-  });
+  }, 15_000);
 
   it('provisions a fresh agent and key when the member has none', async () => {
     const { networkId } = await setupNetworkAndOwner();

@@ -19,21 +19,26 @@ const OTHER_INTENT_ID = '00000000-0000-4000-8000-00000000a222';
 const SELECTED_OPPORTUNITY_ID = '00000000-0000-4000-8000-00000000b111';
 const OTHER_OPPORTUNITY_ID = '00000000-0000-4000-8000-00000000b222';
 
-beforeAll(() => {
+async function cleanupFixtures(): Promise<void> {
+  for (const userId of ['test-user-1', 'test-user-2']) {
+    await db.delete(questions).where(
+      sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+    );
+  }
+  await db.delete(opportunities).where(
+    sql`${opportunities.id} IN (${SELECTED_OPPORTUNITY_ID}, ${OTHER_OPPORTUNITY_ID})`,
+  );
+}
+
+beforeAll(async () => {
   client = postgres(process.env.DATABASE_URL!, { prepare: false });
   db = drizzle(client);
   adapter = new QuestionerAdapter(db);
+  await cleanupFixtures();
 });
 
 afterAll(async () => {
-  // Clean up all test rows (regardless of status) by deterministic marker
-  await db.delete(questions).where(
-    sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: 'test-user-1' }])}::jsonb`,
-  );
-  await db.delete(questions).where(
-    sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: 'test-user-2' }])}::jsonb`,
-  );
-  await db.delete(opportunities).where(sql`${opportunities.id} IN (${SELECTED_OPPORTUNITY_ID}, ${OTHER_OPPORTUNITY_ID})`);
+  await cleanupFixtures();
   await client.end({ timeout: 5 });
 });
 

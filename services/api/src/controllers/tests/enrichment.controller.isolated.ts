@@ -7,8 +7,14 @@ import { EnrichmentController } from "../enrichment.controller";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { UserDatabaseAdapter, EnrichmentDatabaseAdapter } from "../../adapters/database.adapter";
 
-// Integration test suite for EnrichmentController using actual DB
-describe("EnrichmentController Integration", () => {
+const RUN_PAID_INTEGRATION_TESTS = process.env.RUN_PAID_INTEGRATION_TESTS === "1";
+const hasPaidCredentials = Boolean(
+  process.env.OPENROUTER_API_KEY && process.env.PARALLELS_API_KEY,
+);
+const describePaid = RUN_PAID_INTEGRATION_TESTS && hasPaidCredentials ? describe : describe.skip;
+
+// Live enrichment invokes paid OpenRouter and Parallel APIs. Keep the default baseline hermetic.
+describePaid("EnrichmentController Integration", () => {
   const controller = new EnrichmentController();
   const userAdapter = new UserDatabaseAdapter();
   const profileAdapter = new EnrichmentDatabaseAdapter();

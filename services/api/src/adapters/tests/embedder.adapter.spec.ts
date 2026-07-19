@@ -252,9 +252,9 @@ describe('EmbedderAdapter', () => {
 });
 
 describe('EmbedderAdapter – generate (optional)', () => {
-  it('should generate embedding for text when OPENROUTER_API_KEY is set', async () => {
-    if (!process.env.OPENROUTER_API_KEY) {
-      return; // skip when no key
+  it('should generate embedding for text when paid integration tests are enabled', async () => {
+    if (process.env.RUN_PAID_INTEGRATION_TESTS !== '1' || !process.env.OPENROUTER_API_KEY) {
+      return;
     }
     const adapter = new EmbedderAdapter();
     try {

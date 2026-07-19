@@ -379,6 +379,7 @@ describe("IntentDatabaseAdapter Integration", () => {
   test("context-to-intent candidate search excludes paused intents and admits legacy null", async () => {
     const chatAdapter = new ChatDatabaseAdapter();
     const network = await chatAdapter.createNetwork({ title: `Intent-Search ${Date.now()}` });
+    await chatAdapter.addMemberToNetwork(network.id, testUserId, 'owner');
     const embedding = [1, ...new Array(1999).fill(0)];
     try {
       await adapter.assignIntentToNetwork(testIntentId, network.id);

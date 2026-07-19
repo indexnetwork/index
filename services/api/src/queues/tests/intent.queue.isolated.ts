@@ -24,7 +24,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import { IntentQueue, QUEUE_NAME, type IntentJobPayload, type IntentQueueDatabase } from '../intent.queue';
+import type { IntentJobPayload, IntentQueueDatabase } from '../intent.queue';
 import { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD } from '@indexnetwork/protocol';
 
 /** Test database shape retaining the pre-atomic assignment spy for focused expectations. */
@@ -37,6 +37,7 @@ type IntentQueueTestDatabase = Partial<IntentQueueDatabase> & {
     assignmentMetadata?: Parameters<IntentQueueDatabase['assignIntentToNetworkIfMember']>[4],
   ) => Promise<void>;
 };
+const { IntentQueue, QUEUE_NAME } = await import('../intent.queue');
 
 /** Cast a plain object to IntentQueueDatabase for tests and provide assignment-policy defaults. */
 const asIntentDb = (db: IntentQueueTestDatabase): IntentQueueDatabase => ({

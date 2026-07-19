@@ -69,7 +69,7 @@ beforeAll(async () => {
   });
   await db.insert(intentNetworks).values({ intentId: intent1Id, networkId });
   fixture = { userAId, userBId, networkId, intent1Id, intent2Id: null, extraIntentIds: [] };
-});
+}, 30_000);
 
 afterAll(async () => {
   const intentIds = [
@@ -85,7 +85,7 @@ afterAll(async () => {
   await db.delete(networkMembers).where(eq(networkMembers.networkId, fixture.networkId));
   await db.delete(networks).where(eq(networks.id, fixture.networkId));
   await db.delete(users).where(inArray(users.id, [fixture.userAId, fixture.userBId]));
-});
+}, 30_000);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // IntentDatabaseAdapter
@@ -226,7 +226,7 @@ describe('ChatDatabaseAdapter', () => {
     expect(user!.name).toContain('UserA');
   });
 
-  it('getProfile reads from users, decoupled from saveProfile writes', async () => {
+  it('saveProfile updates the identity returned from users', async () => {
     const profile = {
       userId: fixture.userBId,
       identity: { name: 'User B', bio: 'Saved Bio', location: '' },
@@ -235,9 +235,8 @@ describe('ChatDatabaseAdapter', () => {
     await adapter.saveProfile(fixture.userBId, profile);
     const got = await adapter.getProfile(fixture.userBId);
     expect(got).not.toBeNull();
-    // getProfile returns the users-table identity, NOT the saveProfile write.
-    expect(got!.identity.name).toBe(TEST_PREFIX + 'UserB');
-    expect(got!.identity.bio).toBe('Bio B');
+    expect(got!.identity.name).toBe('User B');
+    expect(got!.identity.bio).toBe('Saved Bio');
     expect(got!.context).toBe('');
   });
 
@@ -717,7 +716,7 @@ describe('EnrichmentDatabaseAdapter', () => {
     expect(profile!.userId).toBe(fixture.userAId);
   });
 
-  it('saveProfile upsert does not change getProfile (users-sourced)', async () => {
+  it('saveProfile upsert updates getProfile through the users table', async () => {
     const profile = {
       userId: fixture.userBId,
       identity: { name: 'P B', bio: 'Bio', location: '' },
@@ -727,7 +726,7 @@ describe('EnrichmentDatabaseAdapter', () => {
     };
     await adapter.saveProfile(fixture.userBId, profile);
     const got = await adapter.getProfile(fixture.userBId);
-    expect(got!.identity.name).toBe(TEST_PREFIX + 'UserB');
+    expect(got!.identity.name).toBe('P B');
   });
 
   it('should save HyDE profile to hyde_documents', async () => {

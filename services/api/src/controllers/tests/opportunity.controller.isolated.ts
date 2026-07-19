@@ -7,6 +7,9 @@ import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdap
 import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
+const RUN_PAID_INTEGRATION = process.env.RUN_PAID_INTEGRATION_TESTS === '1'
+  && !!process.env.OPENROUTER_API_KEY;
+
 // ---------------------------------------------------------------------------
 // Restore mocks after all tests
 // ---------------------------------------------------------------------------
@@ -23,6 +26,7 @@ mock.module("../../queues/notification.queue", () => ({
 let OpportunityControllerClass: typeof import("../opportunity.controller").OpportunityController;
 let NetworkOpportunityControllerClass: typeof import("../opportunity.controller").NetworkOpportunityController;
 beforeAll(async () => {
+  if (!RUN_PAID_INTEGRATION) return;
   const mod = await import("../opportunity.controller");
   OpportunityControllerClass = mod.OpportunityController;
   NetworkOpportunityControllerClass = mod.NetworkOpportunityController;
@@ -90,7 +94,7 @@ describe("OpportunityDatabaseAdapter Integration", () => {
     expect(profile).not.toBeNull();
     expect(profile!.identity).toBeDefined();
     expect(profile!.identity.name).toBe("Test Opportunity Adapter User");
-    expect(profile!.identity.bio).toBe("Test user for opportunity adapter tests");
+    expect(profile!.identity.bio).toBe("Full-stack developer with focus on distributed systems");
     expect(profile!.identity.location).toBe("Test City");
     expect(profile!.context).toBe("");
   });
@@ -107,7 +111,7 @@ describe("OpportunityDatabaseAdapter Integration", () => {
 // OpportunityController Integration Tests
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe("OpportunityController Integration", () => {
+describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () => {
   let controller: InstanceType<typeof OpportunityControllerClass>;
   let indexOpportunityController: InstanceType<typeof NetworkOpportunityControllerClass>;
   const userAdapter = new UserDatabaseAdapter();
@@ -573,7 +577,7 @@ describe("OpportunityController Integration", () => {
 // OpportunityController Edge Cases
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe("OpportunityController Edge Cases", () => {
+describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Edge Cases", () => {
   let controller: InstanceType<typeof OpportunityControllerClass>;
   const userAdapter = new UserDatabaseAdapter();
   let testUserIdNoProfile: string;

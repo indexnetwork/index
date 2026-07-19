@@ -169,6 +169,9 @@ export class ChatController {
     return { persona: policy.persona };
   }
 
+  constructor(
+    private readonly suggestionGenerator: () => Pick<SuggestionGenerator, 'generate'> = getSuggestionGenerator,
+  ) {}
   /**
    * Send a message to the chat graph for processing.
    * The graph routes to appropriate subgraphs based on intent analysis.
@@ -520,6 +523,7 @@ export class ChatController {
     const rawOrigin = req.headers.get("origin");
     const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "").split(",").map(o => o.trim()).filter(Boolean);
     const originUrl = rawOrigin && trustedOrigins.includes(rawOrigin) ? rawOrigin : undefined;
+    const suggestionGenerator = this.suggestionGenerator;
 
     const stream = new ReadableStream({
       start(controller) {
@@ -721,7 +725,7 @@ export class ChatController {
             // Generate session title and suggestions in parallel
             const [sessionTitle, suggestions] = await Promise.all([
               chatSessionService.generateSessionTitle(sessionId, user.id),
-              getSuggestionGenerator()
+              suggestionGenerator()
                 .generate({
                   messages: [
                     { role: "user", content: messageContent },

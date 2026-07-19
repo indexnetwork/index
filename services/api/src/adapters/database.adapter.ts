@@ -216,13 +216,15 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
  * @param authUserId - The authenticated user's ID
  * @param indexScope - Array of network IDs the user has access to
  * @param embedder - Optional vector store for findSimilarIntentsInScope (pgvector search). When omitted, findSimilarIntentsInScope returns [].
+ * @param findPersonalIndexId - Injectable personal-index lookup for hermetic callers and tests.
  * @returns A SystemDatabase bound to authUserId and indexScope
  */
 export function createSystemDatabase(
   db: ChatDatabaseAdapter,
   authUserId: string,
   indexScope: string[],
-  embedder?: VectorStore
+  embedder?: VectorStore,
+  findPersonalIndexId: (userId: string) => Promise<string | null> = getPersonalIndexId,
 ) {
   /**
    * Verify that a networkId is within the allowed scope.
@@ -244,8 +246,8 @@ export function createSystemDatabase(
     if (theirMemberships.some((m) => indexScope.includes(m.networkId))) return true;
 
     // Check if either user's personal network contains the other as a contact
-    const myPersonalId = await getPersonalIndexId(authUserId);
-    const theirPersonalId = await getPersonalIndexId(userId);
+    const myPersonalId = await findPersonalIndexId(authUserId);
+    const theirPersonalId = await findPersonalIndexId(userId);
 
     if (myPersonalId) {
       const theirMembership = await db.getNetworkMembership(myPersonalId, userId);

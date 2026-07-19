@@ -1,7 +1,7 @@
-import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
-import { eq, sql } from 'drizzle-orm/sql';
+import { eq, inArray } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import { agents, opportunities, opportunityDeliveries, users } from '../../schemas/database.schema';
@@ -48,11 +48,16 @@ const stubPresenterDb = {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+const fixtureUserIds = new Set<string>();
+const fixtureAgentIds = new Set<string>();
+const fixtureOpportunityIds = new Set<string>();
+
 async function seedUser(): Promise<string> {
   const [user] = await db
     .insert(users)
     .values({ email: `test-${randomUUID()}@example.com`, name: 'Test User' })
     .returning({ id: users.id });
+  fixtureUserIds.add(user.id);
   return user.id;
 }
 
@@ -61,6 +66,7 @@ async function seedAgent(userId: string, notifyOnOpportunity = true): Promise<st
     .insert(agents)
     .values({ ownerId: userId, name: 'test-agent', type: 'external', notifyOnOpportunity })
     .returning({ id: agents.id });
+  fixtureAgentIds.add(agent.id);
   return agent.id;
 }
 
@@ -85,8 +91,29 @@ async function seedOpportunity(
       status,
     })
     .returning({ id: opportunities.id });
+  fixtureOpportunityIds.add(opp.id);
   return opp.id;
 }
+
+async function cleanupFixtures(): Promise<void> {
+  const opportunityIds = [...fixtureOpportunityIds];
+  const agentIds = [...fixtureAgentIds];
+  const userIds = [...fixtureUserIds];
+
+  if (opportunityIds.length > 0) {
+    await db.delete(opportunityDeliveries).where(inArray(opportunityDeliveries.opportunityId, opportunityIds));
+    await db.delete(opportunities).where(inArray(opportunities.id, opportunityIds));
+  }
+  if (agentIds.length > 0) await db.delete(agents).where(inArray(agents.id, agentIds));
+  if (userIds.length > 0) await db.delete(users).where(inArray(users.id, userIds));
+
+  fixtureOpportunityIds.clear();
+  fixtureAgentIds.clear();
+  fixtureUserIds.clear();
+}
+
+afterEach(cleanupFixtures);
+afterAll(cleanupFixtures);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Suite
@@ -97,17 +124,6 @@ describe('OpportunityDeliveryService.pickupPending', () => {
     new StubPresenter() as never,
     stubPresenterDb as never,
   );
-
-  beforeEach(async () => {
-    // Full wipe: order matters (FK constraints)
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-  });
-
-  afterAll(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-  });
 
   // ── 1. Pending opp with notify_on_opportunity = true ─────────────────────
 
@@ -180,6 +196,7 @@ describe('OpportunityDeliveryService.pickupPending', () => {
         status: 'draft',
       })
       .returning({ id: opportunities.id });
+    fixtureOpportunityIds.add(opp.id);
     expect(opp.id).toBeTruthy();
 
     const result = await service.pickupPending(agentA);
@@ -196,15 +213,8 @@ describe('fetchPendingCandidates', () => {
   );
 
   beforeEach(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
     userId = await seedUser();
     agentId = await seedAgent(userId);
-  });
-
-  afterAll(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
   });
 
   it('returns empty array when no eligible opportunities exist', async () => {
@@ -267,7 +277,7 @@ describe('fetchPendingCandidates', () => {
     const results = await svc.fetchPendingCandidates(agentId, 50);
     expect(results.opportunities).toHaveLength(20);
     expect(results.totalPending).toBe(25);
-  });
+  }, 15_000);
 
   it('clamps limit at or below 0 to 1', async () => {
     for (let i = 0; i < 5; i++) {
@@ -300,7 +310,7 @@ describe('fetchPendingCandidates', () => {
     const results = await svc.fetchPendingCandidates(agentId, Number.NaN);
     expect(results.opportunities).toHaveLength(20);
     expect(results.totalPending).toBe(25);
-  });
+  }, 15_000);
 
   it('uses 20 as default when limit is omitted', async () => {
     for (let i = 0; i < 25; i++) {
@@ -309,7 +319,7 @@ describe('fetchPendingCandidates', () => {
     const results = await svc.fetchPendingCandidates(agentId);
     expect(results.opportunities).toHaveLength(20);
     expect(results.totalPending).toBe(25);
-  });
+  }, 15_000);
 });
 
 describe('confirmOpportunityDelivery', () => {
@@ -322,8 +332,6 @@ describe('confirmOpportunityDelivery', () => {
   );
 
   beforeEach(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
     userId = await seedUser();
     agentId = await seedAgent(userId);
     opportunityId = await seedOpportunity([userId], 'pending');
@@ -374,15 +382,6 @@ describe('countDeliveriesSince', () => {
     new StubPresenter() as never,
     stubPresenterDb as never,
   );
-
-  beforeEach(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-  });
-
-  afterAll(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-  });
 
   it('counts deliveries grouped by trigger since the cutoff', async () => {
     const userId = await seedUser();
@@ -443,16 +442,6 @@ describe('getDeliveredOpportunities', () => {
     new StubPresenter() as never,
     stubPresenterDb as never,
   );
-
-  beforeEach(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-  });
-
-  afterAll(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-  });
 
   it('returns [] for an empty id list without querying', async () => {
     const userId = await seedUser();

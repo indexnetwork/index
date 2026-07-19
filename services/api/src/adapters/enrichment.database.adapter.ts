@@ -1,8 +1,11 @@
-import { readUserContext, readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, isNull, normalizeTelegramSocialValue, not, persistProfileIdentityToUser, sql } from './database.shared';
+import type { DrizzleDB } from '../lib/drizzle/drizzle';
 
+import { readUserContext, readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, isNull, normalizeTelegramSocialValue, not, persistProfileIdentityToUser, sql } from './database.shared';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 
 export class EnrichmentDatabaseAdapter {
+  constructor(private readonly database: DrizzleDB = db) {}
+
   /**
    * Retrieve a single user_context row (global when networkId is null), or null.
    * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the profile graph.
@@ -20,7 +23,7 @@ export class EnrichmentDatabaseAdapter {
   }
 
   async getUser(userId: string) {
-    const result = await db.select()
+    const result = await this.database.select()
       .from(schema.users)
       .where(eq(schema.users.id, userId))
       .limit(1);
@@ -46,17 +49,17 @@ export class EnrichmentDatabaseAdapter {
     hasActivePremise: boolean;
   }> {
     const [[user], [network], [premise]] = await Promise.all([
-      db
+      this.database
         .select({ onboarding: schema.users.onboarding, isGhost: schema.users.isGhost })
         .from(schema.users)
         .where(and(eq(schema.users.id, userId), isNull(schema.users.deletedAt)))
         .limit(1),
-      db
+      this.database
         .select({ permissions: schema.networks.permissions })
         .from(schema.networks)
         .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
         .limit(1),
-      db
+      this.database
         .select({ id: schema.premises.id })
         .from(schema.premises)
         .where(and(eq(schema.premises.userId, userId), eq(schema.premises.status, 'ACTIVE')))
@@ -90,7 +93,7 @@ export class EnrichmentDatabaseAdapter {
       updateFields.onboarding = { ...existingOnboarding, ...data.onboarding };
     }
 
-    const result = await db.update(schema.users)
+    const result = await this.database.update(schema.users)
       .set(updateFields)
       .where(eq(schema.users.id, userId))
       .returning();
@@ -111,7 +114,7 @@ export class EnrichmentDatabaseAdapter {
   }
 
   async getUserSocials(userId: string): Promise<Array<{ id: string; userId: string; label: string; value: string }>> {
-    const rows = await db.select()
+    const rows = await this.database.select()
       .from(schema.userSocials)
       .where(eq(schema.userSocials.userId, userId))
       .orderBy(asc(schema.userSocials.createdAt), asc(schema.userSocials.id));
@@ -133,7 +136,7 @@ export class EnrichmentDatabaseAdapter {
   async findTelegramHandleOwners(handle: string): Promise<Array<{ userId: string; label: string; value: string }>> {
     const normalized = handle.trim().toLowerCase();
     if (!normalized) return [];
-    const rows = await db.select({
+    const rows = await this.database.select({
       userId: schema.userSocials.userId,
       label: schema.userSocials.label,
       value: schema.userSocials.value,
@@ -150,7 +153,7 @@ export class EnrichmentDatabaseAdapter {
   }
 
   async setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
-    await db.transaction(async (tx) => {
+    await this.database.transaction(async (tx) => {
       await tx.delete(schema.userSocials).where(eq(schema.userSocials.userId, userId));
       if (socials.length > 0) {
         const classified = socials
@@ -238,13 +241,13 @@ export class EnrichmentDatabaseAdapter {
    * @returns true if the user was soft-deleted
    */
   async softDeleteGhost(userId: string): Promise<boolean> {
-    const [user] = await db.select({ id: schema.users.id, isGhost: schema.users.isGhost })
+    const [user] = await this.database.select({ id: schema.users.id, isGhost: schema.users.isGhost })
       .from(schema.users)
       .where(and(eq(schema.users.id, userId), isNull(schema.users.deletedAt)))
       .limit(1);
     if (!user || !user.isGhost) return false;
 
-    await db.update(schema.networkMembers)
+    await this.database.update(schema.networkMembers)
       .set({ deletedAt: new Date() })
       .where(and(
         eq(schema.networkMembers.userId, userId),
@@ -252,7 +255,7 @@ export class EnrichmentDatabaseAdapter {
         isNull(schema.networkMembers.deletedAt),
       ));
 
-    await db.update(schema.users)
+    await this.database.update(schema.users)
       .set({ deletedAt: new Date() })
       .where(eq(schema.users.id, userId));
 
@@ -282,7 +285,7 @@ export class EnrichmentDatabaseAdapter {
       (h) => sql`(LOWER(${schema.userSocials.value}) = ${h.value} AND ${schema.userSocials.label} = ${h.label})`,
     );
 
-    const results = await db
+    const results = await this.database
       .selectDistinct({ id: schema.userSocials.userId, isGhost: schema.users.isGhost, createdAt: schema.users.createdAt })
       .from(schema.userSocials)
       .innerJoin(schema.users, eq(schema.userSocials.userId, schema.users.id))
@@ -307,7 +310,7 @@ export class EnrichmentDatabaseAdapter {
    * @param targetId - The target user to absorb the ghost's data
    */
   async mergeGhostUser(sourceId: string, targetId: string): Promise<void> {
-    await db.transaction(async (tx) => {
+    await this.database.transaction(async (tx) => {
       // Guard: only active ghost users may be merged away
       const [source] = await tx
         .select({ isGhost: schema.users.isGhost })

@@ -13,7 +13,8 @@ while IFS= read -r file; do
   [[ ! -f "$file" ]] && { echo "SKIP (not found): $file"; continue; }
   [[ "$file" == *.e2e.* ]] && { echo "SKIP (E2E — needs dev server): $file"; continue; }
   total=$((total + 1))
-  if ! bun test "$file" 2>&1; then
+  echo "=== $file ==="
+  if ! bun test "./$file" 2>&1; then
     failed=$((failed + 1))
   fi
 done < .test-isolated

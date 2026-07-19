@@ -71,12 +71,12 @@ describe('NegotiatorMemoryDatabaseAdapter', () => {
     agentId = await createAgent(ownerId, 'personal');
     strangerAgentId = await createAgent(strangerId, 'personal');
     externalAgentId = await createAgent(ownerId, 'external');
-  });
+  }, 30_000);
 
   afterAll(async () => {
     // Users cascade to agents, which cascade to memories.
     await db.delete(schema.users).where(inArray(schema.users.id, userIds));
-  });
+  }, 30_000);
 
   it('creates, reads, updates and deletes a memory (CRUD)', async () => {
     const created = await adapter.create({
@@ -362,7 +362,7 @@ describe('NegotiatorMemoryDatabaseAdapter', () => {
 
     await adapter.delete(stale.id, ownerId);
     await adapter.delete(fresh.id, ownerId);
-  });
+  }, 20_000);
 
   it('cascades: deleting the subject user removes dossiers about them', async () => {
     const tempSubject = await createUser('subject-cascade');

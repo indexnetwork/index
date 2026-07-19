@@ -130,6 +130,12 @@ const envSchema = z.object({
   NEGOTIATION_EVIDENCE_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
   OUTCOME_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
 
+  // Test harness (repo-root .env.test only)
+  TEST_DATABASE_SAFE: optionalOne,
+  RUN_PAID_INTEGRATION_TESTS: optionalOne,
+  RUN_REDIS_INTEGRATION_TESTS: optionalOne,
+  RUN_LOCAL_API_E2E: optionalOne,
+
   // 9. MCP / tool runtime
   MCP_MAX_REQUEST_BYTES: optionalInt,
   MCP_TOOL_TIMEOUT_FAST_MS: optionalInt,

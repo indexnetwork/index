@@ -12,6 +12,7 @@
     "test:all": "bun run test && bun run test:isolated",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:test": "NODE_ENV=test drizzle-kit migrate",
     "db:apply-schema": "bun ./src/cli/db-apply-schema.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "bun ./src/cli/db-seed.ts",

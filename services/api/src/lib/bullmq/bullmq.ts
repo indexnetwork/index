@@ -8,11 +8,14 @@ const logger = log.lib.from("bullmq");
 
 /**
  * Get BullMQ-compatible Redis connection options.
- * BullMQ requires maxRetriesPerRequest: null (for blocking commands)
- * and lazyConnect: false (workers need active connection to receive jobs).
+ * BullMQ requires maxRetriesPerRequest: null for blocking commands. Tests stay
+ * lazy unless RUN_REDIS_INTEGRATION_TESTS=1 so importing queue singletons does
+ * not implicitly require a localhost Redis server.
  */
 function getBullMQConnection(): RedisOptions {
   const redisUrl = process.env.REDIS_URL;
+  const lazyConnect = process.env.NODE_ENV === 'test'
+    && process.env.RUN_REDIS_INTEGRATION_TESTS !== '1';
 
   if (redisUrl) {
     const url = new URL(redisUrl);
@@ -24,7 +27,7 @@ function getBullMQConnection(): RedisOptions {
       username: url.username || undefined,
       db: url.pathname ? parseInt(url.pathname.slice(1)) || 0 : 0,
       maxRetriesPerRequest: null,
-      lazyConnect: false,
+      lazyConnect,
       enableReadyCheck: false,
       ...(useTls && { tls: {} }),
     };
@@ -37,7 +40,7 @@ function getBullMQConnection(): RedisOptions {
     username: process.env.REDIS_USERNAME || undefined,
     db: parseInt(process.env.REDIS_DB || '0'),
     maxRetriesPerRequest: null,
-    lazyConnect: false,
+    lazyConnect,
     enableReadyCheck: false,
   };
 }
@@ -59,6 +62,44 @@ const DEFAULT_JOB_OPTS: JobsOptions = {
     count: 1000,
   },
 };
+
+function useHermeticRedis(): boolean {
+  return process.env.NODE_ENV === 'test'
+    && process.env.RUN_REDIS_INTEGRATION_TESTS !== '1';
+}
+
+function createHermeticQueue<T>(name: string): Queue<T> {
+  const jobs = new Map<string, Job<T>>();
+  let sequence = 0;
+  const queue = {
+    name,
+    async add(jobName: string, data: T, options?: JobsOptions) {
+      const id = String(options?.jobId ?? `${name}-${++sequence}`);
+      const job = {
+        id,
+        name: jobName,
+        data,
+        opts: options ?? {},
+        async getState() { return 'waiting'; },
+        async remove() { jobs.delete(id); },
+      } as unknown as Job<T>;
+      jobs.set(id, job);
+      return job;
+    },
+    async addBulk(entries: Array<{ name: string; data: T; opts?: JobsOptions }>) {
+      return Promise.all(entries.map((entry) => queue.add(entry.name, entry.data, entry.opts)));
+    },
+    async getJob(id: string) { return jobs.get(String(id)) ?? null; },
+    async getJobs() { return [...jobs.values()]; },
+    async getJobCounts() { return { waiting: jobs.size }; },
+    async remove(id: string) { return jobs.delete(String(id)) ? 1 : 0; },
+    async upsertJobScheduler() { return undefined; },
+    async removeJobScheduler() { return true; },
+    async close() { jobs.clear(); },
+    on() { return queue; },
+  };
+  return queue as unknown as Queue<T>;
+}
 
 /**
  * QueueFactory
@@ -88,6 +129,7 @@ export class QueueFactory {
    */
   static createQueue<T = any>(name: string, options?: Omit<QueueOptions, 'connection'>): Queue<T> {
     logger.info('Initializing queue', { name });
+    if (useHermeticRedis()) return createHermeticQueue<T>(name);
     return new Queue<T>(name, {
       connection: SHARED_REDIS_OPTS,
       defaultJobOptions: DEFAULT_JOB_OPTS,
@@ -124,6 +166,14 @@ export class QueueFactory {
       },
       () => processor(job, token),
     );
+    if (useHermeticRedis()) {
+      return {
+        name,
+        processor: tracedProcessor,
+        async close() {},
+        on() { return this; },
+      } as unknown as Worker<T>;
+    }
     return new Worker<T>(name, tracedProcessor, {
       connection: SHARED_REDIS_OPTS,
       concurrency: 1, // Default to sequential processing
@@ -141,6 +191,13 @@ export class QueueFactory {
    * @returns QueueEvents instance.
    */
   static createQueueEvents(name: string): QueueEvents {
+    if (useHermeticRedis()) {
+      const events = {
+        on() { return events; },
+        async close() {},
+      };
+      return events as unknown as QueueEvents;
+    }
     return new QueueEvents(name, {
       connection: SHARED_REDIS_OPTS,
     });

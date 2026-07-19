@@ -15,18 +15,16 @@ mock.module('../src/lib/email/transport.helper', () => ({
 
 const enrichBulkSpy = mock<(items: Array<{ userId: string; networkId?: string; reason?: string }>) => Promise<unknown[]>>(async () => []);
 const enrichSingleSpy = mock<(data: { userId: string; networkId?: string; reason?: string }) => Promise<unknown>>(async () => ({}));
-mock.module('../src/queues/enrichment.queue', () => ({
-  enrichmentQueue: {
-    addEnrichUserJobBulk: enrichBulkSpy,
-    addEnrichUserJob: enrichSingleSpy,
-  },
-}));
 
 afterAll(() => {
   mock.restore();
 });
 
-const { experimentService } = await import('../src/services/experiment.service');
+const { ExperimentService } = await import('../src/services/experiment.service');
+const experimentService = new ExperimentService({
+  addEnrichUserJobBulk: enrichBulkSpy,
+  addEnrichUserJob: enrichSingleSpy,
+});
 
 describe('CSV import → network-scoped agent end-to-end', () => {
   let networkId: string;
@@ -74,7 +72,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
         await db.delete(schema.networks).where(inArray(schema.networks.id, allNetIds));
       }
     }
-  });
+  }, 30_000);
 
   test('importMembers provisions user + scoped agent + key + email', async () => {
     sendSpy.mockClear();
@@ -90,10 +88,10 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       .select({ id: schema.users.id, name: schema.users.name, onboarding: schema.users.onboarding })
       .from(schema.users)
       .where(eq(schema.users.email, email));
-    expect(user).toBeTruthy();
-    expect(user.name).toBe(email.split('@')[0]);
-    expect(user.onboarding?.profileSeeds?.[0]?.name).toBe('CSV Invitee');
     cleanupUserIds.push(user.id);
+    expect(user).toBeTruthy();
+    expect(user.name).toBe('CSV Invitee');
+    expect(user.onboarding?.profileSeeds?.[0]?.name).toBe('CSV Invitee');
 
     // Membership
     const [member] = await db
@@ -161,7 +159,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(perms.length).toBe(1);
   }, 15000);
 
-  test('importMembers stages CSV profile fields without activating them', async () => {
+  test('importMembers persists CSV profile fields and stages their onboarding provenance', async () => {
     const email = `csv-profile-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
       { email, name: 'Profile Test', bio: 'AI researcher at MIT', location: 'Cambridge, MA', socials: [{ label: 'linkedin', value: 'https://linkedin.com/in/profile-test' }] },
@@ -173,8 +171,8 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       .where(eq(schema.users.email, email));
     cleanupUserIds.push(user.id);
 
-    expect(user.intro).toBeNull();
-    expect(user.location).toBeNull();
+    expect(user.intro).toBe('AI researcher at MIT');
+    expect(user.location).toBe('Cambridge, MA');
     const seed = user.onboarding?.profileSeeds?.[0];
     expect(seed).toMatchObject({
       source: 'experiment_csv_import',
@@ -336,7 +334,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding!.flow).toBe(3);
   });
 
-  test('signup stages rich profile fields and enqueues profile enrichment', async () => {
+  test('signup persists rich profile fields, stages provenance, and enqueues enrichment', async () => {
     enrichSingleSpy.mockClear();
     const email = `signup-enrich-${Date.now()}@test.dev`;
     const result = await experimentService.signup(networkId, {
@@ -352,9 +350,9 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       .select({ name: schema.users.name, intro: schema.users.intro, location: schema.users.location, onboarding: schema.users.onboarding })
       .from(schema.users)
       .where(eq(schema.users.id, result.user.id));
-    expect(user.name).toBe(email.split('@')[0]);
-    expect(user.intro).toBeNull();
-    expect(user.location).toBeNull();
+    expect(user.name).toBe('Signup Enrich');
+    expect(user.intro).toBe('ML researcher');
+    expect(user.location).toBe('Oakland');
     expect(user.onboarding?.profileSeeds?.[0]).toMatchObject({
       source: 'experiment_signup',
       networkId,

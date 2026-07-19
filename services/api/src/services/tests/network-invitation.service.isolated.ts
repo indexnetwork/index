@@ -31,7 +31,7 @@ describe('networkInvitationService.invite', () => {
       .values({ title: 'Invite Net', isPersonal: false, isExperiment: true })
       .returning({ id: schema.networks.id });
     networkId = n.id;
-  });
+  }, 30_000);
 
   afterAll(async () => {
     if (cleanupUserIds.length > 0) {
@@ -55,7 +55,7 @@ describe('networkInvitationService.invite', () => {
       }
     }
     await db.delete(schema.networks).where(eq(schema.networks.id, networkId));
-  });
+  }, 30_000);
 
   test('creates user, agent, network-scoped permissions, key, and membership for a new email', async () => {
     sendSpy.mockClear();

@@ -28,12 +28,14 @@ mock.module("../../adapters/database.adapter", () => ({
 mock.module("../../adapters/embedder.adapter", () => ({
   EmbedderAdapter: class {},
 }));
+const MockRedisCacheAdapter = class {
+  get = mock(() => Promise.resolve(null));
+  set = mock(() => Promise.resolve());
+  mget = mock(() => Promise.resolve([]));
+};
 mock.module("../../adapters/cache.adapter", () => ({
-  RedisCacheAdapter: class {
-    get = mock(() => Promise.resolve(null));
-    set = mock(() => Promise.resolve());
-    mget = mock(() => Promise.resolve([]));
-  },
+  RedisCacheAdapter: MockRedisCacheAdapter,
+  cacheAdapter: new MockRedisCacheAdapter(),
 }));
 
 afterAll(() => {

@@ -168,10 +168,16 @@ async function parseOptionalBody<T>(req: Request, schema: z.ZodSchema<T>, emptyV
 
 @Controller('/agents')
 export class AgentController {
+  constructor(
+    private readonly agents: typeof agentService = agentService,
+    private readonly negotiations: typeof negotiationPollingService = negotiationPollingService,
+    private readonly testMessages: AgentTestMessageService = agentTestMessageService,
+    private readonly deliveries: typeof opportunityDeliveryService = opportunityDeliveryService,
+  ) {}
   @Get('')
   @UseGuards(RateLimit('read'), AuthGuard)
   async list(_req: Request, user: AuthenticatedUser) {
-    const agents = await agentService.listForUser(user.id);
+    const agents = await this.agents.listForUser(user.id);
     logger.verbose('Listed agents', { userId: user.id, count: agents.length });
     return Response.json({ agents });
   }
@@ -185,7 +191,7 @@ export class AgentController {
     }
 
     try {
-      const agent = await agentService.create(user.id, body.name, body.description);
+      const agent = await this.agents.create(user.id, body.name, body.description);
       return Response.json({ agent }, { status: 201 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -201,7 +207,7 @@ export class AgentController {
     }
 
     try {
-      const result = await agentService.getMe(agentId, user.id);
+      const result = await this.agents.getMe(agentId, user.id);
       return Response.json(result);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err, 404));
@@ -217,7 +223,7 @@ export class AgentController {
     }
 
     try {
-      const agent = await agentService.getById(agentId, user.id);
+      const agent = await this.agents.getById(agentId, user.id);
       return Response.json({ agent });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err, 404));
@@ -238,7 +244,7 @@ export class AgentController {
     }
 
     try {
-      const agent = await agentService.update(agentId, user.id, body);
+      const agent = await this.agents.update(agentId, user.id, body);
       return Response.json({ agent });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -254,7 +260,7 @@ export class AgentController {
     }
 
     try {
-      await agentService.delete(agentId, user.id);
+      await this.agents.delete(agentId, user.id);
       return new Response(null, { status: 204 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -275,7 +281,7 @@ export class AgentController {
     }
 
     try {
-      const transport = await agentService.addTransport(
+      const transport = await this.agents.addTransport(
         agentId,
         user.id,
         body.channel,
@@ -298,7 +304,7 @@ export class AgentController {
     }
 
     try {
-      await agentService.removeTransport(agentId, transportId, user.id);
+      await this.agents.removeTransport(agentId, transportId, user.id);
       return new Response(null, { status: 204 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -319,7 +325,7 @@ export class AgentController {
     }
 
     try {
-      const permission = await agentService.grantPermission(
+      const permission = await this.agents.grantPermission(
         agentId,
         user.id,
         body.actions,
@@ -342,7 +348,7 @@ export class AgentController {
     }
 
     try {
-      await agentService.revokePermission(agentId, permissionId, user.id);
+      await this.agents.revokePermission(agentId, permissionId, user.id);
       return new Response(null, { status: 204 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -358,7 +364,7 @@ export class AgentController {
     }
 
     try {
-      const tokens = await agentService.listTokens(agentId, user.id);
+      const tokens = await this.agents.listTokens(agentId, user.id);
       return Response.json({ tokens });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -379,7 +385,7 @@ export class AgentController {
     }
 
     try {
-      const token = await agentService.createToken(agentId, user.id, body.name);
+      const token = await this.agents.createToken(agentId, user.id, body.name);
       return Response.json({ token }, { status: 201 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -396,7 +402,7 @@ export class AgentController {
     }
 
     try {
-      await agentService.revokeToken(agentId, tokenId, user.id);
+      await this.agents.revokeToken(agentId, tokenId, user.id);
       return new Response(null, { status: 204 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -414,8 +420,8 @@ export class AgentController {
     try {
       // Run pickup first — it proves the caller is authorized for this agentId.
       // Only then bump the heartbeat, so unauthorized probes cannot spoof liveness.
-      const result = await negotiationPollingService.pickup(agentId, user.id);
-      await agentService.touchLastSeen(agentId);
+      const result = await this.negotiations.pickup(agentId, user.id);
+      await this.agents.touchLastSeen(agentId);
       if (!result) {
         return new Response(null, { status: 204 });
       }
@@ -440,7 +446,7 @@ export class AgentController {
     }
 
     try {
-      const result = await negotiationPollingService.respond(agentId, user.id, negotiationId, body);
+      const result = await this.negotiations.respond(agentId, user.id, negotiationId, body);
       return Response.json(result);
     } catch (err) {
       // UnauthorizedError/NotFoundError/ConflictError map to 403/404/409 via errorStatus.
@@ -463,8 +469,8 @@ export class AgentController {
 
     try {
       // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
-      await agentService.getById(agentId, user.id);
-      const result = await agentTestMessageService.enqueue(agentId, user.id, body.content);
+      await this.agents.getById(agentId, user.id);
+      const result = await this.testMessages.enqueue(agentId, user.id, body.content);
       return Response.json(result, { status: 201 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -481,9 +487,9 @@ export class AgentController {
 
     try {
       // Verify ownership before bumping heartbeat so unauthorized probes can't spoof liveness.
-      await agentService.getById(agentId, user.id);
-      const result = await agentTestMessageService.pickup(agentId);
-      await agentService.touchLastSeen(agentId);
+      await this.agents.getById(agentId, user.id);
+      const result = await this.testMessages.pickup(agentId);
+      await this.agents.touchLastSeen(agentId);
       if (!result) {
         return new Response(null, { status: 204 });
       }
@@ -508,7 +514,7 @@ export class AgentController {
     }
 
     try {
-      await agentTestMessageService.confirmDelivered(messageId, body.reservationToken);
+      await this.testMessages.confirmDelivered(messageId, body.reservationToken);
       return Response.json({ ok: true });
     } catch (err) {
       const msg = parseErrorMessage(err);
@@ -529,12 +535,12 @@ export class AgentController {
 
     try {
       // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
-      await agentService.getById(agentId, user.id);
+      await this.agents.getById(agentId, user.id);
 
       // Heartbeat: record that this personal agent is actively polling
-      await agentService.touchLastSeen(agentId);
+      await this.agents.touchLastSeen(agentId);
 
-      const result = await opportunityDeliveryService.pickupPending(agentId);
+      const result = await this.deliveries.pickupPending(agentId);
       if (!result) {
         return new Response(null, { status: 204 });
       }
@@ -564,9 +570,9 @@ export class AgentController {
     }
 
     try {
-      await agentService.getById(agentId, user.id);
-      await agentService.touchLastSeen(agentId);
-      const result = await opportunityDeliveryService.fetchPendingCandidates(agentId, limit);
+      await this.agents.getById(agentId, user.id);
+      await this.agents.touchLastSeen(agentId);
+      const result = await this.deliveries.fetchPendingCandidates(agentId, limit);
       return Response.json({ opportunities: result.opportunities, totalPending: result.totalPending });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -589,9 +595,9 @@ export class AgentController {
     const frontendUrl = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
 
     try {
-      await agentService.getById(agentId, user.id);
-      await agentService.touchLastSeen(agentId);
-      const opportunities = await opportunityDeliveryService.fetchAcceptedCandidates(agentId, frontendUrl, limit);
+      await this.agents.getById(agentId, user.id);
+      await this.agents.touchLastSeen(agentId);
+      const opportunities = await this.deliveries.fetchAcceptedCandidates(agentId, frontendUrl, limit);
       return Response.json({ opportunities });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -617,9 +623,9 @@ export class AgentController {
     }
 
     try {
-      await agentService.getById(agentId, user.id);
-      await agentService.touchLastSeen(agentId);
-      const counts = await opportunityDeliveryService.countDeliveriesSince(agentId, since);
+      await this.agents.getById(agentId, user.id);
+      await this.agents.touchLastSeen(agentId);
+      const counts = await this.deliveries.countDeliveriesSince(agentId, since);
       return Response.json(counts);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -642,8 +648,8 @@ export class AgentController {
 
     try {
       // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
-      await agentService.getById(agentId, user.id);
-      await opportunityDeliveryService.confirmDelivered(opportunityId, user.id, body.reservationToken);
+      await this.agents.getById(agentId, user.id);
+      await this.deliveries.confirmDelivered(opportunityId, user.id, body.reservationToken);
       return Response.json({ ok: true });
     } catch (err) {
       const msg = parseErrorMessage(err);

@@ -103,7 +103,10 @@ export interface ResolveResult {
  * - List and manage contacts
  */
 export class ContactService {
-  constructor(private db = new ContactDatabaseAdapter()) {}
+  constructor(
+    private db = new ContactDatabaseAdapter(),
+    private readonly contactsEnabled: () => boolean = isContactsEnabled,
+  ) {}
 
   /**
    * Add a single contact by email.
@@ -120,7 +123,7 @@ export class ContactService {
     email: string,
     options: { name?: string; restore?: boolean } = {}
   ): Promise<ContactResult> {
-    if (!isContactsEnabled()) throw new ContactsDisabledError();
+    if (!this.contactsEnabled()) throw new ContactsDisabledError();
 
     const normalizedEmail = email.toLowerCase().trim();
     const name = options.name?.trim() || normalizedEmail.split('@')[0];
@@ -174,7 +177,7 @@ export class ContactService {
     ownerId: string,
     contacts: ContactInput[]
   ): Promise<ResolveResult> {
-    if (!isContactsEnabled()) throw new ContactsDisabledError();
+    if (!this.contactsEnabled()) throw new ContactsDisabledError();
 
     const owner = await this.db.getUser(ownerId);
     const ownerEmail = owner?.email.toLowerCase();
@@ -245,7 +248,7 @@ export class ContactService {
     ownerId: string,
     contacts: ContactInput[]
   ): Promise<ImportResult> {
-    if (!isContactsEnabled()) throw new ContactsDisabledError();
+    if (!this.contactsEnabled()) throw new ContactsDisabledError();
 
     logger.info('Importing contacts', { ownerId, count: contacts.length });
 

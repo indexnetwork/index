@@ -11,7 +11,12 @@ import { contactService } from "../../services/contact.service";
 import { IntegrationService } from "../../services/integration.service";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
-describe("ToolController Integration", () => {
+const describePaid = process.env.RUN_PAID_INTEGRATION_TESTS === '1'
+  && Boolean(process.env.OPENROUTER_API_KEY && process.env.COMPOSIO_API_KEY && process.env.PARALLELS_API_KEY)
+  ? describe
+  : describe.skip;
+
+describePaid("ToolController Integration", () => {
   let controller: ToolController;
   const userAdapter = new UserDatabaseAdapter();
   let testUserId: string;

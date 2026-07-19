@@ -1,7 +1,7 @@
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
-import { sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 
 import db from '../src/lib/drizzle/drizzle';
 import { conversations } from '../src/schemas/conversation.schema';
@@ -45,11 +45,17 @@ const FRONTEND_URL = 'https://test.index.network';
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+const fixtureUserIds = new Set<string>();
+const fixtureAgentIds = new Set<string>();
+const fixtureOpportunityIds = new Set<string>();
+const fixtureConversationIds = new Set<string>();
+
 async function seedUser(name = 'Test User'): Promise<string> {
   const [user] = await db
     .insert(users)
     .values({ email: `test-${randomUUID()}@example.com`, name })
     .returning({ id: users.id });
+  fixtureUserIds.add(user.id);
   return user.id;
 }
 
@@ -58,6 +64,7 @@ async function seedAgent(userId: string): Promise<string> {
     .insert(agents)
     .values({ ownerId: userId, name: 'test-agent', type: 'external' })
     .returning({ id: agents.id });
+  fixtureAgentIds.add(agent.id);
   return agent.id;
 }
 
@@ -77,6 +84,7 @@ async function seedAcceptedOpportunity(
       acceptedBy,
     })
     .returning({ id: opportunities.id });
+  fixtureOpportunityIds.add(opp.id);
   return opp.id;
 }
 
@@ -94,6 +102,7 @@ async function seedConversation(userA: string, userB: string): Promise<string> {
     .insert(conversations)
     .values({ dmPair })
     .returning({ id: conversations.id });
+  fixtureConversationIds.add(conv.id);
   return conv.id;
 }
 
@@ -101,12 +110,26 @@ async function softDeleteUser(userId: string): Promise<void> {
   await db.execute(sql`UPDATE users SET deleted_at = now() WHERE id = ${userId}`);
 }
 
-async function cleanupTables(): Promise<void> {
-  await db.execute(sql`DELETE FROM opportunity_deliveries`);
-  await db.execute(sql`DELETE FROM opportunities`);
-  await db.execute(sql`DELETE FROM user_socials`);
-  await db.execute(sql`DELETE FROM conversation_participants`);
-  await db.execute(sql`DELETE FROM conversations`);
+async function cleanupFixtures(): Promise<void> {
+  const opportunityIds = [...fixtureOpportunityIds];
+  const conversationIds = [...fixtureConversationIds];
+  const agentIds = [...fixtureAgentIds];
+  const userIds = [...fixtureUserIds];
+
+  if (opportunityIds.length > 0) {
+    await db.delete(opportunityDeliveries).where(inArray(opportunityDeliveries.opportunityId, opportunityIds));
+    await db.delete(opportunities).where(inArray(opportunities.id, opportunityIds));
+  }
+  if (conversationIds.length > 0) {
+    await db.delete(conversations).where(inArray(conversations.id, conversationIds));
+  }
+  if (agentIds.length > 0) await db.delete(agents).where(inArray(agents.id, agentIds));
+  if (userIds.length > 0) await db.delete(users).where(inArray(users.id, userIds));
+
+  fixtureOpportunityIds.clear();
+  fixtureConversationIds.clear();
+  fixtureAgentIds.clear();
+  fixtureUserIds.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,16 +147,13 @@ describe('fetchAcceptedCandidates', () => {
   let agentB: string;
 
   beforeEach(async () => {
-    await cleanupTables();
-
     userB = await seedUser('User B');
     userA = await seedUser('User A');
     agentB = await seedAgent(userB);
   });
 
-  afterAll(async () => {
-    await cleanupTables();
-  });
+  afterEach(cleanupFixtures);
+  afterAll(cleanupFixtures);
 
   test('returns empty when no accepted opportunities exist', async () => {
     const result = await service.fetchAcceptedCandidates(agentB, FRONTEND_URL);
@@ -223,7 +243,7 @@ describe('fetchAcceptedCandidates', () => {
     // Second poll should be empty
     const second = await service.fetchAcceptedCandidates(agentB, FRONTEND_URL);
     expect(second).toEqual([]);
-  }, 15_000);
+  });
 
   test('prior pending-status delivery does not block accepted-status delivery', async () => {
     await seedConversation(userA, userB);
@@ -239,6 +259,7 @@ describe('fetchAcceptedCandidates', () => {
         status: 'pending',
       })
       .returning({ id: opportunities.id });
+    fixtureOpportunityIds.add(opp.id);
 
     // Commit ambient delivery while status is pending → deliveredAtStatus='pending'
     await service.confirmOpportunityDelivery({ opportunityId: opp.id, userId: userB, agentId: agentB, trigger: 'ambient' });

@@ -17,12 +17,17 @@ const candidateUser: UserNegotiationContext = {
   profile: { name: "Bob", bio: "Senior ML engineer", skills: ["machine learning", "PyTorch", "recommendations"] },
 };
 
+const describePaid =
+  process.env.RUN_PAID_INTEGRATION_TESTS === "1" && process.env.OPENROUTER_API_KEY
+    ? describe
+    : describe.skip;
+
 const seedAssessment: SeedAssessment = {
   reasoning: "Strong complementary skills between product management and ML engineering",
   valencyRole: "Peer",
 };
 
-describe("IndexNegotiator (proposer)", () => {
+describePaid("IndexNegotiator (proposer)", () => {
   it("generates a valid proposal turn", async () => {
     const negotiator = new IndexNegotiator();
     const result = await negotiator.invoke({
@@ -40,7 +45,7 @@ describe("IndexNegotiator (proposer)", () => {
   }, 30_000);
 });
 
-describe("IndexNegotiator (responder)", () => {
+describePaid("IndexNegotiator (responder)", () => {
   it("evaluates a proposal and responds with accept, reject, or counter", async () => {
     const negotiator = new IndexNegotiator();
 

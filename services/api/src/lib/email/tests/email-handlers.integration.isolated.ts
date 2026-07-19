@@ -4,8 +4,10 @@ config({ path: '.env.test', override: true });
 
 import { sendConnectionRequestEmail, sendConnectionAcceptedEmail } from '../notification.sender';
 
-// Only run this if explicitly requested or if we have the API key
-const runIntegration = process.env.RESEND_API_KEY && process.env.TESTING_EMAIL_ADDRESS;
+// Paid delivery requires an explicit opt-in in addition to credentials.
+const runIntegration = process.env.RUN_PAID_INTEGRATION_TESTS === '1'
+  && !!process.env.RESEND_API_KEY
+  && !!process.env.TESTING_EMAIL_ADDRESS;
 
 describe.skipIf(!runIntegration)('Email Handlers Integration (Real Emails)', () => {
     const testEmail = process.env.TESTING_EMAIL_ADDRESS || 'test@example.com';

@@ -30,6 +30,11 @@ import { negotiatorMemories } from "../../schemas/database.schema";
 import { conversations, tasks } from "../../schemas/conversation.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
+const testPaid = process.env.RUN_PAID_INTEGRATION_TESTS === '1'
+  && process.env.OPENROUTER_API_KEY
+  ? test
+  : test.skip;
+
 const OWNER_EMAIL = "test-memory-owner@example.com";
 const MUTUAL_EMAIL = "test-memory-mutual@example.com";
 
@@ -164,7 +169,7 @@ describe("Negotiator memory inspection API (IND-408)", () => {
 
   // ─── Edits ─────────────────────────────────────────────────────────────────
 
-  test("owner edits content + confidence; content edit re-embeds", async () => {
+  testPaid("owner edits content + confidence; content edit re-embeds", async () => {
     const res = await controller.updateNegotiatorMemory(
       patchReq(ownerId, playbookId, { content: "Always anchor on scope before price.", confidence: 0.8 }),
       owner(), { userId: ownerId, memoryId: playbookId });

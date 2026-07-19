@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 
 import { findTelegramHandleMismatch, parseClientSurface, resolveMcpApiKeyPrincipal, telegramHandleFromRequest } from '../mcp.controller';
 
@@ -41,16 +41,13 @@ describe('parseClientSurface', () => {
   });
 
   test('warns exactly once per unknown value, not on subsequent calls', () => {
-    const spy = spyOn(console, 'warn');
+    const warnUnknown = mock((_value: string) => {});
     // Use a value not seen by any earlier test so the Set is empty for it.
-    parseClientSurface('zz-novel-unknown-value');
-    parseClientSurface('zz-novel-unknown-value');
-    parseClientSurface('zz-novel-unknown-value');
-    const callCount = spy.mock.calls.filter((call) =>
-      typeof call[0] === 'string' && call[0].includes('zz-novel-unknown-value')
-    ).length;
-    expect(callCount).toBe(1);
-    spy.mockRestore();
+    parseClientSurface('zz-novel-unknown-value', warnUnknown);
+    parseClientSurface('zz-novel-unknown-value', warnUnknown);
+    parseClientSurface('zz-novel-unknown-value', warnUnknown);
+    expect(warnUnknown).toHaveBeenCalledTimes(1);
+    expect(warnUnknown).toHaveBeenCalledWith('zz-novel-unknown-value');
   });
 });
 

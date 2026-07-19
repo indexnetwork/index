@@ -1,56 +1,32 @@
-/**
- * Characterization tests for NegotiationTimeoutQueue.handleTimeout.
- * Locks the observable side effects (db adapter calls + re-arm) before the
- * shared timeout core is extracted. Mocks QueueFactory + protocol IndexNegotiator
- * so no Redis/LLM is touched.
- */
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
-// Fallback so the eager protocol barrel (createModel) can evaluate without a real
-// key when .env.test is absent (e.g. CI). Keeps the spec hermetic.
-process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'test-key';
+/** Characterization tests for NegotiationTimeoutQueue timeout behavior. */
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { describe, expect, it, mock, afterAll, beforeEach } from 'bun:test';
+import { NegotiationTimeoutQueue, type NegotiationTimeoutQueueDeps } from '../negotiations/timeout.queue';
 
 const mockAdd = mock(async () => ({ id: 'job-1' }));
 const mockGetJob = mock(async () => null as unknown);
+const queue = {
+  add: mockAdd,
+  getJob: mockGetJob,
+  close: async () => {},
+};
 
-mock.module('../../lib/bullmq/bullmq', () => ({
-  QueueFactory: {
-    createQueue: () => ({ add: mockAdd, getJob: mockGetJob, close: async () => {} }),
-    createWorker: () => ({ close: async () => {} }),
-    createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
-  },
-}));
-
-// Controllable AI turn returned by the mocked negotiator.
-let MOCK_TURN: { action: string; assessment: { reasoning: string; suggestedRoles: { ownUser: string } } } = {
+let MOCK_TURN: {
+  action: string;
+  assessment: { reasoning: string; suggestedRoles: { ownUser: string } };
+} = {
   action: 'counter',
   assessment: { reasoning: 'ai-reasoning', suggestedRoles: { ownUser: 'role-ai' } },
 };
 
-mock.module('@indexnetwork/protocol', () => ({
-  IndexNegotiator: class {
-    async invoke() {
-      return MOCK_TURN;
-    }
-  },
-  AMBIENT_PARK_WINDOW_MS: 1000,
-  // Pure seat-rule helpers (mirror the real implementations — timeout.shared
-  // imports these from the barrel, which this mock replaces wholesale).
-  isTerminalAction: (a) => a === 'accept' || a === 'reject' || a === 'withdraw' || a === 'decline',
-  isRejectLikeAction: (a) => a === 'reject' || a === 'withdraw' || a === 'decline',
-  readProtocolVersion: (m) => (m?.protocolVersion === 'v2' ? 'v2' : m?.protocolVersion === 'v1' ? 'v1' : null),
-  resolveSeat: (userId, m) => ((m?.initiatorUserId || m?.sourceUserId) === userId ? 'initiator' : 'counterparty'),
-}));
-
-afterAll(() => {
-  mock.restore();
-});
-
-// Deferred import: ensures the mock.module(...) registrations above apply before
-// the real ../negotiations/timeout.queue (and its protocol barrel) are evaluated.
-const { NegotiationTimeoutQueue } = await import('../negotiations/timeout.queue');
+function createQueue(deps: NegotiationTimeoutQueueDeps = {}): NegotiationTimeoutQueue {
+  return new NegotiationTimeoutQueue({
+    queue: queue as never,
+    invokeNegotiator: async () => MOCK_TURN as never,
+    parkWindowMs: 1_000,
+    ...deps,
+  });
+}
 
 type Calls = Record<string, unknown[][]>;
 
@@ -86,28 +62,28 @@ beforeEach(() => {
 describe('NegotiationTimeoutQueue.handleTimeout', () => {
   it('skips when task not found', async () => {
     const { db } = makeDb(null, []);
-    const q = new NegotiationTimeoutQueue({ database: db as never });
+    const q = createQueue({ database: db as never });
     await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 0 });
     expect(db.createMessage).not.toHaveBeenCalled();
   });
 
   it('skips when task no longer waiting_for_agent', async () => {
     const { db } = makeDb(negTask({ state: 'completed' }), [msg(), msg()]);
-    const q = new NegotiationTimeoutQueue({ database: db as never });
+    const q = createQueue({ database: db as never });
     await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 2 });
     expect(db.createMessage).not.toHaveBeenCalled();
   });
 
   it('skips on turn-count mismatch (stale job)', async () => {
     const { db } = makeDb(negTask(), [msg(), msg()]);
-    const q = new NegotiationTimeoutQueue({ database: db as never });
+    const q = createQueue({ database: db as never });
     await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 99 });
     expect(db.createMessage).not.toHaveBeenCalled();
   });
 
   it('skips when task is not a negotiation', async () => {
     const { db } = makeDb(negTask({ metadata: { type: 'other' } }), [msg(), msg()]);
-    const q = new NegotiationTimeoutQueue({ database: db as never });
+    const q = createQueue({ database: db as never });
     await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 2 });
     expect(db.createMessage).not.toHaveBeenCalled();
   });
@@ -115,7 +91,7 @@ describe('NegotiationTimeoutQueue.handleTimeout', () => {
   it('accept: finalizes (completed + artifact + opportunity pending)', async () => {
     MOCK_TURN = { action: 'accept', assessment: { reasoning: 'agreed', suggestedRoles: { ownUser: 'role-ai' } } };
     const { db } = makeDb(negTask(), [msg(), msg()]);
-    const q = new NegotiationTimeoutQueue({ database: db as never });
+    const q = createQueue({ database: db as never });
     await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 2 });
     expect(db.createMessage).toHaveBeenCalled();
     expect(db.updateTaskState).toHaveBeenCalledWith('task-1', 'completed');
@@ -126,7 +102,7 @@ describe('NegotiationTimeoutQueue.handleTimeout', () => {
   it('reject: finalizes with rejected opportunity', async () => {
     MOCK_TURN = { action: 'reject', assessment: { reasoning: 'no', suggestedRoles: { ownUser: 'role-ai' } } };
     const { db } = makeDb(negTask(), [msg(), msg()]);
-    const q = new NegotiationTimeoutQueue({ database: db as never });
+    const q = createQueue({ database: db as never });
     await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 2 });
     expect(db.updateTaskState).toHaveBeenCalledWith('task-1', 'completed');
     expect(db.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'rejected');
@@ -135,7 +111,7 @@ describe('NegotiationTimeoutQueue.handleTimeout', () => {
   it('counter under max: re-arms (waiting_for_agent + enqueue)', async () => {
     MOCK_TURN = { action: 'counter', assessment: { reasoning: 'more', suggestedRoles: { ownUser: 'role-ai' } } };
     const { db } = makeDb(negTask(), [msg(), msg()]);
-    const q = new NegotiationTimeoutQueue({ database: db as never });
+    const q = createQueue({ database: db as never });
     await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 2 });
     expect(db.updateTaskState).toHaveBeenCalledWith('task-1', 'waiting_for_agent');
     expect(db.updateOpportunityStatus).not.toHaveBeenCalled();
@@ -146,7 +122,7 @@ describe('NegotiationTimeoutQueue.handleTimeout', () => {
     MOCK_TURN = { action: 'counter', assessment: { reasoning: 'cap', suggestedRoles: { ownUser: 'role-ai' } } };
     const five = [msg(), msg(), msg(), msg(), msg()];
     const { db } = makeDb(negTask(), five);
-    const q = new NegotiationTimeoutQueue({ database: db as never });
+    const q = createQueue({ database: db as never });
     await q.processJob('negotiation_timeout', { negotiationId: 'task-1', turnNumber: 5 });
     expect(db.updateTaskState).toHaveBeenCalledWith('task-1', 'completed');
     expect(db.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'stalled');
@@ -161,7 +137,7 @@ function makeExpiryDeps(taskState: string | null) {
   const stored: Array<{ opportunityId: string; disclosureSubject: string }> = [];
   const dismissed: string[] = [];
   const resumed: Array<{ opportunityId: string; userId: string }> = [];
-  const q = new NegotiationTimeoutQueue({
+  const q = createQueue({
     database: db as never,
     storeExpiryAnswer: async (opportunityId, disclosureSubject) => { stored.push({ opportunityId, disclosureSubject }); },
     dismissInflightQuestions: async (opportunityId) => { dismissed.push(opportunityId); },
@@ -202,7 +178,7 @@ describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
   it('a store failure does not block the resume (negotiation must always terminate)', async () => {
     const { db } = makeDb(negTask({ state: 'input_required' }), []);
     const resumed: string[] = [];
-    const q = new NegotiationTimeoutQueue({
+    const q = createQueue({
       database: db as never,
       storeExpiryAnswer: async () => { throw new Error('db down'); },
       dismissInflightQuestions: async () => {},
@@ -214,7 +190,7 @@ describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
   });
 
   it('enqueueAskUserExpiry adds a delayed job under its own jobId namespace', async () => {
-    const q = new NegotiationTimeoutQueue();
+    const q = createQueue();
     await q.enqueueAskUserExpiry('task-1', { opportunityId: 'opp-1', userId: 'u-src', disclosureSubject: 's' }, 86_400_000);
     expect(mockAdd).toHaveBeenCalledWith(
       'ask_user_expiry',

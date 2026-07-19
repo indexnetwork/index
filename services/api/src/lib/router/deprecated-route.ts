@@ -2,6 +2,17 @@ import { getRequestAuthContext } from '../request-auth-context';
 import { log } from '../log';
 
 const logger = log.route.from('deprecation');
+type DeprecationReporter = (message: string, metadata: Record<string, unknown>) => void;
+let reportDeprecation: DeprecationReporter = (message, metadata) => logger.warn(message, metadata);
+
+/** Replace the deprecation reporter and return a restore function (tests only). */
+export function setDeprecationReporter(reporter: DeprecationReporter): () => void {
+  const previous = reportDeprecation;
+  reportDeprecation = reporter;
+  return () => {
+    reportDeprecation = previous;
+  };
+}
 
 function addDeprecationHeader(response: Response): Response {
   const headers = new Headers(response.headers);
@@ -32,7 +43,7 @@ export function deprecatedRoute(routeId: string): MethodDecorator {
       }
 
       const authContext = getRequestAuthContext(req);
-      logger.warn('Deprecated API route used', {
+      reportDeprecation('Deprecated API route used', {
         event: 'deprecated_route_used',
         routeId,
         method: req.method,

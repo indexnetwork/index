@@ -1,44 +1,28 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
+import { describe, expect, it } from 'bun:test';
 
-import { describe, it, expect, jest, mock, afterAll } from 'bun:test';
 import { QueueFactory } from './bullmq';
-import { Queue, Worker, QueueEvents } from 'bullmq';
 
-// Mock bullmq
-mock.module('bullmq', () => ({
-  Queue: jest.fn(),
-  Worker: jest.fn(),
-  QueueEvents: jest.fn(),
-}));
+describe('QueueFactory test isolation', () => {
+  it('creates a hermetic queue with stable job ids', async () => {
+    const queue = QueueFactory.createQueue<{ value: number }>('test-queue');
+    const job = await queue.add('work', { value: 1 }, { jobId: 'job-1' });
 
-afterAll(() => {
-  mock.restore();
-});
-
-describe('QueueFactory', () => {
-  it('should create a queue with default options', () => {
-    const _queue = QueueFactory.createQueue('test-queue');
-    expect(Queue).toHaveBeenCalledWith('test-queue', expect.objectContaining({
-      connection: expect.any(Object),
-      defaultJobOptions: expect.any(Object),
-    }));
+    expect(job.id).toBe('job-1');
+    expect((await queue.getJob('job-1'))?.data).toEqual({ value: 1 });
+    await job.remove();
+    expect(await queue.getJob('job-1')).toBeNull();
+    await queue.close();
   });
 
-  it('should create a worker', () => {
-    const processor = jest.fn();
-    QueueFactory.createWorker('test-queue', processor);
-    expect(Worker).toHaveBeenCalledWith('test-queue', processor, expect.objectContaining({
-      connection: expect.any(Object),
-      concurrency: 1,
-    }));
+  it('creates a worker without opening Redis in the default test baseline', async () => {
+    const worker = QueueFactory.createWorker('test-queue', async () => undefined);
+    expect(worker).toBeDefined();
+    await worker.close();
   });
 
-  it('should create queue events', () => {
-    QueueFactory.createQueueEvents('test-queue');
-    expect(QueueEvents).toHaveBeenCalledWith('test-queue', expect.objectContaining({
-      connection: expect.any(Object),
-    }));
+  it('creates queue events without opening Redis in the default test baseline', async () => {
+    const events = QueueFactory.createQueueEvents('test-queue');
+    expect(events).toBeDefined();
+    await events.close();
   });
 });

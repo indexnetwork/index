@@ -64,7 +64,13 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
 
   beforeAll(async () => {
     const existing = await users.findByEmail(EMAIL);
-    if (existing) await users.deleteByEmail(EMAIL);
+    if (existing) {
+      await db.delete(questions).where(
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: existing.id }])}::jsonb`,
+      );
+      await db.delete(intents).where(eq(intents.userId, existing.id));
+      await users.deleteById(existing.id);
+    }
     userId = (await users.create({ email: EMAIL, name: 'Delivery User' })).id;
   });
 

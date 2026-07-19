@@ -2,16 +2,19 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 
 import type { AuthenticatedUser } from '../../guards/auth.guard';
 import { recordRequestAuthContext } from '../../lib/request-auth-context';
+import { setDeprecationReporter } from '../../lib/router/deprecated-route';
 
 mock.module('../../queues/notification.queue', () => ({
   queueOpportunityNotification: async () => ({ id: 'mock-job' }),
 }));
 
 let OpportunityControllerClass: typeof import('../opportunity.controller').OpportunityController;
+const warnReporter = mock((_message: string, _metadata: Record<string, unknown>) => {});
+const restoreReporter = setDeprecationReporter(warnReporter);
 
 beforeAll(async () => {
   const mod = await import('../opportunity.controller');
@@ -19,12 +22,13 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
+  restoreReporter();
   mock.restore();
 });
 
 describe('deprecated controller routes', () => {
   test('adds the deprecation header and emits one structured warning', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    warnReporter.mockClear();
     const req = new Request(
       'http://localhost/api/opportunities/example/connect-token?noise=secret-query',
       { method: 'POST', headers: { 'x-api-key': 'secret-api-key' } },
@@ -44,9 +48,9 @@ describe('deprecated controller routes', () => {
       expect(response.status).toBe(400);
       expect(body).toEqual({ error: 'Missing opportunity id' });
       expect(response.headers.get('Deprecation')).toBe('true');
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnReporter).toHaveBeenCalledTimes(1);
 
-      const warning = warnSpy.mock.calls[0]?.map(String).join(' ') ?? '';
+      const warning = JSON.stringify(warnReporter.mock.calls[0] ?? []);
       expect(warning).toContain('Deprecated API route used');
       expect(warning).toContain('"routeId":"opportunity.connect-token"');
       expect(warning).toContain('"method":"POST"');
@@ -56,7 +60,7 @@ describe('deprecated controller routes', () => {
       expect(warning).not.toContain('secret-query');
       expect(warning).not.toContain('secret-api-key');
     } finally {
-      warnSpy.mockRestore();
+      warnReporter.mockClear();
     }
   });
 });

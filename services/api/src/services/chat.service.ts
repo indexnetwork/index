@@ -61,13 +61,22 @@ function generateSnowflakeId(): string {
  * - ConversationService: general conversation operations (H2H, DMs, metadata)
  * - ChatSessionService (this): H2A-specific behavior layered on top
  */
+interface ChatSessionServiceDeps {
+  graphDatabase?: ChatGraphCompositeDatabase;
+  createTitleGenerator?: () => Pick<ChatTitleGenerator, 'invoke'>;
+}
+
 export class ChatSessionService {
   private graphDb: ChatGraphCompositeDatabase;
   private _factory: ChatGraphFactory | null = null;
+  private readonly createTitleGenerator: () => Pick<ChatTitleGenerator, 'invoke'>;
 
-  constructor(private db: ConversationDatabaseAdapter = conversationDatabaseAdapter) {
-    // Initialize protocol adapters for graph processing
-    this.graphDb = new ChatDatabaseAdapter();
+  constructor(
+    private db: ConversationDatabaseAdapter = conversationDatabaseAdapter,
+    deps: ChatSessionServiceDeps = {},
+  ) {
+    this.graphDb = deps.graphDatabase ?? new ChatDatabaseAdapter();
+    this.createTitleGenerator = deps.createTitleGenerator ?? (() => new ChatTitleGenerator());
   }
 
   /**
@@ -867,7 +876,7 @@ export class ChatSessionService {
     }
 
     try {
-      const titleGenerator = new ChatTitleGenerator();
+      const titleGenerator = this.createTitleGenerator();
       const title = await titleGenerator.invoke({
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
       });

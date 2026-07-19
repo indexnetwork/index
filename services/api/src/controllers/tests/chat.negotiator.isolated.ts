@@ -105,7 +105,7 @@ describe("Negotiator chat persona (IND-402)", () => {
     testIntentId = intent.id;
 
     chatSessionService.setFactory(stubFactory);
-    controller = new ChatController();
+    controller = new ChatController(() => ({ generate: async () => [] }) as never);
   });
 
   afterAll(async () => {

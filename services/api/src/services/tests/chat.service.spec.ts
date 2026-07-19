@@ -1,15 +1,8 @@
-/**
- * Tests for ChatSessionService — H2A conversation session layer.
- *
- * All database and protocol dependencies are mocked so these tests are
- * fast, hermetic, and free of external I/O.
- *
- * Run: bun test src/services/tests/chat.service.spec.ts
- */
+/** Tests for ChatSessionService with constructor-injected dependencies. */
+import { describe, expect, it, mock } from 'bun:test';
 
-// Env must be set before module imports that read process.env
-process.env.OPENROUTER_API_KEY = "test-key";
-process.env.NODE_ENV = "test";
+import { ChatSessionService } from '../chat.service';
+import type { ConversationDatabaseAdapter } from '../../adapters/database.adapter';
 
 import { mock, describe, it, expect, afterAll, afterEach } from "bun:test";
 
@@ -89,6 +82,7 @@ afterAll(() => {
 import { ChatGraphFactory } from "@indexnetwork/protocol";
 import { ChatSessionService } from "../chat.service";
 import type { ConversationDatabaseAdapter } from "../../adapters/database.adapter";
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -208,7 +202,7 @@ describe("ChatSessionService.resolveNegotiatorIntentSession", () => {
       createNegotiatorIntentChatSession: mock(() => Promise.reject(wrapped)),
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const res = await svc.resolveNegotiatorIntentSession("user-001", "intent-001");
 
@@ -225,7 +219,7 @@ describe("ChatSessionService.resolveNegotiatorIntentSession", () => {
         Promise.reject(new Error("connection refused")),
       ),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     expect(svc.resolveNegotiatorIntentSession("user-001", "intent-001")).rejects.toThrow(
       "connection refused",
@@ -236,7 +230,7 @@ describe("ChatSessionService.resolveNegotiatorIntentSession", () => {
 describe("ChatSessionService.createSession", () => {
   it("returns a UUID and persists the session", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const id = await svc.createSession(USER_ID, "My chat");
 
@@ -251,7 +245,7 @@ describe("ChatSessionService.createSession", () => {
 
   it("passes networkId when provided", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     await svc.createSession(USER_ID, undefined, "network-42");
 
@@ -389,7 +383,7 @@ describe("ChatSessionService.getSession", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.getSession(SESSION_ID, USER_ID);
 
@@ -398,7 +392,7 @@ describe("ChatSessionService.getSession", () => {
 
   it("returns null when session does not exist", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.getSession(SESSION_ID, USER_ID);
 
@@ -410,7 +404,7 @@ describe("ChatSessionService.getSession", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.getSession(SESSION_ID, OTHER_USER_ID);
 
@@ -426,7 +420,7 @@ describe("ChatSessionService.getUserSessions", () => {
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.getUserSessions(USER_ID, 10);
 
@@ -439,7 +433,7 @@ describe("ChatSessionService.getUserSessions", () => {
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.getUserSessions(USER_ID, 10, "negotiator");
 
@@ -470,7 +464,7 @@ describe("ChatSessionService.getUserSessions", () => {
 describe("ChatSessionService.addMessage", () => {
   it("persists the message and returns a snowflake ID string", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const id = await svc.addMessage({
       sessionId: SESSION_ID,
@@ -489,7 +483,7 @@ describe("ChatSessionService.addMessage", () => {
 
   it("updates the session timestamp after adding a message", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     await svc.addMessage({ sessionId: SESSION_ID, role: "assistant", content: "Hi" });
 
@@ -505,7 +499,7 @@ describe("ChatSessionService.deleteSession", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.deleteSession(SESSION_ID, USER_ID);
 
@@ -518,7 +512,7 @@ describe("ChatSessionService.deleteSession", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.deleteSession(SESSION_ID, OTHER_USER_ID);
 
@@ -535,7 +529,7 @@ describe("ChatSessionService.updateSessionTitle", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.updateSessionTitle(SESSION_ID, USER_ID, "New Title");
 
@@ -545,7 +539,7 @@ describe("ChatSessionService.updateSessionTitle", () => {
 
   it("returns false and does not update for a non-owner", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.updateSessionTitle(SESSION_ID, USER_ID, "New Title");
 
@@ -562,7 +556,7 @@ describe("ChatSessionService.shareSession", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const token = await svc.shareSession(SESSION_ID, USER_ID);
 
@@ -577,7 +571,7 @@ describe("ChatSessionService.shareSession", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const token = await svc.shareSession(SESSION_ID, USER_ID);
 
@@ -587,7 +581,7 @@ describe("ChatSessionService.shareSession", () => {
 
   it("returns null for a non-owner", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const token = await svc.shareSession(SESSION_ID, USER_ID);
 
@@ -601,7 +595,7 @@ describe("ChatSessionService.unshareSession", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.unshareSession(SESSION_ID, USER_ID);
 
@@ -611,7 +605,7 @@ describe("ChatSessionService.unshareSession", () => {
 
   it("returns false for a non-owner", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.unshareSession(SESSION_ID, USER_ID);
 
@@ -624,7 +618,7 @@ describe("ChatSessionService.unshareSession", () => {
 describe("ChatSessionService.getSharedSession", () => {
   it("returns null when token does not match any session", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.getSharedSession("unknown-token");
 
@@ -649,7 +643,7 @@ describe("ChatSessionService.getSharedSession", () => {
       getChatSessionByShareToken: mock(() => Promise.resolve(session)),
       getChatSessionMessages: mock(() => Promise.resolve(messages)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const result = await svc.getSharedSession("valid-token");
 
@@ -664,8 +658,8 @@ describe("ChatSessionService.getSharedSession", () => {
 describe("ChatSessionService.processMessage", () => {
   it("invokes the graph and returns responseText", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
-    svc.setFactory(new ChatGraphFactory(null as never, null as never, null as never, null as never, null as never));
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
+    svc.setFactory(graphFactory as never);
 
     const result = await svc.processMessage(USER_ID, "What can you do?");
 
@@ -682,7 +676,7 @@ describe("ChatSessionService.processMessage", () => {
 describe("ChatSessionService.generateSessionTitle", () => {
   it("returns undefined when session is not found", async () => {
     const db = createMockDb();
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const title = await svc.generateSessionTitle(SESSION_ID, USER_ID);
 
@@ -694,7 +688,7 @@ describe("ChatSessionService.generateSessionTitle", () => {
     const db = createMockDb({
       getChatSession: mock(() => Promise.resolve(session)),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const title = await svc.generateSessionTitle(SESSION_ID, USER_ID);
 
@@ -710,7 +704,7 @@ describe("ChatSessionService.generateSessionTitle", () => {
         Promise.resolve([{ role: "user", content: "Hello" }])
       ),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const title = await svc.generateSessionTitle(SESSION_ID, USER_ID);
 
@@ -729,7 +723,7 @@ describe("ChatSessionService.generateSessionTitle", () => {
         ])
       ),
     });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+    const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
     const title = await svc.generateSessionTitle(SESSION_ID, USER_ID);
 

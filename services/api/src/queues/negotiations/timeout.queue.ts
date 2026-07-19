@@ -8,7 +8,7 @@ import { conversationDatabaseAdapter, ChatDatabaseAdapter } from '../../adapters
 import { AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
 import type { NegotiationGraphDatabase, AskUserExpiryPayload } from '@indexnetwork/protocol';
 
-import { runTimeoutFallback, type NegotiationTaskMeta } from './timeout.shared';
+import { runTimeoutFallback, type NegotiationTaskMeta, type TimeoutNegotiatorInvoke } from './timeout.shared';
 
 /** BullMQ queue name for negotiation timeout jobs. */
 export const QUEUE_NAME = 'negotiation-timeout';
@@ -30,6 +30,9 @@ export type NegotiationTimeoutQueueJobData = NegotiationTimeoutJobData | AskUser
 /** Optional deps for testing. */
 export interface NegotiationTimeoutQueueDeps {
   database?: NegotiationGraphDatabase;
+  queue?: ReturnType<typeof QueueFactory.createQueue<NegotiationTimeoutQueueJobData>>;
+  invokeNegotiator?: TimeoutNegotiatorInvoke;
+  parkWindowMs?: number;
   /** Append a synthetic conservative answer to opportunity metadata (ask_user expiry). */
   storeExpiryAnswer?: (opportunityId: string, disclosureSubject: string) => Promise<void>;
   /** Dismiss pending negotiation_inflight question rows for an opportunity. */
@@ -53,7 +56,7 @@ export interface NegotiationTimeoutQueueDeps {
 export class NegotiationTimeoutQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<NegotiationTimeoutQueueJobData>(QUEUE_NAME);
+  readonly queue: ReturnType<typeof QueueFactory.createQueue<NegotiationTimeoutQueueJobData>>;
 
   private readonly logger = log.job.from('NegotiationTimeoutJob');
   private readonly queueLogger = log.queue.from('NegotiationTimeoutQueue');
@@ -62,6 +65,7 @@ export class NegotiationTimeoutQueue {
 
   constructor(deps?: NegotiationTimeoutQueueDeps) {
     this.deps = deps;
+    this.queue = deps?.queue ?? QueueFactory.createQueue<NegotiationTimeoutQueueJobData>(QUEUE_NAME);
   }
 
   /**
@@ -274,8 +278,13 @@ export class NegotiationTimeoutQueue {
       seedReasoning: 'Timeout fallback',
       maxTurns: 6,
       rearm: async (newTurnCount) => {
-        await this.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
+        await this.enqueueTimeout(
+          negotiationId,
+          newTurnCount,
+          this.deps?.parkWindowMs ?? AMBIENT_PARK_WINDOW_MS,
+        );
       },
+      invokeNegotiator: this.deps?.invokeNegotiator,
     });
   }
 

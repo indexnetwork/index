@@ -8,8 +8,6 @@ import { and, eq } from 'drizzle-orm/sql';
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
-import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue';
 import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
@@ -225,11 +223,18 @@ function resolveCounterpart<A extends { userId: string; role: string }>(
   );
 }
 
+interface OpportunityPresentationDeps {
+  presenter?: OpportunityPresenter;
+  presenterDatabase?: PresenterDatabase;
+  gatherContext?: typeof gatherPresenterContext;
+}
+
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
-  private readonly presenter: OpportunityPresenter;
+  private presenter: OpportunityPresenter | null = null;
   private readonly presenterDb: PresenterDatabase;
+  private readonly gatherPresentationContext: typeof gatherPresenterContext;
   private readonly deliveryCache: RedisCacheAdapter;
   private readonly uptakeGuard: UptakeAcceptanceGuardLike;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
@@ -245,50 +250,70 @@ export class OpportunityService {
     cache?: OpportunityCache,
     acceptanceGuard: UptakeAcceptanceGuardLike = uptakeAcceptanceGuard,
     outcomeRecorder: OutcomeFeedbackRecorderLike = outcomeFeedbackRecorder,
+    presentation: OpportunityPresentationDeps = {},
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
-    this.presenter = new OpportunityPresenter();
-    this.presenterDb = chatDatabaseAdapter as unknown as PresenterDatabase;
+    this.presenter = presentation.presenter ?? null;
+    this.presenterDb = presentation.presenterDatabase
+      ?? chatDatabaseAdapter as unknown as PresenterDatabase;
+    this.gatherPresentationContext = presentation.gatherContext ?? gatherPresenterContext;
     this.deliveryCache = new RedisCacheAdapter();
     this.uptakeGuard = acceptanceGuard;
     this.outcomeRecorder = outcomeRecorder;
+  }
 
-    // Lazy-build graph for discover when adapter supports it
-    if (this.db && 'getHydeDocument' in this.db) {
-      const embedder: Embedder = new EmbedderAdapter();
-      const cache: HydeCache = new RedisCacheAdapter();
-      const inferrer = new LensInferrer();
-      const generator = new HydeGenerator();
-      const compiledHydeGraph = new HydeGraphFactory(
-        this.db as unknown as HydeGraphDatabase,
-        embedder,
-        cache,
-        inferrer,
-        generator
-      ).createGraph();
-      const factory = new OpportunityGraphFactory(
-        this.db as unknown as OpportunityGraphDatabase,
-        embedder,
-        compiledHydeGraph
-      );
-      this.graph = factory.createGraph();
-    }
-    this.homeGraph = new HomeGraphFactory(this.db as unknown as HomeGraphDatabase, this.cache).createGraph();
-    this.maintenanceGraph = new MaintenanceGraphFactory(
+  private getPresenter(): OpportunityPresenter {
+    this.presenter ??= new OpportunityPresenter();
+    return this.presenter;
+  }
+
+  private getDiscoveryGraph(): ReturnType<OpportunityGraphFactory['createGraph']> | null {
+    if (this.graph) return this.graph;
+    if (!this.db || !('getHydeDocument' in this.db)) return null;
+
+    const embedder: Embedder = new EmbedderAdapter();
+    const cache: HydeCache = new RedisCacheAdapter();
+    const compiledHydeGraph = new HydeGraphFactory(
+      this.db as unknown as HydeGraphDatabase,
+      embedder,
+      cache,
+      new LensInferrer(),
+      new HydeGenerator(),
+    ).createGraph();
+    this.graph = new OpportunityGraphFactory(
+      this.db as unknown as OpportunityGraphDatabase,
+      embedder,
+      compiledHydeGraph,
+    ).createGraph();
+    return this.graph;
+  }
+
+  private getHomeGraph(): ReturnType<HomeGraphFactory['createGraph']> {
+    this.homeGraph ??= new HomeGraphFactory(
+      this.db as unknown as HomeGraphDatabase,
+      this.cache,
+    ).createGraph();
+    return this.homeGraph;
+  }
+
+  private getMaintenanceGraph(): ReturnType<MaintenanceGraphFactory['createGraph']> {
+    this.maintenanceGraph ??= new MaintenanceGraphFactory(
       this.db as unknown as MaintenanceGraphDatabase,
       this.cache as unknown as MaintenanceGraphCache,
       {
-        addJob: (
+        addJob: async (
           data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string },
           options?: { priority?: number; jobId?: string },
         ) => {
           if (data.contactUserId) {
+            const { fromIntroducerQueue } = await import('../queues/opportunity/from-introducer.queue');
             return fromIntroducerQueue.addJob(
               { userId: data.userId, contactUserId: data.contactUserId, networkIds: data.indexIds },
               options,
             );
           }
+          const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
           return fromIntentQueue.addJob(
             { intentId: data.intentId, userId: data.userId },
             options,
@@ -296,6 +321,7 @@ export class OpportunityService {
         },
       } satisfies MaintenanceGraphQueue,
     ).createGraph();
+    return this.maintenanceGraph;
   }
 
   /**
@@ -324,7 +350,7 @@ export class OpportunityService {
     try {
       const cards = await getOrCreateDeliveryCardBatch(
         this.deliveryCache,
-        this.presenter,
+        this.getPresenter(),
         this.presenterDb,
         [
           {
@@ -352,10 +378,8 @@ export class OpportunityService {
     options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
   ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
     logger.verbose('Getting home view', { userId, options });
-    if (!this.homeGraph) {
-      return { error: 'Home view not available' };
-    }
     try {
+      const homeGraph = this.getHomeGraph();
       const homeInput = {
         userId,
         networkId: options?.networkId,
@@ -366,7 +390,7 @@ export class OpportunityService {
         statuses: options?.statuses,
         presentation: options?.presentation,
       };
-      const result = await this.homeGraph.invoke(homeInput);
+      const result = await homeGraph.invoke(homeInput);
       if (result.error) {
         return { error: result.error };
       }
@@ -382,10 +406,10 @@ export class OpportunityService {
       // Skeleton requests are the fast first phase of a two-phase fetch; the
       // full request that follows immediately will trigger maintenance, so
       // firing here would just double it.
-      if (this.maintenanceGraph && !options?.networkId && options?.presentation !== 'skeleton') {
+      if (!options?.networkId && options?.presentation !== 'skeleton') {
         meta.maintenanceTriggered = true;
         logger.info('Triggering maintenance via health scoring', { userId, source: 'home-view' });
-        this.maintenanceGraph.invoke({ userId }).catch((err) =>
+        this.getMaintenanceGraph().invoke({ userId }).catch((err) =>
           logger.warn('Maintenance graph failed', { userId, error: err })
         );
       }
@@ -1050,7 +1074,8 @@ export class OpportunityService {
   async discoverOpportunities(userId: string, query: string, limit: number = 5) {
     logger.verbose('Discovering opportunities', { userId, query, limit });
 
-    if (!this.graph) {
+    const graph = this.getDiscoveryGraph();
+    if (!graph) {
       return { error: 'Discovery not available; graph dependencies not configured', status: 503 };
     }
 
@@ -1066,7 +1091,7 @@ export class OpportunityService {
       };
     }
 
-    const result = await this.graph!.invoke({
+    const result = await graph.invoke({
       userId: userId as Id<'users'>,
       searchQuery: query,
       options: { limit, initialStatus: 'latent' as const },
@@ -1258,14 +1283,14 @@ export class OpportunityService {
         }
 
         try {
-          const presenterInput = await gatherPresenterContext(
+          const presenterInput = await this.gatherPresentationContext(
             this.db as unknown as PresenterDatabase,
             opp,
             userId,
           );
           presenterInput.opportunityStatus = 'accepted';
           presenterInput.matchReasoning += '\n\nCONTEXT: This is shown inside an active chat between the two parties. Both already accepted. Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.';
-          const presented = await this.presenter.present(presenterInput);
+          const presented = await this.getPresenter().present(presenterInput);
           const card: ChatCardCached = {
             opportunityId: opp.id,
             headline: presented.headline,
@@ -1384,12 +1409,8 @@ export class OpportunityService {
    * @param source - What triggered this maintenance check
    */
   triggerMaintenance(userId: string, source: string): void {
-    if (!this.maintenanceGraph) {
-      logger.warn('Maintenance graph not available', { userId, source });
-      return;
-    }
     logger.info('Triggering maintenance', { userId, source });
-    this.maintenanceGraph.invoke({ userId }).catch((err) =>
+    this.getMaintenanceGraph().invoke({ userId }).catch((err) =>
       logger.warn('Maintenance graph failed', { userId, source, error: err })
     );
   }

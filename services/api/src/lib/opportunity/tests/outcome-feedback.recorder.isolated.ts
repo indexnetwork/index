@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { createHash } from 'node:crypto';
 
 import type { Opportunity } from '@indexnetwork/protocol';
@@ -50,6 +50,10 @@ function record(overrides: Partial<OutcomeFeedbackRecord> = {}): OutcomeFeedback
     ...overrides,
   };
 }
+
+beforeEach(() => {
+  delete process.env.OUTCOME_QUESTIONS_MODE;
+});
 
 afterEach(() => {
   delete process.env.OUTCOME_QUESTIONS_MODE;

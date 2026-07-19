@@ -7,15 +7,17 @@ import { NegotiationGraphFactory, NegotiationScreener, requestContext } from "@i
 import type { NegotiationGraphDatabase } from "@indexnetwork/protocol";
 import { conversationDatabaseAdapter } from "../src/adapters/database.adapter";
 
-// Prerequisites: requires DATABASE_URL and OPENROUTER_API_KEY in .env.test
-// Run with: cd services/api && bun test tests/negotiation.e2e.spec.ts
+// Paid LLM E2E requires an explicit opt-in plus credentials.
+// Run with: RUN_PAID_INTEGRATION_TESTS=1 bun test tests/negotiation.e2e.spec.ts
+const RUN_PAID_INTEGRATION = process.env.RUN_PAID_INTEGRATION_TESTS === '1'
+  && !!process.env.OPENROUTER_API_KEY;
 
 const noopDispatcher = {
   dispatch: async () => ({ handled: false as const, reason: "no_agent" as const }),
   hasExternalAgent: async () => false,
 };
 
-describe("Negotiation E2E", () => {
+describe.skipIf(!RUN_PAID_INTEGRATION)("Negotiation E2E", () => {
   it("runs a full negotiation with real agents and A2A persistence", async () => {
     const factory = new NegotiationGraphFactory(
       conversationDatabaseAdapter as unknown as NegotiationGraphDatabase,

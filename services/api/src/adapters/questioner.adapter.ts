@@ -50,7 +50,9 @@ function poolPushCycleKey(pool: Pick<import('@indexnetwork/protocol').QuestionPo
 }
 
 function poolPushThreshold(consecutiveDismissals: number): number {
-  return POOL_QUESTION_PUSH_BASE_VOI * POOL_QUESTION_PUSH_DISMISSAL_DECAY ** Math.max(0, Math.floor(consecutiveDismissals));
+  const threshold = POOL_QUESTION_PUSH_BASE_VOI
+    * POOL_QUESTION_PUSH_DISMISSAL_DECAY ** Math.max(0, Math.floor(consecutiveDismissals));
+  return Number(threshold.toFixed(12));
 }
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
@@ -771,7 +773,11 @@ export class QuestionerAdapter {
    */
   async markPoolQuestionPushRequested(questionId: string, userId: string): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
+      const [clock] = await tx.execute<{ now: Date | string }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now instanceof Date ? clock.now : new Date(clock.now);
+      if (Number.isNaN(transactionNow.getTime())) {
+        throw new Error('Database returned an invalid transaction timestamp');
+      }
       const [question] = await tx.select()
         .from(questions)
         .where(eq(questions.id, questionId))
@@ -784,7 +790,7 @@ export class QuestionerAdapter {
       if (
         question.status !== 'pending'
         || detection.voidedReason
-        || (question.expiresAt !== null && question.expiresAt <= clock.now)
+        || (question.expiresAt !== null && question.expiresAt <= transactionNow)
         || question.conversationId !== null
         || detection.mode !== 'pool_discovery'
         || detection.sourceType !== 'intent'
@@ -803,7 +809,7 @@ export class QuestionerAdapter {
         .set({
           detection: {
             ...detection,
-            pushRequestedAt: detection.pushRequestedAt ?? clock.now.toISOString(),
+            pushRequestedAt: detection.pushRequestedAt ?? transactionNow.toISOString(),
             pushRequestStatus: 'requested',
           } satisfies QuestionDetection,
         })
@@ -889,8 +895,11 @@ export class QuestionerAdapter {
     options: PoolPushClaimOptions = { allowNewClaim: true },
   ): Promise<PoolPushClaimResult> {
     return this.db.transaction(async (tx) => {
-      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
-      const transactionNow = clock.now;
+      const [clock] = await tx.execute<{ now: Date | string }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now instanceof Date ? clock.now : new Date(clock.now);
+      if (Number.isNaN(transactionNow.getTime())) {
+        throw new Error('Database returned an invalid transaction timestamp');
+      }
 
       const [question] = await tx
         .select()

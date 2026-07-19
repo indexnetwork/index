@@ -596,8 +596,11 @@ export class ConversationDatabaseAdapter {
     messageText: string;
   }): Promise<{ status: 'delivered'; inserted: boolean } | { status: 'suppressed' }> {
     return db.transaction(async (tx) => {
-      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
-      const transactionNow = clock.now;
+      const [clock] = await tx.execute<{ now: Date | string }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now instanceof Date ? clock.now : new Date(clock.now);
+      if (Number.isNaN(transactionNow.getTime())) {
+        throw new Error('Database returned an invalid transaction timestamp');
+      }
       const [question] = await tx
         .select()
         .from(schema.questions)
@@ -1061,6 +1064,22 @@ export class ConversationDatabaseAdapter {
 
     if (!task) throw new Error(`Task ${taskId} not found`);
     return task;
+  }
+
+  /**
+   * Atomically claims a timed-out task for fallback processing.
+   *
+   * @param taskId - Claimed task to transition.
+   * @returns The transitioned task, or null when another path already moved it.
+   */
+  async transitionClaimedTaskToWorking(taskId: string): Promise<Task | null> {
+    const [task] = await db
+      .update(schema.tasks)
+      .set({ state: 'working', updatedAt: new Date() })
+      .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.state, 'claimed')))
+      .returning();
+
+    return task ?? null;
   }
 
   /**

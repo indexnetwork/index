@@ -20,6 +20,7 @@ const mockCronSchedule = mock((_expr: string, fn: () => void | Promise<void>) =>
 mock.module('node-cron', () => ({
   default: {
     schedule: mockCronSchedule,
+    validate: () => true,
   },
 }));
 

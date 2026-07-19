@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import type { DiscriminatorMiningInput, MinedDiscriminator, OutcomeShadowResult } from '@indexnetwork/protocol';
 
@@ -96,6 +96,10 @@ function enoughEvents(): OpportunityOutcomeEvent[] {
     ...Array.from({ length: 6 }, (_, index) => event(`rejected-${index}`, 'rejected', `counter-${index + 6}`)),
   ];
 }
+
+beforeEach(() => {
+  delete process.env.OUTCOME_QUESTIONS_MODE;
+});
 
 afterEach(() => {
   delete process.env.OUTCOME_QUESTIONS_MODE;

@@ -1,20 +1,25 @@
 import '../src/startup.env';
 
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it, mock } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
-import { experimentService, SignupNotCompleteError } from '../src/services/experiment.service';
+import { ExperimentService, SignupNotCompleteError } from '../src/services/experiment.service';
 import db from '../src/lib/drizzle/drizzle';
 import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userSocials, users } from '../src/schemas/database.schema';
 import { generateMasterKey } from '../src/lib/experiment/master-key';
-import { NetworkController } from '../src/controllers/network.controller';
+import { NetworkExperimentController } from '../src/controllers/network-experiment.controller';
+
+const experimentService = new ExperimentService({
+  addEnrichUserJob: mock(async () => ({})),
+  addEnrichUserJobBulk: mock(async () => []),
+});
 
 const cleanup: Array<() => Promise<void>> = [];
 
 afterAll(async () => {
   for (const f of [...cleanup].reverse()) await f();
-});
+}, 60_000);
 
 async function setupExperimentNetwork() {
   const [network] = await db
@@ -239,8 +244,8 @@ function buildLookupRequest(networkId: string, masterKey: string | null, body: u
   });
 }
 
-describe('NetworkController.signupLookup', () => {
-  const controller = new NetworkController();
+describe('NetworkExperimentController.signupLookup', () => {
+  const controller = new NetworkExperimentController();
 
   it('returns 200 with the user when fully provisioned', async () => {
     const { networkId, masterKey } = await setupExperimentNetworkWithKey();

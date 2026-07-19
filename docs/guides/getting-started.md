@@ -269,18 +269,48 @@ Once both servers are running, open http://localhost:3000 in your browser.
 
 ### Testing
 
+API database tests require a **dedicated disposable PostgreSQL database**. Never
+point `.env.test` at a shared development database or either production branch.
+From the repository root:
+
+```bash
+cp .env.example .env.test
+```
+
+Set `NODE_ENV=test`, set `DATABASE_URL` to the disposable database, and opt in
+explicitly with `TEST_DATABASE_SAFE=1`. Then provision the schema:
+
+```bash
+cd services/api
+bun run db:migrate:test
+```
+
+Bare/full-suite runs perform a bounded connectivity and schema probe before test
+modules load. The probe redacts credentials and reports missing migrations with
+a direct `db:migrate:test` remediation. Tests that use Bun `mock.module()` or
+mutate process-wide environment variables have the non-discoverable
+`.isolated.ts` suffix and are run one process at a time by the complete wrapper.
+
 ```bash
 cd services/api
 
 # Run a specific test file (preferred)
 bun test tests/e2e.spec.ts
 
+# Run the hermetic/disposable-DB baseline discovered by Bun
+bun test
+
+# Run the complete baseline, including process-isolated files
+bun run test:all
+
 # Run tests in watch mode
 bun test --watch
-
-# Run the full suite (slow -- avoid unless necessary)
-bun test
 ```
+
+Live integrations are off by default. Use `RUN_PAID_INTEGRATION_TESTS=1` with
+the required provider credentials for paid tests, `RUN_REDIS_INTEGRATION_TESTS=1`
+for a real Redis instance, and `RUN_LOCAL_API_E2E=1` for tests that require a
+separately running localhost API server.
 
 Always target specific test files affected by your changes rather than running the full suite.
 

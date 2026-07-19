@@ -6,7 +6,6 @@ import { experimentImportCredentialsTemplate } from '../lib/email/templates/expe
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildMcpServerConfig } from '../lib/mcp/mcp-config';
 import * as schema from '../schemas/database.schema';
-import { enrichmentQueue } from '../queues/enrichment.queue';
 
 /**
  * Experiment is a thin facade over the network-invitation flow: signup uses
@@ -55,6 +54,13 @@ export interface SignupPayload {
   socials?: { label: string; value: string }[];
 }
 
+export interface ExperimentEnrichmentQueue {
+  addEnrichUserJob(data: { userId: string; networkId?: string; reason?: string }): Promise<unknown>;
+  addEnrichUserJobBulk(
+    items: Array<{ userId: string; networkId?: string; reason?: string }>,
+  ): Promise<unknown[]>;
+}
+
 export interface ExperimentSignupResult {
   user: { id: string; email: string };
   apiKey: string;
@@ -66,7 +72,9 @@ export interface ExperimentSignupResult {
   created: boolean;
 }
 
-class ExperimentService {
+export class ExperimentService {
+  constructor(private readonly enrichment?: ExperimentEnrichmentQueue) {}
+
   async signup(networkId: string, payload: SignupPayload): Promise<ExperimentSignupResult> {
     const normalizedEmail = payload.email.toLowerCase().trim();
     logger.verbose('Signup attempt', { networkId, email: normalizedEmail });
@@ -100,7 +108,8 @@ class ExperimentService {
 
     // Enqueue profile enrichment so the user gets a profile + HyDE.
     try {
-      await enrichmentQueue.addEnrichUserJob({ userId: result.user.id, networkId, reason: 'experiment_signup' });
+      const enrichment = this.enrichment ?? (await import('../queues/enrichment.queue')).enrichmentQueue;
+      await enrichment.addEnrichUserJob({ userId: result.user.id, networkId, reason: 'experiment_signup' });
     } catch (err) {
       logger.warn('Failed to enqueue profile enrichment (non-fatal)', { error: err });
     }
@@ -199,7 +208,8 @@ class ExperimentService {
     // and socials from the users/user_socials tables (written by applyProfileData above).
     if (importedUserIds.length > 0) {
       try {
-        await enrichmentQueue.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id, networkId, reason: 'experiment_import' })));
+        const enrichment = this.enrichment ?? (await import('../queues/enrichment.queue')).enrichmentQueue;
+        await enrichment.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id, networkId, reason: 'experiment_import' })));
         logger.info('Enqueued profile enrichment', { count: importedUserIds.length });
       } catch (err) {
         logger.warn('Failed to enqueue profile enrichment (non-fatal)', { error: err });

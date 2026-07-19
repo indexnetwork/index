@@ -1,7 +1,7 @@
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
-import { sql } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 
 import db from '../src/lib/drizzle/drizzle';
 import { agents, opportunityDeliveries, opportunities, users } from '../src/schemas/database.schema';
@@ -46,11 +46,16 @@ const stubPresenterDb = {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+const fixtureUserIds = new Set<string>();
+const fixtureAgentIds = new Set<string>();
+const fixtureOpportunityIds = new Set<string>();
+
 async function seedUser(): Promise<string> {
   const [user] = await db
     .insert(users)
     .values({ email: `test-${randomUUID()}@example.com`, name: 'Test User' })
     .returning({ id: users.id });
+  fixtureUserIds.add(user.id);
   return user.id;
 }
 
@@ -59,6 +64,7 @@ async function seedAgent(userId: string): Promise<string> {
     .insert(agents)
     .values({ ownerId: userId, name: 'test-agent', type: 'external' })
     .returning({ id: agents.id });
+  fixtureAgentIds.add(agent.id);
   return agent.id;
 }
 
@@ -92,7 +98,25 @@ async function seedOpportunity(
       status,
     })
     .returning({ id: opportunities.id });
+  fixtureOpportunityIds.add(opp.id);
   return opp.id;
+}
+
+async function cleanupFixtures(): Promise<void> {
+  const opportunityIds = [...fixtureOpportunityIds];
+  const agentIds = [...fixtureAgentIds];
+  const userIds = [...fixtureUserIds];
+
+  if (opportunityIds.length > 0) {
+    await db.delete(opportunityDeliveries).where(inArray(opportunityDeliveries.opportunityId, opportunityIds));
+    await db.delete(opportunities).where(inArray(opportunities.id, opportunityIds));
+  }
+  if (agentIds.length > 0) await db.delete(agents).where(inArray(agents.id, agentIds));
+  if (userIds.length > 0) await db.delete(users).where(inArray(users.id, userIds));
+
+  fixtureOpportunityIds.clear();
+  fixtureAgentIds.clear();
+  fixtureUserIds.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,19 +135,14 @@ describe('fetchPendingCandidates — introducer opportunities', () => {
   let agentId: string;
 
   beforeEach(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-
     introducerUserId = await seedUser();
     partyAUserId = await seedUser();
     partyBUserId = await seedUser();
     agentId = await seedAgent(introducerUserId);
   });
 
-  afterAll(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-  });
+  afterEach(cleanupFixtures);
+  afterAll(cleanupFixtures);
 
   // ── AC1: latent introducer opportunities are returned ─────────────────────
 
@@ -210,7 +229,7 @@ describe('fetchPendingCandidates — introducer opportunities', () => {
     // Only pending + latent survive; draft is excluded by isActionableForViewer
     expect(result.opportunities.length).toBe(2);
     expect(result.totalPending).toBe(2);
-  });
+  }, 15_000);
 
   // ── AC5: delivery dedup prevents re-delivery ──────────────────────────────
 

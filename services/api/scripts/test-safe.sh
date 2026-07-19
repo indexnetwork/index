@@ -8,4 +8,4 @@ cd "$(dirname "$0")/.."
 files=$(find src tests -name '*.spec.ts' -o -name '*.test.ts' \
   | grep -vFf <(grep -v '^\s*#' .test-isolated | grep -v '^\s*$') \
   | sort)
-exec bun test $files
+exec env API_TEST_REQUIRE_DATABASE=1 bun test $files
