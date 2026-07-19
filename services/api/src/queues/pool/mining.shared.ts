@@ -8,6 +8,8 @@
  * Callers (fire-and-forget from every discovery completion path):
  *   - DiscoveryRunQueue   — async MCP discover_opportunities runs
  *   - FromIntentQueue     — web intent creation / edit / re-discovery
+ *   - PoolVisitMiningQueue — debounced owner intent-page visits (IND-439;
+ *     flag-gated re-mine of the existing pool, no discovery run)
  *
  * The pool is read from the opportunities table (durable output; the MCP
  * tool response flattens cards into message text, so no run result carries a
@@ -48,8 +50,12 @@ const poolMiningQuestionerAdapter = new QuestionerAdapter(db);
 
 /** One discovery-completion event, normalized across trigger sources. */
 export interface PoolMiningTrigger {
-  /** Which pipeline finished (log dimension). */
-  source: 'discovery_run' | 'from_intent';
+  /**
+   * Which pipeline finished (log dimension). `intent_visit` is the debounced
+   * visit-triggered re-mine path (IND-439) — no discovery ran; the existing
+   * pool is re-mined so an expired question's intent can mint a fresh one.
+   */
+  source: 'discovery_run' | 'from_intent' | 'intent_visit';
   userId: string;
   /** Triggering intent — required for questions; optional for shadow-only ad-hoc pools. */
   intentId?: string;

@@ -155,6 +155,21 @@ export interface AnsweredPoolPreference {
   chosenSide: string;
 }
 
+/**
+ * One answeredBy-verified owner answer to a negotiation-family question
+ * (IND-465 Lens C evidence). Never carries question text or detection
+ * payloads — only the answer content plus verification fields.
+ */
+export interface AnsweredNegotiationOwnerAnswer {
+  questionId: string;
+  answeredBy: string;
+  answeredAt: string;
+  selectedOptions: string[];
+  freeText?: string;
+  /** Capture-time intent fingerprint, when the detection recorded one. */
+  capturedIntentFingerprint?: string;
+}
+
 export interface PoolQuestionFreshnessOptions {
   /** Fingerprint of the full current intent payload + summary. */
   currentIntentFingerprint?: string;
@@ -167,6 +182,22 @@ export interface PendingQuestionCounts {
   globalPending: number;
   pushedPoolPending: number;
   personalAgentPending: number;
+}
+
+/**
+ * One aggregate funnel cell: questions grouped by generation mode, lifecycle
+ * status, and whether the row is past its TTL. Counts and dates only — never
+ * question text, payloads, answers, or user identifiers (IND-439 telemetry).
+ */
+export interface QuestionFunnelStage {
+  mode: string;
+  status: 'pending' | 'answered' | 'dismissed';
+  expired: boolean;
+  count: number;
+  oldestCreatedAt: string | null;
+  newestCreatedAt: string | null;
+  nearestExpiresAt: string | null;
+  latestExpiresAt: string | null;
 }
 
 /** Successful claim data required by the deterministic delivery worker. */
@@ -659,6 +690,47 @@ export class QuestionerAdapter {
       pushedPoolPending,
       personalAgentPending: globalPending + pushedPoolPending,
     };
+  }
+
+  /**
+   * Aggregate funnel telemetry (IND-439 visibility audit): counts of ALL
+   * questions grouped by (detection mode, status, expired-past-TTL), with
+   * group-level created/expiry date bounds for diagnosing TTL decay.
+   *
+   * Deliberately unscoped (whole-funnel observability) and deliberately
+   * shape-restricted: the projection contains counts and timestamps only —
+   * no question text, payloads, answers, evidence, or user IDs can leave
+   * this query.
+   *
+   * @returns One row per (mode, status, expired) cell, largest cells first.
+   */
+  async aggregateQuestionFunnel(): Promise<QuestionFunnelStage[]> {
+    const modeExpression = sql<string>`coalesce(${questions.detection}->>'mode', 'unknown')`;
+    const expiredExpression = sql<boolean>`(${questions.expiresAt} IS NOT NULL AND ${questions.expiresAt} < NOW())`;
+    const rows = await this.db
+      .select({
+        mode: modeExpression,
+        status: questions.status,
+        expired: expiredExpression,
+        count: count(),
+        oldestCreatedAt: sql<string | null>`min(${questions.createdAt})`,
+        newestCreatedAt: sql<string | null>`max(${questions.createdAt})`,
+        nearestExpiresAt: sql<string | null>`min(${questions.expiresAt})`,
+        latestExpiresAt: sql<string | null>`max(${questions.expiresAt})`,
+      })
+      .from(questions)
+      .groupBy(modeExpression, questions.status, expiredExpression)
+      .orderBy(desc(count()));
+    return rows.map((row) => ({
+      mode: row.mode,
+      status: row.status,
+      expired: Boolean(row.expired),
+      count: Number(row.count),
+      oldestCreatedAt: row.oldestCreatedAt ? new Date(row.oldestCreatedAt).toISOString() : null,
+      newestCreatedAt: row.newestCreatedAt ? new Date(row.newestCreatedAt).toISOString() : null,
+      nearestExpiresAt: row.nearestExpiresAt ? new Date(row.nearestExpiresAt).toISOString() : null,
+      latestExpiresAt: row.latestExpiresAt ? new Date(row.latestExpiresAt).toISOString() : null,
+    }));
   }
 
   /**
@@ -1384,6 +1456,99 @@ export class QuestionerAdapter {
         chosenSide,
       }];
     }).slice(0, 10);
+  }
+
+  /**
+   * Read answeredBy-verified owner answers to negotiation-family questions
+   * for one opportunity (IND-465 slice 2 — Lens C owner_answer evidence).
+   *
+   * AUTHORITATIVE SOURCE: the questions table ONLY. Never read
+   * `opportunity.metadata.userAnswers` for evidence — it carries no
+   * `answeredBy` (authority unverifiable), is a counterparty-visible channel,
+   * and ask_user expiry writes synthetic entries containing disclosure text.
+   *
+   * Fail-closed constraints, enforced in SQL AND re-checked in projection:
+   * - status = 'answered' and answer.answeredBy === recipientUserId;
+   * - detection mode restricted to `negotiation` / `negotiation_inflight` —
+   *   the only modes whose detection.sourceId is an opportunityId
+   *   (pool_discovery and intent/message-scoped modes are excluded);
+   * - detection.sourceType = 'opportunity' and detection.sourceId = opportunityId;
+   * - recipient is a subject actor on the question row;
+   * - a capture-time intent fingerprint, when present on the detection, must
+   *   equal `currentIntentFingerprint`; absence is tolerated (the Lens C
+   *   segment-level task fingerprint guard already covers intent drift).
+   *
+   * @param recipientUserId - Segment recipient; must be actor AND answerer.
+   * @param opportunityId - Opportunity the questions must be bound to.
+   * @param currentIntentFingerprint - Current capture-time intent fingerprint.
+   * @returns Verified owner answers, newest first.
+   */
+  async getAnsweredNegotiationQuestionsForOpportunity(
+    recipientUserId: string,
+    opportunityId: string,
+    currentIntentFingerprint: string,
+  ): Promise<AnsweredNegotiationOwnerAnswer[]> {
+    const rows = await this.db
+      .select({
+        id: questions.id,
+        detection: questions.detection,
+        actors: questions.actors,
+        answer: questions.answer,
+      })
+      .from(questions)
+      .where(and(
+        eq(questions.status, 'answered'),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: recipientUserId, role: 'subject' }])}::jsonb`,
+        or(
+          sql`${questions.detection}->>'mode' = 'negotiation'`,
+          sql`${questions.detection}->>'mode' = 'negotiation_inflight'`,
+        ),
+        sql`${questions.detection}->>'sourceType' = 'opportunity'`,
+        sql`${questions.detection}->>'sourceId' = ${opportunityId}`,
+        sql`${questions.answer}->>'answeredBy' = ${recipientUserId}`,
+        or(
+          sql`${questions.detection}->>'intentFingerprint' IS NULL`,
+          sql`${questions.detection}->>'intentFingerprint' = ${currentIntentFingerprint}`,
+        ),
+      ))
+      .orderBy(desc(questions.createdAt));
+
+    return rows.flatMap((row) => {
+      const detection = row.detection as AdapterQuestionDetection;
+      const answer = row.answer as AdapterQuestionAnswer | null;
+      const actorOwned = (row.actors as AdapterQuestionActor[]).some(
+        (actor) => actor.userId === recipientUserId && actor.role === 'subject',
+      );
+      if (!actorOwned
+        || !answer
+        || answer.answeredBy !== recipientUserId
+        || (detection.mode !== 'negotiation' && detection.mode !== 'negotiation_inflight')
+        || detection.sourceType !== 'opportunity'
+        || detection.sourceId !== opportunityId) {
+        return [];
+      }
+      const capturedIntentFingerprint = (detection as unknown as Record<string, unknown>).intentFingerprint;
+      if (capturedIntentFingerprint !== undefined
+        && capturedIntentFingerprint !== currentIntentFingerprint) {
+        return [];
+      }
+      if (!Array.isArray(answer.selectedOptions)
+        || !answer.selectedOptions.every((option) => typeof option === 'string')) {
+        return [];
+      }
+      const freeText = typeof answer.freeText === 'string' && answer.freeText.trim().length > 0
+        ? answer.freeText
+        : undefined;
+      if (answer.selectedOptions.length === 0 && freeText === undefined) return [];
+      return [{
+        questionId: row.id,
+        answeredBy: answer.answeredBy,
+        answeredAt: answer.answeredAt,
+        selectedOptions: answer.selectedOptions,
+        ...(freeText !== undefined ? { freeText } : {}),
+        ...(typeof capturedIntentFingerprint === 'string' ? { capturedIntentFingerprint } : {}),
+      }];
+    });
   }
 
   /**

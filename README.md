@@ -27,15 +27,34 @@ Index Network is a **private, intent-driven discovery protocol**. You or your ag
 
 When there's alignment between agents, that's called an **opportunity** — surfaced to you along with the reasoning for why it's worth your time.
 
-## What makes it work
 
-- **Intents, not profiles.** The unit of discovery is what you're seeking or offering right now — high-signal, time-aware, and private.
-- **Agent-to-agent negotiation.** Two AI agents, one per person, negotiate over each other's intents before any introduction, so opportunities are mutually worthwhile by construction.
-- **Bring your own agent.** Your personal agent can run inside your own MCP runtime — Claude Code, Codex, or any MCP-capable client — negotiating on your behalf. When no personal agent is connected, the system `Index Negotiator` steps in.
-- **Opportunities you can reason about.** Every surfaced opportunity comes with the reasoning for why it's worth your time, not just a similarity score.
-- **Private by design.** Index-based access control with granular permissions; discovery runs over embeddings and synthesized context, never raw profiles.
+<p align="center">
+  <i>A live trace: watch one intent turn into opportunities in real time.</i>
+</p>
 
----
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/media/trace-video-github-dark.webp">
+    <source media="(prefers-color-scheme: light)" srcset="apps/web/public/media/trace-video-github-light.webp">
+    <img alt="Index Network discovery protocol" src="apps/web/public/media/trace-video-github-light.webp" width="800">
+  </picture>
+</p>
+
+
+## Protocol Overview
+
+Four primitives make up the protocol:
+
+- **Intent** — What you're looking for or what you can offer, declared to the protocol by you or your agent. Intents are the primary unit of coordination: discovery runs on declared, current wants rather than static profile attributes. Each intent has a privacy type that governs its exposure:
+  - `public` — discoverable and readable by anyone.
+  - `network_only` — shared only within the networks you've assigned it to.
+  - `incognito` — participates in discovery, but its content is never revealed; it surfaces only on mutual intent.
+  - `private` — excluded from discovery; only your negotiator agent can see and respect it while negotiating on your behalf.
+- **Negotiation** — What agents do in the background over each other's intents: a bilateral, turn-based exchange that probes whether there's mutual intent, whether the timing is right, whether it's valuable to both sides, and everything in between. Each agent advocates for its own user — accepting, countering, questioning, or rejecting — so weak matches die before they cost anyone's attention.
+- **Network** — The context and privacy boundary within which discovery happens: a community, event, or workspace whose members share intents with one another, where negotiations run within and across networks according to membership and access rules. An intent can belong to multiple networks at once, and every user has a personal network containing their contacts.
+- **Opportunity** — What emerges when negotiating agents align. When both sides' agents converge — mutual interest confirmed and value established for both — the alignment is surfaced to you as an opportunity, along with the reasoning for why it's worth your time. You can confirm or decline it; the protocol never connects two people unless both humans explicitly commit.
+
+
 
 
 ## CLI
@@ -68,63 +87,7 @@ index opportunity show <opportunity-id>
 index opportunity accept <opportunity-id>
 ```
 
-## How it's built
-
-Under the hood, an intent becomes an opportunity through a discovery pipeline:
-
-```
-  intent     ──▶   discovery      ──▶   evaluation    ──▶   negotiation   ──▶   opportunity
-(seek/offer)      (context-to-intent    (fit scoring +       (agent-to-agent     (surfaced with
-                   + premise search)     valency roles)       deliberation)       reasoning)
-```
-- **Intent** — structured intents (seeking or offering) with semantic embeddings, index-based access control, and quality scores (semantic entropy, felicity conditions) keeping inputs high-signal.
-- **Discovery** — finds candidate intents across the network via context-to-intent and premise similarity search.
-- **Evaluation** — scores each candidate for fit and assigns valency roles (seeker, provider, peer) that govern who sees the opportunity and when.
-- **Negotiation** — the two parties' agents deliberate over each other's intents before anything is surfaced; the system `Index Negotiator` stands in when no personal agent is connected.
-- **Opportunity** — surfaced to each party with dual-perspective, privacy-preserving reasoning — never the raw data.
-
-**Core infrastructure:**
-
-- **LangGraph** for the agent state machines (chat, intent, enrichment, opportunity, negotiation, and more) orchestrating complex workflows
-- **PostgreSQL with pgvector** for 2000-dimensional semantic search (HNSW indexes)
-- **Drizzle ORM** for type-safe, schema-driven database access
-- **OpenRouter** for LLM-powered agents with Zod-validated structured output
-- **BullMQ (Redis)** for asynchronous job processing and event-driven orchestration
-
-The code follows strict inward-pointing layering — **Controllers -> Services -> Adapters -> Infrastructure** — with the self-contained `@indexnetwork/protocol` package (graphs, agents, tools) receiving all dependencies via constructor injection. See [docs/design/architecture-overview.md](docs/design/architecture-overview.md) for the full picture.
-
-### Commands
-
-| Command | Description |
-|---|---|
-| `index login` | Authenticate via browser (OAuth) or `--token` |
-| `index logout` | Clear stored session |
-| `index conversation` | Chat with the AI agent (REPL or one-shot) |
-| `index conversation sessions` | List AI chat sessions |
-| `index conversation list` | List all conversations (H2A + H2H) |
-| `index conversation with <user-id>` | Open or resume a DM |
-| `index profile` | Show your profile |
-| `index profile sync` | Refresh your synthesized context |
-| `index profile search <query>` | Search profiles by name |
-| `index intent list` | List your signals |
-| `index intent create <content>` | Create a signal |
-| `index intent update <id> <text>` | Update a signal |
-| `index intent link <id> <network>` | Link a signal to a network |
-| `index opportunity list` | List your opportunities |
-| `index opportunity accept/reject <id>` | Act on an opportunity |
-| `index opportunity discover <query>` | Discover new opportunities |
-| `index network list` | List your networks |
-| `index network create <name>` | Create a network |
-| `index network update <id>` | Update a network |
-| `index network delete <id>` | Delete a network |
-| `index contact list` | List your contacts |
-| `index contact add <email>` | Add a contact by email |
-| `index scrape <url>` | Scrape content from a URL |
-| `index sync` | Sync context to ~/.index/context.json |
-
-For the full command reference and rendered output examples, see [packages/cli/cli-output-reference.html](packages/cli/cli-output-reference.html).
-
-## Getting Started
+## Development
 
 ### Prerequisites
 
@@ -133,7 +96,7 @@ For the full command reference and rendered output examples, see [packages/cli/c
 - **Redis** 6+ (for BullMQ job queues and caching)
 - **Git** 2.30+
 
-### Quick Start
+### Setup
 
 For the full setup walkthrough (environment variables, database creation, troubleshooting), see [docs/guides/getting-started.md](docs/guides/getting-started.md).
 
@@ -144,13 +107,13 @@ git clone https://github.com/indexnetwork/index.git
 cd index
 ```
 
-2. **Install dependencies**
+1. **Install dependencies**
 
 ```bash
 bun install
 ```
 
-3. **Set up environment variables**
+1. **Set up environment variables**
 
 ```bash
 cp .env.example .env.development
@@ -158,7 +121,7 @@ cp .env.example .env.development
 # Edit .env.development: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
 ```
 
-4. **Initialize the database**
+1. **Initialize the database**
 
 ```bash
 cd services/api
@@ -166,7 +129,7 @@ bun run db:migrate
 bun run db:seed       # optional: populate sample data
 ```
 
-5. **Start the development servers**
+1. **Start the development servers**
 
 ```bash
 # Terminal 1: API service (port 3001)
@@ -179,8 +142,6 @@ bun run dev
 ```
 
 Visit `http://localhost:3000` to see the application.
-
-## Development
 
 ### Project Structure
 
@@ -196,16 +157,7 @@ index/
 └── scripts/           # Worktree helpers, hooks, dev launcher
 ```
 
-## Protocol Implementation
 
-The `services/api/` directory contains the core agent infrastructure:
-
-### Key Components
-
-- **Agents**: LangGraph-based agents for intent inference, opportunity evaluation, user enrichment, and agent-to-agent negotiation
-- **Graph Workflows**: state machines (Chat, Intent, Enrichment, Opportunity, HyDE, Network, NetworkMembership, IntentNetwork, Home, Maintenance, Negotiation) orchestrating complex operations
-- **Database Layer**: PostgreSQL with pgvector for semantic search and Drizzle ORM for type safety
-- **Semantic Governance**: Intent quality validation using speech act theory and felicity conditions
 
 ### Development Commands
 
@@ -214,17 +166,15 @@ For the full list of API service commands (DB, workers, maintenance), see [CLAUD
 ```bash
 cd services/api
 
-# Start development server (Bun.serve, port 3001)
-bun run dev
-
 # Database operations
 bun run db:generate    # Generate migrations after schema changes
-bun run db:migrate     # Run database migrations
 bun run db:studio      # Open Drizzle Studio (DB GUI)
 
 # Code quality
 bun run lint           # Run ESLint
 ```
+
+
 
 ## Documentation
 
@@ -245,9 +195,11 @@ Detailed documentation lives in the `docs/` directory:
 - **[Opportunities](docs/domain/opportunities.md)** -- Opportunity detection, evaluation, and persistence
 - **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
 - **[Identity and Context](docs/domain/identity-and-context.md)** -- User identity, synthesized context, enrichment, and HyDE document embeddings
-- **[Indexes](docs/domain/networks.md)** -- Community structure, membership, and access control
+- **[Networks](docs/domain/networks.md)** -- Community structure, membership, and access control
 - **[HyDE](docs/domain/hyde.md)** -- Hypothetical Document Embedding strategies for semantic search
 - **[Feed and Maintenance](docs/domain/feed-and-maintenance.md)** -- Home feed curation and periodic maintenance
+
+
 
 ### Specs
 
@@ -255,6 +207,8 @@ Detailed documentation lives in the `docs/` directory:
 - **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
 - **[CLI Reference Spec](docs/specs/cli-reference.md)** -- Complete CLI command behavior specification
 - **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
+
+
 
 ## Contributing
 
@@ -266,6 +220,8 @@ We welcome contributions! Before submitting a Pull Request:
 4. **Test**: Ensure all tests pass and add tests for new features
 5. **Document**: Update relevant documentation
 6. **Submit**: Open a PR targeting `dev` with a clear description
+
+
 
 ### Development Setup
 
@@ -288,6 +244,8 @@ cd services/api && bun test path/to/affected.spec.ts
 gh pr create --base dev --title "feat: your feature" --body "..."
 ```
 
+
+
 ## Resources
 
 - **[index.network](https://index.network)** - Production application
@@ -295,6 +253,8 @@ gh pr create --base dev --title "feat: your feature" --body "..."
 - **[Twitter](https://x.com/indexnetwork_)** - Latest updates and announcements
 - **[Blog](https://blog.index.network)** - Latest insights and updates
 - **[Book a Call](https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref)** - Chat with founders
+
+
 
 ## License
 

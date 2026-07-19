@@ -8,6 +8,7 @@ import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { _convDb } from './conversation.database.adapter';
+import { QuestionerAdapter, type AnsweredNegotiationOwnerAnswer } from './questioner.adapter';
 
 export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
@@ -15,6 +16,11 @@ export class ChatDatabaseAdapter {
   private get opportunityAdapter(): OpportunityDatabaseAdapter {
     if (!this._opportunityAdapter) this._opportunityAdapter = new OpportunityDatabaseAdapter();
     return this._opportunityAdapter;
+  }
+  private _questionerAdapter: QuestionerAdapter | null = null;
+  private get questionerAdapter(): QuestionerAdapter {
+    if (!this._questionerAdapter) this._questionerAdapter = new QuestionerAdapter(db);
+    return this._questionerAdapter;
   }
 
   // Negotiation context methods — required by HomeGraphDatabase
@@ -2460,6 +2466,21 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getLivePoolOpportunitiesForIntent(recipientUserId, intentId);
   }
+  /** Lens-C-only (IND-465): exact intent pool including terminal statuses. */
+  async getEvidencePoolOpportunitiesForIntent(
+    recipientUserId: string,
+    intentId: string,
+  ): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.getEvidencePoolOpportunitiesForIntent(recipientUserId, intentId);
+  }
+  /** Lens-C-only (IND-465 slice 2): answeredBy-verified owner answers for one opportunity. */
+  async getAnsweredNegotiationQuestionsForOpportunity(
+    recipientUserId: string,
+    opportunityId: string,
+    currentIntentFingerprint: string,
+  ): Promise<AnsweredNegotiationOwnerAnswer[]> {
+    return this.questionerAdapter.getAnsweredNegotiationQuestionsForOpportunity(recipientUserId, opportunityId, currentIntentFingerprint);
+  }
   async getOpportunitiesForNetwork(
     networkId: string,
     options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
@@ -2474,13 +2495,52 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy, outbox);
   }
+
+  /**
+   * Delegates exact-version, active-task-aware compensation for a taskless
+   * `negotiating` opportunity to OpportunityDatabaseAdapter.
+   *
+   * @param id - Opportunity ID
+   * @param expectedUpdatedAt - Persistence boundary for the negotiation attempt
+   * @param fallbackStatus - Status restored when the guarded update succeeds
+   * @returns The compensated opportunity, or null on a status, version, or task race
+   */
+  async compensateTasklessNegotiatingOpportunity(
+    id: string,
+    expectedUpdatedAt: Date,
+    fallbackStatus: 'latent' | 'draft',
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.compensateTasklessNegotiatingOpportunity(
+      id,
+      expectedUpdatedAt,
+      fallbackStatus,
+    );
+  }
+
+  /**
+   * Delegates network-eligible status compare-and-set reactivation.
+   *
+   * @param id - Opportunity ID
+   * @param status - Target lifecycle status
+   * @param actors - Participant network anchors
+   * @param eligibility - Authoritative owner/network/intent scope
+   * @param expectedStatus - Optional compare-and-set source status
+   * @returns The updated opportunity, or null after scope/status drift
+   */
   async updateOpportunityStatusIfNetworkEligible(
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     actors: Array<{ userId: string; networkId: string }>,
     eligibility: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[3],
+    expectedStatus?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[4],
   ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityStatusIfNetworkEligible(id, status, actors, eligibility);
+    return this.opportunityAdapter.updateOpportunityStatusIfNetworkEligible(
+      id,
+      status,
+      actors,
+      eligibility,
+      expectedStatus,
+    );
   }
   async updateOpportunityActorApproval(
     id: string,

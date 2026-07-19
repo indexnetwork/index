@@ -71,6 +71,24 @@ Common flags (most baseline-backed harnesses): `--runs N`, `--rule R`, `--case I
 takes `--component decompose|analyze`. Baseline/report writes refuse to replace existing
 files unless `--force` is passed (see the artifact envelope section below).
 
+## Live-eval canary (scheduled + manual)
+
+`bun run eval:canary` executes the committed manifest in
+[`eval/canary/canary.manifest.json`](./canary/canary.manifest.json): a small,
+representative, hard-capped subset of the four baseline-backed suites, run through
+their existing harnesses against real providers to produce the usual ER2-versioned
+run artifacts. `-- --plan` is a provider-free dry run that validates the manifest and
+budget caps and prints pinned models, git provenance, fingerprints, and an honest
+call-count budget (token/cost telemetry is reported as unavailable — the runner
+records none). CI runs it weekly and on manual dispatch via the **non-required**
+[`.github/workflows/eval-canary.yml`](../../../.github/workflows/eval-canary.yml)
+workflow (concurrency 1, hard timeout, 30-day artifact retention). The canary is
+measurement-only — it never updates baselines, and making it a release gate would
+require a later explicit human decision. The HyDE canonical study is excluded from
+routine scheduling by manifest validation. See
+[`eval/canary/README.md`](./canary/README.md) for the manifest format, budget
+model, and alert classification.
+
 ## Architecture: shared lib + thin harnesses
 
 The harness-agnostic machinery lives in [`eval/shared/`](./shared) and is reused by the

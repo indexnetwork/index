@@ -2,6 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 import type { ScreenDecisionRecord } from "./negotiation.screen.js";
+import type { DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
@@ -89,6 +90,8 @@ export interface NegotiationGraphLike {
     seedAssessment: Omit<SeedAssessment, "actors">;
     discoveryQuery?: string;
     opportunityId?: string;
+    /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+    opportunityUpdatedAt?: Date;
     maxTurns?: number;
     timeoutMs?: number;
     /**
@@ -172,6 +175,18 @@ export const NegotiationGraphState = Annotation.Root({
   }),
 
   /**
+   * First applied deadlock→bargaining shift in this session (IND-428).
+   * Written by the turn node when the system agent first drafts in the
+   * bargaining stance; used to record the shift exactly once per session.
+   * Internal analytics only — mirrored to `tasks.metadata.deadlockShift`,
+   * never into any turn payload or public projection.
+   */
+  deadlockShift: Annotation<DeadlockShiftRecord | null>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => null,
+  }),
+
+  /**
    * Per-side negotiator-memory cache (P5.3 read path). Populated lazily the
    * first time each side's memory is retrieved (screen node for the client,
    * turn node for the speaker) so a multi-turn session pays for retrieval at
@@ -191,6 +206,11 @@ export const NegotiationGraphState = Annotation.Root({
   opportunityId: Annotation<string>({
     reducer: (curr, next) => next ?? curr,
     default: () => "",
+  }),
+  /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+  opportunityUpdatedAt: Annotation<Date | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
   conversationId: Annotation<string>({
     reducer: (curr, next) => next ?? curr,

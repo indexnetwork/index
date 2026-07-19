@@ -97,6 +97,74 @@ describe("negotiation graph — task intent snapshots", () => {
       },
     ]);
   });
+
+  it("fails init closed when the exact opportunity attempt cannot claim a task", async () => {
+    const { database, dispatcher } = mkStubs();
+    const persistedBoundary = new Date("2026-07-18T12:00:00.000Z");
+    const claims: Array<{
+      conversationId: string;
+      opportunityId: string;
+      expectedUpdatedAt: Date;
+      metadata: Record<string, unknown>;
+    }> = [];
+    let genericTaskCreates = 0;
+    let statusUpdates = 0;
+
+    database.createNegotiationTaskForAttempt = async (input) => {
+      claims.push(input);
+      return null;
+    };
+    database.createTask = async () => {
+      genericTaskCreates += 1;
+      return { id: "unexpected-task", conversationId: "conv-1", state: "submitted" };
+    };
+    database.updateTaskState = async () => {
+      throw new Error("task not found");
+    };
+    database.updateOpportunityStatus = async () => {
+      statusUpdates += 1;
+      return null;
+    };
+
+    const result = await new NegotiationGraphFactory(database, dispatcher).createGraph().invoke({
+      sourceUser: {
+        id: "u-src",
+        intents: [{ id: "intent-src", title: "Source", description: "Source intent", confidence: 1 }],
+        profile: {},
+      },
+      candidateUser: {
+        id: "u-cand",
+        intents: [{ id: "intent-cand", title: "Candidate", description: "Candidate intent", confidence: 1 }],
+        profile: {},
+      },
+      indexContext: { networkId: "net-1", prompt: "" },
+      seedAssessment: { reasoning: "x", valencyRole: "peer" },
+      opportunityId: "opp-stale",
+      opportunityUpdatedAt: persistedBoundary,
+      maxTurns: 1,
+    } as Partial<typeof NegotiationGraphState.State>);
+
+    expect(result.error).toContain("Negotiation attempt is stale or already claimed");
+    expect(genericTaskCreates).toBe(0);
+    expect(statusUpdates).toBe(0);
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({
+      conversationId: "conv-1",
+      opportunityId: "opp-stale",
+      expectedUpdatedAt: persistedBoundary,
+      metadata: {
+        type: "negotiation",
+        opportunityId: "opp-stale",
+        sourceUserId: "u-src",
+        candidateUserId: "u-cand",
+        networkId: "net-1",
+        intentSnapshots: [
+          { userId: "u-src", intentId: "intent-src", title: "Source", description: "Source intent" },
+          { userId: "u-cand", intentId: "intent-cand", title: "Candidate", description: "Candidate intent" },
+        ],
+      },
+    });
+  });
 });
 
 describe("negotiation graph — negotiation_turn emission", () => {

@@ -11,7 +11,12 @@ type CapturedDiscoverInput = {
   indexScope: string[];
 };
 
-function captureDiscoverToolForScopeTest(runDiscoverFromQuery: (input: CapturedDiscoverInput) => Promise<unknown>) {
+function captureDiscoverToolForScopeTest(
+  runDiscoverFromQuery?: (input: CapturedDiscoverInput) => Promise<unknown>,
+  indexGraph: { invoke: (input: unknown) => Promise<unknown> } = {
+    invoke: async () => ({ readResult: { memberOf: [] } }),
+  },
+) {
   let captured: { handler: (input: { context: ResolvedToolContext; query: Record<string, unknown> }) => Promise<string> } | undefined;
   const defineTool = (def: { name: string }) => {
     if (def.name === "discover_opportunities") captured = def as never;
@@ -24,12 +29,12 @@ function captureDiscoverToolForScopeTest(runDiscoverFromQuery: (input: CapturedD
     cache: {} as never,
     graphs: {
       opportunity: { invoke: async () => ({}) },
-      index: { invoke: async () => ({ readResult: { memberOf: [] } }) },
+      index: indexGraph,
       networkMembership: { invoke: async () => ({}) },
     } as never,
-    opportunityDiscovery: {
-      runDiscoverFromQuery: runDiscoverFromQuery as never,
-    },
+    ...(runDiscoverFromQuery
+      ? { opportunityDiscovery: { runDiscoverFromQuery: runDiscoverFromQuery as never } }
+      : {}),
   } as unknown as ToolDeps;
   createOpportunityTools(defineTool as never, deps);
   if (!captured) throw new Error("discover_opportunities tool not registered");
@@ -93,6 +98,82 @@ describe("discover_opportunities — scoped discovery reach", () => {
 
     expect(result.success).toBe(true);
     expect(capturedInput?.indexScope).toEqual([]);
+  });
+});
+
+describe("discover_opportunities — unscoped discovery reach", () => {
+  const unscopedContext = () => makeScopeTestContext({
+    networkId: undefined,
+    scopeType: undefined,
+    scopeId: undefined,
+  });
+
+  it("resolves every membership returned by the index graph", async () => {
+    let capturedInput: CapturedDiscoverInput | undefined;
+    const tool = captureDiscoverToolForScopeTest(
+      async (input) => {
+        capturedInput = input;
+        return { found: false, message: "No matching opportunities found." };
+      },
+      {
+        invoke: async () => ({
+          readResult: {
+            memberOf: [
+              { networkId: "network-1" },
+              { networkId: "network-2" },
+              { networkId: "network-3" },
+            ],
+          },
+        }),
+      },
+    );
+
+    const raw = await tool.handler({
+      context: unscopedContext(),
+      query: { searchQuery: "AI collaborators" },
+    });
+    const result = JSON.parse(raw) as { success: boolean };
+
+    expect(result.success).toBe(true);
+    expect(capturedInput?.indexScope).toEqual(["network-1", "network-2", "network-3"]);
+  });
+
+  it("surfaces index-graph errors instead of treating them as no memberships", async () => {
+    let discoveryCalled = false;
+    const tool = captureDiscoverToolForScopeTest(
+      async () => {
+        discoveryCalled = true;
+        return { found: false };
+      },
+      { invoke: async () => ({ error: "Failed to fetch network information." }) },
+    );
+
+    const raw = await tool.handler({
+      context: unscopedContext(),
+      query: { searchQuery: "AI collaborators" },
+    });
+    const result = JSON.parse(raw) as { success: boolean; error?: string };
+
+    expect(result).toEqual({
+      success: false,
+      error: "Failed to fetch network information.",
+    });
+    expect(discoveryCalled).toBe(false);
+  });
+
+  it("keeps the join-a-network response for genuine zero-membership users", async () => {
+    const tool = captureDiscoverToolForScopeTest();
+
+    const raw = await tool.handler({
+      context: unscopedContext(),
+      query: { searchQuery: "AI collaborators" },
+    });
+    const result = JSON.parse(raw) as { success: boolean; data?: { message?: string } };
+
+    expect(result.success).toBe(true);
+    expect(result.data?.message).toBe(
+      "You need to join at least one network (community) to discover opportunities. Use read_networks to see available networks, or create one.",
+    );
   });
 });
 

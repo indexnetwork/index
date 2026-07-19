@@ -3,6 +3,7 @@ import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
+import { QuestionsEmptyState } from "@/components/InjectedQuestions/QuestionsEmptyState";
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import type { PendingQuestion, AnswerBody } from "@/services/questions";
@@ -196,13 +197,16 @@ export default function IntentNegotiatorChat({
         ) : (
           <>
             {messages.length === 0 && questions.length === 0 && (
-              <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
-                <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-                <p>
-                  This is your direct line to {agentName ?? "your Personal Agent"} about this intent —
-                  ask who it found, why, what it's waiting on, or tell it how to negotiate on your
-                  behalf.
-                </p>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
+                  <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                  <p>
+                    This is your direct line to {agentName ?? "your Personal Agent"} about this intent —
+                    ask who it found, why, what it's waiting on, or tell it how to negotiate on your
+                    behalf.
+                  </p>
+                </div>
+                {!questionChainPending && <QuestionsEmptyState />}
               </div>
             )}
 

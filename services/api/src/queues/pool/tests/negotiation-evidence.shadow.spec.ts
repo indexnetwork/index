@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import { runNegotiationEvidenceShadow } from '@indexnetwork/protocol';
 import type { NegotiationEvidenceMiner, RawEvidenceSegment } from '@indexnetwork/protocol';
 
 import { computeIntentFingerprint } from '../../../lib/intent/intent.fingerprint';
-import { canonicalizeNegotiationSender, collectNegotiationEvidenceSegments, getValidatedCounterpartyUserId, maybeRunNegotiationEvidenceShadow, toBoundedErrorTelemetry } from '../negotiation-evidence.shadow';
+import { canonicalizeNegotiationSender, collectNegotiationEvidenceSegments, deriveTaskNetworkBinding, getValidatedCounterpartyUserId, maybeRunNegotiationEvidenceShadow, toBoundedErrorTelemetry } from '../negotiation-evidence.shadow';
 import type { NegotiationEvidenceShadowDeps } from '../negotiation-evidence.shadow';
 import type { PoolMiningTrigger } from '../mining.shared';
 
@@ -56,13 +57,21 @@ function task(id: string, metadataOverrides: Record<string, unknown> = {}): Shad
   };
 }
 
+type ShadowScope = Parameters<NegotiationEvidenceShadowDeps['runShadow']>[0]['scope'];
+
 function makeDeps(overrides: Partial<NegotiationEvidenceShadowDeps> = {}): {
   deps: NegotiationEvidenceShadowDeps;
   capturedSegments: RawEvidenceSegment[][];
+  capturedScopes: ShadowScope[];
   warnings: Array<Record<string, unknown> | undefined>;
+  infos: Array<Record<string, unknown> | undefined>;
+  debugs: Array<Record<string, unknown> | undefined>;
 } {
   const capturedSegments: RawEvidenceSegment[][] = [];
+  const capturedScopes: ShadowScope[] = [];
   const warnings: Array<Record<string, unknown> | undefined> = [];
+  const infos: Array<Record<string, unknown> | undefined> = [];
+  const debugs: Array<Record<string, unknown> | undefined> = [];
   const database: ShadowDatabase = {
     getIntent: mock(async () => INTENT),
     getNegotiationTasksForOpportunity: mock(async () => [task('task-1')]),
@@ -70,9 +79,11 @@ function makeDeps(overrides: Partial<NegotiationEvidenceShadowDeps> = {}): {
       ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: 'hello' } }] }]],
     ])),
     getArtifactsForTask: mock(async () => []),
+    getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
   };
   const runShadow: NegotiationEvidenceShadowDeps['runShadow'] = async (input) => {
     capturedSegments.push(input.segments);
+    capturedScopes.push(input.scope);
     return {
       hypotheses: [],
       telemetry: {
@@ -100,13 +111,13 @@ function makeDeps(overrides: Partial<NegotiationEvidenceShadowDeps> = {}): {
     getMiner: () => ({}) as NegotiationEvidenceMiner,
     runShadow,
     logger: {
-      debug: mock(() => {}),
-      info: mock(() => {}),
+      debug: mock((_message, metadata) => { debugs.push(metadata); }),
+      info: mock((_message, metadata) => { infos.push(metadata); }),
       warn: mock((_message, metadata) => { warnings.push(metadata); }),
     },
     ...overrides,
   };
-  return { deps, capturedSegments, warnings };
+  return { deps, capturedSegments, capturedScopes, warnings, infos, debugs };
 }
 
 afterEach(() => {
@@ -144,6 +155,7 @@ describe('negotiation evidence task isolation and validation', () => {
       getNegotiationTasksForOpportunity: mock(async () => [task('task-1'), task('task-2')]),
       getMessagesByTaskIds,
       getArtifactsForTask,
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
 
     const segments = await collectNegotiationEvidenceSegments({
@@ -182,6 +194,7 @@ describe('negotiation evidence task isolation and validation', () => {
       ]),
       getMessagesByTaskIds: mock(async () => new Map()),
       getArtifactsForTask: mock(async () => []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
     const segments = await collectNegotiationEvidenceSegments({
       opportunities: [OPPORTUNITY],
@@ -210,6 +223,7 @@ describe('negotiation evidence task isolation and validation', () => {
         { senderId: 'agent:third-user', parts: [{ kind: 'data', data: { action: 'decline' } }] },
       ]]])),
       getArtifactsForTask: mock(async () => []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
     const [segment] = await collectNegotiationEvidenceSegments({
       opportunities: [OPPORTUNITY],
@@ -274,6 +288,7 @@ describe('negotiation evidence task isolation and validation', () => {
       ]),
       getMessagesByTaskIds: mock(async () => new Map()),
       getArtifactsForTask: mock(async () => []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
     const segments = await collectNegotiationEvidenceSegments({
       opportunities: [OPPORTUNITY],
@@ -319,6 +334,7 @@ describe('negotiation evidence task isolation and validation', () => {
       ]),
       getMessagesByTaskIds: mock(async () => new Map()),
       getArtifactsForTask: mock(async (taskId: string) => artifactsByTaskId[taskId] ?? []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
     };
 
     const segments = await collectNegotiationEvidenceSegments({
@@ -384,5 +400,287 @@ describe('negotiation evidence final revalidation and telemetry', () => {
       ...telemetry,
     });
     expect(JSON.stringify(warnings)).not.toContain('SECRET_PROVIDER_RESPONSE_BODY');
+  });
+});
+
+describe('IND-465 — network binding derived from capture-time task metadata', () => {
+  const DERIVATION_INPUT = {
+    recipientUserId: 'owner-1',
+    intentId: 'intent-1',
+    currentIntentFingerprint: FINGERPRINT,
+  };
+
+  it('binds exactly one distinct non-empty task networkId and fails closed otherwise', () => {
+    // Single network across several tasks (empty/missing values ignored) → bound.
+    expect(deriveTaskNetworkBinding({ ...OPPORTUNITY, context: {} }, [
+      task('a'),
+      task('b', { networkId: '' }),
+      task('c', { networkId: undefined }),
+    ], DERIVATION_INPUT)).toEqual({ outcome: 'bound', networkId: 'net-1' });
+
+    // Task disagreement → skip.
+    expect(deriveTaskNetworkBinding({ ...OPPORTUNITY, context: {} }, [
+      task('a'),
+      task('b', { networkId: 'net-2' }),
+    ], DERIVATION_INPUT)).toEqual({ outcome: 'network_disagreement' });
+
+    // Zero task networkIds (or no structurally valid tasks at all) → skip.
+    expect(deriveTaskNetworkBinding({ ...OPPORTUNITY, context: {} }, [
+      task('a', { networkId: undefined }),
+    ], DERIVATION_INPUT)).toEqual({ outcome: 'no_task_network' });
+    expect(deriveTaskNetworkBinding({ ...OPPORTUNITY, context: {} }, [], DERIVATION_INPUT))
+      .toEqual({ outcome: 'no_task_network' });
+
+    // Structurally invalid tasks never contribute a (dis)agreeing networkId.
+    expect(deriveTaskNetworkBinding({ ...OPPORTUNITY, context: {} }, [
+      task('a'),
+      task('drifted', { networkId: 'net-2', intentSnapshots: [{ userId: 'owner-1', intentId: 'intent-1', description: 'Changed intent', title: INTENT.summary }] }),
+    ], DERIVATION_INPUT)).toEqual({ outcome: 'bound', networkId: 'net-1' });
+
+    // Present-but-different context → contamination guard; context never overrides tasks.
+    expect(deriveTaskNetworkBinding({ ...OPPORTUNITY, context: { networkId: 'net-2' } }, [
+      task('a'),
+    ], DERIVATION_INPUT)).toEqual({ outcome: 'context_mismatch' });
+
+    // Agreeing context stays bound.
+    expect(deriveTaskNetworkBinding(OPPORTUNITY, [task('a')], DERIVATION_INPUT))
+      .toEqual({ outcome: 'bound', networkId: 'net-1' });
+  });
+
+  it('mines an opportunity whose context.networkId is absent (the IND-433 NO-GO scenario)', async () => {
+    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
+    const { deps, capturedScopes, capturedSegments, infos } = makeDeps({
+      selectPool: mock(async () => [{ ...OPPORTUNITY, context: {} }]),
+    });
+
+    await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
+
+    expect(capturedScopes).toEqual([{
+      recipientUserId: 'owner-1',
+      intentId: 'intent-1',
+      intentFingerprint: FINGERPRINT,
+      networkId: 'net-1',
+    }]);
+    expect(capturedSegments[0].map((segment) => segment.networkId)).toEqual(['net-1']);
+    expect(infos[0]).toMatchObject({
+      skippedNoTaskNetwork: 0,
+      skippedNetworkDisagreement: 0,
+      skippedContextMismatch: 0,
+      terminalStatusIncluded: 0,
+    });
+  });
+
+  it('skips fail-closed opportunities and logs only aggregate skip counts', async () => {
+    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
+    const tasksByOpportunityId: Record<string, ReturnType<typeof task>[]> = {
+      'opp-disagree': [
+        task('d1', { opportunityId: 'opp-disagree' }),
+        task('d2', { opportunityId: 'opp-disagree', networkId: 'net-2' }),
+      ],
+      'opp-no-network': [task('n1', { opportunityId: 'opp-no-network', networkId: undefined })],
+      'opp-context-mismatch': [task('c1', { opportunityId: 'opp-context-mismatch' })],
+    };
+    const { deps, capturedSegments, debugs } = makeDeps({
+      selectPool: mock(async () => [
+        { ...OPPORTUNITY, id: 'opp-disagree', context: {} },
+        { ...OPPORTUNITY, id: 'opp-no-network', context: {} },
+        { ...OPPORTUNITY, id: 'opp-context-mismatch', context: { networkId: 'net-9' } },
+      ]),
+    });
+    deps.database.getNegotiationTasksForOpportunity = mock(
+      async (opportunityId: string) => tasksByOpportunityId[opportunityId] ?? [],
+    );
+
+    await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
+
+    expect(capturedSegments).toHaveLength(0);
+    expect(debugs).toHaveLength(1);
+    expect(debugs[0]).toMatchObject({
+      skippedNoTaskNetwork: 1,
+      skippedNetworkDisagreement: 1,
+      skippedContextMismatch: 1,
+    });
+    expect(JSON.stringify(debugs)).not.toContain('opp-disagree');
+    expect(JSON.stringify(debugs)).not.toContain('net-2');
+  });
+
+  it('mines only the largest derived-network group and still excludes sibling tasks from other networks', async () => {
+    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
+    const tasksByOpportunityId: Record<string, ReturnType<typeof task>[]> = {
+      // Bound to net-1; the empty-network sibling stays excluded from segments
+      // by the unrelaxed validateTask pass-network equality.
+      'opp-1': [task('t1', { opportunityId: 'opp-1' }), task('t1-sibling', { opportunityId: 'opp-1', networkId: '' })],
+      'opp-2': [task('t2', { opportunityId: 'opp-2' })],
+      'opp-3': [task('t3', { opportunityId: 'opp-3', networkId: 'net-2' })],
+    };
+    const { deps, capturedScopes, capturedSegments } = makeDeps({
+      selectPool: mock(async () => [
+        { ...OPPORTUNITY, id: 'opp-1', context: {} },
+        { ...OPPORTUNITY, id: 'opp-2', context: {} },
+        { ...OPPORTUNITY, id: 'opp-3', context: {} },
+      ]),
+    });
+    deps.database.getNegotiationTasksForOpportunity = mock(
+      async (opportunityId: string) => tasksByOpportunityId[opportunityId] ?? [],
+    );
+    deps.database.getMessagesByTaskIds = mock(async (taskIds: string[]) => new Map(
+      taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: null } }] }]]),
+    ));
+
+    await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
+
+    expect(capturedScopes.map((scope) => scope.networkId)).toEqual(['net-1']);
+    expect(capturedSegments[0].map((segment) => [segment.opportunityId, segment.taskId])).toEqual([
+      ['opp-1', 't1'],
+      ['opp-2', 't2'],
+    ]);
+    // Derivation-time tasks are reused; no second fetch per pass opportunity.
+    expect(deps.database.getNegotiationTasksForOpportunity).toHaveBeenCalledTimes(3);
+  });
+
+  it('counts terminal-status opportunities in the pass with aggregate telemetry only', async () => {
+    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
+    const { deps, capturedSegments, infos } = makeDeps({
+      selectPool: mock(async () => [
+        { ...OPPORTUNITY, id: 'opp-1', status: 'rejected', context: {} },
+      ]),
+    });
+
+    await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
+
+    expect(capturedSegments).toHaveLength(1);
+    expect(infos[0]).toMatchObject({ terminalStatusIncluded: 1 });
+  });
+
+  it('keeps the k>=5 distinct-opportunity floor and scope matching untouched', async () => {
+    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
+    const run = async (poolSize: number) => {
+      const mine = mock(async () => []);
+      const opportunities = Array.from({ length: poolSize }, (_, i) => ({
+        ...OPPORTUNITY,
+        id: `opp-${i + 1}`,
+        context: {},
+      }));
+      const { deps, infos } = makeDeps({
+        selectPool: mock(async () => opportunities),
+        runShadow: runNegotiationEvidenceShadow,
+        getMiner: () => ({ mine } as unknown as NegotiationEvidenceMiner),
+      });
+      deps.database.getNegotiationTasksForOpportunity = mock(
+        async (opportunityId: string) => [task(`task-${opportunityId}`, { opportunityId })],
+      );
+      deps.database.getMessagesByTaskIds = mock(async (taskIds: string[]) => new Map(
+        taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: null } }] }]]),
+      ));
+      await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
+      return { mine, infos };
+    };
+
+    const below = await run(4);
+    expect(below.mine).not.toHaveBeenCalled();
+    expect(below.infos[0]).toMatchObject({ distinctOpportunities: 4, hypothesesMined: 0 });
+
+    const atFloor = await run(5);
+    expect(atFloor.mine).toHaveBeenCalledTimes(1);
+    expect(atFloor.infos[0]).toMatchObject({ distinctOpportunities: 5 });
+  });
+});
+
+describe('IND-465 slice 2 — answeredBy-verified owner answers', () => {
+  const COLLECT_INPUT = {
+    opportunities: [OPPORTUNITY],
+    recipientUserId: 'owner-1',
+    intentId: 'intent-1',
+    currentIntentFingerprint: FINGERPRINT,
+    networkId: 'net-1',
+  };
+
+  function databaseWithAnswers(
+    answers: Awaited<ReturnType<ShadowDatabase['getAnsweredNegotiationQuestionsForOpportunity']>>,
+    tasks: ShadowTask[] = [task('task-1')],
+  ): ShadowDatabase {
+    return {
+      getIntent: mock(async () => INTENT),
+      getNegotiationTasksForOpportunity: mock(async () => tasks),
+      getMessagesByTaskIds: mock(async () => new Map()),
+      getArtifactsForTask: mock(async () => []),
+      getAnsweredNegotiationQuestionsForOpportunity: mock(async () => answers),
+    };
+  }
+
+  it('projects answers answered by the recipient and re-checks authority and fingerprint fail-closed', async () => {
+    const database = databaseWithAnswers([
+      // Verified: recipient answered, no captured fingerprint.
+      { answeredBy: 'owner-1', selectedOptions: ['Yes, share it'], freeText: 'Prefer async collaboration' },
+      // Verified: matching captured fingerprint tolerated and kept.
+      { answeredBy: 'owner-1', selectedOptions: ['Fresh answer'], capturedIntentFingerprint: FINGERPRINT },
+      // Excluded: answered by the counterparty (authority re-check).
+      { answeredBy: 'counterparty-1', selectedOptions: ['Leaked counterparty answer'] },
+      // Excluded: captured fingerprint drifted from the current intent.
+      { answeredBy: 'owner-1', selectedOptions: ['Stale answer'], capturedIntentFingerprint: 'drifted-fingerprint' },
+      // Excluded: empty answer content.
+      { answeredBy: 'owner-1', selectedOptions: [], freeText: '   ' },
+    ]);
+
+    const [segment] = await collectNegotiationEvidenceSegments(COLLECT_INPUT, database);
+
+    expect(database.getAnsweredNegotiationQuestionsForOpportunity)
+      .toHaveBeenCalledWith('owner-1', 'opp-1', FINGERPRINT);
+    expect(segment.ownerAnswers).toEqual([
+      { answererUserId: 'owner-1', selectedOptions: ['Yes, share it'], freeText: 'Prefer async collaboration' },
+      { answererUserId: 'owner-1', selectedOptions: ['Fresh answer'] },
+    ]);
+    expect(JSON.stringify(segment)).not.toContain('Leaked counterparty answer');
+    expect(JSON.stringify(segment)).not.toContain('Stale answer');
+  });
+
+  it('keeps ownerAnswers undefined when no verified answers exist', async () => {
+    const [segment] = await collectNegotiationEvidenceSegments(COLLECT_INPUT, databaseWithAnswers([]));
+    expect(segment.ownerAnswers).toBeUndefined();
+    expect('ownerAnswers' in segment).toBe(false);
+  });
+
+  it('fetches answers once per opportunity, scoped to that opportunity id, and shares them across continuations', async () => {
+    const database = databaseWithAnswers(
+      [{ answeredBy: 'owner-1', selectedOptions: ['Shared across continuations'] }],
+      [task('task-1'), task('task-2')],
+    );
+
+    const segments = await collectNegotiationEvidenceSegments(COLLECT_INPUT, database);
+
+    expect(database.getAnsweredNegotiationQuestionsForOpportunity).toHaveBeenCalledTimes(1);
+    expect(database.getAnsweredNegotiationQuestionsForOpportunity)
+      .toHaveBeenCalledWith('owner-1', 'opp-1', FINGERPRINT);
+    expect(segments.map((segment) => [segment.taskId, segment.ownerAnswers])).toEqual([
+      ['task-1', [{ answererUserId: 'owner-1', selectedOptions: ['Shared across continuations'] }]],
+      ['task-2', [{ answererUserId: 'owner-1', selectedOptions: ['Shared across continuations'] }]],
+    ]);
+  });
+
+  it('never fetches answers for opportunities without validated tasks', async () => {
+    const database = databaseWithAnswers(
+      [{ answeredBy: 'owner-1', selectedOptions: ['Should never be fetched'] }],
+      [task('wrong-participant', { candidateUserId: 'third-user' })],
+    );
+
+    const segments = await collectNegotiationEvidenceSegments(COLLECT_INPUT, database);
+
+    expect(segments).toEqual([]);
+    expect(database.getAnsweredNegotiationQuestionsForOpportunity).not.toHaveBeenCalled();
+  });
+
+  it('projects verified owner answers end-to-end through the shadow pass', async () => {
+    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
+    const { deps, capturedSegments } = makeDeps();
+    deps.database.getAnsweredNegotiationQuestionsForOpportunity = mock(async () => [
+      { answeredBy: 'owner-1', selectedOptions: ['Weekly sync works'] },
+    ]);
+
+    await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
+
+    expect(capturedSegments).toHaveLength(1);
+    expect(capturedSegments[0][0].ownerAnswers).toEqual([
+      { answererUserId: 'owner-1', selectedOptions: ['Weekly sync works'] },
+    ]);
   });
 });

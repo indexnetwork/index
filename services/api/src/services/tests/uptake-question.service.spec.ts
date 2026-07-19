@@ -102,6 +102,54 @@ describe('UptakeQuestionService', () => {
     expect(jobId).toBe(`uptake-${RECIPIENT}-${OPPORTUNITY}`);
   });
 
+  it('skips legacy blank and null-like actor intents without an intent lookup', async () => {
+    const nullLikeValues: unknown[] = [null, undefined, '', '   ', 'null', ' NULL ', 'undefined'];
+
+    for (const intent of nullLikeValues) {
+      const getIntent = mock(async () => null);
+      const { service, enqueue } = makeDeps({
+        getOpportunity: async () => opportunity({
+          actors: [
+            { userId: RECIPIENT, networkId: NETWORK, role: 'patient' },
+            { userId: COUNTERPARTY, networkId: NETWORK, role: 'peer', intent } as never,
+          ],
+        }),
+        getIntent,
+      });
+
+      await service.handlePending(OPPORTUNITY);
+
+      expect(getIntent).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+    }
+  });
+
+  it('trims a valid non-UUID actor intent before the exact lookup', async () => {
+    const getIntent = mock(async (intentId: string) => ({
+      id: intentId,
+      userId: COUNTERPARTY,
+      payload: 'Host a hands-on TypeScript workshop',
+      summary: 'Host a TypeScript workshop',
+      status: 'ACTIVE' as const,
+      archivedAt: null,
+      felicityAuthority: 45,
+    }));
+    const { service, enqueue } = makeDeps({
+      getOpportunity: async () => opportunity({
+        actors: [
+          { userId: RECIPIENT, networkId: NETWORK, role: 'patient' },
+          { userId: COUNTERPARTY, networkId: NETWORK, role: 'peer', intent: `  ${INTENT}  ` },
+        ],
+      }),
+      getIntent,
+    });
+
+    await service.handlePending(OPPORTUNITY);
+
+    expect(getIntent).toHaveBeenCalledWith(INTENT, NETWORK);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
   it('skips high or unknown authority', async () => {
     for (const felicityAuthority of [70, null]) {
       const { service, enqueue } = makeDeps({

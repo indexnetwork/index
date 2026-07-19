@@ -3,7 +3,7 @@ title: "Negotiation"
 type: domain
 tags: [negotiation, bilateral, agents, opportunity, a2a, roles]
 created: 2026-03-26
-updated: 2026-07-11
+updated: 2026-07-18
 proposal: "Negotiations v2 — The Client-Advocate Protocol: see the visual proposal attached to IND-395 (https://linear.app/indexnetwork/issue/IND-395/)"
 ---
 
@@ -41,6 +41,8 @@ On the first turn, the initiating side presents the match case. On subsequent tu
 ## Turn-Based Protocol
 
 Negotiation proceeds in alternating turns.
+
+> **Formal framing:** the turn protocol is a formal *dialogue game* in the McBurney & Parsons (2001) sense — the actions below are its locutions, `allowedActionsFor` its combination rules, the persisted turn history its commitment store, and `isTerminalAction` + the turn cap its termination rules. The full mapping lives in [docs/design/negotiation-dialogue-game.md](../design/negotiation-dialogue-game.md).
 
 ### Protocol versions
 
@@ -106,6 +108,19 @@ Flow: the `ask_user` turn is persisted → the task transitions to `input_requir
 - The 5-min park/claim timeout machinery ignores paused tasks: those workers only act on `waiting_for_agent`/`claimed` states.
 
 The action is only offered when the full pause loop is wired (questioner enabled, answer-window timer available, an opportunity to resume against); it is not accepted from the external polling `respond` surface — polling agents have their own channel to their user.
+
+### Deadlock detection & bargaining shift (flag-gated)
+
+With `NEGOTIATION_DEADLOCK_SHIFT_ENABLED=true` (strict literal, default off), **v2** negotiations detect stalemate deterministically — pure inspection of the persisted turn history, no LLM in the decision. When the trailing run of consecutive `counter`/`question` turns reaches `NEGOTIATION_DEADLOCK_THRESHOLD` (integer ≥ 2, default **4**; invalid values fall back to the default), subsequent **system-agent** turns are drafted in a **bargaining stance** — the Wells & Reed (2006) persuasion→negotiation shift: stop re-arguing merits, offer a concrete concession or scope reduction, make the remaining objection priceable, escalate to `ask_user` only where that action is already legally available on the turn, or conclude decisively with a seat-legal terminal action. Openings (`propose`/`outreach`), terminal actions, `ask_user`, and unreadable actions **reset** the run; continuation histories count prior sessions' turns.
+
+Constraints (by design):
+
+- **Stance, not rules** — seat vocabularies (`allowedActionsFor`), termination rules, and turn-cap behavior are untouched; the shift never invents an action.
+- **System agent only** — externally dispatched (polling/local personal-agent) turns never receive the stance.
+- **Fail-open** — a detection or persistence error means "no deadlock"; the negotiation proceeds on the legacy path. With the flag off, drafting inputs and prompts are byte-identical to before.
+- **Private analytics** — the first applied shift per session is recorded to internal task metadata (`metadata.deadlockShift`, like `screenDecision` never projected by API surfaces) and emitted as a `negotiation_deadlock_shift` trace event.
+
+See [docs/design/negotiation-dialogue-game.md](../design/negotiation-dialogue-game.md) for the formal framing.
 
 ### Flow
 

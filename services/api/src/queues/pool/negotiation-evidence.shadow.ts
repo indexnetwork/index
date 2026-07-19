@@ -12,14 +12,32 @@
  * wired independently of the Lens A pool flags, so this lens can run even when
  * pool discriminator mining is disabled. Fully failure-isolated: it never
  * throws into the caller's discovery lifecycle.
+ *
+ * IND-465 slice 1: the single-network pass scope is derived from capture-time
+ * negotiation TASK metadata (which always records a validated networkId)
+ * instead of `opportunity.context.networkId` (only conditionally recorded at
+ * discovery creation, empty on most evidence-bearing rows). All derivation
+ * rules fail closed; context, when present, acts only as a contamination
+ * guard and never overrides tasks. The Lens-C-local pool selection also
+ * includes terminal statuses — evidence lives on decided negotiations —
+ * without touching the shared Lens A live-pool selection.
+ *
+ * IND-465 slice 2: answeredBy-verified owner answers are projected into
+ * evidence segments from the questions table ONLY — negotiation-family
+ * question rows carry `answer.answeredBy`, giving verifiable authority.
+ * `opportunity.metadata.userAnswers` is deliberately NEVER read for evidence:
+ * it has no answeredBy, is a counterparty-visible channel, and ask_user
+ * expiry writes synthetic entries containing disclosure-subject text.
+ * shared_message stays impossible-by-construction (no per-message consent
+ * primitive exists; deferred to IND-467).
  */
 import { NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES, NegotiationEvidenceMiner, negotiationEvidenceQuestionsMode, runNegotiationEvidenceShadow } from '@indexnetwork/protocol';
-import type { RawEvidenceOutcome, RawEvidenceSegment, RawEvidenceTurn } from '@indexnetwork/protocol';
+import type { RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment, RawEvidenceTurn } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
+import { POOL_TERMINAL_STATUSES } from '../../adapters/poolquery.shared';
 import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { log } from '../../lib/log';
-import { selectPoolForMining } from './mining.shared';
 import type { PoolMiningTrigger } from './mining.shared';
 
 /** Greppable logger (IND-433): search deploy logs for "NegotiationEvidenceShadow". */
@@ -42,8 +60,9 @@ interface ShadowIntent {
 
 interface ShadowOpportunity {
   id: string;
+  status?: string | null;
   actors: Array<{ userId: string; role: string }>;
-  context?: { networkId?: string | null } | null;
+  context?: { networkId?: string | null; conversationId?: string | null } | null;
 }
 
 interface ShadowTask {
@@ -65,6 +84,15 @@ interface ShadowArtifact {
   parts: unknown[];
 }
 
+/** AnsweredBy-verified owner answer row returned by the questions-table fetch. */
+interface ShadowOwnerAnswer {
+  answeredBy: string;
+  selectedOptions: string[];
+  freeText?: string;
+  /** Capture-time intent fingerprint, when the question detection recorded one. */
+  capturedIntentFingerprint?: string;
+}
+
 interface ShadowLogger {
   debug: (message: string, metadata?: Record<string, unknown>) => void;
   info: (message: string, metadata?: Record<string, unknown>) => void;
@@ -78,6 +106,11 @@ export interface NegotiationEvidenceShadowDeps {
     getNegotiationTasksForOpportunity: (opportunityId: string) => Promise<ShadowTask[]>;
     getMessagesByTaskIds: (taskIds: string[]) => Promise<Map<string, ShadowMessage[]>>;
     getArtifactsForTask: (taskId: string) => Promise<ShadowArtifact[]>;
+    getAnsweredNegotiationQuestionsForOpportunity: (
+      recipientUserId: string,
+      opportunityId: string,
+      currentIntentFingerprint: string,
+    ) => Promise<ShadowOwnerAnswer[]>;
   };
   selectPool: (
     userId: string,
@@ -89,9 +122,27 @@ export interface NegotiationEvidenceShadowDeps {
   logger: ShadowLogger;
 }
 
+/**
+ * Lens-C-local pool selection (IND-465): the exact-trigger recipient+intent
+ * pool INCLUDING terminal statuses — negotiation evidence lives on decided
+ * negotiations. Deliberately separate from Lens A's selectPoolForMining,
+ * which stays live-status-only; session scoping and the size cap mirror it.
+ */
+async function selectEvidencePoolForShadow(
+  userId: string,
+  intentId: string,
+  sessionId: string | undefined,
+): Promise<ShadowOpportunity[]> {
+  const pool = await chatDatabaseAdapter.getEvidencePoolOpportunitiesForIntent(userId, intentId);
+  return pool
+    .filter((opportunity) => !sessionId
+      || opportunity.context?.conversationId === sessionId)
+    .slice(0, 50);
+}
+
 const DEFAULT_DEPS: NegotiationEvidenceShadowDeps = {
   database: chatDatabaseAdapter,
-  selectPool: (userId, intentId, sessionId) => selectPoolForMining(userId, intentId, sessionId),
+  selectPool: (userId, intentId, sessionId) => selectEvidencePoolForShadow(userId, intentId, sessionId),
   getMiner: () => {
     miner ??= new NegotiationEvidenceMiner();
     return miner;
@@ -171,22 +222,27 @@ function captureTimeIntentFingerprint(
   return computeIntentFingerprint(capturedIntent.description, capturedIntent.title);
 }
 
-function validateTask(
+interface TaskProvenanceInput {
+  opportunityId: string;
+  recipientUserId: string;
+  counterpartyUserId: string;
+  intentId: string;
+  currentIntentFingerprint: string;
+}
+
+/**
+ * Structural capture-time validation shared by network-binding derivation
+ * (IND-465) and segment building — every fail-closed check EXCEPT the
+ * pass-network equality, which only exists once a pass network is derived.
+ */
+function validateTaskProvenance(
   task: ShadowTask,
-  input: {
-    opportunityId: string;
-    networkId: string;
-    recipientUserId: string;
-    counterpartyUserId: string;
-    intentId: string;
-    currentIntentFingerprint: string;
-  },
+  input: TaskProvenanceInput,
 ): { sourceUserId: string; candidateUserId: string; intentFingerprint: string } | null {
   const metadata = task.metadata;
   if (!metadata
     || metadata.type !== 'negotiation'
-    || metadata.opportunityId !== input.opportunityId
-    || metadata.networkId !== input.networkId) {
+    || metadata.opportunityId !== input.opportunityId) {
     return null;
   }
 
@@ -212,6 +268,69 @@ function validateTask(
   if (intentFingerprint !== input.currentIntentFingerprint) return null;
 
   return { sourceUserId, candidateUserId, intentFingerprint };
+}
+
+/**
+ * Full segment-building validation: provenance PLUS pass-network equality.
+ * NOT relaxed by IND-465 — with a derived pass network this still guards
+ * sibling tasks of multi-task opportunities recorded under another network.
+ */
+function validateTask(
+  task: ShadowTask,
+  input: TaskProvenanceInput & { networkId: string },
+): { sourceUserId: string; candidateUserId: string; intentFingerprint: string } | null {
+  if (task.metadata?.networkId !== input.networkId) return null;
+  return validateTaskProvenance(task, input);
+}
+
+/** Aggregate-only derivation skip reasons (IND-465) — counted, never logged with IDs/text. */
+type NetworkBindingSkip = 'no_task_network' | 'network_disagreement' | 'context_mismatch';
+
+const SKIP_COUNTER_BY_OUTCOME = {
+  no_task_network: 'skippedNoTaskNetwork',
+  network_disagreement: 'skippedNetworkDisagreement',
+  context_mismatch: 'skippedContextMismatch',
+} as const satisfies Record<NetworkBindingSkip, string>;
+
+/**
+ * Derive one opportunity's network binding from capture-time negotiation task
+ * metadata (IND-465). ALL rules fail closed:
+ *  - only structurally valid tasks contribute (tasks without capture-time
+ *    intentSnapshots stay excluded, exactly as segment building excludes them);
+ *  - exactly one distinct non-empty task networkId binds the opportunity;
+ *  - zero or more than one distinct value skips it;
+ *  - a present-but-different `opportunity.context.networkId` skips it
+ *    (contamination guard — context never overrides tasks).
+ */
+export function deriveTaskNetworkBinding(
+  opportunity: ShadowOpportunity,
+  tasks: ShadowTask[],
+  input: { recipientUserId: string; intentId: string; currentIntentFingerprint: string },
+): { outcome: 'bound'; networkId: string } | { outcome: NetworkBindingSkip } {
+  const counterpartyUserId = getValidatedCounterpartyUserId(opportunity, input.recipientUserId);
+  if (!counterpartyUserId) return { outcome: 'no_task_network' };
+
+  const networkIds = new Set<string>();
+  for (const task of tasks) {
+    const provenance = validateTaskProvenance(task, {
+      opportunityId: opportunity.id,
+      recipientUserId: input.recipientUserId,
+      counterpartyUserId,
+      intentId: input.intentId,
+      currentIntentFingerprint: input.currentIntentFingerprint,
+    });
+    if (!provenance) continue;
+    const networkId = task.metadata?.networkId;
+    if (typeof networkId === 'string' && networkId.length > 0) networkIds.add(networkId);
+  }
+  if (networkIds.size === 0) return { outcome: 'no_task_network' };
+  if (networkIds.size > 1) return { outcome: 'network_disagreement' };
+  const [derivedNetworkId] = networkIds;
+  const contextNetworkId = opportunity.context?.networkId;
+  if (contextNetworkId && contextNetworkId !== derivedNetworkId) {
+    return { outcome: 'context_mismatch' };
+  }
+  return { outcome: 'bound', networkId: derivedNetworkId };
 }
 
 function readDataPart(parts: unknown): Record<string, unknown> | null {
@@ -285,6 +404,41 @@ function projectOutcome(
   };
 }
 
+/**
+ * Re-check every fetch-side owner-answer constraint observable here (IND-465
+ * slice 2), fail closed on any mismatch, and project only answer content:
+ * - answerer MUST equal the segment recipient (authority re-verification);
+ * - a present capture-time fingerprint MUST equal the current one (absence
+ *   is tolerated — the segment-level task fingerprint guard covers drift);
+ * - empty answers are dropped; question text, detection payloads, and other
+ *   users' IDs are never projected.
+ */
+function projectOwnerAnswers(
+  answers: ShadowOwnerAnswer[],
+  recipientUserId: string,
+  currentIntentFingerprint: string,
+): RawEvidenceOwnerAnswer[] {
+  return answers.flatMap((answer) => {
+    if (answer.answeredBy !== recipientUserId) return [];
+    if (answer.capturedIntentFingerprint !== undefined
+      && answer.capturedIntentFingerprint !== currentIntentFingerprint) {
+      return [];
+    }
+    const selectedOptions = Array.isArray(answer.selectedOptions)
+      ? answer.selectedOptions.filter((option): option is string => typeof option === 'string')
+      : [];
+    const freeText = typeof answer.freeText === 'string' && answer.freeText.trim().length > 0
+      ? answer.freeText
+      : undefined;
+    if (selectedOptions.length === 0 && freeText === undefined) return [];
+    return [{
+      answererUserId: answer.answeredBy,
+      selectedOptions,
+      ...(freeText !== undefined ? { freeText } : {}),
+    }];
+  });
+}
+
 /** Build one fail-closed evidence segment per exact validated task/continuation. */
 export async function collectNegotiationEvidenceSegments(
   input: {
@@ -293,6 +447,8 @@ export async function collectNegotiationEvidenceSegments(
     intentId: string;
     currentIntentFingerprint: string;
     networkId: string;
+    /** Tasks already fetched during network-binding derivation (IND-465). */
+    tasksByOpportunityId?: ReadonlyMap<string, ShadowTask[]>;
   },
   database: NegotiationEvidenceShadowDeps['database'],
 ): Promise<RawEvidenceSegment[]> {
@@ -305,7 +461,8 @@ export async function collectNegotiationEvidenceSegments(
     );
     if (!counterpartyUserId) continue;
 
-    const tasks = await database.getNegotiationTasksForOpportunity(opportunity.id);
+    const tasks = input.tasksByOpportunityId?.get(opportunity.id)
+      ?? await database.getNegotiationTasksForOpportunity(opportunity.id);
     const validatedTasks = tasks.flatMap((task) => {
       const validation = validateTask(task, {
         opportunityId: opportunity.id,
@@ -318,6 +475,20 @@ export async function collectNegotiationEvidenceSegments(
       return validation ? [{ task, validation }] : [];
     });
     if (validatedTasks.length === 0) continue;
+
+    // IND-465 slice 2: answeredBy-verified owner answers, fetched once per
+    // opportunity from the questions table ONLY (never metadata.userAnswers)
+    // and attached to every continuation segment of the opportunity — the
+    // extractor dedups identical content within an opportunity group.
+    const ownerAnswers = projectOwnerAnswers(
+      await database.getAnsweredNegotiationQuestionsForOpportunity(
+        input.recipientUserId,
+        opportunity.id,
+        input.currentIntentFingerprint,
+      ),
+      input.recipientUserId,
+      input.currentIntentFingerprint,
+    );
 
     const messagesByTaskId = await database.getMessagesByTaskIds(
       validatedTasks.map(({ task }) => task.id),
@@ -344,6 +515,7 @@ export async function collectNegotiationEvidenceSegments(
           validation.candidateUserId,
         ),
         ...(outcome ? { outcome } : {}),
+        ...(ownerAnswers.length > 0 ? { ownerAnswers } : {}),
       });
     }
   }
@@ -384,17 +556,33 @@ export async function maybeRunNegotiationEvidenceShadow(
 
     const pool = await deps.selectPool(userId, intentId, trigger.sessionId);
 
-    // Keep the pass single-network: mine only the largest network group.
-    const byNetwork = new Map<string, ShadowOpportunity[]>();
+    // IND-465: bind each opportunity's network from capture-time task
+    // metadata (fail closed), then keep the pass single-network by mining
+    // only the largest derived-network group. Tasks are fetched here, before
+    // grouping, and reused for segment building.
+    const skipCounts = {
+      skippedNoTaskNetwork: 0,
+      skippedNetworkDisagreement: 0,
+      skippedContextMismatch: 0,
+    };
+    const byNetwork = new Map<string, Array<{ opportunity: ShadowOpportunity; tasks: ShadowTask[] }>>();
     for (const opportunity of pool) {
-      const networkId = opportunity.context?.networkId;
-      if (!networkId) continue;
-      const group = byNetwork.get(networkId) ?? [];
-      group.push(opportunity);
-      byNetwork.set(networkId, group);
+      const tasks = await deps.database.getNegotiationTasksForOpportunity(opportunity.id);
+      const binding = deriveTaskNetworkBinding(opportunity, tasks, {
+        recipientUserId: userId,
+        intentId,
+        currentIntentFingerprint: intentFingerprint,
+      });
+      if (binding.outcome !== 'bound') {
+        skipCounts[SKIP_COUNTER_BY_OUTCOME[binding.outcome]] += 1;
+        continue;
+      }
+      const group = byNetwork.get(binding.networkId) ?? [];
+      group.push({ opportunity, tasks });
+      byNetwork.set(binding.networkId, group);
     }
     let passNetworkId: string | undefined;
-    let passPool: ShadowOpportunity[] = [];
+    let passPool: Array<{ opportunity: ShadowOpportunity; tasks: ShadowTask[] }> = [];
     for (const [networkId, group] of byNetwork) {
       if (group.length > passPool.length) {
         passNetworkId = networkId;
@@ -406,22 +594,30 @@ export async function maybeRunNegotiationEvidenceShadow(
         source: trigger.source,
         runId: trigger.runId ?? null,
         intentId,
+        ...skipCounts,
       });
       return;
     }
 
+    const passEntries = passPool.slice(0, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES);
+    const terminalStatusIncluded = passEntries.filter(({ opportunity }) => opportunity.status != null
+      && (POOL_TERMINAL_STATUSES as readonly string[]).includes(opportunity.status)).length;
+
     const segments = await collectNegotiationEvidenceSegments({
-      opportunities: passPool.slice(0, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES),
+      opportunities: passEntries.map(({ opportunity }) => opportunity),
       recipientUserId: userId,
       intentId,
       currentIntentFingerprint: intentFingerprint,
       networkId: passNetworkId,
+      tasksByOpportunityId: new Map(passEntries.map(({ opportunity, tasks }) => [opportunity.id, tasks])),
     }, deps.database);
     if (segments.length === 0) {
       deps.logger.debug('negotiation-evidence shadow skipped: no minable segments', {
         source: trigger.source,
         runId: trigger.runId ?? null,
         intentId,
+        ...skipCounts,
+        terminalStatusIncluded,
       });
       return;
     }
@@ -440,6 +636,8 @@ export async function maybeRunNegotiationEvidenceShadow(
     deps.logger.info('negotiation-evidence shadow result', {
       source: trigger.source,
       runId: trigger.runId ?? null,
+      ...skipCounts,
+      terminalStatusIncluded,
       ...result.telemetry,
     });
   } catch (error) {

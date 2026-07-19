@@ -1,0 +1,45 @@
+{
+  "artifactType": "index-eval/canary-manifest",
+  "schemaVersion": 1,
+  "description": "IND-447 weekly live-eval canary: a representative, budget-capped subset of the four baseline-backed suites. 20 cases x 2 runs = 40 requested run slots. Edit this file to change what the canary measures; hard caps live in eval/canary/canary.manifest.ts.",
+  "runsPerCase": 2,
+  "alpha": 0.05,
+  "suites": {
+    "matching": {
+      "cases": [
+        "is_a_identity/investor-vs-real-investor",
+        "is_a_identity/scout-vs-scouted-athlete",
+        "location/known-mismatch-penalized",
+        "query_primary/investors-query-rejects-funded-founder",
+        "same_side/both-seeking-investors",
+        "complementary_role/vc-for-cofounder-intent",
+        "score_calibration/must-meet-primary-role",
+        "historical/first-check-investor"
+      ]
+    },
+    "opportunity": {
+      "cases": [
+        "greeting/plain-prose",
+        "grounding/specific-intents",
+        "no_leakage/identifiers-in-context",
+        "viewer_voice/founder-investor"
+      ]
+    },
+    "premise": {
+      "cases": [
+        "speech_act/assertive-capability",
+        "felicity_calibration/specific-high-clarity",
+        "atomicity/compound-split",
+        "tier_classification/founder-raising"
+      ]
+    },
+    "profile": {
+      "cases": [
+        "extraction/clean-bio",
+        "privacy/email-and-phone",
+        "skills_interests/multi-skill",
+        "update/add-and-remove"
+      ]
+    }
+  }
+}

@@ -103,6 +103,63 @@ describe('IND-305: discover_opportunities continueFrom routing', () => {
     expect(discoverCalls).toHaveLength(0);
   });
 
+  test('continuation renders only safe draft cards and counts negotiating rows', async () => {
+    const deps = makeDeps();
+    if (!deps.opportunityDiscovery) throw new Error('opportunity discovery deps missing');
+    deps.opportunityDiscovery.continueDiscovery = async () => ({
+      found: true,
+      count: 3,
+      opportunities: [
+        {
+          opportunityId: 'opp-draft',
+          userId: 'draft-user',
+          name: 'Draft Candidate',
+          status: 'draft',
+          viewerRole: 'patient',
+          score: 0.9,
+          homeCardPresentation: {
+            headline: 'Presenter headline',
+            personalizedSummary: 'Presenter-approved draft summary.',
+            digestSummary: 'Presenter digest.',
+            suggestedAction: 'Connect.',
+            narratorRemark: 'Worth a look.',
+            primaryActionLabel: 'Connect',
+            secondaryActionLabel: 'Not now',
+            mutualIntentsLabel: 'Shared goals',
+            greeting: '',
+          },
+        },
+        {
+          opportunityId: 'opp-negotiating',
+          userId: 'negotiating-user',
+          name: 'Negotiating Candidate',
+          status: 'negotiating',
+          viewerRole: 'patient',
+          score: 0.8,
+        },
+        {
+          opportunityId: 'opp-rejected',
+          userId: 'rejected-user',
+          name: 'Rejected Candidate',
+          status: 'rejected',
+          viewerRole: 'patient',
+          score: 0.7,
+        },
+      ],
+    } as never);
+    const tool = captureDiscoverTool(deps);
+
+    const output = await tool.handler({
+      context: makeContext({ isMcp: true }),
+      query: { continueFrom: 'some-discovery-id' },
+    });
+
+    expect(output).toContain('Presenter-approved draft summary.');
+    expect(output).toContain('1 more opportunity is still being evaluated');
+    expect(output).not.toContain('Negotiating Candidate');
+    expect(output).not.toContain('Rejected Candidate');
+  });
+
   // IND-305 regression guard. Before the fix, a caller (typically an MCP
   // client's LLM) passing a fresh `searchQuery` alongside a stale
   // `continueFrom` was silently routed to `continueDiscovery`, which resumed

@@ -114,6 +114,8 @@ const envSchema = z.object({
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
   NEGOTIATION_ASK_USER_WINDOW_MS: optionalInt,
+  NEGOTIATION_DEADLOCK_SHIFT_ENABLED: optionalBoolean,
+  NEGOTIATION_DEADLOCK_THRESHOLD: optionalInt,
   NEGOTIATOR_MEMORY_WRITE_ENABLED: optionalBoolean,
   NEGOTIATOR_CHAT_REFLECT_DELAY_MS: optionalInt,
   NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
@@ -123,6 +125,7 @@ const envSchema = z.object({
   POOL_QUESTIONS_PUSH: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   POOL_QUESTIONS_RANKING: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   POOL_QUESTIONS_STAMP_NEWBORN: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
+  POOL_QUESTIONS_VISIT_TRIGGER: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   NEGOTIATION_EVIDENCE_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
   OUTCOME_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
 

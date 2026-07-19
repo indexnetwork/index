@@ -45,6 +45,29 @@ export function poolQuestionsPushMode(): PoolQuestionsPushMode {
   return process.env.POOL_QUESTIONS_PUSH?.trim() === "on" ? "on" : "off";
 }
 
+/** Visit-triggered pool-mining mode (IND-439 visibility-audit slice). */
+export type PoolQuestionsVisitTriggerMode = "off" | "on";
+
+/**
+ * Current POOL_QUESTIONS_VISIT_TRIGGER mode (default off). When "on", an
+ * intent owner's intent-page pending-questions fetch may enqueue a debounced
+ * pool-mining pass for that intent when no live pending pool_discovery
+ * question exists. The trigger only adds a *when* — every existing mining
+ * gate (POOL_QUESTIONS_MODE, k-anonymity floor, VoI threshold, per-intent
+ * budgets, fingerprint freshness, push budgets) applies unchanged, so this
+ * is a no-op unless {@link poolQuestionsMode} is also "on".
+ */
+export function poolQuestionsVisitTrigger(): PoolQuestionsVisitTriggerMode {
+  return process.env.POOL_QUESTIONS_VISIT_TRIGGER?.trim() === "on" ? "on" : "off";
+}
+
+/**
+ * Debounce window for visit-triggered pool mining, per intent (IND-439).
+ * At most one visit-triggered mining run per intent per window, enforced via
+ * BullMQ deduplication — no new tables.
+ */
+export const POOL_VISIT_MINING_DEBOUNCE_MS = 6 * 60 * 60 * 1000;
+
 /** Newborn-opportunity stamping mode (IND-420 P4b). */
 export type PoolQuestionsStampNewbornMode = "off" | "on";
 

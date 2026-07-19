@@ -9,6 +9,7 @@ import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, t
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { ASK_USER_LOCK_SLACK_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { NegotiationScreener, configuredScreenMode, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
+import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
@@ -261,7 +262,7 @@ export class NegotiationGraphFactory {
           protocolVersion = configuredProtocolVersion();
         }
 
-        const task = await database.createTask(conversation.id, {
+        const taskMetadata = {
           type: 'negotiation',
           sourceUserId: state.sourceUser.id,
           initiatorUserId,
@@ -273,9 +274,24 @@ export class NegotiationGraphFactory {
           maxTurns,
           isContinuation,
           priorTurnCount: priorTurns.length,
-        });
+        };
+        const task = state.opportunityId && state.opportunityUpdatedAt
+          ? await database.createNegotiationTaskForAttempt({
+              conversationId: conversation.id,
+              opportunityId: state.opportunityId,
+              expectedUpdatedAt: state.opportunityUpdatedAt,
+              metadata: taskMetadata,
+            })
+          : await database.createTask(conversation.id, taskMetadata);
 
-        if (state.opportunityId) {
+        if (!task) {
+          throw new Error('Negotiation attempt is stale or already claimed');
+        }
+
+        // Attempt-bound discovery already persisted `negotiating` and the atomic
+        // task claim verified that exact version. Legacy/direct invocations with
+        // only an opportunity ID retain the prior best-effort status update.
+        if (state.opportunityId && !state.opportunityUpdatedAt) {
           await database.updateOpportunityStatus(state.opportunityId, 'negotiating').catch((err) => {
             initLog.error('Failed to set opportunity status to negotiating', { opportunityId: state.opportunityId, error: err });
           });
@@ -481,6 +497,28 @@ export class NegotiationGraphFactory {
           && !(state.turnCount === 0 && !state.isContinuation)
           && !hasPriorAskUser(state.messages, ownUser.id);
 
+        // ─── Deadlock detection → persuasion→bargaining stance (IND-428) ──────
+        // Deterministic trailing-run inspection of the persisted history — no
+        // LLM in the decision. Gated on the strict default-off flag AND v2,
+        // checked alongside the protocol-version plumbing so v1 semantics stay
+        // untouched. Fail-open: any detection error means "no deadlock" and
+        // the legacy path proceeds byte-identically. The shift changes the
+        // system agent's drafting stance only — allowedActions, the dispatch
+        // payload, and all termination rules are untouched.
+        let deadlock: DeadlockAssessment | null = null;
+        if (version === 'v2' && configuredDeadlockShiftEnabled()) {
+          try {
+            deadlock = assessDeadlock(history, configuredDeadlockThreshold());
+          } catch (err) {
+            turnLog.warn('Deadlock detection failed; proceeding without mode shift', {
+              taskId: state.taskId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            deadlock = null;
+          }
+        }
+        const bargainingMode = deadlock?.deadlocked === true;
+
         // P5.3: the speaker's own negotiator memory (cached per side across
         // turns). Injected into both the dispatch payload (the user's own
         // agent — scope-correct) and the system-agent prompt.
@@ -559,6 +597,7 @@ export class NegotiationGraphFactory {
             isContinuation: state.isContinuation,
             ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
             ...(askUserAvailable && { canAskUser: true }),
+            ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
             ...(ownMemory.length > 0 && { memory: ownMemory }),
           });
         }
@@ -586,6 +625,48 @@ export class NegotiationGraphFactory {
             seat, isFinalTurn, taskId: state.taskId,
           });
           turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+        }
+
+        // ─── Deadlock shift record (IND-428) ───────────────────────────────
+        // Applied-stance analytics: recorded once per session, on the first
+        // turn actually drafted in the bargaining stance (the system agent —
+        // externally dispatched turns never receive the stance). Internal
+        // metadata only: persisted to tasks.metadata.deadlockShift via the
+        // optional hook; negotiation API surfaces project specific fields and
+        // never return task metadata verbatim. Every step fails open.
+        const bargainingApplied = bargainingMode && !dispatchResult.handled;
+        let deadlockShiftRecord: DeadlockShiftRecord | null = null;
+        if (bargainingApplied && !state.deadlockShift) {
+          deadlockShiftRecord = {
+            reason: 'consecutive_non_convergent',
+            consecutiveNonConvergent: deadlock!.consecutiveNonConvergent,
+            threshold: deadlock!.threshold,
+            shiftedAtTurn: state.turnCount,
+            seat,
+            detectedAt: new Date().toISOString(),
+          };
+          await database.setTaskDeadlockShift?.(state.taskId, deadlockShiftRecord as unknown as Record<string, unknown>).catch((err) => {
+            turnLog.error('Failed to persist deadlock shift record', { taskId: state.taskId, error: err });
+          });
+          turnLog.info('negotiation_deadlock_shift', {
+            taskId: state.taskId,
+            opportunityId: state.opportunityId || undefined,
+            seat,
+            consecutiveNonConvergent: deadlockShiftRecord.consecutiveNonConvergent,
+            threshold: deadlockShiftRecord.threshold,
+            turnIndex: state.turnCount,
+          });
+          if (state.opportunityId) {
+            emitWide({
+              type: 'negotiation_deadlock_shift',
+              opportunityId: state.opportunityId,
+              negotiationConversationId: state.conversationId,
+              turnIndex: state.turnCount,
+              actor: isSource ? 'source' : 'candidate',
+              consecutiveNonConvergent: deadlockShiftRecord.consecutiveNonConvergent,
+              threshold: deadlockShiftRecord.threshold,
+            });
+          }
         }
 
         const parts = [{ kind: "data" as const, data: turn }];
@@ -684,6 +765,7 @@ export class NegotiationGraphFactory {
             turnCount: state.turnCount + 1,
             lastTurn: turn,
             status: 'input_required' as const,
+            ...(deadlockShiftRecord && { deadlockShift: deadlockShiftRecord }),
           };
         }
 
@@ -716,6 +798,7 @@ export class NegotiationGraphFactory {
           currentSpeaker: (isSource ? "candidate" : "source") as "source" | "candidate",
           lastTurn: turn,
           memoryBySide: { [ownSide]: ownMemory },
+          ...(deadlockShiftRecord && { deadlockShift: deadlockShiftRecord }),
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -987,6 +1070,8 @@ export interface NegotiationCandidate {
    * (`accept` → 'pending', `reject` → 'rejected', otherwise → 'stalled').
    */
   opportunityId?: string;
+  /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+  opportunityUpdatedAt?: Date;
 }
 
 export interface NegotiationResult {
@@ -1082,6 +1167,7 @@ export async function negotiateCandidates(
           },
           ...(candidate.discoveryQuery && { discoveryQuery: candidate.discoveryQuery }),
           ...(candidate.opportunityId && { opportunityId: candidate.opportunityId }),
+          ...(candidate.opportunityUpdatedAt && { opportunityUpdatedAt: candidate.opportunityUpdatedAt }),
           ...(initiatorUserId && { initiatorUserId }),
           ...(maxTurns !== undefined && { maxTurns }),
           ...(timeoutMs !== undefined && { timeoutMs }),

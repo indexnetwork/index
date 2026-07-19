@@ -7,6 +7,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
+import { QuestionsEmptyState } from "@/components/InjectedQuestions/QuestionsEmptyState";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -738,9 +739,7 @@ export default function IntentDetailPage() {
                   >
                     <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
                       {questions.length === 0 && !questionChainPending ? (
-                        <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
-                          No pending questions right now.
-                        </div>
+                        <QuestionsEmptyState />
                       ) : (
                         <InjectedQuestions
                           questions={questions}

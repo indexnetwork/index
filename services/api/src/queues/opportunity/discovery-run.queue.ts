@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, NetworkGraphFactory, NetworkMembershipGraphFactory, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
 import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, StampNewbornOpportunitiesFn, ToolDeps } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
@@ -51,6 +51,14 @@ function assertDiscoveryRunOutputFits(raw: string): void {
       `Discovery run result exceeded MCP output cap: ${outputBytes} bytes > ${policy.maxOutputBytes} bytes`,
     );
   }
+}
+
+/** Build the real network graphs required when replaying discovery outside the MCP request. */
+export function createDiscoveryRunScopeGraphs(database: ToolDeps['database']): Pick<ToolDeps['graphs'], 'index' | 'networkMembership'> {
+  return {
+    index: new NetworkGraphFactory(database).createGraph(),
+    networkMembership: new NetworkMembershipGraphFactory(database).createGraph(),
+  };
 }
 
 export class DiscoveryRunQueue {
@@ -218,6 +226,7 @@ export class DiscoveryRunQueue {
       },
       this.deps?.stampNewbornOpportunities,
     ).createGraph();
+    const scopeGraphs = createDiscoveryRunScopeGraphs(chatDatabaseAdapter);
 
     // Env-gated questioner enqueue: queued/async discovery runs generate
     // discovery-mode questions exactly like synchronous MCP discover calls
@@ -258,8 +267,8 @@ export class DiscoveryRunQueue {
       graphs: {
         profile: { invoke: async () => ({}) } as CompiledGraph,
         intent: { invoke: async () => ({}) } as CompiledGraph,
-        index: { invoke: async () => ({}) } as CompiledGraph,
-        networkMembership: { invoke: async () => ({}) } as CompiledGraph,
+        index: scopeGraphs.index,
+        networkMembership: scopeGraphs.networkMembership,
         intentIndex: { invoke: async () => ({}) } as CompiledGraph,
         opportunity: opportunityGraph,
         premise: { invoke: async () => ({}) } as CompiledGraph,
