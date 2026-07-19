@@ -104,7 +104,7 @@ export interface TraceEvent {
   agreedRoles?: { ownUser?: string; otherUser?: string };
 }
 
-export type ChatTransport = "compatibility" | "web";
+export type ChatTransport = "compatibility" | "web" | "onboarding";
 
 export interface QueuedMessage {
   id: string;
@@ -120,8 +120,8 @@ export interface ChatSendOptions {
   hidden?: boolean;
   prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
   persona?: "signal";
-  /** @deprecated Main-web callers should use sendWebMessage. */
-  surface?: "web";
+  /** @deprecated Product surfaces should use their dedicated send helper. */
+  surface?: "web" | "onboarding";
   existingMessageId?: string;
 }
 
@@ -213,6 +213,13 @@ interface AIChatContextType {
     fileIds?: string[],
     attachmentNames?: string[],
     options?: Omit<ChatSendOptions, "surface">,
+  ) => Promise<void>;
+  /** Incomplete-user onboarding transport; server-clamped to orchestrator. */
+  sendOnboardingMessage: (
+    message: string,
+    fileIds?: string[],
+    attachmentNames?: string[],
+    options?: Omit<ChatSendOptions, "surface" | "persona">,
   ) => Promise<void>;
   /** Clear messages and session state. Detached route cleanup may preserve a one-shot forced persona. */
   clearChat: (options?: { abortStream?: boolean; preserveForcedPersona?: boolean }) => void;
@@ -555,11 +562,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
       const requestedPersona = options?.persona
         ?? (!sessionId && forceSignalNextSessionRef.current ? "signal" : undefined);
-      const effectiveTransport: ChatTransport = transport === "web"
-        || requestedPersona === "signal"
-        || sessionPersona === "signal"
-        ? "web"
-        : "compatibility";
+      const effectiveTransport: ChatTransport = transport === "onboarding"
+        ? "onboarding"
+        : transport === "web" || requestedPersona === "signal" || sessionPersona === "signal"
+          ? "web"
+          : "compatibility";
 
       invalidateActiveSend("superseded");
       const operation: SendOperation = {
@@ -635,7 +642,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           ...(requestedPersona ? { persona: requestedPersona } : {}),
         };
 
-        const streamEndpoint = effectiveTransport === "web" ? "/chat/web/stream" : "/chat/stream";
+        const streamEndpoint = effectiveTransport === "web"
+          ? "/chat/web/stream"
+          : effectiveTransport === "onboarding"
+            ? "/chat/onboarding/stream"
+            : "/chat/stream";
         const response = await apiClient.stream(streamEndpoint, bodyPayload, {
           signal: operation.controller.signal,
         });
@@ -1215,11 +1226,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     attachmentNames?: string[],
     options?: ChatSendOptions,
   ) => {
-    const transport: ChatTransport = options?.surface === "web"
-      || options?.persona === "signal"
-      || sessionPersona === "signal"
-      ? "web"
-      : "compatibility";
+    const transport: ChatTransport = options?.surface === "onboarding"
+      ? "onboarding"
+      : options?.surface === "web" || options?.persona === "signal" || sessionPersona === "signal"
+        ? "web"
+        : "compatibility";
     return sendMessageWithTransport(transport, message, fileIds, attachmentNames, options);
   }, [sendMessageWithTransport, sessionPersona]);
 
@@ -1229,6 +1240,13 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     attachmentNames?: string[],
     options?: Omit<ChatSendOptions, "surface">,
   ) => sendMessageWithTransport("web", message, fileIds, attachmentNames, options), [sendMessageWithTransport]);
+
+  const sendOnboardingMessage = useCallback((
+    message: string,
+    fileIds?: string[],
+    attachmentNames?: string[],
+    options?: Omit<ChatSendOptions, "surface" | "persona">,
+  ) => sendMessageWithTransport("onboarding", message, fileIds, attachmentNames, options), [sendMessageWithTransport]);
 
   const stopStream = useCallback(() => {
     const active = activeSendRef.current;
@@ -1474,6 +1492,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         stopStream,
         sendMessage,
         sendWebMessage,
+        sendOnboardingMessage,
         clearChat,
         startSignalSession,
         loadSession,

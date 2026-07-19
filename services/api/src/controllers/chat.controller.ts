@@ -10,6 +10,7 @@ import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorator
 import { chatSessionService, type ChatStreamSurface } from "../services/chat.service";
 import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
+import { userService } from "../services/user.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
@@ -254,10 +255,28 @@ export class ChatController {
     return this.messageStreamForSurface(req, user, 'web');
   }
 
+  /**
+   * Session-only onboarding exception. It is available only while the
+   * authenticated user's authoritative onboarding record is incomplete and
+   * always forces the canonical orchestrator persona.
+   */
+  @Post("/onboarding/stream")
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async onboardingMessageStream(
+    req: Request,
+    user: AuthenticatedUser,
+  ): Promise<Response> {
+    const currentUser = await userService.findById(user.id);
+    if (!currentUser || currentUser.onboarding?.completedAt) {
+      return Response.json({ error: "Onboarding chat is not available" }, { status: 403 });
+    }
+    return this.messageStreamForSurface(req, user, 'onboarding');
+  }
+
   private async messageStreamForSurface(
     req: Request,
     user: AuthenticatedUser,
-    surface: 'web' | 'non_web',
+    surface: ChatStreamSurface,
   ): Promise<Response> {
     // 1. Parse and validate request body
     let body: z.infer<typeof streamBodySchema>;

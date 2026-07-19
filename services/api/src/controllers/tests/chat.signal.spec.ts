@@ -11,6 +11,7 @@ import { recordRequestAuthContext } from '../../lib/request-auth-context';
 import { RouteRegistry } from '../../lib/router/router.decorators';
 import { chatSessionService } from '../../services/chat.service';
 import { fileService } from '../../services/file.service';
+import { userService } from '../../services/user.service';
 
 const USER: AuthenticatedUser = {
   id: 'signal-user-1',
@@ -317,6 +318,40 @@ describe('Signal Agent web chat routing (IND-449)', () => {
       { scopeType: 'intent', scopeId: 'intent-1' },
       'orchestrator',
     );
+  });
+
+  test('onboarding keeps orchestrator only for authoritative incomplete sessions', async () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
+    const findUserSpy = spyOn(userService, 'findById').mockResolvedValue({
+      id: USER.id,
+      onboarding: {},
+    } as never);
+    const request = (persona?: string) => new Request('http://localhost/chat/onboarding/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Continue onboarding', ...(persona ? { persona } : {}) }),
+    });
+
+    const allowed = await controller.onboardingMessageStream(request(), USER);
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get('X-Chat-Persona')).toBe('orchestrator');
+    expect(getOrchestratorFactorySpy).toHaveBeenCalledTimes(1);
+    expect(getSignalFactorySpy).not.toHaveBeenCalled();
+
+    const spoofed = await controller.onboardingMessageStream(request('signal'), USER);
+    expect(spoofed.status).toBe(409);
+    expect(getSignalFactorySpy).not.toHaveBeenCalled();
+
+    findUserSpy.mockResolvedValue({
+      id: USER.id,
+      onboarding: { completedAt: new Date().toISOString() },
+    } as never);
+    const completed = await controller.onboardingMessageStream(request(), USER);
+    expect(completed.status).toBe(403);
+
+    const guards = RouteRegistry.getGuards(ChatController, 'onboardingMessageStream');
+    expect(guards).toContain(SessionOnlyGuard);
+    expect(guards).not.toContain(AuthGuard);
   });
 
   test('compatibility stream denies a flag-on session before every side effect', async () => {

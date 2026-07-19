@@ -400,6 +400,12 @@ Main-web SSE endpoint. It accepts the same request and returns the same SSE even
 
 When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly request `persona: "signal"`. Signal follow-ups may omit the assertion and inherit the persisted persona. Existing `orchestrator` web sessions remain readable through `POST /api/chat/session`, but a new web turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Explicit persona mismatch and unknown persisted personas also fail closed. Session-authenticated compatibility-route calls receive this same policy; API-key, Telegram, MCP, CLI, and direct-tool orchestrator behavior is unchanged.
 
+### POST /api/chat/onboarding/stream
+
+Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. While incomplete, the route forces `orchestrator` and rejects all other persona assertions, preserving the existing onboarding flow without exposing a completed-user session-JWT bypass.
+
+**Auth**: SessionOnlyGuard
+
 ### GET /api/chat/sessions
 
 Compatibility history for the authenticated user. The default and all unrecognized persona filters are clamped to `orchestrator`; the explicit `persona=negotiator` lookup remains for the pinned Personal Agent surface. Signal sessions are never returned to CLI/MCP/legacy history consumers.

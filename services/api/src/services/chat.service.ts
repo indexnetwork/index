@@ -12,7 +12,7 @@ import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
 const logger = log.service.from("ChatSessionService");
 
-export type ChatStreamSurface = 'web' | 'non_web';
+export type ChatStreamSurface = 'web' | 'non_web' | 'onboarding';
 
 export type ChatPersonaPolicyCode =
   | 'WEB_SIGNAL_PERSONA_REQUIRED'
@@ -120,6 +120,21 @@ export class ChatSessionService {
         code: 'CHAT_PERSONA_UNSUPPORTED',
         error: 'This chat type is not supported.',
       };
+    }
+
+    if (input.surface === 'onboarding') {
+      if (
+        (storedPersona && storedPersona !== ORCHESTRATOR_PERSONA_ID)
+        || (requestedPersona && requestedPersona !== ORCHESTRATOR_PERSONA_ID)
+      ) {
+        return {
+          ok: false,
+          status: 409,
+          code: 'CHAT_PERSONA_MISMATCH',
+          error: 'This request does not match the onboarding chat.',
+        };
+      }
+      return { ok: true, persona: ORCHESTRATOR_PERSONA_ID };
     }
 
     if (storedPersona) {
