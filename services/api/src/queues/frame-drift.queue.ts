@@ -1,6 +1,6 @@
 import type { Job, JobSchedulerJson, Queue, Worker } from 'bullmq';
 
-import { frameDriftExecutionAttemptDatabaseAdapter, type FrameDriftExecutionAttemptStore } from '../adapters/frame-drift-execution-attempt.database.adapter';
+import { frameDriftExecutionAttemptDatabaseAdapter, type FrameDriftExecutionAttemptStore, type FrameDriftExecutionAttemptTerminal } from '../adapters/frame-drift-execution-attempt.database.adapter';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { resolveFrameDriftMonitoringConfig } from '../lib/frame-drift.config';
 import { log } from '../lib/log';
@@ -13,6 +13,8 @@ export const FRAME_DRIFT_SCHEDULER_ID = 'frame-drift-monitoring-daily-v1';
 const UTC_DAY_MS = 24 * 60 * 60 * 1000;
 const SCHEDULER_OPERATION_MAX_ATTEMPTS = 3;
 const SCHEDULER_RETRY_BASE_DELAY_MS = 50;
+const TERMINAL_WRITE_MAX_ATTEMPTS = 3;
+const TERMINAL_WRITE_BASE_DELAY_MS = 50;
 const FRAME_DRIFT_JOB_TEMPLATE = {
   name: FRAME_DRIFT_JOB_NAME,
   data: { source: 'daily-scheduler' as const },
@@ -77,6 +79,13 @@ function schedulerMateriallyMatches(
   return scheduler.pattern === desired.repeat.pattern
     && scheduler.tz === desired.repeat.tz
     && scheduler.name === desired.template.name
+    // Unsupported scheduling controls must be absent: a finite (`limit`),
+    // bounded (`startDate`/`endDate`), or interval (`every`) scheduler is not
+    // the desired unlimited daily cron and must not be reused as one.
+    && scheduler.limit === undefined
+    && scheduler.startDate === undefined
+    && scheduler.endDate === undefined
+    && scheduler.every === undefined
     && matchesExactRecord(scheduler.template?.data, desired.template.data)
     && opts?.attempts === desired.template.opts.attempts
     && matchesExactRecord(opts.backoff, desired.template.opts.backoff)
@@ -161,6 +170,24 @@ export class FrameDriftQueue {
     throw new Error('Frame-drift scheduler retry loop exhausted');
   }
 
+  /**
+   * Persist a terminal ledger row with bounded in-process retries. Measurement
+   * is never re-run here; only the ledger write is retried. On exhaustion the
+   * last error is rethrown, leaving the started row as durable incomplete
+   * evidence (the irreducible case on a final BullMQ attempt).
+   */
+  private async recordTerminalWithRetry(terminal: FrameDriftExecutionAttemptTerminal): Promise<void> {
+    for (let attempt = 1; attempt <= TERMINAL_WRITE_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        await this.attemptStore.recordTerminal(terminal);
+        return;
+      } catch (error) {
+        if (attempt === TERMINAL_WRITE_MAX_ATTEMPTS) throw error;
+        await this.sleep(TERMINAL_WRITE_BASE_DELAY_MS * (2 ** (attempt - 1)));
+      }
+    }
+  }
+
   private async startInternal(): Promise<void> {
     if (this.closed) throw new Error('Frame-drift queue is closed');
     const config = resolveFrameDriftMonitoringConfig();
@@ -181,7 +208,14 @@ export class FrameDriftQueue {
     ));
     let schedulerAction: 'created' | 'reused' | 'updated';
     let reconciledScheduler: JobSchedulerJson<FrameDriftJobData>;
-    if (existingScheduler && schedulerMateriallyMatches(existingScheduler, desiredScheduler)) {
+    // A materially matching scheduler is reused only when it also carries a
+    // finite authoritative `next`; a missing/non-finite `next` is inconsistent
+    // scheduler state that must be repaired through upsert, not reused.
+    if (
+      existingScheduler
+      && schedulerMateriallyMatches(existingScheduler, desiredScheduler)
+      && Number.isFinite(existingScheduler.next)
+    ) {
       schedulerAction = 'reused';
       reconciledScheduler = existingScheduler;
     } else {
@@ -197,6 +231,12 @@ export class FrameDriftQueue {
       if (!storedScheduler) {
         throw new Error('Frame-drift scheduler missing after reconciliation');
       }
+      // Re-validate the stored definition: a rolling-deployment race could have
+      // left a divergent scheduler. Fail reconciliation rather than start a
+      // worker against an unexpected schedule.
+      if (!schedulerMateriallyMatches(storedScheduler, desiredScheduler)) {
+        throw new Error('Frame-drift scheduler definition diverged after reconciliation');
+      }
       reconciledScheduler = storedScheduler;
     }
     const nextScheduledAtMs = requireSchedulerNextTimestamp(reconciledScheduler);
@@ -207,7 +247,9 @@ export class FrameDriftQueue {
         if (!jobId) throw new Error('Frame-drift BullMQ job has no identity');
         const jobName = job.name;
         if (!jobName.trim()) throw new Error('Frame-drift BullMQ job has no name');
-        const schedulerId = job.opts.repeatJobKey ?? FRAME_DRIFT_SCHEDULER_ID;
+        // BullMQ strips repeatJobKey from opts and hoists it onto the job; the
+        // stable constant is only a fallback for manually enqueued jobs.
+        const schedulerId = job.repeatJobKey ?? FRAME_DRIFT_SCHEDULER_ID;
         const scheduledAtMs = job.opts.prevMillis ?? job.timestamp;
         const scheduledAt = new Date(scheduledAtMs);
         const { bucketStart, bucketEnd } = deriveMostRecentlyClosedUtcDay(scheduledAtMs);
@@ -273,7 +315,7 @@ export class FrameDriftQueue {
 
         if (!resolveFrameDriftMonitoringConfig().enabled) {
           try {
-            await this.attemptStore.recordTerminal({
+            await this.recordTerminalWithRetry({
               jobId,
               attempt,
               completedAt: this.clock(),
@@ -310,7 +352,7 @@ export class FrameDriftQueue {
         } catch (error) {
           let failureWasTracked = false;
           try {
-            await this.attemptStore.recordTerminal({
+            await this.recordTerminalWithRetry({
               jobId,
               attempt,
               completedAt: this.clock(),
@@ -343,7 +385,7 @@ export class FrameDriftQueue {
         }
 
         try {
-          await this.attemptStore.recordTerminal({
+          await this.recordTerminalWithRetry({
             jobId,
             attempt,
             completedAt: this.clock(),

@@ -59,11 +59,12 @@ function makeJob(overrides: Partial<Job<FrameDriftJobData>> = {}): Job<FrameDrif
   return {
     id: 'job-123',
     name: FRAME_DRIFT_JOB_NAME,
+    // BullMQ exposes the scheduler identity on the job (hoisted out of opts).
+    repeatJobKey: FRAME_DRIFT_SCHEDULER_ID,
     data: { source: 'daily-scheduler' },
     opts: {
       prevMillis: Date.parse('2026-07-15T00:15:00Z'),
       attempts: 3,
-      repeatJobKey: FRAME_DRIFT_SCHEDULER_ID,
     },
     timestamp: Date.parse('2026-01-01T00:15:00Z'),
     attemptsMade: 1,
@@ -296,6 +297,61 @@ describe('FrameDriftQueue', () => {
     );
   });
 
+  it('updates rather than reuses when unsupported scheduling controls are present', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const controls: Array<Partial<JobSchedulerJson<FrameDriftJobData>>> = [
+      { limit: 5 },
+      { startDate: Date.parse('2026-01-01T00:00:00.000Z') },
+      { endDate: Date.parse('2027-01-01T00:00:00.000Z') },
+      { every: 24 * 3600 * 1000 },
+    ];
+    for (const control of controls) {
+      const harness = createHarness();
+      harness.setScheduler(makeScheduler(control));
+
+      await harness.queue.start();
+
+      expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(1);
+      expect(harness.createWorker).toHaveBeenCalledTimes(1);
+      expect(harness.info).toHaveBeenCalledWith(
+        'Frame-drift monitoring scheduled',
+        expect.objectContaining({ schedulerAction: 'updated' }),
+      );
+    }
+  });
+
+  it('repairs a matching scheduler with an invalid next and starts only after a valid one', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    harness.setScheduler(makeScheduler({ next: undefined }));
+
+    await harness.queue.start();
+
+    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(1);
+    expect(harness.createWorker).toHaveBeenCalledTimes(1);
+    expect(harness.info).toHaveBeenCalledWith(
+      'Frame-drift monitoring scheduled',
+      expect.objectContaining({
+        schedulerAction: 'updated',
+        nextScheduledAt: '2026-07-20T00:15:00.000Z',
+      }),
+    );
+  });
+
+  it('fails reconciliation and starts no worker when the post-upsert definition diverges', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    harness.upsertJobScheduler.mockImplementation(async () => {
+      harness.setScheduler(makeScheduler({ pattern: '59 23 * * *' }));
+      return makeJob();
+    });
+
+    await expect(harness.queue.start()).rejects.toThrow(
+      'Frame-drift scheduler definition diverged after reconciliation',
+    );
+    expect(harness.createWorker).not.toHaveBeenCalled();
+  });
+
   it('removes a prior scheduler and does not create a worker when disabled', async () => {
     process.env.FRAME_DRIFT_MONITORING_ENABLED = 'false';
     const harness = createHarness();
@@ -361,6 +417,31 @@ describe('FrameDriftQueue', () => {
       terminalStatus: 'inserted',
       willRetry: false,
       failureCategory: null,
+    }));
+  });
+
+  it('threads the real BullMQ scheduler identity into the attempt ledger', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    await harness.queue.start();
+
+    await harness.getProcessor()?.(makeJob({ repeatJobKey: 'frame-drift-monitoring-daily-v2' }));
+
+    expect(harness.recordStarted).toHaveBeenCalledWith(expect.objectContaining({
+      schedulerId: 'frame-drift-monitoring-daily-v2',
+      jobId: 'job-123',
+    }));
+  });
+
+  it('falls back to the stable scheduler id when a job carries no repeatJobKey', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    await harness.queue.start();
+
+    await harness.getProcessor()?.(makeJob({ repeatJobKey: undefined }));
+
+    expect(harness.recordStarted).toHaveBeenCalledWith(expect.objectContaining({
+      schedulerId: FRAME_DRIFT_SCHEDULER_ID,
     }));
   });
 
@@ -524,17 +605,34 @@ describe('FrameDriftQueue', () => {
     );
   });
 
-  it('fails after a committed measurement when terminal tracking fails', async () => {
+  it('recovers when a terminal ledger write succeeds within the bounded retries', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    harness.recordTerminal.mockImplementationOnce(async () => {
+      throw new Error('attempt store unavailable');
+    });
+    await harness.queue.start();
+
+    await harness.getProcessor()?.(makeJob());
+
+    // Measurement is never re-run while the ledger write retries.
+    expect(harness.captureDailyBucket).toHaveBeenCalledTimes(1);
+    expect(harness.recordTerminal).toHaveBeenCalledTimes(2);
+    expect(harness.sleep).toHaveBeenCalledWith(50);
+    expect(harness.error).not.toHaveBeenCalled();
+  });
+
+  it('fails the job after exhausting terminal ledger write retries with a later retry', async () => {
     process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
     const harness = createHarness();
     const trackingFailure = new Error('attempt store unavailable');
-    harness.recordTerminal.mockImplementationOnce(async () => { throw trackingFailure; });
+    harness.recordTerminal.mockImplementation(async () => { throw trackingFailure; });
     await harness.queue.start();
 
     await expect(harness.getProcessor()?.(makeJob())).rejects.toBe(trackingFailure);
 
     expect(harness.captureDailyBucket).toHaveBeenCalledTimes(1);
-    expect(harness.recordTerminal).toHaveBeenCalledTimes(1);
+    expect(harness.recordTerminal).toHaveBeenCalledTimes(3);
     expect(harness.error).toHaveBeenCalledWith(
       'Frame-drift terminal tracking failed; BullMQ will retry',
       expect.objectContaining({
@@ -546,19 +644,46 @@ describe('FrameDriftQueue', () => {
     );
   });
 
+  it('leaves an incomplete row after exhausting terminal retries on the final attempt', async () => {
+    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
+    const harness = createHarness();
+    const trackingFailure = new Error('attempt store unavailable');
+    harness.recordTerminal.mockImplementation(async () => { throw trackingFailure; });
+    await harness.queue.start();
+
+    await expect(harness.getProcessor()?.(makeJob({ attemptsMade: 2 }))).rejects.toBe(
+      trackingFailure,
+    );
+
+    // Measurement committed once; the started row remains durable incomplete
+    // evidence because no terminal row was ever written.
+    expect(harness.captureDailyBucket).toHaveBeenCalledTimes(1);
+    expect(harness.recordTerminal).toHaveBeenCalledTimes(3);
+    expect(harness.error).toHaveBeenCalledWith(
+      'Frame-drift terminal tracking failed on final attempt',
+      expect.objectContaining({
+        event: 'frame_drift_monitoring_attempt_tracking_failed',
+        trackingPhase: 'terminal',
+        observationStatus: 'inserted',
+        willRetry: false,
+      }),
+    );
+  });
+
   it('preserves the service error when failure bookkeeping also fails', async () => {
     process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
     const harness = createHarness();
     const serviceFailure = new Error('measurement database unavailable');
     harness.captureDailyBucket.mockImplementationOnce(async () => { throw serviceFailure; });
-    harness.recordTerminal.mockImplementationOnce(async () => {
+    harness.recordTerminal.mockImplementation(async () => {
       throw new Error('attempt store unavailable');
     });
     await harness.queue.start();
 
     await expect(harness.getProcessor()?.(makeJob())).rejects.toBe(serviceFailure);
 
-    expect(harness.recordTerminal).toHaveBeenCalledTimes(1);
+    // The failed-measurement ledger write also exhausts its bounded retries.
+    expect(harness.recordTerminal).toHaveBeenCalledTimes(3);
     expect(harness.error).toHaveBeenCalledWith(
       'Frame-drift failure bookkeeping failed; preserving service error',
       expect.objectContaining({
