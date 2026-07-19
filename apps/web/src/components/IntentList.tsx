@@ -50,6 +50,8 @@ interface BaseIntent {
    * enum is vestigial today, so this is forward-looking. See EDG-53.
    */
   status?: string;
+  /** Canonical intent-scoped pending questions supplied by the list API. */
+  pendingQuestionCount?: number;
 }
 
 /**
@@ -144,9 +146,12 @@ export default function IntentList<T extends BaseIntent>({
   removingIntentIds = new Set(),
   className = '',
 }: IntentListProps<T>) {
-  // Sort intents by creation date (newest first) without grouping
+  // Keep active intents actionable first, then show newest first within each lifecycle group.
   const sortedIntents = useMemo(() => {
     return [...intents].sort((a, b) => {
+      const aIsActive = !a.status || a.status.toUpperCase() === 'ACTIVE';
+      const bIsActive = !b.status || b.status.toUpperCase() === 'ACTIVE';
+      if (aIsActive !== bIsActive) return aIsActive ? -1 : 1;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [intents]);
@@ -189,6 +194,7 @@ export default function IntentList<T extends BaseIntent>({
         const isSelectedSource = selectedIntentIds.has(intent.id);
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
         const isRemoving = removingIntentIds.has(intent.id);
+        const isActive = !intent.status || intent.status.toUpperCase() === 'ACTIVE';
         
         return (
           <div 
@@ -212,18 +218,35 @@ export default function IntentList<T extends BaseIntent>({
                   : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
             )}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
+            <div
+              data-testid={`intent-card-layout-${intent.id}`}
+              className="flex flex-col gap-3 sm:pointer-fine:flex-row sm:pointer-fine:items-start sm:pointer-fine:justify-between sm:pointer-fine:gap-4"
+            >
+              <div className="min-w-0 flex-1">
                 <p className="text-sm text-gray-900 leading-relaxed font-medium">
                   {summary}
                 </p>
                 
-                <div className="flex items-center gap-3 mt-2.5">
+                <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   {/* Date Badge */}
                   {createdLabel && (
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono">
                       <Calendar className="w-3 h-3" />
                       <span>{createdLabel}</span>
+                    </div>
+                  )}
+
+                  {/* Active signals continue running in the background. */}
+                  {isActive && (
+                    <div
+                      data-testid={`intent-live-indicator-${intent.id}`}
+                      className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 font-ibm-plex-mono"
+                    >
+                      <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      </span>
+                      live
                     </div>
                   )}
 
@@ -248,47 +271,63 @@ export default function IntentList<T extends BaseIntent>({
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+              <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:pointer-fine:w-auto sm:pointer-fine:shrink-0 sm:pointer-fine:flex-nowrap sm:pointer-fine:justify-end">
+                {typeof intent.pendingQuestionCount === 'number' && intent.pendingQuestionCount > 0 && (
+                  <span
+                    data-testid={`intent-pending-question-badge-${intent.id}`}
+                    className="flex items-center gap-1 whitespace-nowrap rounded-full bg-[#4091BB] px-2.5 py-1 text-xs font-semibold text-white shadow-sm font-ibm-plex-mono"
+                    title={`${intent.pendingQuestionCount} ${intent.pendingQuestionCount === 1 ? 'question' : 'questions'} to answer`}
+                  >
+                    <MessageSquare className="h-3 w-3 shrink-0" />
+                    {intent.pendingQuestionCount} to answer
+                  </span>
+                )}
+
+                {/* Touch/small layouts keep actions visible. Larger fine-pointer layouts reveal them on intent. */}
+                <div
+                  data-testid={`intent-actions-${intent.id}`}
+                  className="ml-auto flex items-center gap-1 transition-opacity sm:pointer-fine:pointer-events-none sm:pointer-fine:opacity-0 sm:pointer-fine:group-hover:pointer-events-auto sm:pointer-fine:group-hover:opacity-100 sm:pointer-fine:group-focus-within:pointer-events-auto sm:pointer-fine:group-focus-within:opacity-100"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
                   <DebugCopyButton fetchPath={`/debug/intents/${intent.id}`} />
+                  {onOpenIntentSource && canOpenSource && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        onOpenIntentSource(intent);
+                      }}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 transition-colors"
+                      title="Open Source"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {(onArchiveIntent || onRemoveIntent) && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (onRemoveIntent) {
+                          onRemoveIntent(intent);
+                        } else if (onArchiveIntent) {
+                          onArchiveIntent(intent);
+                        }
+                      }}
+                      disabled={isRemoving}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                      title={onRemoveIntent ? "Remove" : "Archive"}
+                    >
+                      {isRemoving ? (
+                        <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
                 </div>
-                {onOpenIntentSource && canOpenSource && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onOpenIntentSource(intent);
-                    }}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 transition-colors"
-                    title="Open Source"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                )}
-                
-                {(onArchiveIntent || onRemoveIntent) && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (onRemoveIntent) {
-                        onRemoveIntent(intent);
-                      } else if (onArchiveIntent) {
-                        onArchiveIntent(intent);
-                      }
-                    }}
-                    disabled={isRemoving}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                    title={onRemoveIntent ? "Remove" : "Archive"}
-                  >
-                    {isRemoving ? (
-                      <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
-                  </button>
-                )}
               </div>
             </div>
           </div>

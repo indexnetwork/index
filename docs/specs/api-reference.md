@@ -2439,6 +2439,7 @@ List intents with pagination and filters.
       "id": "...",
       "payload": "...",
       "summary": "...",
+      "pendingQuestionCount": 0,
       "createdAt": "...",
       "updatedAt": "...",
       "archivedAt": "... | null"

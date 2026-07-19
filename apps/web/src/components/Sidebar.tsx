@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, History, Network, Bot, BotMessageSquare, Brain, CircleHelp } from 'lucide-react';
+import { RadioTower, MessagesSquare, ChevronDown, Settings, LogOut, History, Network, Bot, BotMessageSquare, Brain } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -53,7 +53,7 @@ export default function Sidebar() {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
-  const { globalPending, personalAgentPending } = useQuestions();
+  const { personalAgentPending } = useQuestions();
 
   // Pinned negotiator DM (IND-411). Flag-gated: the entry renders only when
   // the backend reports the negotiator chat feature enabled on /auth/me.
@@ -258,8 +258,8 @@ export default function Sidebar() {
               : 'text-black font-medium hover:bg-gray-50'
           }`}
         >
-          <Compass className="w-5 h-5" />
-          Discover
+          <RadioTower className="w-5 h-5" />
+          Signals
         </button>
 
         <button
@@ -371,28 +371,6 @@ export default function Sidebar() {
             </div>
           )}
         </div>
-
-        {/* Questions — links to the dedicated global Questions page. */}
-        {globalPending > 0 && (
-          <button
-            type="button"
-            onClick={() => navigate('/questions')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
-              isQuestionsView
-                ? 'bg-gray-100 text-black font-bold'
-                : 'text-black font-medium hover:bg-gray-50'
-            }`}
-          >
-            <CircleHelp className="w-5 h-5" />
-            <span className="flex-1 text-left">Questions</span>
-            <span
-              data-testid="global-question-badge"
-              className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center"
-            >
-              {globalPending > 99 ? '99+' : globalPending}
-            </span>
-          </button>
-        )}
       </nav>
 
       {/* Spacer */}

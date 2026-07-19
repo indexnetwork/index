@@ -5,7 +5,8 @@ import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/a
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
-import { IntentNetworkMembershipError, intentService } from '../services/intent.service';
+import { IntentNetworkMembershipError, intentService, type IntentService } from '../services/intent.service';
+import { networkScopedPendingQuestionFilters, questionService, type QuestionService } from '../services/question.service';
 
 const logger = log.controller.from('intent');
 
@@ -26,18 +27,40 @@ const StatusSchema = z.object({
 
 @Controller('/intents')
 export class IntentController {
+  private readonly intents: Pick<IntentService, 'listIntents'>;
+  private readonly questions: Pick<QuestionService, 'countPendingByIntent'>;
+  private readonly resolveScope: typeof withAgentScope;
   private readonly confirmService: Pick<typeof intentService, 'createFromProposal'>;
   private readonly assertConfirmNetworkScope: typeof assertAgentNetworkScope;
 
   /**
-   * @param confirmDeps - Optional confirm-path overrides for focused controller tests.
+   * Supports both the normal singleton construction and focused test
+   * overrides for list/count or confirm paths.
    */
-  constructor(confirmDeps?: {
-    service?: Pick<typeof intentService, 'createFromProposal'>;
-    assertNetworkScope?: typeof assertAgentNetworkScope;
-  }) {
-    this.confirmService = confirmDeps?.service ?? intentService;
-    this.assertConfirmNetworkScope = confirmDeps?.assertNetworkScope ?? assertAgentNetworkScope;
+  constructor(
+    intentsOrConfirmDeps:
+      | Pick<IntentService, 'listIntents'>
+      | {
+          service?: Pick<typeof intentService, 'createFromProposal'>;
+          assertNetworkScope?: typeof assertAgentNetworkScope;
+        } = intentService,
+    questions: Pick<QuestionService, 'countPendingByIntent'> = questionService,
+    resolveScope: typeof withAgentScope = withAgentScope,
+  ) {
+    if ('listIntents' in intentsOrConfirmDeps) {
+      this.intents = intentsOrConfirmDeps;
+      this.questions = questions;
+      this.resolveScope = resolveScope;
+      this.confirmService = intentService;
+      this.assertConfirmNetworkScope = assertAgentNetworkScope;
+      return;
+    }
+
+    this.intents = intentService;
+    this.questions = questionService;
+    this.resolveScope = withAgentScope;
+    this.confirmService = intentsOrConfirmDeps.service ?? intentService;
+    this.assertConfirmNetworkScope = intentsOrConfirmDeps.assertNetworkScope ?? assertAgentNetworkScope;
   }
 
   /**
@@ -53,16 +76,23 @@ export class IntentController {
       sourceType?: string;
     };
 
-    const result = await intentService.listIntents(user.id, {
+    const { networkScopeId } = await this.resolveScope(req, user);
+    const result = await this.intents.listIntents(user.id, {
       page: body.page,
       limit: body.limit,
       archived: body.archived,
       sourceType: body.sourceType,
     });
+    const countsByIntent = await this.questions.countPendingByIntent(
+      user.id,
+      result.intents.map((intent) => intent.id),
+      networkScopeId ? networkScopedPendingQuestionFilters(networkScopeId) : undefined,
+    );
 
     return Response.json({
       intents: result.intents.map(r => ({
         ...r,
+        pendingQuestionCount: countsByIntent.get(r.id) ?? 0,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
         archivedAt: r.archivedAt?.toISOString() ?? null,

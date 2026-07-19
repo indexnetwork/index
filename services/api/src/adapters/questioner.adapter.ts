@@ -11,7 +11,8 @@
  * alignment spec.
  */
 
-import { eq, and, sql, or, isNull, desc, count, gt } from 'drizzle-orm/sql';
+import { eq, and, sql, or, isNull, desc, count, gt, inArray } from 'drizzle-orm/sql';
+import type { SQL } from 'drizzle-orm/sql';
 
 import { intents, questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
@@ -184,6 +185,17 @@ export interface PendingQuestionCounts {
   personalAgentPending: number;
 }
 
+/** Shared recipient/mode visibility clamps for canonical pending-question reads. */
+export interface PendingQuestionVisibilityOptions {
+  /** Restrict to questions whose recipient actor carries this network id. */
+  networkId?: string;
+  /** Restrict to questions whose detection mode is in this set. */
+  modes?: AdapterQuestionMode[];
+}
+
+/** Visibility clamps for bulk intent-scoped pending-question counts. */
+export type PendingQuestionsByIntentOptions = PendingQuestionVisibilityOptions;
+
 /**
  * One aggregate funnel cell: questions grouped by generation mode, lifecycle
  * status, and whether the row is past its TTL. Counts and dates only — never
@@ -296,7 +308,78 @@ export function poolPushCycleClaimPredicate(recipientId: string, intentId: strin
   )!;
 }
 
-export interface AdapterQuestionFilters {
+/** Canonical recipient/status/TTL/mode predicate shared by pending reads and counts. */
+function pendingQuestionWhere(
+  userId: string,
+  options?: PendingQuestionVisibilityOptions,
+): SQL {
+  const actorMatch = options?.networkId
+    ? [{ userId, networkId: options.networkId }]
+    : [{ userId }];
+  const conditions: SQL[] = [
+    eq(questions.status, 'pending'),
+    sql`${questions.actors}::jsonb @> ${JSON.stringify(actorMatch)}::jsonb`,
+    or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`)!,
+  ];
+  if (options?.modes && options.modes.length > 0) {
+    conditions.push(or(...options.modes.map(
+      (mode) => sql`${questions.detection}->>'mode' = ${mode}`,
+    ))!);
+  }
+  return and(...conditions)!;
+}
+
+/** Yield an empty JSON array for corrupt legacy values before array expansion. */
+function safeJsonbArray(value: SQL): SQL {
+  return sql`CASE WHEN jsonb_typeof(${value}) = 'array' THEN ${value} ELSE '[]'::jsonb END`;
+}
+
+/**
+ * Canonical set of intent ids linked to the current question row.
+ *
+ * Keeping this as a relation lets selected-intent reads use EXISTS while the
+ * bounded bulk count expands each pending question once instead of evaluating
+ * every intent against every pending row.
+ */
+function linkedIntentIdsForQuestion(
+  detection: SQL = sql`${questions.detection}`,
+): SQL {
+  return sql`
+    SELECT ${detection}->>'triggeredBy' AS intent_id
+    WHERE ${detection}->>'triggeredBy' IS NOT NULL
+    UNION
+    SELECT ${detection}->>'sourceId' AS intent_id
+    WHERE ${detection}->>'mode' = 'intent'
+      AND ${detection}->>'sourceType' = 'intent'
+      AND ${detection}->>'sourceId' IS NOT NULL
+    UNION
+    SELECT scoped_opp.detection->>'triggeredBy' AS intent_id
+    FROM ${opportunities} scoped_opp
+    WHERE ${detection}->>'sourceType' = 'opportunity'
+      AND scoped_opp.id::text = ${detection}->>'sourceId'
+      AND scoped_opp.detection->>'triggeredBy' IS NOT NULL
+    UNION
+    SELECT actor->>'intent' AS intent_id
+    FROM ${opportunities} scoped_opp
+    CROSS JOIN LATERAL jsonb_array_elements(
+      ${safeJsonbArray(sql`scoped_opp.actors`)}
+    ) AS actor
+    WHERE ${detection}->>'sourceType' = 'opportunity'
+      AND scoped_opp.id::text = ${detection}->>'sourceId'
+      AND actor->>'intent' IS NOT NULL
+  `;
+}
+
+/** Canonical selected-intent linkage predicate shared by pending reads and counts. */
+function intentScopedQuestionWhere(intentId: string | SQL): SQL {
+  return sql`EXISTS (
+    SELECT 1
+    FROM (${linkedIntentIdsForQuestion()}) linked_intent
+    WHERE linked_intent.intent_id = CAST(${intentId} AS text)
+  )`;
+}
+
+export interface AdapterQuestionFilters extends PendingQuestionVisibilityOptions {
   mode?: AdapterQuestionMode;
   /** Exact internal generation purpose. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
@@ -310,14 +393,10 @@ export interface AdapterQuestionFilters {
    */
   scopeType?: 'intent';
   scopeId?: string;
-  /** Restrict to questions whose actor carries this network id. */
-  networkId?: string;
   /** Filter to questions linked to a specific conversation. */
   conversationId?: string;
   /** When true, only return questions with no conversationId (sidebar-only). */
   noConversation?: boolean;
-  /** Restrict to questions whose detection mode is in this set. */
-  modes?: AdapterQuestionMode[];
   /**
    * Drop questions whose detection mode is in this set. Used by non-scoped
    * surfaces (global chat, questions inbox) to hide intent-scoped
@@ -456,7 +535,9 @@ export class QuestionerAdapter {
                   AND (
                     budget_opp.detection->>'triggeredBy' = ${intentId}
                     OR EXISTS (
-                      SELECT 1 FROM jsonb_array_elements(budget_opp.actors) budget_actor
+                      SELECT 1 FROM jsonb_array_elements(
+                        ${safeJsonbArray(sql`budget_opp.actors`)}
+                      ) budget_actor
                       WHERE budget_actor->>'intent' = ${intentId}
                     )
                   )
@@ -579,14 +660,7 @@ export class QuestionerAdapter {
     userId: string,
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
-    const actorMatch = filters?.networkId
-      ? [{ userId, networkId: filters.networkId }]
-      : [{ userId }];
-    const conditions = [
-      eq(questions.status, 'pending'),
-      sql`${questions.actors}::jsonb @> ${JSON.stringify(actorMatch)}::jsonb`,
-      or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
-    ];
+    const conditions = [pendingQuestionWhere(userId, filters)];
 
     if (filters?.mode) {
       conditions.push(sql`${questions.detection}->>'mode' = ${filters.mode}`);
@@ -601,47 +675,13 @@ export class QuestionerAdapter {
       conditions.push(sql`${questions.detection}->>'sourceId' = ${filters.sourceId}`);
     }
     if (filters?.scopeType === 'intent' && filters.scopeId) {
-      conditions.push(sql`(
-        ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
-        OR (
-          ${questions.detection}->>'mode' = 'intent'
-          AND ${questions.detection}->>'sourceType' = 'intent'
-          AND ${questions.detection}->>'sourceId' = ${filters.scopeId}
-        )
-        OR (
-          ${questions.detection}->>'mode' = 'discovery'
-          AND ${questions.detection}->>'sourceType' = 'discovery'
-          AND ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
-        )
-        OR (
-          ${questions.detection}->>'sourceType' = 'opportunity'
-          AND EXISTS (
-            SELECT 1
-            FROM ${opportunities} scoped_opp
-            WHERE scoped_opp.id::text = ${questions.detection}->>'sourceId'
-              AND (
-                scoped_opp.detection->>'triggeredBy' = ${filters.scopeId}
-                OR EXISTS (
-                  SELECT 1
-                  FROM jsonb_array_elements(scoped_opp.actors) AS actor
-                  WHERE actor->>'intent' = ${filters.scopeId}
-                )
-              )
-          )
-        )
-      )`);
+      conditions.push(intentScopedQuestionWhere(filters.scopeId));
     }
     if (filters?.conversationId) {
       conditions.push(eq(questions.conversationId, filters.conversationId));
     }
     if (filters?.noConversation) {
       conditions.push(isNull(questions.conversationId));
-    }
-    if (filters?.modes && filters.modes.length > 0) {
-      const modeConditions = filters.modes.map(
-        (mode) => sql`${questions.detection}->>'mode' = ${mode}`,
-      );
-      conditions.push(or(...modeConditions)!);
     }
     if (filters?.excludeModes && filters.excludeModes.length > 0) {
       for (const mode of filters.excludeModes) {
@@ -660,6 +700,56 @@ export class QuestionerAdapter {
       : await baseQuery;
 
     return rows.map(toPersistedQuestion);
+  }
+
+  /**
+   * Count canonical pending questions for a page of owned intents in one query.
+   * The linkage and recipient predicates are shared with `findPending`, so the
+   * list badge cannot drift from the selected intent workspace.
+   *
+   * @param userId - Recipient and intent owner.
+   * @param intentIds - Intent ids on the current list page.
+   * @param options - Optional network ownership clamp for scoped agents.
+   * @returns A map containing every requested id, defaulting missing/foreign intents to zero.
+   */
+  async countPendingByIntent(
+    userId: string,
+    intentIds: string[],
+    options?: PendingQuestionsByIntentOptions,
+  ): Promise<Map<string, number>> {
+    const uniqueIntentIds = [...new Set(intentIds)];
+    const countsByIntent = new Map(uniqueIntentIds.map((intentId) => [intentId, 0]));
+    if (uniqueIntentIds.length === 0) return countsByIntent;
+
+    const rows = await this.db.execute<{
+      intentId: string;
+      pendingQuestionCount: number;
+    }>(sql`
+      WITH pending_questions AS MATERIALIZED (
+        SELECT ${questions.id} AS question_id, ${questions.detection} AS detection
+        FROM ${questions}
+        WHERE ${pendingQuestionWhere(userId, options)}
+      ), linked_questions AS MATERIALIZED (
+        SELECT pending_question.question_id, linked_intent.intent_id
+        FROM pending_questions pending_question
+        CROSS JOIN LATERAL (
+          ${linkedIntentIdsForQuestion(sql`pending_question.detection`)}
+        ) linked_intent
+      )
+      SELECT linked_question.intent_id AS "intentId",
+             count(*)::integer AS "pendingQuestionCount"
+      FROM linked_questions linked_question
+      INNER JOIN ${intents}
+        ON ${intents.id}::text = linked_question.intent_id
+       AND ${intents.userId} = ${userId}
+      WHERE ${inArray(intents.id, uniqueIntentIds)}
+      GROUP BY linked_question.intent_id
+    `);
+
+    for (const row of rows) {
+      countsByIntent.set(row.intentId, Number(row.pendingQuestionCount));
+    }
+    return countsByIntent;
   }
 
   /**

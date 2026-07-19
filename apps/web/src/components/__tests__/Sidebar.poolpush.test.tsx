@@ -35,9 +35,9 @@ vi.mock('@/components/modals/CreateIndexModal', () => ({ default: () => null }))
 vi.mock('@/components/MasterKeyDialog', () => ({ default: () => null }));
 
 describe('Sidebar pool push counts', () => {
-  it('uses the summed count only on Personal Agent and global count on Questions', async () => {
+  it('shows the summed count on Personal Agent without a Questions entry', async () => {
     render(<MemoryRouter><Sidebar /></MemoryRouter>);
     expect(await screen.findByTestId('negotiator-question-badge')).toHaveTextContent('3');
-    expect(screen.getByTestId('global-question-badge')).toHaveTextContent('1');
+    expect(screen.queryByRole('button', { name: /Questions/i })).not.toBeInTheDocument();
   });
 });

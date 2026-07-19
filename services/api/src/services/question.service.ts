@@ -1,12 +1,33 @@
 import { log } from '../lib/log';
 
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion, PendingQuestionCounts } from '../adapters/questioner.adapter';
+import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion, AdapterQuestionMode, PendingQuestionCounts, PendingQuestionsByIntentOptions } from '../adapters/questioner.adapter';
 import db from '../lib/drizzle/drizzle';
 
 // Re-export adapter types so the controller layer can reference them without
 // importing from the adapters directory directly (enforced by layer boundaries).
-export type { AdapterQuestionFilters, AdapterPersistedQuestion, AdapterQuestionAnswer, PendingQuestionCounts };
+export type {
+  AdapterQuestionFilters,
+  AdapterPersistedQuestion,
+  AdapterQuestionAnswer,
+  PendingQuestionCounts,
+  PendingQuestionsByIntentOptions,
+};
+
+const NETWORK_SCOPED_PENDING_MODES: AdapterQuestionMode[] = ['enrichment', 'intent', 'discovery'];
+
+/**
+ * Return the complete pending-question visibility clamp for a network-scoped agent.
+ * Negotiation-family questions can contain cross-network context and remain hidden.
+ *
+ * @param networkId - Agent-bound network id.
+ * @returns Recipient-network and allowed-mode filters shared by list and bulk count reads.
+ */
+export function networkScopedPendingQuestionFilters(
+  networkId: string,
+): PendingQuestionsByIntentOptions {
+  return { networkId, modes: [...NETWORK_SCOPED_PENDING_MODES] };
+}
 
 const logger = log.service.from('QuestionService');
 
@@ -88,6 +109,22 @@ export class QuestionService {
    */
   async countPending(userId: string): Promise<PendingQuestionCounts> {
     return this.adapter.countPending(userId);
+  }
+
+  /**
+   * Count canonical pending questions for multiple owned intents without N+1 reads.
+   *
+   * @param userId - Authenticated recipient and intent owner.
+   * @param intentIds - Intent ids on the current page.
+   * @param options - Optional network ownership clamp for a scoped agent.
+   * @returns Pending counts keyed by intent id.
+   */
+  async countPendingByIntent(
+    userId: string,
+    intentIds: string[],
+    options?: PendingQuestionsByIntentOptions,
+  ): Promise<Map<string, number>> {
+    return this.adapter.countPendingByIntent(userId, intentIds, options);
   }
 
   /**

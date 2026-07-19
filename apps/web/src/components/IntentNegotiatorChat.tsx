@@ -220,6 +220,7 @@ export default function IntentNegotiatorChat({
                   onAnswer={onAnswerQuestion}
                   onDismiss={onDismissQuestion}
                   showTypingIndicator={questionChainPending}
+                  paginate
                 />
               </div>
             )}

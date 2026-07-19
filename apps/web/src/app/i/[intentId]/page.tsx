@@ -746,6 +746,7 @@ export default function IntentDetailPage() {
                           onAnswer={handleAnswer}
                           onDismiss={handleDismiss}
                           showTypingIndicator={questionChainPending}
+                          paginate
                         />
                       )}
                     </div>

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'bun:test';
 
-import { QuestionService, stripInternalDetection } from '../question.service';
+import { networkScopedPendingQuestionFilters, QuestionService, stripInternalDetection } from '../question.service';
 import type { AdapterPersistedQuestion, QuestionerAdapter } from '../../adapters/questioner.adapter';
 
 function poolQuestion(): AdapterPersistedQuestion {
@@ -138,5 +138,46 @@ describe('QuestionService.findPending', () => {
     expect(JSON.stringify(rows)).not.toContain('assignments');
     expect(JSON.stringify(rows)).not.toContain('pushRecoveryAttemptedAt');
     expect(JSON.stringify(rows)).not.toContain('private-run');
+  });
+});
+
+describe('QuestionService.countPendingByIntent', () => {
+  it('forwards the full page and network ownership clamp in one adapter call', async () => {
+    const calls: Array<{
+      userId: string;
+      intentIds: string[];
+      networkId?: string;
+      modes?: string[];
+    }> = [];
+    const adapter = {
+      countPendingByIntent: async (
+        userId: string,
+        intentIds: string[],
+        options?: { networkId?: string; modes?: string[] },
+      ) => {
+        calls.push({
+          userId,
+          intentIds,
+          networkId: options?.networkId,
+          modes: options?.modes,
+        });
+        return new Map([['intent-1', 2], ['intent-2', 0]]);
+      },
+    } as unknown as QuestionerAdapter;
+    const service = new QuestionService(adapter);
+
+    const counts = await service.countPendingByIntent(
+      'user-1',
+      ['intent-1', 'intent-2'],
+      networkScopedPendingQuestionFilters('network-1'),
+    );
+
+    expect(calls).toEqual([{
+      userId: 'user-1',
+      intentIds: ['intent-1', 'intent-2'],
+      networkId: 'network-1',
+      modes: ['enrichment', 'intent', 'discovery'],
+    }]);
+    expect(counts).toEqual(new Map([['intent-1', 2], ['intent-2', 0]]));
   });
 });

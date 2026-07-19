@@ -46,6 +46,7 @@ interface HomeIntent {
   sourceType?: 'file' | 'link' | 'integration';
   networks?: { id: string; title: string }[];
   status?: string;
+  pendingQuestionCount?: number;
 }
 
 
@@ -1161,7 +1162,22 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             </form>
             )}
           </div>
-          <div className="mt-8">
+          <section className="mt-8" aria-labelledby="home-signals-heading">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 id="home-signals-heading" className="text-sm font-semibold text-gray-900">
+                  Signals
+                </h2>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Intents and follow-ups your Signal Agent is working on.
+                </p>
+              </div>
+              {!homeIntentsLoading && (
+                <span className="shrink-0 text-xs text-gray-400 font-ibm-plex-mono">
+                  {homeIntents.length} {homeIntents.length === 1 ? 'signal' : 'signals'}
+                </span>
+              )}
+            </div>
             <IntentList
               intents={homeIntents}
               isLoading={homeIntentsLoading}
@@ -1169,7 +1185,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
               onArchiveIntent={turnBlock ? undefined : handleArchiveHomeIntent}
             />
-          </div>
+          </section>
         </ContentContainer>
       </div>
     );

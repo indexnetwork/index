@@ -1,16 +1,104 @@
-import { useState, useCallback } from 'react';
-import { OptionRow } from '@/components/DecisionQuestions/OptionRow';
+import { useState, useCallback, useLayoutEffect, useRef, type Ref } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+import { cn } from '@/lib/utils';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
 
 const OTHER_VALUE = '__other__';
+
+function optionLetter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
+interface LetteredOptionRowProps {
+  name: string;
+  value: string;
+  type: 'radio' | 'checkbox';
+  letter: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+/** A compact, full-width selectable row with the intent-page A/B/C language. */
+function LetteredOptionRow({
+  name,
+  value,
+  type,
+  letter,
+  label,
+  description,
+  checked,
+  disabled,
+  onChange,
+}: LetteredOptionRowProps) {
+  return (
+    <label
+      className={cn(
+        'group relative flex w-full cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-all focus-within:border-[#4091BB] focus-within:ring-2 focus-within:ring-[#4091BB]/30 focus-within:ring-offset-1',
+        checked
+          ? 'border-[#041729] bg-[#041729]/[0.045] shadow-sm'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50',
+        disabled && 'cursor-not-allowed opacity-50 hover:border-gray-200 hover:bg-white',
+      )}
+    >
+      <input
+        type={type}
+        name={name}
+        value={value}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 focus-visible:outline-none disabled:cursor-not-allowed"
+      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+          checked
+            ? 'bg-[#041729] text-white'
+            : 'bg-gray-100 text-gray-500 group-hover:bg-[#041729] group-hover:text-white',
+        )}
+      >
+        {letter}
+      </span>
+      <span className="flex min-w-0 flex-col leading-snug">
+        <span className={cn('text-sm', checked ? 'font-medium text-gray-950' : 'text-gray-900')}>
+          {label}
+        </span>
+        {description && description !== label && (
+          <span className="mt-0.5 text-xs font-normal text-gray-500">{description}</span>
+        )}
+      </span>
+    </label>
+  );
+}
 
 interface InjectedQuestionCardProps {
   question: PendingQuestion;
   onAnswer: (questionId: string, body: AnswerBody) => Promise<void>;
   onDismiss: (questionId: string) => Promise<void>;
+  showPager?: boolean;
+  canPrevious?: boolean;
+  canNext?: boolean;
+  onPrevious?: () => void;
+  onNext?: () => void;
+  headingRef?: Ref<HTMLHeadingElement>;
 }
 
-function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestionCardProps) {
+function InjectedQuestionCard({
+  question,
+  onAnswer,
+  onDismiss,
+  showPager,
+  canPrevious,
+  canNext,
+  onPrevious,
+  onNext,
+  headingRef,
+}: InjectedQuestionCardProps) {
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [otherText, setOtherText] = useState('');
   const [otherSelected, setOtherSelected] = useState(false);
@@ -67,34 +155,65 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
           </span>
         </div>
       )}
-      <p className="text-[15px] font-semibold leading-snug text-gray-900">
-        {payload.prompt}
-      </p>
-      {payload.multiSelect && (
-        <p className="mt-1 text-xs text-gray-400">Select all that apply.</p>
-      )}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3
+            ref={headingRef}
+            tabIndex={-1}
+            className="rounded-sm text-[15px] font-semibold leading-snug text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/40 focus:ring-offset-2"
+          >
+            {payload.prompt}
+          </h3>
+          {payload.multiSelect && (
+            <p className="mt-1 text-xs text-gray-400">Select all that apply.</p>
+          )}
+        </div>
+        {showPager && (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              aria-label="Previous question"
+              disabled={!canPrevious || submitting}
+              onClick={onPrevious}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4091BB]/40 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next question"
+              disabled={!canNext || submitting}
+              onClick={onNext}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4091BB]/40 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
 
-      <div className="mt-4 flex flex-col gap-2">
-        {payload.options.map((opt) => (
-          <OptionRow
+      <div className="mt-4 flex flex-col gap-1.5">
+        {payload.options.map((opt, index) => (
+          <LetteredOptionRow
             key={opt.label}
             name={questionId}
             value={opt.label}
             type={payload.multiSelect ? 'checkbox' : 'radio'}
+            letter={optionLetter(index)}
             label={opt.label}
             description={opt.description}
             checked={selectedLabels.includes(opt.label)}
             disabled={submitting}
             onChange={(checked) => toggleSelection(opt.label, checked)}
-            showSubline={!payload.multiSelect}
           />
         ))}
-        <OptionRow
+        <LetteredOptionRow
           name={questionId}
           value={OTHER_VALUE}
           type={payload.multiSelect ? 'checkbox' : 'radio'}
+          letter={optionLetter(payload.options.length)}
           label="Other (specify)"
-          description="Something else"
+          description="Write a custom response."
           checked={otherSelected}
           disabled={submitting}
           onChange={(checked) => {
@@ -161,6 +280,8 @@ interface InjectedQuestionsProps {
   onDismiss: (questionId: string) => Promise<void>;
   /** Show a typing indicator below the cards (follow-up may be incoming). */
   showTypingIndicator?: boolean;
+  /** Show one question at a time with previous/next controls. Defaults to all questions. */
+  paginate?: boolean;
 }
 
 export function InjectedQuestions({
@@ -168,18 +289,71 @@ export function InjectedQuestions({
   onAnswer,
   onDismiss,
   showTypingIndicator,
+  paginate = false,
 }: InjectedQuestionsProps) {
+  const [pagedQuestionId, setPagedQuestionId] = useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const handledFocusRequestRef = useRef(0);
+  const activeQuestionHeadingRef = useRef<HTMLHeadingElement>(null);
+  const requestedIndex = pagedQuestionId
+    ? questions.findIndex((question) => question.id === pagedQuestionId)
+    : -1;
+  const currentIndex = questions.length === 0 ? 0 : Math.max(requestedIndex, 0);
+  const currentQuestionId = questions[currentIndex]?.id;
+  const showQuestionAndFocus = useCallback((questionId: string) => {
+    setPagedQuestionId(questionId);
+    setFocusRequest((request) => request + 1);
+  }, []);
+  const selectQuestionAfter = useCallback((questionId: string) => {
+    const answeredIndex = questions.findIndex((question) => question.id === questionId);
+    const nextQuestion = questions[answeredIndex + 1] ?? questions[answeredIndex - 1];
+    if (nextQuestion) showQuestionAndFocus(nextQuestion.id);
+  }, [questions, showQuestionAndFocus]);
+
+  useLayoutEffect(() => {
+    if (
+      !paginate
+      || focusRequest === handledFocusRequestRef.current
+      || !currentQuestionId
+    ) return;
+    handledFocusRequestRef.current = focusRequest;
+    activeQuestionHeadingRef.current?.focus();
+  }, [currentQuestionId, focusRequest, paginate]);
+
+  const handleAnswer = useCallback(async (questionId: string, body: AnswerBody) => {
+    await onAnswer(questionId, body);
+    if (paginate) selectQuestionAfter(questionId);
+  }, [onAnswer, paginate, selectQuestionAfter]);
+
+  const handleDismiss = useCallback(async (questionId: string) => {
+    await onDismiss(questionId);
+    if (paginate) selectQuestionAfter(questionId);
+  }, [onDismiss, paginate, selectQuestionAfter]);
+
   if (questions.length === 0 && !showTypingIndicator) return null;
 
   return (
     <div className="flex flex-col gap-2">
-      {questions.map((q) => (
-        <InjectedQuestionCard
-          key={q.id}
-          question={q}
-          onAnswer={onAnswer}
-          onDismiss={onDismiss}
-        />
+      {questions.map((question, index) => (
+        <div key={question.id} hidden={paginate && index !== currentIndex}>
+          <InjectedQuestionCard
+            question={question}
+            onAnswer={handleAnswer}
+            onDismiss={handleDismiss}
+            showPager={paginate && questions.length > 1 && index === currentIndex}
+            canPrevious={currentIndex > 0}
+            canNext={currentIndex < questions.length - 1}
+            onPrevious={() => {
+              const previousQuestion = questions[currentIndex - 1];
+              if (previousQuestion) showQuestionAndFocus(previousQuestion.id);
+            }}
+            onNext={() => {
+              const nextQuestion = questions[currentIndex + 1];
+              if (nextQuestion) showQuestionAndFocus(nextQuestion.id);
+            }}
+            headingRef={index === currentIndex ? activeQuestionHeadingRef : undefined}
+          />
+        </div>
       ))}
       {showTypingIndicator && <TypingDots />}
     </div>

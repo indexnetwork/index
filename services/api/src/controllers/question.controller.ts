@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { questionService } from '../services/question.service';
+import { networkScopedPendingQuestionFilters, questionService } from '../services/question.service';
 import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
@@ -116,10 +116,7 @@ export class QuestionController {
     const filters: AdapterQuestionFilters = {};
     const networkScopeId = await resolveAgentNetworkScope(req);
     if (networkScopeId) {
-      filters.networkId = networkScopeId;
-      // Match MCP scope policy: negotiation questions can contain context from
-      // another user/network and are not listable through network-scoped keys.
-      filters.modes = ['enrichment', 'intent', 'discovery'];
+      Object.assign(filters, networkScopedPendingQuestionFilters(networkScopeId));
     }
 
     if (rawMode) {

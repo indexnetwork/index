@@ -28,10 +28,12 @@ const mocks = vi.hoisted(() => ({
     getIntent: vi.fn(),
     archiveIntent: vi.fn(),
     refineIntent: vi.fn(),
+    visitIntent: vi.fn(async () => {}),
   },
   opportunitiesService: {
     getHomeView: vi.fn(),
   },
+  questionCountsRefresh: vi.fn(async () => {}),
 }));
 
 vi.mock('@/components/ClientLayout', () => ({
@@ -71,6 +73,10 @@ vi.mock('@/contexts/APIContext', () => ({
   useIntents: () => mocks.intentsService,
   useOpportunities: () => mocks.opportunitiesService,
   useQuestionsService: () => mocks.questionsService,
+}));
+
+vi.mock('@/contexts/QuestionsContext', () => ({
+  useQuestions: () => ({ refresh: mocks.questionCountsRefresh }),
 }));
 
 function primePageServices() {
