@@ -1,12 +1,8 @@
-import { Job } from 'bullmq';
-import { eq, and, sql } from 'drizzle-orm/sql';
-import { log } from '../../lib/log';
+import type { Job, Queue } from 'bullmq';
+import type { AskUserExpiryPayload, NegotiationGraphDatabase } from '@indexnetwork/protocol';
+
 import { QueueFactory } from '../../lib/bullmq/bullmq';
-import db from '../../lib/drizzle/drizzle';
-import { questions } from '../../schemas/database.schema';
-import { conversationDatabaseAdapter, ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import { AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
-import type { NegotiationGraphDatabase, AskUserExpiryPayload } from '@indexnetwork/protocol';
+import { log } from '../../lib/log';
 
 import { runTimeoutFallback, type NegotiationTaskMeta, type TimeoutNegotiatorInvoke } from './timeout.shared';
 
@@ -30,7 +26,7 @@ export type NegotiationTimeoutQueueJobData = NegotiationTimeoutJobData | AskUser
 /** Optional deps for testing. */
 export interface NegotiationTimeoutQueueDeps {
   database?: NegotiationGraphDatabase;
-  queue?: ReturnType<typeof QueueFactory.createQueue<NegotiationTimeoutQueueJobData>>;
+  queue?: Queue<NegotiationTimeoutQueueJobData>;
   invokeNegotiator?: TimeoutNegotiatorInvoke;
   parkWindowMs?: number;
   /** Append a synthetic conservative answer to opportunity metadata (ask_user expiry). */
@@ -56,7 +52,7 @@ export interface NegotiationTimeoutQueueDeps {
 export class NegotiationTimeoutQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue: ReturnType<typeof QueueFactory.createQueue<NegotiationTimeoutQueueJobData>>;
+  private queueInstance: Queue<NegotiationTimeoutQueueJobData> | null = null;
 
   private readonly logger = log.job.from('NegotiationTimeoutJob');
   private readonly queueLogger = log.queue.from('NegotiationTimeoutQueue');
@@ -65,7 +61,12 @@ export class NegotiationTimeoutQueue {
 
   constructor(deps?: NegotiationTimeoutQueueDeps) {
     this.deps = deps;
-    this.queue = deps?.queue ?? QueueFactory.createQueue<NegotiationTimeoutQueueJobData>(QUEUE_NAME);
+  }
+
+  get queue(): Queue<NegotiationTimeoutQueueJobData> {
+    this.queueInstance ??=
+      this.deps?.queue ?? QueueFactory.createQueue<NegotiationTimeoutQueueJobData>(QUEUE_NAME);
+    return this.queueInstance;
   }
 
   /**
@@ -224,7 +225,9 @@ export class NegotiationTimeoutQueue {
    */
   private async handleTimeout(data: NegotiationTimeoutJobData): Promise<void> {
     const { negotiationId, turnNumber } = data;
-    const database = this.deps?.database ?? conversationDatabaseAdapter;
+    const database =
+      this.deps?.database
+      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
 
     // Load the negotiation task
     const task = await database.getTask(negotiationId);
@@ -278,11 +281,10 @@ export class NegotiationTimeoutQueue {
       seedReasoning: 'Timeout fallback',
       maxTurns: 6,
       rearm: async (newTurnCount) => {
-        await this.enqueueTimeout(
-          negotiationId,
-          newTurnCount,
-          this.deps?.parkWindowMs ?? AMBIENT_PARK_WINDOW_MS,
-        );
+        const parkWindowMs =
+          this.deps?.parkWindowMs
+          ?? (await import('@indexnetwork/protocol')).AMBIENT_PARK_WINDOW_MS;
+        await this.enqueueTimeout(negotiationId, newTurnCount, parkWindowMs);
       },
       invokeNegotiator: this.deps?.invokeNegotiator,
     });
@@ -298,7 +300,9 @@ export class NegotiationTimeoutQueue {
    */
   private async handleAskUserExpiry(data: AskUserExpiryJobData): Promise<void> {
     const { negotiationId, opportunityId, userId, disclosureSubject } = data;
-    const database = this.deps?.database ?? conversationDatabaseAdapter;
+    const database =
+      this.deps?.database
+      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
 
     const task = await database.getTask(negotiationId);
     if (!task) {
@@ -355,6 +359,7 @@ export class NegotiationTimeoutQueue {
  * "additional context (provided between sessions)".
  */
 async function defaultStoreExpiryAnswer(opportunityId: string, disclosureSubject: string): Promise<void> {
+  const { ChatDatabaseAdapter } = await import('../../adapters/database.adapter');
   const chatDb = new ChatDatabaseAdapter();
   const opportunity = await chatDb.getOpportunity(opportunityId);
   if (!opportunity) return;
@@ -376,6 +381,11 @@ async function defaultStoreExpiryAnswer(opportunityId: string, disclosureSubject
 
 /** Default dismissal: pending negotiation_inflight rows for the opportunity. */
 async function defaultDismissInflightQuestions(opportunityId: string): Promise<void> {
+  const [{ default: db }, { questions }, { and, eq, sql }] = await Promise.all([
+    import('../../lib/drizzle/drizzle'),
+    import('../../schemas/database.schema'),
+    import('drizzle-orm/sql'),
+  ]);
   await db
     .update(questions)
     .set({ status: 'dismissed' })
