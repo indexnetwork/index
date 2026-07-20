@@ -89,6 +89,7 @@ vi.mock('@/contexts/APIContext', () => ({
         createdAt: new Date().toISOString(),
       },
     ]),
+    getAnswered: vi.fn().mockResolvedValue([]),
     answer: vi.fn(),
     dismiss: vi.fn(),
   }),

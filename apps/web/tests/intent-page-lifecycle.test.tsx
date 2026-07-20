@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentDetailPage from '@/app/i/[intentId]/page';
 import { createIntentsService } from '@/services/intents';
+import { createQuestionsService } from '@/services/questions';
 
 const mocks = vi.hoisted(() => {
   const intent: {
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => {
   const refineIntent = vi.fn();
   const getHomeView = vi.fn();
   const getPending = vi.fn();
+  const getAnswered = vi.fn();
   const answerQuestion = vi.fn();
   const dismissQuestion = vi.fn();
 
@@ -37,6 +39,7 @@ const mocks = vi.hoisted(() => {
     refineIntent,
     getHomeView,
     getPending,
+    getAnswered,
     answerQuestion,
     dismissQuestion,
     notificationError: vi.fn(),
@@ -44,6 +47,7 @@ const mocks = vi.hoisted(() => {
     opportunitiesService: { getHomeView },
     questionsService: {
       getPending,
+      getAnswered,
       answer: answerQuestion,
       dismiss: dismissQuestion,
     },
@@ -150,6 +154,7 @@ describe('Intent detail lifecycle', () => {
         items: [{ opportunityId: 'opportunity-1', status: 'pending' }],
       }],
     });
+    mocks.getAnswered.mockResolvedValue([]);
     mocks.getPending.mockResolvedValue([{
       id: 'question-1',
       title: 'Which region?',
@@ -171,6 +176,39 @@ describe('Intent detail lifecycle', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  test('hydrates the answered Q&A log from the server', async () => {
+    mocks.getPending.mockResolvedValue([]);
+    mocks.getAnswered.mockResolvedValue([{
+      id: 'answered-1',
+      payload: {
+        title: 'What kind of collaborator?',
+        prompt: 'What kind of collaborator?',
+        options: [],
+        multiSelect: false,
+      },
+      answer: {
+        selectedOptions: ['Technical founder', 'Climate operator'],
+        freeText: 'in Europe',
+        answeredBy: 'user-1',
+        answeredAt: new Date().toISOString(),
+      },
+      status: 'answered',
+    }]);
+    renderIntentPage();
+
+    expect(await screen.findByText('What kind of collaborator?')).toBeInTheDocument();
+    expect(screen.getByText('Technical founder, Climate operator, in Europe')).toBeInTheDocument();
+    expect(screen.getByText('noted — updating the search.')).toBeInTheDocument();
+  });
+
+  test('renders the questions empty state when there are no pending questions', async () => {
+    mocks.getPending.mockResolvedValue([]);
+    mocks.getAnswered.mockResolvedValue([]);
+    renderIntentPage();
+
+    expect(await screen.findByText('no pending questions right now.')).toBeInTheDocument();
   });
 
   test('ACTIVE renders live discovery, Pause, and the existing workspace', async () => {
@@ -395,6 +433,14 @@ describe('Intent detail lifecycle', () => {
 });
 
 describe('intent lifecycle service', () => {
+  test('fetches answered questions scoped to the intent', async () => {
+    const get = vi.fn().mockResolvedValue({ questions: [] });
+    const service = createQuestionsService({ get } as never);
+
+    await expect(service.getAnswered({ scopeType: 'intent', scopeId: 'intent-1' })).resolves.toEqual([]);
+    expect(get).toHaveBeenCalledWith('/questions?status=answered&scopeType=intent&scopeId=intent-1');
+  });
+
   test('PATCHes the lifecycle endpoint and returns the authoritative response', async () => {
     const patch = vi.fn().mockResolvedValue({
       success: true,

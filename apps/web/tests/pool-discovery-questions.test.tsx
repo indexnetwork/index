@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   },
   questionsService: {
     getPending: vi.fn(),
+    getAnswered: vi.fn(),
     answer: vi.fn(),
     dismiss: vi.fn(),
   },
@@ -192,6 +193,7 @@ describe('intent page — pending question count badge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     primePageServices();
+    mocks.questionsService.getAnswered.mockResolvedValue([]);
     mocks.authState.features = { negotiatorChat: true };
   });
 
@@ -219,9 +221,43 @@ describe('intent page — interview-mode chaining', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     primePageServices();
+    mocks.questionsService.getAnswered.mockResolvedValue([]);
     // Flag off → the static Questions panel renders the real InjectedQuestions.
     mocks.authState.features = null;
     mocks.questionsService.answer.mockResolvedValue({ success: true });
+  });
+
+  test('after answering, the optimistic log is replaced by one server-backed entry', async () => {
+    const question = makePoolQuestion({ id: 'q-pool-1', prompt: 'What matters more in a co-founder?' });
+    mocks.questionsService.getPending.mockResolvedValue([question]);
+    mocks.questionsService.getAnswered
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{
+        ...question,
+        status: 'answered',
+        answer: {
+          selectedOptions: ['Server answer'],
+          answeredBy: 'user-1',
+          answeredAt: new Date().toISOString(),
+        },
+      }]);
+
+    const { container } = renderIntentPage();
+    await screen.findByText('What matters more in a co-founder?');
+
+    fireEvent.click(container.querySelector('input[value="Both matter"]') as HTMLInputElement);
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() =>
+      expect(mocks.questionsService.answer).toHaveBeenCalledWith('q-pool-1', {
+        selectedOptions: ['Both matter'],
+      }),
+    );
+    expect(await screen.findByText('noted — updating the search.')).toBeInTheDocument();
+    expect(screen.getAllByText('What matters more in a co-founder?')).toHaveLength(1);
+    expect(screen.getByText('Server answer')).toBeInTheDocument();
+    expect(screen.queryByText('Both matter')).toBeNull();
+    expect(mocks.questionsService.getAnswered).toHaveBeenCalledTimes(2);
   });
 
   test('after answering a pool_discovery question, refetches once and appends the follow-up', async () => {
