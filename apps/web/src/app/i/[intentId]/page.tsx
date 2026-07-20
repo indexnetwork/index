@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Brain, ChevronLeft, LoaderCircle, Pause, Pencil, Play, Trash2 } from "lucide-react";
+import { ArrowUp, Brain, ChevronLeft, Loader2, LoaderCircle, Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { Link } from "react-router";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
-import { QuestionsEmptyState } from "@/components/InjectedQuestions/QuestionsEmptyState";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -54,6 +53,20 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
     return status;
   }
   return "ACTIVE";
+}
+
+/** Compact relative time for the answered thread, e.g. "just now", "2d ago". */
+function timeAgo(iso?: string): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 /**
@@ -143,6 +156,62 @@ function StatPill({
   );
 }
 
+/**
+ * Standing free-form input pinned at the bottom of the Questions panel. Lets the
+ * user tell the agent anything about this signal at any time — the text is fed
+ * to the intent's refine flow (same effect as the header ✎ input). Independent
+ * of the pending-question cards above it.
+ */
+function AgentMessageInput({
+  onSend,
+}: {
+  onSend: (text: string) => Promise<boolean>;
+}) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const send = useCallback(async () => {
+    const value = text.trim();
+    if (!value || sending) return;
+    setSending(true);
+    const ok = await onSend(value);
+    if (ok) setText("");
+    setSending(false);
+  }, [text, sending, onSend]);
+
+  return (
+    <div className="flex items-center gap-2 pl-5 pr-2 py-1.5 rounded-full border border-[#E9E9E9] bg-[#FCFCFC] focus-within:border-[#041729] transition-colors">
+      <input
+        type="text"
+        placeholder="tell the agent anything about this signal…"
+        value={text}
+        disabled={sending}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+        className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
+      />
+      <button
+        type="button"
+        onClick={send}
+        disabled={!text.trim() || sending}
+        className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        aria-label="Send message to agent"
+      >
+        {sending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <ArrowUp className="h-4 w-4" />
+        )}
+      </button>
+    </div>
+  );
+}
+
 /** Card-style panel used for the Questions and Radar columns. */
 function Panel({
   title,
@@ -198,9 +267,9 @@ export default function IntentDetailPage() {
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
 
-  const [intent, setIntent] = useState<
-    Awaited<ReturnType<typeof intentsService.getIntent>> | null
-  >(null);
+  const [intent, setIntent] = useState<Awaited<
+    ReturnType<typeof intentsService.getIntent>
+  > | null>(null);
   const [intentLoading, setIntentLoading] = useState(true);
   const [intentStatusPending, setIntentStatusPending] = useState<{
     intentId: string;
@@ -236,6 +305,18 @@ export default function IntentDetailPage() {
     },
     [clearReactionTimers],
   );
+  // Conversation thread: answered questions kept in view (oldest first).
+  const [answered, setAnswered] = useState<
+    Array<{
+      id: string;
+      prompt?: string;
+      response: string;
+      answeredAt?: string;
+    }>
+  >([]);
+  // Chat-style conversation column: scrolls internally, pinned to the bottom so
+  // the newest question is always in view above the composer.
+  const conversationRef = useRef<HTMLDivElement>(null);
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
@@ -260,7 +341,7 @@ export default function IntentDetailPage() {
   const scope = useMemo(
     () =>
       intentId
-        ? ({ scopeType: "intent" as const, scopeId: intentId })
+        ? { scopeType: "intent" as const, scopeId: intentId }
         : undefined,
     [intentId],
   );
@@ -388,6 +469,19 @@ export default function IntentDetailPage() {
     [clearReactionTimers, refreshWorkspaceAfterReaction],
   );
 
+  // Keep the conversation pinned to the newest question. Scroll after paint
+  // (double rAF) so the freshly-rendered question card is measured first.
+  useEffect(() => {
+    const el = conversationRef.current;
+    if (!el) return;
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      }),
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [answered, questions]);
+
   const handleArchive = useCallback(async () => {
     if (!intentId) return;
     if (!window.confirm("Archive this intent? It will stop matching.")) return;
@@ -439,27 +533,54 @@ export default function IntentDetailPage() {
     [intentId, intentsService, scheduleBoundedWorkspaceRefresh, showError],
   );
 
+  /** Feed free-form text to the intent's refine flow and reload matches.
+   * Shared by the header ✎ input and the Questions-panel agent message input.
+   * Returns whether the refine succeeded so callers can clear their input. */
+  const submitRefine = useCallback(
+    async (raw: string): Promise<boolean> => {
+      const text = raw.trim();
+      if (!intentId || !text) return false;
+      try {
+        const updated = await intentsService.refineIntent(intentId, text);
+        setIntent(updated);
+        void loadOpportunities();
+        return true;
+      } catch {
+        showError("Failed to refine intent");
+        return false;
+      }
+    },
+    [intentId, intentsService, loadOpportunities, showError],
+  );
+
   const handleRefine = useCallback(async () => {
-    const text = refineText.trim();
-    if (!intentId || !text || refining) return;
+    if (refining) return;
     setRefining(true);
-    try {
-      const updated = await intentsService.refineIntent(intentId, text);
-      setIntent(updated);
+    const ok = await submitRefine(refineText);
+    if (ok) {
       setRefineText("");
       setShowRefine(false);
-      void loadOpportunities();
-    } catch {
-      showError("Failed to refine intent");
-    } finally {
-      setRefining(false);
     }
-  }, [intentId, refineText, refining, intentsService, loadOpportunities, showError]);
+    setRefining(false);
+  }, [refining, refineText, submitRefine]);
 
   const handleAnswer = useCallback(
     async (questionId: string, body: AnswerBody) => {
       const answered = questions.find((q) => q.id === questionId);
       await questionsService.answer(questionId, body);
+      // Keep the answered exchange visible in the conversation thread.
+      if (answered) {
+        const response = body.freeText?.trim() || body.selectedOptions.join(", ");
+        setAnswered((prev) => [
+          ...prev,
+          {
+            id: questionId,
+            prompt: answered.payload.prompt,
+            response,
+            answeredAt: new Date().toISOString(),
+          },
+        ]);
+      }
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
       void refreshQuestionCounts();
       // Chain once per answer: a pool_discovery answer may have synchronously
@@ -530,9 +651,10 @@ export default function IntentDetailPage() {
     [opportunities, bucketOf, selectedBucket],
   );
 
-  const title = (intent?.summary && intent.summary.trim().length > 0
-    ? intent.summary
-    : intent?.payload ?? ""
+  const title = (
+    intent?.summary && intent.summary.trim().length > 0
+      ? intent.summary
+      : (intent?.payload ?? "")
   ).trim();
   const lifecycleStatus = normalizeIntentLifecycleStatus(intent?.status);
   const lifecycleBusy = intentStatusPending?.intentId === intentId;
@@ -540,8 +662,8 @@ export default function IntentDetailPage() {
   return (
     <ClientLayout>
       {inviteModalElement}
-      <div className="flex min-h-0 flex-1 flex-col px-6 py-4 lg:px-10">
-        <ContentContainer size="xwide" className="flex w-full min-h-0 flex-1 flex-col">
+      <div className="flex h-full min-h-0 flex-col px-10 lg:px-16 py-6">
+        <ContentContainer size="xwide" className="flex min-h-0 flex-1 flex-col">
           <button
             type="button"
             onClick={() => navigate("/")}
@@ -557,10 +679,10 @@ export default function IntentDetailPage() {
               Intent not found
             </div>
           ) : (
-            <>
+            <div className="flex min-h-0 flex-1 flex-col">
               {/* Header card: skeleton while the intent loads — the workspace
                   below renders (and fetches) immediately, in parallel. */}
-              <div className="mb-4 shrink-0 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="mb-6 shrink-0 rounded-lg border border-gray-200 bg-white p-5">
                 {intentLoading ? (
                   <div className="animate-pulse space-y-3" data-testid="intent-header-skeleton">
                     <div className="h-4 w-2/3 rounded bg-gray-200" />
@@ -614,7 +736,7 @@ export default function IntentDetailPage() {
                     />
                   </div>
                 </div>
-                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
+                <div className="mt-2.5 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
                   {lifecycleStatus === "ACTIVE" && (
                     <>
                       <span className="inline-flex items-center gap-1.5 rounded border border-green-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-green-600">
@@ -684,7 +806,7 @@ export default function IntentDetailPage() {
                 )}
               </div>
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-10 lg:grid-rows-[minmax(0,1fr)]">
+              <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row">
                 {negotiatorChatEnabled && intentId ? (
                   <Panel
                     title="Personal Agent"
@@ -709,7 +831,7 @@ export default function IntentDetailPage() {
                         Memory
                       </Link>
                     }
-                    className="lg:col-span-6"
+                    className="lg:flex-[2]"
                   >
                     {user?.id && (
                       <IntentMemoryStrip intentId={intentId} userId={user.id} />
@@ -731,27 +853,85 @@ export default function IntentDetailPage() {
                     />
                   </Panel>
                 ) : (
-                  <Panel
-                    title="Questions"
-                    count={questions.length}
-                    description="Answer pending follow-ups for this intent."
-                    className="lg:col-span-6"
-                  >
-                    <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
-                      {questions.length === 0 && !questionChainPending ? (
-                        <QuestionsEmptyState />
-                      ) : (
-                        <InjectedQuestions
-                          questions={questions}
-                          onAnswer={handleAnswer}
-                          onDismiss={handleDismiss}
-                          showTypingIndicator={questionChainPending}
-                        />
-                      )}
+                  <section className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[2]">
+                    <div className="mb-4 shrink-0">
+                      <h3 className="flex items-center gap-2 text-base font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
+                        <span>
+                          Questions{questions.length > 0 ? ` (${questions.length})` : ""}
+                        </span>
+                      </h3>
                     </div>
-                  </Panel>
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      <div
+                        ref={conversationRef}
+                        className="flex-1 overflow-y-auto pr-1"
+                      >
+                        <div className="flex min-h-full flex-col justify-end gap-5">
+                          {answered.length === 0 && questions.length === 0 && !questionChainPending && (
+                            // Nothing to answer yet — the agent is still working
+                            // the room on this signal.
+                            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                              <video
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                // The clip is matted on opaque white; multiply
+                                // blends it into the page background.
+                                className="w-44 mix-blend-multiply"
+                              >
+                                <source
+                                  src="/loading-tree.m4v"
+                                  type="video/mp4"
+                                />
+                              </video>
+                              <p className="max-w-[19rem] text-[13px] leading-relaxed text-gray-400">
+                                Your agent is negotiating. Nothing needs you yet.
+                              </p>
+                            </div>
+                          )}
+                          {answered.length > 0 && (
+                            <div className="flex flex-col gap-3">
+                              {answered.map((a) => (
+                                <div key={a.id} className="px-1">
+                                  {a.prompt && (
+                                    <p className="text-[13px] text-gray-400">
+                                      {a.prompt}
+                                      {a.answeredAt && (
+                                        <span className="text-gray-300">
+                                          {" · "}
+                                          {timeAgo(a.answeredAt)}
+                                        </span>
+                                      )}
+                                    </p>
+                                  )}
+                                  <p className="mt-0.5 flex gap-1.5 text-[13px] text-gray-900 font-ibm-plex-mono">
+                                    <span className="text-gray-400">›</span>
+                                    <span>{a.response}</span>
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {(questions.length > 0 || questionChainPending) && (
+                            <InjectedQuestions
+                              questions={questions}
+                              onAnswer={handleAnswer}
+                              onDismiss={handleDismiss}
+                              showTypingIndicator={questionChainPending}
+                              paginate
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <div className="pt-4 shrink-0">
+                        <AgentMessageInput onSend={submitRefine} />
+                      </div>
+                    </div>
+                  </section>
                 )}
 
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-[3]">
                 <Panel
                   title="Radar"
                   description="People the network surfaced for this intent."
@@ -764,7 +944,6 @@ export default function IntentDetailPage() {
                       className="h-6 w-auto object-contain"
                     />
                   }
-                  className="lg:col-span-4"
                 >
                   <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
                     {RADAR_BUCKETS.map((bucket) => (
@@ -793,22 +972,53 @@ export default function IntentDetailPage() {
                         <OpportunityCard
                           key={item.opportunityId}
                           card={item}
-                          currentStatus={opportunityStatusMap[item.opportunityId]}
-                          onPrimaryAction={(oppId, userId, viewerRole, counterpartName, isGhost) =>
-                            handleOpportunityAction(oppId, "accepted", userId, viewerRole, counterpartName, isGhost)
+                          currentStatus={
+                            opportunityStatusMap[item.opportunityId]
                           }
-                          onSecondaryAction={(oppId, userId, viewerRole, counterpartName, isGhost) =>
-                            handleOpportunityAction(oppId, "rejected", userId, viewerRole, counterpartName, isGhost)
+                          onPrimaryAction={(
+                            oppId,
+                            userId,
+                            viewerRole,
+                            counterpartName,
+                            isGhost,
+                          ) =>
+                            handleOpportunityAction(
+                              oppId,
+                              "accepted",
+                              userId,
+                              viewerRole,
+                              counterpartName,
+                              isGhost,
+                            )
                           }
-                          isLoading={!!opportunityActionLoading[item.opportunityId]}
+                          onSecondaryAction={(
+                            oppId,
+                            userId,
+                            viewerRole,
+                            counterpartName,
+                            isGhost,
+                          ) =>
+                            handleOpportunityAction(
+                              oppId,
+                              "rejected",
+                              userId,
+                              viewerRole,
+                              counterpartName,
+                              isGhost,
+                            )
+                          }
+                          isLoading={
+                            !!opportunityActionLoading[item.opportunityId]
+                          }
                         />
                       ))}
                     </div>
                   )}
                   </div>
                 </Panel>
+                </div>
               </div>
-            </>
+            </div>
           )}
         </ContentContainer>
       </div>

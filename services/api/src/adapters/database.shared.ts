@@ -169,6 +169,10 @@ export interface IntentListRow {
    * the UI surface orphaned intents instead of hiding the assignment outcome.
    */
   networks: { id: string; title: string }[];
+  /** Count of pending intent-scoped questions awaiting the user for this intent. */
+  pendingQuestionCount: number;
+  /** Count of `pending` opportunities anchored on this intent, awaiting the user. */
+  waitingOpportunityCount: number;
 }
 // UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
 // locally to honor the adapter layering rule of not importing protocol interfaces).

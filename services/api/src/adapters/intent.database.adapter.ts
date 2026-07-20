@@ -543,23 +543,46 @@ export class IntentDatabaseAdapter {
       db.select({ count: count() }).from(schema.intents).where(where),
     ]);
 
-    const withNetworks = await this.attachIntentNetworks(rows);
-    return { rows: withNetworks, total: Number(totalResult[0]?.count ?? 0) };
+    const withExtras = await this.attachIntentExtras(rows, userId);
+    return { rows: withExtras, total: Number(totalResult[0]?.count ?? 0) };
   }
 
   /**
-   * Attach each intent's registered networks (excluding soft-deleted networks)
-   * to a page of list rows in a single grouped query. Intents with no
-   * membership get an empty array, which the UI reads as "pending or orphaned".
+   * Enrich a page of intent list rows with their registered networks plus the
+   * per-intent counts the UI surfaces (pending questions, waiting
+   * opportunities). Runs three grouped queries in parallel and joins in memory,
+   * so it stays O(1) round-trips regardless of page size.
    *
-   * @param rows - The paginated intent rows to enrich (mutated copies returned).
-   * @returns The same rows, each with a populated `networks` array.
+   * @param rows - The paginated base intent rows to enrich.
+   * @param userId - Owner, used to scope the waiting-opportunity actor match.
+   * @returns The same rows, each with `networks`, `pendingQuestionCount`, and
+   *   `waitingOpportunityCount` populated (empty/zero when none).
    */
-  private async attachIntentNetworks(
-    rows: Omit<IntentListRow, 'networks'>[],
+  private async attachIntentExtras(
+    rows: Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount'>[],
+    userId: string,
   ): Promise<IntentListRow[]> {
     if (rows.length === 0) return [];
     const intentIds = rows.map(r => r.id);
+    const [networks, counts] = await Promise.all([
+      this.networksByIntent(intentIds),
+      this.countsByIntent(intentIds, userId),
+    ]);
+    return rows.map(r => ({
+      ...r,
+      networks: networks.get(r.id) ?? [],
+      pendingQuestionCount: counts.get(r.id)?.questions ?? 0,
+      waitingOpportunityCount: counts.get(r.id)?.opportunities ?? 0,
+    }));
+  }
+
+  /**
+   * Group each intent's registered networks (excluding soft-deleted networks)
+   * into a map, in a single query.
+   */
+  private async networksByIntent(intentIds: string[]): Promise<Map<string, { id: string; title: string }[]>> {
+    const byIntent = new Map<string, { id: string; title: string }[]>();
+    if (intentIds.length === 0) return byIntent;
     const memberships = await db
       .select({
         intentId: schema.intentNetworks.intentId,
@@ -572,14 +595,70 @@ export class IntentDatabaseAdapter {
         inArray(schema.intentNetworks.intentId, intentIds),
         isNull(schema.networks.deletedAt),
       ));
-
-    const byIntent = new Map<string, { id: string; title: string }[]>();
     for (const m of memberships) {
       const list = byIntent.get(m.intentId) ?? [];
       list.push({ id: m.networkId, title: m.title });
       byIntent.set(m.intentId, list);
     }
-    return rows.map(r => ({ ...r, networks: byIntent.get(r.id) ?? [] }));
+    return byIntent;
+  }
+
+  /**
+   * Per-intent counts of pending intent-scoped questions and `pending`
+   * opportunities awaiting the user. Two grouped jsonb queries; every requested
+   * intent id is present in the returned map (zero when it has none).
+   */
+  private async countsByIntent(
+    intentIds: string[],
+    userId: string,
+  ): Promise<Map<string, { questions: number; opportunities: number }>> {
+    const map = new Map<string, { questions: number; opportunities: number }>();
+    if (intentIds.length === 0) return map;
+    for (const id of intentIds) map.set(id, { questions: 0, opportunities: 0 });
+    const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
+
+    const [questionRows, oppRows] = await Promise.all([
+      // Mirror the intent-scoped pending-questions filter used on the detail
+      // page (questioner.adapter.findPending): pending, not expired, actor-owned
+      // by the user, attributed to the intent via intent-mode sourceId or
+      // triggeredBy. (The opportunity-sourced branch is omitted — rare and
+      // expensive.) Group key is the attributed intent id.
+      db.execute(sql`
+        SELECT key AS intent_id, COUNT(*)::int AS cnt
+        FROM (
+          SELECT CASE
+            WHEN ${schema.questions.detection}->>'mode' = 'intent'
+              AND ${schema.questions.detection}->>'sourceType' = 'intent'
+              THEN ${schema.questions.detection}->>'sourceId'
+            ELSE ${schema.questions.detection}->>'triggeredBy'
+          END AS key
+          FROM ${schema.questions}
+          WHERE ${schema.questions.status} = 'pending'
+            AND (${schema.questions.expiresAt} IS NULL OR ${schema.questions.expiresAt} > NOW())
+            AND ${schema.questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
+        ) sub
+        WHERE key IN (${idList})
+        GROUP BY key
+      `) as unknown as Array<{ intent_id: string; cnt: number }>,
+      db.execute(sql`
+        SELECT actor->>'intent' AS intent_id, COUNT(DISTINCT ${schema.opportunities.id})::int AS cnt
+        FROM ${schema.opportunities}, jsonb_array_elements(${schema.opportunities.actors}) AS actor
+        WHERE actor->>'userId' = ${userId}
+          AND actor->>'intent' IN (${idList})
+          AND ${schema.opportunities.status} = 'pending'
+        GROUP BY actor->>'intent'
+      `) as unknown as Array<{ intent_id: string; cnt: number }>,
+    ]);
+
+    for (const r of questionRows) {
+      const entry = map.get(r.intent_id);
+      if (entry) entry.questions = Number(r.cnt);
+    }
+    for (const r of oppRows) {
+      const entry = map.get(r.intent_id);
+      if (entry) entry.opportunities = Number(r.cnt);
+    }
+    return map;
   }
 
   async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {
@@ -600,8 +679,8 @@ export class IntentDatabaseAdapter {
       .limit(1);
 
     if (!row[0]) return null;
-    const [withNetworks] = await this.attachIntentNetworks(row);
-    return withNetworks;
+    const [withExtras] = await this.attachIntentExtras(row, userId);
+    return withExtras;
   }
 
   /**
