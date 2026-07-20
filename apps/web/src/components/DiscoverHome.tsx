@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import { Plus } from "lucide-react";
 
@@ -21,6 +21,7 @@ interface HomeIntent {
   waitingOpportunityCount?: number;
   pendingQuestionCount?: number;
   status?: string;
+  warming?: boolean;
 }
 
 /**
@@ -33,26 +34,34 @@ export default function DiscoverHome() {
   const { error: showError } = useNotifications();
   const [intents, setIntents] = useState<HomeIntent[]>([]);
   const [loading, setLoading] = useState(false);
+  const mountedRef = useRef(true);
+
+  const fetchIntents = useCallback(async () => {
+    try {
+      const res = await apiClient.post<{ intents?: HomeIntent[] }>("/intents/list", { page: 1, limit: 100 });
+      if (mountedRef.current) setIntents(res.intents ?? []);
+    } catch (err) {
+      logger.error("Failed to load signals", { error: err });
+      if (mountedRef.current) setIntents([]);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
+    mountedRef.current = true;
     setLoading(true);
-    apiClient
-      .post<{ intents?: HomeIntent[] }>("/intents/list", { page: 1, limit: 100 })
-      .then((res) => {
-        if (active) setIntents(res.intents ?? []);
-      })
-      .catch((err) => {
-        logger.error("Failed to load signals", { error: err });
-        if (active) setIntents([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    fetchIntents().finally(() => {
+      if (mountedRef.current) setLoading(false);
+    });
     return () => {
-      active = false;
+      mountedRef.current = false;
     };
-  }, []);
+  }, [fetchIntents]);
+
+  useEffect(() => {
+    if (!intents.some((intent) => intent.warming)) return;
+    const interval = setInterval(fetchIntents, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchIntents, intents]);
 
   const handleArchive = useCallback(
     async (intent: HomeIntent) => {
@@ -75,6 +84,9 @@ export default function DiscoverHome() {
           </h1>
           <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
         </div>
+        <p className="mb-6 text-center text-xs text-gray-400 font-ibm-plex-mono">
+          {intents.length} signals · {intents.reduce((total, intent) => total + (intent.waitingOpportunityCount ?? 0), 0)} opportunities
+        </p>
 
         {/* New signal entry — styled to match IntentList rows */}
         <button
@@ -86,7 +98,7 @@ export default function DiscoverHome() {
             <Plus className="w-4 h-4" strokeWidth={2.5} />
           </span>
           <span className="text-sm font-medium text-gray-900 group-hover:text-black">
-            Start a new signal
+            who are you trying to meet?
           </span>
         </button>
 

@@ -13,6 +13,10 @@ interface BaseIntent {
   sourceName?: string;
   sourceValue?: string | null;
   sourceMeta?: string | null;
+  /** Whether this fresh intent is still awaiting its first discovery run. */
+  warming?: boolean;
+  /** Networks this intent is currently registered to. */
+  networks?: { id: string; title: string }[];
   /**
    * Count of `pending` opportunities anchored on this intent, awaiting the user.
    * Shown next to the date. Undefined/0 renders nothing.
@@ -144,9 +148,14 @@ export default function IntentList<T extends BaseIntent>({
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-900 leading-relaxed font-medium">
+                <p className="line-clamp-2 text-sm text-gray-900 leading-relaxed font-medium">
                   {summary}
                 </p>
+                {intent.networks && intent.networks.length > 0 && (
+                  <p className="mt-1 text-[11px] text-gray-400 font-ibm-plex-mono truncate">
+                    {intent.networks.map((network) => network.title).join(' · ')}
+                  </p>
+                )}
                 
                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mt-2.5">
                   {/* Date */}
@@ -157,8 +166,13 @@ export default function IntentList<T extends BaseIntent>({
                     </div>
                   )}
 
-                  {/* Running — active signals are worked in the background */}
-                  {isActive && (
+                  {/* Fresh signals are waiting for their first discovery run. */}
+                  {intent.warming ? (
+                    <span className="text-[10px] tracking-wide font-ibm-plex-mono font-medium uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                      WARMING
+                    </span>
+                  ) : isActive && (
+                    /* Running — active signals are worked in the background */
                     <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 font-ibm-plex-mono">
                       <span className="relative flex h-1.5 w-1.5">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -168,8 +182,11 @@ export default function IntentList<T extends BaseIntent>({
                     </div>
                   )}
 
-                  {/* Opportunities — actionable, quiet blue accent. Only when any. */}
-                  {(intent.waitingOpportunityCount ?? 0) > 0 && (
+                  {/* Opportunities — actionable, quiet blue accent. Warming
+                      signals show an explicit unknown value instead. */}
+                  {intent.warming ? (
+                    <span className="text-xs text-gray-400 font-ibm-plex-mono" aria-label="opportunities unknown">—</span>
+                  ) : (intent.waitingOpportunityCount ?? 0) > 0 && (
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-[#4091BB] font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB]/10 border border-[#4091BB]/25"
                       title={`${intent.waitingOpportunityCount} ${intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'} for you`}

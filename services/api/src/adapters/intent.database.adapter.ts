@@ -548,10 +548,11 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Enrich a page of intent list rows with their registered networks plus the
+   * Enrich a page of intent list rows with their registered networks, the
    * per-intent counts the UI surfaces (pending questions, waiting
-   * opportunities). Runs three grouped queries in parallel and joins in memory,
-   * so it stays O(1) round-trips regardless of page size.
+   * opportunities), and the fresh-intent discovery state. Runs three grouped
+   * queries in parallel and joins in memory, so it stays O(1) round-trips
+   * regardless of page size.
    *
    * @param rows - The paginated base intent rows to enrich.
    * @param userId - Owner, used to scope the waiting-opportunity actor match.
@@ -559,21 +560,44 @@ export class IntentDatabaseAdapter {
    *   `waitingOpportunityCount` populated (empty/zero when none).
    */
   private async attachIntentExtras(
-    rows: Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount'>[],
+    rows: Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming'>[],
     userId: string,
   ): Promise<IntentListRow[]> {
     if (rows.length === 0) return [];
     const intentIds = rows.map(r => r.id);
-    const [networks, counts] = await Promise.all([
+    const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const freshIntentIds = rows
+      .filter(r => r.createdAt > warmingCutoff)
+      .map(r => r.id);
+    const [networks, counts, succeededDiscoveryIntentIds] = await Promise.all([
       this.networksByIntent(intentIds),
       this.countsByIntent(intentIds, userId),
+      this.succeededDiscoveryIntentIds(freshIntentIds),
     ]);
+    const succeededIds = new Set(succeededDiscoveryIntentIds);
     return rows.map(r => ({
       ...r,
       networks: networks.get(r.id) ?? [],
       pendingQuestionCount: counts.get(r.id)?.questions ?? 0,
       waitingOpportunityCount: counts.get(r.id)?.opportunities ?? 0,
+      warming: r.createdAt > warmingCutoff && !succeededIds.has(r.id),
     }));
+  }
+
+  /**
+   * Return intent IDs with a completed discovery run. The caller only passes
+   * fresh intents because rows older than the warming window are never warm.
+   */
+  private async succeededDiscoveryIntentIds(intentIds: string[]): Promise<string[]> {
+    if (intentIds.length === 0) return [];
+    const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
+    const rows = await db.execute(sql`
+      SELECT ${schema.opportunityDiscoveryRuns.input}->>'intentId' AS intent_id
+      FROM ${schema.opportunityDiscoveryRuns}
+      WHERE ${schema.opportunityDiscoveryRuns.status} = 'succeeded'
+        AND (${schema.opportunityDiscoveryRuns.input}->>'intentId') = ANY(ARRAY[${idList}]::text[])
+    `) as unknown as Array<{ intent_id: string | null }>;
+    return rows.flatMap(row => row.intent_id ? [row.intent_id] : []);
   }
 
   /**
