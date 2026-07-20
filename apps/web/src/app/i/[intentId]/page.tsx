@@ -6,6 +6,8 @@ import { Link } from "react-router";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
+import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
+import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
@@ -55,13 +57,6 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
   return "ACTIVE";
 }
 
-interface AnsweredThreadEntry {
-  id: string;
-  prompt: string;
-  response: string;
-  answeredAt?: string;
-}
-
 function formatAnswer(selectedOptions: string[], freeText?: string): string {
   return [...selectedOptions, freeText?.trim() ?? ""].filter(Boolean).join(", ");
 }
@@ -75,20 +70,6 @@ function toAnsweredThreadEntry(question: PendingQuestion): AnsweredThreadEntry |
     response: formatAnswer(answer.selectedOptions, answer.freeText),
     answeredAt: answer.answeredAt,
   };
-}
-
-/** Compact relative time for the answered thread, e.g. "just now", "2d ago". */
-function timeAgo(iso?: string): string {
-  if (!iso) return "";
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (secs < 60) return "just now";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 /**
@@ -891,6 +872,7 @@ export default function IntentDetailPage() {
                       key={intentId}
                       intentId={intentId}
                       questions={questions}
+                      answered={answered}
                       onAnswerQuestion={handleAnswer}
                       onDismissQuestion={handleDismiss}
                       questionChainPending={questionChainPending}
@@ -941,32 +923,7 @@ export default function IntentDetailPage() {
                               </p>
                             </div>
                           )}
-                          {answered.length > 0 && (
-                            <div className="flex flex-col gap-3">
-                              {answered.map((a) => (
-                                <div key={a.id} className="px-1">
-                                  {a.prompt && (
-                                    <p className="text-[13px] text-gray-400">
-                                      {a.prompt}
-                                      {a.answeredAt && (
-                                        <span className="text-gray-300">
-                                          {" · "}
-                                          {timeAgo(a.answeredAt)}
-                                        </span>
-                                      )}
-                                    </p>
-                                  )}
-                                  <p className="mt-0.5 flex gap-1.5 text-[13px] text-gray-900 font-ibm-plex-mono">
-                                    <span className="text-gray-400">›</span>
-                                    <span>{a.response}</span>
-                                  </p>
-                                  <p className="mt-1 text-[12px] text-gray-400">
-                                    noted — updating the search.
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          {answered.length > 0 && <AnsweredQuestionLog entries={answered} />}
                           {(questions.length > 0 || questionChainPending) && (
                             <InjectedQuestions
                               questions={questions}
