@@ -17,7 +17,7 @@ import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
-import type { AnswerBody, PendingQuestion } from "@/services/questions";
+import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
@@ -53,6 +53,28 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
     return status;
   }
   return "ACTIVE";
+}
+
+interface AnsweredThreadEntry {
+  id: string;
+  prompt: string;
+  response: string;
+  answeredAt?: string;
+}
+
+function formatAnswer(selectedOptions: string[], freeText?: string): string {
+  return [...selectedOptions, freeText?.trim() ?? ""].filter(Boolean).join(", ");
+}
+
+function toAnsweredThreadEntry(question: PendingQuestion): AnsweredThreadEntry | null {
+  const answer: QuestionAnswer | null = question.answer;
+  if (!answer) return null;
+  return {
+    id: question.id,
+    prompt: question.payload.prompt,
+    response: formatAnswer(answer.selectedOptions, answer.freeText),
+    answeredAt: answer.answeredAt,
+  };
 }
 
 /** Compact relative time for the answered thread, e.g. "just now", "2d ago". */
@@ -306,14 +328,7 @@ export default function IntentDetailPage() {
     [clearReactionTimers],
   );
   // Conversation thread: answered questions kept in view (oldest first).
-  const [answered, setAnswered] = useState<
-    Array<{
-      id: string;
-      prompt?: string;
-      response: string;
-      answeredAt?: string;
-    }>
-  >([]);
+  const [answered, setAnswered] = useState<AnsweredThreadEntry[]>([]);
   // Chat-style conversation column: scrolls internally, pinned to the bottom so
   // the newest question is always in view above the composer.
   const conversationRef = useRef<HTMLDivElement>(null);
@@ -377,6 +392,41 @@ export default function IntentDetailPage() {
       });
     } catch {
       // Best-effort refresh; keep already-rendered questions on failure.
+    }
+  }, [intentId, questionsService]);
+
+  const loadAnswered = useCallback(async () => {
+    if (!intentId) return;
+    try {
+      const res = await questionsService.getAnswered({
+        scopeType: "intent",
+        scopeId: intentId,
+      });
+      if (activeIntentIdRef.current !== intentId) return;
+      const serverEntries = res
+        .map(toAnsweredThreadEntry)
+        .filter((entry): entry is AnsweredThreadEntry => entry !== null);
+      const serverIds = new Set(serverEntries.map((entry) => entry.id));
+      setAnswered((current) => {
+        const merged = [
+          ...serverEntries,
+          ...current.filter((entry) => !serverIds.has(entry.id)),
+        ];
+        const unchanged =
+          merged.length === current.length &&
+          merged.every((entry, index) => {
+            const previous = current[index];
+            return (
+              previous?.id === entry.id &&
+              previous.prompt === entry.prompt &&
+              previous.response === entry.response &&
+              previous.answeredAt === entry.answeredAt
+            );
+          });
+        return unchanged ? current : merged;
+      });
+    } catch {
+      // Best-effort hydration; keep optimistic entries on failure.
     }
   }, [intentId, questionsService]);
 
@@ -446,11 +496,12 @@ export default function IntentDetailPage() {
         if (active) setIntentLoading(false);
       });
     void loadQuestions();
+    void loadAnswered();
     void loadOpportunities();
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadQuestions, loadOpportunities]);
+  }, [intentId, intentsService, loadQuestions, loadAnswered, loadOpportunities]);
 
   const refreshWorkspaceAfterReaction = useCallback((includeQuestions: boolean) => {
     setNegotiatorRefreshVersion((version) => version + 1);
@@ -570,18 +621,18 @@ export default function IntentDetailPage() {
       await questionsService.answer(questionId, body);
       // Keep the answered exchange visible in the conversation thread.
       if (answered) {
-        const response = body.freeText?.trim() || body.selectedOptions.join(", ");
         setAnswered((prev) => [
-          ...prev,
+          ...prev.filter((entry) => entry.id !== questionId),
           {
             id: questionId,
             prompt: answered.payload.prompt,
-            response,
+            response: formatAnswer(body.selectedOptions, body.freeText),
             answeredAt: new Date().toISOString(),
           },
         ]);
       }
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      void loadAnswered();
       void refreshQuestionCounts();
       // Chain once per answer: a pool_discovery answer may have synchronously
       // produced a follow-up question — refetch shortly and append it.
@@ -618,7 +669,7 @@ export default function IntentDetailPage() {
         }, 1200);
       }
     },
-    [questions, questionsService, intentId, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
+    [questions, questionsService, intentId, loadAnswered, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
   );
 
   const handleDismiss = useCallback(
@@ -886,7 +937,7 @@ export default function IntentDetailPage() {
                                 />
                               </video>
                               <p className="max-w-[19rem] text-[13px] leading-relaxed text-gray-400">
-                                Your agent is negotiating. Nothing needs you yet.
+                                no pending questions right now.
                               </p>
                             </div>
                           )}
@@ -909,6 +960,9 @@ export default function IntentDetailPage() {
                                     <span className="text-gray-400">›</span>
                                     <span>{a.response}</span>
                                   </p>
+                                  <p className="mt-1 text-[12px] text-gray-400">
+                                    noted — updating the search.
+                                  </p>
                                 </div>
                               ))}
                             </div>
@@ -919,6 +973,7 @@ export default function IntentDetailPage() {
                               onAnswer={handleAnswer}
                               onDismiss={handleDismiss}
                               showTypingIndicator={questionChainPending}
+                              showAskedKicker
                             />
                           )}
                         </div>

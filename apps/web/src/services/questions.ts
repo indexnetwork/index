@@ -61,8 +61,17 @@ export interface PendingQuestion {
   conversationId: string | null;
 }
 
+export type AnsweredQuestion = Omit<PendingQuestion, 'status' | 'answer'> & {
+  status: 'answered';
+  answer: QuestionAnswer;
+};
+
 export interface QuestionsListResponse {
   questions: PendingQuestion[];
+}
+
+export interface AnsweredQuestionsListResponse {
+  questions: AnsweredQuestion[];
 }
 
 export interface PendingQuestionCounts {
@@ -111,6 +120,18 @@ export const createQuestionsService = (
     if (filters?.noConversation) params.set('noConversation', 'true');
     if (filters?.excludeModes?.length) params.set('excludeModes', filters.excludeModes.join(','));
     const res = await api.get<QuestionsListResponse>(`/questions?${params}`);
+    return res.questions ?? [];
+  },
+
+  /** Fetch answered questions for an intent-scoped conversation log. */
+  getAnswered: async (filters?: {
+    scopeType?: 'intent';
+    scopeId?: string;
+  }): Promise<AnsweredQuestion[]> => {
+    const params = new URLSearchParams({ status: 'answered' });
+    if (filters?.scopeType) params.set('scopeType', filters.scopeType);
+    if (filters?.scopeId) params.set('scopeId', filters.scopeId);
+    const res = await api.get<AnsweredQuestionsListResponse>(`/questions?${params}`);
     return res.questions ?? [];
   },
 
