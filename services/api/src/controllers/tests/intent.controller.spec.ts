@@ -12,7 +12,7 @@ import { ScopeViolationError } from '../../guards/agent-scope.guard';
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import db from '../../lib/drizzle/drizzle';
 import { IntentEvents } from '../../events/intent.event';
-import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable } from '../../schemas/database.schema';
+import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunityDiscoveryRuns as opportunityDiscoveryRunsTable } from '../../schemas/database.schema';
 import { IntentNetworkMembershipError } from '../../services/intent.service';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -192,6 +192,47 @@ describe("IntentDatabaseAdapter Integration", () => {
     expect(row).toBeDefined();
     expect(row!.networks).toEqual([]);
   });
+
+  test("listIntents derives warming from fresh intents without a succeeded discovery run", async () => {
+    const freshWarming = await adapter.createIntent({
+      userId: testUserId,
+      payload: 'Fresh intent waiting for discovery',
+      summary: 'Fresh warming intent',
+    });
+    const freshComplete = await adapter.createIntent({
+      userId: testUserId,
+      payload: 'Fresh intent with completed discovery',
+      summary: 'Fresh completed intent',
+    });
+    const oldIntent = await adapter.createIntent({
+      userId: testUserId,
+      payload: 'Old intent without discovery',
+      summary: 'Old intent',
+    });
+    await db.update(intentsTable).set({
+      createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+    }).where(eq(intentsTable.id, oldIntent.id));
+    const [run] = await db.insert(opportunityDiscoveryRunsTable).values({
+      userId: testUserId,
+      status: 'succeeded',
+      input: { intentId: freshComplete.id },
+      context: { userId: testUserId, userName: 'Test User', userEmail: testEmail },
+      completedAt: new Date(),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    }).returning({ id: opportunityDiscoveryRunsTable.id });
+
+    try {
+      const { rows } = await adapter.listIntents(testUserId, { page: 1, limit: 100, archived: false });
+      expect(rows.find((row) => row.id === freshWarming.id)?.warming).toBe(true);
+      expect(rows.find((row) => row.id === freshComplete.id)?.warming).toBe(false);
+      expect(rows.find((row) => row.id === oldIntent.id)?.warming).toBe(false);
+    } finally {
+      await db.delete(opportunityDiscoveryRunsTable).where(eq(opportunityDiscoveryRunsTable.id, run.id));
+      for (const intent of [freshWarming, freshComplete, oldIntent]) {
+        await db.delete(intentsTable).where(eq(intentsTable.id, intent.id));
+      }
+    }
+  }, 30_000);
 
   test("listIntents attaches assigned networks and excludes soft-deleted ones", async () => {
     const chatAdapter = new ChatDatabaseAdapter();
@@ -491,12 +532,13 @@ describe("IntentController Integration", () => {
       body: JSON.stringify({ page: 1, limit: 10 }),
     });
     const res = await controller.list(req, mockUser());
-    const data = (await res.json()) as { intents?: unknown[]; pagination?: unknown };
+    const data = (await res.json()) as { intents?: Array<{ id: string; warming?: unknown }>; pagination?: unknown };
 
     expect(res.status).toBe(200);
     expect(Array.isArray(data.intents)).toBe(true);
     expect(data.pagination).toBeDefined();
     expect(data.intents!.length).toBeGreaterThanOrEqual(1);
+    expect(typeof data.intents!.find((intent) => intent.id === testIntentId)?.warming).toBe('boolean');
   });
 
   test("getById should return 404 when intent not found", async () => {

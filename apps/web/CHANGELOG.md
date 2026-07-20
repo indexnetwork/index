@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Polished the signal-first Discover home (IND-473): header totals show listed signals and waiting opportunities, fresh signals display a WARMING state while discovery runs, and the list includes network scope, clamped titles, and the conversational new-signal CTA.
+
+
 - Persisted the signal workspace's answered question log across visits, with server-backed answers, optimistic deduplication, and clearer pending-question copy (IND-472).
 
 - Added the default-off Signal Agent main-web cutover (IND-449): every main-web continuation uses the dedicated Signal transport, legacy orchestrator history stays readable with all mutation controls disabled, and successful intent proposal confirmation navigates to the exact returned signal ID with truthful async undo behavior. Confirmations have per-proposal ownership and are bound to their originating route, in-memory session, and navigation generation, so concurrent cards in one chat complete independently while stale success or failure reports a safe non-actionable notification without mutating or navigating the newer chat. Request-local stream/load ownership prevents stale responses from overwriting newer chats, and typed policy refusals remain actionable in both home and loaded-chat states. CLI browser auth now uses an explicit state-bound v2 contract and a project-JWT-authenticated, fixed-shape CLI credential endpoint, while a temporary fail-closed v1 bridge mints separately tagged API keys for already-released clients without redirecting browser JWT compatibility back to the orchestrator.

@@ -173,6 +173,8 @@ export interface IntentListRow {
   pendingQuestionCount: number;
   /** Count of `pending` opportunities anchored on this intent, awaiting the user. */
   waitingOpportunityCount: number;
+  /** True while a fresh intent has not completed its first discovery run. */
+  warming: boolean;
 }
 // UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
 // locally to honor the adapter layering rule of not importing protocol interfaces).
