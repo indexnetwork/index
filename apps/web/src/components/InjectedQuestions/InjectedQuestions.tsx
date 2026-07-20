@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
+import { QuestionInChat } from '@/components/library/question';
 
 const OTHER_VALUE = '__other__';
 
@@ -282,6 +283,8 @@ interface InjectedQuestionsProps {
   showTypingIndicator?: boolean;
   /** Show one question at a time with previous/next controls. Defaults to all questions. */
   paginate?: boolean;
+  /** Render compact, in-chat question interviews instead of full intent-page cards. */
+  variant?: 'full' | 'chat';
 }
 
 export function InjectedQuestions({
@@ -290,6 +293,7 @@ export function InjectedQuestions({
   onDismiss,
   showTypingIndicator,
   paginate = false,
+  variant = 'full',
 }: InjectedQuestionsProps) {
   const [pagedQuestionId, setPagedQuestionId] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
@@ -335,24 +339,32 @@ export function InjectedQuestions({
   return (
     <div className="flex flex-col gap-2">
       {questions.map((question, index) => (
-        <div key={question.id} hidden={paginate && index !== currentIndex}>
-          <InjectedQuestionCard
-            question={question}
-            onAnswer={handleAnswer}
-            onDismiss={handleDismiss}
-            showPager={paginate && questions.length > 1 && index === currentIndex}
-            canPrevious={currentIndex > 0}
-            canNext={currentIndex < questions.length - 1}
-            onPrevious={() => {
-              const previousQuestion = questions[currentIndex - 1];
-              if (previousQuestion) showQuestionAndFocus(previousQuestion.id);
-            }}
-            onNext={() => {
-              const nextQuestion = questions[currentIndex + 1];
-              if (nextQuestion) showQuestionAndFocus(nextQuestion.id);
-            }}
-            headingRef={index === currentIndex ? activeQuestionHeadingRef : undefined}
-          />
+        <div key={question.id} hidden={variant === 'full' && paginate && index !== currentIndex}>
+          {variant === 'chat' ? (
+            <QuestionInChat
+              question={question}
+              onAnswer={handleAnswer}
+              onDismiss={handleDismiss}
+            />
+          ) : (
+            <InjectedQuestionCard
+              question={question}
+              onAnswer={handleAnswer}
+              onDismiss={handleDismiss}
+              showPager={paginate && questions.length > 1 && index === currentIndex}
+              canPrevious={currentIndex > 0}
+              canNext={currentIndex < questions.length - 1}
+              onPrevious={() => {
+                const previousQuestion = questions[currentIndex - 1];
+                if (previousQuestion) showQuestionAndFocus(previousQuestion.id);
+              }}
+              onNext={() => {
+                const nextQuestion = questions[currentIndex + 1];
+                if (nextQuestion) showQuestionAndFocus(nextQuestion.id);
+              }}
+              headingRef={index === currentIndex ? activeQuestionHeadingRef : undefined}
+            />
+          )}
         </div>
       ))}
       {showTypingIndicator && <TypingDots />}

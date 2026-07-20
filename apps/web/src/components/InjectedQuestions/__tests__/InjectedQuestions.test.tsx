@@ -9,7 +9,11 @@ function makeQuestion({
   prompt = 'Which direction should we take?',
   multiSelect = false,
   evidence,
+  status = 'pending',
+  answer = null,
 }: {
+  status?: PendingQuestion['status'];
+  answer?: PendingQuestion['answer'];
   id?: string;
   prompt?: string;
   multiSelect?: boolean;
@@ -34,8 +38,8 @@ function makeQuestion({
         { label: 'Second choice', description: 'The second option description.' },
       ],
     },
-    status: 'pending',
-    answer: null,
+    status,
+    answer,
     expiresAt: null,
     createdAt: '2026-07-18T12:00:00.000Z',
     conversationId: null,
@@ -221,6 +225,55 @@ describe('InjectedQuestions', () => {
       expect(handleDismiss).toHaveBeenCalledWith(first.id);
       expect(screen.getByRole('heading', { name: second.payload.prompt })).toHaveFocus();
     });
+  });
+
+  it('renders the compact chat variant with the real prompt and options', async () => {
+    const onAnswer = vi.fn(async () => {});
+    render(
+      <InjectedQuestions
+        questions={[makeQuestion()]}
+        onAnswer={onAnswer}
+        onDismiss={onDismiss}
+        variant="chat"
+      />,
+    );
+
+    expect(screen.getByText('Which direction should we take?')).toBeVisible();
+    expect(screen.getByRole('button', { name: /First choice/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: /Second choice/ })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /First choice/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => {
+      expect(onAnswer).toHaveBeenCalledWith('question-1', {
+        selectedOptions: ['First choice'],
+      });
+    });
+  });
+
+  it('renders answered questions as locked selections without actions', () => {
+    render(
+      <InjectedQuestions
+        questions={[
+          makeQuestion({
+            status: 'answered',
+            answer: {
+              selectedOptions: ['First choice'],
+              answeredBy: 'user-1',
+              answeredAt: '2026-07-18T13:00:00.000Z',
+            },
+          }),
+        ]}
+        onAnswer={vi.fn(async () => {})}
+        onDismiss={onDismiss}
+        variant="chat"
+      />,
+    );
+
+    expect(screen.getByText(/Answered/)).toBeVisible();
+    expect(screen.getByText('First choice')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument();
   });
 
   it('preserves evidence and the follow-up typing indicator', () => {

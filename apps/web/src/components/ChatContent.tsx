@@ -1510,6 +1510,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       questions={injectedByMessageId.get(msg.id)!}
                       onAnswer={handleInjectedAnswer}
                       onDismiss={handleInjectedDismiss}
+                      variant="chat"
                     />
                   )}
               </div>
@@ -1525,6 +1526,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   questions={injectedByMessageId.get(null)!}
                   onAnswer={handleInjectedAnswer}
                   onDismiss={handleInjectedDismiss}
+                  variant="chat"
                 />
               </div>
             )}

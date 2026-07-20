@@ -49,3 +49,5 @@ yarn-error.log*
 # playwright
 test-results/
 playwright-report/
+# generated component-library showcase
+library-showcase.html
