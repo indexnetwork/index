@@ -20,6 +20,7 @@ import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/Assis
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
+import IntentList from "@/components/IntentList";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -39,6 +40,16 @@ const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
 interface PendingFile {
   id: string;
   file: File;
+}
+
+interface HomeIntent {
+  id: string;
+  payload: string;
+  summary?: string | null;
+  createdAt: string;
+  sourceType?: 'file' | 'link' | 'integration';
+  networks?: { id: string; title: string }[];
+  status?: string;
 }
 
 interface ChatContentProps {
@@ -404,11 +415,47 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     [setSelectedNetworkIds],
   );
 
+  // Intents shown on the home shelf (legacy, non-Signal home only).
+  const [homeIntents, setHomeIntents] = useState<HomeIntent[]>([]);
+  const [homeIntentsLoading, setHomeIntentsLoading] = useState(false);
+
   // Sync network filter selection to chat scope so backend receives networkId when user has selected a network
   useEffect(() => {
     if (chatScope?.type === "intent") return;
     setScopeNetworkId(selectedIndexId);
   }, [selectedIndexId, setScopeNetworkId, chatScope?.type]);
+
+  useEffect(() => {
+    if (messages.length > 0 || sessionIdFromUrl) return;
+    let active = true;
+    setHomeIntentsLoading(true);
+    apiClient
+      .post<{ intents?: HomeIntent[] }>("/intents/list", { page: 1, limit: 100 })
+      .then((res) => {
+        if (active) setHomeIntents(res.intents ?? []);
+      })
+      .catch(() => {
+        if (active) setHomeIntents([]);
+      })
+      .finally(() => {
+        if (active) setHomeIntentsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [messages.length, sessionIdFromUrl]);
+
+  const handleArchiveHomeIntent = useCallback(
+    async (intent: HomeIntent) => {
+      setHomeIntents((prev) => prev.filter((i) => i.id !== intent.id));
+      try {
+        await apiClient.patch(`/intents/${intent.id}/archive`);
+      } catch {
+        showError("Failed to archive intent");
+      }
+    },
+    [showError],
+  );
 
   const handleSuggestionClick = useCallback(
     (suggestion: {
