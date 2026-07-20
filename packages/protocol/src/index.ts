@@ -95,6 +95,7 @@ export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./chat/negotiato
 export {
   SIGNAL_PERSONA_ID,
   SIGNAL_PERSONA,
+  SIGNAL_NEW_SIGNAL_KICKOFF,
   SIGNAL_TOOL_NAMES,
   createSignalTools,
   filterSignalTools,

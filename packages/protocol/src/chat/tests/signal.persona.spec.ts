@@ -5,7 +5,7 @@ import { describe, expect, it, mock } from "bun:test";
 
 import { ORCHESTRATOR_PERSONA, ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import { SIGNAL_PERSONA, SIGNAL_PERSONA_ID, SIGNAL_TOOL_NAMES, filterSignalTools, narrowSignalTools } from "../signal.persona.js";
-import { buildSignalSystemContent } from "../signal.prompt.js";
+import { buildSignalSystemContent, getSignalIntakeStage, isSignalNewSignalKickoff, SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 import type { SystemDatabase, UserDatabase } from "../../shared/interfaces/database.interface.js";
 
@@ -222,6 +222,71 @@ describe("SIGNAL_PERSONA", () => {
     expect(SIGNAL_PERSONA.buildSystemContent(ctx, { iteration: 1 } as never)).toBe(
       buildSignalSystemContent(ctx),
     );
+  });
+});
+
+describe("guided New Signal intake", () => {
+  const context = makeContext();
+  const iteration = (recentTools: Array<{ name: string; args?: Record<string, unknown> }> = []) => ({
+    currentMessage: SIGNAL_NEW_SIGNAL_KICKOFF,
+    recentTools: recentTools.map((toolCall) => ({ name: toolCall.name, args: toolCall.args ?? {} })),
+    ctx: context,
+  });
+
+  it("recognizes only the New Signal kickoff aliases", () => {
+    expect(isSignalNewSignalKickoff(SIGNAL_NEW_SIGNAL_KICKOFF)).toBe(true);
+    expect(isSignalNewSignalKickoff("START A NEW SIGNAL")).toBe(true);
+    expect(isSignalNewSignalKickoff("please tell me about my new signal")).toBe(false);
+  });
+
+  it("advances through three blocking rounds and then proposal synthesis", () => {
+    expect(getSignalIntakeStage(iteration())).toBe("who");
+    expect(getSignalIntakeStage(iteration([{ name: "ask_user_question" }]))).toBe("contribution");
+    expect(getSignalIntakeStage(iteration([
+      { name: "ask_user_question" },
+      { name: "ask_user_question" },
+    ]))).toBe("where");
+    expect(getSignalIntakeStage(iteration([
+      { name: "ask_user_question" },
+      { name: "ask_user_question" },
+      { name: "ask_user_question" },
+    ]))).toBe("proposal");
+    expect(getSignalIntakeStage(iteration([
+      { name: "ask_user_question" },
+      { name: "ask_user_question" },
+      { name: "ask_user_question" },
+      { name: "create_intent" },
+    ]))).toBe("complete");
+  });
+
+  it("instructs the live Signal Agent to ask personalized blocking questions", () => {
+    const prompt = buildSignalSystemContent(context, iteration());
+    expect(prompt).toContain("NEW SIGNAL INTAKE (ACTIVE)");
+    expect(prompt).toContain("Round 1 of 3: who they want to meet");
+    expect(prompt).toContain("ask_user_question");
+    expect(prompt).toContain("preloaded identity/profile context");
+    expect(prompt).toContain("Product builder in Berlin");
+  });
+
+  it("moves from contribution to location and then emits the existing proposal", () => {
+    const contribution = buildSignalSystemContent(context, iteration([{ name: "ask_user_question" }]));
+    expect(contribution).toContain("what they bring and where the gap is");
+
+    const where = buildSignalSystemContent(context, iteration([
+      { name: "ask_user_question" },
+      { name: "ask_user_question" },
+    ]));
+    expect(where).toContain("Round 3 of 3: where to look");
+    expect(where).toContain("Only suggest communities already present");
+
+    const proposal = buildSignalSystemContent(context, iteration([
+      { name: "ask_user_question" },
+      { name: "ask_user_question" },
+      { name: "ask_user_question" },
+    ]));
+    expect(proposal).toContain("Call `create_intent` now");
+    expect(proposal).toContain("```intent_proposal");
+    expect(proposal).toContain("proposal-only");
   });
 });
 

@@ -1161,6 +1161,19 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             </form>
             )}
           </div>
+          {signalAgentEnabled && (
+            <button
+              type="button"
+              onClick={() => navigate("/i/new")}
+              className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-400 hover:shadow-sm"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#041729] text-lg leading-none text-white">+</span>
+              <span>
+                <span className="block text-sm font-medium text-[#041729]">Who are you trying to meet?</span>
+                <span className="block text-xs text-gray-500">Let your Signal Agent guide you through a new signal.</span>
+              </span>
+            </button>
+          )}
           <div className="mt-8">
             <IntentList
               intents={homeIntents}

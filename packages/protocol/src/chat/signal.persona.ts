@@ -8,6 +8,9 @@ import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, scopeFromNe
 import type { ChatPersonaConfig } from "./chat.persona.js";
 import { buildSignalSystemContent } from "./signal.prompt.js";
 
+/** Public kickoff marker used by New Signal surfaces to enter guided intake. */
+export { SIGNAL_NEW_SIGNAL_KICKOFF } from "./signal.prompt.js";
+
 /** Stable persona id persisted for restricted Signal Agent conversations. */
 export const SIGNAL_PERSONA_ID = "signal";
 

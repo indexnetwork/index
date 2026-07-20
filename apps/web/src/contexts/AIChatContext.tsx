@@ -235,10 +235,10 @@ interface AIChatContextType {
   cancelQueuedMessage: (id: string) => void;
   submitMidStreamMessage: (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => void;
   /**
-   * Questions streamed live by the orchestrator's ask_user_question tool
+   * Questions streamed live by a chat persona's ask_user_question tool
    * (`user_question` SSE event). The turn is blocked server-side until they
-   * are answered/dismissed or the wait times out. ChatContent merges these
-   * into its inline injected-questions list.
+   * are answered/dismissed or the wait times out. ChatContent and guided
+   * Signal intake surfaces consume these from the same stream state.
    */
   liveQuestions: PendingQuestion[];
 }
@@ -400,7 +400,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   /** Per-message timeout IDs so cancelling or resolving one pending message doesn't affect others. */
   const interruptTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
-  /** Live inline questions from the ask_user_question tool (user_question SSE event). */
+  /** Live questions from any chat persona's ask_user_question tool (user_question SSE event). */
   const [liveQuestions, setLiveQuestions] = useState<PendingQuestion[]>([]);
   type SendAbortReason = "clear" | "load" | "steer" | "stopped" | "superseded" | "unmount";
   type SendOperation = {
