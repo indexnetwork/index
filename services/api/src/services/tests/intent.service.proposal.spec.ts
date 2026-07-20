@@ -23,18 +23,24 @@ function createdIntent() {
   };
 }
 
-function makeHarness(options: {
-  existing?: boolean;
-  member?: boolean;
-  memberAtCommit?: boolean;
-} = {}) {
-  const existing = options.existing ? createdIntent() : null;
-  const getIntentBySourceId = mock(async () => existing);
-  const isNetworkMember = mock(async () => options.member ?? false);
-  const createIntent = mock(async () => createdIntent());
-  const createIntentForNetworkMember = mock(async () =>
-    options.memberAtCommit === false ? null : createdIntent()
-  );
+function makeHarness(
+  result: 'created' | 'existing' | 'membership_required' = 'created',
+  committedReplay = false,
+  isMember = true,
+) {
+  const getIntentBySourceId = mock(async () => committedReplay
+    ? { id: INTENT_ID, archivedAt: null }
+    : null);
+  const isNetworkMember = mock(async () => isMember);
+  const confirmProposalIntent = mock(async () => {
+    if (result === 'existing') {
+      return { kind: 'existing' as const, intent: { id: INTENT_ID, archivedAt: null } };
+    }
+    if (result === 'membership_required') {
+      return { kind: 'membership_required' as const };
+    }
+    return { kind: 'created' as const, intent: createdIntent() };
+  });
   const generate = mock(async () => [0.5, 0.5]);
   const addGenerateHydeJob = mock(async () => 'job-id');
   const emitProposalCreated = mock(() => {});
@@ -43,8 +49,7 @@ function makeHarness(options: {
     adapter: {
       getIntentBySourceId,
       isNetworkMember,
-      createIntent,
-      createIntentForNetworkMember,
+      confirmProposalIntent,
     } as unknown as IntentDatabaseAdapter,
     embedder: { generate } as unknown as EmbedderAdapter,
     proposalQueue: { addGenerateHydeJob } as never,
@@ -56,8 +61,7 @@ function makeHarness(options: {
     calls: {
       getIntentBySourceId,
       isNetworkMember,
-      createIntent,
-      createIntentForNetworkMember,
+      confirmProposalIntent,
       generate,
       addGenerateHydeJob,
       emitProposalCreated,
@@ -65,9 +69,9 @@ function makeHarness(options: {
   };
 }
 
-describe('IntentService.createFromProposal network authorization', () => {
-  it('validates a current member before embedding and atomically creates the assignment', async () => {
-    const harness = makeHarness({ member: true });
+describe('IntentService.createFromProposal atomic confirmation', () => {
+  it('uses the preflight and keeps persistence in the authoritative adapter transaction', async () => {
+    const harness = makeHarness('created');
 
     const result = await harness.service.createFromProposal(
       USER_ID,
@@ -79,17 +83,38 @@ describe('IntentService.createFromProposal network authorization', () => {
     expect(result.id).toBe(INTENT_ID);
     expect(harness.calls.isNetworkMember).toHaveBeenCalledWith(NETWORK_ID, USER_ID);
     expect(harness.calls.generate).toHaveBeenCalledTimes(1);
-    expect(harness.calls.createIntent).not.toHaveBeenCalled();
-    expect(harness.calls.createIntentForNetworkMember).toHaveBeenCalledWith(
+    expect(harness.calls.confirmProposalIntent).toHaveBeenCalledWith(
       expect.objectContaining({ userId: USER_ID, sourceId: 'proposal-member' }),
       NETWORK_ID,
     );
-    expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledTimes(1);
+    expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledWith({
+      intentId: INTENT_ID,
+      userId: USER_ID,
+      scopeType: 'network',
+      scopeId: NETWORK_ID,
+    });
     expect(harness.calls.emitProposalCreated).toHaveBeenCalledWith(INTENT_ID, USER_ID);
   });
 
-  it('rejects a non-member or stale membership before embedding and all persistence side effects', async () => {
-    const harness = makeHarness({ member: false });
+  it('denies a clear non-member before embedding or transaction side effects', async () => {
+    const harness = makeHarness('created', false, false);
+
+    await expect(harness.service.createFromProposal(
+      USER_ID,
+      'Find climate founders',
+      'proposal-non-member',
+      NETWORK_ID,
+    )).rejects.toBeInstanceOf(IntentNetworkMembershipError);
+
+    expect(harness.calls.isNetworkMember).toHaveBeenCalledWith(NETWORK_ID, USER_ID);
+    expect(harness.calls.generate).not.toHaveBeenCalled();
+    expect(harness.calls.confirmProposalIntent).not.toHaveBeenCalled();
+    expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
+    expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
+  });
+
+  it('maps an authoritative membership race without queue or event side effects', async () => {
+    const harness = makeHarness('membership_required');
 
     await expect(harness.service.createFromProposal(
       USER_ID,
@@ -98,32 +123,15 @@ describe('IntentService.createFromProposal network authorization', () => {
       NETWORK_ID,
     )).rejects.toBeInstanceOf(IntentNetworkMembershipError);
 
-    expect(harness.calls.isNetworkMember).toHaveBeenCalledWith(NETWORK_ID, USER_ID);
-    expect(harness.calls.generate).not.toHaveBeenCalled();
-    expect(harness.calls.createIntent).not.toHaveBeenCalled();
-    expect(harness.calls.createIntentForNetworkMember).not.toHaveBeenCalled();
-    expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
-    expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
-  });
-
-  it('fails closed when membership is revoked between preflight and the locked transaction', async () => {
-    const harness = makeHarness({ member: true, memberAtCommit: false });
-
-    await expect(harness.service.createFromProposal(
-      USER_ID,
-      'Find climate founders',
-      'proposal-race',
-      NETWORK_ID,
-    )).rejects.toBeInstanceOf(IntentNetworkMembershipError);
-
+    expect(harness.calls.isNetworkMember).toHaveBeenCalledTimes(1);
     expect(harness.calls.generate).toHaveBeenCalledTimes(1);
-    expect(harness.calls.createIntentForNetworkMember).toHaveBeenCalledTimes(1);
+    expect(harness.calls.confirmProposalIntent).toHaveBeenCalledTimes(1);
     expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
   });
 
-  it('preserves no-network proposal success without a membership lookup', async () => {
-    const harness = makeHarness();
+  it('preserves no-network proposal success through the same atomic operation', async () => {
+    const harness = makeHarness('created');
 
     await harness.service.createFromProposal(
       USER_ID,
@@ -132,14 +140,35 @@ describe('IntentService.createFromProposal network authorization', () => {
     );
 
     expect(harness.calls.isNetworkMember).not.toHaveBeenCalled();
-    expect(harness.calls.createIntent).toHaveBeenCalledTimes(1);
-    expect(harness.calls.createIntentForNetworkMember).not.toHaveBeenCalled();
+    expect(harness.calls.confirmProposalIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceId: 'proposal-global' }),
+      undefined,
+    );
     expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledWith({ intentId: INTENT_ID, userId: USER_ID });
     expect(harness.calls.emitProposalCreated).toHaveBeenCalledWith(INTENT_ID, USER_ID);
   });
 
-  it('keeps idempotent replay ahead of membership validation and all side effects', async () => {
-    const harness = makeHarness({ existing: true, member: false });
+  it('returns a committed replay before embedding or transaction side effects', async () => {
+    const harness = makeHarness('created', true);
+
+    const result = await harness.service.createFromProposal(
+      USER_ID,
+      'Find climate founders',
+      'proposal-committed-replay',
+      NETWORK_ID,
+    );
+
+    expect(result.id).toBe(INTENT_ID);
+    expect(harness.calls.getIntentBySourceId).toHaveBeenCalledWith('proposal-committed-replay', USER_ID);
+    expect(harness.calls.isNetworkMember).not.toHaveBeenCalled();
+    expect(harness.calls.generate).not.toHaveBeenCalled();
+    expect(harness.calls.confirmProposalIntent).not.toHaveBeenCalled();
+    expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
+    expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
+  });
+
+  it('returns the transaction winner without duplicate queue or event side effects', async () => {
+    const harness = makeHarness('existing');
 
     const result = await harness.service.createFromProposal(
       USER_ID,
@@ -149,11 +178,46 @@ describe('IntentService.createFromProposal network authorization', () => {
     );
 
     expect(result.id).toBe(INTENT_ID);
-    expect(harness.calls.isNetworkMember).not.toHaveBeenCalled();
-    expect(harness.calls.generate).not.toHaveBeenCalled();
-    expect(harness.calls.createIntent).not.toHaveBeenCalled();
-    expect(harness.calls.createIntentForNetworkMember).not.toHaveBeenCalled();
+    expect(harness.calls.confirmProposalIntent).toHaveBeenCalledTimes(1);
     expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
+  });
+
+  it('lets one concurrent winner enqueue and emit while both calls return the same ID', async () => {
+    let claimed = false;
+    const confirmProposalIntent = mock(async () => {
+      if (!claimed) {
+        claimed = true;
+        return { kind: 'created' as const, intent: createdIntent() };
+      }
+      return { kind: 'existing' as const, intent: { id: INTENT_ID, archivedAt: null } };
+    });
+    const addGenerateHydeJob = mock(async () => 'job-id');
+    const emitProposalCreated = mock(() => {});
+    const getIntentBySourceId = mock(async () => null);
+    const isNetworkMember = mock(async () => true);
+    const service = new IntentService({
+      adapter: {
+        getIntentBySourceId,
+        isNetworkMember,
+        confirmProposalIntent,
+      } as unknown as IntentDatabaseAdapter,
+      embedder: { generate: mock(async () => [0.5, 0.5]) } as unknown as EmbedderAdapter,
+      proposalQueue: { addGenerateHydeJob } as never,
+      emitProposalCreated,
+    });
+
+    const results = await Promise.all([
+      service.createFromProposal(USER_ID, 'Find climate founders', 'proposal-concurrent', NETWORK_ID),
+      service.createFromProposal(USER_ID, 'Find climate founders', 'proposal-concurrent', NETWORK_ID),
+    ]);
+
+    expect(results.map((result) => result.id)).toEqual([INTENT_ID, INTENT_ID]);
+    expect(getIntentBySourceId).toHaveBeenCalledTimes(2);
+    expect(isNetworkMember).toHaveBeenCalledTimes(2);
+    expect(confirmProposalIntent).toHaveBeenCalledTimes(2);
+    expect(addGenerateHydeJob).toHaveBeenCalledTimes(1);
+    expect(emitProposalCreated).toHaveBeenCalledTimes(1);
+    expect(emitProposalCreated).toHaveBeenCalledWith(INTENT_ID, USER_ID);
   });
 });

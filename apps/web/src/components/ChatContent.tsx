@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
@@ -59,6 +59,7 @@ interface ChatContentProps {
 }
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const sessionIdFromUrl = sessionIdParam ?? null;
   const {
     messages,
@@ -104,9 +105,15 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     || routeSessionMismatch
     || (Boolean(sessionIdFromUrl) && !routedSessionReady);
   const mutationsBlockedRef = useRef(mutationsBlocked);
+  const routeSessionIdRef = useRef(sessionIdFromUrl);
+  const inMemorySessionIdRef = useRef(sessionId);
+  const locationKeyRef = useRef(location.key);
   useLayoutEffect(() => {
     mutationsBlockedRef.current = mutationsBlocked;
-  }, [mutationsBlocked]);
+    routeSessionIdRef.current = sessionIdFromUrl;
+    inMemorySessionIdRef.current = sessionId;
+    locationKeyRef.current = location.key;
+  }, [location.key, mutationsBlocked, sessionId, sessionIdFromUrl]);
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, addNotification } = useNotifications();
   const [input, setInput] = useState("");
@@ -214,6 +221,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     Record<string, "pending" | "created" | "rejected">
   >({});
   const [proposalIntentMap, setProposalIntentMap] = useState<Record<string, string>>({});
+  const confirmOperationsRef = useRef(new Map<string, symbol>());
+  useEffect(() => () => {
+    confirmOperationsRef.current.clear();
+  }, []);
 
   // Networks panel join tracking
   const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
@@ -523,9 +534,57 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleIntentProposalApprove = useCallback(
     async (proposalId: string, description: string, networkId?: string) => {
-      if (mutationsBlockedRef.current) return;
-      const originatingRoute = sessionIdFromUrl ? `/d/${sessionIdFromUrl}` : "/";
-      const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
+      const mutationsAllowedAtStart = !mutationsBlockedRef.current;
+      if (!mutationsAllowedAtStart) return;
+
+      const operationToken = Symbol("confirm-intent-proposal");
+      confirmOperationsRef.current.set(proposalId, operationToken);
+      const originatingRouteSessionId = sessionIdFromUrl;
+      const originatingInMemorySessionId = sessionId;
+      const originatingLocationKey = location.key;
+      const originatingRoute = originatingRouteSessionId ? `/d/${originatingRouteSessionId}` : "/";
+      const operationStillOwnsChat = () => mutationsAllowedAtStart
+        && confirmOperationsRef.current.get(proposalId) === operationToken
+        && routeSessionIdRef.current === originatingRouteSessionId
+        && inMemorySessionIdRef.current === originatingInMemorySessionId
+        && locationKeyRef.current === originatingLocationKey
+        && !mutationsBlockedRef.current;
+      const releaseOperation = () => {
+        if (confirmOperationsRef.current.get(proposalId) === operationToken) {
+          confirmOperationsRef.current.delete(proposalId);
+        }
+      };
+
+      let res: { intentId: string };
+      try {
+        res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
+      } catch (error) {
+        if (!operationStillOwnsChat()) {
+          releaseOperation();
+          addNotification({
+            type: "intent_broadcast",
+            title: "Signal creation failed",
+            message: "An earlier signal confirmation failed. This conversation was left unchanged.",
+            duration: 10000,
+          });
+          return;
+        }
+        releaseOperation();
+        throw error;
+      }
+
+      if (!operationStillOwnsChat()) {
+        releaseOperation();
+        addNotification({
+          type: "intent_broadcast",
+          title: "Signal created",
+          message: "A signal was created from an earlier confirmation. This conversation was left unchanged.",
+          duration: 10000,
+        });
+        return;
+      }
+      releaseOperation();
+
       setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
       setProposalIntentMap((prev) => ({ ...prev, [proposalId]: res.intentId }));
       // Outcome-aware feedback: a network-scoped create lands directly in that
@@ -550,7 +609,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       });
       navigate(`/i/${res.intentId}`);
     },
-    [addNotification, archiveProposalIntent, indexes, navigate, sessionIdFromUrl, showError],
+    [addNotification, archiveProposalIntent, indexes, location.key, navigate, sessionId, sessionIdFromUrl, showError],
   );
 
   const handleIntentProposalReject = useCallback(

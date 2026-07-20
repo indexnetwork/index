@@ -828,6 +828,8 @@ Intent-to-network assignment is handled separately by the Intent Index Graph. Wh
 - Direct assignment (score 1.0) when `skipEvaluation` is true
 - Evaluated assignment via `IntentIndexer` agent when the index has prompts defining its purpose
 
+Friendly ownership/membership prechecks and LLM evaluation are not write authority. Every direct, no-prompts, and evaluated success path finishes through `IntentDatabaseAdapter.assignIntentToNetworkIfMember`, which locks the exact intent, network, and membership rows in one transaction, rechecks that the intent is owned and unarchived, the network is undeleted, and the membership is current with `owner`, `member`, or `admin` permission, then inserts the scored assignment and `NetworkAssignmentMetadata` before releasing those locks. Concurrent membership revocation therefore wins before a waiting final write and prevents assignment; existing queue/backfill assignment APIs retain their previous behavior.
+
 ## 9. Enrichment Pipeline
 
 Enrichment combines web scraping, external API enrichment, premise decomposition, and vector embedding to build a user's representation. There is no persisted profile document: identity (name/bio/location) lives on the `users` table, and the synthesized prose+embedding projection lives in `user_contexts` (a global `networkId = null` row plus per-network rows), regenerated from the user's premises.

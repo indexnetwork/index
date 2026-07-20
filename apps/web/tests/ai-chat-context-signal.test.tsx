@@ -90,6 +90,12 @@ function policyResponse(code: string, error: string, action?: { type: string; hr
 function Probe() {
   const chat = useAIChat();
   const [loadResult, setLoadResult] = useState('none');
+  const [resolutionTarget, setResolutionTarget] = useState('none');
+  const resolveIntent = (id: string) => {
+    void chat.resolveIntentSession({ id, label: `Intent ${id}` }, 'signal').then((resolvedSessionId) => {
+      if (resolvedSessionId) setResolutionTarget(resolvedSessionId);
+    });
+  };
   return (
     <div>
       <button onClick={() => void chat.sendWebMessage('first', undefined, undefined, { persona: 'signal' })}>
@@ -107,6 +113,8 @@ function Probe() {
       <button onClick={() => void chat.loadSession('failed-session').then((result) => setLoadResult(String(result)))}>
         load failed
       </button>
+      <button onClick={() => resolveIntent('intent-a')}>resolve intent a</button>
+      <button onClick={() => resolveIntent('intent-b')}>resolve intent b</button>
       <button onClick={() => chat.submitMidStreamMessage('queued follow-up', [])}>queue follow-up</button>
       <span data-testid="session">{chat.sessionId ?? 'none'}</span>
       <span data-testid="persona">{chat.sessionPersona ?? 'none'}</span>
@@ -120,6 +128,8 @@ function Probe() {
       <span data-testid="load-target">{chat.sessionLoadState.targetSessionId ?? 'none'}</span>
       <span data-testid="load-error">{chat.sessionLoadState.error ?? 'none'}</span>
       <span data-testid="load-result">{loadResult}</span>
+      <span data-testid="resolution-target">{resolutionTarget}</span>
+      <span data-testid="chat-scope">{chat.chatScope ? `${chat.chatScope.type}:${chat.chatScope.id}` : 'none'}</span>
       <span data-testid="ready-b">{chat.isSessionReady('session-b') ? 'yes' : 'no'}</span>
       <span data-testid="queue-id">{chat.pendingQueue[0]?.id ?? 'none'}</span>
     </div>
@@ -301,6 +311,48 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     });
     expect(text('session')).toBe('session-b');
     expect(text('messages')).toBe('B wins');
+  });
+
+  test('intent resolution B wins and stale A cannot replace its scope or navigation target', async () => {
+    const resolutionA = deferred<{ session: { id: string } }>();
+    const resolutionB = deferred<{ session: { id: string } }>();
+    mocks.apiClient.post
+      .mockReturnValueOnce(resolutionA.promise)
+      .mockReturnValueOnce(resolutionB.promise);
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'resolve intent a' }));
+    fireEvent.click(screen.getByRole('button', { name: 'resolve intent b' }));
+
+    await act(async () => {
+      resolutionB.resolve({ session: { id: 'session-b' } });
+      await resolutionB.promise;
+    });
+    await waitFor(() => expect(text('resolution-target')).toBe('session-b'));
+    expect(text('chat-scope')).toBe('intent:intent-b');
+
+    await act(async () => {
+      resolutionA.resolve({ session: { id: 'session-a' } });
+      await resolutionA.promise;
+    });
+    expect(text('resolution-target')).toBe('session-b');
+    expect(text('chat-scope')).toBe('intent:intent-b');
+  });
+
+  test('clear invalidates a pending intent resolution', async () => {
+    const resolution = deferred<{ session: { id: string } }>();
+    mocks.apiClient.post.mockReturnValueOnce(resolution.promise);
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'resolve intent a' }));
+    fireEvent.click(screen.getByRole('button', { name: 'clear' }));
+
+    await act(async () => {
+      resolution.resolve({ session: { id: 'stale-session' } });
+      await resolution.promise;
+    });
+    expect(text('resolution-target')).toBe('none');
+    expect(text('chat-scope')).toBe('none');
   });
 
   test('a failed load quarantines the old session and exposes target-specific failure', async () => {

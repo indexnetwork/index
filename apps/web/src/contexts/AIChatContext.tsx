@@ -193,7 +193,7 @@ interface AIChatContextType {
   resolveIntentSession: (
     intent: { id: string; label?: string },
     persona?: "signal",
-  ) => Promise<string>;
+  ) => Promise<string | null>;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
   isLoading: boolean;
@@ -412,6 +412,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   };
   /** One owner token covers sends and loads so stale work cannot commit across either boundary. */
   const operationOwnerRef = useRef<symbol | null>(null);
+  /** Independent latest-owner token for intent-session resolution requests. */
+  const intentResolutionOwnerRef = useRef<symbol | null>(null);
   const activeSendRef = useRef<SendOperation | null>(null);
 
   const ownsOperation = useCallback((token: symbol) => operationOwnerRef.current === token, []);
@@ -426,6 +428,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => () => {
     operationOwnerRef.current = null;
+    intentResolutionOwnerRef.current = null;
     invalidateActiveSend("unmount");
     interruptTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
     interruptTimeoutsRef.current.clear();
@@ -442,16 +445,26 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const resolveIntentSession = useCallback(async (
     intent: { id: string; label?: string },
     persona?: "signal",
-  ) => {
-    const response = await apiClient.post<{
-      session: { id: string; scopeType?: "intent" | "network" | null; scopeId?: string | null };
-    }>(persona ? "/chat/web/session/resolve" : "/chat/session/resolve", {
-      scopeType: "intent",
-      scopeId: intent.id,
-      ...(persona ? { persona } : {}),
-    });
-    setScopeOverride({ type: "intent", id: intent.id, ...(intent.label ? { label: intent.label } : {}) });
-    return response.session.id;
+  ): Promise<string | null> => {
+    const resolutionToken = Symbol(`resolve-intent-session:${intent.id}`);
+    intentResolutionOwnerRef.current = resolutionToken;
+    try {
+      const response = await apiClient.post<{
+        session: { id: string; scopeType?: "intent" | "network" | null; scopeId?: string | null };
+      }>(persona ? "/chat/web/session/resolve" : "/chat/session/resolve", {
+        scopeType: "intent",
+        scopeId: intent.id,
+        ...(persona ? { persona } : {}),
+      });
+      if (intentResolutionOwnerRef.current !== resolutionToken) return null;
+      setScopeOverride({ type: "intent", id: intent.id, ...(intent.label ? { label: intent.label } : {}) });
+      intentResolutionOwnerRef.current = null;
+      return response.session.id;
+    } catch (error) {
+      if (intentResolutionOwnerRef.current !== resolutionToken) return null;
+      intentResolutionOwnerRef.current = null;
+      throw error;
+    }
   }, []);
 
   const cancelQueuedMessage = useCallback((id: string) => {
@@ -569,6 +582,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : "compatibility";
 
       invalidateActiveSend("superseded");
+      intentResolutionOwnerRef.current = null;
       const operation: SendOperation = {
         token: Symbol("chat-send"),
         controller: new AbortController(),
@@ -1301,6 +1315,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     const abortStream = options?.abortStream !== false;
     const active = activeSendRef.current;
     operationOwnerRef.current = null;
+    intentResolutionOwnerRef.current = null;
     if (active && !abortStream) {
       active.refreshSidebarWhenStale = true;
     } else {
@@ -1336,6 +1351,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const loadSession = useCallback(async (id: string): Promise<boolean> => {
     invalidateActiveSend("load");
+    intentResolutionOwnerRef.current = null;
     const loadToken = Symbol(`load-session:${id}`);
     operationOwnerRef.current = loadToken;
 

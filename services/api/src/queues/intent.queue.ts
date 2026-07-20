@@ -50,7 +50,7 @@ function deriveIntentDiscoveryNetworkIds(memberships: AssignmentNetworkMembershi
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetworkIfMember' | 'deleteHydeDocumentsForSource' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -380,7 +380,7 @@ export class IntentQueue implements IntentGraphQueue {
    * Pure assignment: no HyDE regeneration and no opportunity discovery, so it is
    * safe to call for reconciliation/backfill without spamming users with new
    * opportunity notifications on existing intents. Idempotent —
-   * {@link ChatDatabaseAdapter.assignIntentToNetwork} upserts on
+   * {@link ChatDatabaseAdapter.assignIntentToNetworkIfMember} upserts on
    * (intentId, networkId).
    *
    * @param intentId - Intent to assign.
@@ -482,8 +482,22 @@ export class IntentQueue implements IntentGraphQueue {
         const { networkId, decision } = scoringResult;
         if (!decision.assigned) continue;
         try {
-          await db.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
-          assignedNetworkIds.push(networkId);
+          const outcome = await db.assignIntentToNetworkIfMember(
+            userId,
+            intentId,
+            networkId,
+            decision.finalScore,
+            decision.metadata,
+          );
+          if (outcome.kind === 'assigned' || outcome.kind === 'already_assigned') {
+            assignedNetworkIds.push(networkId);
+          } else {
+            this.assignLogger.debug('Assign intent to network skipped by final authority', {
+              intentId,
+              networkId,
+              outcome: outcome.kind,
+            });
+          }
         } catch (assignErr) {
           this.assignLogger.debug('Assign intent to network skipped', { intentId, networkId, error: assignErr });
         }

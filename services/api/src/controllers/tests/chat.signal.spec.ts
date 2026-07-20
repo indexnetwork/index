@@ -564,6 +564,16 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     expect(titleSpy).toHaveBeenCalledWith('signal-session', USER.id, 'Updated');
   });
 
+  test('frontend message metadata mutation is session-only in route metadata', () => {
+    const route = RouteRegistry.getRoutes(ChatController)
+      .find((candidate) => candidate.methodName === 'updateMessageMetadata');
+    expect(route).toMatchObject({ method: 'POST', path: '/message/:id/metadata' });
+    const guards = RouteRegistry.getGuards(ChatController, 'updateMessageMetadata');
+    expect(guards[0]?.name).toBe('RateLimit(write)');
+    expect(guards).toContain(SessionOnlyGuard);
+    expect(guards).not.toContain(AuthGuard);
+  });
+
   test('interrupt is session-only in route metadata', () => {
     const route = RouteRegistry.getRoutes(ChatController)
       .find((candidate) => candidate.methodName === 'interrupt');

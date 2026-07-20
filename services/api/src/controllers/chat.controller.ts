@@ -1174,12 +1174,12 @@ export class ChatController {
    * Called after streaming completes to persist timing data collected client-side.
    *
    * @param req - The HTTP request object (body: { traceEvents: TraceEvent[] })
-   * @param user - The authenticated user from AuthGuard
+   * @param user - The session-authenticated user
    * @param params - Route params containing the message ID
    * @returns JSON response with success status
    */
   @Post("/message/:id/metadata")
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async updateMessageMetadata(
     req: Request,
     user: AuthenticatedUser,

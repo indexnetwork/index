@@ -10,9 +10,11 @@
 import { spawn } from "node:child_process";
 
 import { parseArgs } from "./args.parser";
+import { storeReplacementCredentials } from "./auth.lifecycle";
 import { CredentialStore } from "./auth.store";
 import { ApiClient } from "./api.client";
 import { handleLogin } from "./login.command";
+import { handleLogout } from "./logout.command";
 import { handleProfile } from "./profile.command";
 import { handleIntent } from "./intent.command";
 import { handleOpportunity } from "./opportunity.command";
@@ -27,7 +29,7 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.11.0";
+const VERSION = "0.12.0";
 
 /** Unicode box-drawing (rounded), same style as Honcho CLI. */
 const BOX = { tl: "\u256d", tr: "\u256e", bl: "\u2570", br: "\u256f", h: "\u2500", v: "\u2502" } as const;
@@ -234,9 +236,12 @@ async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
   const apiUrl = apiUrlOverride ?? creds.apiUrl;
   if (creds.authKind !== "api_key") {
     try {
+      // Exchange the still-valid legacy browser JWT for a tagged API key before
+      // any compatibility request. The JWT itself never reaches chat routing,
+      // so this preserves non-web CLI behavior without reopening the web bypass.
       const sessionClient = new ApiClient(apiUrl, creds.token, "session");
-      const apiKey = await sessionClient.mintCliApiKey();
-      const migrated = { token: apiKey, apiUrl, authKind: "api_key" as const };
+      const { key, keyId } = await sessionClient.mintCliApiKey();
+      const migrated = { token: key, apiUrl, authKind: "api_key" as const, keyId };
       await store.save(migrated);
       return new ApiClient(apiUrl, migrated.token, migrated.authKind);
     } catch {
@@ -257,15 +262,24 @@ async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, manual
   const apiUrl = apiUrlOverride ?? DEFAULT_API_URL;
   const appUrl = appUrlOverride ?? DEFAULT_APP_URL;
 
-  // Manual token flow: skip browser entirely
+  // Manual JWT flow: use the session only to mint a tagged v2 CLI key.
   if (manualToken) {
-    await store.save({ token: manualToken, apiUrl });
+    const previousCredentials = await store.load();
     try {
-      const client = new ApiClient(apiUrl, manualToken);
-      const user = await client.getMe();
+      const sessionClient = new ApiClient(apiUrl, manualToken, "session");
+      const user = await sessionClient.getMe();
+      const { key, keyId } = await sessionClient.mintCliApiKey();
+      const cleanup = await storeReplacementCredentials(store, previousCredentials, {
+        token: key,
+        apiUrl,
+        authKind: "api_key",
+        keyId,
+      });
       output.success(`Logged in as ${user.name} (${user.email})`);
+      if (cleanup.warning) output.warn(cleanup.warning);
     } catch {
-      output.success("Token stored. Could not verify — check with `index conversation`.");
+      output.error("Could not exchange that session token. Run `index login` instead.", 1);
+      process.exitCode = 1;
     }
     return;
   }
@@ -318,18 +332,23 @@ async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, manual
     } catch {
       output.success("Login successful! Token stored.");
     }
+    if (result.warning) output.warn(result.warning);
   } else {
     output.error(result.error ?? "Login failed.", 1);
   }
 }
 
 /**
- * Handle the logout command — clear stored session.
+ * Handle the logout command, revoking an exact CLI API key when possible.
  */
 async function runLogout(): Promise<void> {
-  const store = new CredentialStore();
-  await store.clear();
-  output.success("Logged out. Session cleared.");
+  const result = await handleLogout(new CredentialStore());
+  if (result.success) {
+    output.success(result.message);
+    return;
+  }
+  output.warn(result.warning);
+  process.exitCode = 1;
 }
 
 // ── Main dispatcher ─────────────────────────────────────────────────

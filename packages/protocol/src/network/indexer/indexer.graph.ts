@@ -32,6 +32,45 @@ export class IntentNetworkGraphFactory {
   public createGraph() {
     const indexer = this.intentNetworker;
 
+    const finalizeAssignment = async (
+      userId: string,
+      intentId: string,
+      networkId: string,
+      score: number,
+      metadata: Parameters<IntentNetworkGraphDatabase['assignIntentToNetworkIfMember']>[4],
+      successMessage: string,
+    ) => {
+      const outcome = await this.database.assignIntentToNetworkIfMember(
+        userId,
+        intentId,
+        networkId,
+        score,
+        metadata,
+      );
+      if (outcome.kind === 'assigned') {
+        return {
+          assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
+          mutationResult: { success: true, message: successMessage },
+        };
+      }
+      if (outcome.kind === 'already_assigned') {
+        return {
+          assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
+          mutationResult: { success: true, message: 'That intent is already in this network.' },
+        };
+      }
+      if (outcome.kind === 'membership_required') {
+        return {
+          assignmentResult: { networkId, assigned: false, success: false } as AssignmentResult,
+          mutationResult: { success: false, error: 'Current network membership is required to assign this intent.' },
+        };
+      }
+      return {
+        assignmentResult: { networkId, assigned: false, success: false } as AssignmentResult,
+        mutationResult: { success: false, error: 'Intent is no longer available for assignment.' },
+      };
+    };
+
     // --- NODE DEFINITIONS ---
 
     /**
@@ -85,12 +124,15 @@ export class IntentNetworkGraphFactory {
               source: "manual-index-assignment",
               createdAt: new Date().toISOString(),
             });
-            await this.database.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
-            return {
-              agentTimings: agentTimingsAccum,
-              assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
-              mutationResult: { success: true, message: "Intent saved to the network." },
-            };
+            const finalized = await finalizeAssignment(
+              state.userId,
+              intentId,
+              networkId,
+              decision.finalScore,
+              decision.metadata,
+              'Intent saved to the network.',
+            );
+            return { agentTimings: agentTimingsAccum, ...finalized };
           }
 
           // Evaluated assignment (migrated from old Network Graph)
@@ -121,12 +163,15 @@ export class IntentNetworkGraphFactory {
               source: "intent-network-graph",
               createdAt: new Date().toISOString(),
             });
-            await this.database.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
-            return {
-              agentTimings: agentTimingsAccum,
-              assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
-              mutationResult: { success: true, message: "Intent assigned to network (no prompts)." },
-            };
+            const finalized = await finalizeAssignment(
+              state.userId,
+              intentId,
+              networkId,
+              decision.finalScore,
+              decision.metadata,
+              'Intent assigned to network (no prompts).',
+            );
+            return { agentTimings: agentTimingsAccum, ...finalized };
           }
 
           // Run IntentIndexer evaluation
@@ -187,14 +232,20 @@ export class IntentNetworkGraphFactory {
           });
 
           if (decision.assigned) {
-            await this.database.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
+            const finalized = await finalizeAssignment(
+              state.userId,
+              intentId,
+              networkId,
+              decision.finalScore,
+              decision.metadata,
+              `Intent assigned to network (score: ${decision.finalScore.toFixed(2)}).`,
+            );
             return {
               agentTimings: agentTimingsAccum,
               evaluation: result,
-              shouldAssign: true,
+              shouldAssign: finalized.assignmentResult.assigned,
               finalScore: decision.finalScore,
-              assignmentResult: { networkId, assigned: true, success: true } as AssignmentResult,
-              mutationResult: { success: true, message: `Intent assigned to network (score: ${decision.finalScore.toFixed(2)}).` },
+              ...finalized,
             };
           }
 

@@ -53,6 +53,7 @@ export type {
   OpportunityActor,
   OpportunityStatus,
   AssignmentNetworkMembership,
+  IntentNetworkFinalAssignmentResult,
   CreateOpportunityData,
 } from "./shared/interfaces/database.interface.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./shared/interfaces/embedder.interface.js";

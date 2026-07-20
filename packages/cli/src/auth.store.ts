@@ -8,6 +8,8 @@ export interface Credentials {
   apiUrl: string;
   /** Credential transport. Missing means legacy session JWT. */
   authKind?: "session" | "api_key";
+  /** Exact Better Auth API-key row ID. Missing on legacy credentials. */
+  keyId?: string;
 }
 
 const CREDENTIALS_FILE = "credentials.json";
@@ -66,8 +68,9 @@ export class CredentialStore {
   async clear(): Promise<void> {
     try {
       await unlink(this.filePath);
-    } catch {
-      // File doesn't exist — nothing to clear.
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
     }
   }
 }

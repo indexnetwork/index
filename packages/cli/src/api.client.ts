@@ -76,17 +76,35 @@ export class ApiClient {
   }
 
   /** Mint a time-bounded API key for non-web CLI compatibility. */
-  async mintCliApiKey(): Promise<string> {
-    const res = await this.post("/api/auth/api-key/create", {
-      name: "Index CLI",
-      expiresIn: 60 * 60 * 24 * 90,
-      metadata: { client: "cli" },
-    });
-    const body = (await res.json()) as { key?: unknown };
-    if (typeof body.key !== "string" || !body.key) {
-      throw new Error("CLI credential response did not include a key");
+  async mintCliApiKey(protocolVersion: 1 | 2 = 2): Promise<{ key: string; keyId: string }> {
+    const res = await this.post("/api/auth/cli-credential", { protocolVersion });
+    const body = (await res.json()) as { key?: unknown; id?: unknown; expiresAt?: unknown };
+    if (
+      typeof body.key !== "string"
+      || !body.key
+      || typeof body.id !== "string"
+      || !body.id
+      || typeof body.expiresAt !== "string"
+      || !body.expiresAt
+    ) {
+      throw new Error("CLI credential response did not include a key, key ID, and expiry");
     }
-    return body.key;
+    return { key: body.key, keyId: body.id };
+  }
+
+  /**
+   * Revoke one exact server-issued CLI API key with caller and target proof.
+   *
+   * @param keyId - Stored row ID returned when the target key was created.
+   * @param targetKey - Raw target secret; defaults to the caller token for logout.
+   * @throws Error when the server does not confirm revocation.
+   */
+  async revokeApiKey(keyId: string, targetKey: string = this.token): Promise<void> {
+    const res = await this.post("/api/auth/cli-credential/revoke", { keyId, targetKey });
+    const body = (await res.json()) as { success?: unknown };
+    if (body.success !== true) {
+      throw new Error("API-key revocation was not confirmed");
+    }
   }
 
   /**

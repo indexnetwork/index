@@ -7,7 +7,7 @@
  * keep the existing behavior (conversation-linked questions only).
  */
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { useLocation } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useEffect, type ComponentType, type ReactNode, type Ref } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -72,6 +72,7 @@ const mocks = vi.hoisted(() => {
       opportunityAccept?: (opportunityId: string, userId: string) => unknown;
       opportunityReject?: (opportunityId: string, userId: string) => unknown;
     },
+    proposalStatuses: {} as Record<string, string>,
     injectedCallbacks: {} as {
       answer?: (questionId: string, body: { selectedOptions: string[] }) => unknown;
       dismiss?: (questionId: string) => unknown;
@@ -188,6 +189,7 @@ vi.mock('@/components/chat/AssistantMessageContent', () => ({
     onOpportunitySecondaryAction,
     onNetworkJoin,
     OAuthLink,
+    intentProposalStatusMap,
   }: {
     content: string;
     onIntentProposalApprove?: (proposalId: string, description: string) => Promise<void> | void;
@@ -197,6 +199,7 @@ vi.mock('@/components/chat/AssistantMessageContent', () => ({
     onOpportunitySecondaryAction?: (opportunityId: string, userId: string) => unknown;
     onNetworkJoin?: (networkId: string, title: string) => unknown;
     OAuthLink?: ComponentType<{ children?: ReactNode }>;
+    intentProposalStatusMap?: Record<string, string>;
   }) => {
     mocks.assistantCallbacks = {
       approve: onIntentProposalApprove,
@@ -206,6 +209,7 @@ vi.mock('@/components/chat/AssistantMessageContent', () => ({
       opportunityAccept: onOpportunityPrimaryAction,
       opportunityReject: onOpportunitySecondaryAction,
     };
+    mocks.proposalStatuses = intentProposalStatusMap ?? {};
     useEffect(() => {
       if (!content.includes('Auto proposal') || !onIntentProposalApprove) return;
       const timer = setTimeout(() => {
@@ -279,6 +283,22 @@ vi.mock('remark-gfm', () => ({ default: () => null }));
 
 function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>;
+}
+
+function RoutedChatContent() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const sessionId = location.pathname.startsWith('/d/')
+    ? location.pathname.slice('/d/'.length)
+    : null;
+  return (
+    <>
+      <ChatContent sessionIdParam={sessionId} />
+      <button type="button" onClick={() => navigate('/d/session-a')}>switch to session A</button>
+      <button type="button" onClick={() => navigate('/d/session-b')}>switch to session B</button>
+      <LocationProbe />
+    </>
+  );
 }
 
 const INBOX_QUESTION = {
@@ -382,6 +402,7 @@ describe('Signal Agent web cutover', () => {
     mocks.chat.sendWebMessage.mockResolvedValue(undefined);
     mocks.gmailOnConnected = null;
     mocks.assistantCallbacks = {};
+    mocks.proposalStatuses = {};
     mocks.injectedCallbacks = {};
     mocks.decisionSubmit = undefined;
     mocks.streamingDraftStart = undefined;
@@ -482,6 +503,188 @@ describe('Signal Agent web cutover', () => {
     await act(async () => notification.onAction());
     expect(mocks.apiClient.patch).toHaveBeenCalledWith('/intents/intent-returned-42/archive');
     expect(screen.getByTestId('location').textContent).toBe('/d/signal-session');
+  });
+
+  test('different proposal confirmations in the same chat retain independent results and undo actions', async () => {
+    mocks.chat.sessionId = 'signal-session';
+    mocks.chat.sessionPersona = 'signal';
+    mocks.chat.messages = [
+      { id: 'm1', role: 'assistant', content: 'Two proposals ready', timestamp: new Date() },
+    ];
+    const resolvers = new Map<string, (value: { intentId: string }) => void>();
+    mocks.apiClient.post.mockImplementation((path: string, body?: { proposalId?: string }) => {
+      if (path !== '/intents/confirm' || !body?.proposalId) return Promise.resolve({});
+      return new Promise<{ intentId: string }>((resolve) => {
+        resolvers.set(body.proposalId!, resolve);
+      });
+    });
+
+    renderWithRouter(
+      <>
+        <ChatContent sessionIdParam="signal-session" />
+        <LocationProbe />
+      </>,
+      { route: '/d/signal-session' },
+    );
+
+    const firstConfirmation = mocks.assistantCallbacks.approve?.('proposal-1', 'First proposal') as Promise<void>;
+    const secondConfirmation = mocks.assistantCallbacks.approve?.('proposal-2', 'Second proposal') as Promise<void>;
+    await waitFor(() => expect(resolvers.size).toBe(2));
+
+    await act(async () => {
+      resolvers.get('proposal-1')?.({ intentId: 'intent-1' });
+      resolvers.get('proposal-2')?.({ intentId: 'intent-2' });
+      await Promise.all([firstConfirmation, secondConfirmation]);
+    });
+
+    expect(mocks.proposalStatuses).toMatchObject({
+      'proposal-1': 'created',
+      'proposal-2': 'created',
+    });
+    expect(mocks.notifications.addNotification).toHaveBeenCalledTimes(2);
+    const notifications = mocks.notifications.addNotification.mock.calls.map(([notification]) => notification as {
+      title: string;
+      onAction?: () => Promise<void>;
+    });
+    expect(notifications.every((notification) => notification.onAction)).toBe(true);
+    expect(notifications.some((notification) => notification.title === 'Signal created')).toBe(false);
+
+    await act(async () => notifications[0].onAction?.());
+    await act(async () => notifications[1].onAction?.());
+    expect(mocks.apiClient.patch).toHaveBeenCalledWith('/intents/intent-1/archive');
+    expect(mocks.apiClient.patch).toHaveBeenCalledWith('/intents/intent-2/archive');
+  });
+
+  test('a confirmation resolved after switching chats leaves the newer chat untouched', async () => {
+    mocks.chat.sessionId = 'session-a';
+    mocks.chat.sessionPersona = 'signal';
+    mocks.chat.sessionLoadState = { status: 'ready', targetSessionId: 'session-a', error: null };
+    mocks.chat.messages = [
+      { id: 'm1', role: 'assistant', content: 'Proposal ready', timestamp: new Date() },
+    ];
+    let resolveConfirmation: ((value: { intentId: string }) => void) | undefined;
+    const confirmation = new Promise<{ intentId: string }>((resolve) => {
+      resolveConfirmation = resolve;
+    });
+    mocks.apiClient.post.mockImplementation((path: string) => path === '/intents/confirm'
+      ? confirmation
+      : Promise.resolve({}));
+
+    renderWithRouter(<RoutedChatContent />, { route: '/d/session-a' });
+    fireEvent.click(screen.getByRole('button', { name: 'approve proposal' }));
+    await waitFor(() => expect(mocks.apiClient.post).toHaveBeenCalledWith(
+      '/intents/confirm',
+      expect.objectContaining({ proposalId: 'proposal-1' }),
+    ));
+
+    mocks.chat.sessionId = 'session-b';
+    mocks.chat.sessionLoadState = { status: 'ready', targetSessionId: 'session-b', error: null };
+    fireEvent.click(screen.getByRole('button', { name: 'switch to session B' }));
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/d/session-b'));
+
+    await act(async () => {
+      resolveConfirmation?.({ intentId: 'intent-created-for-a' });
+      await confirmation;
+    });
+
+    await waitFor(() => expect(mocks.notifications.addNotification).toHaveBeenCalledTimes(1));
+    const notification = mocks.notifications.addNotification.mock.calls[0]?.[0] as {
+      title: string;
+      onAction?: () => Promise<void>;
+    };
+    expect(notification.title).toBe('Signal created');
+    expect(notification.onAction).toBeUndefined();
+    expect(mocks.proposalStatuses['proposal-1']).not.toBe('created');
+    expect(screen.getByTestId('location').textContent).toBe('/d/session-b');
+    expect(mocks.apiClient.patch).not.toHaveBeenCalled();
+  });
+
+  test('an A-to-B-to-A navigation generation cannot revive a stale confirmation', async () => {
+    mocks.chat.sessionId = 'session-a';
+    mocks.chat.sessionPersona = 'signal';
+    mocks.chat.sessionLoadState = { status: 'ready', targetSessionId: 'session-a', error: null };
+    mocks.chat.messages = [
+      { id: 'm1', role: 'assistant', content: 'Proposal ready', timestamp: new Date() },
+    ];
+    let resolveConfirmation: ((value: { intentId: string }) => void) | undefined;
+    const confirmation = new Promise<{ intentId: string }>((resolve) => {
+      resolveConfirmation = resolve;
+    });
+    mocks.apiClient.post.mockImplementation((path: string) => path === '/intents/confirm'
+      ? confirmation
+      : Promise.resolve({}));
+
+    renderWithRouter(<RoutedChatContent />, { route: '/d/session-a' });
+    fireEvent.click(screen.getByRole('button', { name: 'approve proposal' }));
+    await waitFor(() => expect(mocks.apiClient.post).toHaveBeenCalledWith(
+      '/intents/confirm',
+      expect.objectContaining({ proposalId: 'proposal-1' }),
+    ));
+
+    mocks.chat.sessionId = 'session-b';
+    mocks.chat.sessionLoadState = { status: 'ready', targetSessionId: 'session-b', error: null };
+    fireEvent.click(screen.getByRole('button', { name: 'switch to session B' }));
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/d/session-b'));
+
+    mocks.chat.sessionId = 'session-a';
+    mocks.chat.sessionLoadState = { status: 'ready', targetSessionId: 'session-a', error: null };
+    fireEvent.click(screen.getByRole('button', { name: 'switch to session A' }));
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/d/session-a'));
+
+    await act(async () => {
+      resolveConfirmation?.({ intentId: 'stale-intent-for-a' });
+      await confirmation;
+    });
+
+    await waitFor(() => expect(mocks.notifications.addNotification).toHaveBeenCalledTimes(1));
+    expect(mocks.proposalStatuses['proposal-1']).not.toBe('created');
+    expect(screen.getByTestId('location').textContent).toBe('/d/session-a');
+    const notification = mocks.notifications.addNotification.mock.calls[0]?.[0] as { onAction?: () => Promise<void> };
+    expect(notification.onAction).toBeUndefined();
+  });
+
+  test('a stale confirmation failure is quarantined from the newer chat', async () => {
+    mocks.chat.sessionId = 'session-a';
+    mocks.chat.sessionPersona = 'signal';
+    mocks.chat.sessionLoadState = { status: 'ready', targetSessionId: 'session-a', error: null };
+    mocks.chat.messages = [
+      { id: 'm1', role: 'assistant', content: 'Proposal ready', timestamp: new Date() },
+    ];
+    let rejectConfirmation: ((error: Error) => void) | undefined;
+    const confirmation = new Promise<{ intentId: string }>((_resolve, reject) => {
+      rejectConfirmation = reject;
+    });
+    mocks.apiClient.post.mockImplementation((path: string) => path === '/intents/confirm'
+      ? confirmation
+      : Promise.resolve({}));
+
+    renderWithRouter(<RoutedChatContent />, { route: '/d/session-a' });
+    fireEvent.click(screen.getByRole('button', { name: 'approve proposal' }));
+    await waitFor(() => expect(mocks.apiClient.post).toHaveBeenCalledWith(
+      '/intents/confirm',
+      expect.objectContaining({ proposalId: 'proposal-1' }),
+    ));
+
+    mocks.chat.sessionId = 'session-b';
+    mocks.chat.sessionLoadState = { status: 'ready', targetSessionId: 'session-b', error: null };
+    fireEvent.click(screen.getByRole('button', { name: 'switch to session B' }));
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/d/session-b'));
+
+    await act(async () => {
+      rejectConfirmation?.(new Error('stale confirmation failed'));
+      await confirmation.catch(() => undefined);
+    });
+
+    await waitFor(() => expect(mocks.notifications.addNotification).toHaveBeenCalledTimes(1));
+    const notification = mocks.notifications.addNotification.mock.calls[0]?.[0] as {
+      title: string;
+      onAction?: () => Promise<void>;
+    };
+    expect(notification.title).toBe('Signal creation failed');
+    expect(notification.onAction).toBeUndefined();
+    expect(mocks.proposalStatuses['proposal-1']).not.toBe('created');
+    expect(screen.getByTestId('location').textContent).toBe('/d/session-b');
+    expect(mocks.apiClient.patch).not.toHaveBeenCalled();
   });
 
   test('undo failure stays on intent detail, reports the error, and the same action can retry', async () => {

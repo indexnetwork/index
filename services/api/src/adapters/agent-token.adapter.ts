@@ -1,12 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
+import { API_KEY_START_LENGTH, generateApiKey, hashApiKey } from '../lib/apikey/credential';
 import * as schema from '../schemas/database.schema';
-
-/** Key length matching Better Auth's default (64 chars, a-zA-Z). */
-const KEY_LENGTH = 64;
-/** Number of starting characters to store for display. */
-const START_CHARS = 6;
 
 export interface AgentTokenRecord {
   id: string;
@@ -22,29 +18,6 @@ export interface CreateAgentTokenResult {
   key: string;
   name: string | null;
   createdAt: string;
-}
-
-/**
- * Hash a plaintext API key using SHA-256 + base64url (no padding).
- * Matches Better Auth's `defaultKeyHasher` so keys created here
- * are verified correctly by the Better Auth middleware.
- */
-async function hashKey(key: string): Promise<string> {
-  const encoded = new TextEncoder().encode(key);
-  const hash = await crypto.subtle.digest('SHA-256', encoded);
-  // base64url without padding, matching Better Auth's encoding
-  return Buffer.from(hash).toString('base64url');
-}
-
-/** Generate a random key string (a-zA-Z) matching Better Auth's format. */
-function generateKey(length: number): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars[bytes[i] % chars.length];
-  }
-  return result;
 }
 
 function parseMetadata(value: unknown): Record<string, unknown> | null {
@@ -89,8 +62,8 @@ export interface AgentTokenStore {
  */
 export class AgentTokenAdapter implements AgentTokenStore {
   async create(userId: string, params: { name: string; agentId: string }): Promise<CreateAgentTokenResult> {
-    const plainKey = generateKey(KEY_LENGTH);
-    const hashedKey = await hashKey(plainKey);
+    const plainKey = generateApiKey();
+    const hashedKey = await hashApiKey(plainKey);
     const now = new Date();
 
     const [row] = await db
@@ -100,7 +73,7 @@ export class AgentTokenAdapter implements AgentTokenStore {
         userId,
         referenceId: userId,
         name: params.name,
-        start: plainKey.substring(0, START_CHARS),
+        start: plainKey.substring(0, API_KEY_START_LENGTH),
         metadata: JSON.stringify({ agentId: params.agentId }),
         createdAt: now,
         updatedAt: now,

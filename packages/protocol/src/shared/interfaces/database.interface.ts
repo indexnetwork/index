@@ -41,6 +41,13 @@ export interface AssignmentNetworkMembership extends ScopeMembership {
   isPersonal: boolean;
 }
 
+/** Final-authority result for an existing intent-to-network assignment. */
+export type IntentNetworkFinalAssignmentResult =
+  | { kind: 'assigned' }
+  | { kind: 'already_assigned' }
+  | { kind: 'membership_required' }
+  | { kind: 'intent_not_owned_or_not_found' };
+
 /** Onboarding flow state stored as JSON on the user record. */
 export interface OnboardingState {
   completedAt?: string;
@@ -939,6 +946,19 @@ export interface Database {
     relevancyScore?: number,
     assignmentMetadata?: NetworkAssignmentMetadata,
   ): Promise<void>;
+
+  /**
+   * Atomically assign an owned, non-archived intent only while the exact
+   * accepted network membership and network remain active. Implementations
+   * hold intent, network, and membership row locks through the insert.
+   */
+  assignIntentToNetworkIfMember(
+    userId: string,
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: NetworkAssignmentMetadata,
+  ): Promise<IntentNetworkFinalAssignmentResult>;
 
   /**
    * Returns per-index relevancy scores for an intent's index assignments.
@@ -2212,6 +2232,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getNetworkAssignmentContext'
   | 'isIntentAssignedToIndex'
   | 'assignIntentToNetwork'
+  | 'assignIntentToNetworkIfMember'
   | 'unassignIntentFromIndex'
   | 'getNetworkIdsForIntent'
   | 'getIntentIndexScores'
@@ -2614,7 +2635,7 @@ export type IntentNetworkGraphDatabase = Pick<
   | 'getNetworkAssignmentContext'
   | 'getNetwork'
   | 'isIntentAssignedToIndex'
-  | 'assignIntentToNetwork'
+  | 'assignIntentToNetworkIfMember'
   | 'unassignIntentFromIndex'
   | 'getIntent'
   | 'isNetworkMember'

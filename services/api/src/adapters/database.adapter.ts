@@ -114,6 +114,21 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.assignIntentToNetwork(intentId, networkId, relevancyScore, assignmentMetadata);
     },
+    assignIntentToNetworkIfMember: (
+      userId: string,
+      intentId: string,
+      networkId: string,
+      relevancyScore?: number,
+      assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+    ) => userId === authUserId
+      ? intentDatabaseAdapter.assignIntentToNetworkIfMember(
+          userId,
+          intentId,
+          networkId,
+          relevancyScore,
+          assignmentMetadata,
+        )
+      : Promise.resolve({ kind: 'intent_not_owned_or_not_found' } as const),
     unassignIntentFromIndex: async (intentId: string, networkId: string) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');

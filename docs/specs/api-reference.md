@@ -147,7 +147,7 @@ The following paths are delegated to Better Auth and are not handled by controll
 - `/api/auth/api-key/list`
 - `/api/auth/api-key/delete`
 
-Refer to the [Better Auth documentation](https://www.better-auth.com/) for details on these endpoints.
+Refer to the [Better Auth documentation](https://www.better-auth.com/) for details on these endpoints. Generic API-key management requires a genuine Better Auth browser-cookie session. API keys are not promoted into Better Auth sessions, so `x-api-key` principals cannot create, list, inspect, retag, or delete keys through these routes. CLI credential minting and revocation use the constrained controller endpoints below.
 
 API keys created for personal agents include `metadata.agentId`. MCP auth resolves API keys into `{ userId, agentId? }` identities, so the same user can authorize multiple agents with separate keys.
 
@@ -315,6 +315,53 @@ Updates the authenticated user's profile fields and/or notification preferences.
 ```
 
 **Response**: Same shape as `GET /api/auth/me`.
+
+### POST /api/auth/cli-credential
+
+Creates a Better Auth-compatible 90-day credential for the CLI browser bridge. The endpoint accepts only the protocol version; callers cannot choose the credential name, metadata, agent binding, or expiry.
+
+**Auth**: SessionOnlyGuard (project JWT required; API keys and the temporary v1 API-key Bearer fallback are rejected)
+
+**Request body**:
+```json
+{ "protocolVersion": 2 }
+```
+
+`protocolVersion` must be the number `1` or `2`, and unknown fields are rejected.
+
+**Response**:
+```json
+{
+  "key": "raw-key-returned-once",
+  "id": "better-auth-api-key-row-id",
+  "expiresAt": "2026-10-16T12:00:00.000Z"
+}
+```
+
+The persisted metadata is fixed to `{ "client": "cli", "protocolVersion": 1|2 }` and never includes `agentId`. A server-only permission marker distinguishes these rows from generic Better Auth keys even if user-editable metadata is forged.
+
+### POST /api/auth/cli-credential/revoke
+
+Revokes one exact server-issued CLI credential. This route intentionally accepts only an actual `x-api-key` CLI caller; JWT, query-token, legacy-v1 Bearer, missing-header, agent-bound, disabled, expired, cross-user, and generic API-key callers fail closed.
+
+**Auth**: `RateLimit('write')`, then `AuthGuard`; the request must carry only `x-api-key` authentication.
+
+**Request body** (strict; unknown fields rejected):
+```json
+{
+  "keyId": "exact-target-row-id",
+  "targetKey": "exact-raw-target-secret"
+}
+```
+
+The caller secret is independently re-resolved from its authoritative hash as an enabled, unexpired, unbound v1/v2 CLI row owned by the authenticated user. The target must match both `keyId` and `hash(targetKey)`, have the same aligned owner, retain the server-issued CLI shape, and have no agent binding. This supports self-revocation and replacement-key cleanup of a prior credential without permitting arbitrary same-user key deletion. Secrets are never logged.
+
+**Success response** (only after deletion):
+```json
+{ "success": true }
+```
+
+Malformed bodies return `400`; authenticated but ineligible caller/target proof returns the stable `403` body `{ "error": "CLI credential revocation denied" }` (transport-shape rejection uses a distinct typed `403`).
 
 ### DELETE /api/auth/account
 

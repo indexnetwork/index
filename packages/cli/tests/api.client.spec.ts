@@ -62,19 +62,22 @@ describe("ApiClient", () => {
     it("mints a time-bounded CLI API key with a legacy session JWT", async () => {
       let authorization = "";
       let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/auth/api-key/create", async (req) => {
+      mock.on("POST", "/api/auth/cli-credential", async (req) => {
         authorization = req.headers.get("authorization") ?? "";
         receivedBody = await req.json() as Record<string, unknown>;
-        return Response.json({ key: "migrated-cli-key" });
+        return Response.json({
+          key: "migrated-cli-key",
+          id: "migrated-key-id",
+          expiresAt: "2026-10-16T12:00:00.000Z",
+        });
       });
 
-      await expect(client.mintCliApiKey()).resolves.toBe("migrated-cli-key");
-      expect(authorization).toBe("Bearer test-token-123");
-      expect(receivedBody).toEqual({
-        name: "Index CLI",
-        expiresIn: 60 * 60 * 24 * 90,
-        metadata: { client: "cli" },
+      await expect(client.mintCliApiKey()).resolves.toEqual({
+        key: "migrated-cli-key",
+        keyId: "migrated-key-id",
       });
+      expect(authorization).toBe("Bearer test-token-123");
+      expect(receivedBody).toEqual({ protocolVersion: 2 });
     });
   });
 
@@ -106,6 +109,42 @@ describe("ApiClient", () => {
         { path: "/api/chat/sessions", apiKey: "cli-key-123", authorization: "" },
         { path: "/api/chat/stream", apiKey: "cli-key-123", authorization: "" },
       ]);
+    });
+
+    it("revokes only the exact stored API-key ID using the key itself", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+      let receivedBody: Record<string, unknown> = {};
+      let receivedApiKey = "";
+      mock.on("POST", "/api/auth/cli-credential/revoke", async (req) => {
+        receivedApiKey = req.headers.get("x-api-key") ?? "";
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({ success: true });
+      });
+
+      await expect(apiKeyClient.revokeApiKey("exact-key-id", "target-key-456")).resolves.toBeUndefined();
+      expect(receivedApiKey).toBe("cli-key-123");
+      expect(receivedBody).toEqual({ keyId: "exact-key-id", targetKey: "target-key-456" });
+    });
+
+    it("defaults target proof to the caller token for self-revocation", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "self-cli-key", "api_key");
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/auth/cli-credential/revoke", async (req) => {
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({ success: true });
+      });
+
+      await apiKeyClient.revokeApiKey("self-key-id");
+
+      expect(receivedBody).toEqual({ keyId: "self-key-id", targetKey: "self-cli-key" });
+    });
+
+    it("requires typed revocation success", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+      mock.on("POST", "/api/auth/cli-credential/revoke", () => Response.json({ success: false }));
+
+      await expect(apiKeyClient.revokeApiKey("exact-key-id"))
+        .rejects.toThrow("revocation was not confirmed");
     });
   });
 

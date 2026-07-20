@@ -84,6 +84,7 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
         { id: intent.id, label },
         signalAgentEnabled ? 'signal' : undefined,
       );
+      if (!sessionId) return;
       navigate(`/d/${sessionId}`);
     } catch {
       error('Failed to open intent chat');

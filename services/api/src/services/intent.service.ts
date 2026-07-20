@@ -274,7 +274,8 @@ export class IntentService {
   /**
    * Create an intent directly from a confirmed chat proposal.
    * Bypasses the full intent graph (no LLM re-inference/verification).
-   * Idempotent: if an intent already exists for this proposalId + userId, returns it.
+   * Idempotent under concurrent confirmation: the adapter serializes one exact
+   * user + proposal pair and returns the transaction winner to every caller.
    * Generates embedding, inserts into DB, optionally associates with index, and enqueues HyDE job.
    * Embedder and queue failures are logged but do not abort creation.
    *
@@ -288,11 +289,12 @@ export class IntentService {
     logger.verbose('Creating intent from proposal', { userId, proposalId });
 
     const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
-    if (existing) {
-      return existing;
-    }
+    if (existing) return existing;
 
-    if (networkId && !(await this.adapter.isNetworkMember(networkId, userId))) {
+    // Cheap advisory preflight avoids embedding/transaction/queue/event work
+    // for clear denials. confirmProposalIntent still re-checks membership under
+    // its advisory lock and remains the final race-safe authority.
+    if (networkId && !await this.adapter.isNetworkMember(networkId, userId)) {
       throw new IntentNetworkMembershipError(networkId);
     }
 
@@ -309,14 +311,14 @@ export class IntentService {
       sourceType: 'discovery_form' as const,
       sourceId: proposalId,
     };
-    const created = networkId
-      ? await this.adapter.createIntentForNetworkMember(intentData, networkId)
-      : await this.adapter.createIntent(intentData);
-    if (!created) {
-      if (networkId) throw new IntentNetworkMembershipError(networkId);
-      throw new Error('Intent creation did not return a row');
+    const confirmation = await this.adapter.confirmProposalIntent(intentData, networkId);
+    if (confirmation.kind === 'membership_required') {
+      if (!networkId) throw new Error('Unexpected membership requirement without a network');
+      throw new IntentNetworkMembershipError(networkId);
     }
+    if (confirmation.kind === 'existing') return confirmation.intent;
 
+    const created = confirmation.intent;
     try {
       await this.proposalQueue.addGenerateHydeJob({
         intentId: created.id,

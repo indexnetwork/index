@@ -86,33 +86,57 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Atomically create a proposal intent and assign it to a network while the
-   * owner's current membership is locked. A null result means membership is
-   * no longer authoritative; no intent or assignment is persisted.
+   * Atomically confirm one proposal with optional network assignment.
+   * A transaction-scoped advisory lock serializes the exact owner + proposal
+   * source pair even though legacy schema rows have no matching unique index.
+   * Existing confirmations win before any current-membership requirement is
+   * evaluated, preserving retry idempotency after membership changes.
    *
-   * @param data - Intent row values
-   * @param networkId - Network requiring current owner membership
-   * @returns The created intent, or null when membership is absent/stale
+   * @param data - Intent row values including the proposal source ID.
+   * @param networkId - Optional network requiring current owner membership.
+   * @returns A discriminated created, existing, or membership-required result.
    */
-  async createIntentForNetworkMember(
+  async confirmProposalIntent(
     data: CreateIntentInput,
-    networkId: string,
-  ): Promise<CreatedIntentRow | null> {
+    networkId?: string,
+  ): Promise<
+    | { kind: 'created'; intent: CreatedIntentRow }
+    | { kind: 'existing'; intent: { id: string; archivedAt: Date | null } }
+    | { kind: 'membership_required' }
+  > {
+    const sourceId = data.sourceId;
+    if (!sourceId) throw new Error('Proposal confirmation requires a source ID');
+
     return db.transaction(async (tx) => {
-      const [membership] = await tx
-        .select({ networkId: schema.networkMembers.networkId })
-        .from(schema.networkMembers)
-        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+      const lockName = `intent-proposal:${JSON.stringify([data.userId, sourceId])}`;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}, 0))`);
+
+      const [existing] = await tx
+        .select({ id: schema.intents.id, archivedAt: schema.intents.archivedAt })
+        .from(schema.intents)
         .where(and(
-          eq(schema.networkMembers.networkId, networkId),
-          eq(schema.networkMembers.userId, data.userId),
-          isNull(schema.networkMembers.deletedAt),
-          isNull(schema.networks.deletedAt),
-          sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
+          eq(schema.intents.userId, data.userId),
+          eq(schema.intents.sourceId, sourceId),
         ))
-        .limit(1)
-        .for('update');
-      if (!membership) return null;
+        .limit(1);
+      if (existing) return { kind: 'existing', intent: existing } as const;
+
+      if (networkId) {
+        const [membership] = await tx
+          .select({ networkId: schema.networkMembers.networkId })
+          .from(schema.networkMembers)
+          .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+          .where(and(
+            eq(schema.networkMembers.networkId, networkId),
+            eq(schema.networkMembers.userId, data.userId),
+            isNull(schema.networkMembers.deletedAt),
+            isNull(schema.networks.deletedAt),
+            sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
+          ))
+          .limit(1)
+          .for('update');
+        if (!membership) return { kind: 'membership_required' } as const;
+      }
 
       const [created] = await tx.insert(schema.intents)
         .values({
@@ -122,7 +146,7 @@ export class IntentDatabaseAdapter {
           embedding: data.embedding,
           isIncognito: data.isIncognito ?? false,
           sourceType: data.sourceType,
-          sourceId: data.sourceId,
+          sourceId,
           semanticEntropy: data.semanticEntropy ?? undefined,
           referentialAnchor: data.referentialAnchor ?? undefined,
           felicityAuthority: data.felicityAuthority ?? undefined,
@@ -142,13 +166,15 @@ export class IntentDatabaseAdapter {
         });
       if (!created) throw new Error('Insert did not return a row');
 
-      await tx.insert(schema.intentNetworks).values({
-        intentId: created.id,
-        networkId,
-        relevancyScore: null,
-      });
+      if (networkId) {
+        await tx.insert(schema.intentNetworks).values({
+          intentId: created.id,
+          networkId,
+          relevancyScore: null,
+        });
+      }
 
-      return created;
+      return { kind: 'created', intent: created } as const;
     });
   }
 
@@ -667,6 +693,81 @@ export class IntentDatabaseAdapter {
           ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
         },
       });
+  }
+
+  /**
+   * Atomically assign an existing owned intent while its network membership is current.
+   *
+   * @param userId - Exact authenticated owner and member.
+   * @param intentId - Existing intent to assign.
+   * @param networkId - Existing active network requiring accepted membership.
+   * @param relevancyScore - Optional assignment score.
+   * @param assignmentMetadata - Optional durable assignment decision metadata.
+   * @returns A discriminated final-authority result.
+   */
+  async assignIntentToNetworkIfMember(
+    userId: string,
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+  ): Promise<import('@indexnetwork/protocol').IntentNetworkFinalAssignmentResult> {
+    return db.transaction(async (tx) => {
+      const [intent] = await tx
+        .select({ userId: schema.intents.userId, archivedAt: schema.intents.archivedAt })
+        .from(schema.intents)
+        .where(eq(schema.intents.id, intentId))
+        .limit(1)
+        .for('update');
+      if (!intent || intent.userId !== userId || intent.archivedAt !== null) {
+        return { kind: 'intent_not_owned_or_not_found' } as const;
+      }
+
+      const [network] = await tx
+        .select({ deletedAt: schema.networks.deletedAt })
+        .from(schema.networks)
+        .where(eq(schema.networks.id, networkId))
+        .limit(1)
+        .for('update');
+      if (!network || network.deletedAt !== null) {
+        return { kind: 'membership_required' } as const;
+      }
+
+      const [membership] = await tx
+        .select({ permissions: schema.networkMembers.permissions })
+        .from(schema.networkMembers)
+        .where(and(
+          eq(schema.networkMembers.networkId, networkId),
+          eq(schema.networkMembers.userId, userId),
+          isNull(schema.networkMembers.deletedAt),
+          sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
+        ))
+        .limit(1)
+        .for('update');
+      if (!membership) {
+        return { kind: 'membership_required' } as const;
+      }
+
+      const [existing] = await tx
+        .select({ intentId: schema.intentNetworks.intentId })
+        .from(schema.intentNetworks)
+        .where(and(
+          eq(schema.intentNetworks.intentId, intentId),
+          eq(schema.intentNetworks.networkId, networkId),
+        ))
+        .limit(1);
+      if (existing) {
+        return { kind: 'already_assigned' } as const;
+      }
+
+      await tx.insert(schema.intentNetworks).values({
+        intentId,
+        networkId,
+        relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
+        ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
+      });
+      return { kind: 'assigned' } as const;
+    });
   }
 
   /**
