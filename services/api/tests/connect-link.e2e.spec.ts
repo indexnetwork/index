@@ -1,11 +1,12 @@
 import '../src/startup.env';
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test } from 'bun:test';
 import { eq } from 'drizzle-orm';
 
 import { ConnectLinkController } from '../src/controllers/connect-link.controller';
 import type { AuthenticatedUser } from '../src/guards/auth.guard';
 import db from '../src/lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../src/lib/testing/database-test-budget';
 import { connectLinks, opportunities, users } from '../src/schemas/database.schema';
 import { mintConnectLink } from '../src/services/connect-link.service';
 
@@ -23,6 +24,9 @@ const OPP_ID = `cl-e2e-opp-${Date.now()}`;
 function mockUser(id: string = USER_ID): AuthenticatedUser {
   return { id, email: `${id}@test`, name: 'CL E2E User' };
 }
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('GET /c/:code — connect-link controller', () => {
   let controller: ConnectLinkController;

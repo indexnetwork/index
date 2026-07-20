@@ -18,8 +18,12 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'test-key';
 
-import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test';
+import { describe, it as bunIt, expect, beforeAll, afterAll, mock } from 'bun:test';
 import { randomUUID } from 'crypto';
+
+import { withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const it = withMinimumDatabaseTestBudget(bunIt, 60_000);
 
 mock.module('../../queues/negotiations/timeout.queue', () => ({
   negotiationTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
@@ -148,7 +152,7 @@ beforeAll(async () => {
   userB = await seedUser('Seat Spec Counterparty');
   agentA = await seedAgent(userA);
   agentB = await seedAgent(userB);
-});
+}, 30_000);
 
 afterAll(async () => {
   for (const id of cleanupConversations) {
@@ -159,7 +163,7 @@ afterAll(async () => {
   }
   try { await db.delete(dbSchema.users).where(eq(dbSchema.users.id, userA)); } catch { /* ignore */ }
   try { await db.delete(dbSchema.users).where(eq(dbSchema.users.id, userB)); } catch { /* ignore */ }
-});
+}, 60_000);
 
 describe('pickup — seat announcement', () => {
   it('announces seat, protocolVersion, and allowedActions for the claiming user', async () => {

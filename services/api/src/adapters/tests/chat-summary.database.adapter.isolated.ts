@@ -1,14 +1,14 @@
-import { config } from "dotenv";
-config({ path: ".env.test", override: true });
-
-import { describe, it, expect, afterAll } from "bun:test";
+import { afterAll as bunAfterAll, describe, expect, it as bunIt } from 'bun:test';
 import { eq } from "drizzle-orm/sql";
 
 import db from "../../lib/drizzle/drizzle.js";
 import * as schema from "../../schemas/database.schema.js";
 
 import { ChatSummaryDatabaseAdapter } from "../chat-summary.database.adapter.js";
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 45_000);
 const adapter = new ChatSummaryDatabaseAdapter();
 
 async function makeConversationWithMessages(messageCount: number): Promise<{ sessionId: string; messageIds: string[] }> {

@@ -1,8 +1,4 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test as bunTest } from 'bun:test';
 import { eq } from "drizzle-orm/sql";
 import { ChatController } from "../chat.controller";
 import { ChatDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, IntentDatabaseAdapter } from "../../adapters/database.adapter";
@@ -12,6 +8,11 @@ import { chatFactory } from "../mcp.controller";
 import db from "../../lib/drizzle/drizzle";
 import { networkMembers, personalNetworks } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 60_000);
+const test = withMinimumDatabaseTestBudget(bunTest, 30_000);
 
 // Response type for chat controller
 interface ChatResponse {

@@ -18,8 +18,8 @@ const cleanup: Array<() => Promise<void>> = [];
 
 afterAll(async () => {
   mock.restore();
-  for (const f of [...cleanup].reverse()) await f();
-});
+  for (const cleanupFixture of [...cleanup].reverse()) await cleanupFixture();
+}, 60_000);
 
 async function setupNetworkAndOwner() {
   const ownerEmail = `owner-${randomUUID()}@example.com`;
@@ -83,7 +83,7 @@ describe('networkInvitationService.resendInvite', () => {
       .where(eq(apikeys.userId, memberId));
     expect(after.length).toBe(1);
     expect(after[0].id).not.toBe(originalKey.id);
-  }, 15_000);
+  }, 45_000);
 
   it('provisions a fresh agent and key when the member has none', async () => {
     const { networkId } = await setupNetworkAndOwner();
@@ -118,7 +118,7 @@ describe('networkInvitationService.resendInvite', () => {
       .from(apikeys)
       .where(eq(apikeys.userId, member.id));
     expect(keys.length).toBe(1);
-  });
+  }, 45_000);
 
   it('throws when memberId is not a member of the network', async () => {
     const { networkId } = await setupNetworkAndOwner();
@@ -126,5 +126,5 @@ describe('networkInvitationService.resendInvite', () => {
     await expect(
       networkInvitationService.resendInvite({ networkId, memberId: fakeId }),
     ).rejects.toThrow('Member not found');
-  });
+  }, 15_000);
 });

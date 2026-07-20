@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, afterEach as bunAfterEach, beforeEach as bunBeforeEach, describe, expect, test as bunTest } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 import { inArray, sql } from 'drizzle-orm';
@@ -8,7 +8,12 @@ import { conversations } from '../src/schemas/conversation.schema';
 import { agents, opportunities, opportunityDeliveries, userSocials, users } from '../src/schemas/database.schema';
 import { OpportunityDeliveryService } from '../src/services/opportunity-delivery.service';
 import type { AcceptedCandidate, RenderedCard } from '../src/services/opportunity-delivery.service';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
 
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
+const afterEach = withMinimumDatabaseHookBudget(bunAfterEach, 60_000);
+const beforeEach = withMinimumDatabaseHookBudget(bunBeforeEach, 45_000);
+const test = withMinimumDatabaseTestBudget(bunTest, 45_000);
 const STUB_CARD: RenderedCard = {
   headline: 'H',
   personalizedSummary: 'S',

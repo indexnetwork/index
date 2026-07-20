@@ -3,13 +3,13 @@ import postgres from 'postgres';
 
 import * as schema from '../../schemas/database.schema';
 
-import { ensureTestDatabaseReady } from './test-database-readiness';
+import { ensureTestDatabaseReady, hasParentTestDatabaseReadiness } from './test-database-readiness';
 
 declare global {
   var __db: PostgresJsDatabase<typeof schema> | undefined;
 }
 
-if (process.env.NODE_ENV === 'test') {
+if (process.env.NODE_ENV === 'test' && !hasParentTestDatabaseReadiness(process.env)) {
   await ensureTestDatabaseReady();
 }
 

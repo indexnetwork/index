@@ -215,7 +215,7 @@ describe("NetworkController Integration", () => {
       expect(res.status).toBe(200);
       expect(data.network).toBeDefined();
       expect(data.network!.title).toBe("Updated Test Index");
-    });
+    }, 30_000);
 
     test("should return 400 when updating with invalid event metadata", async () => {
       const req = new Request("http://localhost/networks/" + createdIndexId, {
@@ -363,7 +363,7 @@ describe("NetworkController Integration", () => {
       expect(sendEmailSpy).toHaveBeenCalledTimes(1);
 
       if (data.user?.id) inviteeUserIds.push(data.user.id);
-    });
+    }, 45_000);
   });
 
   describe("POST /:id/rotate-master-key", () => {

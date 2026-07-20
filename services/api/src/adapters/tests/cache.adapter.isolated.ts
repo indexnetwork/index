@@ -1,19 +1,16 @@
 /**
- * Unit tests for RedisCacheAdapter (Cache interface implementation).
- * Requires Redis to be available (e.g. localhost:6379). Run with Redis up to exercise the adapter.
+ * RedisCacheAdapter integration tests. They remain network-free unless the
+ * explicit Redis integration gate and a disposable REDIS_URL are provided.
  */
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
-import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { getRedisClient } from '../cache.adapter';
-import { RedisCacheAdapter } from '../cache.adapter';
+import { resolveRedisIntegrationTestUrl } from '../../lib/redis/test-integration';
+import { closeRedisConnection, getRedisClient, RedisCacheAdapter } from '../cache.adapter';
 
 const KEY_PREFIX = 'protocol:';
-
-const TEST_PREFIX = 'test:cache:' + Date.now() + ':';
-const describeRedis = process.env.RUN_REDIS_INTEGRATION_TESTS === '1' ? describe : describe.skip;
+const TEST_PREFIX = `test:cache:${Date.now()}:`;
+const redisUrl = resolveRedisIntegrationTestUrl();
+const describeRedis = redisUrl ? describe : describe.skip;
 
 describeRedis('RedisCacheAdapter', () => {
   let cache: RedisCacheAdapter;
@@ -23,7 +20,11 @@ describeRedis('RedisCacheAdapter', () => {
   });
 
   afterAll(async () => {
-    await cache.deleteByPattern(TEST_PREFIX + '*');
+    try {
+      await cache.deleteByPattern(`${TEST_PREFIX}*`);
+    } finally {
+      await closeRedisConnection();
+    }
   });
 
   describe('set → get → delete cycle', () => {

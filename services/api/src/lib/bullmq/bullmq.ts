@@ -1,8 +1,10 @@
-import { Queue, Worker, QueueEvents, Job, Processor, WorkerOptions, QueueOptions, JobsOptions } from 'bullmq';
+import { Queue, Worker, QueueEvents, Processor, WorkerOptions, QueueOptions, JobsOptions } from 'bullmq';
 import type { RedisOptions } from 'ioredis';
 
 import { traceAppOperation } from '../sentry-performance';
 import { log } from '../log';
+
+import { createHermeticQueue, createHermeticQueueEvents, createHermeticWorker } from './bullmq.hermetic';
 
 const logger = log.lib.from("bullmq");
 
@@ -68,39 +70,6 @@ function useHermeticRedis(): boolean {
     && process.env.RUN_REDIS_INTEGRATION_TESTS !== '1';
 }
 
-function createHermeticQueue<T>(name: string): Queue<T> {
-  const jobs = new Map<string, Job<T>>();
-  let sequence = 0;
-  const queue = {
-    name,
-    async add(jobName: string, data: T, options?: JobsOptions) {
-      const id = String(options?.jobId ?? `${name}-${++sequence}`);
-      const job = {
-        id,
-        name: jobName,
-        data,
-        opts: options ?? {},
-        async getState() { return 'waiting'; },
-        async remove() { jobs.delete(id); },
-      } as unknown as Job<T>;
-      jobs.set(id, job);
-      return job;
-    },
-    async addBulk(entries: Array<{ name: string; data: T; opts?: JobsOptions }>) {
-      return Promise.all(entries.map((entry) => queue.add(entry.name, entry.data, entry.opts)));
-    },
-    async getJob(id: string) { return jobs.get(String(id)) ?? null; },
-    async getJobs() { return [...jobs.values()]; },
-    async getJobCounts() { return { waiting: jobs.size }; },
-    async remove(id: string) { return jobs.delete(String(id)) ? 1 : 0; },
-    async upsertJobScheduler() { return undefined; },
-    async removeJobScheduler() { return true; },
-    async close() { jobs.clear(); },
-    on() { return queue; },
-  };
-  return queue as unknown as Queue<T>;
-}
-
 /**
  * QueueFactory
  * 
@@ -129,7 +98,9 @@ export class QueueFactory {
    */
   static createQueue<T = any>(name: string, options?: Omit<QueueOptions, 'connection'>): Queue<T> {
     logger.info('Initializing queue', { name });
-    if (useHermeticRedis()) return createHermeticQueue<T>(name);
+    if (useHermeticRedis()) {
+      return createHermeticQueue<T>(name, options?.defaultJobOptions ?? DEFAULT_JOB_OPTS);
+    }
     return new Queue<T>(name, {
       connection: SHARED_REDIS_OPTS,
       defaultJobOptions: DEFAULT_JOB_OPTS,
@@ -167,12 +138,7 @@ export class QueueFactory {
       () => processor(job, token),
     );
     if (useHermeticRedis()) {
-      return {
-        name,
-        processor: tracedProcessor,
-        async close() {},
-        on() { return this; },
-      } as unknown as Worker<T>;
+      return createHermeticWorker(name, tracedProcessor, options?.concurrency ?? 1);
     }
     return new Worker<T>(name, tracedProcessor, {
       connection: SHARED_REDIS_OPTS,
@@ -191,13 +157,7 @@ export class QueueFactory {
    * @returns QueueEvents instance.
    */
   static createQueueEvents(name: string): QueueEvents {
-    if (useHermeticRedis()) {
-      const events = {
-        on() { return events; },
-        async close() {},
-      };
-      return events as unknown as QueueEvents;
-    }
+    if (useHermeticRedis()) return createHermeticQueueEvents(name);
     return new QueueEvents(name, {
       connection: SHARED_REDIS_OPTS,
     });

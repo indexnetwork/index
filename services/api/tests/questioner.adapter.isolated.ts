@@ -1,7 +1,4 @@
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
-
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, it as bunIt } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
@@ -9,6 +6,11 @@ import { sql } from 'drizzle-orm';
 import { questions, opportunities } from '../src/schemas/database.schema';
 import { QuestionerAdapter } from '../src/adapters/questioner.adapter';
 import type { AdapterPersistableQuestion } from '../src/adapters/questioner.adapter';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 60_000);
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 30_000);
 
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle>;

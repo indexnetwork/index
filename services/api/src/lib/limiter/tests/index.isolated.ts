@@ -1,56 +1,57 @@
-import { describe, test, expect } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import Redis from 'ioredis';
 
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+import { resolveRedisIntegrationTestUrl } from '../../redis/test-integration';
 
-// Probe Redis at module load — Redis-path assertions are skipped when no
-// Redis is reachable. The Memory-path test runs unconditionally.
-const redisUp = await (async () => {
-  const probe = new Redis(REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 });
+const originalRedisUrl = process.env.REDIS_URL;
+const redisUrl = resolveRedisIntegrationTestUrl();
+let redisAvailable = false;
+
+if (redisUrl) {
+  const probe = new Redis(redisUrl, {
+    connectTimeout: 3_000,
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+  });
   try {
     await probe.connect();
     await probe.ping();
-    return true;
+    redisAvailable = true;
   } catch {
-    return false;
+    throw new Error('[redis-test] Dedicated Redis integration target is unreachable.');
   } finally {
-    try { await probe.quit(); } catch { /* ignore */ }
+    await probe.quit().catch(() => undefined);
   }
-})();
-
-if (!redisUp) {
-  console.log(`[limiter index.test] SKIP Redis-path tests — Redis not reachable at ${REDIS_URL}`);
 }
 
-describe('limiter selector', () => {
-  // Module-level `storagePromise` is reset per-test via the `?cb=` query-string
-  // cache buster on the dynamic import — each test gets a fresh module instance.
+afterAll(() => {
+  if (originalRedisUrl === undefined) delete process.env.REDIS_URL;
+  else process.env.REDIS_URL = originalRedisUrl;
+});
 
+describe('limiter selector', () => {
+  // Module-level storagePromise is reset per test via the query-string cache
+  // buster on the dynamic import.
   test('returns MemoryStorage when REDIS_URL missing', async () => {
-    const prev = process.env.REDIS_URL;
     delete process.env.REDIS_URL;
     const { getStorage } = await import(`../index?cb=${Math.random()}`);
-    const s = await getStorage();
-    expect(s.constructor.name).toBe('MemoryStorage');
-    if (prev) process.env.REDIS_URL = prev;
+    const storage = await getStorage();
+    expect(storage.constructor.name).toBe('MemoryStorage');
   });
 
-  test.if(redisUp)('returns RedisStorage when REDIS_URL set', async () => {
-    process.env.REDIS_URL = REDIS_URL;
+  test.if(redisAvailable)('returns RedisStorage when explicitly opted in', async () => {
+    process.env.REDIS_URL = redisUrl!;
     const { getStorage } = await import(`../index?cb=${Math.random()}`);
-    const s = await getStorage();
-    expect(s.constructor.name).toBe('RedisStorage');
+    const storage = await getStorage();
+    expect(storage.constructor.name).toBe('RedisStorage');
   });
 
-  test.if(redisUp)('successive calls share the same storage instance (promise cached on success)', async () => {
-    // Verifies the happy-path side of the retry fix: when init() succeeds, the promise
-    // is kept cached so we get the same instance on subsequent calls.
-    process.env.REDIS_URL = REDIS_URL;
-    const mod = await import(`../index?cb=${Math.random()}`);
-    const s1 = await mod.getStorage();
-    const s2 = await mod.getStorage();
-    // Both calls resolve to the same storage instance — no double-init
-    expect(s1).toBe(s2);
-    expect(s1.constructor.name).toBe('RedisStorage');
+  test.if(redisAvailable)('caches a successful Redis storage instance', async () => {
+    process.env.REDIS_URL = redisUrl!;
+    const module = await import(`../index?cb=${Math.random()}`);
+    const first = await module.getStorage();
+    const second = await module.getStorage();
+    expect(first).toBe(second);
+    expect(first.constructor.name).toBe('RedisStorage');
   });
 });

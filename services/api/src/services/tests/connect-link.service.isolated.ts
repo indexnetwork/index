@@ -1,13 +1,14 @@
-/** Config */
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
-
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test as bunTest } from 'bun:test';
 import { eq } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import { connectLinks, opportunities, users } from '../../schemas/database.schema';
 import { mintConnectLink, resolveConnectLink, resolveConnectLinkForUser, buildConnectShortUrl } from '../connect-link.service';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 90_000);
+const test = withMinimumDatabaseTestBudget(bunTest, 30_000);
 
 const USER_ID = `cl-svc-user-${Date.now()}`;
 const OPP_ID = `cl-svc-opp-${Date.now()}`;

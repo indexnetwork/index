@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, afterEach as bunAfterEach, beforeEach as bunBeforeEach, describe, expect, test as bunTest } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 import { inArray } from 'drizzle-orm';
@@ -7,6 +7,12 @@ import db from '../src/lib/drizzle/drizzle';
 import { agents, opportunityDeliveries, opportunities, users } from '../src/schemas/database.schema';
 import { OpportunityDeliveryService } from '../src/services/opportunity-delivery.service';
 import type { RenderedCard } from '../src/services/opportunity-delivery.service';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 60_000);
+const afterEach = withMinimumDatabaseHookBudget(bunAfterEach, 60_000);
+const beforeEach = withMinimumDatabaseHookBudget(bunBeforeEach, 30_000);
+const test = withMinimumDatabaseTestBudget(bunTest, 30_000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stubs

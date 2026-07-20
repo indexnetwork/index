@@ -1,6 +1,3 @@
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
-
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { and, eq, inArray } from 'drizzle-orm';
 
@@ -25,6 +22,14 @@ const experimentService = new ExperimentService({
   addEnrichUserJobBulk: enrichBulkSpy,
   addEnrichUserJob: enrichSingleSpy,
 });
+
+function databaseTest(
+  name: string,
+  callback: () => Promise<void>,
+  requestedTimeout = 45_000,
+): void {
+  test(name, callback, Math.max(requestedTimeout, 45_000));
+}
 
 describe('CSV import → network-scoped agent end-to-end', () => {
   let networkId: string;
@@ -52,7 +57,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       userId: ownerId,
       permissions: ['owner'],
     });
-  });
+  }, 30_000);
 
   afterAll(async () => {
     // Drop network_members and personal_networks for invited users (no FK cascade on user_id)
@@ -72,9 +77,9 @@ describe('CSV import → network-scoped agent end-to-end', () => {
         await db.delete(schema.networks).where(inArray(schema.networks.id, allNetIds));
       }
     }
-  }, 30_000);
+  }, 60_000);
 
-  test('importMembers provisions user + scoped agent + key + email', async () => {
+  databaseTest('importMembers provisions user + scoped agent + key + email', async () => {
     sendSpy.mockClear();
     const email = `csv-invitee-${Date.now()}@test.dev`;
     const result = await experimentService.importMembers(networkId, [
@@ -129,7 +134,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(call.html.length).toBeGreaterThan(0);
   });
 
-  test('re-importing the same email is idempotent: no new key, no new email', async () => {
+  databaseTest('re-importing the same email is idempotent: no new key, no new email', async () => {
     const email = `csv-idem-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
       { email, name: 'First', socials: [] },
@@ -159,7 +164,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(perms.length).toBe(1);
   }, 15000);
 
-  test('importMembers persists CSV profile fields and stages their onboarding provenance', async () => {
+  databaseTest('importMembers persists CSV profile fields and stages their onboarding provenance', async () => {
     const email = `csv-profile-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
       { email, name: 'Profile Test', bio: 'AI researcher at MIT', location: 'Cambridge, MA', socials: [{ label: 'linkedin', value: 'https://linkedin.com/in/profile-test' }] },
@@ -184,7 +189,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(seed?.socials).toEqual([{ label: 'linkedin', value: 'https://linkedin.com/in/profile-test' }]);
   });
 
-  test('importMembers leaves onboarding incomplete for imported users', async () => {
+  databaseTest('importMembers leaves onboarding incomplete for imported users', async () => {
     const email = `csv-onboard-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
       { email, name: 'Onboard Test', socials: [] },
@@ -199,7 +204,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding?.completedAt).toBeUndefined();
   });
 
-  test('importMembers preserves existing onboarding fields without setting completedAt', async () => {
+  databaseTest('importMembers preserves existing onboarding fields without setting completedAt', async () => {
     const email = `csv-onboard-preserve-${Date.now()}@test.dev`;
 
     // Pre-create user with existing onboarding state
@@ -227,7 +232,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding!.currentStep).toBe('connections');
   });
 
-  test('importMembers does not overwrite existing completedAt', async () => {
+  databaseTest('importMembers does not overwrite existing completedAt', async () => {
     const email = `csv-keep-completed-${Date.now()}@test.dev`;
     const originalCompletedAt = '2025-01-15T00:00:00.000Z';
 
@@ -254,7 +259,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding!.flow).toBe(1);
   });
 
-  test('importMembers enqueues profile enrichment for imported users', async () => {
+  databaseTest('importMembers enqueues profile enrichment for imported users', async () => {
     enrichBulkSpy.mockClear();
     const email = `csv-enrich-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
@@ -272,7 +277,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(call).toEqual([{ userId: user.id, networkId, reason: 'experiment_import' }]);
   });
 
-  test('importMembers deduplicates enrichment jobs for repeated emails', async () => {
+  databaseTest('importMembers deduplicates enrichment jobs for repeated emails', async () => {
     enrichBulkSpy.mockClear();
     const email = `csv-dedup-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
@@ -292,7 +297,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(call[0]).toEqual({ userId: user.id, networkId, reason: 'experiment_import' });
   });
 
-  test('signup leaves onboarding incomplete for new users', async () => {
+  databaseTest('signup leaves onboarding incomplete for new users', async () => {
     enrichSingleSpy.mockClear();
     const email = `signup-onboard-${Date.now()}@test.dev`;
     const result = await experimentService.signup(networkId, {
@@ -309,7 +314,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding?.completedAt).toBeUndefined();
   });
 
-  test('signup does not overwrite existing completedAt on re-signup', async () => {
+  databaseTest('signup does not overwrite existing completedAt on re-signup', async () => {
     const email = `signup-keep-${Date.now()}@test.dev`;
     const originalCompletedAt = '2025-06-01T00:00:00.000Z';
 
@@ -334,7 +339,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding!.flow).toBe(3);
   });
 
-  test('signup persists rich profile fields, stages provenance, and enqueues enrichment', async () => {
+  databaseTest('signup persists rich profile fields, stages provenance, and enqueues enrichment', async () => {
     enrichSingleSpy.mockClear();
     const email = `signup-enrich-${Date.now()}@test.dev`;
     const result = await experimentService.signup(networkId, {

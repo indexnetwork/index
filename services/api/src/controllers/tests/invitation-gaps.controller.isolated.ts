@@ -1,12 +1,13 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test as bunTest } from 'bun:test';
 import { NetworkController } from "../network.controller";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
 import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 60_000);
+const test = withMinimumDatabaseTestBudget(bunTest, 30_000);
 
 /**
  * Coverage for previously-untested backend invitation behaviors:

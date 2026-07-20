@@ -1,21 +1,17 @@
-import { config } from 'dotenv';
 import path from 'node:path';
 import { z } from 'zod';
 
-const environment = process.env.NODE_ENV;
-
-const dotenvPathByEnvironment: Record<string, string> = {
-  development: '.env.development',
-  test: '.env.test',
-};
+import { loadEnvironmentWithTestLock } from './lib/env/test-environment';
 // Runtime env files live at the repo root (see root .env.example). Resolve
 // relative to this file so the path works regardless of cwd. No bare `.env`
 // fallback: development is the default when NODE_ENV is unset; deployments
 // use platform-injected variables, never files.
 const repoRoot = path.resolve(import.meta.dir, '../../..');
-const dotenvPath = path.join(repoRoot, (environment && dotenvPathByEnvironment[environment]) || '.env.development');
-
-config({ path: dotenvPath });
+loadEnvironmentWithTestLock({
+  requestedNodeEnv: process.env.NODE_ENV,
+  testEnvPath: path.join(repoRoot, '.env.test'),
+  developmentEnvPath: path.join(repoRoot, '.env.development'),
+});
 
 // ---------------------------------------------------------------------------
 // Environment validation

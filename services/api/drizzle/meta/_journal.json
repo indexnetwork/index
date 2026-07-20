@@ -687,6 +687,13 @@
       "when": 1784452865791,
       "tag": "0097_add_frame_drift_execution_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1784452865792,
+      "tag": "0098_complete_apikey_schema",
+      "breakpoints": true
     }
   ]
 }

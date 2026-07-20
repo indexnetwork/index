@@ -6,18 +6,46 @@
  * database before Bun imports any specs; targeted specs defer the same check to
  * imports of the real Drizzle singleton so hermetic module-mock tests stay DB-free.
  */
-import { config } from 'dotenv';
+import { afterAll } from 'bun:test';
 import path from 'node:path';
 
-import { ensureTestDatabaseReady, shouldRequireTestDatabase } from './lib/drizzle/test-database-readiness';
+import { ensureTestDatabaseReady, readOriginalProcessArgv, shouldRequireTestDatabase } from './lib/drizzle/test-database-readiness';
+import { latchTestInvocationNodeEnv, loadEnvironmentWithTestLock, requireTestMode } from './lib/env/test-environment';
+import { ISOLATED_SUITE_TIMEOUT_MS, runIsolatedTestSuite } from './lib/testing/isolated-test-runner';
+import { assertNoDiscoverableModuleMocks, listDiscoverableTestFiles, loadIsolatedTestInventory } from './lib/testing/isolated-test-suite';
 
-config({ path: path.resolve(import.meta.dir, '../../../.env.test'), override: true });
+const rootDirectory = path.resolve(import.meta.dir, '../../..');
+const loadedEnvironment = loadEnvironmentWithTestLock({
+  requestedNodeEnv: latchTestInvocationNodeEnv(process.env.NODE_ENV),
+  testEnvPath: path.join(rootDirectory, '.env.test'),
+  developmentEnvPath: path.join(rootDirectory, '.env.development'),
+});
+requireTestMode(loadedEnvironment);
+
+const apiRoot = path.resolve(import.meta.dir, '..');
+const isolatedChild = process.env.API_TEST_ISOLATED_CHILD === '1';
+const discoverableFiles = isolatedChild
+  ? []
+  : listDiscoverableTestFiles(apiRoot).map((file) => path.join(apiRoot, file));
+const fullSuite = shouldRequireTestDatabase(readOriginalProcessArgv(), process.env, discoverableFiles);
+if (!isolatedChild) {
+  loadIsolatedTestInventory(apiRoot);
+  assertNoDiscoverableModuleMocks(apiRoot);
+}
 
 // The contacts/ghost-user feature is disabled-when-unset in production. Default
 // it ON for the test suite so existing contact specs exercise the happy path;
 // specs that assert the disabled behaviour override this locally with 'false'.
 process.env.CONTACTS_ENABLED = process.env.CONTACTS_ENABLED ?? 'true';
 
-if (shouldRequireTestDatabase(Bun.argv, process.env)) {
+if (fullSuite) {
   await ensureTestDatabaseReady();
+  afterAll(
+    async () => {
+      const { closeDb } = await import('./lib/drizzle/drizzle');
+      await closeDb();
+      await runIsolatedTestSuite(apiRoot);
+    },
+    ISOLATED_SUITE_TIMEOUT_MS,
+  );
 }

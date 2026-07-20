@@ -1,13 +1,14 @@
-import { config } from "dotenv";
-config({ path: ".env.test", override: true });
-
-import { describe, it, expect, afterAll, mock } from "bun:test";
+import { afterAll as bunAfterAll, describe, expect, it as bunIt, mock } from 'bun:test';
 import { eq } from "drizzle-orm/sql";
 import db from "../../lib/drizzle/drizzle";
 import * as schema from "../../schemas/database.schema";
 import { ChatSummaryDatabaseAdapter } from "../../adapters/chat-summary.database.adapter";
 import { ChatSummaryService } from "../chat-summary.service";
 import type { ChatContextDigest } from "@indexnetwork/protocol";
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 60_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 30_000);
 
 const sampleDigest: ChatContextDigest = {
   statedFacts: ["Pre-revenue"],

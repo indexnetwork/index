@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, beforeEach as bunBeforeEach, describe, expect, test } from 'bun:test';
 import { eq } from 'drizzle-orm/sql';
 
 import { UserDatabaseAdapter } from '../../adapters/database.adapter';
@@ -9,10 +9,15 @@ import { IntentController } from '../intent.controller';
 import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../../guards/auth.guard';
 import { RouteRegistry } from '../../lib/router/router.decorators';
 import db from '../../lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { intents } from '../../schemas/database.schema';
 
 const EMAIL = 'test-intent-visit@example.com';
 const OTHER_EMAIL = 'test-intent-visit-other@example.com';
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const beforeEach = withMinimumDatabaseHookBudget(bunBeforeEach, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('explicit intent visit ping', () => {
   const users = new UserDatabaseAdapter();

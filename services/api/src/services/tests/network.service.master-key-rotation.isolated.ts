@@ -1,6 +1,3 @@
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
-
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm/sql';
 
@@ -17,6 +14,10 @@ import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 import { hashMasterKey } from '../../lib/experiment/master-key';
 import { networkService } from '../network.service';
+
+function databaseTest(name: string, callback: () => Promise<void>): void {
+  test(name, callback, 30_000);
+}
 
 describe('networkService.rotateExperimentMasterKey', () => {
   let networkId: string;
@@ -68,7 +69,7 @@ describe('networkService.rotateExperimentMasterKey', () => {
     nonExperimentNetworkId = nx.id;
     cleanupNetworkIds.push(nonExperimentNetworkId);
     await db.insert(schema.networkMembers).values({ networkId: nonExperimentNetworkId, userId: ownerId, permissions: ['owner'] });
-  });
+  }, 30_000);
 
   afterAll(async () => {
     if (cleanupNetworkIds.length > 0) {
@@ -78,9 +79,9 @@ describe('networkService.rotateExperimentMasterKey', () => {
     if (cleanupUserIds.length > 0) {
       await db.delete(schema.users).where(inArray(schema.users.id, cleanupUserIds));
     }
-  });
+  }, 45_000);
 
-  test('rotates the hash and returns a fresh plaintext key', async () => {
+  databaseTest('rotates the hash and returns a fresh plaintext key', async () => {
     sendSpy.mockClear();
 
     const [before] = await db
@@ -105,7 +106,7 @@ describe('networkService.rotateExperimentMasterKey', () => {
     await new Promise((r) => setTimeout(r, 50));
   });
 
-  test('emails every owner of the network', async () => {
+  databaseTest('emails every owner of the network', async () => {
     sendSpy.mockClear();
     await networkService.rotateExperimentMasterKey(networkId, ownerId);
 
@@ -120,13 +121,13 @@ describe('networkService.rotateExperimentMasterKey', () => {
     ]);
   });
 
-  test('throws when the network is not an experiment', async () => {
+  databaseTest('throws when the network is not an experiment', async () => {
     await expect(
       networkService.rotateExperimentMasterKey(nonExperimentNetworkId, ownerId),
     ).rejects.toThrow(/not an experiment/i);
   });
 
-  test('throws when the caller is not an owner', async () => {
+  databaseTest('throws when the caller is not an owner', async () => {
     await expect(
       networkService.rotateExperimentMasterKey(networkId, nonOwnerId),
     ).rejects.toThrow(/owner/i);

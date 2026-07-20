@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll as bunAfterAll, afterEach as bunAfterEach, beforeEach as bunBeforeEach, describe, expect, it as bunIt } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 import { eq, inArray } from 'drizzle-orm/sql';
@@ -9,6 +9,12 @@ import { OpportunityDeliveryService } from '../opportunity-delivery.service';
 import type { RenderedCard } from '../opportunity-delivery.service';
 import type { PresenterDatabase } from '@indexnetwork/protocol';
 import { OpportunityPresenter } from '@indexnetwork/protocol';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
+const afterEach = withMinimumDatabaseHookBudget(bunAfterEach, 60_000);
+const beforeEach = withMinimumDatabaseHookBudget(bunBeforeEach, 45_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 45_000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stubs — never call LLM or real DB adapters

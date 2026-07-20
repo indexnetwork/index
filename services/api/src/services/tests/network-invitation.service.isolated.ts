@@ -1,6 +1,3 @@
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
-
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { and, eq, inArray } from 'drizzle-orm/sql';
 
@@ -95,7 +92,7 @@ describe('networkInvitationService.invite', () => {
       .where(eq(schema.agentPermissions.userId, result.user.id));
     expect(perms.length).toBeGreaterThan(0);
     expect(perms.every((p) => p.scope === 'network' && p.scopeId === networkId)).toBe(true);
-  }, 15_000);
+  }, 45_000);
 
   test('existing user without scoped agent (e.g. ghost contact) gets provisioned + emailed', async () => {
     const email = `ghost-${Date.now()}@test.dev`;
@@ -113,7 +110,7 @@ describe('networkInvitationService.invite', () => {
     expect(result.apiKey).toBeTruthy();
     expect(result.user.id).toBe(existing.id);
     expect(sendSpy).toHaveBeenCalledTimes(1);
-  }, 15_000);
+  }, 45_000);
 
   test('existing user with scoped agent: no new key, no email, alreadyMember reflects state', async () => {
     const email = `provisioned-${Date.now()}@test.dev`;
@@ -129,5 +126,5 @@ describe('networkInvitationService.invite', () => {
     expect(second.agentProvisioned).toBe(false);
     expect(second.apiKey).toBeNull();
     expect(sendSpy).toHaveBeenCalledTimes(0);
-  }, 15_000);
+  }, 45_000);
 });

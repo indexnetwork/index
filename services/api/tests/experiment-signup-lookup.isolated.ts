@@ -1,6 +1,6 @@
 import '../src/startup.env';
 
-import { afterAll, describe, expect, it, mock } from 'bun:test';
+import { afterAll as bunAfterAll, describe, expect, it as bunIt, mock } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
@@ -9,7 +9,10 @@ import db from '../src/lib/drizzle/drizzle';
 import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userSocials, users } from '../src/schemas/database.schema';
 import { generateMasterKey } from '../src/lib/experiment/master-key';
 import { NetworkExperimentController } from '../src/controllers/network-experiment.controller';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
 
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 30_000);
 const experimentService = new ExperimentService({
   addEnrichUserJob: mock(async () => ({})),
   addEnrichUserJobBulk: mock(async () => []),

@@ -1,25 +1,12 @@
 CREATE TABLE IF NOT EXISTS "apikey" (
   "id" text PRIMARY KEY NOT NULL,
   "key" text NOT NULL,
-  "user_id" text REFERENCES "users"("id") ON DELETE CASCADE,
+  "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
   "reference_id" text,
-  "config_id" text DEFAULT 'default',
-  "name" text,
-  "prefix" text,
-  "start" text,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   "expires_at" timestamp with time zone,
   "enabled" boolean DEFAULT true NOT NULL,
   "rate_limit_enabled" boolean DEFAULT false NOT NULL,
-  "rate_limit_max" integer,
-  "rate_limit_time_window" integer,
-  "request_count" integer DEFAULT 0 NOT NULL,
-  "remaining" integer,
-  "refill_amount" integer,
-  "refill_interval" integer,
-  "last_refill_at" timestamp with time zone,
-  "last_request" timestamp with time zone,
-  "metadata" text,
-  "permissions" text
+  "request_count" integer DEFAULT 0 NOT NULL
 );

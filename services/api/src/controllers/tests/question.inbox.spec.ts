@@ -16,7 +16,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
+import { describe, test, expect, beforeAll as bunBeforeAll, afterAll as bunAfterAll, beforeEach } from "bun:test";
 import { eq, inArray } from "drizzle-orm/sql";
 import { QuestionController } from "../question.controller";
 import { QuestionerAdapter, type AdapterPersistableQuestion } from "../../adapters/questioner.adapter";
@@ -24,10 +24,13 @@ import { UserDatabaseAdapter } from "../../adapters/database.adapter";
 import { questionService } from "../../services/question.service";
 import { QuestionEvents } from "../../events/question.event";
 import db from "../../lib/drizzle/drizzle";
+import { withMinimumDatabaseHookBudget } from "../../lib/testing/database-test-budget";
 import { questions } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 const EMAIL = "test-question-inbox@example.com";
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe("Pending question inbox (IND-404)", () => {
   const userAdapter = new UserDatabaseAdapter();
@@ -109,7 +112,7 @@ describe("Pending question inbox (IND-404)", () => {
 
   afterAll(async () => {
     QuestionEvents.onAnswered = prevOnAnswered;
-    if (createdQuestionIds.length) {
+    if (createdQuestionIds.length > 0) {
       await db.delete(questions).where(inArray(questions.id, createdQuestionIds)).catch(() => {});
     }
     if (testUserId) await userAdapter.deleteById(testUserId);

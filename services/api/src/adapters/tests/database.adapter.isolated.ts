@@ -2,11 +2,7 @@
  * Integration tests for all database adapters in database.adapter.ts.
  * Requires DATABASE_URL and migrated schema. Run: bun test src/adapters/database.adapter.spec.ts
  */
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, expect, it, beforeAll, afterAll, mock } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, it as bunIt, mock } from 'bun:test';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
@@ -14,7 +10,11 @@ import { users, userSocials, networks, networkMembers, intents, intentNetworks, 
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 import { PremiseEvents } from '../../events/premise.event';
 import { IntentEvents } from '../../events/intent.event';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 90_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 45_000);
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 
 interface TestFixture {

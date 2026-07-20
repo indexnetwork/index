@@ -1,6 +1,6 @@
 import '../src/startup.env';
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, beforeEach as bunBeforeEach, describe, expect, test as bunTest } from 'bun:test';
 import { eq } from 'drizzle-orm';
 
 import { ConnectLinkController } from '../src/controllers/connect-link.controller';
@@ -8,6 +8,12 @@ import type { AuthenticatedUser } from '../src/guards/auth.guard';
 import db from '../src/lib/drizzle/drizzle';
 import { connectLinks, networkMembers, networks, opportunities, personalNetworks, userSocials, users } from '../src/schemas/database.schema';
 import { mintConnectLink } from '../src/services/connect-link.service';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 60_000);
+const beforeEach = withMinimumDatabaseHookBudget(bunBeforeEach, 30_000);
+const test = withMinimumDatabaseTestBudget(bunTest, 45_000);
 
 const FRONTEND_URL = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network')
   .replace(/\/+$/, '');

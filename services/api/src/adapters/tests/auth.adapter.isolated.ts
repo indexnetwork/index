@@ -3,16 +3,16 @@
  * Requires DATABASE_URL and migrated schema.
  * Run: bun test src/adapters/tests/auth.adapter.spec.ts
  */
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, it, expect, afterAll } from 'bun:test';
+import { afterAll as bunAfterAll, describe, expect, it as bunIt } from 'bun:test';
 import { eq } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 import { AuthDatabaseAdapter } from '../auth.adapter';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 30_000);
 
 describe('AuthDatabaseAdapter', () => {
   const adapter = new AuthDatabaseAdapter();

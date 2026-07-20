@@ -1,19 +1,20 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, mock, test as bunTest } from 'bun:test';
 import { and, eq } from 'drizzle-orm/sql';
 
 import { IntentController } from "../intent.controller";
 import { IntentDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
 import { deleteNetworkAndMembers } from "./test-helpers";
-import { ScopeViolationError } from '../../guards/agent-scope.guard';
 import type { AuthenticatedUser } from "../../guards/auth.guard";
+import { ScopeViolationError } from '../../guards/agent-scope.guard';
+import { IntentNetworkMembershipError } from '../../services/intent.service';
 import db from '../../lib/drizzle/drizzle';
 import { IntentEvents } from '../../events/intent.event';
 import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunityDiscoveryRuns as opportunityDiscoveryRunsTable } from '../../schemas/database.schema';
-import { IntentNetworkMembershipError } from '../../services/intent.service';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 60_000);
+const test = withMinimumDatabaseTestBudget(bunTest, 45_000);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // IntentDatabaseAdapter Integration Tests
@@ -107,7 +108,7 @@ describe("IntentDatabaseAdapter Integration", () => {
       expect(new Set(confirmedIds).size).toBe(1);
       allowedIntentId = confirmedIds[0] ?? null;
       expect(allowedIntentId).not.toBeNull();
-      expect(await adapter.isNetworkMember(network.id, testUserId)).toBe(true);
+      expect(await chatAdapter.isNetworkMember(network.id, testUserId)).toBe(true);
 
       const persisted = await db.select({ id: intentsTable.id })
         .from(intentsTable)
@@ -150,7 +151,7 @@ describe("IntentDatabaseAdapter Integration", () => {
     }
   }, 30_000);
 
-  test("getActiveIntents should return active intents for user", async () => {
+  test("getActiveIntents should return active intents for user", async () =>{
     // Should now find the intent we just created
     const intents = await adapter.getActiveIntents(testUserId);
 

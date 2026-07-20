@@ -1,24 +1,7 @@
 #!/usr/bin/env bash
-# Run each file listed in .test-isolated in its own bun test process.
-# These files use mock.module() which permanently contaminates Bun's module
-# cache — they MUST run in isolation.
+# Validate .test-isolated against the filesystem, then run every manifest entry
+# in a fresh Bun process through the discoverable isolated-suite orchestrator.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-failed=0
-total=0
-
-while IFS= read -r file; do
-  [[ -z "$file" || "$file" == \#* ]] && continue
-  [[ ! -f "$file" ]] && { echo "SKIP (not found): $file"; continue; }
-  [[ "$file" == *.e2e.* ]] && { echo "SKIP (E2E — needs dev server): $file"; continue; }
-  total=$((total + 1))
-  echo "=== $file ==="
-  if ! bun test "./$file" 2>&1; then
-    failed=$((failed + 1))
-  fi
-done < .test-isolated
-
-echo ""
-echo "=== Isolated tests: $total files, $failed failed ==="
-[[ $failed -eq 0 ]]
+exec env NODE_ENV=test API_TEST_ISOLATED_ONLY=1 bun test ./tests/isolated-suite.spec.ts

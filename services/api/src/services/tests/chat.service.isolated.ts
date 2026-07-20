@@ -1,10 +1,5 @@
 /** Tests for ChatSessionService with constructor-injected dependencies. */
-import { describe, expect, it, mock } from 'bun:test';
-
-import { ChatSessionService } from '../chat.service';
-import type { ConversationDatabaseAdapter } from '../../adapters/database.adapter';
-
-import { mock, describe, it, expect, afterAll, afterEach } from "bun:test";
+import { afterAll, afterEach, describe, expect, it, mock } from 'bun:test';
 
 // ─── Mock @indexnetwork/protocol ──────────────────────────────────────────────
 // Intercepts `import { ChatGraphFactory, ChatTitleGenerator } from …`
@@ -79,10 +74,30 @@ afterAll(() => {
   mock.restore();
 });
 
-import { ChatGraphFactory } from "@indexnetwork/protocol";
 import { ChatSessionService } from "../chat.service";
 import type { ConversationDatabaseAdapter } from "../../adapters/database.adapter";
 
+const graphFactory = {
+  createGraph: () => ({ invoke: mockGraphInvoke }),
+  createStreamingGraph: () => ({ invoke: mockGraphInvoke }),
+  streamChatEventsWithContext: () => (async function* () {})(),
+  streamChatEvents: () => (async function* () {})(),
+};
+const graphDatabase = {
+  getNetwork: mock(() => Promise.resolve(null)),
+  isNetworkMember: mock(() => Promise.resolve(false)),
+  getIntent: mock(() => Promise.resolve({
+    id: 'intent-001',
+    userId: 'user-001',
+    summary: 'Find a co-founder',
+    payload: '',
+    archivedAt: null,
+  })),
+};
+
+function createService(db: ConversationDatabaseAdapter): ChatSessionService {
+  return new ChatSessionService(db, { graphDatabase: graphDatabase as never });
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

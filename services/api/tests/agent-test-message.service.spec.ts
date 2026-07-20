@@ -1,11 +1,15 @@
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeEach as bunBeforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 import { sql } from 'drizzle-orm';
 
 import db from '../src/lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../src/lib/testing/database-test-budget';
 import { agentTestMessages, agents, users } from '../src/schemas/database.schema';
 import { AgentTestMessageService } from '../src/services/agent-test-message.service';
+
+const beforeEach = withMinimumDatabaseHookBudget(bunBeforeEach, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('AgentTestMessageService', () => {
   const service = new AgentTestMessageService();

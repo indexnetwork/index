@@ -1,13 +1,16 @@
 import '../src/startup.env';
 
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll as bunAfterAll, describe, expect, it as bunIt } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { like, sql } from 'drizzle-orm';
 
 import { FrameDriftExecutionAttemptDatabaseAdapter, type FrameDriftExecutionAttemptStart } from '../src/adapters/frame-drift-execution-attempt.database.adapter';
 import db from '../src/lib/drizzle/drizzle';
 import { frameDriftExecutionAttempts } from '../src/schemas/database.schema';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
 
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 60_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 30_000);
 const suffix = randomUUID();
 const jobPrefix = `ind468-${suffix}`;
 const BUCKET_START = new Date('2026-07-18T00:00:00.000Z');

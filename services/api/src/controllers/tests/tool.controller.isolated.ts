@@ -1,22 +1,23 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { ToolController } from "../tool.controller";
 import { ToolService } from "../../services/tool.service";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
+import type { ToolDeps } from '@indexnetwork/protocol';
+
 import { ComposioIntegrationAdapter } from "../../adapters/integration.adapter";
 import { contactService } from "../../services/contact.service";
 import { IntegrationService } from "../../services/integration.service";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
-const describePaid = process.env.RUN_PAID_INTEGRATION_TESTS === '1'
-  && Boolean(process.env.OPENROUTER_API_KEY && process.env.COMPOSIO_API_KEY && process.env.PARALLELS_API_KEY)
-  ? describe
-  : describe.skip;
+const paidIntegrationsEnabled = process.env.RUN_PAID_INTEGRATION_TESTS === '1';
+const openRouterTest = paidIntegrationsEnabled && process.env.OPENROUTER_API_KEY
+  ? test
+  : test.skip;
+const parallelsTest = paidIntegrationsEnabled && process.env.PARALLELS_API_KEY
+  ? test
+  : test.skip;
 
-describePaid("ToolController Integration", () => {
+describe("ToolController Integration", () => {
   let controller: ToolController;
   const userAdapter = new UserDatabaseAdapter();
   let testUserId: string;
@@ -62,10 +63,23 @@ describePaid("ToolController Integration", () => {
 
     const integrationAdapter = new ComposioIntegrationAdapter();
     const integrationService = new IntegrationService(integrationAdapter, contactService);
-    const toolService = new ToolService(contactService, integrationService, integrationAdapter);
+    const noOpGraph = { invoke: async () => ({}) };
+    const graphs = {
+      profile: noOpGraph,
+      intent: noOpGraph,
+      index: noOpGraph,
+      networkMembership: noOpGraph,
+      intentIndex: noOpGraph,
+      opportunity: noOpGraph,
+      premise: noOpGraph,
+    } as unknown as ToolDeps['graphs'];
+    const toolService = new ToolService(contactService, integrationService, integrationAdapter, {
+      graphs,
+      contactsEnabled: true,
+    });
     controller = new ToolController(toolService);
     console.log(`Created test users: A=${testUserId}, B=${testUserBId}`);
-  });
+  }, 60_000);
 
   afterAll(async () => {
     // Remove contacts and memberships created during tests before deleting users
@@ -86,7 +100,7 @@ describePaid("ToolController Integration", () => {
       }
     }
     console.log("Cleaned up test users");
-  });
+  }, 90_000);
 
   // ── Existing ToolController tests ──────────────────────────────
 
@@ -177,7 +191,7 @@ describePaid("ToolController Integration", () => {
     console.log("list_opportunities result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
-  test("POST /tools/scrape_url should handle a URL", async () => {
+  parallelsTest("POST /tools/scrape_url should handle a URL", async () => {
     const { status, data } = await invokeTool("scrape_url", { url: "https://example.com" });
     expect(status).toBe(200);
     expect(data).toBeDefined();
@@ -266,7 +280,7 @@ describePaid("ToolController Integration", () => {
 
     // ── Opportunity (CLI: discover modes) ────────────────────────
 
-    test("discover_opportunities with searchQuery (CLI: opportunity discover)", async () => {
+    openRouterTest("discover_opportunities with searchQuery (CLI: opportunity discover)", async () => {
       const { status, data } = await invokeTool("discover_opportunities", {
         searchQuery: "AI engineer with privacy expertise",
       });
@@ -274,7 +288,7 @@ describePaid("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 120_000);
 
-    test("discover_opportunities with targetUserId + searchQuery (CLI: discover --target)", async () => {
+    openRouterTest("discover_opportunities with targetUserId + searchQuery (CLI: discover --target)", async () => {
       const { status, data } = await invokeTool("discover_opportunities", {
         targetUserId: testUserBId,
         searchQuery: "collaborate on open-source tooling",
@@ -283,7 +297,7 @@ describePaid("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 120_000);
 
-    test("discover_opportunities with partyUserIds + entities (CLI: discover --introduce)", async () => {
+    openRouterTest("discover_opportunities with partyUserIds + entities (CLI: discover --introduce)", async () => {
       const { data } = await invokeTool("discover_opportunities", {
         partyUserIds: [testUserId, testUserBId],
         entities: [
@@ -378,7 +392,7 @@ describePaid("ToolController Integration", () => {
 
     // ── Scrape (CLI: scrape) ─────────────────────────────────────
 
-    test("scrape_url with url + objective (CLI: scrape)", async () => {
+    parallelsTest("scrape_url with url + objective (CLI: scrape)", async () => {
       const { status, data } = await invokeTool("scrape_url", {
         url: "https://example.com",
         objective: "Extract main content",
@@ -406,7 +420,7 @@ describePaid("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("create_intent with description (CLI: intent create)", async () => {
+    openRouterTest("create_intent with description (CLI: intent create)", async () => {
       const { status, data } = await invokeTool("create_intent", {
         description: "Looking for a CTO with AI experience",
       });
@@ -431,7 +445,7 @@ describePaid("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("create_user_profile with confirm (CLI: profile sync - no profile)", async () => {
+    openRouterTest("create_user_profile with confirm (CLI: profile sync - no profile)", async () => {
       const { status, data } = await invokeTool("create_user_profile", {
         confirm: true,
       });
@@ -439,7 +453,7 @@ describePaid("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("update_user_profile with action (CLI: profile sync - has profile)", async () => {
+    openRouterTest("update_user_profile with action (CLI: profile sync - has profile)", async () => {
       const { status, data } = await invokeTool("update_user_profile", {
         action: "regenerate",
       });

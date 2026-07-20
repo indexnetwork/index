@@ -7,12 +7,16 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
+import { describe, expect, it, beforeAll as bunBeforeAll, afterAll as bunAfterAll } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { users, networks, networkMembers, intents, intentNetworks } from '../../schemas/database.schema';
 import { EmbedderAdapter } from '../embedder.adapter';
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 const TEST_PREFIX = 'embedder_spec_' + Date.now() + '_';
 

@@ -1,14 +1,11 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
 import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 const RUN_PAID_INTEGRATION = process.env.RUN_PAID_INTEGRATION_TESTS === '1'
   && !!process.env.OPENROUTER_API_KEY;
+const paidTest = RUN_PAID_INTEGRATION ? test : test.skip;
 
 // ---------------------------------------------------------------------------
 // Restore mocks after all tests
@@ -26,7 +23,6 @@ mock.module("../../queues/notification.queue", () => ({
 let OpportunityControllerClass: typeof import("../opportunity.controller").OpportunityController;
 let NetworkOpportunityControllerClass: typeof import("../opportunity.controller").NetworkOpportunityController;
 beforeAll(async () => {
-  if (!RUN_PAID_INTEGRATION) return;
   const mod = await import("../opportunity.controller");
   OpportunityControllerClass = mod.OpportunityController;
   NetworkOpportunityControllerClass = mod.NetworkOpportunityController;
@@ -111,7 +107,7 @@ describe("OpportunityDatabaseAdapter Integration", () => {
 // OpportunityController Integration Tests
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () => {
+describe("OpportunityController Integration", () => {
   let controller: InstanceType<typeof OpportunityControllerClass>;
   let indexOpportunityController: InstanceType<typeof NetworkOpportunityControllerClass>;
   const userAdapter = new UserDatabaseAdapter();
@@ -215,7 +211,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () =
       confidence: "0.9",
     });
     testOpportunityId = opp.id;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     if (testIndexId) {
@@ -229,7 +225,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () =
       await profileAdapter.deleteProfile(candidateUserId);
       await userAdapter.deleteById(candidateUserId);
     }
-  });
+  }, 60_000);
 
   const mockUser = (): AuthenticatedUser => ({
     id: testUserId,
@@ -247,7 +243,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () =
     expect(data.opportunities!.length).toBeGreaterThanOrEqual(1);
   });
 
-  test("getHome should return 200 with sections and meta", async () => {
+  paidTest("getHome should return 200 with sections and meta", async () => {
     const req = new Request("http://localhost/opportunities/home");
     const res = await controller.getHome(req, mockUser());
     const data = (await res.json()) as { sections?: unknown[]; meta?: { totalOpportunities: number; totalSections: number }; error?: string };
@@ -418,7 +414,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () =
     expect(data.error).toContain("parties");
   });
 
-  test("createManual should return 201 when valid or 409 when opportunity already exists", async () => {
+  paidTest("createManual should return 201 when valid or 409 when opportunity already exists", async () => {
     const req = new Request("http://localhost/networks/" + testIndexId + "/opportunities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -479,7 +475,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () =
     expect((result as { error?: string }).error).toContain("query");
   });
 
-  test("discover should find opportunities based on query", async () => {
+  paidTest("discover should find opportunities based on query", async () => {
     console.log("Testing opportunity discovery...");
 
     const mockRequest = new Request("http://localhost/opportunities/discover", {
@@ -508,7 +504,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () =
     expect((result as { userId?: string }).userId).toBe(testUserId);
   }, 60000); // Extended timeout for embedding/search
 
-  test("discover should respect limit parameter", async () => {
+  paidTest("discover should respect limit parameter", async () => {
     console.log("Testing discover with limit...");
 
     const mockRequest = new Request("http://localhost/opportunities/discover", {
@@ -539,7 +535,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Integration", () =
     }
   }, 60000);
 
-  test("discover should exclude requesting user from results", async () => {
+  paidTest("discover should exclude requesting user from results", async () => {
     console.log("Testing self-exclusion...");
 
     const mockRequest = new Request("http://localhost/opportunities/discover", {

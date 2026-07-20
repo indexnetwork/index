@@ -1,0 +1,15 @@
+ALTER TABLE "apikey"
+  ADD COLUMN IF NOT EXISTS "config_id" text DEFAULT 'default',
+  ADD COLUMN IF NOT EXISTS "name" text,
+  ADD COLUMN IF NOT EXISTS "prefix" text,
+  ADD COLUMN IF NOT EXISTS "start" text,
+  ADD COLUMN IF NOT EXISTS "rate_limit_max" integer,
+  ADD COLUMN IF NOT EXISTS "rate_limit_time_window" integer,
+  ADD COLUMN IF NOT EXISTS "remaining" integer,
+  ADD COLUMN IF NOT EXISTS "refill_amount" integer,
+  ADD COLUMN IF NOT EXISTS "refill_interval" integer,
+  ADD COLUMN IF NOT EXISTS "last_refill_at" timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS "last_request" timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS "metadata" text,
+  ADD COLUMN IF NOT EXISTS "permissions" text,
+  ALTER COLUMN "user_id" DROP NOT NULL;

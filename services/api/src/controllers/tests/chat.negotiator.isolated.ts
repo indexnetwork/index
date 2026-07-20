@@ -106,7 +106,7 @@ describe("Negotiator chat persona (IND-402)", () => {
 
     chatSessionService.setFactory(stubFactory);
     controller = new ChatController(() => ({ generate: async () => [] }) as never);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     if (prevFlag === undefined) delete process.env.NEGOTIATOR_CHAT_ENABLED;
@@ -122,7 +122,7 @@ describe("Negotiator chat persona (IND-402)", () => {
       await db.delete(agents).where(eq(agents.ownerId, testUserId));
       await userAdapter.deleteById(testUserId);
     }
-  });
+  }, 60_000);
 
   // ── Flag surface on the session bootstrap ──────────────────────────────
 
@@ -355,7 +355,7 @@ describe("Negotiator chat persona (IND-402)", () => {
     expect(orchestrator.session.id).not.toBe(firstData.session.id);
     expect(orchestrator.session.persona).toBe("orchestrator");
     expect(orchestrator.session.scopeType).toBe("intent");
-  }, 60000);
+  }, 120_000);
 
   test("streaming persona=negotiator with intent scope resolves the pinned session and seeds the scope + prompt pin", async () => {
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';

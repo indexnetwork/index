@@ -1,10 +1,9 @@
 [test]
 
-# NOTE: pathIgnorePatterns is NOT supported in Bun 1.2.20 (it's documented in
-# Bun's main branch but not yet released). Test isolation is handled by
-# scripts/test-safe.sh which reads .test-isolated to exclude contaminating files.
-# `bun run test` remains preferred for isolation; bare `bun test` now performs
-# the same fail-fast test-database readiness check before importing specs.
+# Bun does not discover files named *.isolated.ts. The discoverable
+# tests/isolated-suite.spec.ts validates .test-isolated against the filesystem
+# and executes every entry in a fresh Bun subprocess. This makes bare `bun test`,
+# `bun run test`, and `bun run test:all` equivalent complete baselines.
 
 # Preload the repo-root .env.test before any test module runs so env vars are
 # available before module-level imports. Full-suite invocations also perform a
@@ -12,6 +11,6 @@
 preload = ["./src/preload.test.ts"]
 
 # The integration baseline shares one disposable remote Postgres database.
-# A bounded pool prevents Bun's default concurrency of 20 from saturating Neon
-# while retaining enough parallelism for the complete baseline to finish locally.
-maxConcurrency = 4
+# Two concurrent files keep Neon round trips below hook/test budgets; four still
+# saturates the single-CU disposable compute during the literal bare baseline.
+maxConcurrency = 2
