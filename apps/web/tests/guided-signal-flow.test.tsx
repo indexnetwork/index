@@ -100,7 +100,7 @@ describe("guided Signal creation", () => {
 
     await waitFor(() => expect(mocks.state.startSignalSession).toHaveBeenCalledTimes(1));
     expect(mocks.state.sendWebMessage).toHaveBeenCalledWith(
-      expect.stringContaining("create a new signal"),
+      "new-signal-kickoff",
       undefined,
       undefined,
       { hidden: true, persona: "signal" },

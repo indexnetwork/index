@@ -164,6 +164,8 @@ function GuidedQuestion({
 function ProposalCard({
   proposal,
   networkTitle,
+  lookingFor,
+  youBring,
   onConfirm,
   onSkip,
   busy,
@@ -171,20 +173,23 @@ function ProposalCard({
 }: {
   proposal: GuidedProposal;
   networkTitle: string;
+  lookingFor?: string;
+  youBring?: string;
   onConfirm: () => Promise<void>;
   onSkip: () => Promise<void>;
   busy: boolean;
   error: string | null;
 }) {
   const [skipping, setSkipping] = useState(false);
-  const youBring = proposal.youBring ?? proposal.offering;
+  const resolvedLookingFor = lookingFor ?? proposal.lookingFor ?? proposal.description;
+  const resolvedYouBring = youBring ?? proposal.youBring ?? proposal.offering;
   return (
     <section aria-label="Confirm signal" className="mt-10 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">One last look</p>
       <h1 className="mt-3 text-2xl font-semibold text-[#041729]">Does this feel right?</h1>
       <div className="mt-7 space-y-5">
-        <Summary label="LOOKING FOR" value={proposal.lookingFor ?? proposal.description} />
-        <Summary label="YOU BRING" value={youBring ?? "Not specified"} />
+        <Summary label="LOOKING FOR" value={resolvedLookingFor} />
+        <Summary label="YOU BRING" value={resolvedYouBring ?? "Not specified"} />
         <Summary label="NETWORKS" value={networkTitle} />
       </div>
       {error && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -253,8 +258,10 @@ export default function NewSignalPage() {
     if (!isAuthenticated || !signalAgentEnabled || startedRef.current) return;
     startedRef.current = true;
     startSignalSession();
+    // Keep this marker stable: the Signal prompt builder uses it to enter the
+    // live, three-round intake rather than treating this as ordinary chat.
     void sendWebMessage(
-      "I want to create a new signal. Guide me through a few focused questions, then propose the signal for my confirmation.",
+      "new-signal-kickoff",
       undefined,
       undefined,
       { hidden: true, persona: "signal" },
@@ -264,16 +271,25 @@ export default function NewSignalPage() {
   const answeredIds = useMemo(() => new Set(answered.map((step) => step.question.id)), [answered]);
   const currentQuestion = liveQuestions.find((question) => !answeredIds.has(question.id)) ?? null;
   const proposal = useMemo(() => latestProposal(messages), [messages]);
-  const networkTitle = useMemo(() => {
-    if (proposal?.networks?.length) {
-      const titles = proposal.networks
-        .map((network) => network.id ? indexes.find((item) => item.id === network.id)?.title : undefined)
-        .filter((title): title is string => Boolean(title));
-      if (titles.length) return titles.join(", ");
-    }
-    if (proposal?.networkId) return indexes.find((network) => network.id === proposal.networkId)?.title ?? "Everywhere";
-    return "Everywhere";
-  }, [indexes, proposal]);
+  const selectedNetwork = useMemo(() => {
+    const proposalNetwork = proposal?.networkId
+      ? indexes.find((network) => network.id === proposal.networkId)
+      : undefined;
+    if (proposalNetwork) return proposalNetwork;
+
+    const locationAnswer = answered[2]?.answer;
+    const labels = [
+      ...(locationAnswer?.selectedOptions ?? []),
+      locationAnswer?.freeText?.trim() ?? "",
+    ].filter(Boolean);
+    return indexes.find((network) => labels.some((label) =>
+      label.localeCompare(network.title, undefined, { sensitivity: "accent" }) === 0,
+    ));
+  }, [answered, indexes, proposal]);
+
+  const networkTitle = selectedNetwork?.title ?? "Everywhere";
+  const lookingFor = answered[0] ? answerLabel(answered[0].answer) : undefined;
+  const answeredContribution = answered[1] ? answerLabel(answered[1].answer) : undefined;
 
   const handleAnswer = useCallback(async (body: AnswerBody) => {
     if (!currentQuestion) return;
@@ -290,9 +306,7 @@ export default function NewSignalPage() {
     if (!proposal || confirming) return;
     setConfirming(true);
     setProposalError(null);
-    const networkId = proposal.networkId && indexes.some((network) => network.id === proposal.networkId)
-      ? proposal.networkId
-      : undefined;
+    const networkId = selectedNetwork?.id;
     try {
       const response = await apiClient.post<{ intentId: string }>("/intents/confirm", {
         proposalId: proposal.proposalId,
@@ -317,7 +331,7 @@ export default function NewSignalPage() {
     } finally {
       setConfirming(false);
     }
-  }, [addNotification, clearChat, confirming, indexes, navigate, networkTitle, proposal, showError]);
+  }, [addNotification, clearChat, confirming, navigate, networkTitle, proposal, selectedNetwork, showError]);
 
   const handleSkip = useCallback(async () => {
     if (!proposal) return;
@@ -380,6 +394,8 @@ export default function NewSignalPage() {
           <ProposalCard
             proposal={proposal}
             networkTitle={networkTitle}
+            lookingFor={lookingFor}
+            youBring={answeredContribution}
             onConfirm={handleConfirm}
             onSkip={handleSkip}
             busy={confirming}

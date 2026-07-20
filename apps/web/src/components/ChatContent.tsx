@@ -1169,8 +1169,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             >
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#041729] text-lg leading-none text-white">+</span>
               <span>
-                <span className="block text-sm font-medium text-[#041729]">Start a new signal</span>
-                <span className="block text-xs text-gray-500">Let your agent guide you through it.</span>
+                <span className="block text-sm font-medium text-[#041729]">Who are you trying to meet?</span>
+                <span className="block text-xs text-gray-500">Let your Signal Agent guide you through a new signal.</span>
               </span>
             </button>
           )}

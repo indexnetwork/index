@@ -80,7 +80,7 @@ Call \`ask_user_question\` immediately. Ask what the user would bring to this co
   if (stage === "where") {
     return `${common}
 ### Round 3 of 3: where to look
-Call \`ask_user_question\` immediately. Ask where this connection should be sought, such as a current community, location, online space, event, or no geographic constraint. Only suggest communities already present in the user's preloaded membership context, and never imply that this question changes membership.`;
+Call \`ask_user_question\` immediately. Ask where this connection should be sought, such as a current community, location, online space, event, or no geographic constraint. Only suggest communities already present in the preloaded membership list, using their exact titles plus \"Everywhere\"; never invent a community, expose an ID, or imply that this question changes membership.`;
   }
 
   if (stage === "proposal") {
@@ -113,6 +113,15 @@ export function buildSignalSystemContent(
   const profileContext = ctx.userProfile
     ? JSON.stringify(ctx.userProfile, null, 2)
     : "null";
+  const membershipContext = JSON.stringify(
+    ctx.userNetworks.map((network) => ({
+      id: network.networkId,
+      title: network.networkTitle,
+      isPersonal: network.isPersonal,
+    })),
+    null,
+    2,
+  );
 
   return `You are Signal Agent, the private signals and profile assistant for ${ctx.userName}.
 
@@ -149,5 +158,10 @@ ${userContext}
 ${profileContext}
 \`\`\`
 
-Only the identity and profile context above are preloaded. Ground every claim about signals, placements, memberships, or premises in a tool result from this conversation. When calling a tool, briefly tell the user what you are checking or changing, then perform the call.${buildSignalIntakeGuidance(getSignalIntakeStage(iterCtx))}`;
+### Current network memberships (preloaded, read-only)
+\`\`\`json
+${membershipContext}
+\`\`\`
+
+Only the identity, profile, and current membership context above are preloaded. Ground every claim about signals, placements, memberships, or premises in a tool result from this conversation. When calling a tool, briefly tell the user what you are checking or changing, then perform the call.${buildSignalIntakeGuidance(getSignalIntakeStage(iterCtx))}`;
 }
