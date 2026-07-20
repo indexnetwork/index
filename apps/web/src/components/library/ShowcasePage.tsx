@@ -79,7 +79,7 @@ export function ShowcasePage() {
         <h1 className="mt-2 text-3xl font-bold text-gray-900">Entity Component Library</h1>
         <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-gray-600">
           Five domain entities, each in three densities. From 1 → 3 each variant shows less: full-width cards for
-          primary surfaces, sidebar cards for contextual rails, and compact clickable chips for in-chat references.
+          primary surfaces, sidebar cards for contextual rails, and compact clickable references for in-chat use; questions stay expanded so their options remain actionable.
         </p>
         <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-gray-500 font-ibm-plex-mono">
           <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5">IBM Plex Mono · meta</span>
@@ -258,7 +258,7 @@ export function ShowcasePage() {
       </div>
 
       <footer className="mt-16 border-t border-gray-200 pt-6 text-[11px] text-gray-400 font-ibm-plex-mono">
-        Generated from apps/web/src/components/library · variants: full → sidebar → chip · mock data only
+        Generated from apps/web/src/components/library · variants: full → sidebar → compact in-chat · mock data only
       </footer>
     </div>
   );
