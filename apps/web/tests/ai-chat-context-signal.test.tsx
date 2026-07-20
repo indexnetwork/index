@@ -132,6 +132,8 @@ function Probe() {
       <span data-testid="chat-scope">{chat.chatScope ? `${chat.chatScope.type}:${chat.chatScope.id}` : 'none'}</span>
       <span data-testid="ready-b">{chat.isSessionReady('session-b') ? 'yes' : 'no'}</span>
       <span data-testid="queue-id">{chat.pendingQueue[0]?.id ?? 'none'}</span>
+      <span data-testid="live-question-count">{chat.liveQuestions.length}</span>
+      <span data-testid="live-question-prompt">{chat.liveQuestions[0]?.payload.prompt ?? 'none'}</span>
     </div>
   );
 }
@@ -437,6 +439,36 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'web first' }));
     await waitFor(() => expect(text('block')).toBe('WEB_SIGNAL_SESSION_REQUIRED'));
     expect(text('block-action')).toBe('none');
+  });
+
+  test('forwards blocking user_question events into live questions for guided surfaces', async () => {
+    const stream = controlledStream({ sessionId: 'signal-session', persona: 'signal' });
+    mocks.apiClient.stream.mockResolvedValueOnce(stream.response);
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'web first' }));
+    await waitFor(() => expect(text('session')).toBe('signal-session'));
+
+    await act(async () => {
+      stream.event({
+        type: 'user_question',
+        sessionId: 'signal-session',
+        questions: [{
+          id: 'question-1',
+          title: 'Signal focus',
+          prompt: 'What are you looking for?',
+          options: [{ label: 'A collaborator', description: 'Someone to build with' }],
+          multiSelect: false,
+        }],
+      });
+    });
+
+    await waitFor(() => expect(text('live-question-count')).toBe('1'));
+    expect(text('live-question-prompt')).toBe('What are you looking for?');
+    await act(async () => {
+      stream.event({ type: 'done', response: 'waiting' });
+      stream.close();
+    });
   });
 
   test('queued web sends retain the dedicated transport when drained', async () => {
