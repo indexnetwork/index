@@ -17,9 +17,6 @@ const ConfirmSchema = z.object({
 const RejectSchema = z.object({
   proposalId: z.string().min(1, 'proposalId is required'),
 });
-const CreateSchema = z.object({
-  description: z.string().min(1, 'description is required'),
-});
 const ProposalStatusesSchema = z.object({
   proposalIds: z.array(z.string().min(1)).default([]),
 });
@@ -72,39 +69,6 @@ export class IntentController {
       })),
       pagination: result.pagination,
     });
-  }
-
-  /**
-   * Create a signal (intent) directly from a single free-text description.
-   * Backs the New Signal page: no chat proposal round-trip — the sentence is
-   * embedded, persisted (`sourceType: 'discovery_form'`), and HyDE/network
-   * assignment runs async. Returns the new intent id so the client can open
-   * the signal detail page.
-   * @param req - Request with body `{ description: string }`
-   * @param user - Authenticated user from AuthGuard
-   * @returns `{ intentId: string }`
-   */
-  @Post('')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async create(req: Request, user: AuthenticatedUser) {
-    const raw = await req.json().catch(() => ({}));
-    const parsed = CreateSchema.safeParse(raw);
-    if (!parsed.success) {
-      return Response.json(
-        { error: 'Validation failed', details: parsed.error.flatten() },
-        { status: 400 },
-      );
-    }
-
-    logger.verbose('Intent create requested', { userId: user.id });
-
-    try {
-      const created = await intentService.createIntentForSeed(user.id, parsed.data.description);
-      return Response.json({ intentId: created.id });
-    } catch (err) {
-      logger.error('Intent create failed', { userId: user.id, error: err });
-      return Response.json({ error: 'Failed to create intent' }, { status: 500 });
-    }
   }
 
   /**
