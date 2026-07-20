@@ -18,9 +18,9 @@ import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/AssistantMessageContent";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
-import IntentList from "@/components/IntentList";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
+import IntentList from "@/components/IntentList";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,7 +37,11 @@ const logger = log.ui.from("ChatContent");
 
 const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
 
-/** Intent list item shown on the home shelf (from POST /intents/list). */
+interface PendingFile {
+  id: string;
+  file: File;
+}
+
 interface HomeIntent {
   id: string;
   payload: string;
@@ -46,12 +50,6 @@ interface HomeIntent {
   sourceType?: 'file' | 'link' | 'integration';
   networks?: { id: string; title: string }[];
   status?: string;
-}
-
-
-interface PendingFile {
-  id: string;
-  file: File;
 }
 
 interface ChatContentProps {
@@ -171,8 +169,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   } = useOpportunityActions({ scope: intentOpportunityScope });
 
   // Intents shown on the home shelf.
-  const [homeIntents, setHomeIntents] = useState<HomeIntent[]>([]);
-  const [homeIntentsLoading, setHomeIntentsLoading] = useState(false);
 
   // Stable list of opportunity IDs from assistant messages (avoids effect re-run on every streaming token)
   const opportunityIdsArray = useMemo(() => {
@@ -419,14 +415,16 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     [setSelectedNetworkIds],
   );
 
+  // Intents shown on the home shelf (legacy, non-Signal home only).
+  const [homeIntents, setHomeIntents] = useState<HomeIntent[]>([]);
+  const [homeIntentsLoading, setHomeIntentsLoading] = useState(false);
+
   // Sync network filter selection to chat scope so backend receives networkId when user has selected a network
   useEffect(() => {
     if (chatScope?.type === "intent") return;
     setScopeNetworkId(selectedIndexId);
   }, [selectedIndexId, setScopeNetworkId, chatScope?.type]);
 
-  // Fetch the intent list only on the root/home composer. Empty /d/:sessionId
-  // conversations should render the chat shell, not the home shelf.
   useEffect(() => {
     if (messages.length > 0 || sessionIdFromUrl) return;
     let active = true;
@@ -1075,7 +1073,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         <ContentContainer className="text-left">
           <div className="mt-12 mb-6 flex items-center justify-center gap-2">
             <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
-              Find your others
+              Talk to your agent
             </h1>
             <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
           </div>

@@ -1,106 +1,34 @@
 import { useMemo } from 'react';
-import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Network, AlertTriangle } from 'lucide-react';
+import { Calendar, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Handshake } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { DebugCopyButton } from './DebugCopyButton';
-
-/**
- * Grace window after creation during which an intent with zero network
- * memberships is shown as "Evaluating…" rather than "Not in any network".
- * Network assignment runs async (HyDE queue) shortly after creation, so a
- * freshly-created intent legitimately has no memberships for a short while.
- */
-const NETWORK_EVAL_GRACE_MS = 10 * 60 * 1000;
-
-interface IntentNetwork {
-  id: string;
-  title: string;
-}
-
-/**
- * Whether an intent is still within the post-creation grace window, during
- * which zero memberships reads as "evaluating" rather than "orphaned".
- * A plain (non-component) function so the render-time clock read stays out of
- * component bodies — mirrors `NegotiationHistory.timeAgo`.
- */
-function isWithinEvalGrace(createdAt: string): boolean {
-  const ageMs = Date.now() - new Date(createdAt).getTime();
-  return Number.isFinite(ageMs) && ageMs < NETWORK_EVAL_GRACE_MS;
-}
 
 interface BaseIntent {
   id: string;
   payload: string;
   summary?: string | null;
   createdAt: string;
-  sourceType?: 'file' | 'link' | 'integration';
+  sourceType?: 'file' | 'link' | 'integration' | 'discovery_form' | 'enrichment';
   sourceId?: string;
   sourceName?: string;
   sourceValue?: string | null;
   sourceMeta?: string | null;
   /**
-   * Networks this intent is registered to. `undefined` means the caller did
-   * not supply membership data (membership UI is suppressed); an empty array
-   * means the intent is registered to no networks (pending or orphaned).
+   * Count of `pending` opportunities anchored on this intent, awaiting the user.
+   * Shown next to the date. Undefined/0 renders nothing.
    */
-  networks?: IntentNetwork[];
+  waitingOpportunityCount?: number;
+  /**
+   * Count of pending intent-scoped questions awaiting the user. Rendered as a
+   * notification badge on the row. Undefined/0 renders nothing.
+   */
+  pendingQuestionCount?: number;
   /**
    * Lifecycle status (ACTIVE|PAUSED|FULFILLED|EXPIRED). A badge renders only for
    * non-default (non-ACTIVE) values; undefined or ACTIVE renders nothing — the
    * enum is vestigial today, so this is forward-looking. See EDG-53.
    */
   status?: string;
-}
-
-/**
- * Renders an intent's network membership as chips, or a pending/orphaned badge
- * when it belongs to none. Returns null when membership data wasn't provided,
- * so callers that don't fetch memberships render nothing extra.
- */
-function NetworkMembership({ networks, createdAt }: { networks?: IntentNetwork[]; createdAt: string }) {
-  if (networks === undefined) return null;
-
-  if (networks.length > 0) {
-    const shown = networks.slice(0, 2);
-    const extra = networks.length - shown.length;
-    return (
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {shown.map((n) => (
-          <span
-            key={n.id}
-            className="flex items-center gap-1 text-xs text-blue-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100"
-          >
-            <Network className="w-3 h-3 shrink-0" />
-            <span className="max-w-[140px] truncate">{n.title}</span>
-          </span>
-        ))}
-        {extra > 0 && (
-          <span className="text-xs text-blue-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100">
-            +{extra}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  if (isWithinEvalGrace(createdAt)) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
-        <span className="h-2.5 w-2.5 border border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-        Evaluating…
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className="flex items-center gap-1 text-xs text-amber-700 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200"
-      title="This intent isn't registered to any network yet. It will be re-evaluated when you join a matching network."
-    >
-      <AlertTriangle className="w-3 h-3 shrink-0" />
-      Not in any network
-    </span>
-  );
 }
 
 /**
@@ -135,18 +63,18 @@ export default function IntentList<T extends BaseIntent>({
   intents,
   isLoading = false,
   emptyMessage = 'No intents yet',
-  onArchiveIntent,
-  onRemoveIntent,
   onOpenIntentSource,
   onIntentClick,
   newIntentIds = new Set(),
   selectedIntentIds = new Set(),
-  removingIntentIds = new Set(),
   className = '',
 }: IntentListProps<T>) {
-  // Sort intents by creation date (newest first) without grouping
+  // Live (active) signals first, then newest-first within each group.
   const sortedIntents = useMemo(() => {
+    const isLive = (i: T) => !i.status || i.status.toUpperCase() === 'ACTIVE';
     return [...intents].sort((a, b) => {
+      const liveDiff = Number(isLive(b)) - Number(isLive(a));
+      if (liveDiff !== 0) return liveDiff;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [intents]);
@@ -188,7 +116,9 @@ export default function IntentList<T extends BaseIntent>({
         const isFresh = newIntentIds.has(intent.id);
         const isSelectedSource = selectedIntentIds.has(intent.id);
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
-        const isRemoving = removingIntentIds.has(intent.id);
+        // ACTIVE (or the schema default / unset) means the intent is live and
+        // being worked in the background.
+        const isActive = !intent.status || intent.status.toUpperCase() === 'ACTIVE';
         
         return (
           <div 
@@ -218,17 +148,40 @@ export default function IntentList<T extends BaseIntent>({
                   {summary}
                 </p>
                 
-                <div className="flex items-center gap-3 mt-2.5">
-                  {/* Date Badge */}
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mt-2.5">
+                  {/* Date */}
                   {createdLabel && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-400 font-ibm-plex-mono">
                       <Calendar className="w-3 h-3" />
                       <span>{createdLabel}</span>
                     </div>
                   )}
 
-                  {/* Source Badge */}
-                  {intent.sourceType && (
+                  {/* Running — active signals are worked in the background */}
+                  {isActive && (
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 font-ibm-plex-mono">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      </span>
+                      live
+                    </div>
+                  )}
+
+                  {/* Opportunities — actionable, quiet blue accent. Only when any. */}
+                  {(intent.waitingOpportunityCount ?? 0) > 0 && (
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-[#4091BB] font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB]/10 border border-[#4091BB]/25"
+                      title={`${intent.waitingOpportunityCount} ${intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'} for you`}
+                    >
+                      <Handshake className="w-3 h-3" />
+                      <span>{intent.waitingOpportunityCount} {intent.waitingOpportunityCount === 1 ? 'opportunity' : 'opportunities'}</span>
+                    </div>
+                  )}
+
+                  {/* Source Badge — external origins only (a user's own
+                      directly-created signals carry no meaningful source tag) */}
+                  {intent.sourceType && ['file', 'link', 'integration'].includes(intent.sourceType) && (
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
                       {getSourceIcon(intent.sourceType)}
                       <span className="capitalize">{intent.sourceType}</span>
@@ -242,17 +195,25 @@ export default function IntentList<T extends BaseIntent>({
                     </span>
                   )}
 
-                  {/* Network membership: chips, or pending/orphaned badge */}
-                  <NetworkMembership networks={intent.networks} createdAt={intent.createdAt} />
                   <StatusBadge status={intent.status} />
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                  <DebugCopyButton fetchPath={`/debug/intents/${intent.id}`} />
-                </div>
+              {/* Right side: pending-question badge — the most important action,
+                  so it carries the strongest treatment (solid). Only rendered
+                  when there's something to answer; no zero state. + hover actions */}
+              <div className="flex items-center gap-2 shrink-0">
+                {(intent.pendingQuestionCount ?? 0) > 0 && (
+                  <span
+                    className="flex items-center gap-1 text-xs font-semibold font-ibm-plex-mono px-2 py-0.5 rounded-full bg-[#4091BB] text-white"
+                    title={`${intent.pendingQuestionCount} ${intent.pendingQuestionCount === 1 ? 'question' : 'questions'} to answer`}
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    {intent.pendingQuestionCount} to answer
+                  </span>
+                )}
+
+                {/* Open source (link-sourced signals only) */}
                 {onOpenIntentSource && canOpenSource && (
                   <button
                     onClick={(e) => {
@@ -260,33 +221,10 @@ export default function IntentList<T extends BaseIntent>({
                       e.stopPropagation();
                       onOpenIntentSource(intent);
                     }}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 transition-colors"
+                    className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all"
                     title="Open Source"
                   >
                     <ExternalLink className="w-4 h-4" />
-                  </button>
-                )}
-                
-                {(onArchiveIntent || onRemoveIntent) && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (onRemoveIntent) {
-                        onRemoveIntent(intent);
-                      } else if (onArchiveIntent) {
-                        onArchiveIntent(intent);
-                      }
-                    }}
-                    disabled={isRemoving}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                    title={onRemoveIntent ? "Remove" : "Archive"}
-                  >
-                    {isRemoving ? (
-                      <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
                   </button>
                 )}
               </div>
