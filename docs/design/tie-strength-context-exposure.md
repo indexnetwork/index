@@ -40,7 +40,7 @@ The design is grounded at base commit `85af583363d16f4c97ac7be60f970d72cc16e840`
 
 | Area | Current behavior | Live grounding |
 | --- | --- | --- |
-| Contact edge | A contact is a `network_members` row with `permissions=['contact']` in the owner's personal network. The composite key is `(networkId,userId)`; the owner is recovered through `personal_networks`. There is no contact source or pairwise recency. | `services/api/src/schemas/database.schema.ts:793-813` |
+| Contact edge | Contact reads/deletes use containment (`'contact' = ANY(permissions)`), while normal writers emit the singleton `permissions=['contact']`; exact equality is not a database invariant. The composite key is `(networkId,userId)`, and the owner is recovered through `personal_networks`. A direct self-add can therefore collide with the existing singleton `['owner']` row and currently report success without creating a contact. There is no contact source or pairwise recency. | `services/api/src/schemas/database.schema.ts:793-813`; `services/api/src/adapters/contact.database.adapter.ts:137-188,228-309`; `services/api/src/services/contact.service.ts:118-190` |
 | Public contact shape | The protocol and API service both define `ContactInput` as name/email only. This public shape must remain unchanged. | `packages/protocol/src/shared/interfaces/contact.interface.ts:2-5`; `services/api/src/services/contact.service.ts:60-63` |
 | Contact persistence | Single and bulk upserts insert contact memberships; duplicate behavior and restoration are persistence concerns, but neither path receives trusted origin or recency. Removal currently hard-deletes the membership. | `services/api/src/adapters/contact.database.adapter.ts:137-224,299-309` |
 | Integrations | `IntegrationService` knows the Gmail/Slack toolkit and then passes only `{name,email}` to personal-contact import. Gmail fetch combines `connections` and `otherContacts` without preserving the group. | `services/api/src/services/integration.service.ts:97-119,314-414` |
@@ -49,7 +49,7 @@ The design is grounded at base commit `85af583363d16f4c97ac7be60f970d72cc16e840`
 | Other acceptance surface | Protocol `update_opportunity` follows a graph path that stamps acceptance and creates a DM but does not share the REST service's contact side effects. That graph is composed through MCP/Hermes, the REST tool API, and in-process chat—not only MCP. Surface convergence is required before capture can be considered complete. | `packages/protocol/src/opportunity/opportunity.tools.ts`; `packages/protocol/src/opportunity/opportunity.graph.ts:3638-3727`; `services/api/src/controllers/tool.controller.ts:1-34`; `services/api/src/services/tool.service.ts:260-282` |
 | Connect links | Connect-link `connect`/`send_direct` routes call `startChat`; links do not independently create a contact or record click/redemption recency. | `services/api/src/controllers/connect-link.controller.ts:92-140`; `services/api/src/schemas/database.schema.ts:122-145` |
 | Conversation evidence | A DM has a canonical `dmPair`; messages have server-created `createdAt`, `senderId`, and `role`. `lastMessageAt` is also advanced by agent/system messages, so it is not by itself proof of a human pair event. Ghost merge can rewrite participants/senders without recomputing `dmPair`, so backfill must validate pair consistency. | `services/api/src/schemas/conversation.schema.ts:33-68,107-130`; `services/api/src/adapters/conversation.database.adapter.ts:377-497`; `services/api/src/adapters/enrichment.database.adapter.ts:397-422` |
-| Opportunity evidence | Opportunities have mutable `updatedAt`, no dedicated accepted timestamp, and actor JSON may contain `actedAt`. Explicit accept paths stamp the acting actor. `updatedAt` alone is only an approximation and must not be presented as acceptance time. The locked stamp currently preserves an existing actor `actedAt` but still updates the row, so concurrent same-actor callers can both reach post-commit side effects. | `services/api/src/schemas/database.schema.ts:415-461`; `services/api/src/adapters/opportunity.database.adapter.ts:903-940` |
+| Opportunity evidence | Opportunities have mutable `updatedAt`, no dedicated accepted timestamp, and actor JSON may contain `actedAt`. The current locked stamp uses application `new Date()`, preserves an existing actor time, and still updates the row, so it is neither database-clock authority nor a unique same-actor winner. `updatedAt` remains only an approximation and must not be presented as acceptance time. | `services/api/src/schemas/database.schema.ts:415-461`; `services/api/src/adapters/opportunity.database.adapter.ts:903-940` |
 | Existing action outbox | `updateOpportunityStatus` and new `startChat` already pass an optional Lens B `AtomicOutcomeOutbox` into the actor-action transaction. Its independent `result.inserted` bit gates post-commit outcome mining. Contact capture must compose with—not replace or overload—this payload and trigger. | `services/api/src/adapters/opportunity.database.adapter.ts:18-60,145-163,903-940`; `services/api/src/services/opportunity.service.ts:649-695,923-966` |
 | Introducer | `ContactWithIntents` contains intent freshness/count only. The adapter orders by the contact's maximum active-intent `updatedAt`; this is not owner↔contact interaction freshness. | `packages/protocol/src/opportunity/opportunity.introducer.ts:23-41,68-89`; `services/api/src/adapters/chat.database.adapter.ts:3278-3325` |
 | Premise assignment | Assignment is automatic. The centralized default threshold is `0.7`; `create_premise` returns an assigned-index count and message, not a preview or confirmation. | `packages/protocol/src/shared/assignment/network-assignment.policy.ts:5-6,75-100`; `packages/protocol/src/premise/premise.tools.ts:67-90` |
@@ -57,7 +57,7 @@ The design is grounded at base commit `85af583363d16f4c97ac7be60f970d72cc16e840`
 | Counting precedent | `getNetworkMemberCount` counts undeleted membership rows and includes the author; it is not the preview query needed here. | `services/api/src/adapters/chat.database.adapter.ts:1860-1863` |
 | Privacy threshold precedent | Frame-drift monitoring defaults its minimum cohort to five, hard-clamps it to `[2,100]`, suppresses sub-threshold output, and emits aggregate suppression diagnostics. | `services/api/src/lib/frame-drift.config.ts:3-8,19-29,53-82`; [Frame-Drift Monitoring](frame-drift-monitoring.md) |
 
-The duplicate REST/service/protocol/composition paths are part of the design risk: adding columns at one adapter is insufficient if another acceptance or tool path bypasses it. Lifecycle writes are also distributed across `ContactDatabaseAdapter`, `ChatDatabaseAdapter`, ghost unsubscribe/non-human cleanup, ghost merge, and account deletion (`services/api/src/adapters/contact.database.adapter.ts:137-221,299-309`; `services/api/src/adapters/chat.database.adapter.ts:2676-2698,2857-2950,3148-3215`; `services/api/src/adapters/enrichment.database.adapter.ts:240-259,342-422`; `services/api/src/services/user.service.ts:124-128`). Phase A must cover all of them before capture ships.
+The duplicate REST/service/protocol/composition paths are part of the design risk: adding columns at one adapter is insufficient if another acceptance or tool path bypasses it. Lifecycle writes are also distributed across `ContactDatabaseAdapter`, `ChatDatabaseAdapter`, ghost cleanup/merge, and account deletion (`services/api/src/adapters/contact.database.adapter.ts:137-221,299-309`; `services/api/src/adapters/chat.database.adapter.ts:2676-2698,2857-2950,3148-3215`; `services/api/src/adapters/enrichment.database.adapter.ts:240-259,342-422`; `services/api/src/services/user.service.ts:124-128`). Account deletion currently deletes sessions and then soft-deletes the user through separate plain statements with no shared transaction/row lock (`services/api/src/adapters/user.database.adapter.ts:229-240`). Phase A must converge these boundaries before capture ships.
 
 ## Privacy model
 
@@ -96,7 +96,7 @@ They must not be used for advertising, public social graphs, member recommendati
 | A ghost contact is treated as an active reader or its signals leak during merge | Ghost edges may hold source data, but ghosts are excluded from preview. Claim-in-place preserves the same owner edge; merge-to-existing follows the collision rules below and clears the source ghost in one transaction. |
 | Unilateral activity is mistaken for mutual engagement | A DM is a pair-event recency signal only; its direction is validated and it never implies reply, closeness, or reciprocal engagement. The band remains non-authorizing. |
 | Deleted contacts remain analytically visible | Clear source, recency, and detail fields on removal; preserve only the minimal reasoned opt-out tombstone; exclude tombstones and deleted endpoint users from classification and metrics. |
-| Account erasure races a capture/repair job | Lock/mark the user and clear inbound/outbound signals atomically; every writer re-checks both endpoint users; invalidate caches and queued repairs. |
+| Account erasure races a capture/repair job | Every pair writer locks both endpoint user rows in canonical ID order with a mode incompatible with erasure before rechecking activity or writing. Erasure takes the same user-row lock, marks the user, and clears durable pair state atomically; invalidate caches/jobs only after commit. |
 | Logs or metrics reconstruct a pair | Remove the existing import-dedup log's `ownerId`, contact email, `matchedWith`, and per-item scores before capture can be enabled. Route import/capture telemetry only through a dedicated privacy-aggregate sink that cannot inherit request, trace, span, user, session, or pair context; never use the generic logger/Sentry path for these events. Permit only allowlisted aggregate counts and coarse preset/outcome labels. Request-path preview telemetry must never contain an audience bucket, exact count, network, owner, reservation, premise, or pair field because low-volume application logs can still enable time correlation. Use stable owner-count cohorts and prevent repeated differencing across exports. |
 
 ## V1 data model
@@ -107,8 +107,8 @@ Signal storage remains on `network_members`; no contact-event history or metadat
 
 V1 also requires three narrowly scoped, migration-first operational stores. None is a public/read API, classifier input, relationship-history source, or analytics corpus:
 
-1. **`contact_action_repair_obligations` (A4):** one idempotent row per winning capture-on actor action. It stores `actionKey`, `opportunityId`, explicit `actorUserId` and `counterpartUserId`, action/source/basis, persisted action time, independent directional dispositions, bounded attempt/expiry state, and timestamps. It is access-controlled, excluded from ordinary logs/exports/classification, deleted after both directions are successful/terminal or on account erasure, and never stores message/contact content. Its repair/cleanup processor is migration-installed and capture-independent: turning capture off admits no new row but cannot strand a row already committed while capture was on.
-2. **`contact_privacy_aggregate_counters` (A3):** coarse time bucket, allowlisted event/boundary/outcome dimensions, and an atomic count only. It contains no owner/contact/network/opportunity/message/request/trace/span/session identifiers or pair hashes. A detached exporter may read these aggregate rows; bounded cleanup follows the 30-day operational retention.
+1. **`contact_action_repair_obligations` foundation (A1):** the additive table migration and locked `committed_repair` authority validator land with the shared persistence primitives so A1 is independently implementable. The table is empty/dark in A1. A4 later owns descriptor admission, action-transaction insertion, immediate processing, retries, cleanup, and worker registration. Each idempotent row stores `actionKey`, `opportunityId`, explicit `actorUserId` and `counterpartUserId`, action/source/basis, persisted database action time, independent directional dispositions, bounded attempt/expiry state, and coarse operational timestamps. It is access-controlled, excluded from ordinary logs/exports/classification, deleted after both directions are successful/terminal or on account erasure, and never stores message/contact content.
+2. **`contact_privacy_aggregate_counters` (A3):** immutable `counterVersion='contact-privacy-counter-v1'`, fixed ISO-UTC-week `bucketStart` (Monday `00:00:00Z`), allowlisted event/boundary/outcome dimensions, and an atomic count only. The unique key is `(counterVersion,bucketStart,<closed dimensions>)`; conflict updates change only `count`. The row has no `createdAt`, `updatedAt`, `lastIncrementAt`, per-increment timestamp/table, audit trigger, or CDC payload. It contains no owner/contact/network/opportunity/message/request/trace/span/session identifiers or pair hashes. A detached exporter reads only closed weeks on a fixed weekly cadence and exports the coarse bucket label/count; cleanup derives from `bucketStart` and the 30-day operational retention.
 3. **Preview privacy ledger (D2):** database-backed `premise_preview_owner_reservations(ownerUserId,reservedAt,expiresAt)` rows provide the exact rolling-24-hour count, while `premise_preview_network_releases(ownerUserId,networkId,reservationId,lastReservedAt,expiresAt,consumedAt)` stores only cooldown plus single-use state. `reservationId` is a random private UUID returned only to the adapter caller; `consumedAt` is null until the one authorized count attempt. Neither is serialized or logged. The ledger stores no audience count, bucket, member identity, premise content, or contact signal. Expiry indexes support cleanup bounded by the configured windows; account erasure deletes both row kinds.
 
 All three use dedicated adapters and tables, not `network_members.metadata`, the generic `RedisCacheAdapter`, or fail-open transport limiters. Their migrations must land before any dependent flag can enable. Database/storage failure fails closed according to the contracts below.
@@ -133,7 +133,7 @@ export const contactSourceEnum = pgEnum('contact_source', contactSourceValues);
 
 The schema/API layer owns and exports the canonical tuple and derived `ContactSource` type. The Drizzle enum consumes the same tuple, and the generated migration creates the PostgreSQL `contact_source` enum plus nullable `network_members.contact_source`, `last_interaction_at timestamptz`, and `contact_signal_details jsonb` columns. Implementations must not redeclare an independent TypeScript union or second values array that can drift from the database enum.
 
-All three columns are nullable. They are meaningful only when the row is an active contact membership in a personal network. Existing rows, non-contact memberships, owner memberships, and evidence-free contacts remain SQL `NULL`, meaning unknown—not “weak,” “old,” or “untrusted.”
+All three columns are nullable. V1 deliberately narrows **signal-bearing** eligibility to an active canonical singleton `permissions=['contact']` row in the owner's mapped personal network, even though legacy contact reads remain containment-based. Existing rows with mixed permissions, rows without `contact`, owner memberships, soft-deleted rows, and evidence-free contacts keep all signal fields SQL `NULL`, meaning unknown—not “weak,” “old,” or “untrusted.” Activation inventories mixed-permission rows and fails closed rather than rewriting or treating them as canonical contacts.
 
 `contact_source` records the trusted acquisition origin of the **current active edge**. It is not an arbitrary client label and not the surface of the latest interaction.
 
@@ -153,25 +153,35 @@ SQL `NULL` is the only legacy/unknown source. The taxonomy is intentionally smal
 
 ```ts
 // Illustrative internal types; not public API contracts.
-type TrustedClientSurface = 'web' | 'api' | 'mcp' | 'internal';
-type NonIntegrationContactSource = Exclude<ContactSource, 'integration_import'>;
+type ObservedTransport = 'web' | 'api' | 'mcp' | 'internal';
+
+type ContactAcquisitionDetailsBySource = {
+  manual: { source: 'manual'; observedTransport?: ObservedTransport };
+  csv_import: { source: 'csv_import'; observedTransport: ObservedTransport };
+  integration_import:
+    | {
+        source: 'integration_import';
+        toolkit: 'gmail';
+        gmailGroup?: 'connections' | 'other_contacts';
+        observedTransport?: ObservedTransport;
+      }
+    | {
+        source: 'integration_import';
+        toolkit: 'slack';
+        observedTransport?: ObservedTransport;
+      };
+  opportunity_acceptance: {
+    source: 'opportunity_acceptance';
+    observedTransport?: ObservedTransport;
+  };
+  conversation_started: {
+    source: 'conversation_started';
+    observedTransport?: ObservedTransport;
+  };
+};
 
 type ContactAcquisitionDetailsV1 =
-  | {
-      source: NonIntegrationContactSource;
-      clientSurface?: TrustedClientSurface;
-    }
-  | {
-      source: 'integration_import';
-      toolkit: 'gmail';
-      gmailGroup?: 'connections' | 'other_contacts';
-      clientSurface?: TrustedClientSurface;
-    }
-  | {
-      source: 'integration_import';
-      toolkit: 'slack';
-      clientSurface?: TrustedClientSurface;
-    };
+  ContactAcquisitionDetailsBySource[ContactSource];
 
 type ContactRecencyDetailsV1 =
   | {
@@ -190,7 +200,7 @@ type ContactSignalDetailsV1 = {
 };
 ```
 
-The details writer constructs a fresh object from an allowlist; it never spreads caller/provider metadata. The acquisition union is discriminated by `source` and then `toolkit`, and the writer verifies that its `source` matches the typed `contact_source` column. Gmail alone may carry `gmailGroup`; a Slack-plus-Gmail-group object cannot parse as v1. `clientSurface` is optional and means only the server route/transport it directly observed: session web route, non-web API route, MCP transport, or internal service call. CLI and Hermes cannot be distinguished after they forward through a public REST/MCP composition and therefore are never stored as surfaces. Headers, wrapper names, agent-provided metadata, and payload fields cannot attest a surface.
+The details writer constructs a fresh object from an allowlist; it never spreads caller/provider metadata. `ContactAcquisitionDetailsBySource` is an exhaustive source-keyed map, so a new `ContactSource` cannot compile until its explicit trusted-origin/detail schema is added; `TrustedContactOrigin` derives from the same map rather than redeclaring literals. The union is discriminated by `source` and then `toolkit`, and the writer verifies that its source matches the typed column. Gmail alone may carry `gmailGroup`; a Slack-plus-Gmail-group object cannot parse as v1. `observedTransport` is optional and means only the immediate composition root proven by a server-owned token: `api` for REST (including `/users/contacts`, `/tools/*`, integration routes, and CLI-forwarded calls), `mcp` for MCP regardless of `x-index-surface`, and `internal` for known no-public-transport workers/services. `web` is allowed only for a dedicated server-owned web-only boundary; generic session-authenticated REST does not prove web. If the trusted token is not preserved, omit the field—never default or reconstruct it downstream. CLI, Hermes, user-agent values, bearer type, and wrapper/header hints are never stored as origins; `x-index-surface` remains a rendering/routing hint, not provenance.
 
 Each retained detail has a narrow purpose: toolkit/group audits whether trusted origin capture is complete, and recency basis lets the classifier distinguish eligible durable evidence. If a detail is not consumed by those audits or classification, the writer omits it. Edge details share the edge lifecycle and are cleared on removal/erasure; no separate long-lived copy is allowed.
 
@@ -206,11 +216,11 @@ Before the first capture activation, dark-deployed schema/code retains the curre
 4. **Owner removal and re-add:** `owner_removed` belongs to the owner of that personal-network edge. A later deliberate add/accept/start-chat action by that same owner may restore it and records the restoration origin. A live/repair action may restore only when its trusted server action time is strictly later than `tombstonedAt`; an equal, missing, invalid, or newer tombstone timestamp fails closed as no-longer-authorized. The contact or another owner cannot clear it.
 5. **Contact opt-out:** `contact_opt_out` represents an explicit action by the contact subject (including ghost unsubscribe). An ordinary add/import by an owner cannot restore or delete it. Only an explicit action by the opted-out subject that semantically revokes the opt-out may restore it. Existing `clearReverseOptOut*` behavior must become reason-aware; it must never hard-delete another owner's tombstone merely because a reciprocal add occurred.
 6. **Restore:** after the authority check, clear the tombstone object, keep old signal fields null, and write the restoration source/details as the current active-edge origin. Legacy soft-deleted rows without a reason fail closed as `contact_opt_out` until migrated or explicitly resolved.
-7. **Permission/network lifecycle:** changing away from `contact`, deleting the personal network, or otherwise invalidating the edge clears all signal fields. Non-contact rows must not retain them.
+7. **Permission/network lifecycle and collisions:** changing away from canonical singleton `['contact']`, deleting the personal network, or otherwise invalidating the edge clears all signal fields. `ownerUserId===contactUserId`, an occupied composite key whose row is owner/member/non-contact, or any mixed-permission row returns `non_contact_conflict`; it must not mutate permissions, deletion state, metadata, or signals. Touch/removal likewise never mutates such a row.
 8. **Ghost claim/merge:** claim-in-place keeps the same user ID and owner edges. For merge-to-existing-user, process every owner edge transactionally: an existing target tombstone wins; an existing active target edge and its signals win; if no target edge exists, the membership may be re-keyed but all source/recency/details are cleared to unknown. Every source-ghost signal is cleared before the ghost is deleted. No `GREATEST` merge combines two identities' recency.
-9. **Account erasure:** one transaction acquires the same owner advisory lock used by preview reservation and count execution, locks/marks the user, clears every inbound and outbound edge signal/tombstone, deletes contact obligations where the user is `actorUserId` or `counterpartUserId`, deletes owner privacy-ledger rows, invalidates edge-derived cache keys, and performs user erasure. Capture, repair, classifier, ranking, preview-reservation, and preview-count paths re-check active principals under the same boundary. A failed transaction rolls back and retries; queued repair jobs become no-ops after erasure. Aggregate counter rows contain no user key and need no per-user rewrite.
+9. **Account erasure:** A2's base transaction locks/marks the erased user row, locks/deletes A1 obligations naming the user, then locks/clears personal mappings and inbound/outbound edge signal/tombstone rows in canonical order; edge-before-obligation erasure is forbidden. V1 stores no `acceptedAction` or other private contact marker in opportunity actor JSON, so no opportunity-row scrub is introduced and the opportunity→user lock order has no erasure cycle; existing product `actedAt` follows the separate existing account-data policy. Edge/touch/repair writers lock both endpoint users in ascending ID order, so holding the erased user's row makes writes mutually exclusive. Durable cleanup commits before cache/job invalidation. After D2's migration lands, D2 extends this transaction by first taking the preview owner advisory lock and deleting that owner's preview-ledger rows; A2 never references an absent D2 table. Aggregate counters have no user key and need no rewrite.
 
-A row-local database check should prevent populated signal fields on non-contact or soft-deleted rows. A row-local check cannot prove that `networkId` is personal, so the shared persistence transaction must join `personal_networks`, lock the edge, and enforce that condition. Migration tests cover both layers; the invariant is not optional.
+A row-local database check should require signal fields to be null unless `deletedAt IS NULL` and `permissions` is exactly the singleton `['contact']`. A row-local check cannot prove that `networkId` is personal, so the shared persistence transaction must join `personal_networks`, lock the edge, and enforce that condition. Legacy containment-based contact reads are unchanged; this stricter check governs signals only. Migration tests cover both layers and mixed/owner collisions; the invariant is not optional.
 
 ## Trusted capture boundary
 
@@ -219,22 +229,11 @@ A row-local database check should prevent populated signal fields on non-contact
 ### Internal shapes
 
 ```ts
-type TrustedContactOrigin =
-  | { source: 'manual'; surface?: TrustedClientSurface }
-  | { source: 'csv_import'; surface: TrustedClientSurface }
-  | {
-      source: 'integration_import';
-      toolkit: 'gmail';
-      gmailGroup?: 'connections' | 'other_contacts';
-      surface?: TrustedClientSurface;
-    }
-  | {
-      source: 'integration_import';
-      toolkit: 'slack';
-      surface?: TrustedClientSurface;
-    }
-  | { source: 'opportunity_acceptance'; surface?: TrustedClientSurface }
-  | { source: 'conversation_started'; surface?: TrustedClientSurface };
+type TrustedContactOriginBySource = {
+  [Source in ContactSource]: ContactAcquisitionDetailsBySource[Source];
+};
+
+type TrustedContactOrigin = TrustedContactOriginBySource[ContactSource];
 
 type ContactInteractionBasis =
   | 'dm_message'
@@ -249,13 +248,15 @@ type ContactEdgeUpsertOutcome =
   | 'existing'
   | 'owner_removed'
   | 'contact_opt_out'
-  | 'inactive_endpoint';
+  | 'inactive_endpoint'
+  | 'non_contact_conflict';
 
 type ContactTouchDirectionOutcome =
   | 'updated'
   | 'unchanged'
   | 'missing'
   | 'inactive_endpoint'
+  | 'non_contact_conflict'
   | 'invalid_details'
   | 'unsupported_details_version';
 
@@ -265,26 +266,27 @@ type ContactRepairDirectionDisposition =
   | 'terminal_owner_removed'
   | 'terminal_contact_opt_out'
   | 'terminal_inactive_endpoint'
+  | 'terminal_non_contact_conflict'
   | 'terminal_edge_no_longer_authorized'
   | 'terminal_invalid_details'
   | 'terminal_unsupported_details_version'
   | 'retryable_transient'
   | 'terminal_expired';
 
-type ContactWriteAuthority =
-  | { kind: 'live_capture'; actionAt: Date }
-  | {
-      kind: 'committed_repair';
-      actionAt: Date;
-      actionKey: string;
-    };
+type ContactEdgeWriteAuthority =
+  | { kind: 'live_capture' }
+  | { kind: 'committed_repair'; actionKey: string };
+
+type ContactTouchAuthority =
+  | ContactEdgeWriteAuthority
+  | { kind: 'trusted_backfill'; runId: string };
 
 interface ContactEdgePersistence {
   upsertContactEdge(
     ownerUserId: string,
     contactUserId: string,
     origin: TrustedContactOrigin,
-    options: { restore: boolean; authority: ContactWriteAuthority },
+    options: { restore: boolean; authority: ContactEdgeWriteAuthority },
   ): Promise<ContactEdgeUpsertOutcome>;
 
   upsertContactEdgesBulk(
@@ -293,7 +295,7 @@ interface ContactEdgePersistence {
       contactUserId: string;
       origin: TrustedContactOrigin;
     }>,
-    options: { restore: boolean; authority: ContactWriteAuthority },
+    options: { restore: boolean; authority: ContactEdgeWriteAuthority },
   ): Promise<ReadonlyArray<ContactEdgeUpsertOutcome>>;
 
   touchContactInteraction(
@@ -301,6 +303,7 @@ interface ContactEdgePersistence {
     userB: string,
     at: Date,
     basis: ContactInteractionBasis,
+    options: { authority: ContactTouchAuthority },
   ): Promise<{
     aToB: ContactTouchDirectionOutcome;
     bToA: ContactTouchDirectionOutcome;
@@ -308,9 +311,13 @@ interface ContactEdgePersistence {
 }
 ```
 
-This is an API-side persistence boundary, not a protocol-layer dependency. `ContactService`, `OpportunityService`, message persistence, integration composition, and MCP composition should depend on the same adapter contract or SQL helper. Services must not import one another; the centralization belongs in an adapter/shared persistence primitive wired through existing service interfaces. Both authority variants require a finite server-persisted `actionAt`. `committed_repair` additionally locks and validates the private obligation by `actionKey`; it is the only authority allowed to finish a pre-existing obligation while capture is off and cannot be constructed by controllers/tools. `live_capture` obeys the current capture flag and cannot masquerade as repair.
+This is an API-side persistence boundary, not a protocol-layer dependency. `ContactService`, `OpportunityService`, message persistence, integration composition, and MCP composition should depend on the same adapter contract or SQL helper. Services must not import one another; the centralization belongs in an adapter/shared persistence primitive wired through existing service interfaces. `live_capture` carries no caller time and is constructible only by trusted live wrappers. `trusted_backfill` exists only in `ContactTouchAuthority`—it can never create/restore an edge or write acquisition provenance—and requires an A5 run ID/checkpoint plus deterministic backfill basis. `committed_repair` locks the A1 obligation by `actionKey`, verifies both endpoints plus source/basis, and requires the touch `at` to equal its database-authored `actionAt`; it is the only authority allowed to finish pre-existing action work while capture is off. None is constructible by controllers/tools. For direct live edge acquisition, the primitive obtains its finite comparison time from PostgreSQL `clock_timestamp()` after locks.
 
-For direct add, `upsertContactEdge` is the product persistence operation. While `CONTACT_SIGNAL_CAPTURE_ENABLED` is false, existing membership behavior remains unchanged and signal columns stay null. When capture is enabled, the directed membership insert/restore, trusted `contact_source`, and allowlisted acquisition details commit atomically in one transaction; provenance is not appended after reporting the edge successful. Outcomes preserve tombstone reason rather than collapsing authority: `restore:true` may restore an `owner_removed` tombstone belonging to that edge owner only when the trusted action is later than `tombstonedAt`, but returns `contact_opt_out` without mutation for a subject opt-out; `restore:false` restores neither and returns the actual `owner_removed` or `contact_opt_out` reason. A legacy unreasoned tombstone is parsed and returned as `contact_opt_out`. The same exhaustive outcome semantics apply to every item in the bulk persistence result.
+All pair persistence follows one deadlock-safe lock order. Actor/Lens-B paths lock affected opportunity rows in stable ID order first; no path holding intent, endpoint, or edge locks may then request an opportunity. Next, pair writes lock endpoint `users` rows in ascending canonical user-ID order and recheck activity, then any intent rows in stable ID order, then obligations, `personal_networks` mappings, and `network_members` rows ordered by `(networkId,userId)`. Existing intent-first pool-adjustment paths must be changed to opportunity-first before A4 can enable. Self-pairs return `non_contact_conflict` before pair mutation. Base account erasure locks only its user row before affected edge/obligation rows and never requests an opportunity lock; after D2 exists it takes the preview advisory lock first. Holding the user row blocks every conforming pair writer. External cache/job invalidation is post-commit.
+
+Authority timestamps are comparable only when database-authored. After the opportunity and endpoint locks, actor transitions call `clock_timestamp()` exactly once and persist that same value to `actors[].actedAt`, the A1 obligation's `actionAt` when present, and the winner token. After endpoint and edge locks, owner removal calls `clock_timestamp()` once for `tombstonedAt`; direct live re-add obtains its comparison time the same way. Do not use caller/Node time, regenerate time post-commit, or use transaction-start `CURRENT_TIMESTAMP`/`transaction_timestamp()` after a lock wait. SQL compares `timestamptz` and restores only when `actionAt > tombstonedAt`; equal, malformed, missing, or legacy process-authored action authority fails closed.
+
+For direct add, `upsertContactEdge` is the product persistence operation. While `CONTACT_SIGNAL_CAPTURE_ENABLED` is false, existing membership behavior remains unchanged and signal columns stay null. When capture is enabled, the directed membership insert/restore, trusted `contact_source`, and allowlisted acquisition details commit atomically in one transaction; provenance is not appended after reporting the edge successful. Outcomes preserve tombstone/collision reason rather than collapsing authority: `restore:true` may restore an older `owner_removed`, while `restore:false` restores neither; subject opt-out remains terminal. A self-pair or occupied non-canonical row returns `non_contact_conflict` without mutation. `ContactService.addContact` maps that direct outcome to typed `ContactConflictError`; REST returns HTTP 409 `contact_conflict`, protocol/MCP/tool returns a non-success/error result with no `added:true`, and CLI forwarding exits nonzero. Bulk preserves its separately documented aggregate `ImportResult` contract. The same internal outcome union applies to every bulk item.
 
 The `restore` policy is fixed by boundary:
 
@@ -322,13 +329,13 @@ The `restore` policy is fixed by boundary:
 | Winning acceptance/new-`startChat`, counterpart → actor | `false` | The actor cannot restore a choice owned by the counterpart. |
 | DM message touch | no edge upsert | Message recency never creates/restores contacts. |
 
-Bulk import preserves a different existing contract. Input resolution and deduplication happen before membership persistence and may report invalid or deduplicated inputs as `skipped`. The surviving edge set, including each edge's trusted origin/details when capture is enabled, is then written by one `upsertContactEdgesBulk` batched operation/transaction. That database persistence unit succeeds or fails as a batch: a successful batch leaves every successfully created/restored edge with its required origin/details, while a failed batch rolls back and throws before any `ImportResult.imported` count is returned. On commit, `ImportResult` retains its current API meaning: `imported` is the number of deduplicated surviving inputs processed by the batch, `details` is the retained resolution/dedup detail set, and `skipped` is the resolution-plus-dedup skip count; `imported` is not redefined as newly inserted/restored edge count. Mixed internal `created`/`restored`/`existing`/`owner_removed`/`contact_opt_out`/`inactive_endpoint` statuses are tested for correct provenance and lifecycle behavior without being converted into per-item database success or new skip semantics. V1 must not invent per-item database persistence or partial-success semantics; such a change requires separate product and persistence approval. Post-commit enrichment, secondary recency, reverse-edge/contact, and acceptance/chat side effects retain their own current awaited or best-effort behavior where already defined, but they are not evidence that the primary import batch persisted per item. Reciprocal acceptance/chat directions remain separate edge writes and may fail independently.
+Bulk import preserves a different existing contract. Input resolution and deduplication happen before membership persistence and may report invalid or deduplicated inputs as `skipped`. The surviving edge set, including each edge's trusted origin/details when capture is enabled, is then written by one `upsertContactEdgesBulk` batched operation/transaction. That database persistence unit succeeds or fails as a batch: a successful batch leaves every successfully created/restored edge with its required origin/details, while a failed batch rolls back and throws before any `ImportResult.imported` count is returned. On commit, `ImportResult` retains its current API meaning: `imported` is the number of deduplicated surviving inputs processed by the batch, `details` is the retained resolution/dedup detail set, and `skipped` is the resolution-plus-dedup skip count; `imported` is not redefined as newly inserted/restored edge count. Mixed internal `created`/`restored`/`existing`/`owner_removed`/`contact_opt_out`/`inactive_endpoint`/`non_contact_conflict` statuses are tested for correct provenance and lifecycle behavior without being converted into per-item database success or new skip semantics. V1 must not invent per-item database persistence or partial-success semantics; such a change requires separate product and persistence approval. Post-commit enrichment, secondary recency, reverse-edge/contact, and acceptance/chat side effects retain their own current awaited or best-effort behavior where already defined, but they are not evidence that the primary import batch persisted per item. Reciprocal acceptance/chat directions remain separate edge writes and may fail independently.
 
-Event-specific internal wrappers (`touchFromPersistedMessage`, `touchFromAcceptedOpportunity`, `touchFromNewStartChatTransition`) first derive and validate the two users, timestamp, role/action, and basis from the durable row or just-committed server action. They are the only production callers of `touchContactInteraction`; controllers, protocol tools, and public composition deps never receive the raw pair/timestamp method. This retains the locked shared boundary while preventing an internal caller from treating arbitrary IDs or request timestamps as evidence.
+Event-specific wrappers derive users/time/role/basis from durable evidence and are the only production callers of `touchContactInteraction`: persisted human messages use `live_capture`; immediate/replayed acceptance or new-start-chat uses `committed_repair` with its obligation key; A5 uses `trusted_backfill`. Controllers, protocol tools, and public deps never receive the raw pair/time/authority method. The primitive validates authority under lock before any directional mutation.
 
 `touchContactInteraction`:
 
-- updates only already-existing, active contact edges in either direction and re-checks that both endpoint users are active inside the write transaction; if either endpoint fails that shared precheck, it mutates neither direction and returns `{aToB:'inactive_endpoint',bToA:'inactive_endpoint'}`;
+- locks both endpoint user rows in canonical order, rechecks activity, then evaluates each directed edge independently; an inactive endpoint returns two `inactive_endpoint` outcomes with no mutation, a self-pair returns two `non_contact_conflict` outcomes, and a non-canonical row returns `non_contact_conflict` only for that direction while an independently valid reverse edge may still update;
 - treats the event as pair recency that may be unilateral; after the shared endpoint precheck succeeds, updating both existing directed edges does not assert reply, mutual engagement, symmetry of membership, or closeness;
 - never creates a contact from a message alone;
 - uses `GREATEST(existing, at)` so retries and out-of-order jobs are monotonic;
@@ -352,28 +359,22 @@ For equal timestamps, the complete priority order is `dm_message` > `opportunity
 
 Opportunity acceptance and the new `startChat` transition are exceptions to “touch does not create,” but all new obligation behavior is capture-gated.
 
-- **Capture off:** when `CONTACT_SIGNAL_CAPTURE_ENABLED !== 'true'`, callers pass no new contact-repair descriptor, admit no new obligation/token, and perform no new immediate capture. The locked opportunity transition and optional Lens B outcome outbox run with their exact existing behavior, and current best-effort contact side effects retain their existing failure behavior. Capture-off never acquires the new rollback-on-contact-obligation-insert semantics. The migration-installed repair/cleanup processor remains registered independently of the flag solely to drain or expire obligations committed while capture was on; a fresh dark deploy has zero such rows and therefore performs no work or product change.
-- **Capture on:** before building a descriptor, require exactly two distinct active, non-deleted, non-introducer participant users; one is the authenticated actor and the other is the unique counterpart. Never use `resolveCounterpart`'s first-actor/any-actor fallback for trusted capture. Ambiguous, duplicate, missing, inactive, or introducer-involving shapes make contact capture ineligible: the product/Lens B action may proceed, but no contact descriptor/token/legacy contact side effect runs and only a detached aggregate `ineligible_participants` outcome is emitted. For an eligible pair, the caller supplies `actorUserId`, `counterpartUserId`, action source/basis, and no timestamp. Under the existing opportunity row lock, revalidate exact participants, the surface-specific pre-action status matrix below, requested accepted action, and actor state. A winner atomically persists the server action time plus a private durable actor marker `acceptedAction:{version:1,via:'update_status'|'start_chat'|'legacy_accepted'}` in the existing actor JSON; new actions may write only `update_status|start_chat`. The marker remains after the obligation is deleted and never enters public presentation. The deterministic contact idempotency key is `(opportunityId,actorUserId,acceptedAction.version)`. Only an actor whose `actedAt` and `acceptedAction` are both absent and whose matrix row permits a new action wins this transition. A prior generic send/other action has `actedAt` without `acceptedAction` and therefore conflicts rather than masquerading as an acceptance duplicate. Different actors can win independently only where the matrix explicitly permits them.
-- **Independent atomic obligations:** evolve the locked transition to accept an envelope with two independent optional members: the existing Lens B `AtomicOutcomeOutbox` and the new contact-repair descriptor. Do not add contact fields to, replace, or reinterpret the Lens B event. In one transaction, preserve each obligation's own idempotency key and mutable `result.inserted` bit. A required revalidation/insert error for either obligation rolls back the actor action and both obligations; an idempotent conflict sets only that obligation's bit false. After commit, Lens B's existing `result.inserted` still exclusively triggers its current shadow-mining callback, while only the contact winner token permits immediate contact work. Neither post-commit trigger substitutes for the other.
+- **Capture off:** when `CONTACT_SIGNAL_CAPTURE_ENABLED !== 'true'`, callers pass no new contact-repair descriptor, admit no new obligation/token, and perform no new signal capture. The shared transition follows the exact pre-existing surface contract, optional Lens B behavior remains independent, and current best-effort contact side effects retain their product/failure semantics. The A4 repair/cleanup processor remains registered solely to drain or expire obligations created earlier while capture was on; an A1/A2/A3 dark deploy has an empty table and no repair work.
+- **Capture on:** capture eligibility is exactly two distinct active, non-deleted **participant** user IDs. A normal opportunity may also contain one separate introducer actor, who is ignored for pair construction and never becomes an endpoint. The authenticated actor must be one of the two participants; the counterpart is the other. Duplicate actor rows are legal in current data, so every row for either participant must agree on role/user identity and the acting user's rows are stamped consistently. An acting introducer, participant/introducer identity overlap, zero/one/>2 distinct participants, inconsistent duplicates, or inactive participant makes capture ineligible. Ineligible capture does **not** change the product action or suppress its existing legacy contact behavior: no signal descriptor/obligation/token is created, legacy side effects run under their no-signal semantics, and only detached `ineligible_participants` is counted. For an eligible pair, one exact resolver supplies the same actor/counterpart to DM creation, sibling acceptance, legacy contacts, descriptor construction, immediate processing, and repair; trusted capture never falls back to `resolveCounterpart()`.
+- **Independent atomic obligations:** evolve the locked transition to accept an envelope with two independent optional members: the existing Lens B `AtomicOutcomeOutbox` and the new contact-repair descriptor. Contact fields never enter the Lens B event. A winning product action obtains one database `clock_timestamp()`, persists it as the acting user's existing `actedAt`, and derives the private idempotency key `(opportunityId,actorUserId,source,actionAt)`. When capture is on and the exact pair is eligible, the same transaction inserts the A1-owned obligation. A required insert/revalidation error rolls back that winning action and both independent obligations; an idempotent obligation conflict changes only its own `result.inserted` bit. After commit, Lens B's bit exclusively triggers its current callback, while the contact token exclusively permits immediate repair processing.
 
-The row-lock revalidation uses this exact status × surface policy; no implementation-time widening is allowed:
+The shared primitive returns `won | idempotent | conflict | not_found`; contact, sibling, DM, and mining side effects run only from the outcome already authorized for that surface. `CONTACT_SIGNAL_CAPTURE_ENABLED` never selects status eligibility or transition targets. Capture-on does add one explicit fail-closed infrastructure dependency: if a required contact-obligation insert/validation fails, the otherwise winning action rolls back rather than committing without repair. Parity claims below cover product preconditions/status policy and successful transitions, not this documented capture-only storage-failure case. The exact current surface matrix is:
 
-| Surface | Locked status/actor state | Result and contact obligation |
+| Surface | Existing product policy, independent of capture flag | Contact effect |
 | --- | --- | --- |
-| REST or protocol-graph `updateOpportunityStatus('accepted')` | `latent`, `draft`, `negotiating`, `pending`, or `stalled`; acting actor's `actedAt` and `acceptedAction` are absent | Win the accepted transition, persist that actor's action time/marker, and insert exactly one contact obligation when capture is on. |
-| REST or protocol-graph `updateOpportunityStatus('accepted')` | `accepted`; a **different** acting actor has absent `actedAt` and `acceptedAction` | Admit that actor's independent accepted action/marker and exactly one obligation; this is the only new action allowed from `accepted`. |
-| REST or protocol-graph `updateOpportunityStatus('accepted')` | `accepted`; the same actor already has matching `actedAt` plus `acceptedAction.version=1` | Preserve the current idempotent accepted response even if another actor accepted later; insert no obligation and return no contact token. |
-| REST or protocol-graph `updateOpportunityStatus('accepted')` | `accepted`; the same actor has neither marker nor `actedAt`, or any candidate actor has a non-null `actedAt` without a compatible accepted marker | Conflict; do not mutate status/action state and insert no obligation. |
-| REST or protocol-graph `updateOpportunityStatus('accepted')` | `rejected` or `expired` | Terminal conflict; insert no obligation. |
-| `startChat` | `latent`, `draft`, or `pending`; acting actor's `actedAt` and `acceptedAction` are absent | Win the existing new-start-chat transition, persist the `start_chat` marker, and insert exactly one `conversation_started` obligation when capture is on. |
-| `startChat` | `accepted` | Keep the exact current get/unhide-DM branch; no actor-action mutation, recency touch, edge restore, or obligation. |
-| `startChat` | `negotiating`, `stalled`, `rejected`, or `expired`, or an allowed-status actor already has incompatible non-null `actedAt` | Not a new start-chat transition; return the surface's existing conflict/error behavior and insert no obligation. |
+| REST `updateOpportunityStatus('accepted')` | With no acting-user `actedAt`, current REST may win from any persisted status, including `accepted` for a different actor and `negotiating|stalled|rejected|expired`; an acting user with existing `actedAt` retains the current conflict/error behavior. | Eligible `won` inserts one `opportunity_acceptance` obligation only when capture is on; other outcomes insert none. |
+| Protocol/tool graph acceptance | Preserve its existing pre-graph guard: only the statuses currently admitted by that tool reach the shared action primitive; blocked terminal/in-flight statuses remain blocked in both flag states. | Eligible `won` converges on the same obligation path; capture does not widen the tool guard. |
+| New `startChat` | Preserve the exact current transition set `latent|draft|pending`; an acting user who already acted or `negotiating|stalled|rejected|expired` retains current error behavior. | Eligible `won` inserts one `conversation_started` obligation only when capture is on. |
+| Already-`accepted` `startChat` | Preserve the current get/unhide-DM branch. | No action timestamp, edge/touch, or obligation in either flag state. |
 
-Same-actor duplicates therefore retain the explicit idempotent/conflict behavior above without another obligation, using the durable per-actor accepted marker rather than mutable singular `acceptedBy`. Before capture can enable, an idempotent migration marks only unambiguous legacy rows where status is `accepted`, `acceptedBy` names exactly one actor on the opportunity, and that actor has a finite parseable `actedAt`; it writes `via:'legacy_accepted'` without creating an obligation, edge, or recency event. Ambiguous/malformed historical rows remain unmarked and fail closed to conflict rather than inventing acceptance evidence; A5 may independently backfill existing-edge recency under its stricter evidence rules. Two different actors racing REST/graph acceptance serialize under the same opportunity lock: after the first changes the row to `accepted`, only the second actor with both marker and `actedAt` absent can take the accepted-row matrix branch and create its independent obligation.
+Same-actor and cross-surface races serialize under the opportunity row lock; only one call receives `won` for that actor action, so later calls cannot create duplicate contact work. Different participant actors retain their current independent REST behavior through their own actor rows. V1 adds no `acceptedAction` or other private key to `actors` JSON: current serializers spread actors, so all contact idempotency/action metadata remains solely in the private A1 obligation. Contract snapshots forbid `acceptedAction` across REST, tool, MCP, graph trace, debug, presenter, cache, and delivery payloads.
 
-This capture-on matrix intentionally tightens today's status-unchecked REST acceptance for `rejected|expired`: it prevents terminal-row resurrection while capture-off preserves exact current behavior. Acceptance from `negotiating` also supersedes that negotiation attempt. Every negotiation finalizer and generic action writer must use the same locked transition primitive, re-read status/actor marker, and refuse to overwrite `accepted`; a finalizer admitted before acceptance completes first, while one admitted afterward becomes a no-op/conflict. This status/actor CAS prevents the live negotiation graph's later `pending|rejected|stalled` write from overwriting a concurrent accepted winner.
-
-The lock-held winner rule selects one canonical source for `updateOpportunityStatus`/`startChat` races: whichever eligible same-actor acceptance first persists `actedAt` plus its accepted marker owns the contact origin and action time. The losing same-actor path cannot overwrite it. The same lock-held status/action revalidation prevents generic `sendNode`/other acted-at writers from racing an acceptance into a committed accepted state without a contact obligation. Legitimate different-actor actions remain independent. Ordinary duplicate-edge rules still preserve the first valid acquisition already stored on each owner edge.
+Status-machine hardening is explicitly outside this capture flag and outside A4. In particular, making `rejected|expired` terminal for REST or preventing negotiation finalizers from overwriting a concurrent acceptance requires a separately approved opportunity-lifecycle CAS ticket/rollout applied uniformly with capture both off and on. That future change should bind finalizers to an exact negotiation attempt and no-op when status no longer matches, but IND-429 neither implements nor feature-gates it. If a current finalizer later changes status, the already-committed human action remains valid evidence; capture does not claim accepted status is terminal.
 
 The contact obligation is explicitly directional. Replay processes actor → counterpart with the actor's authorized `restore:true` semantics, then counterpart → actor with `restore:false`. Actor → counterpart may restore only that actor-owner's `owner_removed` tombstone and returns `contact_opt_out` for a subject opt-out. Counterpart → actor restores neither tombstone type and returns the actual `owner_removed` or `contact_opt_out` reason; legacy unreasoned tombstones return `contact_opt_out`. Both directions use the winning action's trusted source/basis/time, but each edge keeps independent authority and state. Account erasure and access controls match either named endpoint.
 
@@ -387,7 +388,9 @@ The worker persists one disposition per direction and uses the same edge/touch p
 | `owner_removed` | not attempted | `terminal_owner_removed` **or** `terminal_edge_no_longer_authorized` | With `restore:false`, preserve the tombstone and persist `terminal_owner_removed`. With `restore:true`, restore only when `tombstonedAt < actionAt`; a missing/equal/newer tombstone time represents a later or unverifiable owner choice and persists `terminal_edge_no_longer_authorized`. |
 | `contact_opt_out` | not attempted | `terminal_contact_opt_out` | Preserve the subject opt-out (including legacy unreasoned fail-closed tombstones) and do not retry. |
 | `inactive_endpoint` | not attempted | `terminal_inactive_endpoint` | Erasure/deactivation-terminal: write no edge/signal and do not retry. |
+| `non_contact_conflict` | not attempted | `terminal_non_contact_conflict` | Preserve the self/owner/member/mixed-permission row byte-for-byte; never convert it into a contact or retry. |
 | `created`, `restored`, or `existing` | `inactive_endpoint` | `terminal_inactive_endpoint` | The touch transaction's shared endpoint recheck failed; it mutated neither direction. Mark every unfinished direction from that pair attempt terminal and do not route this through `missing`. |
+| `created`, `restored`, or `existing` | `non_contact_conflict` | `terminal_non_contact_conflict` | A direction ceased to be a canonical contact; preserve it with null signals and do not retry. |
 | `created`, `restored`, or `existing` | `missing` | `retryable_transient` **or** `terminal_edge_no_longer_authorized` after recheck | Re-lock/recheck active endpoints, winning action, edge existence, and directional restore authority. Retry only while authorized/expected. |
 | `created`, `restored`, or `existing` | `invalid_details` | `terminal_invalid_details` | Preserve details/timestamp, emit aggregate `invalid_details`, and do not blindly retry. |
 | `created`, `restored`, or `existing` | `unsupported_details_version` | `terminal_unsupported_details_version` | Preserve details/timestamp, emit aggregate `unsupported_details_version`, and do not downgrade/retry with v1. |
@@ -501,7 +504,7 @@ The operational “recent” window is a versioned constant of 90 days. It is a 
 6. `conversation_started` is a qualifying explicit opportunity action and remains source-independent: valid recent details plus its persisted transition timestamp yield `recently_active` even when `contact_source` is null.
 7. `absent`, `malformed`, or `unsupported_version` details cannot validate the timestamp. If `source` is known, the result is source-only `candidate_weak` with `known_acquisition_origin` plus any parse/timestamp reasons. If `source` is null, the result is `unknown` with those reasons plus `no_trusted_signal`.
 8. When more than one reason applies, emit this fixed order: `malformed_signal_details` or `unsupported_signal_version`, then `invalid_interaction_timestamp`, then `invalid_future_interaction`, then exactly one evidence outcome (`recent_trusted_interaction`, `stale_trusted_interaction`, `known_acquisition_origin`, or `no_trusted_signal`). Invalid and future timestamp reasons are mutually exclusive.
-9. Deleted/non-contact rows are not classifier inputs at all.
+9. Deleted rows or rows that are not active singleton `permissions=['contact']` are not classifier inputs at all; legacy containment alone is insufficient.
 
 The following table makes valid-but-unusable combinations total. “Fallback” means `candidate_weak` + `known_acquisition_origin` when `source` is known, otherwise `unknown` + `no_trusted_signal`. A finite future timestamp prepends `invalid_future_interaction`; a non-finite Date prepends `invalid_interaction_timestamp`; neither qualifies recency.
 
@@ -563,7 +566,7 @@ sequenceDiagram
         end
     else Acceptance / new startChat
         Boundary->>Product: action + optional existing Lens B descriptor
-        Product->>DB: lock actor; run existing transition; CAS contact winner only when capture on
+        Product->>DB: lock opportunity; run same flag-independent product transition; return won/idempotent/conflict/not_found
         opt Lens B descriptor present
             DB->>DB: revalidate/insert Lens B obligation; set its inserted bit
         end
@@ -577,7 +580,7 @@ sequenceDiagram
         opt Capture-on contact winner token
             Product->>Edge: immediate directional edge/touch work
             Edge->>DB: actor restore=true; reverse restore=false; persist dispositions
-            Edge-->>Product: updated/unchanged/missing/invalid_details/unsupported_details_version or DB failure
+            Edge-->>Product: updated/unchanged/missing/inactive/non-contact/invalid/unsupported or DB failure
         end
     end
     Note over Product,Edge: Capture off admits no new contact obligation/token; cleanup still drains or expires prior rows; already-accepted startChat remains no-op
@@ -587,8 +590,8 @@ sequenceDiagram
     Shadow-->>Shadow: aggregate coverage/rank-delta metrics only
 
     opt Default-off ranking experiment
-        Intro->>DB: current intent-freshness candidates + private signals
-        Intro->>Intro: reviewed versioned ordering policy
+        Intro->>DB: API-local private candidates/signals
+        Intro->>Intro: classify/order, then project unchanged ContactWithIntents
         Intro-->>DB: enqueue same introducer jobs as current path
     end
 
@@ -602,7 +605,7 @@ sequenceDiagram
 
 ## Introducer integration: measurement before ranking
 
-The natural integration point is `ContactWithIntents` and `getContactsWithIntentFreshness`, but the disabled path must preserve current semantics exactly: the same query, limit, ordering by active-intent freshness, handling of null freshness, selected contacts, and enqueued jobs. The flag check must occur before any alternate query or reorder.
+The integration seam is the **API-local implementation** of `getContactsWithIntentFreshness`, not the published `ContactWithIntents` type. `ContactWithIntents` and the published `MaintenanceGraphDatabase` contract remain exactly `{userId,latestIntentAt,intentCount}`. Private candidate rows may read/classify signals, run shadow comparison, and apply an approved ordering only inside the API adapter/service; before crossing into `@indexnetwork/protocol`, they are projected back to that unchanged shape. Signal source, recency, band, reasons, classifier version, and ordering metadata never enter protocol declarations, `ContactServiceAdapter`, queue payloads, or public serializers. The disabled path branches before any alternate query/reorder and preserves the same query, limit, active-intent-freshness order, null handling, selected contacts, and enqueued jobs.
 
 ### Shadow evaluation
 
@@ -698,7 +701,7 @@ PREMISE_EXPOSURE_PREVIEW_NETWORK_COOLDOWN_DAYS=7
 
 The separately named minimum defaults to five and is hard-clamped to `[2,100]`, following the locked frame-drift-style threshold decision. Let `M` be the clamped minimum and let the fixed integer buckets be `[2,4]`, `[5,9]`, `[10,24]`, `[25,49]`, and `[50,∞)`. If the count is below `M`, return `status:'suppressed'` with no exact count, lower bound, or narrower bucket. Otherwise select the fixed bucket containing the count and intersect that bucket with `[M,∞)`. Emit the bucket label only when the intersection contains at least two possible integer counts. An empty intersection is impossible for an eligible count; a singleton intersection returns `suppressed` rather than revealing the exact value. Therefore `M=4/9/24/49` suppresses counts `4/9/24/49` respectively, while the next count enters the next fixed bucket; `50+` remains safe because its intersection is unbounded for every allowed `M`. The `2–4` bucket is reachable only when the surviving intersection has at least two values, such as `M=2` or `M=3`. Suppression is a normal privacy outcome, not an error, and neither responses nor telemetry reveal the exact suppressed count.
 
-The preview is computed once from the post-assignment snapshot and returned only on that create result; v1 adds no refresh/count endpoint. A dedicated database-backed `PremisePreviewPrivacyLedger` adapter—not the generic cache—must atomically reserve privacy releases before any count query. In the reservation transaction it acquires an owner-scoped advisory lock, takes a user-row lock incompatible with erasure, validates the active owner, locks/updates the rolling-24-hour owner budget, and locks/upserts one owner/network cooldown row per assigned network with a fresh `reservationId` and null `consumedAt`. It returns an internal exact token `{ownerUserId,networkId,reservationId,expiresAt}` for each successful network and never exposes that token outside the adapter. All API instances and REST, MCP, and in-process composition roots share this path.
+The preview is computed once from the post-assignment snapshot and returned only on that create result; v1 adds no refresh/count endpoint. Because `create_premise` builds its response inside the protocol tool, D2 adds one optional owner-scoped host bridge to `ToolDeps`, `buildPremiseExposurePreviews({ownerUserId,assignments})`. Every API composition root (MCP/Hermes, REST tool, and in-process chat) injects the same API-local implementation. The protocol tool invokes it only after the graph returns completed assignments; bridge failure is isolated into the specified unavailable items. When preview is disabled the bridge is absent and `exposurePreviews` is omitted. The bridge accepts no premise text, member identities, or caller-supplied owner. A dedicated database-backed `PremisePreviewPrivacyLedger` adapter—not the generic cache—must atomically reserve privacy releases before any count query. In the reservation transaction it acquires an owner-scoped advisory lock, takes a user-row lock incompatible with erasure, validates the active owner, locks/updates the rolling-24-hour owner budget, and locks/upserts one owner/network cooldown row per assigned network with a fresh `reservationId` and null `consumedAt`. It returns an internal exact token `{ownerUserId,networkId,reservationId,expiresAt}` for each successful network and never exposes that token outside the adapter. All API instances and REST, MCP, and in-process composition roots share this path.
 
 A reservation commit alone does not authorize an unlocked or repeated count. For each reserved network, the adapter opens a count transaction that reacquires the same owner advisory lock, locks/rechecks the active owner row, locks the owner/network release row, and requires exact matching unexpired `reservationId` plus `consumedAt IS NULL`. It sets `consumedAt` and executes the privacy-thresholded canonical-scope count **before releasing those locks**. The count statement runs inside a savepoint: if it fails, roll back only that savepoint, commit the consumed marker, and return `unavailable`, so failure cannot refund a probe. If the owner or exact reservation is absent, replaced, expired, or already consumed, return `unavailable` and run no count. A crash/transaction failure before top-level commit releases neither a result nor a consumed marker; a retry is safe because no release occurred. Account erasure acquires the same advisory lock before deleting the user and ledger rows, so serialization is deterministic: erasure either waits until a properly ledgered single-use count completes, or wins first and causes the later count recheck to fail closed. Concurrent multi-network counts for one owner serialize through that lock; they do not weaken each network's exact-token/single-use check.
 
@@ -716,9 +719,10 @@ A future pre-assignment gate could show the same estimate before persistence and
 | --- | --- |
 | Schema is absent or incompatible during deployment | Migration-first rollout prevents schema-dependent readers/writers from deploying before the migration. Capture remains disabled until migration and all compatible instances are complete. A mismatch is a deployment/startup failure to roll back or repair, never silently handled by runtime column feature detection. |
 | Direct add or bulk membership/provenance write fails | With capture disabled, existing membership behavior is unchanged and signals remain null. With capture enabled, a single add rolls back its edge+origin/details together. Import resolution/dedup may already have classified inputs as skipped, but the surviving edge set and all required origins/details commit or roll back in one existing batched persistence unit. A failed batch throws before returning an imported count; it never reports per-item database success or a successful edge missing provenance. |
+| Self-add or occupied non-contact/mixed-permission key | Return `non_contact_conflict`; preserve permissions, deletion state, metadata, and null signal fields exactly. Direct APIs must not report a newly created/restored contact, and repair persists `terminal_non_contact_conflict`. |
 | Capture is off during acceptance/new `startChat` | Admit no new contact descriptor/obligation/token and perform no new immediate capture. Preserve the exact existing actor transition, optional Lens B obligation/result bit/mining trigger, and best-effort contact failure behavior. The capture-independent processor still drains or expires rows committed before rollback. |
-| Capture-on participant set is ambiguous/inactive/introducer-involving | Proceed only with independently valid product/Lens B behavior; create no trusted contact descriptor/obligation/token and suppress legacy contact fallback. Emit detached aggregate `ineligible_participants`. |
-| Capture-on generic send/other action wins the actor `actedAt` race before acceptance | Lock-held acceptance revalidation returns conflict and does not commit accepted state or contact obligation; retry/reload product state. |
+| Capture pair is ambiguous/inactive or the caller is an introducer | Preserve the exact current product/Lens B and legacy no-signal contact behavior; create no trusted descriptor/obligation/token and emit detached `ineligible_participants`. Exactly two valid participants plus one separate introducer remains eligible, and the introducer is ignored as an endpoint. |
+| Generic send/other action wins the acting user's `actedAt` race before acceptance | The shared primitive returns the surface's existing conflict/error in both capture states and creates no contact obligation; capture does not select this policy. |
 | Capture-on winning action's contact or Lens B obligation insert/revalidation fails | Roll back the actor action and both independent optional obligations atomically. An idempotent conflict sets only its own `result.inserted=false`; it is not an insert failure. |
 | Secondary contact edge/origin side effect fails after a capture-on winning action | The opportunity/chat remains committed because its directional private repair obligation is durable; apply the disposition matrix and retry only transient/race-authorized work. Logs/metrics remain detached aggregates. |
 | Recency touch receives non-finite trusted `at` | Throw `RangeError` before opening the write transaction; mutate neither direction and emit only the detached coarse programmer-error aggregate. |
@@ -726,17 +730,18 @@ A future pre-assignment gate could show the same estimate before persistence and
 | Recency touch database operation fails after a message | Message send remains committed and has no pair-bearing obligation; only a later qualifying interaction or conservative backfill may repair recency. |
 | Recency touch sees malformed details | Return `invalid_details` for that direction; preserve details and `last_interaction_at` byte-for-byte/semantically unchanged; emit only aggregate diagnostics. Automated retry remains a no-op until an audited repair can reconstruct a complete allowlisted object without guessing acquisition. |
 | Recency touch sees an unsupported/future details version | Return `unsupported_details_version`; do not inspect, overwrite, downgrade, or advance recency. The v1 obligation terminalizes and is deleted after both directions finish; a future compatible writer may process a new qualifying event but must not resurrect the deleted v1 obligation. Forward compatibility takes precedence over capture. |
-| Contact edge writer or touch sees either endpoint inactive | Edge upsert returns `inactive_endpoint` and writes no edge/signal. Touch returns `inactive_endpoint` for both directions and mutates neither. Both map directly to `terminal_inactive_endpoint`, never to `missing` retry. |
+| Contact edge writer or touch sees either endpoint inactive | After locking both user rows in canonical order, edge upsert returns `inactive_endpoint` and writes no edge/signal. Touch returns `inactive_endpoint` for both directions and mutates neither. Both map directly to `terminal_inactive_endpoint`, never to `missing` retry. |
+| Contact edge writer/touch sees a self, owner/member, or mixed-permission collision | Return `non_contact_conflict` without mutation and map repair to `terminal_non_contact_conflict`; containment-based legacy reads do not authorize signal writes. |
 | One directional edge is missing | Return `missing` for that direction; do not create the edge except in existing acceptance/startChat creation flows. |
 | Duplicate/out-of-order touch | `GREATEST` keeps the newest trusted timestamp; equal timestamps use the fixed `dm_message` > `opportunity_acceptance` > `conversation_started` > `backfill_dm_message` > `backfill_opportunity_actor_action` provenance order. |
 | Tombstone authority is ambiguous/legacy | Fail closed to `contact_opt_out`; do not restore until an authorized action or migration resolves it. |
 | Ghost merge collides with an existing edge | Target tombstone/active edge wins; clear source-ghost signals; never merge recency. |
-| Account erasure races capture/repair/preview reservation or count | Every path acquires/reacquires the shared owner advisory lock and active-user lock. Erasure serializes after an in-lock count or deletes owner+ledger first so the later exact-reservation recheck returns `unavailable` without counting; it deletes obligations and privacy-ledger rows naming the user, invalidates queued repair/caches, and exposes no historical release record. |
+| Account erasure races capture/repair/preview reservation or count | Pair writers lock endpoint users ascending; base A2 erasure takes the same erased-user row lock, deletes A1 obligations before locking/clearing mappings and edge signals/tombstones, so write-first is removed and erase-first blocks the writer without an obligation↔edge lock cycle. It never locks opportunities or absent D2 tables. After D2 migration, the erasure composition first takes the preview advisory lock and also deletes ledger rows. Cache/job invalidation is post-commit. |
 | Classifier receives invalid `asOf` | Throw `RangeError` before classification; this is a trusted-programmer error, not an `unknown` band. |
 | Classifier receives non-finite `lastInteractionAt` | Add deterministic `invalid_interaction_timestamp` and use only fallback evidence; never classify it as recent/stale trusted interaction. |
 | Classifier receives malformed/future details | Fail closed to `unknown` or source-only `candidate_weak`; emit detached aggregate invalid-input count. |
 | Pair-bearing legacy import/capture log or generic logger call is detected | Keep `CONTACT_SIGNAL_CAPTURE_ENABLED=false`; fail A3 until static/transport contracts prove the dedicated sink emits only allowlisted context-free production envelopes. A `NODE_ENV=test`-disabled Sentry assertion is insufficient. |
-| Privacy-aggregate sink/export fails | Drop or retry only through its bounded aggregate path; never attach active context or fall back to generic logging. Product behavior remains unchanged and absence is unobserved/unknown. |
+| Privacy-aggregate sink/export fails | Drop or retry only through its bounded aggregate path; never attach active context or fall back to generic logging. Retries target the same database-derived `contact-privacy-counter-v1` UTC-week bucket and create no exact update timestamp. Product behavior remains unchanged and absence is unobserved/unknown. |
 | Shadow evaluator fails | Current introducer selection and queueing continue unchanged. |
 | Ranking code fails while flag is on | Fall back to the exact current intent-freshness path and emit an aggregate fallback counter. |
 | Preview privacy-ledger reservation denies or fails | Under the owner advisory lock, atomically reserve the owner request and eligible owner/network cooldowns. Denied networks or any reservation transaction/storage failure return `unavailable` and perform no affected count query. A committed reservation stays consumed after downstream failure. The premise/assignments remain successful; never use the fail-open generic cache or transport limiter as fallback. |
@@ -751,16 +756,24 @@ Contact-obligation workers must use the lock-held winning action, directional au
 
 The current `ContactService.importContacts` dedup log is a pre-capture blocker: it records `ownerId` alongside each removed contact's `email`, `matchedWith`, and scores. A3 removes pair-bearing fields from the initial/import-completed/dedup log family and prohibits import/capture telemetry from calling the generic logger. The production `emitSentryLog` path is disabled under `NODE_ENV=test` and may inherit an active SDK request/span scope in production, so an ordinary log-capture test cannot prove trace detachment.
 
-A3 therefore adds a dedicated `ContactPrivacyAggregateSink`. Request-path code submits only a closed, typed event name plus allowlisted coarse dimensions and integer increment; the sink accepts no context object, enters an explicitly context-cleared/non-instrumented execution boundary, and atomically increments `contact_privacy_aggregate_counters` through an injected dedicated counter-store adapter. The counter write itself must not create/inherit a request span or breadcrumbs. A detached exporter runs outside request handling, reads only aggregate rows, and sends a context-free envelope through an injected `PrivacyAggregateTransport`. The production transport must create/send that envelope without active request, trace, span, user, session, or pair scope; it cannot call `emitSentryLog`, `setSpanAttributes`, or a request-scoped Sentry hub. On sink/export failure, drop/retry the aggregate through its bounded operational path—never fall back to the generic logger.
+A3 therefore adds a dedicated `ContactPrivacyAggregateSink`. Request-path code submits only a closed typed event plus positive integer increment—never a timestamp or bucket. The counter store derives the fixed ISO-UTC-week `bucketStart` from database `clock_timestamp()`, enforces Monday alignment/version in SQL, and atomically increments `contact_privacy_aggregate_counters` through an injected dedicated adapter. Conflict updates modify only `count`; no exact row/per-increment create/update time, audit trigger, CDC event, returned write time, span, or breadcrumb is permitted. The sink accepts no context object and enters an explicitly context-cleared/non-instrumented boundary. A detached exporter runs outside request handling on the weekly cadence, reads only closed aggregate rows, and sends a context-free `{counterVersion,bucketStart,dimensions,count}` envelope through an injected `PrivacyAggregateTransport`. The production transport cannot call `emitSentryLog`, `setSpanAttributes`, or a request-scoped Sentry hub. On sink/export failure, drop/retry only through this bounded aggregate path—never the generic logger.
 
 ```ts
 // Illustrative closed telemetry seam; no index signature or arbitrary metadata.
 declare const positiveSafeIntegerBrand: unique symbol;
+declare const utcWeekStartBrand: unique symbol;
 type PositiveSafeInteger = number & { readonly [positiveSafeIntegerBrand]: true };
+type UtcWeekStart = string & { readonly [utcWeekStartBrand]: true };
 export declare function toPositiveSafeInteger(value: number): PositiveSafeInteger;
+export declare function toUtcWeekStart(value: string): UtcWeekStart;
 
 type RatioBucket = '0-.24' | '.25-.49' | '.50-.74' | '.75-1';
 type CountBucket = '0' | '1' | '2-4' | '5+';
+type ShadowPolicyPreset =
+  | 'current_intent_freshness'
+  | 'candidate_weak_first'
+  | 'recently_active_first';
+type RecencySensitivityWindow = '30d' | '90d' | '180d';
 
 type ContactPrivacyAggregate =
   | {
@@ -819,6 +832,16 @@ type ContactPrivacyAggregate =
       event: 'classifier_coverage';
       boundary: 'weekly_thresholded_job';
       classifierVersion: 'contact-signal-v1';
+      sensitivityWindow: '90d';
+      outcome: 'unknown' | 'candidate_weak' | 'recently_active' | 'invalid_input';
+      cohort: 'privacy_threshold_met';
+      increment: PositiveSafeInteger;
+    }
+  | {
+      event: 'shadow_classifier_sensitivity';
+      boundary: 'weekly_thresholded_job';
+      classifierVersion: 'contact-signal-v1';
+      sensitivityWindow: '30d' | '180d';
       outcome: 'unknown' | 'candidate_weak' | 'recently_active' | 'invalid_input';
       cohort: 'privacy_threshold_met';
       increment: PositiveSafeInteger;
@@ -827,6 +850,8 @@ type ContactPrivacyAggregate =
       event: 'shadow_ratio';
       boundary: 'weekly_thresholded_job';
       metric: 'top_five_jaccard' | 'source_concentration' | 'network_diversity' | 'truncation_rate' | 'missing_signal_rate';
+      policyPreset: ShadowPolicyPreset;
+      sensitivityWindow: RecencySensitivityWindow;
       bucket: RatioBucket;
       cohort: 'privacy_threshold_met';
       increment: PositiveSafeInteger;
@@ -834,6 +859,8 @@ type ContactPrivacyAggregate =
   | {
       event: 'shadow_displacement';
       boundary: 'weekly_thresholded_job';
+      policyPreset: ShadowPolicyPreset;
+      sensitivityWindow: RecencySensitivityWindow;
       bucket: CountBucket;
       cohort: 'privacy_threshold_met';
       increment: PositiveSafeInteger;
@@ -842,6 +869,8 @@ type ContactPrivacyAggregate =
       event: 'shadow_downstream';
       boundary: 'weekly_thresholded_job';
       metric: 'queue_completion' | 'opportunity_creation' | 'owner_approval' | 'eventual_acceptance';
+      policyPreset: ShadowPolicyPreset;
+      sensitivityWindow: RecencySensitivityWindow;
       outcome: 'observed' | 'not_observed';
       cohort: 'privacy_threshold_met';
       increment: PositiveSafeInteger;
@@ -850,6 +879,8 @@ type ContactPrivacyAggregate =
       event: 'shadow_policy';
       boundary: 'weekly_thresholded_job';
       classifierVersion: 'contact-signal-v1';
+      policyPreset: ShadowPolicyPreset;
+      sensitivityWindow: RecencySensitivityWindow;
       asOfPolicy: 'fixed_weekly';
       candidateLimitBucket: '5-24' | '25-49' | '50-100';
       cohort: 'privacy_threshold_met';
@@ -858,6 +889,8 @@ type ContactPrivacyAggregate =
   | {
       event: 'shadow_gate';
       boundary: 'weekly_thresholded_job';
+      policyPreset: ShadowPolicyPreset;
+      sensitivityWindow: RecencySensitivityWindow;
       outcome: 'met' | 'not_met';
       eligibleCycles: '0-999' | '1000+';
       distinctOwners: '0-99' | '100+';
@@ -899,21 +932,35 @@ type ContactPrivacyAggregate =
       increment: PositiveSafeInteger;
     };
 
+type ContactPrivacyCounterDimensions =
+  ContactPrivacyAggregate extends infer Event
+    ? Event extends { increment: PositiveSafeInteger }
+      ? Omit<Event, 'increment'>
+      : never
+    : never;
+
+type ContactPrivacyCounterExport = {
+  counterVersion: 'contact-privacy-counter-v1';
+  bucketStart: UtcWeekStart;
+  dimensions: ContactPrivacyCounterDimensions;
+  count: PositiveSafeInteger;
+};
+
 interface PrivacyAggregateCounterStore {
   increment(envelope: ContactPrivacyAggregate): Promise<void>;
 }
 
 interface PrivacyAggregateTransport {
-  emit(envelope: ContactPrivacyAggregate): Promise<void>;
+  emit(envelope: ContactPrivacyCounterExport): Promise<void>;
 }
 ```
 
-`toPositiveSafeInteger` is the sole constructor for increments and rejects non-finite, non-integer, non-positive, or unsafe values before storage/export; writers cannot cast arbitrary numbers. The concrete production `DetachedPrivacyAggregateTransport` owns the real serializer/context reset and accepts only an injectable low-level backend sender; callers cannot substitute a request-scoped logger. Tests instantiate this concrete production class with a fake backend while fake request/span/user/session context is active. Static forbidden-key assertions cover every import/capture call site and envelope variant. Compile-time negative fixtures reject cross-products such as manual/ineligible-participants, message/opportunity-acceptance, or start-chat/DM basis. Counter-store and concrete-transport contract tests assert neither stored dimensions nor emitted bytes inherit active context and only allowlisted keys/values exist. Tests do **not** claim coverage by observing the `NODE_ENV=test`-disabled Sentry path. `CONTACT_SIGNAL_CAPTURE_ENABLED` remains false until this production-equivalent gate passes.
+`toPositiveSafeInteger` is the sole constructor for increments/counts and rejects non-finite, non-integer, non-positive, or unsafe values. `toUtcWeekStart` accepts only canonical Monday `00:00:00Z`; request writers cannot construct/export their own bucket. The request union and export envelope are intentionally different types. The concrete production `DetachedPrivacyAggregateTransport` owns the real serializer/context reset and accepts only an injectable low-level backend sender; callers cannot substitute a request-scoped logger. Tests instantiate this concrete production class with a fake backend while fake request/span/user/session context is active. Static forbidden-key assertions cover every import/capture call site and envelope variant. Compile-time negative fixtures reject cross-products such as manual/ineligible-participants, message/opportunity-acceptance, or start-chat/DM basis. Counter-store and concrete-transport contract tests assert neither stored dimensions nor emitted bytes inherit active context and only allowlisted keys/values exist. Tests do **not** claim coverage by observing the `NODE_ENV=test`-disabled Sentry path. `CONTACT_SIGNAL_CAPTURE_ENABLED` remains false until this production-equivalent gate passes.
 
 Allowed operational metrics are global or privacy-thresholded aggregates such as:
 
-- capture attempts/results by trusted boundary and coarse outcome (`created`, `restored`, `existing`, `owner_removed`, `contact_opt_out`, `inactive_endpoint`, `ineligible_participants`, `failed`);
-- touch direction outcomes (`updated`, `unchanged`, `missing`, `inactive_endpoint`, `invalid_details`, `unsupported_details_version`, `invalid_timestamp`) by allowlisted basis, without pair or owner dimensions;
+- capture attempts/results by trusted boundary and coarse outcome (`created`, `restored`, `existing`, `owner_removed`, `contact_opt_out`, `inactive_endpoint`, `non_contact_conflict`, `ineligible_participants`, `failed`);
+- touch direction outcomes (`updated`, `unchanged`, `missing`, `inactive_endpoint`, `non_contact_conflict`, `invalid_details`, `unsupported_details_version`, `invalid_timestamp`) by allowlisted basis, without pair or owner dimensions;
 - backfill scanned/eligible/updated/skipped-invalid/skipped-deleted counts;
 - classifier version and aggregate band coverage;
 - thresholded introducer shadow coverage, Jaccard, displacement, concentration/diversity, truncation/missing-signal, downstream outcome, policy, and evidence-gate buckets represented by the closed `shadow_*` variants;
@@ -926,7 +973,7 @@ The request-path privacy sink produces **global counters only** and cannot estab
 
 Forbidden metric/log dimensions include user IDs, emails, contact IDs, raw network IDs, exact timestamps, source+owner combinations, pair hashes, per-owner candidate lists, message/opportunity IDs joined to bands, and any low-cardinality slice that enables pair reconstruction. Hashing a pair does not make it anonymous.
 
-Signal analytics use distinct owners—not events or edges—as the privacy unit, stable weekly cohorts, coarse predeclared dimensions, and a fixed release cadence. Arbitrary date/window/version cross-slicing and repeated differencing queries are prohibited. Raw operational aggregates are access-controlled and retained for at most 30 days unless an approved incident hold applies.
+Signal analytics use distinct owners—not events or edges—as the privacy unit, stable ISO-UTC-week cohorts, coarse predeclared dimensions, and a fixed weekly release cadence. `contact-privacy-counter-v1` is immutable; changing width/alignment requires a reviewed counter-version migration rather than configuration. Arbitrary date/window/version cross-slicing and repeated differencing queries are prohibited. Raw operational aggregates are access-controlled and retained by `bucketStart` for at most 30 days unless an approved incident hold applies.
 
 Signal-specific and contact-import telemetry exists only as detached aggregate-counter/export envelopes and therefore has no request/trace identifier to share with pair-bearing application logs. A tightly restricted security incident store may correlate a separate incident record transiently under audited access, but ordinary observability cannot. Analytics exports apply the same default-five, hard-clamped `[2,100]` cohort suppression concept as the preview/frame-drift precedent. Absence of a metric means unobserved/unknown, not proof that no interaction occurred.
 
@@ -969,9 +1016,9 @@ Until then, no classifier band may filter source premises, candidates, contexts,
 
 Boolean flags use exact literal `true`; unset, mixed-case, or any other value means disabled. Capture, shadow, ranking, and preview are independent. Ranking may require shadow infrastructure, but enabling capture must not implicitly enable any consumer.
 
-The existing `CONTACTS_ENABLED` gate remains authoritative for ordinary contact add/import tool availability. `CONTACT_SIGNAL_CAPTURE_ENABLED` only annotates contact writes that the product already permits; it never enables a disabled add/import surface. Before first activation, false preserves permitted membership writes with null signal fields. In every false state, acceptance/new-`startChat` performs no new contact winner CAS result, repair-obligation insert, rollback-on-contact-insert failure, or immediate capture; the locked transition, Lens B behavior, side-effect scheduling, and failure isolation remain exact. The migration-installed repair/cleanup processor is deliberately not gated by capture and may only process obligations already committed while capture was true, applying their stored original authority or bounded expiry and deleting final rows. A fresh dark deploy has zero obligations and therefore no repair work or product change. After prior activation, reason-aware tombstone protection remains enabled as a second monotonic privacy exception and may change only through an approved rollback migration. When true, origin/details are atomic with one directed single-add edge and, for import, across the surviving edge set; only a lock-held winning actor action creates the composed contact obligation/token. Reciprocal acceptance/chat directions remain independent and authority-asymmetric. Existing acceptance/startChat contact side effects currently bypass `CONTACTS_ENABLED`; v1 preserves that product behavior unless a separate ticket changes it. The capture-on/off × Lens-B-present/absent × existing-obligation-present/absent matrix is tested in REST, MCP, REST tool, and in-process chat composition roots, including current `ToolService` wiring.
+The existing `CONTACTS_ENABLED` gate remains authoritative for ordinary contact add/import tool availability. `CONTACT_SIGNAL_CAPTURE_ENABLED` only annotates contact writes that the product already permits; it never enables a disabled surface or changes opportunity/start-chat status policy. Before first activation, false preserves permitted membership writes with null signals. In every false state, the shared transition still returns its surface's normal outcome but inserts no repair obligation/token and performs no signal capture; Lens B, legacy contact behavior, and product failure semantics remain exact. The A4 repair/cleanup processor is not gated by capture and may only process rows previously admitted while true, using A1's validator and bounded expiry. An A1-A3 dark deploy has an empty obligation table and no processor work. After prior activation, reason-aware tombstone protection remains monotonic unless an approved rollback migration resolves protected rows. When true, origin/details are atomic with one directed single-add edge and, for import, across the surviving edge set; only a product `won` action with an exact eligible pair inserts the contact obligation/token. Existing acceptance/startChat contact side effects currently bypass `CONTACTS_ENABLED`; v1 preserves that behavior unless a separate ticket changes it. The capture-on/off × surface-status × Lens-B-present/absent × eligible/ineligible-pair × existing-obligation matrix is tested across REST, protocol tools, MCP/Hermes, REST tool, and in-process chat.
 
-Tie rollout proceeds additive signal/outbox/aggregate-counter migrations → dark deploy with the capture-independent repair/cleanup processor registered → idempotent unambiguous legacy accepted-marker migration/report → detached privacy-sink and pair-safe import/dedup verification → trusted capture cohort → backfill → shadow observation → separately approved limited ranking experiment. A4 depends on both A2 and A3: no A4 capture-on rollout may precede the accepted-marker migration report, production-equivalent sink, closed telemetry tests, and pair-log removal delivered by A3. `CONTACT_SIGNAL_CAPTURE_ENABLED` remains false everywhere until those gates pass. Preview is independent of tie capture, but remains disabled until D1 canonicalization, A3's detached sink/counter infrastructure, and the D2 database privacy-ledger migration, multi-instance reservation/count-lock tests, and cleanup/erasure interleaving tests pass. Deploy compatible ledger readers/writers before `PREMISE_EXPOSURE_PREVIEW_ENABLED=true`; no runtime cache fallback or column/table detection is allowed.
+Tie rollout proceeds A1 additive signal + obligation-table migration/validator → A1 dark primitive/lock/DB-clock tests with no consumers → A2 lifecycle/erasure convergence → A3 versioned weekly aggregate-counter migration, detached sink, acquisition wiring, and pair-safe log verification → A4 action admission/processor wiring → trusted capture cohort → backfill → shadow observation → separately approved ranking experiment. A4 depends on both A2 and A3; no capture-on rollout may precede A1's empty-table/validator checks, A2's lifecycle locks, and A3's production-equivalent sink/counter tests and pair-log removal. `CONTACT_SIGNAL_CAPTURE_ENABLED` remains false until all pass. No status-machine hardening rides this flag; any opportunity-lifecycle CAS rollout is separate and capture-independent. Preview remains disabled until D1 canonicalization, A3's detached sink/counter infrastructure, and D2 ledger/interleaving tests pass. Deploy compatible ledger readers/writers before `PREMISE_EXPOSURE_PREVIEW_ENABLED=true`; no runtime schema detection or fail-open fallback is allowed.
 
 Operational rollback disables ranking/shadow consumers first, then flips capture off to stop new descriptors, obligations, and immediate capture. It **does not unregister the repair/cleanup processor**: that path drains already-committed obligations under their stored winning action/directional authority, or marks unfinished directions `terminal_expired` at the bounded deadline, emits only detached aggregates, and deletes final rows. Operators verify the obligation table reaches zero; account erasure may delete matching rows immediately at any point. Fresh dark deploy has zero rows, so the registered processor is a no-op. Rollback also leaves reason-aware tombstone protection active; reverting that monotonic guard requires a separate migration that explicitly preserves/resolves every `contact_opt_out`. Nullable signal columns remain for compatibility; ordinary rollback does not rewrite or expose data. A privacy incident additionally triggers signal-field erasure and cache invalidation. Read behavior is unchanged throughout v1, so no read-gate rollback is needed.
 
@@ -979,29 +1026,30 @@ Operational rollback disables ranking/shadow consumers first, then flips capture
 
 ### Schema and persistence
 
-- migration applies on empty and populated databases and leaves legacy/non-contact rows null;
-- constraints reject signals on deleted/non-contact rows;
+- A1 migrations apply on empty/populated databases, create the empty obligation table before any `committed_repair` validator, and leave legacy/non-canonical rows null; seeded primitive fixtures prove validator success/failure without enabling a consumer;
+- constraints reject signals unless the row is active singleton `permissions=['contact']`; containment-read parity remains unchanged, while self/owner/member/mixed active/deleted collisions return `non_contact_conflict` without mutation;
 - insert, duplicate, reasoned tombstone, authorized restore, permission/network change, and erasure obey lifecycle semantics; finite server-written `tombstonedAt` is private/lifecycle-only, and older/equal/newer/missing/invalid action-boundary comparisons fail or restore exactly as specified;
 - populated-database migration and persistence fixtures keep `owner_removed` distinct from `contact_opt_out`, map legacy unreasoned tombstones fail-closed to `contact_opt_out`, and prove `clearReverseOptOut*`, direct adds, and bulk outcomes follow the authority matrix without generic opt-out collapse;
 - claim-in-place and merge-to-existing fixtures cover absent, active, and tombstoned target edges and clear source-ghost signals;
-- account erasure is atomic against concurrent touch/repair/preview reservation/count/cleanup, deletes repair obligations and privacy-ledger rows naming the user, and invalidates derived caches/jobs;
+- lock-order tests cover endpoint permutations, Lens-B races, and erasure/write interleavings: opportunities stable → users ascending → intents stable → obligations → personal mappings → edges composite; intent-first and edge-before-obligation paths are forbidden; base erasure requests no opportunity/D2 lock, holds the user row, deletes obligations before edge cleanup, then invalidates external state post-commit; D2 separately tests its later advisory/ledger extension;
 - capture-off actor transitions remain byte-for-byte/semantically equivalent and admit no new contact descriptor/obligation/token/immediate work, including when Lens B is present; pre-existing obligations still drain or expire through the capture-independent processor and cannot persist beyond their deadline;
-- before capture-on, the idempotent legacy-marker migration writes `legacy_accepted` only for exact acceptedBy/actor/finite-actedAt matches, reports ambiguous rows without pair-bearing logs, and creates no obligation/edge/touch; capture-on edge-creating actions then atomically persist the per-actor accepted marker and compose the existing Lens B and contact descriptors as independent same-transaction obligations with independent idempotency/result bits; either required insert failure rolls back all, while each post-commit trigger follows only its own bit/token; marker-based duplicates remain idempotent after obligation deletion and after a different actor later accepts;
-- the row-lock CAS applies every status × surface row above: REST/graph acceptance wins from `latent|draft|negotiating|pending|stalled`, admits only a different actor with absent `actedAt`/marker from `accepted`, preserves marker-proven same-actor accepted idempotency, and rejects `rejected|expired`; `startChat` wins only from `latent|draft|pending`, keeps accepted as no-touch get/unhide, and rejects `negotiating|stalled|rejected|expired`; updateStatus/updateStatus, startChat/startChat, updateStatus/startChat, sendNode/startChat, sendNode/updateStatus, negotiation-finalizer/acceptance, and different-actor accepted races produce no duplicate, status regression, or obligation-less action, while ambiguous/non-exact participant sets never build a descriptor or run legacy contact fallback under capture-on;
-- repair fixtures use explicit actor/counterpart fields and assert actor→counterpart `restore:true` restores only a strictly older owner tombstone, a same/newer/unverifiable owner removal becomes `terminal_edge_no_longer_authorized`, counterpart→actor `restore:false` restores neither, both directions preserve/report `contact_opt_out`, legacy unreasoned tombstones fail closed as `contact_opt_out`, and every edge×touch result maps to the matching persisted disposition with per-direction progress, exact `contact-repair-v1` attempt/backoff/TTL boundaries, two-direction completion, rollback drain, cleanup, and erasure;
+- A4 composition atomically combines the product action with independent Lens B/contact obligations using the A1 table/validator; either required insert failure rolls back the winning action/obligations, while each post-commit trigger follows only its own result bit/token; no `acceptedAction` field is written anywhere;
+- capture-off/on parity tests exercise every current surface/status/actor precondition and successful transition: REST remains broad, protocol/tool guards remain narrower, and `startChat` stays narrow/accepted-no-touch in both states; separate fault injection proves capture-on required-obligation failure intentionally rolls back the winning action while capture-off has no such dependency; races produce at most one `won` contact obligation without claiming status-finalizer hardening;
+- repair fixtures use explicit actor/counterpart fields and assert actor→counterpart `restore:true` restores only a strictly older owner tombstone, same/newer/unverifiable removal becomes `terminal_edge_no_longer_authorized`, counterpart→actor `restore:false` restores neither, opt-outs remain terminal, self/non-contact/mixed collisions map to `terminal_non_contact_conflict`, and every edge×touch result follows per-direction/bounded cleanup semantics;
 - reciprocal rows retain independent values;
-- monotonic touches handle retry, out-of-order, one missing direction, all five equal-time bases, and absent-incumbent-basis equal timestamps using the fixed priority order; non-finite `at` throws before either direction mutates, while either inactive endpoint returns two `inactive_endpoint` outcomes and mutates neither direction;
+- monotonic touches handle retry, out-of-order, one missing direction, all five equal-time bases, and absent-incumbent ties; non-finite `at` throws before mutation, inactive endpoints return two `inactive_endpoint` outcomes, self-pairs return two `non_contact_conflict` outcomes, and a non-canonical direction remains unchanged while a valid reverse direction may update;
 - the touch transition matrix covers SQL-null, valid-v1, malformed, and unsupported/future details independently in both directions; retries are idempotent, valid acquisition survives reconstruction, malformed/future bytes are not overwritten, and raw JSON is never spread;
-- callers cannot inject source/details/timestamps through REST or MCP payloads.
+- DB-clock authority tests skew Node time ahead/behind PostgreSQL and prove actor `actedAt`, obligation `actionAt`, live restore time, and `tombstonedAt` use post-lock `clock_timestamp()`; equal/legacy/process-authored values never authorize restore;
+- callers cannot inject source/details/timestamps/transport through REST or MCP payloads; composition tests record only immediate `api|mcp|internal`, allow `web` solely on a dedicated web-only route, omit missing tokens, and never infer CLI/Hermes from headers.
 
 ### Surface coverage
 
-Create integration tests for REST add, MCP/chat generic import, Gmail and Slack import, `updateOpportunityStatus`, new and already-accepted `startChat`, human DM message, protocol graph acceptance through MCP/Hermes, REST tool API and in-process chat, CLI single-add/Gmail forwarding, connect-link routing, ghost unsubscribe/non-human cleanup, ghost merge, and account deletion. Each test asserts both the primary product result and exact signal side effect—or deliberate absence. Static forbidden-key checks plus `ContactPrivacyAggregateSink` contract tests use the real concrete production transport with an injectable low-level fake backend and the production counter-store seam under a fake active context, proving stored dimensions/emitted bytes contain only closed fields with no owner ID, email, matched contact, pair hash, per-item score, request/trace/span/user/session context, or arbitrary metadata. Tests explicitly do not rely on the `NODE_ENV=test`-disabled generic Sentry path. Separate scheduled-query fixtures prove owner cohorts are thresholded before aggregate-row insertion and no per-owner intermediate/export row persists. Compile-time/exhaustive runtime fixtures reject touch/repair cross-products, unknown dimensions, and non-positive/fractional/non-finite/unsafe increments, and prove every B2 report/gate maps to one closed variant; capture-on cannot run until these gates pass. Direct-add fixtures prove edge+origin/details atomicity and exhaustively assert `created|restored|existing|owner_removed|contact_opt_out|inactive_endpoint`. Bulk-import fixtures distinguish resolution/dedup skips from database persistence: a successful batch gives every created/restored surviving edge its trusted origin/details, while an injected batch failure rolls back the whole surviving edge set and returns no false imported count. Committed mixed-status fixtures cover that same exhaustive outcome union, preserve the existing `ImportResult` mapping (`imported`/`details` from the deduplicated retained set and `skipped` from resolution/dedup), and independently assert lifecycle/provenance status. They do not assert per-item database partial success. Already-accepted `startChat` proves no edge or recency write because no durable action timestamp exists. The surface and flag matrices above are the acceptance oracle.
+Create integration tests for REST add (including self-email/owner-row collision), MCP/chat generic import, Gmail and Slack import, `updateOpportunityStatus`, new/already-accepted `startChat`, human DM message, protocol graph acceptance through MCP/Hermes, REST tool/in-process chat, CLI forwarding, connect links, ghost lifecycle, and account deletion. Add product-parity fixtures for participant A + participant B + separate introducer C: A/B capture the exact pair; C acting is capture-ineligible but preserves current legacy product behavior. Each test asserts the primary product result and exact signal side effect—or deliberate absence—under both capture states. Static forbidden-key checks plus `ContactPrivacyAggregateSink` contract tests use the real production transport/counter-store under fake active context, proving stored/exported bytes contain only `contact-privacy-counter-v1`, aligned closed UTC-week `bucketStart`, closed dimensions, and count—no owner/pair/request context, arbitrary metadata, exact increment time, `createdAt`, `updatedAt`, `lastIncrementAt`, audit/CDC timestamp, or write-return timestamp. Tests explicitly do not rely on the `NODE_ENV=test`-disabled generic Sentry path. Separate scheduled-query fixtures prove owner cohorts are thresholded before aggregate-row insertion and no per-owner intermediate/export row persists. Compile-time/exhaustive runtime fixtures reject touch/repair cross-products, unknown dimensions, and non-positive/fractional/non-finite/unsafe increments, and prove every B2 report/gate maps to one closed variant; capture-on cannot run until these gates pass. Direct-add fixtures prove edge+origin/details atomicity and exhaustively assert `created|restored|existing|owner_removed|contact_opt_out|inactive_endpoint|non_contact_conflict`. Bulk-import fixtures distinguish resolution/dedup skips from database persistence: a successful batch gives every created/restored surviving edge its trusted origin/details, while an injected batch failure rolls back the whole surviving edge set and returns no false imported count. Committed mixed-status fixtures cover that same exhaustive outcome union, preserve non-contact rows byte-for-byte, preserve the existing `ImportResult` mapping (`imported`/`details` from the deduplicated retained set and `skipped` from resolution/dedup), and independently assert lifecycle/provenance status. They do not assert per-item database partial success. Already-accepted `startChat` proves no edge or recency write because no durable action timestamp exists. The surface and flag matrices above are the acceptance oracle.
 
 ### Backfill and classifier
 
 - fixture DMs require `role='user'`, sender membership, exactly two relevant user participants, and consistent `dmPair`; agent/system and stale post-merge pairs are skipped;
-- accepted opportunities require exactly two distinct active non-introducer participant users, with `acceptedBy` matching the actor carrying parseable `actedAt`; zero/one/>2, duplicate/malformed, introducer-fallback, and ambiguous sets are skipped and aggregate-counted;
+- accepted opportunities require exactly two distinct active participant users, permit one separate introducer that is never an endpoint, and require `acceptedBy` to match a participant carrying parseable `actedAt`; acting-introducer, zero/one/>2 participant, overlap, inconsistent duplicate, and ambiguous sets are skipped/count-only;
 - batches are deterministic, restartable, and idempotent under concurrent deletion; equal timestamps select/update the higher-priority basis using the same five-value order as live touching;
 - classifier parser/table tests cover absent details, malformed JSON/shape, missing/wrong-type/non-integer/non-positive `schemaVersion`, unsupported positive integer versions, impossible Slack+Gmail-group data, source mismatch, source-only evidence, valid source-null `conversation_started`, recent, boundary-at-90-days, stale, finite future, non-finite `lastInteractionAt`, combined reason precedence, and explicit finite `asOf`;
 - invalid `asOf` deterministically throws `RangeError` before output; invalid `lastInteractionAt` yields `invalid_interaction_timestamp` plus fallback and never stale/recent evidence;
@@ -1009,9 +1057,9 @@ Create integration tests for REST add, MCP/chat generic import, Gmail and Slack 
 
 ### Introducer
 
-- with both flags off, query parameters, ordering, selected IDs, and enqueued job payloads match current golden fixtures byte-for-byte/semantically exactly;
+- with both flags off, query parameters, ordering, selected IDs, and enqueued job payloads match current golden fixtures exactly; compile-time/snapshot tests keep published `ContactWithIntents`, `MaintenanceGraphDatabase`, `ContactServiceAdapter`, and queue payloads unchanged and forbid signal/band/reason fields;
 - shadow failure cannot alter current output;
-- enabled policy is deterministic and uses current freshness as its documented tie-breaker;
+- enabled policy is deterministic and uses current freshness as its documented tie-breaker; private classification/comparison remains inside the API adapter and projects the exact existing protocol shape before return;
 - unknown contacts are handled according to the approved experiment policy;
 - telemetry contains no pair identifiers or raw timestamps.
 
@@ -1038,63 +1086,63 @@ No read-gating test should be added in phases A–D because no read gate is appr
 
 **Depends on:** this design approval.
 
-**Scope:** one canonical schema-layer `contactSourceValues` tuple; Drizzle enum/columns/migration; derived internal `ContactSource`, discriminated recency-detail, trusted-origin, and live/committed-repair authority types; centralized API-side single/bulk upsert and touch primitives; no capture consumers enabled.
+**Scope:** canonical source enum/nullable signal columns; additive `contact_action_repair_obligations` table migration; derived internal origin/detail/authority types; locked `committed_repair` validator; centralized API-side single/bulk upsert and touch primitives; canonical lock-order and DB-clock helpers. The obligation table remains empty, no worker is registered, and no capture composition root is enabled.
 
-**Acceptance criteria:** the TypeScript type and Drizzle enum derive from the same exported tuple with no duplicate values list; migration is additive and migration-first; public `ContactInput` and serializers are unchanged; row-local and personal-network invariants are tested; edge upserts exhaustively distinguish `owner_removed`, `contact_opt_out`, and `inactive_endpoint` rather than returning a generic opt-out/false success, with legacy unreasoned tombstones migrating or parsing fail-closed as `contact_opt_out`; every boundary uses the fixed restore matrix and only a locked finite `committed_repair` authority can finish prior work while capture is off; live/backfill recency detail variants reject contradictory `basis/backfilled` pairs; the directional touch outcome union includes `inactive_endpoint`, and its shared endpoint precheck plus four-state detail transition matrix pass, including no mutation to either direction when an endpoint is inactive, absent-incumbent equal-time precedence, idempotency, forward-compatible no-write behavior, and pre-transaction rejection of non-finite `at`; monotonic writes and ordinary duplicate provenance pass; package versions are bumped only for packages actually touched.
+**Acceptance criteria:** schema/type values have one source of truth; migration is additive/migration-first and creates the obligation table before the validator; public `ContactInput`, published protocol types, and serializers are unchanged; seeded primitive tests exhaust `created|restored|existing|owner_removed|contact_opt_out|inactive_endpoint|non_contact_conflict`, `live_capture|committed_repair` on edge paths, all three authorities on touch paths, explicit rejection of `trusted_backfill` for edge upserts, committed endpoint/basis/time mismatch rejection, strict details states, and directional collision behavior without invoking any REST/MCP/integration/action boundary; signal checks require active singleton contacts while legacy containment reads remain unchanged; lock tests enforce opportunity-first when applicable, endpoint users ascending, then obligation/mapping/edges; action/removal authority uses post-lock PostgreSQL `clock_timestamp()` and rejects process/legacy skew; the dark table stays empty and no consumer/worker runs; package versions are bumped only for packages actually touched.
 
 ### A2 — Converge contact lifecycle and tombstone semantics
 
 **Depends on:** A1.
 
-**Scope:** dual-mode contact/chat adapter implementations; pre-activation capture-off legacy hard-delete/reverse-opt-out behavior; capture-on reasoned tombstones and monotonic reason-aware `clearReverseOptOut*` protection that survives later capture disablement; unsubscribe/non-human cleanup, network lifecycle, ghost claim/merge, account erasure, and cache/job invalidation.
+**Scope:** dual-mode contact/chat adapter implementations; canonical singleton signal invariant over containment-based legacy reads; reasoned tombstones/`clearReverseOptOut*`; unsubscribe/non-human/network/ghost lifecycle; transactional account erasure; endpoint/edge lock convergence and post-commit cache/job invalidation.
 
-**Acceptance criteria:** pre-activation flag-off fixtures preserve existing hard-delete, reverse-opt-out, product-result, and failure semantics with null signals; flag-on activates the authority/collision matrix atomically across all lifecycle paths; owner removal and subject opt-out remain distinct through direct/bulk outcomes and every migration fixture, with finite server-owned `tombstonedAt` excluded from analytics/public surfaces; `restore:true` restores only the actor-owner's strictly older `owner_removed`, a same/newer/unverifiable removal fails no-longer-authorized, `restore:false` restores neither, and legacy unreasoned tombstones fail closed as `contact_opt_out`; post-activation flag-off stops admitting new signal/obligation work but cannot erase reasoned tombstones, and reverting that guard requires a tested explicit rollback migration; restoration records a new trusted origin; no action by one owner clears another owner's opt-out; ghost merge never combines identity recency; erasure cannot race a touch; all invalid edges have null signals; mixed-mode rows are impossible.
+**Acceptance criteria:** pre-activation flag-off fixtures preserve existing product reads/results with null signals; flag-on activates reasoned lifecycle protection across all writers; owner removal, subject opt-out, and non-contact collision remain distinct; restore compares only post-lock database clocks, `restore:false` restores neither, and legacy/unverifiable authority fails closed; owner/member/mixed/self rows remain byte-for-byte with null signals; pair writers and base erasure pass both user-lock interleavings without deadlock or post-erasure writes; A2 erasure atomically deletes A1 obligations before mappings/edges/tombstones, never references absent D2 tables or locks opportunities, then invalidates external state post-commit; ghost merge never combines recency; post-activation flag-off stops new admission but preserves tombstone protection/bounded prior cleanup.
 
 ### A3 — Wire trusted acquisition origins
 
 **Depends on:** A2.
 
-**Scope:** REST/manual, MCP/chat generic import, Gmail/Slack import with preserved toolkit/group, actual CLI forwarding semantics, experiment-network CSV non-contact documentation, removal of pair-bearing import/dedup logs, a database-aggregate-backed `ContactPrivacyAggregateSink` with detached production transport, and a separate scheduled threshold-before-export owner-cohort aggregation path before capture rollout.
+**Scope:** wire REST/manual, generic import, Gmail/Slack, and actual CLI-forwarding acquisition origins onto A1 primitives; preserve experiment CSV distinction; implement immediate `observedTransport`; remove pair-bearing logs; add the versioned UTC-week aggregate-counter migration, detached sink/transport, and threshold-before-export scheduled owner-cohort path.
 
-**Acceptance criteria:** every acquisition boundary has a composition-root test and the fixed restore matrix is exhaustive: deliberate single add `true`, all generic/Gmail/Slack/future-CSV bulk imports `false`; capture-off preserves current membership writes with null signals; capture-on makes a single directed add and origin/details atomic, while each import's surviving post-resolution/dedup edge set plus all trusted origins/details succeeds or fails in one existing batched persistence operation; skipped-input reporting remains distinct from database success; committed mixed outcomes preserve the existing `ImportResult` mapping while lifecycle/provenance statuses are verified independently; a failed batch returns no false imported count; no per-item database persistence semantics are introduced; generic arrays never claim CSV and `csv_import` remains unwritten until a separately approved trusted personal-contact CSV parser/test exists; Gmail/Slack origin unions reject impossible combinations; CLI/Hermes are not falsely attested as surfaces; no caller field/header/metadata can spoof origin or details; import/dedup/capture code emits only through the dedicated privacy-aggregate sink; static forbidden-key checks and tests of the concrete production transport (with injected low-level fake backend) plus counter-store begin under fake active context and prove neither stored dimensions nor emitted bytes inherit request/trace/span/user/session/pair context or arbitrary metadata; discriminated variants reject every invalid event/boundary/basis/outcome cross-product and all increments use the positive-safe-integer constructor; generic `emitSentryLog`/request-span paths are forbidden and their `NODE_ENV=test` behavior is not treated as evidence; request-path counters are global only, while owner-cohort classifier/shadow rows are written solely by the restricted scheduled query after thresholding; capture remains disabled until those gates pass; existing `CONTACTS_ENABLED` availability is unchanged.
+**Acceptance criteria:** composition-root tests own the boundary matrix: deliberate single add `restore:true`; generic/Gmail/Slack/future-CSV bulk `false`; capture-off writes null signals and capture-on keeps edge+origin atomic; direct `non_contact_conflict` maps to REST 409/tool error/CLI nonzero without false `added:true`; import batch/skip/result semantics remain unchanged and include the internal collision outcome; generic arrays never claim CSV; provider detail unions reject impossible combinations. REST records only `api` (including CLI forwarding), MCP only `mcp`, internal only server-owned in-process calls, dedicated web-only routes may record `web`, missing tokens omit the field, and headers/`x-index-surface` never attest CLI/Hermes. `contact-privacy-counter-v1` uses DB-derived aligned UTC weeks, count-only conflict updates, closed-week export, and no exact row/update/increment timestamps, audit/CDC fields, or active context. Capture remains disabled until forbidden-key, real transport/counter-store, pair-log, and closed-schema tests pass; `CONTACTS_ENABLED` availability is unchanged.
 
 ### A4 — Wire trusted interaction capture and acceptance parity
 
 **Depends on:** A2 + A3. No capture-on rollout may precede A3's production-equivalent detached sink and forbidden-key tests.
 
-**Scope:** event-specific wrappers for user-role DM messages, REST acceptance, the new `startChat` transition, and protocol graph acceptance through MCP/Hermes, REST tool, and in-process chat; pre-enable unambiguous legacy accepted-marker migration/report; capture-on-only contact obligations composed alongside the existing Lens B outbox under the row lock; private durable per-actor accepted marker; exact status × surface and negotiation-finalizer CAS policy; same-actor winner CAS and side-effect token; capture-independent directional repair/cleanup processor with explicit committed-obligation authority and versioned bounds; explicit no-op treatment for already-accepted `startChat`.
+**Scope:** wire user-role DM touches plus REST/protocol-tool/new-`startChat` winning actions onto A1/A3; use one exact two-participant resolver that permits a separate introducer; compose capture-on obligation admission beside Lens B; register immediate/repair/cleanup processing over the A1 table; preserve each surface's existing product status policy and already-accepted `startChat` no-touch behavior.
 
-**Acceptance criteria:** capture-off admits no new contact descriptor/obligation/token/immediate capture and preserves exact existing transition, Lens B result/mining, and best-effort contact behavior, while only locked `committed_repair` authority lets the always-registered processor drain or expire previously committed obligations and a fresh dark deploy remains a zero-row no-op; the pre-enable migration marks only exact legacy acceptedBy/actor/finite-actedAt matches as `legacy_accepted`, is idempotent, creates no contact work, and leaves ambiguous rows fail-closed; capture-on atomically persists `actedAt` plus the private accepted marker and follows every exact status × surface matrix row, including REST/graph allowed states, capture-on terminal-state tightening, marker-proven same-actor idempotency/conflict after other actors or obligation deletion, different-actor accepted admission, and `startChat`'s narrower transition/no-touch sets; updateStatus/updateStatus, startChat/startChat, updateStatus/startChat, sendNode/startChat, sendNode/updateStatus, negotiation-finalizer/acceptance, and different-actor accepted races prove no duplicate, status regression, or obligation-less accepted contact work and correct coexistence with Lens B's independent payload/idempotency/result bit/post-commit trigger; required insert failure rolls back action/marker plus both obligations; trusted descriptors require exactly two distinct active non-introducer participants and never use first/introducer fallback, while ineligible shapes suppress contact side effects without blocking the independent product/Lens B action; obligation rows name `actorUserId`/`counterpartUserId`, replay `restore:true`/`false` respectively, compare owner tombstone/action times, distinguish `terminal_owner_removed` from `terminal_contact_opt_out` and later-owner-choice terminalization, map touch `inactive_endpoint` directly to `terminal_inactive_endpoint`, and pass the exhaustive edge×touch disposition matrix plus exact 7-day/12-attempt/60-second-to-1-hour/hourly-cleanup boundaries without early completion, infinite expected-no-op retry, or post-rollback retention past expiry; each already-committed product action remains failure-isolated from secondary work; source/basis/time are durable and finite; malformed/future details remain unchanged and terminal obligations are not resurrected; new `startChat` remains source-independent for classification; already-accepted `startChat` writes nothing; graph acceptance converges; missing DM reverse edges are not fabricated; connect-link clicks remain no-op.
+**Acceptance criteria:** capture flag leaves status eligibility/targets and successful legacy behavior invariant; only capture-on required-obligation failure intentionally adds fail-closed rollback. The shared primitive returns explicit outcomes and only `won` creates at most one private obligation, with no `acceptedAction` actor field. REST remains broad, protocol guards unchanged, `startChat` narrow, and status/finalizer hardening separate. Exact pair fixtures allow participant A + participant B + introducer C, capture only A↔B, reject C as actor, and use one pair for DM/sibling/legacy/repair. DB action time/obligation insertion are atomic with independent Lens B state; Lens-B intent locks obey opportunity-first global order; A1 validator powers bounded drain. Directional restore/touch/non-contact dispositions are exhaustive, immediate failure after a durable obligation remains product-isolated, and all composition roots converge.
 
 ### A5 — Run conservative recency backfill
 
 **Depends on:** A4; production execution begins only after A4 deployment verification so live writes win monotonically.
 
-**Scope:** dry-run/reporting CLI, bounded idempotent batches, validated user-role DM messages and accepted-actor evidence only, checkpoints and repair diagnostics.
+**Scope:** dry-run/reporting CLI, bounded idempotent batches, validated user-role DM/accepted-actor evidence, private `trusted_backfill` run IDs/checkpoints, and repair diagnostics.
 
-**Acceptance criteria:** rerun produces zero additional changes; mismatched `dmPair` rows are skipped/counted; opportunity evidence requires exactly two distinct eligible non-introducer participants and matching `acceptedBy`/`actedAt`, with every ambiguous actor shape skipped/count-only; no first-actor fallback, `opportunities.updatedAt`, `conversations.lastMessageAt`, empty-DM creation, or link click is mislabeled as interaction; concurrent deletion/merge/erasure is safe; production execution follows the project's safe backfill workflow.
+**Acceptance criteria:** rerun produces zero additional changes; mismatched `dmPair` rows are skipped/counted; opportunity evidence requires exactly two distinct eligible participants, permits one separate introducer, and requires matching participant `acceptedBy`/`actedAt`; acting-introducer/overlap/ambiguous shapes are skipped/count-only; no first-actor fallback, mutable opportunity/conversation time, empty-DM creation, or click is mislabeled; concurrent lifecycle change is safe; production follows the safe backfill workflow.
 
 ### B1 — Implement pure classifier and privacy-safe shadow coverage
 
 **Depends on:** A3, A4, and A5 diagnostics.
 
-**Scope:** `contact-signal-v1`, reason codes, explicit `asOf`, aggregate coverage/sensitivity reports; no persistence and no behavioral effect.
+**Scope:** API-local `contact-signal-v1` classifier, reason codes, explicit `asOf`, and aggregate coverage/sensitivity reports; no protocol-package type change, persistence, or behavioral effect.
 
-**Acceptance criteria:** the raw `unknown` parser and total classifier table/property tests pass; invalid `asOf` throws before output; non-finite `lastInteractionAt` yields ordered `invalid_interaction_timestamp` fallback and never stale/recent evidence; malformed versus unsupported details remain distinct; combined parse/invalid/future/source outcomes follow fixed precedence; valid recent `conversation_started` remains source-independent; output never leaves owner-scoped internals; malformed data fails conservatively; shadow reports meet telemetry suppression rules.
+**Acceptance criteria:** total parser/table/property tests pass; invalid dates and malformed/future details fail conservatively; valid recent `conversation_started` remains source-independent; raw inputs/output remain inside API-local owner-scoped adapter/service code; compile-time/snapshot tests prove `ContactWithIntents`, `MaintenanceGraphDatabase`, `ContactServiceAdapter`, queues, and public payloads gain no source/recency/band/reason/version fields; shadow reports meet suppression rules.
 
 ### B2 — Shadow introducer candidate policies
 
 **Depends on:** B1.
 
-**Scope:** run the bounded shadow-only superset query, compute candidate ordering deltas while the current limited selection remains authoritative, and gather minimum-evidence metrics.
+**Scope:** inside the API adapter/service, run the bounded shadow-only superset query, classify private rows, compute ordering deltas while current limited selection remains authoritative, project any returned candidates to unchanged `ContactWithIntents`, and gather minimum-evidence metrics.
 
-**Acceptance criteria:** shadow off executes the exact current `LIMIT 5` path; shadow on never feeds jobs; query-plan/latency budget and `[5,100]` cap hold; no pair-level logs; every required report maps to a closed thresholded aggregate variant: coverage/classifier version, Jaccard, displacement, concentration/diversity, truncation/missing-signal rates, downstream queue/opportunity/owner-approval/acceptance outcomes, fixed `asOf` policy/candidate-limit bucket, and the `1000+` eligible-cycle/`100+` distinct-owner gate; 30-day/volume/coverage evidence is reportable; a recommended or rejected policy is documented with sensitivity analysis.
+**Acceptance criteria:** shadow off executes the exact current `LIMIT 5` path; shadow never feeds jobs; query budget and `[5,100]` cap hold; no pair logs; every weekly aggregate variant carries a closed `policyPreset` and `30d|90d|180d` sensitivity window where applicable, so current/weak-first/recent-first and window results cannot collapse into one counter; coverage, Jaccard, displacement, concentration/diversity, truncation/missing-signal, downstream outcomes, fixed-asOf/candidate-limit, and the `1000+` cycle/`100+` owner gate are reportable; a recommended or rejected policy includes all three-window sensitivity analysis.
 
 ### C — Default-off introducer ranking experiment
 
 **Depends on:** B2 meeting the stated evidence floor and separate experiment approval.
 
-**Scope:** strict-literal ranking flag; one pre-registered versioned lexicographic policy; fallback to current ordering.
+**Scope:** strict-literal ranking flag in the API-local introducer adapter/service; one pre-registered versioned lexicographic policy over private rows; projection to unchanged protocol shape; fallback to current ordering.
 
 **Acceptance criteria:** disabled path is unchanged; enabled path is deterministic; unknown handling and candidate-pool bounds are documented; reliability/privacy guardrails pass; rollback is one flag flip.
 
@@ -1110,9 +1158,9 @@ No read-gating test should be added in phases A–D because no read gate is appr
 
 **Depends on:** D1 + A3's detached privacy-sink/counter infrastructure; tie capture itself may remain off.
 
-**Scope:** optional `create_premise.exposurePreviews` array after completed assignment; migration-first dedicated database privacy-release ledger/adapter; owner-locked atomic rolling-budget plus owner/network cooldown reservation shared across REST/MCP/in-process roots; exact-token, owner-locked per-network count transactions; one discriminated item per `{networkId,relevancyScore}` assignment; isolated name/count resolution; singleton-safe emission; cleanup/erasure; bucket-free request-path telemetry; one-shot owner-facing copy.
+**Scope:** optional `create_premise.exposurePreviews` after assignment; optional owner-scoped `ToolDeps.buildPremiseExposurePreviews` host bridge injected by every API composition root; migration-first privacy ledger/adapter; post-migration A2 erasure extension; owner-locked budget/cooldown/exact-token counts; isolated one-item-per-assignment resolution, cleanup, bucket-free request telemetry, and owner copy.
 
-**Acceptance criteria:** no graph pause or confirmation; the database ledger reserves owner budget and each network cooldown atomically under an owner advisory lock plus erasure-incompatible user-row lock across all instances, then every network count transaction reacquires that same owner lock, locks/rechecks the active owner, requires the exact committed unexpired `reservationId` with `consumedAt IS NULL`, sets `consumedAt`, and executes the thresholded count before unlock; a savepoint commits consumption even when the count fails, while a top-level pre-commit failure releases no result; absent/expired/replaced/consumed owner or reservation returns unavailable with zero count; reserve→erase→count, count→erase, exact-token replay, count-failure, concurrent multi-network count, cleanup/expiry, and multi-instance interleavings prove erasure either follows a properly ledgered single-use count or prevents it; committed reservations remain consumed after downstream failure; transaction/storage failure fails closed without failing premise creation; generic fail-open cache/transport limiters are not used; rows contain only minimal release/single-use times/state, expire within configured windows, erase with the owner, and never enter logs/exports; request-path detached telemetry contains only closed preview outcome/reason codes and never an audience bucket, exact count, network, owner, reservation, premise, assignment, pair, request, trace, or span dimension, and any future scheduled bucket-distribution job requires separate review; the count starts from the named union discovery variant but excludes the author and ghosts as preview-only active-human recipient rules; `estimated` requires a real owner-visible name and a privacy-safe response bucket whose threshold intersection contains at least two integers, `suppressed` requires the name and forbids a response bucket, and `unavailable` always includes `networkId`/notice but may omit the name only when name lookup failed; exactly one item returns per assignment when enabled, failures are isolated, no placeholder name is invented, and flag-off alone omits the optional array; minimum `4/9/24/49` singleton boundaries suppress, `50+` remains unbounded, same-owner repeated differencing tests pass, and cross-owner/Sybil inference remains explicitly out of scope pending a separately reviewed network-level budget; member identities and exact small counts never appear; query failures do not fail premise creation; UI copy says potential network audience, not actual readers/exposure or the complete discovery candidate pool.
+**Acceptance criteria:** no graph pause or confirmation; protocol-host contract tests prove every API composition injects the same API-local bridge after assignments, disabled mode omits both bridge call/field, owner identity is server-derived, and failures remain isolated; D2 migration lands before code extends account erasure, so A2 never detects/references an absent table; extended erasure takes the same owner advisory/user lock and deletes ledger rows atomically. The ledger reserves owner budget/cooldowns across all instances, then every count transaction reacquires those locks, requires exact unexpired `reservationId` with `consumedAt IS NULL`, sets `consumedAt`, and counts before unlock; a savepoint commits consumption even when the count fails, while a top-level pre-commit failure releases no result; absent/expired/replaced/consumed owner or reservation returns unavailable with zero count; reserve→erase→count, count→erase, exact-token replay, count-failure, concurrent multi-network count, cleanup/expiry, and multi-instance interleavings prove erasure either follows a properly ledgered single-use count or prevents it; committed reservations remain consumed after downstream failure; transaction/storage failure fails closed without failing premise creation; generic fail-open cache/transport limiters are not used; rows contain only minimal release/single-use times/state, expire within configured windows, erase with the owner, and never enter logs/exports; request-path detached telemetry contains only closed preview outcome/reason codes and never an audience bucket, exact count, network, owner, reservation, premise, assignment, pair, request, trace, or span dimension, and any future scheduled bucket-distribution job requires separate review; the count starts from the named union discovery variant but excludes the author and ghosts as preview-only active-human recipient rules; `estimated` requires a real owner-visible name and a privacy-safe response bucket whose threshold intersection contains at least two integers, `suppressed` requires the name and forbids a response bucket, and `unavailable` always includes `networkId`/notice but may omit the name only when name lookup failed; exactly one item returns per assignment when enabled, failures are isolated, no placeholder name is invented, and flag-off alone omits the optional array; minimum `4/9/24/49` singleton boundaries suppress, `50+` remains unbounded, same-owner repeated differencing tests pass, and cross-owner/Sybil inference remains explicitly out of scope pending a separately reviewed network-level budget; member identities and exact small counts never appear; query failures do not fail premise creation; UI copy says potential network audience, not actual readers/exposure or the complete discovery candidate pool.
 
 ### E — Read-side gating research and design
 
@@ -1147,7 +1195,7 @@ No read-gating test should be added in phases A–D because no read gate is appr
 - creating contacts from ordinary messages or connect-link clicks;
 - exposing source, recency, band, or reason codes publicly;
 - changing network assignment threshold or network membership semantics;
-- changing opportunity eligibility or negotiation behavior;
+- changing opportunity eligibility, terminal-state rules, or negotiation-finalizer behavior (including through `CONTACT_SIGNAL_CAPTURE_ENABLED`);
 - per-tie read filtering in phases A–D;
 - a pre-assignment confirmation gate in v1; or
 - updating `CLAUDE.md` to describe unimplemented behavior.
