@@ -53,6 +53,7 @@ export type {
   OpportunityActor,
   OpportunityStatus,
   AssignmentNetworkMembership,
+  IntentNetworkFinalAssignmentResult,
   CreateOpportunityData,
 } from "./shared/interfaces/database.interface.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./shared/interfaces/embedder.interface.js";
@@ -89,8 +90,16 @@ export { buildCandidateEvidence } from "./opportunity/opportunity.evidence.js";
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
 export { ChatGraphFactory } from "./chat/chat.graph.js";
-export { type ChatPersonaConfig } from "./chat/chat.persona.js";
+export { ORCHESTRATOR_PERSONA_ID, type ChatPersonaConfig } from "./chat/chat.persona.js";
 export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./chat/negotiator.persona.js";
+export {
+  SIGNAL_PERSONA_ID,
+  SIGNAL_PERSONA,
+  SIGNAL_TOOL_NAMES,
+  createSignalTools,
+  filterSignalTools,
+  narrowSignalTools,
+} from "./chat/signal.persona.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";

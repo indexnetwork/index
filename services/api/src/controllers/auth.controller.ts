@@ -1,15 +1,26 @@
 import { z } from 'zod';
 
 import { RateLimit } from '../guards/limiter.guard';
-import { Controller, Get, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Get, Patch, Post, Delete, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
+import { cliCredentialService, type CliCredentialService } from '../services/clicredential.service';
 import { userService } from '../services/user.service';
 import { enrichmentService } from '../services/enrichment.service';
 import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
+import { isWebSignalAgentEnabled } from '../lib/signal-feature';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
+
+const createCliCredentialSchema = z.object({
+  protocolVersion: z.union([z.literal(1), z.literal(2)]),
+}).strict();
+
+const revokeCliCredentialSchema = z.object({
+  keyId: z.string().min(1).max(128),
+  targetKey: z.string().min(1).max(512),
+}).strict();
 
 const updateProfileSchema = z.object({
   name: z.string().optional(),
@@ -44,6 +55,10 @@ function shouldAutoGenerateProfile(user: {
 
 @Controller('/auth')
 export class AuthController {
+  constructor(
+    private readonly cliCredentials: Pick<CliCredentialService, 'create' | 'revoke'> = cliCredentialService,
+  ) {}
+
   /**
    * Returns the list of configured social auth providers (public, no auth required).
    */
@@ -87,9 +102,10 @@ export class AuthController {
         notificationPreferences,
       },
       // Feature flags the web app reads off the session bootstrap (no separate
-      // config channel). negotiatorChat gates the sidebar negotiator entry (P4.4).
+      // config channel). These gate the negotiator entry and Signal web cutover.
       features: {
         negotiatorChat: isNegotiatorChatEnabled(),
+        signalAgent: isWebSignalAgentEnabled(),
       },
     });
   }
@@ -125,6 +141,63 @@ export class AuthController {
     return Response.json({
       user: { ...userFieldsOut, notificationPreferences: prefs },
     });
+  }
+
+  /**
+   * Mint a fixed-shape, time-bounded CLI API credential.
+   *
+   * @param req - Request containing only a supported protocol version.
+   * @param user - Session-authenticated user.
+   * @returns Raw API key once, its row ID, and its expiry.
+   */
+  @Post('/cli-credential')
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async createCliCredential(req: Request, user: AuthenticatedUser) {
+    const parsed = createCliCredentialSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return Response.json({ error: 'Invalid CLI credential payload' }, { status: 400 });
+    }
+
+    const credential = await this.cliCredentials.create(user.id, parsed.data.protocolVersion);
+    return Response.json({
+      key: credential.key,
+      id: credential.id,
+      expiresAt: credential.expiresAt.toISOString(),
+    });
+  }
+
+  /**
+   * Revoke an exact CLI credential using an active CLI x-api-key caller.
+   *
+   * @param req - Request carrying only x-api-key authentication and exact target proof.
+   * @param user - API-key-authenticated owner resolved by AuthGuard.
+   * @returns Stable success only after authoritative deletion; otherwise a stable denial.
+   */
+  @Post('/cli-credential/revoke')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async revokeCliCredential(req: Request, user: AuthenticatedUser) {
+    const callerKey = req.headers.get('x-api-key');
+    const hasCompetingCredential = req.headers.has('authorization')
+      || new URL(req.url).searchParams.has('token');
+    if (!callerKey || callerKey.length === 0 || hasCompetingCredential) {
+      return Response.json({ error: 'CLI credential revocation requires x-api-key authentication' }, { status: 403 });
+    }
+
+    const parsed = revokeCliCredentialSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return Response.json({ error: 'Invalid CLI credential revocation payload' }, { status: 400 });
+    }
+
+    const revoked = await this.cliCredentials.revoke({
+      userId: user.id,
+      callerKey,
+      keyId: parsed.data.keyId,
+      targetKey: parsed.data.targetKey,
+    });
+    if (!revoked) {
+      return Response.json({ error: 'CLI credential revocation denied' }, { status: 403 });
+    }
+    return Response.json({ success: true });
   }
 
   /**

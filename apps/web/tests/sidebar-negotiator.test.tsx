@@ -91,7 +91,10 @@ vi.mock('@/contexts/NotificationContext', () => ({
 }));
 
 vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({ count: mocks.questionsState.count }),
+  useQuestions: () => ({
+    globalPending: mocks.questionsState.count,
+    personalAgentPending: mocks.questionsState.count,
+  }),
 }));
 
 vi.mock('@/components/modals/CreateIndexModal', () => ({
@@ -135,7 +138,7 @@ function mockSessions({
     if (endpoint === '/chat/sessions?persona=negotiator') {
       return Promise.resolve({ sessions: negotiator });
     }
-    if (endpoint === '/chat/sessions') {
+    if (endpoint === '/chat/web/sessions') {
       return Promise.resolve({ sessions: history });
     }
     return Promise.resolve({});
@@ -155,7 +158,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
     renderSidebar();
 
     // Let the history-session fetch settle.
-    await waitFor(() => expect(mocks.apiClient.get).toHaveBeenCalledWith('/chat/sessions'));
+    await waitFor(() => expect(mocks.apiClient.get).toHaveBeenCalledWith('/chat/web/sessions'));
 
     expect(screen.queryByText(/Negotiator|Personal Agent/)).toBeNull();
     expect(mocks.apiClient.get).not.toHaveBeenCalledWith('/chat/sessions?persona=negotiator');
@@ -180,7 +183,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
       expect(mocks.apiClient.post).toHaveBeenCalledWith('/chat/negotiator/session')
     );
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent('/d/neg-session-1')
+      expect(screen.getByTestId('location').textContent).toContain('/d/neg-session-1')
     );
   });
 
@@ -193,7 +196,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
     fireEvent.click(link);
 
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent('/agent/memory')
+      expect(screen.getByTestId('location').textContent).toContain('/agent/memory')
     );
     // The memory shortcut must not bootstrap a chat session.
     expect(mocks.apiClient.post).not.toHaveBeenCalled();
@@ -211,7 +214,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
     fireEvent.click(entry);
 
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent('/d/neg-session-1')
+      expect(screen.getByTestId('location').textContent).toContain('/d/neg-session-1')
     );
     expect(mocks.apiClient.post).not.toHaveBeenCalled();
   });
@@ -234,7 +237,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
     fireEvent.click(entry);
 
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent('/d/neg-dm-1')
+      expect(screen.getByTestId('location').textContent).toContain('/d/neg-dm-1')
     );
     expect(mocks.apiClient.post).not.toHaveBeenCalled();
   });
@@ -249,7 +252,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
     renderSidebar();
 
     await screen.findByText("Alice's Negotiator");
-    expect(screen.getByTestId('negotiator-question-badge')).toHaveTextContent('3');
+    expect(screen.getByTestId('negotiator-question-badge').textContent).toContain('3');
   });
 
   test('badge caps at 99+ and disappears at zero (IND-404)', async () => {
@@ -261,7 +264,7 @@ describe('Sidebar pinned Personal Agent entry', () => {
 
     const { unmount } = renderSidebar();
     await screen.findByText("Alice's Negotiator");
-    expect(screen.getByTestId('negotiator-question-badge')).toHaveTextContent('99+');
+    expect(screen.getByTestId('negotiator-question-badge').textContent).toContain('99+');
     unmount();
 
     mocks.questionsState.count = 0;

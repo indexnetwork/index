@@ -175,7 +175,8 @@ const protocolDeps = {
 
 const chatSessionReader = {
   getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
-  listSessions: (userId: string, limit?: number) => conversationDatabaseAdapter.listChatSessionSummaries(userId, limit),
+  listSessions: (userId: string, limit?: number) =>
+    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit, 'orchestrator'),
   getSession: (userId: string, sessionId: string, messageLimit?: number) =>
     conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
 };

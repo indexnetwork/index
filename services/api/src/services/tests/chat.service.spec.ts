@@ -11,7 +11,7 @@
 process.env.OPENROUTER_API_KEY = "test-key";
 process.env.NODE_ENV = "test";
 
-import { mock, describe, it, expect, afterAll } from "bun:test";
+import { mock, describe, it, expect, afterAll, afterEach } from "bun:test";
 
 // ─── Mock @indexnetwork/protocol ──────────────────────────────────────────────
 // Intercepts `import { ChatGraphFactory, ChatTitleGenerator } from …`
@@ -28,9 +28,12 @@ mock.module("@indexnetwork/protocol", () => {
 
   return {
     ChatGraphFactory: class {
+      persona: unknown;
+      constructor(persona?: unknown) { this.persona = persona; }
       createGraph() {
         return { invoke: mockGraphInvoke };
       }
+      withPersona(persona: unknown) { return new this.constructor(persona); }
       // Used by the factory getter — no-op stubs for the rest
       createStreamingGraph() { return { invoke: mockGraphInvoke }; }
       streamChatEventsWithContext() { return (async function* () {})(); }
@@ -39,6 +42,11 @@ mock.module("@indexnetwork/protocol", () => {
     ChatTitleGenerator: class {
       invoke = mockTitleInvoke;
     },
+    ORCHESTRATOR_PERSONA_ID: "orchestrator",
+    SIGNAL_PERSONA_ID: "signal",
+    NEGOTIATOR_PERSONA_ID: "negotiator",
+    SIGNAL_PERSONA: { id: "signal" },
+    createNegotiatorPersona: mock(() => ({ id: "negotiator" })),
   };
 });
 
@@ -70,6 +78,10 @@ mock.module("../../adapters/checkpointer.adapter", () => ({
   getCheckpointer: mock(() => Promise.resolve(undefined)),
 }));
 
+afterEach(() => {
+  delete process.env.WEB_SIGNAL_AGENT_ENABLED;
+});
+
 afterAll(() => {
   mock.restore();
 });
@@ -96,7 +108,10 @@ function makeSession(overrides: Partial<Record<string, unknown>> = {}) {
     userId: USER_ID,
     title: null,
     shareToken: null,
+    persona: "orchestrator",
     networkId: null,
+    scopeType: null,
+    scopeId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -111,7 +126,9 @@ function createMockDb(overrides: Partial<MockDb> = {}): MockDb {
     createChatMessage: mock(() => Promise.resolve()),
     updateChatSessionTimestamp: mock(() => Promise.resolve()),
     updateChatSessionIndex: mock(() => Promise.resolve()),
+    updateChatSessionScope: mock(() => Promise.resolve()),
     updateChatSessionTitle: mock(() => Promise.resolve()),
+    getChatSessionByScope: mock(() => Promise.resolve(null)),
     deleteChatSession: mock(() => Promise.resolve()),
     setChatShareToken: mock(() => Promise.resolve()),
     getChatSessionByShareToken: mock(() => Promise.resolve(null)),
@@ -126,6 +143,48 @@ function createMockDb(overrides: Partial<MockDb> = {}): MockDb {
 }
 
 // ─── createSession ────────────────────────────────────────────────────────────
+
+describe("ChatSessionService.resolveSessionForScope", () => {
+  it("recovers the winning Signal session after a Drizzle-wrapped 23505", async () => {
+    const session = makeSession({ persona: "signal" });
+    const wrapped = new Error('Failed query: insert into "chat_session_scopes" (...)');
+    (wrapped as { cause?: unknown }).cause = Object.assign(
+      new Error("duplicate key value violates unique constraint"),
+      { code: "23505" },
+    );
+
+    let scopeLookups = 0;
+    const getChatSessionByScope = mock(
+      (_userId: string, _scopeType: string, _scopeId: string, persona: string) => {
+        expect(persona).toBe("signal");
+        scopeLookups += 1;
+        return Promise.resolve(scopeLookups === 1 ? null : session);
+      },
+    );
+    const db = createMockDb({
+      getChatSessionByScope,
+      createChatSession: mock(() => Promise.reject(wrapped)),
+    });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    const res = await svc.resolveSessionForScope(
+      USER_ID,
+      { scopeType: "intent", scopeId: "intent-001" },
+      "signal",
+    );
+
+    if ("error" in res) throw new Error(`expected session, got error: ${res.error}`);
+    expect(res.session).toEqual(session);
+    expect(res.created).toBe(false);
+    expect(getChatSessionByScope).toHaveBeenNthCalledWith(
+      2,
+      USER_ID,
+      "intent",
+      "intent-001",
+      "signal",
+    );
+  });
+});
 
 describe("ChatSessionService.resolveNegotiatorIntentSession", () => {
   it("recovers the raced session when create hits a Drizzle-wrapped 23505", async () => {
@@ -199,6 +258,127 @@ describe("ChatSessionService.createSession", () => {
     const [arg] = db.createChatSession.mock.calls[0] as [Record<string, unknown>];
     expect(arg.networkId).toBe("network-42");
   });
+
+  it("persists an explicitly selected Signal persona", async () => {
+    const db = createMockDb();
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    await svc.createSession(USER_ID, undefined, undefined, undefined, "signal");
+
+    const [arg] = db.createChatSession.mock.calls[0] as [Record<string, unknown>];
+    expect(arg.persona).toBe("signal");
+  });
+});
+
+// ─── persona policy ───────────────────────────────────────────────────────────
+
+describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
+  const svc = new ChatSessionService(createMockDb() as unknown as ConversationDatabaseAdapter);
+
+  it("restores the orchestrator default while the cutover flag is off", () => {
+    expect(svc.resolveStreamPersonaPolicy({ surface: "web" })).toEqual({
+      ok: true,
+      persona: "orchestrator",
+    });
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "orchestrator",
+    })).toEqual({ ok: true, persona: "orchestrator" });
+  });
+
+  it("requires an explicit Signal assertion for a new flag-on web chat", () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+
+    const missing = svc.resolveStreamPersonaPolicy({ surface: "web" });
+    expect(missing.ok).toBe(false);
+    if (missing.ok) throw new Error("expected policy denial");
+    expect(missing.code).toBe("WEB_SIGNAL_PERSONA_REQUIRED");
+    expect(missing.action).toEqual({ type: "start_signal_session", href: "/" });
+
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      requestedPersona: "signal",
+    })).toEqual({ ok: true, persona: "signal" });
+  });
+
+  it("inherits a persisted Signal persona without trusting another request assertion", () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "signal",
+    })).toEqual({ ok: true, persona: "signal" });
+
+    const mismatch = svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "signal",
+      requestedPersona: "negotiator",
+    });
+    expect(mismatch.ok).toBe(false);
+    if (mismatch.ok) throw new Error("expected policy denial");
+    expect(mismatch.code).toBe("CHAT_PERSONA_MISMATCH");
+  });
+
+  it("makes legacy orchestrator web history read-only when enabled", () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+
+    const result = svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "orchestrator",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected policy denial");
+    expect(result.code).toBe("WEB_SIGNAL_SESSION_REQUIRED");
+    expect(result.status).toBe(409);
+    expect(result.action).toEqual({ type: "start_signal_session", href: "/" });
+  });
+
+  it("fails closed for unknown persisted personas", () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+
+    const result = svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "unexpected",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected policy denial");
+    expect(result.code).toBe("CHAT_PERSONA_UNSUPPORTED");
+  });
+
+  it("preserves non-web orchestrator behavior and rejects Signal spoofing", () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+
+    expect(svc.resolveStreamPersonaPolicy({ surface: "non_web" })).toEqual({
+      ok: true,
+      persona: "orchestrator",
+    });
+    const spoofed = svc.resolveStreamPersonaPolicy({
+      surface: "non_web",
+      requestedPersona: "signal",
+    });
+    expect(spoofed.ok).toBe(false);
+    if (spoofed.ok) throw new Error("expected policy denial");
+    expect(spoofed.code).toBe("WEB_SIGNAL_PERSONA_FORBIDDEN");
+    expect(spoofed.status).toBe(403);
+  });
+
+  it("never downgrades a persisted Signal session when the flag is off", () => {
+    const result = svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "signal",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected policy denial");
+    expect(result.code).toBe("WEB_SIGNAL_AGENT_DISABLED");
+  });
+
+  it("leaves the separate negotiator persona unchanged", () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "non_web",
+      requestedPersona: "negotiator",
+    })).toEqual({ ok: true, persona: "negotiator" });
+  });
 });
 
 // ─── getSession ───────────────────────────────────────────────────────────────
@@ -241,7 +421,7 @@ describe("ChatSessionService.getSession", () => {
 // ─── getUserSessions ──────────────────────────────────────────────────────────
 
 describe("ChatSessionService.getUserSessions", () => {
-  it("delegates to db and returns sessions, excluding the negotiator DM by default", async () => {
+  it("delegates to orchestrator history by default", async () => {
     const sessions = [makeSession(), makeSession({ id: "session-002" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
@@ -251,20 +431,37 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10);
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, undefined, "negotiator");
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator");
   });
 
-  it("passes the persona filter through to the adapter", async () => {
-    const sessions = [makeSession()];
+  it("passes an explicit persona filter through to the adapter", async () => {
+    const sessions = [makeSession({ persona: "negotiator" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
     });
     const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
 
-    const result = await svc.getUserSessions(USER_ID, 10, "orchestrator");
+    const result = await svc.getUserSessions(USER_ID, 10, "negotiator");
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator", undefined);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "negotiator");
+  });
+
+  it("lists only orchestrator and Signal sessions for web history", async () => {
+    const sessions = [makeSession(), makeSession({ id: "signal-session", persona: "signal" })];
+    const db = createMockDb({
+      getUserChatSessions: mock(() => Promise.resolve(sessions)),
+    });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
+
+    const result = await svc.getWebUserSessions(USER_ID, 10);
+
+    expect(result).toEqual(sessions);
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(
+      USER_ID,
+      10,
+      ["orchestrator", "signal"],
+    );
   });
 });
 

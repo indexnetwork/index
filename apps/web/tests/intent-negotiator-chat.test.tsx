@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
     isLoading: false,
     sessionId: null as string | null,
     sendMessage: vi.fn(),
+    sendOnboardingMessage: vi.fn(),
     stopStream: vi.fn(),
     loadSession: vi.fn().mockResolvedValue(undefined),
     clearChat: vi.fn(),
@@ -110,15 +111,15 @@ describe('IntentNegotiatorChat', () => {
 
     // Ready: input enabled with the agent-name placeholder.
     const input = await screen.findByTestId('negotiator-chat-input');
-    expect(input).toBeEnabled();
-    expect(input).toHaveAttribute('placeholder', "Message Alice's Negotiator…");
+    expect((input as HTMLInputElement).disabled).toBe(false);
+    expect(input.getAttribute('placeholder')).toBe("Message Alice's Negotiator…");
   });
 
   test('renders pending intent questions as the opening turns (existing pipeline)', async () => {
     renderChat({ questions: [QUESTION] });
 
     await screen.findByTestId('negotiator-opening-questions');
-    expect(screen.getByTestId('injected-questions')).toHaveTextContent('Which city should we prioritize?');
+    expect(screen.getByTestId('injected-questions').textContent).toContain('Which city should we prioritize?');
   });
 
   test('falls back via onUnavailable when the bootstrap fails', async () => {
@@ -132,7 +133,7 @@ describe('IntentNegotiatorChat', () => {
   test('sends the typed message through the shared chat context', async () => {
     renderChat();
     const input = await screen.findByTestId('negotiator-chat-input');
-    await waitFor(() => expect(input).toBeEnabled());
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
 
     fireEvent.change(input, { target: { value: 'Any progress on this signal?' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -169,6 +170,6 @@ describe('IntentNegotiatorChat', () => {
     renderChat();
 
     await screen.findByText('Status?');
-    expect(screen.getByTestId('assistant-content')).toHaveTextContent('Two matches are in negotiation.');
+    expect(screen.getByTestId('assistant-content').textContent).toContain('Two matches are in negotiation.');
   });
 });

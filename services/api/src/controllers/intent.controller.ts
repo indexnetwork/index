@@ -5,15 +5,15 @@ import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/a
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
-import { intentService } from '../services/intent.service';
+import { IntentNetworkMembershipError, intentService } from '../services/intent.service';
 
 const logger = log.controller.from('intent');
 
 const ConfirmSchema = z.object({
   proposalId: z.string().min(1, 'proposalId is required'),
-  description: z.string().min(1, 'description is required'),
-  networkId: z.string().optional(),
-});
+  description: z.string().trim().min(1, 'description is required'),
+  networkId: z.string().uuid('networkId must be a UUID').optional(),
+}).strict();
 const RejectSchema = z.object({
   proposalId: z.string().min(1, 'proposalId is required'),
 });
@@ -26,6 +26,20 @@ const StatusSchema = z.object({
 
 @Controller('/intents')
 export class IntentController {
+  private readonly confirmService: Pick<typeof intentService, 'createFromProposal'>;
+  private readonly assertConfirmNetworkScope: typeof assertAgentNetworkScope;
+
+  /**
+   * @param confirmDeps - Optional confirm-path overrides for focused controller tests.
+   */
+  constructor(confirmDeps?: {
+    service?: Pick<typeof intentService, 'createFromProposal'>;
+    assertNetworkScope?: typeof assertAgentNetworkScope;
+  }) {
+    this.confirmService = confirmDeps?.service ?? intentService;
+    this.assertConfirmNetworkScope = confirmDeps?.assertNetworkScope ?? assertAgentNetworkScope;
+  }
+
   /**
    * List intents with pagination and filters.
    */
@@ -80,11 +94,11 @@ export class IntentController {
     logger.verbose('Intent confirm requested', { userId: user.id, proposalId });
 
     if (networkId) {
-      await assertAgentNetworkScope(req, networkId);
+      await this.assertConfirmNetworkScope(req, networkId);
     }
 
     try {
-      const created = await intentService.createFromProposal(user.id, description, proposalId, networkId);
+      const created = await this.confirmService.createFromProposal(user.id, description, proposalId, networkId);
 
       return Response.json({
         success: true,
@@ -92,6 +106,14 @@ export class IntentController {
         intentId: created.id,
       });
     } catch (err) {
+      if (err instanceof IntentNetworkMembershipError) {
+        return Response.json({
+          error: 'forbidden',
+          code: err.code,
+          detail: err.message,
+          networkId: err.networkId,
+        }, { status: 403 });
+      }
       logger.error('Intent confirm failed', { userId: user.id, proposalId, error: err });
       return Response.json({ error: 'Failed to process intent confirmation' }, { status: 500 });
     }

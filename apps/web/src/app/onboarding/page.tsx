@@ -85,7 +85,7 @@ export default function OnboardingPage() {
   const { user, refetchUser } = useAuthContext();
   const {
     messages: chatMessages,
-    sendMessage,
+    sendOnboardingMessage: sendOnboardingTurn,
     isLoading,
     stopStream,
     sessionId,
@@ -101,8 +101,8 @@ export default function OnboardingPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { OAuthLink } = useGmailConnect(useCallback(() => {
-    sendMessage("I've connected my account, please continue with the import.", undefined, undefined, { hidden: true });
-  }, [sendMessage]));
+    sendOnboardingTurn("I've connected my account, please continue with the import.", undefined, undefined, { hidden: true });
+  }, [sendOnboardingTurn]));
 
   // Opportunity & intent proposal action state
   const [opportunityActionLoading, setOpportunityActionLoading] = useState<Record<string, boolean>>({});
@@ -298,18 +298,18 @@ export default function OnboardingPage() {
     [proposalIntentMap, archiveProposalIntent],
   );
 
-  // Wrap sendMessage to include the greeting as a prefill on the first message
+  // Include the greeting as a prefill on the first server-clamped onboarding turn.
   const sendOnboardingMessage = useCallback(
     (message: string) => {
       const isFirstMessage = !sessionId;
       if (isFirstMessage) {
-        return sendMessage(message, undefined, undefined, {
+        return sendOnboardingTurn(message, undefined, undefined, {
           prefillMessages: [{ role: "assistant" as const, content: fullGreeting }],
         });
       }
-      return sendMessage(message);
+      return sendOnboardingTurn(message);
     },
-    [sessionId, sendMessage, fullGreeting],
+    [sessionId, sendOnboardingTurn, fullGreeting],
   );
 
   const handleNetworkJoin = useCallback(

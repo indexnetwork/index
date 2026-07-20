@@ -36,6 +36,7 @@ describe("Negotiator chat persona (IND-402)", () => {
   const userAdapter = new UserDatabaseAdapter();
   let testUserId: string;
   let prevFlag: string | undefined;
+  let prevSignalFlag: string | undefined;
   const createdSessionIds: string[] = [];
 
   /** Personas captured whenever the controller derives a persona factory. */
@@ -82,6 +83,7 @@ describe("Negotiator chat persona (IND-402)", () => {
 
   beforeAll(async () => {
     prevFlag = process.env.NEGOTIATOR_CHAT_ENABLED;
+    prevSignalFlag = process.env.WEB_SIGNAL_AGENT_ENABLED;
 
     const existingUser = await userAdapter.findByEmail(EMAIL);
     if (existingUser) {
@@ -109,6 +111,8 @@ describe("Negotiator chat persona (IND-402)", () => {
   afterAll(async () => {
     if (prevFlag === undefined) delete process.env.NEGOTIATOR_CHAT_ENABLED;
     else process.env.NEGOTIATOR_CHAT_ENABLED = prevFlag;
+    if (prevSignalFlag === undefined) delete process.env.WEB_SIGNAL_AGENT_ENABLED;
+    else process.env.WEB_SIGNAL_AGENT_ENABLED = prevSignalFlag;
 
     for (const sessionId of createdSessionIds) {
       await conversationDatabaseAdapter.deleteChatSession(sessionId).catch(() => {});
@@ -122,20 +126,27 @@ describe("Negotiator chat persona (IND-402)", () => {
 
   // ── Flag surface on the session bootstrap ──────────────────────────────
 
-  test("features.negotiatorChat on /auth/me tracks the flag", async () => {
+  test("/auth/me exposes the negotiator and Signal Agent flags", async () => {
     const authController = new AuthController();
     const meReq = () => new Request("http://localhost/auth/me");
 
     process.env.NEGOTIATOR_CHAT_ENABLED = 'false';
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'false';
     const offRes = await authController.me(meReq(), mockUser());
     expect(offRes.status).toBe(200);
-    const offData = (await offRes.json()) as { features: { negotiatorChat: boolean } };
-    expect(offData.features.negotiatorChat).toBe(false);
+    const offData = (await offRes.json()) as {
+      features: { negotiatorChat: boolean; signalAgent: boolean };
+    };
+    expect(offData.features).toEqual({ negotiatorChat: false, signalAgent: false });
 
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
     const onRes = await authController.me(meReq(), mockUser());
-    const onData = (await onRes.json()) as { features: { negotiatorChat: boolean } };
-    expect(onData.features.negotiatorChat).toBe(true);
+    const onData = (await onRes.json()) as {
+      features: { negotiatorChat: boolean; signalAgent: boolean };
+    };
+    expect(onData.features).toEqual({ negotiatorChat: true, signalAgent: true });
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'false';
   }, 60000);
 
   // ── Flag off: endpoints behave as if they do not exist ────────────────────

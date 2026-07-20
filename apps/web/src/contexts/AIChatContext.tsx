@@ -104,12 +104,25 @@ export interface TraceEvent {
   agreedRoles?: { ownUser?: string; otherUser?: string };
 }
 
+export type ChatTransport = "compatibility" | "web" | "onboarding";
+
 export interface QueuedMessage {
   id: string;
   message: string;
   fileIds?: string[];
   attachmentNames?: string[];
-  status: 'pending' | 'queued';
+  status: "pending" | "queued";
+  /** Transport owned by the originating turn; queue drains must preserve it. */
+  transport: ChatTransport;
+}
+
+export interface ChatSendOptions {
+  hidden?: boolean;
+  prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
+  persona?: "signal";
+  /** @deprecated Product surfaces should use their dedicated send helper. */
+  surface?: "web" | "onboarding";
+  existingMessageId?: string;
 }
 
 interface ChatMessage {
@@ -145,6 +158,18 @@ export type ChatScope =
   | { type: "intent"; id: string; label?: string }
   | null;
 
+export type ChatTurnBlock = {
+  code: string;
+  message: string;
+  action?: { type: "start_signal_session"; href: "/" };
+};
+
+export type ChatSessionLoadState =
+  | { status: "idle"; targetSessionId: null; error: null }
+  | { status: "loading"; targetSessionId: string; error: null }
+  | { status: "ready"; targetSessionId: string; error: null }
+  | { status: "error"; targetSessionId: string; error: string };
+
 interface AIChatContextType {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
@@ -164,22 +189,47 @@ interface AIChatContextType {
   scopeNetworkId: string | null;
   /** Set the current network scope (e.g. from the network filter dropdown in ChatContent). Call with null for "Everywhere". */
   setScopeNetworkId: (networkId: string | null) => void;
-  /** Resolve or create the stable orchestrator session for an intent scope. */
-  resolveIntentSession: (intent: { id: string; label?: string }) => Promise<string>;
+  /** Resolve or create the stable persona session for an intent scope. */
+  resolveIntentSession: (
+    intent: { id: string; label?: string },
+    persona?: "signal",
+  ) => Promise<string | null>;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
   isLoading: boolean;
+  /** Typed pre-stream refusal, used to offer a safe continuation action. */
+  turnBlock: ChatTurnBlock | null;
   /** Abort the in-progress agent response stream. */
   stopStream: () => void;
   sendMessage: (
     message: string,
     fileIds?: string[],
     attachmentNames?: string[],
-    options?: { hidden?: boolean; prefillMessages?: Array<{ role: "assistant" | "user"; content: string }> },
+    options?: ChatSendOptions,
   ) => Promise<void>;
-  /** Clear messages and session state. Use { abortStream: false } when navigating away so the in-flight stream can finish and the new session appears in the sidebar. */
-  clearChat: (options?: { abortStream?: boolean }) => void;
-  loadSession: (sessionId: string) => Promise<void>;
+  /** Main-web transport. Queued and steered continuations inherit this route. */
+  sendWebMessage: (
+    message: string,
+    fileIds?: string[],
+    attachmentNames?: string[],
+    options?: Omit<ChatSendOptions, "surface">,
+  ) => Promise<void>;
+  /** Incomplete-user onboarding transport; server-clamped to orchestrator. */
+  sendOnboardingMessage: (
+    message: string,
+    fileIds?: string[],
+    attachmentNames?: string[],
+    options?: Omit<ChatSendOptions, "surface" | "persona">,
+  ) => Promise<void>;
+  /** Clear messages and session state. Detached route cleanup may preserve a one-shot forced persona. */
+  clearChat: (options?: { abortStream?: boolean; preserveForcedPersona?: boolean }) => void;
+  /** Clear the current chat and force the next new web session to request Signal. */
+  startSignalSession: () => void;
+  /** Load a session, returning false for failed or superseded requests. */
+  loadSession: (sessionId: string) => Promise<boolean>;
+  /** Observable target-specific load state for disabling route interactions until ready. */
+  sessionLoadState: ChatSessionLoadState;
+  isSessionReady: (sessionId: string) => boolean;
   updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>;
   pendingQueue: QueuedMessage[];
   cancelQueuedMessage: (id: string) => void;
@@ -277,6 +327,38 @@ function mergeDebugMetaIntoTraceEvents(
   return merged;
 }
 
+const SAFE_TURN_BLOCK_MESSAGES: Readonly<Record<string, string>> = {
+  WEB_SIGNAL_PERSONA_REQUIRED: "Start a new Signal Agent chat to continue.",
+  WEB_SIGNAL_SESSION_REQUIRED: "This earlier chat is read-only. Start a new Signal Agent chat to continue.",
+  WEB_SIGNAL_AGENT_DISABLED: "Signal Agent is not available right now.",
+  WEB_SIGNAL_PERSONA_FORBIDDEN: "This chat can only be continued in the web app.",
+  CHAT_PERSONA_MISMATCH: "This request does not match the chat that was opened.",
+  CHAT_PERSONA_UNSUPPORTED: "This chat cannot be continued safely.",
+  CHAT_SCOPE_REQUIRES_NEW_SESSION: "Start a separate Signal Agent chat for that focus.",
+};
+
+/** Parse only known policy denials and never render server-controlled detail text. */
+function parseTurnBlock(value: unknown): ChatTurnBlock | null {
+  if (!value || typeof value !== "object") return null;
+  const failure = value as { code?: unknown; action?: { type?: unknown; href?: unknown } };
+  if (typeof failure.code !== "string") return null;
+  const message = SAFE_TURN_BLOCK_MESSAGES[failure.code];
+  if (!message) return null;
+
+  const actionAllowedForCode = failure.code === "WEB_SIGNAL_PERSONA_REQUIRED"
+    || failure.code === "WEB_SIGNAL_SESSION_REQUIRED";
+  const hasSafeAction = actionAllowedForCode
+    && failure.action?.type === "start_signal_session"
+    && failure.action.href === "/";
+  return {
+    code: failure.code,
+    message,
+    ...(hasSafeAction
+      ? { action: { type: "start_signal_session" as const, href: "/" as const } }
+      : {}),
+  };
+}
+
 export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const [scopeOverride, setScopeOverride] = useState<ChatScope>(null);
@@ -297,19 +379,60 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [sessionPersona, setSessionPersona] = useState<string | null>(null);
+  const [turnBlock, setTurnBlock] = useState<ChatTurnBlock | null>(null);
+  const forceSignalNextSessionRef = useRef(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionLoadState, setSessionLoadState] = useState<ChatSessionLoadState>({
+    status: "idle",
+    targetSessionId: null,
+    error: null,
+  });
   const { refetchSessions } = useAIChatSessions();
-  const abortControllerRef = useRef<AbortController | null>(null);
   const pendingQueueRef = useRef<QueuedMessage[]>([]);
-  const steerPendingRef = useRef<Array<{ message: string; fileIds?: string[]; attachmentNames?: string[] }>>([]);
+  const steerPendingRef = useRef<Array<{
+    id: string;
+    message: string;
+    fileIds?: string[];
+    attachmentNames?: string[];
+    transport: ChatTransport;
+  }>>([]);
   /** Per-message timeout IDs so cancelling or resolving one pending message doesn't affect others. */
   const interruptTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
   /** Live inline questions from the ask_user_question tool (user_question SSE event). */
   const [liveQuestions, setLiveQuestions] = useState<PendingQuestion[]>([]);
-  /** When true, sendMessage will only refetch sessions on X-Session-Id and not set sessionId (used when user navigated away during stream). */
-  const skipSessionUpdateForRequestRef = useRef(false);
+  type SendAbortReason = "clear" | "load" | "steer" | "stopped" | "superseded" | "unmount";
+  type SendOperation = {
+    token: symbol;
+    controller: AbortController;
+    transport: ChatTransport;
+    abortReason?: SendAbortReason;
+    refreshSidebarWhenStale: boolean;
+  };
+  /** One owner token covers sends and loads so stale work cannot commit across either boundary. */
+  const operationOwnerRef = useRef<symbol | null>(null);
+  /** Independent latest-owner token for intent-session resolution requests. */
+  const intentResolutionOwnerRef = useRef<symbol | null>(null);
+  const activeSendRef = useRef<SendOperation | null>(null);
+
+  const ownsOperation = useCallback((token: symbol) => operationOwnerRef.current === token, []);
+
+  const invalidateActiveSend = useCallback((reason: SendAbortReason, abort = true) => {
+    const active = activeSendRef.current;
+    if (!active) return;
+    active.abortReason = reason;
+    if (abort && !active.controller.signal.aborted) active.controller.abort();
+    if (activeSendRef.current === active) activeSendRef.current = null;
+  }, []);
+
+  React.useEffect(() => () => {
+    operationOwnerRef.current = null;
+    intentResolutionOwnerRef.current = null;
+    invalidateActiveSend("unmount");
+    interruptTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    interruptTimeoutsRef.current.clear();
+  }, [invalidateActiveSend]);
 
   const setChatScope = useCallback((scope: ChatScope) => {
     setScopeOverride(scope);
@@ -319,12 +442,29 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setScopeOverride(networkId ? { type: "network", id: networkId } : null);
   }, []);
 
-  const resolveIntentSession = useCallback(async (intent: { id: string; label?: string }) => {
-    const response = await apiClient.post<{
-      session: { id: string; scopeType?: "intent" | "network" | null; scopeId?: string | null };
-    }>("/chat/session/resolve", { scopeType: "intent", scopeId: intent.id });
-    setScopeOverride({ type: "intent", id: intent.id, ...(intent.label ? { label: intent.label } : {}) });
-    return response.session.id;
+  const resolveIntentSession = useCallback(async (
+    intent: { id: string; label?: string },
+    persona?: "signal",
+  ): Promise<string | null> => {
+    const resolutionToken = Symbol(`resolve-intent-session:${intent.id}`);
+    intentResolutionOwnerRef.current = resolutionToken;
+    try {
+      const response = await apiClient.post<{
+        session: { id: string; scopeType?: "intent" | "network" | null; scopeId?: string | null };
+      }>(persona ? "/chat/web/session/resolve" : "/chat/session/resolve", {
+        scopeType: "intent",
+        scopeId: intent.id,
+        ...(persona ? { persona } : {}),
+      });
+      if (intentResolutionOwnerRef.current !== resolutionToken) return null;
+      setScopeOverride({ type: "intent", id: intent.id, ...(intent.label ? { label: intent.label } : {}) });
+      intentResolutionOwnerRef.current = null;
+      return response.session.id;
+    } catch (error) {
+      if (intentResolutionOwnerRef.current !== resolutionToken) return null;
+      intentResolutionOwnerRef.current = null;
+      throw error;
+    }
   }, []);
 
   const cancelQueuedMessage = useCallback((id: string) => {
@@ -339,70 +479,130 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => {
       if (!sessionId) return;
       const pendingMsgId = crypto.randomUUID();
-      const displayContent = message.trim() || (fileIds?.length ? 'Attached file(s).' : '');
+      const displayContent = message.trim() || (fileIds?.length ? "Attached file(s)." : "");
       if (!displayContent) return;
 
+      const originatingOperation = activeSendRef.current;
+      const transport = originatingOperation?.transport ?? "compatibility";
       setMessages((prev) => [...prev, {
-        id: pendingMsgId, role: 'user' as const, content: displayContent,
+        id: pendingMsgId, role: "user" as const, content: displayContent,
         timestamp: new Date(), isPending: true,
         ...(attachmentNames?.length ? { attachmentNames } : {}),
       }]);
-      const entry: QueuedMessage = { id: pendingMsgId, message, fileIds, attachmentNames, status: 'pending' };
+      const entry: QueuedMessage = {
+        id: pendingMsgId,
+        message,
+        fileIds,
+        attachmentNames,
+        status: "pending",
+        transport,
+      };
       pendingQueueRef.current = [...pendingQueueRef.current, entry];
       setPendingQueue([...pendingQueueRef.current]);
 
       const agentStateNames = traceEvents
-        .filter((e) => ['tool_start', 'graph_start', 'agent_start', 'phase_start'].includes(e.type))
+        .filter((e) => ["tool_start", "graph_start", "agent_start", "phase_start"].includes(e.type))
         .slice(-5)
-        .map((e) => `${e.type}: ${(e as { name?: string }).name ?? 'unknown'}`);
+        .map((e) => `${e.type}: ${(e as { name?: string }).name ?? "unknown"}`);
+
+      const steer = () => {
+        if (
+          !originatingOperation
+          || !ownsOperation(originatingOperation.token)
+          || activeSendRef.current !== originatingOperation
+        ) {
+          // The originating request lost ownership. Keep this entry queued for
+          // the current session, but never let its timeout abort a newer send.
+          pendingQueueRef.current = pendingQueueRef.current.map((entry) =>
+            entry.id === pendingMsgId ? { ...entry, status: "queued" } : entry,
+          );
+          setPendingQueue([...pendingQueueRef.current]);
+          setMessages((prev) => prev.map((msg) =>
+            msg.id === pendingMsgId ? { ...msg, isPending: false, isQueued: true } : msg,
+          ));
+          return;
+        }
+        steerPendingRef.current = [...steerPendingRef.current, {
+          id: pendingMsgId,
+          message,
+          fileIds,
+          attachmentNames,
+          transport,
+        }];
+        pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingMsgId);
+        setPendingQueue([...pendingQueueRef.current]);
+        setMessages((prev) => prev.map((msg) =>
+          msg.id === pendingMsgId ? { ...msg, isPending: false } : msg,
+        ));
+        const active = activeSendRef.current;
+        if (active) {
+          active.abortReason = "steer";
+          active.controller.abort();
+        }
+      };
 
       // 5-second fallback → steer (in case SSE steer_or_queue event never arrives)
       const timeoutId = setTimeout(() => {
-        interruptTimeoutsRef.current.delete(pendingMsgId); // clean up map entry when timeout fires
-        steerPendingRef.current = [...steerPendingRef.current, { message, fileIds, attachmentNames }];
-        pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingMsgId);
-        setPendingQueue([...pendingQueueRef.current]);
-        setMessages((prev) => prev.map((msg) => msg.id === pendingMsgId ? { ...msg, isPending: false } : msg));
-        if (abortControllerRef.current) abortControllerRef.current.abort('steer');
+        interruptTimeoutsRef.current.delete(pendingMsgId);
+        steer();
       }, 5_000);
       interruptTimeoutsRef.current.set(pendingMsgId, timeoutId);
 
       apiClient
-        .post('/chat/interrupt', { sessionId, message, messageId: pendingMsgId, traceSnapshot: agentStateNames })
+        .post("/chat/interrupt", { sessionId, message, messageId: pendingMsgId, traceSnapshot: agentStateNames })
         .catch(() => {
           clearTimeout(timeoutId);
           interruptTimeoutsRef.current.delete(pendingMsgId);
-          // Guard: message may have been cancelled before the POST failed.
-          // If it's no longer tracked, don't steer or abort.
+          // The message may have been cancelled before the POST failed.
           if (!pendingQueueRef.current.some((q) => q.id === pendingMsgId)) return;
-          steerPendingRef.current = [...steerPendingRef.current, { message, fileIds, attachmentNames }];
-          pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingMsgId);
-          setPendingQueue([...pendingQueueRef.current]);
-          setMessages((prev) => prev.map((msg) => msg.id === pendingMsgId ? { ...msg, isPending: false } : msg));
-          if (abortControllerRef.current) abortControllerRef.current.abort('steer');
+          steer();
         });
     },
-    [sessionId],
+    [ownsOperation, sessionId],
   );
 
-  const sendMessage = useCallback(
-    async (message: string, fileIds?: string[], attachmentNames?: string[], options?: { hidden?: boolean; prefillMessages?: Array<{ role: "assistant" | "user"; content: string }> }) => {
+  const sendMessageWithTransport = useCallback(
+    async (
+      transport: ChatTransport,
+      message: string,
+      fileIds?: string[],
+      attachmentNames?: string[],
+      options?: ChatSendOptions,
+    ) => {
       const displayContent =
         message.trim() || (fileIds?.length ? "Attached file(s)." : "");
       if (!displayContent) return;
 
+      const requestedPersona = options?.persona
+        ?? (!sessionId && forceSignalNextSessionRef.current ? "signal" : undefined);
+      const effectiveTransport: ChatTransport = transport === "onboarding"
+        ? "onboarding"
+        : transport === "web" || requestedPersona === "signal" || sessionPersona === "signal"
+          ? "web"
+          : "compatibility";
+
+      invalidateActiveSend("superseded");
+      intentResolutionOwnerRef.current = null;
+      const operation: SendOperation = {
+        token: Symbol("chat-send"),
+        controller: new AbortController(),
+        transport: effectiveTransport,
+        refreshSidebarWhenStale: false,
+      };
+      operationOwnerRef.current = operation.token;
+      activeSendRef.current = operation;
+      setSessionLoadState((current) => current.status === "loading"
+        ? { status: "idle", targetSessionId: null, error: null }
+        : current);
+
       const isHidden = options?.hidden ?? false;
 
-      // A new sendMessage call is always intentional — reset the skip flag
-      // so the session ID from the response header is captured correctly.
-      // (clearChat with abortStream:false sets this flag for in-flight streams
-      // that should finish silently, but it must not carry over to new calls.)
-      skipSessionUpdateForRequestRef.current = false;
-
       // Add user message (include attachment names for display) — skip if hidden
+      let optimisticUserMessageId: string | undefined;
       if (!isHidden) {
+        optimisticUserMessageId = crypto.randomUUID();
         const userMessage: ChatMessage = {
-          id: crypto.randomUUID(),
+          id: optimisticUserMessageId,
           role: "user",
           content: displayContent,
           timestamp: new Date(),
@@ -425,11 +625,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       ]);
 
       setIsLoading(true);
-      abortControllerRef.current = new AbortController();
       /** Local trace buffer scoped to this sendMessage call — avoids cross-message corruption. */
       const streamTraceEvents: TraceEvent[] = [];
       /** Push a trace event to the local buffer and append it to the assistant message. */
       const appendTrace = (ev: TraceEvent) => {
+        if (!ownsOperation(operation.token)) return;
         streamTraceEvents.push(ev);
         setMessages((prev) =>
           prev.map((msg) =>
@@ -453,27 +653,61 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           ...(fileIds?.length ? { fileIds } : {}),
           ...(chatScope ? { scopeType: chatScope.type, scopeId: chatScope.id } : {}),
           ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
+          ...(requestedPersona ? { persona: requestedPersona } : {}),
         };
 
-        const response = await apiClient.stream("/chat/stream", bodyPayload, {
-          signal: abortControllerRef.current.signal,
+        const streamEndpoint = effectiveTransport === "web"
+          ? "/chat/web/stream"
+          : effectiveTransport === "onboarding"
+            ? "/chat/onboarding/stream"
+            : "/chat/stream";
+        const response = await apiClient.stream(streamEndpoint, bodyPayload, {
+          signal: operation.controller.signal,
         });
 
-        // Get session ID from header (new session created)
-        const newSessionId = response.headers.get("X-Session-Id");
-        if (newSessionId && !sessionId) {
-          if (skipSessionUpdateForRequestRef.current) {
-            // User navigated away; only refresh sidebar so the new session appears and can be opened later
-            refetchSessions();
-          } else {
-            setSessionId(newSessionId);
-            // The scope selected at session creation becomes the session's bound scope.
-            if (chatScope) {
-              setSessionScope(chatScope);
-              setSessionNetworkId(chatScope.type === "network" ? chatScope.id : null);
-            }
+        const responseSessionId = response.headers.get("X-Session-Id");
+        if (!ownsOperation(operation.token)) {
+          // A deliberately detached stream may only make its completed session visible in the sidebar.
+          if (response.ok && responseSessionId && operation.refreshSidebarWhenStale) {
             refetchSessions();
           }
+          return;
+        }
+
+        if (!response.ok) {
+          const failure = await response.json().catch(() => null);
+          if (!ownsOperation(operation.token)) return;
+          const parsedBlock = parseTurnBlock(failure);
+          if (parsedBlock) {
+            setTurnBlock(parsedBlock);
+            setMessages((prev) => prev.filter((item) =>
+              item.id !== assistantMessageId
+              && item.id !== optimisticUserMessageId
+              && item.id !== options?.existingMessageId
+            ));
+            return;
+          }
+          throw new Error(`Chat request failed (${response.status})`);
+        }
+
+        setTurnBlock(null);
+        // Get authoritative session identity from response headers.
+        const newSessionId = responseSessionId;
+        const responsePersona = response.headers.get("X-Chat-Persona");
+        if (responsePersona) setSessionPersona(responsePersona);
+        if (newSessionId && !sessionId) {
+          setSessionId(newSessionId);
+          // The newly-created session is already the current in-memory target;
+          // mark it route-ready so the ensuing /d/:id navigation never reloads
+          // or briefly replaces it with a loading shell.
+          setSessionLoadState({ status: "ready", targetSessionId: newSessionId, error: null });
+          forceSignalNextSessionRef.current = false;
+          // The scope selected at session creation becomes the session's bound scope.
+          if (chatScope) {
+            setSessionScope(chatScope);
+            setSessionNetworkId(chatScope.type === "network" ? chatScope.id : null);
+          }
+          refetchSessions();
         }
 
         const reader = response.body?.getReader();
@@ -484,6 +718,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
         while (true) {
           const { done, value } = await reader.read();
+          if (!ownsOperation(operation.token)) return;
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
@@ -494,6 +729,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
             if (line.startsWith("data: ")) {
               try {
                 const event = JSON.parse(line.slice(6));
+                if (!ownsOperation(operation.token)) return;
 
                 switch (event.type) {
                   case "iteration_start": {
@@ -775,11 +1011,18 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       // Only act if the message is still tracked — it may have been cancelled
                       // or drained already, in which case we must not abort the current stream.
                       if (steerEntry) {
-                        steerPendingRef.current = [...steerPendingRef.current, { message: steerEntry.message, fileIds: steerEntry.fileIds, attachmentNames: steerEntry.attachmentNames }];
+                        steerPendingRef.current = [...steerPendingRef.current, {
+                          id: steerEntry.id,
+                          message: steerEntry.message,
+                          fileIds: steerEntry.fileIds,
+                          attachmentNames: steerEntry.attachmentNames,
+                          transport: steerEntry.transport,
+                        }];
                         pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingId);
                         setPendingQueue([...pendingQueueRef.current]);
                         setMessages((prev) => prev.map((msg) => msg.id === pendingId ? { ...msg, isPending: false, isQueued: false } : msg));
-                        if (abortControllerRef.current) abortControllerRef.current.abort('steer');
+                        operation.abortReason = "steer";
+                        operation.controller.abort();
                       }
                     } else {
                       // Only act if the message is still tracked — the 5s fallback may have
@@ -922,7 +1165,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                         msg.id === assistantMessageId
                           ? {
                               ...msg,
-                              content: `Error: ${event.message}`,
+                              content: "Failed to get response. Please try again.",
                               isStreaming: false,
                             }
                           : msg,
@@ -937,8 +1180,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } catch (error) {
+        if (!ownsOperation(operation.token)) return;
         if (error instanceof Error && error.name === "AbortError") {
-          const isSteerAbort = abortControllerRef.current?.signal.reason === 'steer';
+          const isSteerAbort = operation.abortReason === "steer";
           logger.debug(isSteerAbort ? "Chat stream interrupted by steer" : "Chat stream aborted");
           const stoppedAt = Date.now();
           setMessages((prev) =>
@@ -969,39 +1213,78 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           );
         }
       } finally {
-        skipSessionUpdateForRequestRef.current = false;
-        setIsLoading(false);
-        // Queue drain is handled by the useEffect below (watches isLoading transition to false).
-        // Ensure isStreaming is always cleared when the stream ends
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? { ...msg, isStreaming: false }
-              : msg,
-          ),
-        );
+        if (ownsOperation(operation.token)) {
+          operationOwnerRef.current = null;
+          if (activeSendRef.current === operation) activeSendRef.current = null;
+          setIsLoading(false);
+          // Queue drain is handled by the useEffect below (watches isLoading transition to false).
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, isStreaming: false }
+                : msg,
+            ),
+          );
+        } else if (activeSendRef.current === operation) {
+          // Local cleanup only; never clear a newer operation's controller or UI state.
+          activeSendRef.current = null;
+        }
       }
     },
-    [sessionId, chatScope, refetchSessions],
+    [chatScope, invalidateActiveSend, ownsOperation, refetchSessions, sessionId, sessionPersona],
   );
 
+  const sendMessage = useCallback((
+    message: string,
+    fileIds?: string[],
+    attachmentNames?: string[],
+    options?: ChatSendOptions,
+  ) => {
+    const transport: ChatTransport = options?.surface === "onboarding"
+      ? "onboarding"
+      : options?.surface === "web" || options?.persona === "signal" || sessionPersona === "signal"
+        ? "web"
+        : "compatibility";
+    return sendMessageWithTransport(transport, message, fileIds, attachmentNames, options);
+  }, [sendMessageWithTransport, sessionPersona]);
+
+  const sendWebMessage = useCallback((
+    message: string,
+    fileIds?: string[],
+    attachmentNames?: string[],
+    options?: Omit<ChatSendOptions, "surface">,
+  ) => sendMessageWithTransport("web", message, fileIds, attachmentNames, options), [sendMessageWithTransport]);
+
+  const sendOnboardingMessage = useCallback((
+    message: string,
+    fileIds?: string[],
+    attachmentNames?: string[],
+    options?: Omit<ChatSendOptions, "surface" | "persona">,
+  ) => sendMessageWithTransport("onboarding", message, fileIds, attachmentNames, options), [sendMessageWithTransport]);
+
   const stopStream = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    const active = activeSendRef.current;
+    if (!active) return;
+    active.abortReason = "stopped";
+    active.controller.abort();
   }, []);
 
   // Drain the pending queue whenever loading ends.
   // Steer messages take priority; queued messages drain FIFO.
   // Uses useEffect (not inline in sendMessage) to avoid React Compiler circular-reference issues.
   React.useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || turnBlock) return;
     if (steerPendingRef.current.length > 0) {
       const [steerMsg, ...rest] = steerPendingRef.current;
       steerPendingRef.current = rest;
-      // Use hidden:true so sendMessage does not add a duplicate user message —
-      // the placeholder added by submitMidStreamMessage already represents this turn.
-      void sendMessage(steerMsg.message, steerMsg.fileIds, steerMsg.attachmentNames, { hidden: true });
+      // Preserve the originating transport so a web continuation cannot fall back.
+      void sendMessageWithTransport(
+        steerMsg.transport,
+        steerMsg.message,
+        steerMsg.fileIds,
+        steerMsg.attachmentNames,
+        { hidden: true, existingMessageId: steerMsg.id },
+      );
     } else if (pendingQueueRef.current.length > 0) {
       const [nextMsg, ...rest] = pendingQueueRef.current;
       pendingQueueRef.current = rest;
@@ -1015,15 +1298,29 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         prev.map((msg) => msg.id === nextMsg.id ? { ...msg, isPending: false, isQueued: false } : msg),
       );
       // Use hidden:true — the placeholder is the canonical user bubble.
-      void sendMessage(nextMsg.message, nextMsg.fileIds, nextMsg.attachmentNames, { hidden: true });
+      void sendMessageWithTransport(
+        nextMsg.transport,
+        nextMsg.message,
+        nextMsg.fileIds,
+        nextMsg.attachmentNames,
+        { hidden: true, existingMessageId: nextMsg.id },
+      );
     }
-  // sendMessage is stable when sessionId/chatScope/refetchSessions don't change;
-  // including it would loop. Drain only fires on isLoading transitions.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading]);
+  }, [isLoading, sendMessageWithTransport, turnBlock]);
 
-  const clearChat = useCallback((options?: { abortStream?: boolean }) => {
+  const clearChat = useCallback((options?: {
+    abortStream?: boolean;
+    preserveForcedPersona?: boolean;
+  }) => {
     const abortStream = options?.abortStream !== false;
+    const active = activeSendRef.current;
+    operationOwnerRef.current = null;
+    intentResolutionOwnerRef.current = null;
+    if (active && !abortStream) {
+      active.refreshSidebarWhenStale = true;
+    } else {
+      invalidateActiveSend("clear");
+    }
     // Cancel all pending interrupt timers and reset queue refs so the drain
     // effect does not fire stale queued messages into the freshly-cleared chat.
     interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
@@ -1031,32 +1328,54 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     pendingQueueRef.current = [];
     steerPendingRef.current = [];
     setPendingQueue([]);
-    if (!abortStream) {
-      skipSessionUpdateForRequestRef.current = true;
-      setIsLoading(false); // Stop showing loading on home while stream continues in background
-    }
+    setIsLoading(false);
+    setSessionLoadState({ status: "idle", targetSessionId: null, error: null });
     setMessages([]);
     setSuggestions([]);
     setLiveQuestions([]);
     setSessionId(null);
     setSessionTitle(null);
     setSessionPersona(null);
+    if (!options?.preserveForcedPersona) {
+      forceSignalNextSessionRef.current = false;
+    }
+    setTurnBlock(null);
     setSessionScope(null); // Clear session-bound scope so new chat can use UI selection
     setSessionNetworkId(null); // Clear session-bound network so new chat can use UI selection
-    if (abortStream && abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-  }, []);
+  }, [invalidateActiveSend]);
 
-  const loadSession = useCallback(async (id: string) => {
-    // Reset steer/queue state so messages queued against the previous session
-    // don't drain into this one via the useEffect.
+  const startSignalSession = useCallback(() => {
+    clearChat();
+    forceSignalNextSessionRef.current = true;
+  }, [clearChat]);
+
+  const loadSession = useCallback(async (id: string): Promise<boolean> => {
+    invalidateActiveSend("load");
+    intentResolutionOwnerRef.current = null;
+    const loadToken = Symbol(`load-session:${id}`);
+    operationOwnerRef.current = loadToken;
+
+    // Loading is target-specific and starts before any network work. Quarantine
+    // the previous session immediately so route B never renders/interacts as A.
+    setSessionLoadState({ status: "loading", targetSessionId: id, error: null });
+    setIsLoading(false);
+    setSessionId(null);
+    setSessionTitle(null);
+    setSessionPersona(null);
+    setSessionScope(null);
+    setSessionNetworkId(null);
+    setMessages([]);
+    setSuggestions([]);
+    forceSignalNextSessionRef.current = false;
+
     interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
     interruptTimeoutsRef.current.clear();
     pendingQueueRef.current = [];
     steerPendingRef.current = [];
     setPendingQueue([]);
     setLiveQuestions([]);
+    setTurnBlock(null);
+
     try {
       const data = await apiClient.post<{
         session: {
@@ -1089,12 +1408,10 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
             }>;
           } | null;
         }>;
-      }>("/chat/session", { sessionId: id });
-      setSessionId(data.session.id);
-      setSessionTitle(data.session.title?.trim() ?? null);
-      setSessionPersona(data.session.persona ?? null);
-      setSuggestions([]); // Session load does not return suggestions; next response will
-      // Load the session's bound scope - this is the persisted scope for this conversation.
+      }>("/chat/web/session", { sessionId: id });
+      if (!ownsOperation(loadToken)) return false;
+      if (data.session.id !== id) throw new Error("Loaded chat did not match the requested session");
+
       const loadedScope: ChatScope = data.session.scopeType && data.session.scopeId
         ? {
             type: data.session.scopeType,
@@ -1106,32 +1423,48 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         : data.session.networkId
           ? { type: "network", id: data.session.networkId }
           : null;
+      const loadedMessages = data.messages.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        timestamp: new Date(m.createdAt),
+        isStreaming: false,
+        traceEvents: mergeDebugMetaIntoTraceEvents(m.traceEvents, m.debugMeta) ?? undefined,
+        ...(Array.isArray(m.streamingDrafts) && m.streamingDrafts.length > 0
+          ? { streamingDrafts: m.streamingDrafts }
+          : {}),
+        ...(Array.isArray(m.decisionQuestions) && m.decisionQuestions.length > 0
+          ? { decisionQuestions: m.decisionQuestions }
+          : {}),
+        ...(m.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
+        ...(m.interrupted ? { wasInterrupted: true } : {}),
+      }));
+
+      if (!ownsOperation(loadToken)) return false;
+      setSessionId(data.session.id);
+      setSessionTitle(data.session.title?.trim() ?? null);
+      setSessionPersona(data.session.persona ?? null);
       setSessionScope(loadedScope);
       setSessionNetworkId(loadedScope?.type === "network" ? loadedScope.id : null);
-      setMessages(
-        data.messages.map((m) => ({
-          id: m.id,
-          role: m.role as "user" | "assistant",
-          content: m.content,
-          timestamp: new Date(m.createdAt),
-          isStreaming: false,
-          traceEvents: mergeDebugMetaIntoTraceEvents(m.traceEvents, m.debugMeta) ?? undefined,
-          ...(Array.isArray(m.streamingDrafts) && m.streamingDrafts.length > 0
-            ? { streamingDrafts: m.streamingDrafts }
-            : {}),
-          ...(Array.isArray(m.decisionQuestions) && m.decisionQuestions.length > 0
-            ? { decisionQuestions: m.decisionQuestions }
-            : {}),
-          ...(m.decisionQuestionsSubmitted
-            ? { decisionQuestionsSubmitted: true }
-            : {}),
-          ...(m.interrupted ? { wasInterrupted: true } : {}),
-        })),
-      );
+      setMessages(loadedMessages);
+      setSessionLoadState({ status: "ready", targetSessionId: id, error: null });
+      operationOwnerRef.current = null;
+      return true;
     } catch (err) {
-      logger.error("Load session error", { error: err });
+      if (!ownsOperation(loadToken)) return false;
+      logger.error("Load session error", { error: err, sessionId: id });
+      operationOwnerRef.current = null;
+      const error = "Could not load this chat. Please try again.";
+      setSessionLoadState({ status: "error", targetSessionId: id, error });
+      return false;
     }
-  }, []);
+  }, [invalidateActiveSend, ownsOperation]);
+
+  const isSessionReady = useCallback((id: string) => (
+    sessionLoadState.status === "ready"
+    && sessionLoadState.targetSessionId === id
+    && sessionId === id
+  ), [sessionId, sessionLoadState]);
 
   const updateSessionTitle = useCallback(
     async (id: string, title: string) => {
@@ -1171,10 +1504,16 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         resolveIntentSession,
         suggestions,
         isLoading,
+        turnBlock,
         stopStream,
         sendMessage,
+        sendWebMessage,
+        sendOnboardingMessage,
         clearChat,
+        startSignalSession,
         loadSession,
+        sessionLoadState,
+        isSessionReady,
         updateSessionTitle,
         pendingQueue,
         cancelQueuedMessage,

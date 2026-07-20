@@ -147,7 +147,7 @@ The following paths are delegated to Better Auth and are not handled by controll
 - `/api/auth/api-key/list`
 - `/api/auth/api-key/delete`
 
-Refer to the [Better Auth documentation](https://www.better-auth.com/) for details on these endpoints.
+Refer to the [Better Auth documentation](https://www.better-auth.com/) for details on these endpoints. Generic API-key management requires a genuine Better Auth browser-cookie session. API keys are not promoted into Better Auth sessions, so `x-api-key` principals cannot create, list, inspect, retag, or delete keys through these routes. CLI credential minting and revocation use the constrained controller endpoints below.
 
 API keys created for personal agents include `metadata.agentId`. MCP auth resolves API keys into `{ userId, agentId? }` identities, so the same user can authorize multiple agents with separate keys.
 
@@ -316,6 +316,53 @@ Updates the authenticated user's profile fields and/or notification preferences.
 
 **Response**: Same shape as `GET /api/auth/me`.
 
+### POST /api/auth/cli-credential
+
+Creates a Better Auth-compatible 90-day credential for the CLI browser bridge. The endpoint accepts only the protocol version; callers cannot choose the credential name, metadata, agent binding, or expiry.
+
+**Auth**: SessionOnlyGuard (project JWT required; API keys and the temporary v1 API-key Bearer fallback are rejected)
+
+**Request body**:
+```json
+{ "protocolVersion": 2 }
+```
+
+`protocolVersion` must be the number `1` or `2`, and unknown fields are rejected.
+
+**Response**:
+```json
+{
+  "key": "raw-key-returned-once",
+  "id": "better-auth-api-key-row-id",
+  "expiresAt": "2026-10-16T12:00:00.000Z"
+}
+```
+
+The persisted metadata is fixed to `{ "client": "cli", "protocolVersion": 1|2 }` and never includes `agentId`. A server-only permission marker distinguishes these rows from generic Better Auth keys even if user-editable metadata is forged.
+
+### POST /api/auth/cli-credential/revoke
+
+Revokes one exact server-issued CLI credential. This route intentionally accepts only an actual `x-api-key` CLI caller; JWT, query-token, legacy-v1 Bearer, missing-header, agent-bound, disabled, expired, cross-user, and generic API-key callers fail closed.
+
+**Auth**: `RateLimit('write')`, then `AuthGuard`; the request must carry only `x-api-key` authentication.
+
+**Request body** (strict; unknown fields rejected):
+```json
+{
+  "keyId": "exact-target-row-id",
+  "targetKey": "exact-raw-target-secret"
+}
+```
+
+The caller secret is independently re-resolved from its authoritative hash as an enabled, unexpired, unbound v1/v2 CLI row owned by the authenticated user. The target must match both `keyId` and `hash(targetKey)`, have the same aligned owner, retain the server-issued CLI shape, and have no agent binding. This supports self-revocation and replacement-key cleanup of a prior credential without permitting arbitrary same-user key deletion. Secrets are never logged.
+
+**Success response** (only after deletion):
+```json
+{ "success": true }
+```
+
+Malformed bodies return `400`; authenticated but ineligible caller/target proof returns the stable `403` body `{ "error": "CLI credential revocation denied" }` (transport-shape rejection uses a distinct typed `403`).
+
 ### DELETE /api/auth/account
 
 Soft-deletes the authenticated user's account.
@@ -356,7 +403,7 @@ Send a message to the chat graph for synchronous processing.
 
 ### POST /api/chat/stream
 
-SSE streaming endpoint for chat messages with context support. Streams graph events and LLM tokens in real-time.
+Compatibility SSE endpoint for chat messages with context support. API-key principals retain the orchestrator default for CLI and other non-web consumers. Session-authenticated callers are classified as the web surface from authenticated credential provenance and receive the same Signal policy (or typed refusal) as the dedicated route, preventing a browser from bypassing the cutover by selecting this endpoint. The main web composer uses `/api/chat/web/stream` below.
 
 **Auth**: AuthGuard
 
@@ -371,6 +418,7 @@ SSE streaming endpoint for chat messages with context support. Streams graph eve
   "scopeId": "string | null (required when scopeType is provided)",
   "networkId": "string | null (deprecated alias for scopeType=network)",
   "recipientUserId": "string | null (optional — DM recipient for ghost invites)",
+  "persona": "signal | negotiator | null (optional persona assertion; stored session persona is authoritative)",
   "prefillMessages": [
     { "role": "assistant | user", "content": "string (max 10000 chars)" }
   ]
@@ -389,10 +437,25 @@ SSE event types:
 
 **Response headers**:
 - `X-Session-Id` — The session ID for this chat
+- `X-Chat-Persona` — The authoritative persisted persona used for the turn
+
+API-key Signal assertions are rejected on this compatibility route. A session-authenticated caller is governed by the web policy and may continue an authoritative persisted Signal session, but main-web clients should always use the dedicated route.
+
+### POST /api/chat/web/stream
+
+Main-web SSE endpoint. It accepts the same request and returns the same SSE events/headers as `/api/chat/stream`, but is protected by `SessionOnlyGuard` and applies the server-selected Signal cutover policy.
+
+When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly request `persona: "signal"`. Signal follow-ups may omit the assertion and inherit the persisted persona. Existing `orchestrator` web sessions remain readable through `POST /api/chat/session`, but a new web turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Explicit persona mismatch and unknown persisted personas also fail closed. Session-authenticated compatibility-route calls receive this same policy; API-key, Telegram, MCP, CLI, and direct-tool orchestrator behavior is unchanged.
+
+### POST /api/chat/onboarding/stream
+
+Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. While incomplete, the route forces `orchestrator` and rejects all other persona assertions, preserving the existing onboarding flow without exposing a completed-user session-JWT bypass.
+
+**Auth**: SessionOnlyGuard
 
 ### GET /api/chat/sessions
 
-List all chat sessions for the authenticated user.
+Compatibility history for the authenticated user. The default and all unrecognized persona filters are clamped to `orchestrator`; the explicit `persona=negotiator` lookup remains for the pinned Personal Agent surface. Signal sessions are never returned to CLI/MCP/legacy history consumers.
 
 **Auth**: AuthGuard
 
@@ -403,9 +466,17 @@ List all chat sessions for the authenticated user.
 }
 ```
 
+### GET /api/chat/web/sessions
+
+Session-only main-web history. Returns readable legacy `orchestrator` sessions plus `signal` sessions and excludes the pinned negotiator conversation.
+
+**Auth**: SessionOnlyGuard
+
+**Response**: same shape as `GET /api/chat/sessions`.
+
 ### POST /api/chat/session/resolve
 
-Resolve or create the stable orchestrator chat session for a selected intent. Repeated calls by the same user for the same intent return the same session.
+Resolve or create a stable selected-intent chat session. API-key callers retain the compatibility orchestrator behavior. Session-authenticated callers are classified as web and receive Signal policy or a typed refusal before scope validation/session creation. Repeated calls by the same user, intent, and persona return the same session. The main web composer uses `/api/chat/web/session/resolve`.
 
 **Auth**: AuthGuard
 
@@ -430,9 +501,21 @@ Resolve or create the stable orchestrator chat session for a selected intent. Re
 }
 ```
 
+### POST /api/chat/web/session/resolve
+
+Session-only main-web variant of `/api/chat/session/resolve`. While the Signal cutover is enabled, add `persona: "signal"`; the returned stable intent-scoped session uses the Signal persona-distinct registry key, so it never rewrites or reuses legacy orchestrator history.
+
+```json
+{
+  "scopeType": "intent",
+  "scopeId": "intent UUID",
+  "persona": "signal"
+}
+```
+
 ### POST /api/chat/session
 
-Get a specific session with its messages (including assistant metadata).
+Compatibility detail for a specific orchestrator session with its messages (including assistant metadata). Signal and other non-orchestrator personas return 404 so CLI/MCP/legacy clients cannot retrieve web-only history by UUID.
 
 **Auth**: AuthGuard
 
@@ -466,9 +549,15 @@ Get a specific session with its messages (including assistant metadata).
 }
 ```
 
+### POST /api/chat/web/session
+
+Session-only main-web detail endpoint using the same request/response shape. It permits the readable web personas (`orchestrator`, `signal`) plus the pinned negotiator conversation and fails closed for unknown personas.
+
+**Auth**: SessionOnlyGuard
+
 ### POST /api/chat/session/delete
 
-Delete a chat session.
+Delete a chat session. Delete, title, share, and unshare mutations all load the owned session first and enforce its persisted persona: API-key callers may mutate only orchestrator sessions; session-authenticated Signal sessions follow the web feature policy; flag-on legacy orchestrator web sessions are read-only and return the typed separate-session action.
 
 **Auth**: AuthGuard
 
@@ -2361,7 +2450,7 @@ List intents with pagination and filters.
 
 ### POST /api/intents/confirm
 
-Confirm a proposed intent from chat. Persists the pre-verified intent directly.
+Confirm a proposed intent from chat. Persists the pre-verified intent directly. When `networkId` is supplied, the authenticated owner must be a current member: membership is preflighted before embedding and locked/rechecked in the same transaction that inserts the intent and assignment. Missing or soft-deleted membership returns typed HTTP 403 `network_membership_required` with no intent persisted.
 
 **Auth**: AuthGuard
 
@@ -2370,7 +2459,7 @@ Confirm a proposed intent from chat. Persists the pre-verified intent directly.
 {
   "proposalId": "string (required)",
   "description": "string (required)",
-  "indexId": "string (optional)"
+  "networkId": "UUID (optional)"
 }
 ```
 

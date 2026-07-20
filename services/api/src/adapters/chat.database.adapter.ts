@@ -1,6 +1,7 @@
 import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
+import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
 import { IntentEvents } from '../events/intent.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
@@ -12,6 +13,7 @@ import { QuestionerAdapter, type AnsweredNegotiationOwnerAnswer } from './questi
 
 export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
+  private readonly intentAdapter = new IntentDatabaseAdapter();
   private _opportunityAdapter: OpportunityDatabaseAdapter | null = null;
   private get opportunityAdapter(): OpportunityDatabaseAdapter {
     if (!this._opportunityAdapter) this._opportunityAdapter = new OpportunityDatabaseAdapter();
@@ -946,6 +948,22 @@ export class ChatDatabaseAdapter {
     return upsertIntentNetworkAssignment(intentId, networkId, relevancyScore, assignmentMetadata);
   }
 
+  async assignIntentToNetworkIfMember(
+    userId: string,
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+  ): Promise<import('@indexnetwork/protocol').IntentNetworkFinalAssignmentResult> {
+    return this.intentAdapter.assignIntentToNetworkIfMember(
+      userId,
+      intentId,
+      networkId,
+      relevancyScore,
+      assignmentMetadata,
+    );
+  }
+
   async getIntentIndexScores(intentId: string): Promise<Array<{
     networkId: string;
     relevancyScore: number | null;
@@ -1292,6 +1310,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(networkMembers.networkId, networkId),
           eq(networkMembers.userId, userId),
+          isNull(networkMembers.deletedAt),
           isNull(networks.deletedAt),
           sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
@@ -1309,6 +1328,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(networkMembers.networkId, networkId),
           eq(networkMembers.userId, userId),
+          isNull(networkMembers.deletedAt),
           isNull(networks.deletedAt),
           sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )

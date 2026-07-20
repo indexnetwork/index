@@ -58,6 +58,96 @@ describe("ApiClient", () => {
     });
   });
 
+  describe("CLI credential migration", () => {
+    it("mints a time-bounded CLI API key with a legacy session JWT", async () => {
+      let authorization = "";
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/auth/cli-credential", async (req) => {
+        authorization = req.headers.get("authorization") ?? "";
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({
+          key: "migrated-cli-key",
+          id: "migrated-key-id",
+          expiresAt: "2026-10-16T12:00:00.000Z",
+        });
+      });
+
+      await expect(client.mintCliApiKey()).resolves.toEqual({
+        key: "migrated-cli-key",
+        keyId: "migrated-key-id",
+      });
+      expect(authorization).toBe("Bearer test-token-123");
+      expect(receivedBody).toEqual({ protocolVersion: 2 });
+    });
+  });
+
+  describe("API-key credential transport", () => {
+    it("uses x-api-key for compatibility history and orchestrator streaming", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+      const received: Array<{ path: string; apiKey: string; authorization: string }> = [];
+      mock.on("GET", "/api/chat/sessions", (req) => {
+        received.push({
+          path: "/api/chat/sessions",
+          apiKey: req.headers.get("x-api-key") ?? "",
+          authorization: req.headers.get("authorization") ?? "",
+        });
+        return Response.json({ sessions: [] });
+      });
+      mock.on("POST", "/api/chat/stream", (req) => {
+        received.push({
+          path: "/api/chat/stream",
+          apiKey: req.headers.get("x-api-key") ?? "",
+          authorization: req.headers.get("authorization") ?? "",
+        });
+        return new Response("data: {}\n\n", { status: 200 });
+      });
+
+      await apiKeyClient.listSessions();
+      await apiKeyClient.streamChat({ message: "hello" });
+
+      expect(received).toEqual([
+        { path: "/api/chat/sessions", apiKey: "cli-key-123", authorization: "" },
+        { path: "/api/chat/stream", apiKey: "cli-key-123", authorization: "" },
+      ]);
+    });
+
+    it("revokes only the exact stored API-key ID using the key itself", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+      let receivedBody: Record<string, unknown> = {};
+      let receivedApiKey = "";
+      mock.on("POST", "/api/auth/cli-credential/revoke", async (req) => {
+        receivedApiKey = req.headers.get("x-api-key") ?? "";
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({ success: true });
+      });
+
+      await expect(apiKeyClient.revokeApiKey("exact-key-id", "target-key-456")).resolves.toBeUndefined();
+      expect(receivedApiKey).toBe("cli-key-123");
+      expect(receivedBody).toEqual({ keyId: "exact-key-id", targetKey: "target-key-456" });
+    });
+
+    it("defaults target proof to the caller token for self-revocation", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "self-cli-key", "api_key");
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/auth/cli-credential/revoke", async (req) => {
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({ success: true });
+      });
+
+      await apiKeyClient.revokeApiKey("self-key-id");
+
+      expect(receivedBody).toEqual({ keyId: "self-key-id", targetKey: "self-cli-key" });
+    });
+
+    it("requires typed revocation success", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+      mock.on("POST", "/api/auth/cli-credential/revoke", () => Response.json({ success: false }));
+
+      await expect(apiKeyClient.revokeApiKey("exact-key-id"))
+        .rejects.toThrow("revocation was not confirmed");
+    });
+  });
+
   describe("getMe", () => {
     it("returns the current user", async () => {
       mock.on("GET", "/api/auth/me", () =>

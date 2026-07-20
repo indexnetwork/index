@@ -110,6 +110,8 @@ The chat graph is architecturally simple: a single node that delegates all compl
 
 The graph supports streaming via `config.writer()` so text tokens and tool-activity events are pushed to the client in real-time rather than batched at the end. Error handling includes one retry for retriable errors (5xx, connection resets).
 
+The runtime is persona-neutral: `ChatGraphFactory.withPersona()` reuses the same graph and injected dependencies while selecting a persona-owned prompt, toolset, and loop behaviors. Persisted `conversations.persona` is authoritative for follow-up turns. The main-web Signal Agent persona (`signal`) uses a positive allowlist limited to intent/signal management, intent-to-existing-community assignment, profile context and premise knowledge, read-only network/membership context, pasted-URL scraping, and chat clarification. Its wrappers live-recheck membership, clamp intent/network-focused reads to owned active intents and current memberships, prohibit other-user membership enumeration, and keep creation proposal-only; confirmed network assignment rechecks and locks membership in the same transaction as intent/assignment insertion. It has no opportunity/discovery-run, negotiation, contact/import, agent-administration, network-administration, or membership-mutation tools. Its discovery-coupled create-intent callback is disabled while proposal hallucination recovery remains enabled. Session-authenticated compatibility chat routes are classified as web from authenticated provenance, while API-key and other non-web consumers retain the default `orchestrator` runtime. A dedicated session-only onboarding route reloads the authoritative user, permits only incomplete onboarding, and forces orchestrator. Compatibility histories are orchestrator-only; the session-only web history returns readable legacy orchestrator plus Signal sessions.
+
 **Dependencies:** `ChatGraphCompositeDatabase`, `Embedder`, `Scraper`
 
 ### 3.2 Intent Graph
@@ -825,6 +827,8 @@ Intents with high semantic entropy (>0.75) or low clarity (<40) are considered v
 Intent-to-network assignment is handled separately by the Intent Index Graph. When an intent is created and the user is in a network-scoped chat, the `create_intent_index` tool assigns the intent with either:
 - Direct assignment (score 1.0) when `skipEvaluation` is true
 - Evaluated assignment via `IntentIndexer` agent when the index has prompts defining its purpose
+
+Friendly ownership/membership prechecks and LLM evaluation are not write authority. Every direct, no-prompts, and evaluated success path finishes through `IntentDatabaseAdapter.assignIntentToNetworkIfMember`, which locks the exact intent, network, and membership rows in one transaction, rechecks that the intent is owned and unarchived, the network is undeleted, and the membership is current with `owner`, `member`, or `admin` permission, then inserts the scored assignment and `NetworkAssignmentMetadata` before releasing those locks. Concurrent membership revocation therefore wins before a waiting final write and prevents assignment; existing queue/backfill assignment APIs retain their previous behavior.
 
 ## 9. Enrichment Pipeline
 

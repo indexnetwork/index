@@ -8,6 +8,16 @@ import { IntentEvents } from '../events/intent.event';
 
 const logger = log.service.from("IntentService");
 
+/** Stable typed failure for proposal assignment to a network the owner no longer belongs to. */
+export class IntentNetworkMembershipError extends Error {
+  readonly code = 'network_membership_required' as const;
+
+  constructor(readonly networkId: string) {
+    super('You are not a current member of this network');
+    this.name = 'IntentNetworkMembershipError';
+  }
+}
+
 /**
  * IntentService
  *
@@ -25,14 +35,23 @@ export class IntentService {
   private factory: IntentGraphFactory;
   private adapter: IntentDatabaseAdapter;
   private embedder: EmbedderAdapter;
+  private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+  private emitProposalCreated: (intentId: string, userId: string) => void;
 
   /**
-   * @param deps - Optional adapter override for focused service tests.
+   * @param deps - Optional dependency overrides for focused service tests.
    */
-  constructor(deps?: { adapter?: IntentDatabaseAdapter }) {
+  constructor(deps?: {
+    adapter?: IntentDatabaseAdapter;
+    embedder?: EmbedderAdapter;
+    proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+    emitProposalCreated?: (intentId: string, userId: string) => void;
+  }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.db = this.adapter;
-    this.embedder = new EmbedderAdapter();
+    this.embedder = deps?.embedder ?? new EmbedderAdapter();
+    this.proposalQueue = deps?.proposalQueue ?? intentQueue;
+    this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
     this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue);
   }
 
@@ -255,7 +274,8 @@ export class IntentService {
   /**
    * Create an intent directly from a confirmed chat proposal.
    * Bypasses the full intent graph (no LLM re-inference/verification).
-   * Idempotent: if an intent already exists for this proposalId + userId, returns it.
+   * Idempotent under concurrent confirmation: the adapter serializes one exact
+   * user + proposal pair and returns the transaction winner to every caller.
    * Generates embedding, inserts into DB, optionally associates with index, and enqueues HyDE job.
    * Embedder and queue failures are logged but do not abort creation.
    *
@@ -269,8 +289,13 @@ export class IntentService {
     logger.verbose('Creating intent from proposal', { userId, proposalId });
 
     const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
-    if (existing) {
-      return existing;
+    if (existing) return existing;
+
+    // Cheap advisory preflight avoids embedding/transaction/queue/event work
+    // for clear denials. confirmProposalIntent still re-checks membership under
+    // its advisory lock and remains the final race-safe authority.
+    if (networkId && !await this.adapter.isNetworkMember(networkId, userId)) {
+      throw new IntentNetworkMembershipError(networkId);
     }
 
     const embedding = await this.generateEmbeddingOrZero(
@@ -279,28 +304,23 @@ export class IntentService {
       { userId, proposalId },
     );
 
-    const created = await this.adapter.createIntent({
+    const intentData = {
       userId,
       payload: description,
       embedding,
-      sourceType: 'discovery_form',
+      sourceType: 'discovery_form' as const,
       sourceId: proposalId,
-    });
-
-    if (networkId) {
-      try {
-        await this.adapter.assignIntentToNetwork(created.id, networkId);
-      } catch (err) {
-        logger.warn('Failed to associate intent with index', {
-          intentId: created.id,
-          networkId,
-          error: err,
-        });
-      }
+    };
+    const confirmation = await this.adapter.confirmProposalIntent(intentData, networkId);
+    if (confirmation.kind === 'membership_required') {
+      if (!networkId) throw new Error('Unexpected membership requirement without a network');
+      throw new IntentNetworkMembershipError(networkId);
     }
+    if (confirmation.kind === 'existing') return confirmation.intent;
 
+    const created = confirmation.intent;
     try {
-      await intentQueue.addGenerateHydeJob({
+      await this.proposalQueue.addGenerateHydeJob({
         intentId: created.id,
         userId,
         ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
@@ -309,7 +329,7 @@ export class IntentService {
       logger.warn('Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
     }
 
-    IntentEvents.onCreated(created.id, userId);
+    this.emitProposalCreated(created.id, userId);
 
     return created;
   }

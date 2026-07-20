@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -49,6 +49,17 @@ describe("CredentialStore", () => {
 
     const loaded = await store.load();
     expect(loaded).toBeNull();
+  });
+
+  it("ignores a missing credentials file when clearing", async () => {
+    await expect(store.clear()).resolves.toBeUndefined();
+  });
+
+  it("propagates non-ENOENT unlink failures", async () => {
+    const credentialsPath = join(tempDir, "credentials.json");
+    await mkdir(credentialsPath);
+
+    await expect(store.clear()).rejects.toBeInstanceOf(Error);
   });
 
   it("creates the directory if it does not exist", async () => {

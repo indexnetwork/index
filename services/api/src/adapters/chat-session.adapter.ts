@@ -7,11 +7,20 @@ export class ChatSessionAdapter {
   }
 
   listSessions(userId: string, limit?: number) {
-    return conversationDatabaseAdapter.listChatSessionSummaries(userId, limit);
+    return conversationDatabaseAdapter.listChatSessionSummaries(
+      userId,
+      limit,
+      'orchestrator',
+    );
   }
 
   getSession(userId: string, sessionId: string, messageLimit?: number) {
-    return conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit);
+    return conversationDatabaseAdapter.getChatSessionDetail(
+      userId,
+      sessionId,
+      messageLimit,
+      'orchestrator',
+    );
   }
 }
 

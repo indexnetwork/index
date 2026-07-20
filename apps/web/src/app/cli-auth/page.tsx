@@ -1,68 +1,91 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
+import { apiClient } from "@/lib/api";
+import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, buildLegacyCliCallbackUrl, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
 
 /**
  * CLI authentication bridge page.
  *
  * Opened by `index login` — exchanges the user's existing browser session
- * for a JWT and redirects to the CLI's local callback server.
+ * for a revocable CLI API key and redirects to the local callback server.
  *
  * Query params:
- *   - callback: URL of the CLI's local callback server (required)
+ *   - v1 (TEMPORARY): callback only, for the already-released CLI
+ *   - v2: callback, exact version=2, and one-time state
  *
  * Flow:
- *   1. If user has a session cookie, exchange it for a JWT via Better Auth
- *   2. Redirect to callback URL with ?session_token=<jwt>
- *   3. If no session, redirect to login with a return URL back here
+ *   1. Fail closed on malformed/unknown protocol combinations
+ *   2. If user has a session cookie, mint a version-tagged CLI API key
+ *   3. Return the v1-compatible session_token name or the state-bound v2 fields
+ *   4. If no session, preserve the exact validated request through login
+ *
+ * The v1 bridge must remain until released clients have aged out. Its
+ * session_token value is deliberately an API-key secret, never a browser JWT.
  */
 function CliAuthPage() {
-  const [status, setStatus] = useState<"loading" | "error" | "redirecting">("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [request] = useState<CliAuthRequest | null>(() =>
+    parseCliAuthRequest(new URLSearchParams(window.location.search))
+  );
+  const [status, setStatus] = useState<"loading" | "error" | "redirecting">(
+    request ? "loading" : "error",
+  );
+  const [error, setError] = useState<string | null>(
+    request ? null : "Invalid CLI callback. Use `index login` from the CLI.",
+  );
+  const exchangeStartedRef = useRef(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const callbackUrl = params.get("callback");
+    if (!request || exchangeStartedRef.current) return;
+    // React development/StrictMode may replay effect setup. Claim this exact
+    // request synchronously before any await so it can mint at most one key.
+    exchangeStartedRef.current = true;
 
-    if (!callbackUrl) {
-      setStatus("error");
-      setError("Missing callback parameter. Use `index login` from the CLI.");
-      return;
-    }
-
-    async function exchangeToken(callback: string) {
+    async function exchangeToken(authRequest: CliAuthRequest) {
       try {
         // Check if user has an active session
         const session = await authClient.getSession();
 
         if (!session.data?.session) {
           // No session — redirect to home page to log in, then return here
-          const returnUrl = `${window.location.pathname}?callback=${encodeURIComponent(callback)}`;
-          window.location.href = `/?cli_return=${encodeURIComponent(returnUrl)}`;
+          // with the same callback and one-time state intact.
+          const returnPath = buildCliAuthReturnPath(
+            window.location.pathname,
+            authRequest,
+          );
+          window.location.href = `/?cli_return=${encodeURIComponent(returnPath)}`;
           return;
         }
 
-        // Exchange session cookie for JWT
-        const { data, error: tokenError } = await authClient.token();
-
-        if (tokenError || !data?.token) {
+        // Mint a non-web API-key principal so CLI chat keeps compatibility
+        // orchestrator behavior without creating a session-JWT web bypass.
+        const credential = await apiClient.post<{ key: string; id: string; expiresAt: string }>(
+          "/auth/cli-credential",
+          buildCliCredentialCreateBody(authRequest),
+        );
+        if (!credential.key || !credential.id || !credential.expiresAt) {
           setStatus("error");
-          setError("Failed to obtain token. Please try logging in again.");
+          setError("Failed to obtain CLI credentials. Please try logging in again.");
           return;
         }
 
-        // Redirect to CLI callback with token
         setStatus("redirecting");
-        const redirectUrl = `${callback}?session_token=${encodeURIComponent(data.token)}`;
-        window.location.href = redirectUrl;
+        window.location.href = authRequest.protocolVersion === 1
+          ? buildLegacyCliCallbackUrl(authRequest.callback, credential.key)
+          : buildCliApiKeyCallbackUrl(
+            authRequest.callback,
+            authRequest.state,
+            credential.key,
+            credential.id,
+          );
       } catch {
         setStatus("error");
         setError("Authentication failed. Please try `index login` again.");
       }
     }
 
-    exchangeToken(callbackUrl);
-  }, []);
+    exchangeToken(request);
+  }, [request]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">
