@@ -17,7 +17,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
-import { eq } from "drizzle-orm/sql";
+import { eq, inArray } from "drizzle-orm/sql";
 import { QuestionController } from "../question.controller";
 import { QuestionerAdapter, type AdapterPersistableQuestion } from "../../adapters/questioner.adapter";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
@@ -78,6 +78,24 @@ describe("Pending question inbox (IND-404)", () => {
       body: JSON.stringify(body),
     });
 
+  const listReq = (query: string) =>
+    new Request(`http://localhost/questions?${query}`);
+
+  async function answerQuestion(
+    questionId: string,
+    userId: string,
+    answeredAt: string,
+    freeText?: string,
+  ): Promise<void> {
+    const answered = await questionerAdapter.answer(questionId, userId, {
+      selectedOptions: ["Within a month"],
+      ...(freeText ? { freeText } : {}),
+      answeredBy: userId,
+      answeredAt,
+    });
+    expect(answered).toBe(true);
+  }
+
   beforeAll(async () => {
     const existingUser = await userAdapter.findByEmail(EMAIL);
     if (existingUser) await userAdapter.deleteByEmail(EMAIL);
@@ -91,8 +109,8 @@ describe("Pending question inbox (IND-404)", () => {
 
   afterAll(async () => {
     QuestionEvents.onAnswered = prevOnAnswered;
-    for (const id of createdQuestionIds) {
-      await db.delete(questions).where(eq(questions.id, id)).catch(() => {});
+    if (createdQuestionIds.length) {
+      await db.delete(questions).where(inArray(questions.id, createdQuestionIds)).catch(() => {});
     }
     if (testUserId) await userAdapter.deleteById(testUserId);
   });
@@ -114,6 +132,107 @@ describe("Pending question inbox (IND-404)", () => {
     const row = pending.find((q) => q.id === questionId)!;
     expect(row.detection.mode).toBe('negotiation');
     expect(row.status).toBe('pending');
+  });
+
+  test("status=answered lists the caller's intent questions with answer payload in chronological order", async () => {
+    const intentId = crypto.randomUUID();
+    const otherIntentId = crypto.randomUUID();
+    const laterQuestionId = await persistQuestion({
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: intentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+    const earlierQuestionId = await persistQuestion({
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: intentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+    const otherIntentQuestionId = await persistQuestion({
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: otherIntentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+    const foreignUserId = crypto.randomUUID();
+    const foreignQuestionId = await persistQuestion({
+      actors: [{ userId: foreignUserId, role: 'subject' }],
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: intentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    await answerQuestion(laterQuestionId, testUserId, '2026-01-02T00:00:00.000Z', 'later answer');
+    await answerQuestion(earlierQuestionId, testUserId, '2026-01-01T00:00:00.000Z', 'earlier answer');
+    await answerQuestion(otherIntentQuestionId, testUserId, '2026-01-01T12:00:00.000Z');
+    await answerQuestion(foreignQuestionId, foreignUserId, '2026-01-01T00:30:00.000Z');
+
+    const response = await controller.list(
+      listReq(`status=answered&intentId=${intentId}`),
+      mockUser(),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json() as { questions: Array<{
+      id: string;
+      status: string;
+      payload: { prompt: string; options: unknown[] };
+      answer: { selectedOptions: string[]; freeText?: string; answeredAt: string };
+    }> };
+
+    expect(body.questions.map((question) => question.id)).toEqual([
+      earlierQuestionId,
+      laterQuestionId,
+    ]);
+    expect(body.questions.every((question) => question.status === 'answered')).toBe(true);
+    expect(body.questions[0]).toMatchObject({
+      payload: {
+        prompt: "The counterparty asked about your timeline — when could you start?",
+        options: [
+          { label: "Within a month", description: "Ready to move quickly" },
+          { label: "Later this year", description: "Not before Q4" },
+        ],
+      },
+      answer: {
+        selectedOptions: ["Within a month"],
+        freeText: "earlier answer",
+        answeredAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+  });
+
+  test("status=answered without an intent filter still scopes to the caller", async () => {
+    const ownedQuestionId = await persistQuestion();
+    const foreignUserId = crypto.randomUUID();
+    const foreignQuestionId = await persistQuestion({
+      actors: [{ userId: foreignUserId, role: 'subject' }],
+    });
+    await answerQuestion(ownedQuestionId, testUserId, '2026-02-01T00:00:00.000Z');
+    await answerQuestion(foreignQuestionId, foreignUserId, '2026-02-01T00:01:00.000Z');
+
+    const response = await controller.list(listReq('status=answered'), mockUser());
+    expect(response.status).toBe(200);
+    const body = await response.json() as { questions: Array<{ id: string; actors: Array<{ userId: string }> }> };
+    const ids = body.questions.map((question) => question.id);
+    expect(ids).toContain(ownedQuestionId);
+    expect(ids).not.toContain(foreignQuestionId);
+    expect(body.questions.every((question) => question.actors.some((actor) => actor.userId === testUserId))).toBe(true);
+  });
+
+  test("dismissed and invalid status values remain rejected", async () => {
+    for (const status of ['dismissed', 'garbage']) {
+      const response = await controller.list(listReq(`status=${status}`), mockUser());
+      expect(response.status).toBe(400);
+    }
   });
 
   test("excludeModes drops pool_discovery from the non-scoped inbox but keeps other modes (IND-418 surfaces fix)", async () => {

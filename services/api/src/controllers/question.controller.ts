@@ -106,9 +106,9 @@ export class QuestionController {
     }
     const status = statusResult.data;
 
-    if (status !== 'pending') {
+    if (status === 'dismissed') {
       return Response.json(
-        { error: 'Only status=pending is currently supported' },
+        { error: 'Only status=pending or status=answered is currently supported' },
         { status: 400 },
       );
     }
@@ -165,13 +165,15 @@ export class QuestionController {
     }
 
     const hasFilters = Object.keys(filters).length > 0;
-    const questions = await questionService.findPending(user.id, hasFilters ? filters : undefined);
+    const questions = status === 'answered'
+      ? await questionService.findAnswered(user.id, hasFilters ? filters : undefined)
+      : await questionService.findPending(user.id, hasFilters ? filters : undefined);
 
     // IND-439: an owner's intent-page fetch with no live pending pool question
     // may re-mine the pool (flag-gated, debounced, fire-and-forget — default
     // off is a strict no-op). Network-scoped keys never see pool questions and
     // never trigger; the worker enforces ownership authoritatively.
-    if (scope.scopeType === 'intent' && scope.scopeId && !networkScopeId) {
+    if (status === 'pending' && scope.scopeType === 'intent' && scope.scopeId && !networkScopeId) {
       maybeEnqueueVisitPoolMining({
         userId: user.id,
         intentId: scope.scopeId,
