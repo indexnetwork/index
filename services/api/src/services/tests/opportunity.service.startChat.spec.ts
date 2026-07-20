@@ -27,8 +27,8 @@ function makeOpportunity(overrides: Partial<Opportunity> = {}): Opportunity {
     id: OPP_ID,
     detection: { source: 'opportunity_graph', timestamp: new Date().toISOString() },
     actors: [
-      { networkId: 'idx-1', userId: VIEWER_ID, role: 'patient' },
-      { networkId: 'idx-1', userId: PEER_ID, role: 'agent' },
+      { networkId: 'idx-1', userId: VIEWER_ID, role: 'patient', intent: SELECTED_INTENT_ID },
+      { networkId: 'idx-1', userId: PEER_ID, role: 'agent', intent: 'peer-intent' },
     ],
     interpretation: {
       category: 'collaboration',
@@ -62,6 +62,7 @@ function makeServiceWithDb(
     acceptSiblingOpportunities: mock(async () => [] as string[]),
     upsertContactMembership: mock(async () => {}),
     getOrCreateDM: mock(async () => ({ id: CONV_ID })),
+    appendMatchProvenance: mock(async () => {}),
     unhideConversation: mock(async () => {}),
     ...overrides,
   } as unknown as OpportunityControllerDatabase;
@@ -202,6 +203,13 @@ describe('OpportunityService.startChat', () => {
     expect(result.counterpartUserId).toBe(PEER_ID);
     expect(db.stampOpportunityActorAction).toHaveBeenCalledWith(OPP_ID, VIEWER_ID, 'accepted', VIEWER_ID);
     expect(db.getOrCreateDM).toHaveBeenCalledWith(VIEWER_ID, PEER_ID);
+    expect(db.appendMatchProvenance).toHaveBeenCalledWith(CONV_ID, expect.objectContaining({
+      opportunityId: OPP_ID,
+      intents: [
+        { userId: VIEWER_ID, intentId: SELECTED_INTENT_ID },
+        { userId: PEER_ID, intentId: 'peer-intent' },
+      ],
+    }));
 
     // Both-way contact membership: accepter (restore:true) + counterpart (restore:false)
     expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
@@ -233,6 +241,7 @@ describe('OpportunityService.startChat', () => {
     expect(result.conversationId).toBe(CONV_ID);
     expect(result.counterpartUserId).toBe(PEER_ID);
     expect(db.getOrCreateDM).toHaveBeenCalledWith(VIEWER_ID, PEER_ID);
+    expect(db.appendMatchProvenance).toHaveBeenCalledWith(CONV_ID, expect.objectContaining({ opportunityId: OPP_ID }));
     expect(db.unhideConversation).toHaveBeenCalledWith(VIEWER_ID, CONV_ID);
     // No status change or side effects — those ran on the original accept
     expect(db.updateOpportunityStatus).not.toHaveBeenCalled();

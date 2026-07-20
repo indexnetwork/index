@@ -35,6 +35,25 @@ const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } a
  */
 const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
 
+interface MatchProvenanceEntry {
+  opportunityId: string;
+  intents: Array<{ userId: string; intentId: string }>;
+  recordedAt: string;
+}
+
+function isMatchProvenanceEntry(value: unknown): value is MatchProvenanceEntry {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.opportunityId === 'string'
+    && typeof entry.recordedAt === 'string'
+    && Array.isArray(entry.intents)
+    && entry.intents.every((intent) => {
+      if (typeof intent !== 'object' || intent === null || Array.isArray(intent)) return false;
+      const record = intent as Record<string, unknown>;
+      return typeof record.userId === 'string' && typeof record.intentId === 'string';
+    });
+}
+
 export interface CreateNegotiationTaskForAttemptInput {
   conversationId: string;
   opportunityId: string;
@@ -360,8 +379,59 @@ export class ConversationDatabaseAdapter {
     }
 
     const metaByConv = new Map<string, Record<string, unknown>>();
+    const provenanceIntentIds = new Set<string>();
     for (const m of allMeta) {
-      metaByConv.set(m.conversationId, m.metadata as Record<string, unknown>);
+      const metadata = m.metadata as Record<string, unknown>;
+      const publicMetadata = { ...metadata };
+      delete publicMetadata.matchProvenance;
+      metaByConv.set(m.conversationId, publicMetadata);
+      if (Array.isArray(metadata.matchProvenance)) {
+        for (const rawEntry of metadata.matchProvenance) {
+          if (!isMatchProvenanceEntry(rawEntry)) continue;
+          for (const intent of rawEntry.intents) {
+            if (intent.userId === userId) provenanceIntentIds.add(intent.intentId);
+          }
+        }
+      }
+    }
+
+    // Resolve only the viewer's own intent titles. Filtering by owner in the
+    // query is a second privacy boundary: counterpart intent IDs in metadata
+    // can never become visible through a conversation summary.
+    const viewerIntentRows = provenanceIntentIds.size > 0
+      ? await db
+        .select({ id: schema.intents.id, payload: schema.intents.payload, summary: schema.intents.summary })
+        .from(schema.intents)
+        .where(and(
+          inArray(schema.intents.id, [...provenanceIntentIds]),
+          eq(schema.intents.userId, userId),
+        ))
+      : [];
+    const viewerIntentTitles = new Map(
+      viewerIntentRows.map((intent) => [intent.id, intent.summary?.trim() || intent.payload]),
+    );
+
+    const viaByConv = new Map<string, Array<{ intentId: string; opportunityId: string; title: string }>>();
+    for (const metadataRow of allMeta) {
+      const metadata = metadataRow.metadata as Record<string, unknown>;
+      if (!Array.isArray(metadata.matchProvenance)) continue;
+      const entries = metadata.matchProvenance
+        .filter(isMatchProvenanceEntry)
+        .map((entry, index) => ({ entry, index }))
+        .sort((a, b) => {
+          const recordedAtDelta = new Date(b.entry.recordedAt).getTime() - new Date(a.entry.recordedAt).getTime();
+          return Number.isNaN(recordedAtDelta) || recordedAtDelta === 0
+            ? b.index - a.index
+            : recordedAtDelta;
+        });
+      const via: Array<{ intentId: string; opportunityId: string; title: string }> = [];
+      for (const { entry } of entries) {
+        for (const intent of entry.intents) {
+          const title = intent.userId === userId ? viewerIntentTitles.get(intent.intentId) : undefined;
+          if (title) via.push({ intentId: intent.intentId, opportunityId: entry.opportunityId, title });
+        }
+      }
+      viaByConv.set(metadataRow.conversationId, via);
     }
 
     return convs.map((c) => ({
@@ -369,6 +439,7 @@ export class ConversationDatabaseAdapter {
       participants: participantsByConv.get(c.id) ?? [],
       lastMessage: lastMessageByConv.get(c.id) ?? null,
       metadata: metaByConv.get(c.id) ?? null,
+      via: viaByConv.get(c.id) ?? [],
     }));
   }
 
@@ -861,6 +932,25 @@ export class ConversationDatabaseAdapter {
       .limit(1);
 
     return (row?.metadata as Record<string, unknown>) ?? null;
+  }
+
+  /**
+   * Appends match provenance without duplicating an opportunity on DM re-entry.
+   * The metadata sidecar remains the source of truth; no message is written.
+   */
+  async appendMatchProvenance(conversationId: string, provenance: MatchProvenanceEntry): Promise<void> {
+    const existing = await this.getMetadata(conversationId);
+    const existingEntries = Array.isArray(existing?.matchProvenance)
+      ? existing.matchProvenance.filter(isMatchProvenanceEntry)
+      : [];
+    const nextEntries = [
+      ...existingEntries.filter((entry) => entry.opportunityId !== provenance.opportunityId),
+      provenance,
+    ];
+    await this.upsertMetadata(conversationId, {
+      ...(existing ?? {}),
+      matchProvenance: nextEntries,
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────

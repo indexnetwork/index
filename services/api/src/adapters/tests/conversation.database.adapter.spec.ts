@@ -2,15 +2,26 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, afterAll } from 'bun:test';
+import { inArray } from 'drizzle-orm';
+import db from '../../lib/drizzle/drizzle';
+import * as schema from '../../schemas/database.schema';
 import { ConversationDatabaseAdapter } from '../database.adapter';
 
 describe('ConversationDatabaseAdapter', () => {
   const adapter = new ConversationDatabaseAdapter();
   const createdIds: string[] = [];
+  const createdIntentIds: string[] = [];
+  const createdUserIds: string[] = [];
 
   afterAll(async () => {
     for (const id of createdIds) {
       try { await adapter.deleteConversation(id); } catch {}
+    }
+    if (createdIntentIds.length > 0) {
+      await db.delete(schema.intents).where(inArray(schema.intents.id, createdIntentIds));
+    }
+    if (createdUserIds.length > 0) {
+      await db.delete(schema.users).where(inArray(schema.users.id, createdUserIds));
     }
   });
 
@@ -199,5 +210,49 @@ describe('ConversationDatabaseAdapter', () => {
       const meta = await adapter.getMetadata(createdIds[0]);
       expect(meta).toEqual({ title: 'Test Chat', shareToken: 'abc' });
     }, 10000);
+
+    it('appends match provenance in latest-first order and deduplicates re-entry', async () => {
+      const first = { opportunityId: 'opp-first', intents: [{ userId: 'viewer', intentId: 'intent-first' }], recordedAt: '2026-01-01T00:00:00.000Z' };
+      const second = { opportunityId: 'opp-second', intents: [{ userId: 'viewer', intentId: 'intent-second' }], recordedAt: '2026-01-02T00:00:00.000Z' };
+      await adapter.appendMatchProvenance(createdIds[0], first);
+      await adapter.appendMatchProvenance(createdIds[0], second);
+      await adapter.appendMatchProvenance(createdIds[0], { ...first, recordedAt: '2026-01-03T00:00:00.000Z' });
+
+      const meta = await adapter.getMetadata(createdIds[0]);
+      expect(meta?.matchProvenance).toEqual([second, { ...first, recordedAt: '2026-01-03T00:00:00.000Z' }]);
+    }, 10000);
+
+    it('exposes only the viewer intent title as via on conversation summaries', async () => {
+      const run = crypto.randomUUID();
+      const viewerId = `provenance-viewer-${run}`;
+      const counterpartId = `provenance-counterpart-${run}`;
+      const viewerIntentId = `provenance-viewer-intent-${run}`;
+      const counterpartIntentId = `provenance-counterpart-intent-${run}`;
+      createdUserIds.push(viewerId, counterpartId);
+      createdIntentIds.push(viewerIntentId, counterpartIntentId);
+
+      await db.insert(schema.users).values([
+        { id: viewerId, email: `${viewerId}@test.com`, name: 'Provenance Viewer' },
+        { id: counterpartId, email: `${counterpartId}@test.com`, name: 'Provenance Counterpart' },
+      ]);
+      await db.insert(schema.intents).values([
+        { id: viewerIntentId, userId: viewerId, payload: 'Viewer private framing', summary: 'Viewer signal' },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Counterpart private framing', summary: 'Counterpart signal' },
+      ]);
+      const dm = await adapter.getOrCreateDM(viewerId, counterpartId);
+      createdIds.push(dm.id);
+      await adapter.appendMatchProvenance(dm.id, {
+        opportunityId: 'opp-private-signal',
+        intents: [
+          { userId: viewerId, intentId: viewerIntentId },
+          { userId: counterpartId, intentId: counterpartIntentId },
+        ],
+        recordedAt: new Date().toISOString(),
+      });
+
+      const summary = (await adapter.getConversationsForUser(viewerId)).find((conversation) => conversation.id === dm.id);
+      expect(summary?.via).toEqual([{ intentId: viewerIntentId, opportunityId: 'opp-private-signal', title: 'Viewer signal' }]);
+      expect(summary?.metadata).not.toHaveProperty('matchProvenance');
+    }, 20000);
   });
 });
