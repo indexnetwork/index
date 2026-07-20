@@ -186,8 +186,9 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     );
     // Add to list if not already present
     setConversations((prev) => {
-      if (prev.some((c) => c.id === data.conversation.id)) return prev;
-      return [data.conversation, ...prev];
+      const existingIndex = prev.findIndex((c) => c.id === data.conversation.id);
+      if (existingIndex < 0) return [data.conversation, ...prev];
+      return prev.map((conversation, index) => index === existingIndex ? data.conversation : conversation);
     });
     return data.conversation;
   }, []);

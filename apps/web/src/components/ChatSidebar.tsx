@@ -14,6 +14,7 @@ interface RecentChat {
   name: string;
   lastMessage: string;
   lastMessageIsInternal: boolean;
+  viaTitle?: string;
   negotiationStatus: NegotiationStatus;
   sortTimestamp: number;
 }
@@ -117,6 +118,7 @@ export default function ChatSidebar() {
       name: conv.metadata?.title ?? peer?.name ?? 'Conversation',
       lastMessage: lastText,
       lastMessageIsInternal: false,
+      viaTitle: conv.via?.[0]?.title,
       negotiationStatus: null,
       sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
     };
@@ -191,6 +193,9 @@ export default function ChatSidebar() {
                       )}
                       <span className="truncate">{chat.name}</span>
                     </p>
+                    {chat.viaTitle && (
+                      <p className="truncate text-[11px] font-ibm-plex-mono text-gray-400">via {chat.viaTitle}</p>
+                    )}
                     <p className="truncate text-sm font-normal text-gray-500">
                       {chat.lastMessageIsInternal && (
                         <span className="mr-1 italic text-gray-400">Internal:</span>

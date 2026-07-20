@@ -38,6 +38,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   const opportunitiesService = useOpportunities();
   const {
     messages: allMessages,
+    conversations,
     sendMessage: conversationSend,
     loadMessages,
     getOrCreateDM,
@@ -45,6 +46,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   } = useConversation();
 
   const [conversationId, setConversationId] = useState<string | null>(initialGroupId ?? null);
+  const [conversationSummary, setConversationSummary] = useState<ReturnType<typeof useConversation>['conversations'][number] | null>(null);
   const [messageText, setMessageText] = useState(autoSend ? '' : (initialMessage ?? ''));
   const hasAutoSentRef = useRef(false);
   const hasFiredFirstMessageRef = useRef(false);
@@ -63,6 +65,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     if (prevUserIdRef.current !== userId) {
       prevUserIdRef.current = userId;
       setConversationId(null);
+      setConversationSummary(null);
       setMessagesLoading(true);
       setContextLoading(true);
       setAcceptedOpportunities([]);
@@ -75,6 +78,14 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     () => (conversationId ? allMessages.get(conversationId) ?? [] : []),
     [conversationId, allMessages],
   );
+  const via = conversationSummary?.via ?? [];
+  const latestVia = via[0] ?? null;
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const summary = conversations.find((conversation) => conversation.id === conversationId);
+    if (summary) setConversationSummary(summary);
+  }, [conversationId, conversations]);
 
   useEffect(() => {
     if (!userId) return;
@@ -117,6 +128,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
         const conv = await getOrCreateDM(userId);
         if (!mounted) return;
         const cid = initialGroupId ?? conv.id;
+        setConversationSummary(conv);
         if (cid && !conversationId) setConversationId(cid);
       } catch (err) {
         logger.error('DM init error', { error: err });
@@ -239,16 +251,26 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center justify-between min-h-[68px]">
         <div className="flex items-center gap-3">
           <button onClick={handleBack} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
-          <Link to={`/u/${userId}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <div className="flex items-center gap-3">
             <UserAvatar avatar={userAvatar} id={userId} name={userName} size={44} blur={isGhost} />
             <div>
               <h2 className="font-ibm-plex-mono font-bold text-lg text-black flex items-center gap-1.5">
-                {userName}
+                <Link to={`/u/${userId}`} className="hover:opacity-80 transition-opacity">{userName}</Link>
                 {isGhost && <GhostBadge />}
               </h2>
               {isGhost && <p className="text-xs text-gray-400 -mt-0.5">Not yet on Index</p>}
+              {latestVia && (
+                <Link
+                  to={`/i/${latestVia.intentId}`}
+                  title={via.map((entry) => entry.title).join(' · ')}
+                  className="font-ibm-plex-mono text-[11px] text-gray-400 hover:text-gray-700 transition-colors"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  via: {latestVia.title}
+                </Link>
+              )}
             </div>
-          </Link>
+          </div>
         </div>
         <div className="relative" ref={menuRef}>
           <button onClick={() => setShowMenu(!showMenu)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
@@ -277,6 +299,10 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
           <div className="space-y-4">
             {messagesLoading ? (
               <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+            ) : messages.length === 0 && via.length > 0 ? (
+              <div className="text-center py-5 text-[13px] text-gray-400 font-ibm-plex-mono">
+                agents matched you on this signal — say hi.
+              </div>
             ) : messages.length === 0 && !contextLoading && acceptedOpportunities.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
                 {isGhost ? (

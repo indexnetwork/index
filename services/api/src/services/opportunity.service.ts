@@ -125,6 +125,34 @@ function matchesSelectedIntentScope(
   return opportunity.actors.some((actor) => actor.userId === userId && actor.intent === scope.scopeId);
 }
 
+interface MatchProvenanceInput {
+  opportunityId: string;
+  intents: Array<{ userId: string; intentId: string }>;
+  recordedAt: string;
+}
+
+type MatchProvenanceDatabase = OpportunityControllerDatabase & {
+  appendMatchProvenance(conversationId: string, provenance: MatchProvenanceInput): Promise<void>;
+};
+
+function buildMatchProvenance(opportunity: Pick<Opportunity, 'id' | 'actors'>): MatchProvenanceInput {
+  return {
+    opportunityId: opportunity.id,
+    intents: opportunity.actors
+      .filter((actor): actor is typeof actor & { intent: string } => typeof actor.intent === 'string' && actor.intent.length > 0)
+      .map((actor) => ({ userId: actor.userId, intentId: actor.intent })),
+    recordedAt: new Date().toISOString(),
+  };
+}
+
+async function appendMatchProvenance(
+  database: OpportunityControllerDatabase,
+  conversationId: string,
+  provenance: MatchProvenanceInput,
+): Promise<void> {
+  await (database as MatchProvenanceDatabase).appendMatchProvenance(conversationId, provenance);
+}
+
 function matchesAgentNetworkScope(
   opportunity: Pick<Opportunity, 'actors'>,
   userId: string,
@@ -862,6 +890,11 @@ export class OpportunityService {
         });
         return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
       }
+      await appendMatchProvenance(this.db, conversation.id, buildMatchProvenance(opp)).catch((err: unknown) => {
+        startChatLogger.error('appendMatchProvenance failed (non-blocking)', {
+          conversationId: conversation.id, opportunityId, userId, error: err,
+        });
+      });
       await this.db.unhideConversation(userId, conversation.id).catch((err) => {
         startChatLogger.error('unhideConversation failed (non-blocking)', {
           conversationId: conversation.id, userId, error: err,
@@ -923,6 +956,15 @@ export class OpportunityService {
       });
       return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
     }
+
+    await appendMatchProvenance(this.db, conversation.id, buildMatchProvenance(opp)).catch((err: unknown) => {
+      startChatLogger.error('appendMatchProvenance failed (non-blocking)', {
+        conversationId: conversation.id,
+        opportunityId,
+        userId,
+        error: err,
+      });
+    });
 
     // Clear hiddenAt so the conversation appears in the sidebar even if the
     // user previously hid it. This must happen before returning — the frontend

@@ -210,7 +210,11 @@ export class ConversationController {
 
     try {
       const conversation = await this.conversationService.getOrCreateDM(user.id, body.peerUserId);
-      return Response.json({ conversation });
+      // Return the same viewer-scoped summary shape as GET /conversations so
+      // a thread opened directly can render match provenance immediately.
+      const summary = (await this.conversationService.getConversations(user.id))
+        .find((candidate) => candidate.id === conversation.id);
+      return Response.json({ conversation: summary ?? conversation });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('getOrCreateDM failed', { userId: user.id, error: message });

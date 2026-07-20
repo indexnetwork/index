@@ -7,6 +7,8 @@ export interface ConversationSummary {
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
   lastMessage: { parts: unknown[]; senderId: string; createdAt: string } | null;
   metadata: { title?: string; shareToken?: string } | null;
+  /** Viewer-scoped opportunity signal provenance, latest first. */
+  via: Array<{ intentId: string; opportunityId: string; title: string }>;
   lastMessageAt: string | null;
   createdAt: string;
 }

@@ -3376,6 +3376,15 @@ export class ChatDatabaseAdapter {
     return conversationAdapter.unhideConversation(userId, conversationId);
   }
 
+  /** Append a deduplicated match provenance entry to a DM metadata sidecar. */
+  async appendMatchProvenance(
+    conversationId: string,
+    provenance: Parameters<ConversationDatabaseAdapter['appendMatchProvenance']>[1],
+  ): Promise<void> {
+    const conversationAdapter = new ConversationDatabaseAdapter();
+    return conversationAdapter.appendMatchProvenance(conversationId, provenance);
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Premises Methods (premise CRUD and network assignment)
   // ─────────────────────────────────────────────────────────────────────────
