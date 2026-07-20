@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
+import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
+import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import { QuestionsEmptyState } from "@/components/InjectedQuestions/QuestionsEmptyState";
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
@@ -18,6 +20,8 @@ export interface IntentNegotiatorChatProps {
   intentId: string;
   /** Pending questions for the intent — rendered as the chat's opening turns. */
   questions: PendingQuestion[];
+  /** Answered questions retained above the pending opening turns. */
+  answered: AnsweredThreadEntry[];
   onAnswerQuestion: (questionId: string, body: AnswerBody) => Promise<void>;
   onDismissQuestion: (questionId: string) => Promise<void>;
   /**
@@ -57,6 +61,7 @@ export interface IntentNegotiatorChatProps {
 export default function IntentNegotiatorChat({
   intentId,
   questions,
+  answered,
   onAnswerQuestion,
   onDismissQuestion,
   questionChainPending,
@@ -196,7 +201,7 @@ export default function IntentNegotiatorChat({
           </div>
         ) : (
           <>
-            {messages.length === 0 && questions.length === 0 && (
+            {messages.length === 0 && (answered.length > 0 || questions.length === 0) && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
                   <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
@@ -206,7 +211,13 @@ export default function IntentNegotiatorChat({
                     behalf.
                   </p>
                 </div>
-                {!questionChainPending && <QuestionsEmptyState />}
+                {answered.length === 0 && !questionChainPending && <QuestionsEmptyState />}
+              </div>
+            )}
+
+            {answered.length > 0 && (
+              <div data-testid="negotiator-answered-log">
+                <AnsweredQuestionLog entries={answered} />
               </div>
             )}
 

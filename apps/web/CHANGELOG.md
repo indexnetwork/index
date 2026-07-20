@@ -23,6 +23,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep the answered Q&A log visible in the Personal Agent negotiator chat branch after questions are answered (IND-481).
 - Clear stale browser auth sessions automatically when user lookup fails.
 - Show experiment networks such as Edge City in shared profile networks and link them to their network pages.
 - Limit automatic onboarding redirects to the home page so signed-in users can open app routes like `/networks` before finishing setup.

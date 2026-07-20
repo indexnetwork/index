@@ -6,16 +6,33 @@
  * fallback (flag off or runtime bootstrap failure) is the unchanged
  * questions block.
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentDetailPage from '@/app/i/[intentId]/page';
+import { AnsweredQuestionLog } from '@/components/InjectedQuestions/AnsweredQuestionLog';
+import type { AnsweredThreadEntry } from '@/components/InjectedQuestions/AnsweredQuestionLog';
 
 const mocks = vi.hoisted(() => ({
   authState: {
     features: null as Record<string, unknown> | null,
+  },
+  questionsService: {
+    getPending: vi.fn(),
+    getAnswered: vi.fn(),
+    answer: vi.fn(),
+    dismiss: vi.fn(),
+  },
+  intentsService: {
+    getIntent: vi.fn(),
+    archiveIntent: vi.fn(),
+    refineIntent: vi.fn(),
+    visitIntent: vi.fn(),
+  },
+  opportunitiesService: {
+    getHomeView: vi.fn(),
   },
   chatStubBehavior: { failBootstrap: false },
 }));
@@ -34,13 +51,40 @@ vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
 }));
 
 vi.mock('@/components/IntentNegotiatorChat', () => ({
-  default: ({ onUnavailable }: { onUnavailable: () => void }) => {
+  default: ({
+    answered = [],
+    onAnswerQuestion,
+    onUnavailable,
+    questions = [],
+  }: {
+    answered?: AnsweredThreadEntry[];
+    onAnswerQuestion: (questionId: string, body: { selectedOptions: string[]; freeText?: string }) => Promise<void>;
+    onUnavailable: () => void;
+    questions?: Array<{ id: string; payload: { prompt: string } }>;
+  }) => {
     if (mocks.chatStubBehavior.failBootstrap) {
       // Simulate a runtime bootstrap failure (e.g. backend flag flipped off).
       setTimeout(onUnavailable, 0);
       return null;
     }
-    return <div data-testid="intent-negotiator-chat-stub" />;
+    return (
+      <div data-testid="intent-negotiator-chat-stub">
+        {answered.length > 0 && (
+          <div data-testid="negotiator-answered-log">
+            <AnsweredQuestionLog entries={answered} />
+          </div>
+        )}
+        {questions.map((question) => (
+          <button
+            key={question.id}
+            type="button"
+            onClick={() => void onAnswerQuestion(question.id, { selectedOptions: ['Berlin'] })}
+          >
+            answer-{question.id}
+          </button>
+        ))}
+      </div>
+    );
   },
 }));
 
@@ -61,38 +105,9 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 vi.mock('@/contexts/APIContext', () => ({
-  useIntents: () => ({
-    getIntent: vi.fn().mockResolvedValue({
-      id: 'intent-1',
-      payload: 'Looking for a technical co-founder',
-      summary: 'Looking for a technical co-founder',
-      createdAt: new Date().toISOString(),
-    }),
-    archiveIntent: vi.fn(),
-    refineIntent: vi.fn(),
-    visitIntent: vi.fn(async () => {}),
-  }),
-  useOpportunities: () => ({
-    getHomeView: vi.fn().mockResolvedValue({ sections: [] }),
-  }),
-  useQuestionsService: () => ({
-    getPending: vi.fn().mockResolvedValue([
-      {
-        id: 'q-1',
-        title: 'Which city?',
-        prompt: 'Which city?',
-        options: [],
-        multiSelect: false,
-        mode: 'intent',
-        sourceType: 'intent',
-        sourceId: 'intent-1',
-        createdAt: new Date().toISOString(),
-      },
-    ]),
-    getAnswered: vi.fn().mockResolvedValue([]),
-    answer: vi.fn(),
-    dismiss: vi.fn(),
-  }),
+  useIntents: () => mocks.intentsService,
+  useOpportunities: () => mocks.opportunitiesService,
+  useQuestionsService: () => mocks.questionsService,
 }));
 
 
@@ -133,6 +148,35 @@ describe('Intent page — negotiator chat gating', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authState.features = null;
+    mocks.intentsService.getIntent.mockResolvedValue({
+      id: 'intent-1',
+      payload: 'Looking for a technical co-founder',
+      summary: 'Looking for a technical co-founder',
+      createdAt: new Date().toISOString(),
+    });
+    mocks.intentsService.visitIntent.mockResolvedValue(undefined);
+    mocks.opportunitiesService.getHomeView.mockResolvedValue({ sections: [] });
+    mocks.questionsService.getPending.mockResolvedValue([
+      {
+        id: 'q-1',
+        title: 'Which city?',
+        prompt: 'Which city?',
+        payload: {
+          prompt: 'Which city?',
+          title: 'Which city?',
+          options: [],
+          multiSelect: false,
+        },
+        options: [],
+        multiSelect: false,
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: 'intent-1',
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    mocks.questionsService.getAnswered.mockResolvedValue([]);
+    mocks.questionsService.answer.mockReset();
     mocks.chatStubBehavior.failBootstrap = false;
   });
 
@@ -154,6 +198,59 @@ describe('Intent page — negotiator chat gating', () => {
     expect(screen.queryByTestId('injected-questions')).toBeNull();
     expect(screen.getByText(/^Personal Agent$/)).toBeInTheDocument();
     expect(screen.queryByText(/^Questions \(/)).toBeNull();
+  });
+
+  test('hydrated answered entries render inside the negotiator branch', async () => {
+    mocks.authState.features = { negotiatorChat: true };
+    mocks.questionsService.getAnswered.mockResolvedValue([{
+      id: 'answered-1',
+      payload: {
+        title: 'What kind of collaborator?',
+        prompt: 'What kind of collaborator?',
+        options: [],
+        multiSelect: false,
+      },
+      answer: {
+        selectedOptions: ['Technical founder'],
+        freeText: 'in Europe',
+        answeredBy: 'user-1',
+        answeredAt: new Date().toISOString(),
+      },
+      status: 'answered',
+    }]);
+    renderIntentPage();
+
+    await waitFor(() => expect(mocks.questionsService.getAnswered).toHaveBeenCalled());
+    expect(await screen.findByTestId('negotiator-answered-log')).toBeInTheDocument();
+    expect(screen.getByText('What kind of collaborator?')).toBeInTheDocument();
+    expect(screen.getByText('Technical founder, in Europe')).toBeInTheDocument();
+  });
+
+  test('answering a pending question keeps prior entries and appends the new answer', async () => {
+    mocks.authState.features = { negotiatorChat: true };
+    mocks.questionsService.getAnswered.mockResolvedValue([{
+      id: 'answered-1',
+      payload: {
+        title: 'What kind of collaborator?',
+        prompt: 'What kind of collaborator?',
+        options: [],
+        multiSelect: false,
+      },
+      answer: {
+        selectedOptions: ['Technical founder'],
+        answeredBy: 'user-1',
+        answeredAt: new Date().toISOString(),
+      },
+      status: 'answered',
+    }]);
+    renderIntentPage();
+
+    expect(await screen.findByText('Technical founder')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'answer-q-1' }));
+
+    await waitFor(() => expect(screen.getByText('Berlin')).toBeInTheDocument());
+    expect(screen.getByText('Technical founder')).toBeInTheDocument();
+    expect(mocks.questionsService.answer).toHaveBeenCalledWith('q-1', { selectedOptions: ['Berlin'] });
   });
 
   test('runtime bootstrap failure → falls back to the questions block', async () => {

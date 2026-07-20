@@ -80,6 +80,7 @@ function renderChat(overrides: Partial<Parameters<typeof IntentNegotiatorChat>[0
   const props = {
     intentId: 'intent-1',
     questions: [] as PendingQuestion[],
+    answered: [],
     onAnswerQuestion: vi.fn(),
     onDismissQuestion: vi.fn(),
     opportunityStatusMap: {},
@@ -120,6 +121,23 @@ describe('IntentNegotiatorChat', () => {
 
     await screen.findByTestId('negotiator-opening-questions');
     expect(screen.getByTestId('injected-questions').textContent).toContain('Which city should we prioritize?');
+  });
+
+  test('keeps answered history visible without the empty state', async () => {
+    renderChat({
+      answered: [{
+        id: 'answered-1',
+        prompt: 'What should we prioritize?',
+        response: 'Berlin',
+        answeredAt: new Date().toISOString(),
+      }],
+    });
+
+    expect(await screen.findByTestId('negotiator-answered-log')).toBeInTheDocument();
+    expect(screen.getByText('What should we prioritize?')).toBeInTheDocument();
+    expect(screen.getByText('Berlin')).toBeInTheDocument();
+    expect(screen.getByText('noted — updating the search.')).toBeInTheDocument();
+    expect(screen.queryByTestId('questions-empty-state')).toBeNull();
   });
 
   test('falls back via onUnavailable when the bootstrap fails', async () => {
