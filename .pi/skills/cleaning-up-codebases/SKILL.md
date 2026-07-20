@@ -1,6 +1,6 @@
 ---
 name: cleaning-up-codebases
-description: "Systematically audit and clean a package in the index monorepo for dead code, unused exports, scope creep, anti-patterns, complexity, coupling, and architectural drift. Asks 'should this exist?' before 'how do I improve this?', fans out a per-dimension audit with hard metric thresholds, classifies findings into tiers (T1 safe deletes through T4 architectural), negotiates scope with the owner, and verifies lint/test/build before and after every change. Use when reviewing or cleaning a api/web/protocol/cli package, removing cruft from a rapidly-developed feature, or doing a pre-refactor audit. Not for greenfield code or single targeted bug fixes."
+description: "Systematically audit and clean a package in the index monorepo for dead code, unused exports, scope creep, anti-patterns, complexity, coupling, and architectural drift. Asks 'should this exist?' before 'how do I improve this?', fans out a per-dimension audit with hard metric thresholds, classifies findings into tiers (T1 safe deletes through T4 architectural), negotiates scope with the owner, and verifies a baseline plus each coherent cleanup batch. Use when reviewing or cleaning a api/web/protocol/cli package, removing cruft from a rapidly-developed feature, or doing a pre-refactor audit. Not for greenfield code or single targeted bug fixes."
 ---
 
 # cleaning-up-codebases
@@ -10,7 +10,7 @@ The core failure mode is refactoring code that should be deleted, or adding new
 abstractions to an already over-abstracted mess.
 
 **Core principle:** Removal over refactoring. Simplification over restructuring. Verify
-before and after every change. Cleanup means *less* code, not different code.
+the baseline and each coherent batch. Cleanup means *less* code, not different code.
 
 **Measure, don't eyeball.** Every finding is backed by a deterministic signal — a tool
 output, a grep count, or a metric threshold — never a vibe. Probabilistic models are good
@@ -109,10 +109,13 @@ Present findings before changing anything: "N things I can safely delete now —
 your call on direction." **Never assume what the owner values.**
 
 ### 7. Execute safe→dangerous, in a worktree
-T1 → T2 → T3 → T4. **After each change:** rerun lint/test/build for the touched package;
-if broken, revert and investigate. Commit each working state. T4/destructive-migration
-work belongs on its own branch and must follow `release-prod-safety` (a stale root
-`bun.lock` or an unrun backfill will break/lose prod data).
+T1 → T2 → T3 → T4. Group related low-risk changes for one package into a coherent batch,
+then rerun the touched package's relevant lint/test/build checks. Check at every tier
+boundary, before any destructive step, and immediately after a failure—not mechanically
+after each one-line deletion. Commit each verified batch; do not create a commit for every
+individual edit. T4/destructive-migration work belongs on its own branch and must follow
+`release-prod-safety` (a stale root `bun.lock` or an unrun backfill will break/lose prod
+data).
 
 ## Red flags — you're doing it wrong
 - You're writing more code than you're deleting

@@ -25,7 +25,7 @@ Do not silently resolve Copilot conversations.
 
 - The repository uses GitHub pull requests.
 - The `gh` CLI is installed and authenticated.
-- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the session that owns the PR's worktree checkout** — when this skill runs in the main (canonical-root) session, e.g. via `finish-pr`, code changes are handed off as a fix prompt to the worktree session (see `worktree-session-pipeline`); only the reply/resolve happens here.
+- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the PR's isolated worktree implementation session/agent** — when this skill runs in the canonical-root session, e.g. via `finish-pr`, start or resume that worktree agent (see `worktree-session-pipeline`). Use a manual fix prompt only when a user-operated worktree session already owns the change; only the reply/resolve happens in the canonical-root session.
 - If the user does not provide a PR number, infer it from the current branch.
 
 ## Command safety rule
@@ -170,7 +170,7 @@ If you update `.github/instructions/pr-reviewer.instructions.md`:
 
 ### 4. Apply fixes when needed
 
-When a fix is needed (in the session that owns the PR checkout — see Preconditions):
+When a fix is needed (in the PR's worktree implementation session/agent — see Preconditions):
 
 1. Edit the code.
 2. Run targeted tests, lint, typecheck, or a focused verification command when practical.
@@ -178,7 +178,7 @@ When a fix is needed (in the session that owns the PR checkout — see Precondit
 4. Reply to the Copilot review comment with a concise summary of the fix.
 5. Resolve the thread.
 
-When running in the main session, step 1–3 become: write the fix prompt for the worktree session, wait for the user to confirm the fix landed, then reply (referencing the pushed commit) and resolve.
+When running in the canonical-root session, start or resume the worktree implementation agent for steps 1–3. Then reply (referencing the pushed commit) and resolve. Use a manual prompt/wait only when the user owns a separate worktree session.
 
 Reply to a PR review comment using this exact REST endpoint shape:
 

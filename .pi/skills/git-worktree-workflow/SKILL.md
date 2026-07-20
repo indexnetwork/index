@@ -17,14 +17,15 @@ description: >-
 # git-worktree-workflow
 
 The canonical root `/Users/yanek/Projects/index` must stay on `dev` and is read-only
-for the assistant. All changes happen in a worktree under `.worktrees/`. This repo
+for implementation. All changes happen in a worktree under `.worktrees/`. This repo
 wraps `git worktree` with `bun run worktree:*` helpers (`scripts/worktree-*.sh`) that do
 setup work raw git does **not**.
 
-**Two-session rule**: when this skill is invoked from a main (canonical-root) session,
-the main session only *creates and sets up* the worktree — all implementation, commits,
-rebases, and pushes inside it belong to a separate worktree session. See
-`worktree-session-pipeline` for the full handoff loop.
+A worktree is the required isolation boundary. The canonical-root coordinator launches
+or resumes an implementation session/agent in that worktree; it never implements from
+root. Manual named handoffs are optional—use them only when direct worktree-agent launch
+is unavailable or a user-operated session already owns the worktree. See
+`worktree-session-pipeline` for the fast path.
 
 ## Naming convention (non-negotiable)
 
@@ -35,14 +36,16 @@ Keep them trivially derivable from each other: the `worktree:*` helpers take the
 folder name** as their argument, so mirroring the branch in dashed form is what makes
 `bun run worktree:dev <name>` work without guessing.
 
-## Create + setup (always both)
+## Create + setup (choose the needed level)
 
 ```bash
 git worktree add -b <type>/<desc> .worktrees/<type-desc> dev   # branch off dev
-bun run worktree:setup <type-desc>                             # REQUIRED next step
+bun run worktree:setup <type-desc>                             # runtime/dependency work
 ```
 
-Raw `git worktree add` alone is **not enough**. `worktree:setup` (`scripts/worktree-setup.sh`):
+Use `worktree:setup` before source work that needs dependencies, environment files,
+generated output, tests/builds, or dev servers. It is the implementation-ready path and
+`scripts/worktree-setup.sh`:
 
 1. Installs `node_modules` for `services/api` + `apps/web` (`bun install --frozen-lockfile`).
 2. Symlinks the **repo-root** `.env*` files (except `.env.example`) into the **worktree
@@ -55,13 +58,17 @@ Raw `git worktree add` alone is **not enough**. `worktree:setup` (`scripts/workt
 4. Sets `git config core.hooksPath → scripts/hooks` so the **pre-push hook**
    (regenerates `SKILL.md` files) actually fires on push.
 
-Skipping setup most often bites via #4: a push from an unconfigured worktree silently
-skips the pre-push hook. If you only need the hooks path (e.g. a doc/config-only worktree
-where the heavy install is wasteful), set it directly:
+For a mechanical docs/skill/config-only worktree where the dependency install is
+wasteful, configure the hooks path directly before committing:
 
 ```bash
 git -C .worktrees/<type-desc> config core.hooksPath "$PWD/scripts/hooks"
 ```
+
+Do not use that shortcut for runtime or dependency-dependent work. A gitlink-only
+AgentVillage pointer bump is also exempt from full setup: it stages a single gitlink
+with `git update-index`, needs no dependencies, and must still configure hooks before
+commit/push (see `bump-agentvillage-submodule-pointer`).
 
 ## Run / build / inspect
 
@@ -169,9 +176,8 @@ is the `finish-pr` skill's cleanup procedure; normally that skill runs this, not
 
 ## See also
 
-- **`worktree-session-pipeline`** — the two-session development loop (main session
-  creates worktrees and finishes PRs; worktree session implements). Read this when
-  coordinating more than the mechanical create/setup this skill covers.
+- **`worktree-session-pipeline`** — the fast implementation loop and optional named
+  handoffs. Read this when moving from investigation into a worktree change.
 - **Submodules** (Edge-City `agentvillage` / `-controlplane` / `-landing`): work inside the
   submodule, branch + PR into the `Edge-City` org repo, then bump the monorepo pointer with
   `git add <submodule-path>`. `git submodule update` restores to the pinned SHA;

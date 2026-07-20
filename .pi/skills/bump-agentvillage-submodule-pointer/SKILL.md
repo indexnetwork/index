@@ -33,15 +33,16 @@ your local tree; the monorepo pointer is what matters.
 
 Convention: `chore(agentvillage): bump submodule pointer to merged #NNN` (see git log
 for prior art). Do it from a worktree **without initializing the submodule** — stage
-the gitlink directly with plumbing. Per the two-session rule (`worktree-session-pipeline`),
-worktree commits belong to a worktree session; because this is a single mechanical
-plumbing commit, the invoking main session may also do it inline **only with the user's
-explicit go-ahead** (the standard escape hatch) — otherwise hand the block below to the
-worktree session as the fix prompt:
+the gitlink directly with plumbing. This is the explicit gitlink-only setup exception
+in `git-worktree-workflow`: it needs no dependency install, but the worktree must have
+its hooks path configured. The worktree implementation session/agent may make this
+mechanical commit after verifying the worktree path and branch; use a named handoff only
+when a user-operated session already owns that worktree:
 
 ```bash
 git worktree add .worktrees/chore-bump-agentvillage -b chore/bump-agentvillage-submodule origin/dev
 cd .worktrees/chore-bump-agentvillage
+git config core.hooksPath "$PWD/scripts/hooks"
 git update-index --add --cacheinfo 160000,<merged-sha>,packages/edge-city/agentvillage
 git diff --cached --submodule=short        # verify: old-sha..new-sha 160000
 git commit -m "chore(agentvillage): bump submodule pointer to merged #NNN"
@@ -49,8 +50,9 @@ git push -u origin chore/bump-agentvillage-submodule
 gh pr create --base dev ...
 ```
 
-No `worktree:setup` needed — a pointer commit needs no deps, and CI (check/lint/test/
-typecheck) doesn't check out the submodule. If commit signing fails, see
+No full `worktree:setup` needed — a pointer commit needs no deps, and CI (check/lint/test/
+typecheck) doesn't check out the submodule; the direct hooks configuration above keeps
+pre-push generation active. If commit signing fails, see
 `git-worktree-workflow` → "Commit signing (GPG fails without a TTY)".
 
 ## Phase 3 — after the pointer PR merges
