@@ -579,15 +579,40 @@ export class QuestionerAdapter {
     userId: string,
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
+    return this.findByStatus(userId, 'pending', filters);
+  }
+
+  /**
+   * Find answered questions for a given user, using the same ownership and
+   * intent-scope filters as the pending-question listing.
+   *
+   * @param userId  - The user to find answered questions for.
+   * @param filters - Optional narrowing filters (mode/modes, source, conversation, intent scope, SQL limit).
+   * @returns Answered questions ordered by answer time (oldest first).
+   */
+  async findAnswered(
+    userId: string,
+    filters?: AdapterQuestionFilters,
+  ): Promise<AdapterPersistedQuestion[]> {
+    return this.findByStatus(userId, 'answered', filters);
+  }
+
+  private async findByStatus(
+    userId: string,
+    status: 'pending' | 'answered',
+    filters?: AdapterQuestionFilters,
+  ): Promise<AdapterPersistedQuestion[]> {
     const actorMatch = filters?.networkId
       ? [{ userId, networkId: filters.networkId }]
       : [{ userId }];
     const conditions = [
-      eq(questions.status, 'pending'),
+      eq(questions.status, status),
       sql`${questions.actors}::jsonb @> ${JSON.stringify(actorMatch)}::jsonb`,
-      or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
     ];
 
+    if (status === 'pending') {
+      conditions.push(or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`)!);
+    }
     if (filters?.mode) {
       conditions.push(sql`${questions.detection}->>'mode' = ${filters.mode}`);
     }
@@ -649,11 +674,14 @@ export class QuestionerAdapter {
       }
     }
 
+    const orderBy = status === 'answered'
+      ? sql`${questions.answer}->>'answeredAt'`
+      : questions.createdAt;
     const baseQuery = this.db
       .select()
       .from(questions)
       .where(and(...conditions))
-      .orderBy(questions.createdAt);
+      .orderBy(orderBy, questions.createdAt);
 
     const rows = filters?.limit && filters.limit > 0
       ? await baseQuery.limit(filters.limit)

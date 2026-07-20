@@ -13,9 +13,9 @@ const logger = log.service.from('QuestionService');
 /**
  * QuestionService — business logic layer for the question lifecycle.
  *
- * Wraps QuestionerAdapter to expose pending-question retrieval and
- * answer/dismiss mutations through a service boundary, keeping
- * controllers free of adapter dependencies.
+ * Wraps QuestionerAdapter to expose question retrieval and answer/dismiss
+ * mutations through a service boundary, keeping controllers free of adapter
+ * dependencies.
  */
 /**
  * Removes server-only detection fields before a question leaves the API.
@@ -77,6 +77,22 @@ export class QuestionService {
   ): Promise<AdapterPersistedQuestion[]> {
     logger.verbose('Finding pending questions', { userId, filters });
     const rows = await this.adapter.findPending(userId, filters);
+    return rows.map(stripInternalDetection);
+  }
+
+  /**
+   * Find answered questions for the signal workspace Q&A log.
+   *
+   * @param userId - The authenticated recipient whose questions are returned.
+   * @param filters - Optional narrowing filters, including intent scope.
+   * @returns Answered questions ordered by answer time (oldest first).
+   */
+  async findAnswered(
+    userId: string,
+    filters?: AdapterQuestionFilters,
+  ): Promise<AdapterPersistedQuestion[]> {
+    logger.verbose('Finding answered questions', { userId, filters });
+    const rows = await this.adapter.findAnswered(userId, filters);
     return rows.map(stripInternalDetection);
   }
 
