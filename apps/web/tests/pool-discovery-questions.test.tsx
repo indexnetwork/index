@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
     getIntent: vi.fn(),
     archiveIntent: vi.fn(),
     refineIntent: vi.fn(),
+    visitIntent: vi.fn(async () => {}),
   },
   opportunitiesService: {
     getHomeView: vi.fn(),
@@ -82,6 +83,11 @@ function primePageServices() {
   });
   mocks.opportunitiesService.getHomeView.mockResolvedValue({ sections: [] });
 }
+
+
+vi.mock('@/contexts/QuestionsContext', () => ({
+  useQuestions: () => ({ refresh: vi.fn(async () => {}) }),
+}));
 
 vi.mock('@/contexts/NotificationContext', () => ({
   useNotifications: () => ({

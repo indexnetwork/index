@@ -6,6 +6,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
+import { useQuestions } from '@/contexts/QuestionsContext';
 import UserAvatar from '@/components/UserAvatar';
 import { log } from '@/lib/logger';
 
@@ -24,6 +25,7 @@ export default function TopBar() {
   const opportunitiesService = useOpportunities();
   const { clearChat } = useAIChat();
   const { setSelectedNetworkIds } = useNetworkFilter();
+  const { personalAgentPending } = useQuestions();
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -117,6 +119,15 @@ export default function TopBar() {
       </button>
       <button onClick={handleAgentClick} className={navItemClass(!!isAgentView)}>
         Agent
+        {/* Personal Agent pending-question badge, ported from the retired sidebar. */}
+        {personalAgentPending > 0 && (
+          <span
+            data-testid="negotiator-question-badge"
+            className="ml-1.5 inline-block min-w-[20px] rounded-full bg-[#041729] px-2 py-0.5 text-center text-xs text-white"
+          >
+            {personalAgentPending > 99 ? '99+' : personalAgentPending}
+          </span>
+        )}
       </button>
     </>
   );

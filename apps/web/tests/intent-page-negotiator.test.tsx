@@ -70,6 +70,7 @@ vi.mock('@/contexts/APIContext', () => ({
     }),
     archiveIntent: vi.fn(),
     refineIntent: vi.fn(),
+    visitIntent: vi.fn(async () => {}),
   }),
   useOpportunities: () => ({
     getHomeView: vi.fn().mockResolvedValue({ sections: [] }),
@@ -91,6 +92,11 @@ vi.mock('@/contexts/APIContext', () => ({
     answer: vi.fn(),
     dismiss: vi.fn(),
   }),
+}));
+
+
+vi.mock('@/contexts/QuestionsContext', () => ({
+  useQuestions: () => ({ refresh: vi.fn(async () => {}) }),
 }));
 
 vi.mock('@/contexts/NotificationContext', () => ({
