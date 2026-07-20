@@ -21,11 +21,10 @@ for implementation. All changes happen in a worktree under `.worktrees/`. This r
 wraps `git worktree` with `bun run worktree:*` helpers (`scripts/worktree-*.sh`) that do
 setup work raw git does **not**.
 
-A worktree is the required isolation boundary. The canonical-root coordinator launches
-or resumes an implementation session/agent in that worktree; it never implements from
-root. Manual named handoffs are optional—use them only when direct worktree-agent launch
-is unavailable or a user-operated session already owns the worktree. See
-`worktree-session-pipeline` for the fast path.
+A worktree is the required isolation boundary. The canonical-root coordinator creates
+and prepares it, then hands implementation to the user-mediated worktree Pi session; it
+never implements from root. Use `worktree-session-pipeline` for the concise named
+handoff and the fast fix loop.
 
 ## Naming convention (non-negotiable)
 

@@ -1,6 +1,6 @@
 ---
 name: finish-pr
-description: "Finish a pull request end-to-end from the canonical/root session: investigate PR health (base freshness, checks, review threads, version bumps, local builds), make any needed change only from a verified PR worktree (in the current session or a named handoff), merge after explicit confirmation, verify post-merge GitHub/Railway deployment health, and close or update related GitHub and Linear issues. Use when the user says a PR is ready to finish, ship, merge, or close out."
+description: "Finish a pull request end-to-end from the canonical/root session: investigate PR health (base freshness, checks, review threads, version bumps, local builds), hand needed worktree changes to the user-mediated worktree session in one consolidated prompt, merge after explicit confirmation, verify post-merge GitHub/Railway deployment health, and close or update related GitHub and Linear issues. Use when the user says a PR is ready to finish, ship, merge, or close out."
 ---
 
 # Finish PR
@@ -19,19 +19,22 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 - Never claim deployment success from a queued/in-progress status. Wait for a terminal success state or report that it is still pending.
 - If Railway MCP tools are unavailable, report deployment as unverified; do not claim success or close related issues until it can be verified. GitHub merge safety does not depend on MCP availability.
 - If checks fail, keep issues open and report the blocker.
-- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, start or resume the PR's isolated implementation session/agent after it verifies the worktree's absolute path and feature branch; a named handoff is optional when a user-operated session owns it. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
+- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, hand it to the user-mediated PR worktree session in one consolidated prompt; that session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
 - A PR-branch rebase is executed only from the verified PR worktree, and only ever on the PR's own feature branch — never a shared/long-lived head branch (`dev`, `main` — e.g. a release PR's head): that rewrites shared history and breaks other worktrees. Use `--force-with-lease`, never plain `--force`.
 - Do not remove a git worktree without confirming the PR is merged, the working tree is clean (no uncommitted/unpushed work), and the user has not asked to keep it. When in doubt, ask before removing.
 
 ## Supporting rpiv skills
 
-Use other rpiv skills when they fit: `worktree-session-pipeline` for verified-worktree changes and optional handoffs, `flag-rollout-consistency` for env-flag flips across Railway/local surfaces, `receiving-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `release-prod-safety` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
+Use other rpiv skills when they fit: `worktree-session-pipeline` for the user-mediated worktree handoff and fix loop, `flag-rollout-consistency` for env-flag flips across Railway/local surfaces, `receiving-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `release-prod-safety` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
 
-## Applying worktree fixes
+## Handing fixes to the worktree session
 
-When a workflow step finds a code, rebase, version, or push issue, resolve it only from
-the PR's verified worktree—not from the canonical root. Start or resume its isolated
-implementation session/agent. That session confirms:
+When a workflow step finds code, rebase, version, or push work, do not mutate from the
+canonical root. Produce one consolidated prompt for the existing user-mediated PR
+worktree session. Include the stable handoff name, absolute worktree path, branch,
+concrete findings/log excerpts, requested actions, and targeted checks.
+
+That worktree session confirms before mutation:
 
 ```bash
 cd /absolute/path/to/pr-worktree
@@ -40,10 +43,8 @@ git branch --show-current
 git status --short --branch
 ```
 
-The path must be the PR worktree and the branch must be the PR head before mutation. A
-named handoff is optional only when a user-operated session already owns that worktree;
-include its absolute path, branch, concrete findings/log excerpts, requested actions,
-and targeted checks.
+The path must be the PR worktree and the branch must be the PR head. Reuse the same
+session for every fix loop; do not create a fresh worktree/session for each finding.
 
 After a narrow fix, rerun its affected local checks plus PR-head, required-check, and
 unresolved-thread status. Re-run the full readiness pass only after a rebase, broad
@@ -109,7 +110,7 @@ PR_HEAD=$(gh pr view PR_NUMBER --json headRefName --jq .headRefName)
 gh pr view PR_NUMBER --json headRefOid --jq .headRefOid
 ```
 
-If you find uncommitted changes, unpushed commits, or a push that went to a helper/review branch instead of `headRefName`, treat them as findings. Start or resume the verified PR worktree's implementation session to resolve them, or create a named handoff if a user-operated session owns it (see "Applying worktree fixes"). An accidental helper branch can be cleaned up during final worktree cleanup if it is no longer needed.
+If you find uncommitted changes, unpushed commits, or a push that went to a helper/review branch instead of `headRefName`, treat them as findings and include them in the consolidated prompt for the existing worktree session (see "Handing fixes"). An accidental helper branch can be cleaned up during final worktree cleanup if it is no longer needed.
 
 ### 3b. Check base freshness; hand off any rebase
 
@@ -126,7 +127,7 @@ Skip the rebase when:
 - the PR head is a fork the available worktree credentials cannot push to: note it and continue;
 - the branch is not behind (count `0`): record "up-to-date" and move on — a gratuitous rebase just retriggers CI.
 
-When the branch is behind, gauge conflict risk (files changed on both sides), then have the verified PR worktree's implementation session rebase it (or hand it off when a user-operated session owns that worktree):
+When the branch is behind, gauge conflict risk (files changed on both sides), then include the rebase in the consolidated prompt for the verified PR worktree session:
 
 ```bash
 comm -12 \
@@ -150,7 +151,7 @@ Operational notes for the session operating the verified worktree:
 
 ### 4. Run local build/run verification
 
-Builds and tests are verification, not source mutation. When a failure needs a change, resolve it only from the verified PR worktree.
+Builds and tests are verification, not source mutation. When a failure needs a change, include it in the consolidated prompt for the verified PR worktree session.
 
 Use project guidance first and select checks from the changed surface: build `packages/protocol`, `services/api`, or `apps/web` only when that package or its dependent contract changed. Run targeted tests relevant to the diff. Avoid unrelated builds and full slow suites unless the PR is broad, rebased, or the user asks.
 
@@ -180,7 +181,7 @@ git diff origin/BASE...HEAD --stat -- packages/protocol packages/cli services/ap
 git diff origin/BASE...HEAD -- packages/protocol/package.json packages/cli/package.json services/api/package.json apps/web/package.json | grep '"version"'
 ```
 
-If a bump is missing, add a `chore: bump <pkg> to X.Y.Z (…)` commit from the verified PR worktree, then run `bun install` and commit any root `bun.lock` change — a stale root lockfile fails the prod build under `--frozen-lockfile` (see `release-prod-safety`). Historical precedents (versions long since superseded — the pattern is what matters): PR #1087 (feat, protocol minor bump), #1082 (fix, patch bump), #1081 (feat touching all packages — all bumped).
+If a bump is missing, include it in the consolidated worktree prompt: add a `chore: bump <pkg> to X.Y.Z (…)` commit, then run `bun install` and commit any root `bun.lock` change — a stale root lockfile fails the prod build under `--frozen-lockfile` (see `release-prod-safety`). Historical precedents (versions long since superseded — the pattern is what matters): PR #1087 (feat, protocol minor bump), #1082 (fix, patch bump), #1081 (feat touching all packages — all bumped).
 
 ### 4c. Check environment variable surfaces
 
@@ -211,7 +212,7 @@ gh pr checks PR_NUMBER --watch
 gh pr view PR_NUMBER --json mergeStateStatus,reviewDecision,statusCheckRollup,isDraft
 ```
 
-Check unresolved review threads. Use the `receiving-code-review` skill if unresolved Copilot or human review feedback remains. Replying to threads with technical reasoning and resolving them is GitHub-side; resolve any required code change only from the verified PR worktree.
+Check unresolved review threads. Use the `receiving-code-review` skill if unresolved Copilot or human review feedback remains. Replying to threads with technical reasoning and resolving them is GitHub-side; include any required code change in the consolidated worktree prompt.
 
 Do not merge if required checks are failing/pending, required reviews are missing, the PR is draft, unresolved blocking review conversations remain, or local verification failed.
 
@@ -227,7 +228,7 @@ Before merging, summarize:
 - env variable decisions (what was set in Railway / `.env.development` / `.env.test`, what was deliberately left unset),
 - related GitHub/Linear issues that will be updated after merge.
 
-Do not ask for merge confirmation while any finding is outstanding — resolve it in the verified PR worktree (or through its owning session), then re-verify proportionally. Ask the user for explicit confirmation to merge.
+Do not ask for merge confirmation while any finding is outstanding — hand it to the existing worktree session, then re-verify proportionally when the user returns. Ask the user for explicit confirmation to merge.
 
 After confirmation, merge using the repository's preferred strategy. If unknown, inspect repo conventions or ask. In multi-worktree repos where the base branch is checked out in the canonical root, run the merge from that canonical root (not from the feature worktree): `gh pr merge --delete-branch` may complete the server-side merge but fail local branch cleanup if it tries to check out a base branch already used by another worktree.
 

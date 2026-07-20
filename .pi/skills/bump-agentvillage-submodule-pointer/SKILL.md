@@ -35,9 +35,9 @@ Convention: `chore(agentvillage): bump submodule pointer to merged #NNN` (see gi
 for prior art). Do it from a worktree **without initializing the submodule** — stage
 the gitlink directly with plumbing. This is the explicit gitlink-only setup exception
 in `git-worktree-workflow`: it needs no dependency install, but the worktree must have
-its hooks path configured. The worktree implementation session/agent may make this
-mechanical commit after verifying the worktree path and branch; use a named handoff only
-when a user-operated session already owns that worktree:
+its hooks path configured. Hand the mechanical commit to the user-mediated worktree
+session after it verifies the worktree path and branch; reuse the existing session when
+one already owns that worktree:
 
 ```bash
 git worktree add .worktrees/chore-bump-agentvillage -b chore/bump-agentvillage-submodule origin/dev
