@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   conversations: [] as Array<Record<string, unknown>>,
   messages: new Map<string, Array<Record<string, unknown>>>(),
   getOrCreateDM: vi.fn(),
+  markConversationRead: vi.fn().mockResolvedValue(undefined),
   loadMessages: vi.fn().mockResolvedValue(undefined),
   getChatContext: vi.fn().mockResolvedValue([]),
 }));
@@ -28,6 +29,7 @@ vi.mock('@/contexts/ConversationContext', () => ({
     sendMessage: vi.fn(),
     loadMessages: mocks.loadMessages,
     getOrCreateDM: mocks.getOrCreateDM,
+    markConversationRead: mocks.markConversationRead,
     hideConversation: vi.fn(),
   }),
 }));
@@ -44,13 +46,14 @@ const props = {
   onClose: vi.fn(),
 };
 
-function summary(via: Array<{ intentId: string; opportunityId: string; title: string }>) {
+function summary(via: Array<{ intentId: string; opportunityId: string; title: string }>, unreadCount = 0) {
   return {
     id: 'conv-1',
     participants: [],
     lastMessage: null,
     metadata: null,
     via,
+    unreadCount,
     lastMessageAt: null,
     createdAt: new Date().toISOString(),
   };
@@ -60,6 +63,7 @@ beforeEach(() => {
   mocks.conversations = [summary([])];
   mocks.messages = new Map();
   mocks.getOrCreateDM.mockResolvedValue(summary([]));
+  mocks.markConversationRead.mockClear();
   mocks.getChatContext.mockResolvedValue([]);
 });
 
@@ -92,6 +96,15 @@ describe('ChatView match provenance', () => {
     renderWithRouter(<ChatView {...props} initialGroupId="conv-1" />);
 
     expect(screen.queryByText('agents matched you on this signal — say hi.')).not.toBeInTheDocument();
+  });
+
+  test('marks an unread thread read when it opens', async () => {
+    mocks.conversations = [summary([], 2)];
+    mocks.getOrCreateDM.mockResolvedValue(summary([], 2));
+
+    renderWithRouter(<ChatView {...props} initialGroupId="conv-1" />);
+
+    await vi.waitFor(() => expect(mocks.markConversationRead).toHaveBeenCalledWith('conv-1'));
   });
 
   test('does not render provenance UI for a plain DM', async () => {

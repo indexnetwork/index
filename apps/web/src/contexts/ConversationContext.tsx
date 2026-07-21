@@ -19,6 +19,7 @@ interface ConversationContextType {
   sendMessage: (conversationId: string, parts: unknown[]) => Promise<ConversationMessage | null>;
   refreshConversations: () => Promise<void>;
   refreshNegotiations: () => Promise<void>;
+  markConversationRead: (conversationId: string) => Promise<void>;
   hideConversation: (conversationId: string) => Promise<void>;
   getOrCreateDM: (peerUserId: string) => Promise<ConversationSummary>;
 }
@@ -165,6 +166,23 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     }
   }, [user, apiClient]);
 
+  const markConversationRead = useCallback(async (conversationId: string) => {
+    // Clear locally before the request returns so nav/sidebar badges respond
+    // immediately. The server operation is idempotent and viewer-scoped.
+    setConversations((prev) => prev.map((conversation) => (
+      conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation
+    )));
+    setNegotiations((prev) => prev.map((conversation) => (
+      conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation
+    )));
+
+    try {
+      await apiClient.post(`/conversations/${conversationId}/read`);
+    } catch (err) {
+      logger.error('Failed to mark conversation read', { conversationId, error: err });
+    }
+  }, []);
+
   const hideConversation = useCallback(async (conversationId: string) => {
     try {
       await apiClient.delete(`/conversations/${conversationId}`);
@@ -250,6 +268,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                         ...c,
                         lastMessage: { parts: msg.parts, senderId: msg.senderId, createdAt: msg.createdAt },
                         lastMessageAt: msg.createdAt,
+                        unreadCount: msg.senderId === user?.id ? c.unreadCount : c.unreadCount + 1,
                       }
                     : c
                 );
@@ -282,7 +301,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         retryTimeoutRef.current = setTimeout(() => { connectSSERef.current(); }, delay);
       }
     }
-  }, []);
+  }, [user?.id]);
   useEffect(() => { connectSSERef.current = connectSSE; }, [connectSSE]);
 
   // Connect SSE and load conversations when authenticated
@@ -334,6 +353,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         sendMessage,
         refreshConversations,
         refreshNegotiations,
+        markConversationRead,
         hideConversation,
         getOrCreateDM,
       }}
