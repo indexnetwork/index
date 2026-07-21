@@ -1030,6 +1030,9 @@ describe('Read-only surface header (IND-476)', () => {
     mocks.chat.sessionPersona = null;
     mocks.chat.turnBlock = null;
     mocks.chat.chatScope = null;
+    mocks.chat.isLoading = false;
+    mocks.chat.isSessionReady.mockReset();
+    mocks.chat.isSessionReady.mockReturnValue(false);
     mocks.auth.features.signalAgent = false;
     mocks.questionsService.getByConversation.mockResolvedValue([]);
     mocks.questionsService.getPending.mockResolvedValue([]);
@@ -1058,5 +1061,58 @@ describe('Read-only surface header (IND-476)', () => {
 
     expect(screen.getByText('Untitled chat')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Back to home' })).not.toBeNull();
+  });
+
+  test('reporter surface sends with an established URL-less session', async () => {
+    mocks.chat.messages = [{ id: 'm1', role: 'assistant', content: 'Overnight briefing', timestamp: new Date() }];
+    mocks.chat.sessionId = 'reporter-session-1';
+    mocks.chat.sessionPersona = 'reporter';
+
+    renderWithRouter(<ChatContent persona="reporter" readOnlySurface />, { route: '/agent' });
+    const input = screen.getByTestId('chat-input');
+    fireEvent.change(input, { target: { value: "What's waiting on me?" } });
+    fireEvent.submit(input.closest('form')!);
+
+    await waitFor(() => expect(mocks.chat.sendWebMessage).toHaveBeenCalledWith(
+      "What's waiting on me?",
+      undefined,
+      undefined,
+      undefined,
+    ));
+  });
+
+  test('default surface still blocks a mismatched routed session', () => {
+    mocks.chat.messages = [{ id: 'm1', role: 'assistant', content: 'Current chat', timestamp: new Date() }];
+    mocks.chat.sessionId = 'current-session';
+    mocks.chat.isSessionReady.mockReturnValue(true);
+
+    renderWithRouter(<ChatContent sessionIdParam="different-session" />, { route: '/d/different-session' });
+    const input = screen.getByTestId('chat-input');
+    fireEvent.change(input, { target: { value: 'This must be blocked' } });
+    fireEvent.submit(input.closest('form')!);
+
+    expect(mocks.chat.sendWebMessage).not.toHaveBeenCalled();
+  });
+
+  test('reporter surface remains sendable after a failed briefing without a session', async () => {
+    mocks.chat.messages = [{
+      id: 'm1',
+      role: 'assistant',
+      content: 'Failed to get response. Please try again.',
+      timestamp: new Date(),
+      isStreaming: false,
+    }];
+
+    renderWithRouter(<ChatContent persona="reporter" readOnlySurface />, { route: '/agent' });
+    const input = screen.getByTestId('chat-input');
+    fireEvent.change(input, { target: { value: 'Try the briefing again' } });
+    fireEvent.submit(input.closest('form')!);
+
+    await waitFor(() => expect(mocks.chat.sendWebMessage).toHaveBeenCalledWith(
+      'Try the briefing again',
+      undefined,
+      undefined,
+      { persona: 'reporter' },
+    ));
   });
 });
