@@ -107,7 +107,8 @@ export default function ChatContent({
     && sessionId === sessionIdFromUrl
     && routedSessionReady;
   const routeSessionMismatch = sessionId !== sessionIdFromUrl
-    && Boolean(sessionId || sessionIdFromUrl);
+    && Boolean(sessionId || sessionIdFromUrl)
+    && !(reporterSurface && !sessionIdFromUrl);
   const mutationsBlocked = legacyOrchestratorReadOnly
     || routeSessionMismatch
     || (Boolean(sessionIdFromUrl) && !routedSessionReady);
