@@ -12,7 +12,8 @@ function makeTempRepo() {
 }
 
 function run(cmd: string, cwd: string) {
-  const proc = Bun.spawn(["bash", "-lc", cmd], {
+  // A login shell may cd back to GITHUB_WORKSPACE and ignore the fixture cwd.
+  const proc = Bun.spawn(["bash", "-c", cmd], {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
