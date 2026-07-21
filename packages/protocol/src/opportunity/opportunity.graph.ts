@@ -47,7 +47,7 @@ export type OpportunityEvaluatorLike = {
   }>>;
 };
 import type { Embedder, LensEmbedding } from '../shared/interfaces/embedder.interface.js';
-import type { CreateOpportunityData, Opportunity, OpportunityActor, OpportunityNetworkEligibility, ActiveIntent } from '../shared/interfaces/database.interface.js';
+import type { ActiveIntent, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import { persistOpportunities } from './opportunity.persist.js';
 import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from "../negotiation/negotiation.graph.js";
@@ -101,6 +101,21 @@ function isActiveNegotiationTaskFresh(task: { state: string; updatedAt: Date }):
     ? askUserAnswerWindowMs() + ASK_USER_LOCK_SLACK_MS
     : 5 * 60 * 1000;
   return Date.now() - new Date(task.updatedAt).getTime() < freshnessMs;
+}
+
+function triggerForOwner(opportunity: Opportunity, ownerUserId: string): string | undefined {
+  return opportunity.detection.triggeredBy
+    ?? opportunity.actors.find((actor) => actor.userId === ownerUserId)?.intent;
+}
+
+function belongsToOwnedIntent(
+  opportunity: Opportunity,
+  ownerUserId: string,
+  triggerIntentId: string,
+): boolean {
+  return opportunity.detection.triggeredBy === triggerIntentId
+    || opportunity.actors.some((actor) =>
+      actor.userId === ownerUserId && actor.intent === triggerIntentId);
 }
 
 interface NegotiationIntentSource {
@@ -2805,8 +2820,22 @@ export class OpportunityGraphFactory {
         });
 
         if (state.evaluatedOpportunities.length === 0) {
-          persistLog.verbose('No opportunities to persist');
-          return { opportunities: [] };
+          persistLog.verbose('No opportunities to persist', {
+            triggerIntentId: state.triggerIntentId,
+            reason: state.candidates.length === 0 ? 'no_search_candidates' : 'evaluator_rejected_all',
+          });
+          return {
+            opportunities: [],
+            persistenceOutcome: {
+              evaluatedCount: 0,
+              createdCount: 0,
+              reactivatedCount: 0,
+              sameTriggerDuplicateSuppressions: 0,
+              pairActiveNegotiationSuppressions: 0,
+              crossTriggerAllowedCount: 0,
+              finalAtomicConflictCount: 0,
+            },
+          };
         }
 
         try {
@@ -2908,11 +2937,14 @@ export class OpportunityGraphFactory {
 
           const itemsToPersist: CreateOpportunityData[] = [];
           const reactivatedOpportunities: Opportunity[] = [];
+          let crossTriggerAllowedCount = 0;
           const existingBetweenActors: Array<{
             candidateUserId: Id<'users'>;
             networkId: Id<'networks'>;
             existingOpportunityId?: Id<'opportunities'>;
-            existingStatus?: string;
+            existingStatus?: OpportunityStatus;
+            reason?: 'same_trigger_recent_duplicate' | 'pair_active_negotiation' | 'final_atomic_conflict';
+            existingTriggerIntentId?: string;
           }> = [];
           const now = new Date().toISOString();
           // Only skip 'draft' (chat-only) opportunities during dedup.
@@ -3241,7 +3273,146 @@ export class OpportunityGraphFactory {
                 results: overlapping.map(o => ({ id: o.id, status: o.status, actors: o.actors?.map((a: OpportunityActor) => ({ userId: a.userId, role: a.role })) })),
               });
 
-              if (overlapping.length > 0) {
+              const ownedIntentTriggerId = state.discoverySource === 'intent'
+                && state.triggerIntentId
+                && state.resolvedTriggerIntentId === state.triggerIntentId
+                ? state.triggerIntentId
+                : undefined;
+
+              if (ownedIntentTriggerId && candidateUserId) {
+                let activeNegotiation: { opportunity: Opportunity; taskState: string } | undefined;
+                for (const opportunity of overlapping) {
+                  if (opportunity.status !== 'negotiating') continue;
+                  const task = await this.database.getNegotiationTaskForOpportunity(opportunity.id);
+                  if (task && isActiveNegotiationTaskFresh(task)) {
+                    activeNegotiation = { opportunity, taskState: task.state };
+                    break;
+                  }
+                }
+
+                if (activeNegotiation) {
+                  const existingTriggerIntentId = triggerForOwner(activeNegotiation.opportunity, state.userId);
+                  existingBetweenActors.push({
+                    candidateUserId: candidateUserId as Id<'users'>,
+                    networkId: (activeNegotiation.opportunity.context?.networkId ?? state.networkId ?? state.userNetworks?.[0] ?? '') as Id<'networks'>,
+                    existingOpportunityId: activeNegotiation.opportunity.id as Id<'opportunities'>,
+                    existingStatus: activeNegotiation.opportunity.status,
+                    reason: 'pair_active_negotiation',
+                    ...(existingTriggerIntentId ? { existingTriggerIntentId } : {}),
+                  });
+                  persistDedupLog.info('Suppressing owned-intent match for pair-global active negotiation', {
+                    triggerIntentId: ownedIntentTriggerId,
+                    candidateUserId,
+                    existingOpportunityId: activeNegotiation.opportunity.id,
+                    existingTriggerIntentId,
+                    existingStatus: activeNegotiation.opportunity.status,
+                    existingAgeMs: Date.now() - new Date(activeNegotiation.opportunity.createdAt).getTime(),
+                    taskState: activeNegotiation.taskState,
+                    reason: 'pair_active_negotiation',
+                  });
+                  continue;
+                }
+
+                const sameTrigger = overlapping
+                  .filter((opportunity) => belongsToOwnedIntent(opportunity, state.userId, ownedIntentTriggerId))
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                const otherTrigger = overlapping.filter((opportunity) =>
+                  !belongsToOwnedIntent(opportunity, state.userId, ownedIntentTriggerId));
+                const existing = sameTrigger[0];
+
+                if (!existing) {
+                  if (otherTrigger.length > 0) {
+                    crossTriggerAllowedCount += 1;
+                    persistDedupLog.info('Allowing cross-trigger match for owned intent', {
+                      triggerIntentId: ownedIntentTriggerId,
+                      candidateUserId,
+                      reason: 'cross_trigger_match_allowed',
+                      otherTriggers: otherTrigger.map((opportunity) => ({
+                        opportunityId: opportunity.id,
+                        triggerIntentId: triggerForOwner(opportunity, state.userId),
+                        status: opportunity.status,
+                        ageMs: Date.now() - new Date(opportunity.createdAt).getTime(),
+                      })),
+                    });
+                  }
+                } else {
+                  const existingIndexId = (existing.context?.networkId ?? state.networkId ?? state.userNetworks?.[0] ?? '') as Id<'networks'>;
+                  const isRecent = new Date(existing.createdAt).getTime() > Date.now() - DEDUP_WINDOW_MS;
+
+                  if (existing.status === 'expired' || existing.status === 'stalled') {
+                    const reactivated = await updateStatusIfStillEligible(
+                      existing.id, initialStatus, existing.actors, existing.status,
+                    );
+                    if (reactivated) {
+                      persistLog.info('Reactivated same-trigger opportunity', {
+                        triggerIntentId: ownedIntentTriggerId,
+                        opportunityId: existing.id,
+                        candidateUserId,
+                        previousStatus: existing.status,
+                        newStatus: initialStatus,
+                      });
+                      reactivatedOpportunities.push(reactivated);
+                    }
+                    continue;
+                  }
+                  if (existing.status === 'negotiating') {
+                    const reactivated = await updateStatusIfStillEligible(
+                      existing.id, initialStatus, existing.actors, existing.status,
+                    );
+                    if (reactivated) {
+                      persistLog.info('Resuming same-trigger orphaned negotiating opportunity', {
+                        triggerIntentId: ownedIntentTriggerId,
+                        opportunityId: existing.id,
+                        candidateUserId,
+                      });
+                      reactivatedOpportunities.push(reactivated);
+                    }
+                    continue;
+                  }
+                  if (existing.status === 'latent' && initialStatus !== 'latent') {
+                    const upgraded = await updateStatusIfStillEligible(
+                      existing.id, initialStatus, existing.actors, existing.status,
+                    );
+                    if (upgraded) {
+                      persistLog.info('Upgraded same-trigger latent opportunity', {
+                        triggerIntentId: ownedIntentTriggerId,
+                        opportunityId: existing.id,
+                        candidateUserId,
+                        newStatus: initialStatus,
+                      });
+                      reactivatedOpportunities.push(upgraded);
+                    }
+                    continue;
+                  }
+                  if (isRecent) {
+                    existingBetweenActors.push({
+                      candidateUserId: candidateUserId as Id<'users'>,
+                      networkId: existingIndexId,
+                      existingOpportunityId: existing.id as Id<'opportunities'>,
+                      existingStatus: existing.status,
+                      reason: 'same_trigger_recent_duplicate',
+                      existingTriggerIntentId: ownedIntentTriggerId,
+                    });
+                    persistDedupLog.info('Suppressing recent same-trigger duplicate', {
+                      triggerIntentId: ownedIntentTriggerId,
+                      candidateUserId,
+                      existingOpportunityId: existing.id,
+                      existingTriggerIntentId: ownedIntentTriggerId,
+                      existingStatus: existing.status,
+                      existingAgeMs: Date.now() - new Date(existing.createdAt).getTime(),
+                      reason: 'same_trigger_recent_duplicate',
+                    });
+                    continue;
+                  }
+                  persistDedupLog.info('Allowing same-trigger opportunity outside dedup window', {
+                    triggerIntentId: ownedIntentTriggerId,
+                    candidateUserId,
+                    existingOpportunityId: existing.id,
+                    existingStatus: existing.status,
+                    existingAgeMs: Date.now() - new Date(existing.createdAt).getTime(),
+                  });
+                }
+              } else if (overlapping.length > 0) {
                 const existing = overlapping[0];
                 const existingIndexId = (existing.context?.networkId ?? state.networkId ?? state.userNetworks?.[0] ?? '') as Id<'networks'>;
                 const isRecent = new Date(existing.createdAt).getTime() > Date.now() - DEDUP_WINDOW_MS;
@@ -3444,12 +3615,42 @@ export class OpportunityGraphFactory {
             }
           }
 
-          const { created: createdList } = await persistOpportunities({
+          const intentDedupScope = finalTriggerIntentId && state.discoverySource === 'intent'
+            ? { triggerIntentId: finalTriggerIntentId, dedupWindowMs: DEDUP_WINDOW_MS }
+            : undefined;
+          const { created: createdList, conflicts } = await persistOpportunities({
             database: this.database,
             embedder: this.embedder,
             items: itemsForPersistence,
             networkEligibility,
+            intentDedupScope,
           });
+
+          for (const conflict of conflicts) {
+            const item = itemsForPersistence[conflict.itemIndex];
+            const candidateActor = item?.actors.find((actor) => actor.userId !== state.userId);
+            if (!candidateActor) continue;
+            existingBetweenActors.push({
+              candidateUserId: candidateActor.userId,
+              networkId: candidateActor.networkId,
+              existingOpportunityId: conflict.existingOpportunityId as Id<'opportunities'>,
+              existingStatus: conflict.existingStatus,
+              reason: conflict.reason,
+              ...(conflict.existingTriggerIntentId
+                ? { existingTriggerIntentId: conflict.existingTriggerIntentId }
+                : {}),
+            });
+            persistDedupLog.info('Final atomic persistence conflict', {
+              triggerIntentId: finalTriggerIntentId,
+              candidateUserId: candidateActor.userId,
+              existingOpportunityId: conflict.existingOpportunityId,
+              existingTriggerIntentId: conflict.existingTriggerIntentId,
+              existingStatus: conflict.existingStatus,
+              existingAgeMs: Date.now() - new Date(conflict.existingCreatedAt).getTime(),
+              reason: conflict.reason,
+              finalAtomic: true,
+            });
+          }
 
           const allOpportunities = [...reactivatedOpportunities, ...createdList];
 
@@ -3459,10 +3660,22 @@ export class OpportunityGraphFactory {
             existingBetweenActorsCount: existingBetweenActors.length,
             status: initialStatus,
           });
+          const persistenceOutcome = {
+            evaluatedCount: state.evaluatedOpportunities.length,
+            createdCount: createdList.length,
+            reactivatedCount: reactivatedOpportunities.length,
+            sameTriggerDuplicateSuppressions: existingBetweenActors.filter((entry) =>
+              entry.reason === 'same_trigger_recent_duplicate').length,
+            pairActiveNegotiationSuppressions: existingBetweenActors.filter((entry) =>
+              entry.reason === 'pair_active_negotiation').length,
+            crossTriggerAllowedCount,
+            finalAtomicConflictCount: conflicts.length,
+          };
           return {
             opportunities: allOpportunities,
             existingBetweenActors,
             dedupAlreadyAccepted,
+            persistenceOutcome,
             trace: [{
               node: "persist",
               detail: `Created ${createdList.length}, reactivated ${reactivatedOpportunities.length}, ${existingBetweenActors.length} existing skipped, ${dedupAlreadyAccepted.length} already-accepted pair(s)`,
@@ -3472,6 +3685,7 @@ export class OpportunityGraphFactory {
                 existingSkipped: existingBetweenActors.length,
                 alreadyAccepted: dedupAlreadyAccepted.length,
                 totalOutput: allOpportunities.length,
+                persistenceOutcome,
                 durationMs: Date.now() - startTime,
               },
             }],

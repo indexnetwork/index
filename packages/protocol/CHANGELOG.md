@@ -45,6 +45,7 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 - Included protocol documentation files in the published package tarball so README links remain available to package consumers.
 
 ### Fixed
+- Made owned-intent opportunity persistence trigger-aware: recent/lifecycle dedup now reuses only rows linked to the same trigger intent, cross-trigger rows remain independently visible, enrichment cannot absorb another trigger's row, and final persistence reports typed same-trigger/active-negotiation conflicts (IND-495).
 - Clamped intent-pinned `list_negotiations` results to the user's signal, added explicit signal/all scope metadata, and prevented stale cross-signal history from being presented as current negotiations (IND-483).
 - Routed continuation-created and recovered opportunities through the normal negotiation boundary, threaded each persisted attempt version into atomic negotiation-task claiming, protected active/input-required tasks from duplicate negotiation, compensated pre-task failures and timeouts to truthful draft/latent states, and refreshed continuation cards from current lifecycle state (IND-470).
 - Normalized opportunity actor intent IDs at evaluator, graph, and shared persistence boundaries so blank or null-like model sentinels are omitted, valid branded string IDs remain supported, enrichment cannot use or reintroduce malformed provenance, and legacy negotiation reads fail closed (IND-469).

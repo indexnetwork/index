@@ -6,7 +6,7 @@ import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, i
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
-import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
+import { conversations, tasks, users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 import { PremiseEvents } from '../../events/premise.event';
 import { IntentEvents } from '../../events/intent.event';
@@ -1208,6 +1208,146 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(forConv1.some((o) => o.id === draft2.id)).toBe(false);
       expect(forConv2.some((o) => o.id === draft2.id)).toBe(true);
       expect(forConv2.some((o) => o.id === draft1.id)).toBe(false);
+    });
+  });
+
+  describe('intent-scoped atomic persistence', () => {
+    it('fails closed without inserting when write provenance mismatches eligibility trigger', async () => {
+      const writeTriggerIntentId = uuidv4();
+      const eligibilityTriggerIntentId = uuidv4();
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          timestamp: new Date().toISOString(),
+          triggeredBy: writeTriggerIntentId,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: writeTriggerIntentId },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Mismatched trigger must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: eligibilityTriggerIntentId,
+      }, 30 * 24 * 60 * 60 * 1000);
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'triggeredBy' = ${writeTriggerIntentId}`);
+
+      expect(result).toBeNull();
+      expect(inserted).toEqual([]);
+    });
+
+    it('blocks final persistence while another trigger has a fresh active negotiation', async () => {
+      const triggerIntentId = uuidv4();
+      fixture.extraIntentIds.push(triggerIntentId);
+      await db.insert(intents).values({
+        id: triggerIntentId,
+        userId: fixture.userAId,
+        payload: `${TEST_PREFIX}active negotiation guard intent`,
+        sourceType: 'discovery_form',
+        sourceId: fixture.userAId,
+      });
+      await db.insert(intentNetworks).values({ intentId: triggerIntentId, networkId: fixture.networkId });
+      const otherTrigger = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: fixture.intent1Id },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Other trigger active negotiation', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'negotiating',
+      });
+      const [conversation] = await db.insert(conversations).values({}).returning();
+      await db.insert(tasks).values({
+        conversationId: conversation.id,
+        state: 'working',
+        metadata: { type: 'negotiation', opportunityId: otherTrigger.id },
+      });
+
+      try {
+        const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+          detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: triggerIntentId },
+          actors: [
+            { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: triggerIntentId },
+            { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+          ],
+          interpretation: { category: 'collaboration', reasoning: 'Current trigger match', confidence: 0.9 },
+          context: { networkId: fixture.networkId },
+          confidence: '0.9',
+          status: 'latent',
+        }, [], {
+          ownerUserId: fixture.userAId,
+          allowedNetworkIds: [fixture.networkId],
+          triggerIntentId,
+        }, 30 * 24 * 60 * 60 * 1000);
+
+        expect(result && 'conflict' in result ? result.conflict.reason : null).toBe('pair_active_negotiation');
+        expect(result && 'conflict' in result ? result.conflict.existingOpportunityId : null).toBe(otherTrigger.id);
+      } finally {
+        await db.delete(conversations).where(eq(conversations.id, conversation.id));
+      }
+    });
+
+    it('serializes parallel same-trigger creates and preserves exact intent visibility', async () => {
+      const triggerIntentId = uuidv4();
+      fixture.extraIntentIds.push(triggerIntentId);
+      await db.insert(intents).values({
+        id: triggerIntentId,
+        userId: fixture.userAId,
+        payload: `${TEST_PREFIX}parallel dedup intent`,
+        sourceType: 'discovery_form',
+        sourceId: fixture.userAId,
+      });
+      await db.insert(intentNetworks).values({ intentId: triggerIntentId, networkId: fixture.networkId });
+
+      const createData = {
+        detection: {
+          source: 'opportunity_graph' as const,
+          createdBy: 'agent-opportunity-finder',
+          triggeredBy: triggerIntentId,
+          timestamp: new Date().toISOString(),
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' as const, intent: triggerIntentId },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' as const },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Intent-specific pair match', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent' as const,
+      };
+      const eligibility = {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId,
+      };
+
+      const results = await Promise.all([
+        adapter.persistIntentScopedOpportunityIfNetworkEligible(createData, [], eligibility, 30 * 24 * 60 * 60 * 1000),
+        adapter.persistIntentScopedOpportunityIfNetworkEligible(createData, [], eligibility, 30 * 24 * 60 * 60 * 1000),
+      ]);
+
+      const created = results.filter((result) => result && 'created' in result);
+      const conflicts = results.filter((result) => result && 'conflict' in result);
+      expect(created).toHaveLength(1);
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0] && 'conflict' in conflicts[0] ? conflicts[0].conflict.reason : null)
+        .toBe('same_trigger_recent_duplicate');
+
+      const radarRows = await adapter.getOpportunitiesForUser(fixture.userAId, {
+        scopeType: 'intent',
+        scopeId: triggerIntentId,
+      });
+      expect(radarRows).toHaveLength(1);
+      expect(radarRows[0].detection.triggeredBy).toBe(triggerIntentId);
     });
   });
 

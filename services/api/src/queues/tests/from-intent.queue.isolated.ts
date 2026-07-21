@@ -27,6 +27,7 @@ afterAll(() => {
 });
 
 import { FromIntentQueue, QUEUE_NAME, type FromIntentJobData, type FromIntentDatabase, type FromIntentDeps, type FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
+import { summarizeOpportunityDiscoveryResult } from '../opportunity/discovery.shared';
 
 type FromIntentDatabaseOverrides = Partial<FromIntentDatabase> & Pick<FromIntentDatabase, 'getIntentForIndexing'>;
 
@@ -419,6 +420,31 @@ describe('FromIntentQueue', () => {
       } catch {
         // Real graph can fail without Redis/DB
       }
+    });
+  });
+
+  describe('completion telemetry', () => {
+    it('distinguishes evaluator-zero from persistence-dedup-zero', () => {
+      const evaluatorZero = summarizeOpportunityDiscoveryResult({
+        candidates: [{}],
+        evaluatedOpportunities: [],
+        opportunities: [],
+      });
+      const persistenceDedupZero = summarizeOpportunityDiscoveryResult({
+        candidates: [{}],
+        evaluatedOpportunities: [{}],
+        opportunities: [],
+        persistenceOutcome: {
+          evaluatedCount: 1,
+          sameTriggerDuplicateSuppressions: 1,
+          pairActiveNegotiationSuppressions: 0,
+          crossTriggerAllowedCount: 0,
+          finalAtomicConflictCount: 0,
+        },
+      });
+
+      expect(evaluatorZero.completionReason).toBe('evaluator_rejected_all');
+      expect(persistenceDedupZero.completionReason).toBe('same_trigger_duplicate_suppressed');
     });
   });
 

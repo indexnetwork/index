@@ -530,6 +530,22 @@ export interface OpportunityNetworkEligibility {
   triggerIntentId?: string;
 }
 
+export type OpportunityDedupConflictReason =
+  | 'same_trigger_recent_duplicate'
+  | 'pair_active_negotiation';
+
+export interface OpportunityDedupConflict {
+  reason: OpportunityDedupConflictReason;
+  existingOpportunityId: string;
+  existingTriggerIntentId?: string;
+  existingStatus: OpportunityStatus;
+  existingCreatedAt: Date;
+}
+
+export type IntentScopedOpportunityPersistenceResult =
+  | { created: Opportunity; expired: Opportunity[] }
+  | { conflict: OpportunityDedupConflict };
+
 export interface CreateOpportunityData {
   detection: OpportunityDetection;
   actors: OpportunityActor[];
@@ -1291,6 +1307,19 @@ export interface Database {
     data: CreateOpportunityData,
     eligibility: OpportunityNetworkEligibility,
   ): Promise<Opportunity | null>;
+
+  /**
+   * Intent-scoped discovery persistence boundary. Implementations serialize on
+   * normalized participant pair + trigger intent, re-check same-trigger recent
+   * duplicates and pair-global active negotiations, then create/expire while
+   * the existing network eligibility locks remain held.
+   */
+  persistIntentScopedOpportunityIfNetworkEligible?(
+    data: CreateOpportunityData,
+    expireIds: string[],
+    eligibility: OpportunityNetworkEligibility & { triggerIntentId: string },
+    dedupWindowMs: number,
+  ): Promise<IntentScopedOpportunityPersistenceResult | null>;
 
   /**
    * Atomically update status only while the supplied participant anchors remain
@@ -2231,6 +2260,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
+  | 'persistIntentScopedOpportunityIfNetworkEligible'
   | 'updateOpportunityStatusIfNetworkEligible'
   | 'getOpportunity'
   | 'getOpportunitiesByIds'
@@ -2323,6 +2353,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
+  | 'persistIntentScopedOpportunityIfNetworkEligible'
   | 'updateOpportunityStatusIfNetworkEligible'
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'

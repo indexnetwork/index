@@ -18,13 +18,15 @@ const createdConversationIds: string[] = [];
 const createdNetworkIds: string[] = [];
 const createdUserIds: string[] = [];
 
-async function createNegotiatingOpportunity() {
+async function createNegotiatingOpportunity(
+  actors?: Array<{ userId: string; networkId: string; role: 'patient' | 'agent' }>,
+) {
   const opportunity = await adapter.createOpportunity({
     detection: {
       source: 'opportunity_graph',
       timestamp: new Date().toISOString(),
     },
-    actors: [
+    actors: actors ?? [
       { userId: crypto.randomUUID(), networkId: crypto.randomUUID(), role: 'patient' },
       { userId: crypto.randomUUID(), networkId: crypto.randomUUID(), role: 'agent' },
     ],
@@ -354,6 +356,29 @@ describe('OpportunityDatabaseAdapter.compensateTasklessNegotiatingOpportunity', 
     expect(createdTask).toBeNull();
     expect(preserved?.status).toBe('draft');
     expect(persistedTasks).toHaveLength(0);
+  });
+
+  test('pair-global claim allows at most one active task across trigger-specific opportunities', async () => {
+    const actors = [
+      { userId: crypto.randomUUID(), networkId: crypto.randomUUID(), role: 'patient' as const },
+      { userId: crypto.randomUUID(), networkId: crypto.randomUUID(), role: 'agent' as const },
+    ];
+    const firstOpportunity = await createNegotiatingOpportunity(actors);
+    const secondOpportunity = await createNegotiatingOpportunity(actors);
+    const firstInput = await createAttemptInput(firstOpportunity);
+    const secondInput = await createAttemptInput(secondOpportunity);
+
+    const [firstTask, secondTask] = await Promise.all([
+      conversationAdapter.createNegotiationTaskForAttempt(firstInput),
+      conversationAdapter.createNegotiationTaskForAttempt(secondInput),
+    ]);
+
+    expect([firstTask, secondTask].filter(Boolean)).toHaveLength(1);
+    const persisted = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.metadata}->>'opportunityId' IN (${firstOpportunity.id}, ${secondOpportunity.id})`);
+    expect(persisted).toHaveLength(1);
   });
 
   test('stale task creation fails closed after a newer opportunity version/status', async () => {

@@ -1,6 +1,6 @@
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
-import { acquireNegotiationAttemptLock, qualifyingNegotiationAttemptTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
 /** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
 const ORCHESTRATOR_PERSONA = 'orchestrator';
@@ -100,7 +100,11 @@ export async function createNegotiationTaskForAttemptInTransaction(
   await acquireNegotiationAttemptLock(tx, input.opportunityId);
 
   const [opportunity] = await tx
-    .select({ status: opportunities.status, updatedAt: opportunities.updatedAt })
+    .select({
+      status: opportunities.status,
+      updatedAt: opportunities.updatedAt,
+      actors: opportunities.actors,
+    })
     .from(opportunities)
     .where(eq(opportunities.id, input.opportunityId))
     .for('update');
@@ -109,6 +113,20 @@ export async function createNegotiationTaskForAttemptInTransaction(
     || opportunity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
   ) {
     return null;
+  }
+
+  const actorUserIds = [...new Set(opportunity.actors
+    .filter((actor) => actor.role !== 'introducer')
+    .map((actor) => actor.userId))].sort();
+  if (actorUserIds.length >= 2) {
+    await acquireNegotiationPairLock(tx, actorUserIds);
+    const [pairTask] = await tx
+      .select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .innerJoin(opportunities, sql`TRUE`)
+      .where(qualifyingPairNegotiationTaskWhere(actorUserIds, input.opportunityId))
+      .limit(1);
+    if (pairTask) return null;
   }
 
   const [qualifyingTask] = await tx

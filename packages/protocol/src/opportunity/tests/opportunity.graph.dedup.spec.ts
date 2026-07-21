@@ -30,6 +30,8 @@ const USER_B = 'b0000000-0000-4000-8000-000000000002' as Id<'users'>;
 const USER_C = 'c0000000-0000-4000-8000-000000000003' as Id<'users'>;
 const NET_ID = 'n0000000-0000-4000-8000-000000000001' as Id<'networks'>;
 const OPP_ID = 'op000000-0000-4000-8000-000000000001' as Id<'opportunities'>;
+const INTENT_A = 'intent-1' as Id<'intents'>;
+const INTENT_OTHER = 'intent-other' as Id<'intents'>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,6 +114,9 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     }),
     async createOpportunityIfNetworkEligible(data) {
       return this.createOpportunity(data);
+    },
+    async persistIntentScopedOpportunityIfNetworkEligible(data) {
+      return { created: await this.createOpportunity(data), expired: [] };
     },
     opportunityExistsBetweenActors: async () => false,
     findOpportunitiesByActors: async () => [],
@@ -208,6 +213,14 @@ const discoveryInput = {
   userId: USER_A,
   operationMode: 'discover' as const,
   searchQuery: 'co-founder',
+  options: { initialStatus: 'latent' as const },
+};
+
+const ownedIntentInput = {
+  userId: USER_A,
+  operationMode: 'create' as const,
+  searchQuery: 'co-founder',
+  triggerIntentId: INTENT_A,
   options: { initialStatus: 'latent' as const },
 };
 
@@ -338,7 +351,15 @@ describe('opportunity graph — newborn stamping seam', () => {
       options: { initialStatus: 'latent' as const },
     });
 
-    const stalled = makeOpportunity({ status: 'stalled', createdAt: new Date() });
+    const stalled = makeOpportunity({
+      status: 'stalled',
+      createdAt: new Date(),
+      detection: {
+        source: 'opportunity_graph',
+        timestamp: new Date().toISOString(),
+        triggeredBy: 'intent-1' as Id<'intents'>,
+      },
+    });
     await buildGraph(buildDb({
       findOpportunitiesByActors: async () => [stalled],
       updateOpportunityStatus: async () => ({ ...stalled, status: 'latent' }),
@@ -638,6 +659,164 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     expect(negotiationInputs).toHaveLength(1);
     expect(negotiationInputs[0].opportunityId).toBe(OPP_ID);
     expect(result.opportunities?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('owned intent suppresses a recent same-trigger opportunity', async () => {
+    const existing = makeOpportunity({
+      status: 'pending',
+      createdAt: new Date(Date.now() - 60_000),
+      detection: {
+        source: 'opportunity_graph',
+        timestamp: new Date().toISOString(),
+        triggeredBy: INTENT_A,
+      },
+    });
+    let createCalled = false;
+    const result = await buildGraph(buildDb({
+      findOpportunitiesByActors: async () => [existing],
+      createOpportunity: async (data) => {
+        createCalled = true;
+        return { ...data, id: 'unexpected', status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+      },
+    })).invoke(ownedIntentInput);
+
+    expect(createCalled).toBe(false);
+    expect(result.existingBetweenActors[0]?.reason).toBe('same_trigger_recent_duplicate');
+    expect(result.persistenceOutcome?.sameTriggerDuplicateSuppressions).toBe(1);
+  });
+
+  test('owned intent allows other-trigger terminal and non-negotiating lifecycle rows without mutating them', async () => {
+    for (const status of ['pending', 'rejected', 'accepted', 'latent', 'expired'] as const) {
+      const otherTrigger = makeOpportunity({
+        id: `other-${status}` as Id<'opportunities'>,
+        status,
+        createdAt: new Date(Date.now() - 60_000),
+        detection: {
+          source: 'opportunity_graph',
+          timestamp: new Date().toISOString(),
+          triggeredBy: INTENT_OTHER,
+        },
+      });
+      let updateCalls = 0;
+      let inserted: Opportunity | undefined;
+      const db = buildDb({
+        findOpportunitiesByActors: async () => [otherTrigger],
+        updateOpportunityStatus: async () => {
+          updateCalls += 1;
+          return null;
+        },
+        createOpportunity: async (data) => {
+          inserted = {
+            ...data,
+            id: `new-${status}` as Id<'opportunities'>,
+            status: data.status ?? 'latent',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            expiresAt: null,
+          };
+          return inserted;
+        },
+      });
+
+      const result = await buildGraph(db).invoke(ownedIntentInput);
+      expect(updateCalls).toBe(0);
+      expect(inserted?.detection.triggeredBy).toBe(INTENT_A);
+      expect(result.opportunities).toHaveLength(1);
+      expect(result.persistenceOutcome?.crossTriggerAllowedCount).toBe(1);
+    }
+  });
+
+  test('owned intent inspects all overlaps when the first updated row belongs to another trigger', async () => {
+    const otherTrigger = makeOpportunity({
+      id: 'other-first' as Id<'opportunities'>,
+      status: 'pending',
+      createdAt: new Date(Date.now() - 30_000),
+      updatedAt: new Date(),
+      detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: INTENT_OTHER },
+    });
+    const sameTrigger = makeOpportunity({
+      id: 'same-second' as Id<'opportunities'>,
+      status: 'rejected',
+      createdAt: new Date(Date.now() - 60_000),
+      updatedAt: new Date(Date.now() - 10 * 60_000),
+      actors: [
+        { userId: USER_A, role: 'patient', networkId: NET_ID, intent: INTENT_A },
+        { userId: USER_B, role: 'agent', networkId: NET_ID },
+      ],
+    });
+    let createCalled = false;
+    const result = await buildGraph(buildDb({
+      findOpportunitiesByActors: async () => [otherTrigger, sameTrigger],
+      createOpportunity: async (data) => {
+        createCalled = true;
+        return { ...data, id: 'unexpected', status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+      },
+    })).invoke(ownedIntentInput);
+
+    expect(createCalled).toBe(false);
+    expect(result.existingBetweenActors[0]?.existingOpportunityId).toBe('same-second');
+    expect(result.existingBetweenActors[0]?.reason).toBe('same_trigger_recent_duplicate');
+  });
+
+  test('owned intent keeps a pair-global fresh active negotiation guard', async () => {
+    const otherNegotiating = makeOpportunity({
+      status: 'negotiating',
+      createdAt: new Date(Date.now() - 60_000),
+      detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: INTENT_OTHER },
+    });
+    let createCalled = false;
+    const result = await buildGraph(buildDb({
+      findOpportunitiesByActors: async () => [otherNegotiating],
+      getNegotiationTaskForOpportunity: async () => ({
+        id: 'active-task', conversationId: 'conversation', state: 'working', metadata: null,
+        createdAt: new Date(), updatedAt: new Date(),
+      }),
+      createOpportunity: async (data) => {
+        createCalled = true;
+        return { ...data, id: 'unexpected', status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+      },
+    })).invoke(ownedIntentInput);
+
+    expect(createCalled).toBe(false);
+    expect(result.existingBetweenActors[0]?.reason).toBe('pair_active_negotiation');
+    expect(result.persistenceOutcome?.pairActiveNegotiationSuppressions).toBe(1);
+  });
+
+  test('owned intent does not adopt a stale other-trigger negotiating row', async () => {
+    const otherNegotiating = makeOpportunity({
+      status: 'negotiating',
+      createdAt: new Date(Date.now() - 60_000),
+      detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: INTENT_OTHER },
+    });
+    let updateCalls = 0;
+    let inserted: Opportunity | undefined;
+    const result = await buildGraph(buildDb({
+      findOpportunitiesByActors: async () => [otherNegotiating],
+      getNegotiationTaskForOpportunity: async () => ({
+        id: 'stale-task', conversationId: 'conversation', state: 'working', metadata: null,
+        createdAt: new Date(Date.now() - 60 * 60_000),
+        updatedAt: new Date(Date.now() - 60 * 60_000),
+      }),
+      updateOpportunityStatus: async () => {
+        updateCalls += 1;
+        return null;
+      },
+      createOpportunity: async (data) => {
+        inserted = {
+          ...data,
+          id: 'new-current-trigger' as Id<'opportunities'>,
+          status: data.status ?? 'latent',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        };
+        return inserted;
+      },
+    })).invoke(ownedIntentInput);
+
+    expect(updateCalls).toBe(0);
+    expect(inserted?.detection.triggeredBy).toBe(INTENT_A);
+    expect(result.opportunities[0]?.detection.triggeredBy).toBe(INTENT_A);
   });
 
   test('introduction path: recent existing opp skips creation (onBehalfOfUserId dedup)', async () => {

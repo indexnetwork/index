@@ -2565,6 +2565,19 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.createOpportunityIfNetworkEligible(data, eligibility);
   }
+  async persistIntentScopedOpportunityIfNetworkEligible(
+    data: CreateOpportunityInput,
+    expireIds: string[],
+    eligibility: Parameters<OpportunityDatabaseAdapter['persistIntentScopedOpportunityIfNetworkEligible']>[2],
+    dedupWindowMs: number,
+  ): ReturnType<OpportunityDatabaseAdapter['persistIntentScopedOpportunityIfNetworkEligible']> {
+    return this.opportunityAdapter.persistIntentScopedOpportunityIfNetworkEligible(
+      data,
+      expireIds,
+      eligibility,
+      dedupWindowMs,
+    );
+  }
   async createOpportunityAndExpireIds(
     data: CreateOpportunityInput,
     expireIds: string[]

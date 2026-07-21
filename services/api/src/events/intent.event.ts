@@ -27,6 +27,18 @@ export interface IntentMaterialUpdateEvent {
   newFingerprint: string;
 }
 
+/**
+ * Creation-event side effects deliberately exclude discovery. IntentQueue owns
+ * the only create-time discovery enqueue after network assignment and HyDE.
+ */
+export function handleIntentCreatedMaintenance(
+  _intentId: string,
+  userId: string,
+  triggerMaintenance: (userId: string, reason: string) => void,
+): void {
+  triggerMaintenance(userId, 'intent-created');
+}
+
 export const IntentEvents = {
   onCreated: (_intentId: string, _userId: string): void => {},
   onPaused: (_intentId: string, _userId: string, _lifecycleVersionMs: number): void => {},
