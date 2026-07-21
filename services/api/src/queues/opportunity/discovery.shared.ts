@@ -60,9 +60,76 @@ type OpportunityInvokeOptions = Parameters<ReturnType<typeof buildOpportunityGra
  * `result.error` handling, and the candidates/opportunities (and optional trace)
  * completion logging. Per-queue variation is passed in via `errorLabel`/`logContext`/`logTrace`.
  */
+export type OpportunityDiscoveryCompletionReason =
+  | 'created_or_reactivated'
+  | 'no_search_candidates'
+  | 'evaluator_rejected_all'
+  | 'same_trigger_duplicate_suppressed'
+  | 'pair_active_negotiation_suppressed'
+  | 'final_atomic_conflict'
+  | 'persistence_zero_other';
+
 export interface OpportunityDiscoverySummary {
   candidatesFound: number;
+  evaluatedCount: number;
   opportunitiesCreated: number;
+  completionReason: OpportunityDiscoveryCompletionReason;
+  sameTriggerDuplicateSuppressions: number;
+  pairActiveNegotiationSuppressions: number;
+  crossTriggerAllowedCount: number;
+  finalAtomicConflictCount: number;
+}
+
+interface OpportunityDiscoveryResultShape {
+  candidates?: unknown[];
+  evaluatedOpportunities?: unknown[];
+  opportunities?: unknown[];
+  persistenceOutcome?: {
+    evaluatedCount: number;
+    sameTriggerDuplicateSuppressions: number;
+    pairActiveNegotiationSuppressions: number;
+    crossTriggerAllowedCount: number;
+    finalAtomicConflictCount: number;
+  };
+}
+
+/** Derive a stable zero-output reason without exposing candidate details. */
+export function summarizeOpportunityDiscoveryResult(
+  result: OpportunityDiscoveryResultShape,
+): OpportunityDiscoverySummary {
+  const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+  const opportunities = Array.isArray(result.opportunities) ? result.opportunities : [];
+  const persistence = result.persistenceOutcome;
+  const evaluatedCount = persistence?.evaluatedCount
+    ?? (Array.isArray(result.evaluatedOpportunities) ? result.evaluatedOpportunities.length : 0);
+  const sameTriggerDuplicateSuppressions = persistence?.sameTriggerDuplicateSuppressions ?? 0;
+  const pairActiveNegotiationSuppressions = persistence?.pairActiveNegotiationSuppressions ?? 0;
+  const crossTriggerAllowedCount = persistence?.crossTriggerAllowedCount ?? 0;
+  const finalAtomicConflictCount = persistence?.finalAtomicConflictCount ?? 0;
+  const completionReason: OpportunityDiscoveryCompletionReason = opportunities.length > 0
+    ? 'created_or_reactivated'
+    : candidates.length === 0
+      ? 'no_search_candidates'
+      : evaluatedCount === 0
+        ? 'evaluator_rejected_all'
+        : finalAtomicConflictCount > 0
+          ? 'final_atomic_conflict'
+          : pairActiveNegotiationSuppressions > 0
+            ? 'pair_active_negotiation_suppressed'
+            : sameTriggerDuplicateSuppressions > 0
+              ? 'same_trigger_duplicate_suppressed'
+              : 'persistence_zero_other';
+
+  return {
+    candidatesFound: candidates.length,
+    evaluatedCount,
+    opportunitiesCreated: opportunities.length,
+    completionReason,
+    sameTriggerDuplicateSuppressions,
+    pairActiveNegotiationSuppressions,
+    crossTriggerAllowedCount,
+    finalAtomicConflictCount,
+  };
 }
 
 export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOptions>(params: {
@@ -97,13 +164,11 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
     throw new Error(typeof result.error === 'string' ? result.error : `${errorLabel} graph failed`);
   }
 
-  const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-  const opportunitiesArr = Array.isArray(result.opportunities) ? result.opportunities : [];
+  const summary = summarizeOpportunityDiscoveryResult(result);
 
   logger.info('Graph complete', {
     ...logContext,
-    candidatesFound: candidates.length,
-    opportunitiesCreated: opportunitiesArr.length,
+    ...summary,
   });
 
   if (logTrace) {
@@ -118,8 +183,5 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
     });
   }
 
-  return {
-    candidatesFound: candidates.length,
-    opportunitiesCreated: opportunitiesArr.length,
-  };
+  return summary;
 }

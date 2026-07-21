@@ -200,13 +200,14 @@ describe('IntentQueue', () => {
       expect(addOpportunityJob).not.toHaveBeenCalled();
     });
 
-    it('generate_hyde: intent found, invokeHyde and addOpportunityJob called', async () => {
-      const invokeHyde = mock(async () => {});
-      const addOpportunityJob = mock(async () => ({}));
+    it('generate_hyde: assigns first, generates HyDE, then enqueues discovery exactly once', async () => {
+      const sequence: string[] = [];
+      const invokeHyde = mock(async () => { sequence.push('hyde'); });
+      const addOpportunityJob = mock(async () => { sequence.push('discovery'); return {}; });
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
         getUserIndexIds: async () => ['idx1'],
-        assignIntentToNetwork: async () => {},
+        assignIntentToNetwork: async () => { sequence.push('assignment'); },
         deleteHydeDocumentsForSource: async () => 0,
       };
       const queue = new IntentQueue({
@@ -224,7 +225,9 @@ describe('IntentQueue', () => {
           forceRegenerate: true,
         })
       );
+      expect(addOpportunityJob).toHaveBeenCalledTimes(1);
       expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1' });
+      expect(sequence).toEqual(['assignment', 'hyde', 'discovery']);
     });
 
     it('generate_hyde: builds profileContext from the global user_context + active intents', async () => {

@@ -72,7 +72,7 @@ import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner
 import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
 import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
+import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { OpportunityEvents } from './events/opportunity.event';
@@ -128,8 +128,8 @@ setTimingWrapper((name, fn) => traceAppOperation(
   fn,
 ));
 
-// Wire negotiation into the background discovery queue so latent opportunities
-// from the IntentEvents.onCreated path are negotiated, matching the chat/MCP paths.
+// Wire negotiation into background discovery so the post-assignment HyDE path
+// negotiates latent opportunities consistently with chat/MCP discovery.
 // Without this, OpportunityGraph's negotiateNode short-circuits and every evaluated
 // candidate is persisted unfiltered.
 const backgroundAgentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
@@ -470,12 +470,15 @@ userContextQueue.startWorker();
 premiseQueue.startCrons();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
-  log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
-  fromIntentQueue.addJob(
-    { intentId, userId },
-    { priority: 10, jobId: `rediscovery-${userId}-${intentId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
-  ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue discovery on create', { intentId, userId, error: err }));
-  opportunityService.triggerMaintenance(userId, 'intent-created');
+  // IntentQueue owns the authoritative discovery trigger: it assigns networks,
+  // generates HyDE, then awaits one from-intent enqueue. Starting here races the
+  // assignment transaction and produces a misleading successful fail-closed run.
+  log.job.from('IntentEvents').verbose('Intent created, triggering maintenance', { intentId, userId });
+  handleIntentCreatedMaintenance(
+    intentId,
+    userId,
+    (ownerUserId, reason) => opportunityService.triggerMaintenance(ownerUserId, reason),
+  );
 };
 
 IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: number) => {

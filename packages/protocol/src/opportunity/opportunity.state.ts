@@ -106,6 +106,16 @@ export interface EvaluatedOpportunity {
   evidence?: OpportunityEvidence[];
 }
 
+export interface OpportunityPersistenceOutcome {
+  evaluatedCount: number;
+  createdCount: number;
+  reactivatedCount: number;
+  sameTriggerDuplicateSuppressions: number;
+  pairActiveNegotiationSuppressions: number;
+  crossTriggerAllowedCount: number;
+  finalAtomicConflictCount: number;
+}
+
 /**
  * Which flow triggered this graph invocation. Determines initial persist status,
  * park-window timeout, streaming behavior, and whether AbortSignal is honored.
@@ -446,9 +456,17 @@ export const OpportunityGraphState = Annotation.Root({
     networkId: Id<'networks'>;
     existingOpportunityId?: Id<'opportunities'>;
     existingStatus?: OpportunityStatus;
+    reason?: 'same_trigger_recent_duplicate' | 'pair_active_negotiation' | 'final_atomic_conflict';
+    existingTriggerIntentId?: string;
   }>>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
+  }),
+
+  /** Typed persist-node counts used by queue telemetry. */
+  persistenceOutcome: Annotation<OpportunityPersistenceOutcome | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
 
   /** Error message if any step fails */
