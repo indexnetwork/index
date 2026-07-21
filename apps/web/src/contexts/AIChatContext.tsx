@@ -401,6 +401,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   }>>([]);
   /** Per-message timeout IDs so cancelling or resolving one pending message doesn't affect others. */
   const interruptTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  /** Messages submitted while the first web stream is creating its session. */
+  const preSessionQueueRef = useRef<QueuedMessage[]>([]);
   const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
   /** Live questions from any chat persona's ask_user_question tool (user_question SSE event). */
   const [liveQuestions, setLiveQuestions] = useState<PendingQuestion[]>([]);
@@ -473,24 +475,19 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     const t = interruptTimeoutsRef.current.get(id);
     if (t !== undefined) { clearTimeout(t); interruptTimeoutsRef.current.delete(id); }
     pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== id);
+    preSessionQueueRef.current = preSessionQueueRef.current.filter((q) => q.id !== id);
     setPendingQueue([...pendingQueueRef.current]);
     setMessages((prev) => prev.filter((msg) => msg.id !== id));
   }, []);
 
   const submitMidStreamMessage = useCallback(
     (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => {
-      if (!sessionId) return;
       const pendingMsgId = crypto.randomUUID();
       const displayContent = message.trim() || (fileIds?.length ? "Attached file(s)." : "");
       if (!displayContent) return;
 
       const originatingOperation = activeSendRef.current;
       const transport = originatingOperation?.transport ?? "compatibility";
-      setMessages((prev) => [...prev, {
-        id: pendingMsgId, role: "user" as const, content: displayContent,
-        timestamp: new Date(), isPending: true,
-        ...(attachmentNames?.length ? { attachmentNames } : {}),
-      }]);
       const entry: QueuedMessage = {
         id: pendingMsgId,
         message,
@@ -499,6 +496,20 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         status: "pending",
         transport,
       };
+      setMessages((prev) => [...prev, {
+        id: pendingMsgId, role: "user" as const, content: displayContent,
+        timestamp: new Date(), isPending: true,
+        ...(attachmentNames?.length ? { attachmentNames } : {}),
+      }]);
+
+      // A new session has no id until the first stream receives its response
+      // headers. Keep submissions made during that window instead of dropping
+      // them (the reporter briefing hits this path).
+      if (!sessionId) {
+        preSessionQueueRef.current = [...preSessionQueueRef.current, entry];
+        return;
+      }
+
       pendingQueueRef.current = [...pendingQueueRef.current, entry];
       setPendingQueue([...pendingQueueRef.current]);
 
@@ -1279,12 +1290,25 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     active.controller.abort();
   }, []);
 
-  // Drain the pending queue whenever loading ends.
-  // Steer messages take priority; queued messages drain FIFO.
-  // Uses useEffect (not inline in sendMessage) to avoid React Compiler circular-reference issues.
+  // Drain pending messages whenever loading ends.
+  // Pre-session messages are first so a new reporter chat cannot lose a user
+  // submission while its hidden briefing creates the session.
   React.useEffect(() => {
     if (isLoading || turnBlock) return;
-    if (steerPendingRef.current.length > 0) {
+    if (preSessionQueueRef.current.length > 0 && sessionId) {
+      const [nextMsg, ...rest] = preSessionQueueRef.current;
+      preSessionQueueRef.current = rest;
+      setMessages((prev) => prev.map((msg) =>
+        msg.id === nextMsg.id ? { ...msg, isPending: false, isQueued: false } : msg,
+      ));
+      void sendMessageWithTransport(
+        nextMsg.transport,
+        nextMsg.message,
+        nextMsg.fileIds,
+        nextMsg.attachmentNames,
+        { hidden: true, existingMessageId: nextMsg.id },
+      );
+    } else if (steerPendingRef.current.length > 0) {
       const [steerMsg, ...rest] = steerPendingRef.current;
       steerPendingRef.current = rest;
       // Preserve the originating transport so a web continuation cannot fall back.
@@ -1316,7 +1340,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         { hidden: true, existingMessageId: nextMsg.id },
       );
     }
-  }, [isLoading, sendMessageWithTransport, turnBlock]);
+  }, [isLoading, sendMessageWithTransport, sessionId, turnBlock]);
 
   const clearChat = useCallback((options?: {
     abortStream?: boolean;
@@ -1336,6 +1360,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
     interruptTimeoutsRef.current.clear();
     pendingQueueRef.current = [];
+    preSessionQueueRef.current = [];
     steerPendingRef.current = [];
     setPendingQueue([]);
     setIsLoading(false);
@@ -1386,6 +1411,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
     interruptTimeoutsRef.current.clear();
     pendingQueueRef.current = [];
+    preSessionQueueRef.current = [];
     steerPendingRef.current = [];
     setPendingQueue([]);
     setLiveQuestions([]);
