@@ -1216,7 +1216,9 @@ export default function ChatContent({
   return (
     <>
       {!legacyOrchestratorReadOnly && !readOnlySurface && inviteModalElement}
-      {/* Sticky header - full width, min-h-17 matches ChatView header height */}
+      {/* Sticky header - full width, min-h-17 matches ChatView header height.
+          Hidden on read-only surfaces (e.g. /agent reporter), which render their own header. */}
+      {!readOnlySurface && (
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-17">
         <button
           type="button"
@@ -1314,6 +1316,7 @@ export default function ChatContent({
           </div>
         )}
       </div>
+      )}
 
       {/* Scrollable content */}
       <div className="px-6 lg:px-8 pb-32 flex-1">

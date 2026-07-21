@@ -1019,3 +1019,44 @@ describe('Signal Agent web cutover', () => {
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'));
   });
 });
+
+describe('Read-only surface header (IND-476)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.chat.messages = [];
+    mocks.chat.sessionId = null;
+    mocks.chat.sessionTitle = null;
+    mocks.chat.sessionLoadState = { status: 'idle', targetSessionId: null, error: null };
+    mocks.chat.sessionPersona = null;
+    mocks.chat.turnBlock = null;
+    mocks.chat.chatScope = null;
+    mocks.auth.features.signalAgent = false;
+    mocks.questionsService.getByConversation.mockResolvedValue([]);
+    mocks.questionsService.getPending.mockResolvedValue([]);
+    mocks.apiClient.post.mockResolvedValue({ intents: [] });
+  });
+
+  test('readOnlySurface hides the session title bar entirely', () => {
+    mocks.chat.messages = [{ id: 'm1', role: 'assistant', content: 'Overnight briefing', timestamp: new Date() }];
+    mocks.chat.sessionId = 'reporter-session-1';
+    mocks.chat.sessionPersona = 'reporter';
+
+    renderWithRouter(<ChatContent persona="reporter" readOnlySurface />, { route: '/agent' });
+
+    expect(screen.queryByText('Untitled chat')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Back to home' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Rename conversation' })).toBeNull();
+    // The surface still has a composer for transparency asks.
+    expect(screen.getByTestId('chat-input')).not.toBeNull();
+  });
+
+  test('default surface keeps the title bar', () => {
+    mocks.chat.messages = [{ id: 'm1', role: 'assistant', content: 'Hello there', timestamp: new Date() }];
+    mocks.chat.sessionId = 'plain-session-1';
+
+    renderWithRouter(<ChatContent />, { route: '/' });
+
+    expect(screen.getByText('Untitled chat')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Back to home' })).not.toBeNull();
+  });
+});
