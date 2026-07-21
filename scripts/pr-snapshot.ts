@@ -109,6 +109,37 @@ function normalizeComments(value: unknown): Array<Record<string, unknown>> {
       || compareNullable(left.id as string | null, right.id as string | null));
 }
 
+const FILES_QUERY = `
+query PullFilesPage($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
+  repository(owner:$owner, name:$repo) {
+    pullRequest(number:$number) {
+      files(first:100, after:$cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { path additions deletions }
+      }
+    }
+  }
+}`;
+
+const COMMITS_QUERY = `
+query PullCommitsPage($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
+  repository(owner:$owner, name:$repo) {
+    pullRequest(number:$number) {
+      commits(first:100, after:$cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          commit {
+            oid messageHeadline messageBody authoredDate committedDate
+            authors(first:100) {
+              nodes { name email user { login } }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
 const THREADS_QUERY = `
 query ReviewThreadsPage($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
   repository(owner:$owner, name:$repo) {
@@ -138,6 +169,77 @@ query ReviewThreadCommentsPage($threadId:ID!, $cursor:String) {
     }
   }
 }`;
+
+function collectPullConnection(
+  execute: GraphqlExecutor,
+  query: string,
+  connectionName: "files" | "commits",
+  owner: string,
+  repo: string,
+  pullNumber: number,
+): unknown[] {
+  const nodes: unknown[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const variables: Record<string, string | number> = { owner, repo, number: pullNumber };
+    if (cursor) variables.cursor = cursor;
+    const response = record(execute(query, variables));
+    const pullRequest = record(record(record(response.data).repository).pullRequest);
+    const connection = record(pullRequest[connectionName]);
+    nodes.push(...array(connection.nodes));
+
+    const pageInfo = record(connection.pageInfo);
+    cursor = string(pageInfo.endCursor);
+    if (boolean(pageInfo.hasNextPage) && !cursor) {
+      throw new SnapshotError(`${connectionName} page has no cursor`);
+    }
+    if (!boolean(pageInfo.hasNextPage)) cursor = null;
+  } while (cursor !== null);
+
+  return nodes;
+}
+
+export function collectPullRequestFiles(
+  execute: GraphqlExecutor,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+): Array<Record<string, unknown>> {
+  return collectPullConnection(execute, FILES_QUERY, "files", owner, repo, pullNumber)
+    .map((value) => {
+      const file = record(value);
+      return { path: string(file.path), additions: number(file.additions), deletions: number(file.deletions) };
+    });
+}
+
+export function collectPullRequestCommits(
+  execute: GraphqlExecutor,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+): Array<Record<string, unknown>> {
+  return collectPullConnection(execute, COMMITS_QUERY, "commits", owner, repo, pullNumber)
+    .map((value) => {
+      const commit = record(record(value).commit);
+      const authors = array(record(commit.authors).nodes).map((authorValue) => {
+        const authorData = record(authorValue);
+        return {
+          login: string(record(authorData.user).login),
+          name: string(authorData.name),
+          email: string(authorData.email),
+        };
+      });
+      return {
+        oid: string(commit.oid),
+        messageHeadline: string(commit.messageHeadline),
+        messageBody: string(commit.messageBody),
+        authoredDate: string(commit.authoredDate),
+        committedDate: string(commit.committedDate),
+        authors,
+      };
+    });
+}
 
 export function collectReviewThreads(
   execute: GraphqlExecutor,
@@ -199,7 +301,9 @@ export function collectReviewThreads(
 
 export function normalizePullRequest(rawValue: unknown, reviewThreads: Array<Record<string, unknown>>) {
   const raw = record(rawValue);
-  const mergeCommit = raw.mergeCommit === null ? null : record(raw.mergeCommit);
+  const mergeCommit = raw.mergeCommit === null || raw.mergeCommit === undefined
+    ? null
+    : record(raw.mergeCommit);
 
   const closingIssues = array(raw.closingIssuesReferences)
     .map((value) => {
@@ -270,7 +374,7 @@ export function normalizePullRequest(rawValue: unknown, reviewThreads: Array<Rec
     mergeStateStatus: string(raw.mergeStateStatus),
     reviewDecision: string(raw.reviewDecision),
     mergedAt: string(raw.mergedAt),
-    mergeCommit: raw.mergeCommit === null || raw.mergeCommit === undefined
+    mergeCommit: mergeCommit === null
       ? null
       : { oid: string(mergeCommit.oid), url: string(mergeCommit.url) },
     closingIssues,
@@ -285,6 +389,28 @@ export function normalizePullRequest(rawValue: unknown, reviewThreads: Array<Rec
 function parseRepoFromUrl(selector: string): string | null {
   const match = selector.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/\d+(?:\/.*)?$/);
   return match?.[1] ?? null;
+}
+
+export function normalizeGitHubRepository(remoteUrl: string): string | null {
+  const value = remoteUrl.trim();
+  let repositoryPath: string | null = null;
+
+  const scpStyle = value.match(/^(?:[^@/]+@)?github\.com:([^/]+\/[^/]+)\/?$/i);
+  if (scpStyle) {
+    repositoryPath = scpStyle[1];
+  } else {
+    try {
+      const url = new URL(value);
+      if (url.hostname.toLowerCase() !== "github.com") return null;
+      repositoryPath = url.pathname.replace(/^\/+|\/+$/g, "");
+    } catch {
+      return null;
+    }
+  }
+
+  const parts = repositoryPath.replace(/\.git$/i, "").split("/");
+  if (parts.length !== 2 || parts.some((part) => part.length === 0)) return null;
+  return `${parts[0]}/${parts[1]}`;
 }
 
 export function parseSnapshotArgs(rawArgs: string[]): SnapshotOptions {
@@ -331,7 +457,7 @@ function graphqlExecutor(execute: CommandExecutor): GraphqlExecutor {
       const value = variables[key];
       argv.push(typeof value === "number" ? "-F" : "-f", `${key}=${value}`);
     }
-    return requiredJson(execute, argv, "cannot fetch review threads");
+    return requiredJson(execute, argv, "cannot query GitHub GraphQL");
   };
 }
 
@@ -405,18 +531,25 @@ export function createSnapshot(options: SnapshotOptions, execute: CommandExecuto
   const fields = [
     "number", "title", "body", "url", "author", "isDraft", "state", "baseRefName", "baseRefOid",
     "headRefName", "headRefOid", "mergeStateStatus", "reviewDecision", "mergedAt", "mergeCommit",
-    "closingIssuesReferences", "commits", "files", "reviews", "statusCheckRollup",
+    "closingIssuesReferences", "reviews", "statusCheckRollup",
   ].join(",");
-  const pullRaw = requiredJson(
+  const pullRaw = record(requiredJson(
     execute,
     ["gh", "pr", "view", String(pullNumber), "--repo", repoName, "--json", fields],
     "cannot inspect pull request",
-  );
+  ));
   const repoParts = repoName.split("/");
-  const threads = collectReviewThreads(graphqlExecutor(execute), repoParts[0], repoParts[1], pullNumber);
+  const graphql = graphqlExecutor(execute);
+  pullRaw.files = collectPullRequestFiles(graphql, repoParts[0], repoParts[1], pullNumber);
+  pullRaw.commits = collectPullRequestCommits(graphql, repoParts[0], repoParts[1], pullNumber);
+  const threads = collectReviewThreads(graphql, repoParts[0], repoParts[1], pullNumber);
   const pullRequest = normalizePullRequest(pullRaw, threads);
 
-  if (options.fetch) {
+  const origin = execute(["git", "remote", "get-url", "origin"]);
+  const originRepo = origin.code === 0 ? normalizeGitHubRepository(origin.stdout) : null;
+  const localRepoMatches = originRepo !== null && originRepo.toLowerCase() === repoName.toLowerCase();
+
+  if (options.fetch && localRepoMatches) {
     const baseRef = pullRequest.base.ref;
     const fetchArgs = ["git", "fetch", "origin"];
     if (typeof baseRef === "string") fetchArgs.push(baseRef);
@@ -425,7 +558,12 @@ export function createSnapshot(options: SnapshotOptions, execute: CommandExecuto
     if (fetched.code !== 0) console.error(`fetch warning: ${fetched.stderr.trim() || fetched.stdout.trim()}`);
   }
 
-  const local = localFacts(execute, pullRequest.head.ref, pullRequest.base.oid, pullRequest.head.oid);
+  const local = localRepoMatches
+    ? localFacts(execute, pullRequest.head.ref, pullRequest.base.oid, pullRequest.head.oid)
+    : {
+        worktree: null,
+        ancestry: { mergeBaseOid: null, ahead: null, behind: null },
+      };
   return {
     schemaVersion: 1,
     repository: {

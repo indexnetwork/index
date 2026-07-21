@@ -1,7 +1,11 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  collectPullRequestCommits,
+  collectPullRequestFiles,
   collectReviewThreads,
+  createSnapshot,
+  normalizeGitHubRepository,
   normalizePullRequest,
   parseSnapshotArgs,
 } from "../pr-snapshot";
@@ -103,6 +107,79 @@ describe("PR snapshot normalization", () => {
   });
 });
 
+describe("PR file and commit pagination", () => {
+  it("collects and normalizes more than 100 files and commits across pages", () => {
+    const calls: Array<{ kind: "files" | "commits"; cursor: string | number | undefined }> = [];
+    const execute = (query: string, variables: Record<string, string | number>): unknown => {
+      const kind = query.includes("PullFilesPage") ? "files" : "commits";
+      calls.push({ kind, cursor: variables.cursor });
+      const secondPage = variables.cursor !== undefined;
+      const indexes = secondPage ? [100, 101] : Array.from({ length: 100 }, (_, index) => index);
+      if (kind === "files") {
+        return {
+          data: {
+            repository: {
+              pullRequest: {
+                files: {
+                  pageInfo: secondPage
+                    ? { hasNextPage: false, endCursor: null }
+                    : { hasNextPage: true, endCursor: "FILES-2" },
+                  nodes: indexes.map((index) => ({
+                    path: `file-${String(index).padStart(3, "0")}.ts`, additions: index, deletions: 0,
+                  })),
+                },
+              },
+            },
+          },
+        };
+      }
+      return {
+        data: {
+          repository: {
+            pullRequest: {
+              commits: {
+                pageInfo: secondPage
+                  ? { hasNextPage: false, endCursor: null }
+                  : { hasNextPage: true, endCursor: "COMMITS-2" },
+                nodes: indexes.map((index) => ({
+                  commit: {
+                    oid: `oid-${String(index).padStart(3, "0")}`,
+                    messageHeadline: `Commit ${index}`,
+                    messageBody: "",
+                    authoredDate: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T00:00:00Z`,
+                    committedDate: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T00:00:00Z`,
+                    authors: {
+                      nodes: [{ name: `Author ${index}`, email: `${index}@example.com`, user: { login: `user-${index}` } }],
+                    },
+                  },
+                })),
+              },
+            },
+          },
+        },
+      };
+    };
+
+    const files = collectPullRequestFiles(execute, "indexnetwork", "index", 42);
+    const commits = collectPullRequestCommits(execute, "indexnetwork", "index", 42);
+    const normalized = normalizePullRequest({ number: 42, mergeCommit: null, files, commits }, []);
+
+    expect(normalized.files).toHaveLength(102);
+    expect(normalized.files[101].path).toBe("file-101.ts");
+    expect(normalized.commits).toHaveLength(102);
+    expect(normalized.commits.some((commit) => commit.oid === "oid-101")).toBe(true);
+    expect(normalized.commits.find((commit) => commit.oid === "oid-101")?.authors).toEqual([{
+      login: "user-101", name: "Author 101", email: "101@example.com",
+    }]);
+    expect(calls).toEqual([
+      { kind: "files", cursor: undefined },
+      { kind: "files", cursor: "FILES-2" },
+      { kind: "commits", cursor: undefined },
+      { kind: "commits", cursor: "COMMITS-2" },
+    ]);
+  });
+});
+
 describe("review thread pagination", () => {
   it("fully paginates thread pages and each thread's comment pages", () => {
     const calls: Array<{ query: string; variables: Record<string, string | number> }> = [];
@@ -176,6 +253,70 @@ describe("review thread pagination", () => {
     expect(calls[0].variables).toEqual({ owner: "indexnetwork", repo: "index", number: 42 });
     expect(calls[1].variables).toEqual({ threadId: "T2", cursor: "COMMENTS-2" });
     expect(calls[2].variables.cursor).toBe("THREADS-2");
+  });
+});
+
+describe("cross-repository local safety", () => {
+  it("normalizes common GitHub HTTPS and SSH origin forms", () => {
+    expect(normalizeGitHubRepository("https://github.com/indexnetwork/index.git")).toBe("indexnetwork/index");
+    expect(normalizeGitHubRepository("git@github.com:indexnetwork/index.git")).toBe("indexnetwork/index");
+    expect(normalizeGitHubRepository("ssh://git@github.com/indexnetwork/index.git")).toBe("indexnetwork/index");
+    expect(normalizeGitHubRepository("https://gitlab.com/indexnetwork/index.git")).toBeNull();
+  });
+
+  it("keeps a foreign --repo snapshot remote-only and does not fetch or inspect local branches", () => {
+    const calls: string[][] = [];
+    const execute = (argv: string[]): { code: number; stdout: string; stderr: string } => {
+      calls.push(argv);
+      if (argv[0] === "gh" && argv[1] === "repo") {
+        return { code: 0, stdout: JSON.stringify({
+          nameWithOwner: "foreign/project",
+          defaultBranchRef: { name: "main" },
+        }), stderr: "" };
+      }
+      if (argv[0] === "gh" && argv[1] === "pr") {
+        const fields = argv[argv.indexOf("--json") + 1];
+        if (fields === "number") return { code: 0, stdout: JSON.stringify({ number: 7 }), stderr: "" };
+        return { code: 0, stdout: JSON.stringify({
+          number: 7,
+          title: "Foreign PR",
+          isDraft: false,
+          state: "OPEN",
+          baseRefName: "main",
+          baseRefOid: "foreign-base",
+          headRefName: "fix/foreign-change",
+          headRefOid: "foreign-head",
+          mergeCommit: null,
+        }), stderr: "" };
+      }
+      if (argv[0] === "gh" && argv[1] === "api") {
+        const query = argv.find((value) => value.startsWith("query=")) ?? "";
+        const connection = query.includes("PullFilesPage")
+          ? { files: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } }
+          : query.includes("PullCommitsPage")
+            ? { commits: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } }
+            : { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } };
+        return { code: 0, stdout: JSON.stringify({
+          data: { repository: { pullRequest: connection } },
+        }), stderr: "" };
+      }
+      if (argv.join(" ") === "git remote get-url origin") {
+        return { code: 0, stdout: "git@github.com:indexnetwork/index.git\n", stderr: "" };
+      }
+      throw new Error(`unexpected local command for foreign repository: ${argv.join(" ")}`);
+    };
+
+    const snapshot = createSnapshot({
+      selector: "7", repo: "foreign/project", fetch: true, compact: false,
+    }, execute);
+
+    expect(snapshot.local).toEqual({
+      worktree: null,
+      ancestry: { mergeBaseOid: null, ahead: null, behind: null },
+    });
+    expect(calls.filter((argv) => argv[0] === "git")).toEqual([
+      ["git", "remote", "get-url", "origin"],
+    ]);
   });
 });
 

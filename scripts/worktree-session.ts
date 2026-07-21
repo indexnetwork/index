@@ -126,6 +126,16 @@ function command(argv: string[], cwd: string): CommandFact {
   return { cwd, argv };
 }
 
+function shellQuote(value: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+function shellCommand(argv: string[]): string {
+  return argv.map(shellQuote).join(" ");
+}
+
 function checked(runner: CommandRunner, argv: string[], cwd: string, label: string): CommandResult {
   const result = runner(argv, cwd);
   if (result.code !== 0) {
@@ -166,17 +176,42 @@ export function buildSessionPlan(options: SessionOptions, runner: CommandRunner)
 
   const branchExists = runner(["git", "show-ref", "--verify", "--quiet", `refs/heads/${options.branch}`], canonicalRoot).code === 0;
   const tmuxSession = `pi-${folder}`;
+  const exactTmuxSession = `=${tmuxSession}`;
   const piSessionName = tmuxSession;
-  const tmuxExists = runner(["tmux", "has-session", "-t", tmuxSession], canonicalRoot).code === 0;
+  const tmuxExists = runner(["tmux", "has-session", "-t", exactTmuxSession], canonicalRoot).code === 0;
+  let existingPaneId: string | null = null;
   if (tmuxExists) {
-    const pane = checked(
+    const paneIds = checked(
       runner,
-      ["tmux", "display-message", "-p", "-t", `${tmuxSession}:0.0`, "#{pane_current_path}"],
+      ["tmux", "list-panes", "-t", exactTmuxSession, "-F", "#{pane_id}"],
+      canonicalRoot,
+      "cannot resolve existing tmux pane",
+    ).stdout.split("\n").map((value) => value.trim()).filter(Boolean);
+    if (paneIds.length !== 1 || !/^%\d+$/.test(paneIds[0] ?? "")) {
+      throw new OperationalError(`tmux session ${tmuxSession} must contain exactly one resolvable pane; found ${paneIds.length}`);
+    }
+    existingPaneId = paneIds[0];
+
+    const paneFields = checked(
+      runner,
+      [
+        "tmux", "display-message", "-p", "-t", existingPaneId,
+        "#{pane_current_path}\t#{pane_current_command}\t#{pane_dead}\t#{pane_in_mode}",
+      ],
       canonicalRoot,
       "cannot inspect existing tmux pane",
-    ).stdout.trim();
-    if (!samePath(pane, expectedPath)) {
-      throw new OperationalError(`tmux session ${tmuxSession} has cwd ${pane}, expected ${expectedPath}`);
+    ).stdout.trim().split("\t");
+    if (paneFields.length !== 4) {
+      throw new OperationalError(`tmux pane ${existingPaneId} returned an unexpected state`);
+    }
+    const [panePath, paneCommand, paneDead, paneInMode] = paneFields;
+    if (!samePath(panePath, expectedPath)) {
+      throw new OperationalError(`tmux session ${tmuxSession} has cwd ${panePath}, expected ${expectedPath}`);
+    }
+    if (paneCommand !== "pi" || paneDead !== "0" || paneInMode !== "0") {
+      throw new OperationalError(
+        `tmux pane ${existingPaneId} is not an active Pi prompt (command=${paneCommand || "unknown"}, dead=${paneDead || "unknown"}, mode=${paneInMode || "unknown"})`,
+      );
     }
   }
 
@@ -191,18 +226,20 @@ export function buildSessionPlan(options: SessionOptions, runner: CommandRunner)
   }
   commands.push(command(["bun", "run", "worktree:setup", folder], canonicalRoot));
   if (!tmuxExists) {
+    const piArgv = ["pi", "--name", piSessionName];
+    if (options.promptFile) piArgv.push(`@${options.promptFile}`);
     commands.push(command(
-      ["tmux", "new-session", "-d", "-s", tmuxSession, "-c", expectedPath, `pi --name ${piSessionName}`],
+      ["tmux", "new-session", "-d", "-s", tmuxSession, "-c", expectedPath, shellCommand(piArgv)],
       canonicalRoot,
     ));
-  }
-  if (options.promptFile) {
+  } else if (options.promptFile) {
+    if (!existingPaneId) throw new OperationalError(`tmux session ${tmuxSession} has no resolved pane`);
     const buffer = `pi-prompt-${folder}`;
     commands.push(command(["tmux", "load-buffer", "-b", buffer, options.promptFile], canonicalRoot));
-    commands.push(command(["tmux", "paste-buffer", "-b", buffer, "-t", `${tmuxSession}:0.0`, "-d"], canonicalRoot));
-    commands.push(command(["tmux", "send-keys", "-t", `${tmuxSession}:0.0`, "Enter"], canonicalRoot));
+    commands.push(command(["tmux", "paste-buffer", "-p", "-b", buffer, "-t", existingPaneId, "-d"], canonicalRoot));
+    commands.push(command(["tmux", "send-keys", "-t", existingPaneId, "Enter"], canonicalRoot));
   }
-  if (options.attach) commands.push(command(["tmux", "attach-session", "-t", tmuxSession], canonicalRoot));
+  if (options.attach) commands.push(command(["tmux", "attach-session", "-t", exactTmuxSession], canonicalRoot));
 
   return {
     schemaVersion: 1,

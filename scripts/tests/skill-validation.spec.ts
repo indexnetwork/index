@@ -89,6 +89,38 @@ describe("skillctl validate", () => {
     expect(errors.some((error) => error.startsWith("invalid YAML frontmatter:"))).toBe(true);
   });
 
+  it("reports direct-file skills without recursively treating references as skills", async () => {
+    const project = makeProject();
+    writeSkill(project, "create-test-fixture", "name: create-test-fixture\ndescription: Create a deterministic test fixture.");
+    const skillRoot = join(project, ".pi/skills");
+    writeFileSync(
+      join(skillRoot, "run-direct-helper.md"),
+      "---\nname: run-direct-helper\ndescription: Run a direct-file helper fixture.\n---\n",
+    );
+    const references = join(skillRoot, "create-test-fixture", "references");
+    mkdirSync(references, { recursive: true });
+    writeFileSync(join(references, "SKILL.md"), "not valid frontmatter and not a skill");
+
+    const result = await validate(project, ["all", "--json"]);
+    const report = JSON.parse(result.stdout) as {
+      valid: boolean;
+      skills: Array<{ path: string; name: string | null; errors: string[] }>;
+    };
+
+    expect(result.code).toBe(1);
+    expect(report.valid).toBe(false);
+    expect(report.skills.map((skill) => skill.path)).toEqual([
+      ".pi/skills/create-test-fixture/SKILL.md",
+      ".pi/skills/run-direct-helper.md",
+    ]);
+    expect(report.skills[0].errors).toEqual([]);
+    expect(report.skills[1]).toEqual({
+      path: ".pi/skills/run-direct-helper.md",
+      name: "run-direct-helper",
+      errors: ["direct-file skills are not allowed; move this skill to .pi/skills/<name>/SKILL.md"],
+    });
+  });
+
   it("validates a single directory and reserves exit 2 for usage errors", async () => {
     const project = makeProject();
     writeSkill(project, "create-test-fixture", "name: create-test-fixture\ndescription: Create a deterministic test fixture.");

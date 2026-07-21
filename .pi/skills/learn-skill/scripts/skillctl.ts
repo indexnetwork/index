@@ -252,18 +252,20 @@ function repoRelative(path: string): string {
 }
 
 function localSkillFiles(): string[] {
+  if (!existsSync(targetDir)) return [];
   const files: string[] = [];
-  const visit = (dir: string): void => {
-    if (!existsSync(dir)) return;
-    const entries = readdirSync(dir, { withFileTypes: true })
-      .sort((a, b) => a.name.localeCompare(b.name));
-    for (const entry of entries) {
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) visit(path);
-      else if (entry.isFile() && entry.name === "SKILL.md") files.push(path);
+  const entries = readdirSync(targetDir, { withFileTypes: true })
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    const path = join(targetDir, entry.name);
+    if (entry.isFile() && entry.name.endsWith(".md")) {
+      files.push(path);
+      continue;
     }
-  };
-  visit(targetDir);
+    if (!entry.isDirectory()) continue;
+    const skillFile = join(path, "SKILL.md");
+    if (existsSync(skillFile) && statSync(skillFile).isFile()) files.push(skillFile);
+  }
   return files.sort((a, b) => repoRelative(a).localeCompare(repoRelative(b)));
 }
 
@@ -275,6 +277,11 @@ function validateSkill(skillFile: string, duplicateNames: ReadonlySet<string>): 
   const rawName = parsed.value?.name;
   const rawDescription = parsed.value?.description;
   const name = typeof rawName === "string" ? rawName : null;
+  const isDirectFileSkill = dirname(skillFile) === targetDir && basename(skillFile).endsWith(".md");
+  if (isDirectFileSkill) {
+    errors.push("direct-file skills are not allowed; move this skill to .pi/skills/<name>/SKILL.md");
+    return { path: repoRelative(skillFile), name, errors };
+  }
 
   if (parsed.value) {
     if (typeof rawName !== "string") {
