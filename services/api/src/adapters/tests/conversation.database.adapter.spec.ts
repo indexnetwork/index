@@ -95,6 +95,61 @@ describe('ConversationDatabaseAdapter', () => {
     }, 10000);
   });
 
+  describe('getStaleNegotiationTasks', () => {
+    it('returns only stale submitted/working negotiation tasks', async () => {
+      const conv = await adapter.createConversation([
+        { participantId: 'agent:watchdog-a', participantType: 'agent' as const },
+        { participantId: 'agent:watchdog-b', participantType: 'agent' as const },
+      ]);
+      createdIds.push(conv.id);
+
+      const staleSubmitted = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user',
+      });
+      const staleWorking = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user',
+      });
+      await adapter.updateTaskState(staleWorking.id, 'working');
+      const freshSubmitted = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user',
+      });
+      const completed = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user',
+      });
+      await adapter.updateTaskState(completed.id, 'completed');
+      const nonNegotiation = await adapter.createTask(conv.id, { type: 'chat' });
+
+      const oldSubmitted = new Date(Date.now() - 11 * 60 * 1000);
+      const oldWorking = new Date(Date.now() - 13 * 60 * 60 * 1000);
+      await db.update(schema.tasks)
+        .set({ createdAt: oldSubmitted, updatedAt: oldSubmitted })
+        .where(inArray(schema.tasks.id, [staleSubmitted.id]));
+      await db.update(schema.tasks)
+        .set({ createdAt: oldWorking, updatedAt: oldWorking })
+        .where(inArray(schema.tasks.id, [staleWorking.id]));
+      await db.update(schema.tasks)
+        .set({ createdAt: new Date(), updatedAt: new Date() })
+        .where(inArray(schema.tasks.id, [freshSubmitted.id]));
+      await db.update(schema.tasks)
+        .set({ createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000) })
+        .where(inArray(schema.tasks.id, [completed.id, nonNegotiation.id]));
+
+      const stale = await adapter.getStaleNegotiationTasks({
+        submittedOlderThanMs: 10 * 60 * 1000,
+        workingOlderThanMs: 12 * 60 * 60 * 1000,
+        limit: 1000,
+      });
+      const staleIds = stale.map((task) => task.id);
+
+      expect(staleIds).toContain(staleSubmitted.id);
+      expect(staleIds).toContain(staleWorking.id);
+      expect(staleIds).not.toContain(freshSubmitted.id);
+      expect(staleIds).not.toContain(completed.id);
+      expect(staleIds).not.toContain(nonNegotiation.id);
+      expect(stale.every((task) => task.metadata && (task.metadata as Record<string, unknown>).type === 'negotiation')).toBe(true);
+    }, 10000);
+  });
+
   describe('getLatestNegotiationTaskForConversation', () => {
     it('returns the negotiation task, ignoring non-negotiation tasks, and null for fresh conversations', async () => {
       const conv = await adapter.createConversation([

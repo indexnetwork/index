@@ -61,6 +61,30 @@ export interface CreateNegotiationTaskForAttemptInput {
   metadata: Record<string, unknown>;
 }
 
+export interface StaleNegotiationTasksInput {
+  submittedOlderThanMs: number;
+  workingOlderThanMs: number;
+  limit?: number;
+}
+
+export interface StaleNegotiationTask {
+  id: string;
+  conversationId: string;
+  state: 'submitted' | 'working';
+  createdAt: Date;
+  updatedAt: Date;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface WatchdogTaskTransitionInput {
+  taskId: string;
+  expectedState: 'submitted' | 'working';
+  expectedUpdatedAt: Date;
+  nextState: 'canceled' | 'failed';
+  metadata: Record<string, unknown>;
+  statusMessage: Record<string, unknown>;
+}
+
 /**
  * Claim an exact negotiating opportunity version and insert its task while the
  * shared attempt lock and opportunity row lock are held.
@@ -1087,6 +1111,77 @@ export class ConversationDatabaseAdapter {
       .returning();
 
     return task;
+  }
+
+  /**
+   * Lists old negotiation tasks that may have lost their kickoff or worker job.
+   * The state-specific age thresholds deliberately use createdAt for submitted
+   * tasks and updatedAt for working tasks.
+   */
+  async getStaleNegotiationTasks({
+    submittedOlderThanMs,
+    workingOlderThanMs,
+    limit = 25,
+  }: StaleNegotiationTasksInput): Promise<StaleNegotiationTask[]> {
+    const submittedCutoff = new Date(Date.now() - submittedOlderThanMs);
+    const workingCutoff = new Date(Date.now() - workingOlderThanMs);
+    const rows = await db
+      .select({
+        id: schema.tasks.id,
+        conversationId: schema.tasks.conversationId,
+        state: schema.tasks.state,
+        createdAt: schema.tasks.createdAt,
+        updatedAt: schema.tasks.updatedAt,
+        metadata: schema.tasks.metadata,
+      })
+      .from(schema.tasks)
+      .where(and(
+        sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        or(
+          and(eq(schema.tasks.state, 'submitted'), lt(schema.tasks.createdAt, submittedCutoff)),
+          and(eq(schema.tasks.state, 'working'), lt(schema.tasks.updatedAt, workingCutoff)),
+        ),
+      ))
+      .orderBy(asc(schema.tasks.createdAt))
+      .limit(Math.max(1, Math.floor(limit)));
+
+    return rows.map((row) => ({
+      ...row,
+      state: row.state as 'submitted' | 'working',
+      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+    }));
+  }
+
+  /**
+   * Transitions a stale negotiation task only if its state and timestamp still
+   * match the watchdog's read. This is the duplicate-prevention CAS: the stale
+   * row is canceled before the new run-existing job can create its replacement.
+   */
+  async transitionNegotiationTaskForWatchdog({
+    taskId,
+    expectedState,
+    expectedUpdatedAt,
+    nextState,
+    metadata,
+    statusMessage,
+  }: WatchdogTaskTransitionInput): Promise<Task | null> {
+    const [task] = await db
+      .update(schema.tasks)
+      .set({
+        state: nextState,
+        metadata,
+        statusMessage,
+        statusTimestamp: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(schema.tasks.id, taskId),
+        eq(schema.tasks.state, expectedState),
+        eq(schema.tasks.updatedAt, expectedUpdatedAt),
+      ))
+      .returning();
+
+    return task ?? null;
   }
 
   /**

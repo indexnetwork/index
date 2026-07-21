@@ -53,6 +53,7 @@ import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue'
 import { discoveryRunQueue } from './queues/opportunity/discovery-run.queue';
 import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
+import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
 import { frameDriftQueue } from './queues/frame-drift.queue';
@@ -436,6 +437,11 @@ fromEnrichmentQueue.startWorker();
 discoveryRunQueue.startWorker();
 enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
+if (isNegotiationWatchdogEnabled()) {
+  void negotiationWatchdogQueue.start().catch((error) => {
+    log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
+  });
+}
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
 void frameDriftQueue.start().catch((error) => {
@@ -931,6 +937,7 @@ const shutdown = async () => {
     discoveryRunQueue.close(),
     enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),
+    negotiationWatchdogQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
     negotiationTimeoutQueue.close(),
