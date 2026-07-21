@@ -1,28 +1,36 @@
 ---
 name: create-worktree
 description: >-
-  Create or reuse an isolated Index worktree and observable tmux-hosted Pi session with
-  the deterministic worktree:session helper. Use before implementation from the
-  canonical root, when resuming a branch session, or when validating branch/worktree
-  naming and setup without mutation.
+  Create or reuse an isolated Index worktree and open its visible Herdr-managed Pi
+  session. Use before implementation from the canonical root, when resuming a branch
+  session, or when validating branch/worktree/workspace identity before mutation.
 ---
 
 # create-worktree
 
-Use the repository launcher instead of manually composing `git worktree`, setup, tmux,
-and Pi commands:
+Keep the canonical root on `dev` and read-only for source changes. Create or reuse the
+Git worktree there, run the mandatory setup, then open the exact checkout in Herdr.
+Herdr is the default visible execution plane; do not launch a hidden implementation
+subagent.
+
+## Herdr preflight
+
+Before worktree orchestration, verify the installed CLI, running server, and Pi
+integration:
 
 ```bash
-bun run worktree:session -- <type>/<description>
+command -v herdr
+herdr status server
+herdr integration status
 ```
 
-It derives the only valid folder name (`<type>-<description>`), resolves the canonical
-worktree from `git worktree list --porcelain`, safely creates or reuses the matching
-worktree, runs `bun run worktree:setup <folder>`, and starts or reuses tmux session
-`pi-<folder>` at the exact real worktree path. New Pi processes receive the same stable
-name through the installed and documented `pi --name <name>` option.
+If the server/client is not running, have the user launch `herdr` from the repository
+so the workspace remains visible. If the Pi integration is missing or outdated, follow
+`docs/guides/getting-started.md` and install it before starting the agent. Do not silently
+fall back to hidden execution; use the legacy helper only when the user explicitly
+chooses that fallback because Herdr is unavailable.
 
-## Branch policy
+## Branch and folder policy
 
 Branches must match:
 
@@ -31,49 +39,88 @@ Branches must match:
 ```
 
 The description must explain the change. Opaque issue-only names such as
-`chore/ind-422` are rejected. Never accept or invent a separate folder argument.
+`chore/ind-422` are rejected. The only valid folder is the branch with `/` replaced by
+`-`; never accept or invent a separate folder argument.
 
-Examples:
-
-```bash
-bun run worktree:session -- feat/negotiation-evidence-shadow
-bun run worktree:session -- fix/opportunity-scope-hardening --base origin/dev
-```
-
-## Observe, deliver, and attach
-
-Detached tmux is the default so the caller remains observable and can attach when
-ready:
+From the canonical root, derive the identities once:
 
 ```bash
-tmux attach-session -t pi-feat-negotiation-evidence-shadow
+ROOT=$(git rev-parse --show-toplevel)
+BRANCH=feat/negotiation-evidence-shadow
+FOLDER=${BRANCH/\//-}
+WORKTREE="$ROOT/.worktrees/$FOLDER"
 ```
 
-Use `--attach` to attach after setup. To deliver a handoff without shell-quoting its
-contents, write it to an absolute file and pass:
+Before creating anything, verify the root and inspect all registered worktrees:
 
 ```bash
-bun run worktree:session -- feat/negotiation-evidence-shadow \
-  --prompt-file /absolute/path/to/handoff.md --attach
+pwd
+git branch --show-current
+git status --short --branch
+git worktree list --porcelain
 ```
 
-The helper uses tmux buffers for both new and existing sessions and verifies an existing
-pane's cwd before reuse. It does not modify tmux configuration.
+The canonical root must be `ROOT` on `dev`. If `WORKTREE` already exists, reuse it only
+when its registered path and branch exactly match. Reject a path collision, a branch
+mounted at another path, or a mismatched checkout instead of mutating it.
 
-## Inspect before mutation
-
-Use the deterministic dry-run contract when reviewing the plan or integrating tooling:
+When no matching worktree exists, create it from `origin/dev`. Use the existing local
+branch when present; otherwise create the semantic branch:
 
 ```bash
-bun run worktree:session -- chore/session-automation --dry-run --json
+git fetch origin dev
+if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+  git worktree add "$WORKTREE" "$BRANCH"
+else
+  git worktree add -b "$BRANCH" "$WORKTREE" origin/dev
+fi
 ```
 
-Dry-run performs no mutation. JSON includes schema version 1 facts and ordered command
-argv. `--attach` and `--json` are intentionally incompatible.
+Run setup for both new and reused worktrees:
 
-## Work inside the session
+```bash
+bun run worktree:setup "$FOLDER"
+```
 
-Once inside the worktree, verify:
+Setup is mandatory: it installs dependencies and links the root environment files.
+
+## Open or focus the Herdr workspace
+
+Open the exact existing Git worktree and use the dashed folder as the stable workspace
+label:
+
+```bash
+herdr worktree open \
+  --path "$WORKTREE" \
+  --label "$FOLDER" \
+  --focus \
+  --json
+```
+
+Record the returned `.result.workspace.workspace_id` and
+`.result.root_pane.pane_id`. The response may report `already_open: true`; that means
+reuse, not permission to skip identity checks. Confirm the returned worktree path and
+branch, and inspect the IDs directly when needed:
+
+```bash
+herdr workspace get "$WORKSPACE_ID"
+herdr pane get "$PANE_ID"
+herdr agent get "$PANE_ID"
+```
+
+If the root pane is an interactive shell with no Pi agent, start one. The stable agent
+name is the same dashed folder:
+
+```bash
+herdr agent start "$FOLDER" --kind pi --pane "$PANE_ID"
+```
+
+If Pi already exists in that pane, reuse it only when its cwd is `WORKTREE` and its
+identity belongs to this workspace. Never start a second writer in the same worktree.
+
+## Verify before mutation
+
+The first handoff must require the visible Pi to run:
 
 ```bash
 pwd
@@ -81,10 +128,17 @@ git branch --show-current
 git status --short --branch
 ```
 
-Do not create another worktree when the requested implementation session is already in
-one. Make ordinary edits, run tests, commit, push, and open a PR without asking for a
-routine approval gate. Ask only for genuine architecture or scope ambiguity,
-destructive actions, external infrastructure mutations, or merge approval.
+The path and branch must match `WORKTREE` and `BRANCH`. Stop on any collision or
+mismatch. Ordinary edits, tests, commits, pushes, and PR creation need no approval;
+escalate only genuine product/architecture ambiguity, destructive actions, external
+infrastructure mutation, credentials/secrets, or merge approval.
+
+Parallel implementation is allowed only when it is genuinely useful: give each writer
+a separate semantic branch, Git worktree, Herdr workspace, and Pi session. One writer
+per worktree remains mandatory.
+
+The repository's `bun run worktree:session` launcher remains a legacy fallback when
+Herdr is unavailable; it is not the default orchestration path.
 
 If GPG signing fails in a non-interactive shell, preserve repository-wide settings. A
 worktree-local fallback is allowed when needed:
@@ -97,5 +151,5 @@ Never use plain `git config commit.gpgsign false`, which affects every worktree.
 
 ## See also
 
-- `run-worktree-session` — implementation and fix-loop ownership inside the launched session.
+- `run-worktree-session` — visible handoff, polling, question handling, and fix loops.
 - `finish-pr` — explicit merge approval and post-merge verification.

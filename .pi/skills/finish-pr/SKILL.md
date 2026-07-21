@@ -1,6 +1,6 @@
 ---
 name: finish-pr
-description: "Finish a pull request end-to-end from the canonical/root session: investigate PR health (base freshness, checks, review threads, version bumps, local builds), hand needed worktree changes to the user-mediated worktree session in one consolidated prompt, merge after explicit confirmation, verify post-merge GitHub/Railway deployment health, and close or update related GitHub and Linear issues. Use when the user says a PR is ready to finish, ship, merge, or close out."
+description: "Finish a pull request end-to-end from the canonical/root session: investigate PR health, coordinate fixes in the existing visible Herdr-managed Pi worktree session, merge only after explicit confirmation, verify post-merge GitHub/Railway health, and close or update related issues. Use when the user says a PR is ready to finish, ship, merge, or close out."
 ---
 
 # Finish PR
@@ -19,22 +19,34 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 - Never claim deployment success from a queued/in-progress status. Wait for a terminal success state or report that it is still pending.
 - If Railway MCP tools are unavailable, report deployment as unverified; do not claim success or close related issues until it can be verified. GitHub merge safety does not depend on MCP availability.
 - If checks fail, keep issues open and report the blocker.
-- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, hand it to the user-mediated PR worktree session in one consolidated prompt; that session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
+- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, send one consolidated prompt to the existing visible Herdr-managed Pi session for the PR worktree, then poll it directly from the coordinator. That session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
+- Do not use hidden `Agent` subagents for implementation/fix rounds, and do not create a watcher process or watcher pane. Reuse the same Herdr workspace, pane, and Pi agent.
 - A PR-branch rebase is executed only from the verified PR worktree, and only ever on the PR's own feature branch — never a shared/long-lived head branch (`dev`, `main` — e.g. a release PR's head): that rewrites shared history and breaks other worktrees. Use `--force-with-lease`, never plain `--force`.
 - Do not remove a git worktree without confirming the PR is merged, the working tree is clean (no uncommitted/unpushed work), and the user has not asked to keep it. When in doubt, ask before removing.
 
 ## Supporting rpiv skills
 
-Use other rpiv skills when they fit: `run-worktree-session` for the user-mediated worktree handoff and fix loop, `manage-feature-flags` for env-flag flips across Railway/local surfaces, `address-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `verify-production-release` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
+Use other rpiv skills when they fit: `run-worktree-session` for the coordinator-managed visible Herdr handoff and fix loop, `manage-feature-flags` for env-flag flips across Railway/local surfaces, `address-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `verify-production-release` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
 
-## Handing fixes to the worktree session
+## Coordinating fixes in the visible Herdr session
 
 When a workflow step finds code, rebase, version, or push work, do not mutate from the
-canonical root. Produce one consolidated prompt for the existing user-mediated PR
-worktree session. Include the stable handoff name, absolute worktree path, branch,
-concrete findings/log excerpts, requested actions, and targeted checks.
+canonical root. Locate the PR's existing Herdr workspace by its exact Git worktree path
+and capture the workspace, pane, and agent identities. Reject path/branch collisions;
+never open a second writer for the same checkout.
 
-That worktree session confirms before mutation:
+Produce one consolidated prompt containing the stable handoff name, absolute worktree
+path, PR head branch, concrete findings/log excerpts, requested actions, and targeted
+checks. Inspect the agent and recent output before delivery:
+
+```bash
+herdr agent get "$AGENT_NAME"
+herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
+herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/fix-handoff.md)"
+```
+
+Use `herdr agent prompt` only when no structured question/editor draft is active. The
+visible session confirms before mutation:
 
 ```bash
 cd /absolute/path/to/pr-worktree
@@ -43,12 +55,31 @@ git branch --show-current
 git status --short --branch
 ```
 
-The path must be the PR worktree and the branch must be the PR head. Reuse the same
-session for every fix loop; do not create a fresh worktree/session for each finding.
+The coordinator remains active and polls directly; no watcher process or pane:
 
-After a narrow fix, rerun its affected local checks plus PR-head, required-check, and
-unresolved-thread status. Re-run the full readiness pass only after a rebase, broad
-change, or uncertain impact. Never merge from a feature worktree.
+```bash
+herdr agent get "$AGENT_NAME"
+herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
+herdr agent wait "$AGENT_NAME" --until blocked --until idle --until done --timeout 30000
+```
+
+On a routine question, inspect the visible output and automatically choose the safe,
+recommended project-compliant option. Escalate only product/architecture ambiguity,
+destructive operations, external infrastructure mutation, credentials/secrets, or
+merge approval. If a structured prompt is active, read it and answer through targeted
+pane input rather than appending a new prompt:
+
+```bash
+herdr pane read "$PANE_ID" --source visible --lines 120
+herdr pane send-text "$PANE_ID" "<safe answer>"
+herdr pane send-keys "$PANE_ID" enter
+```
+
+Reuse the same workspace/session for every fix loop; do not create a fresh worktree or
+Pi agent for each finding. After a narrow fix, rerun its affected local checks plus
+PR-head, required-check, and unresolved-thread status. Re-run the full readiness pass
+only after a rebase, broad change, or uncertain impact. Never merge from a feature
+worktree and never infer merge approval from delegated output.
 
 ## Workflow
 
@@ -229,7 +260,7 @@ Before merging, summarize:
 - env variable decisions (what was set in Railway / `.env.development` / `.env.test`, what was deliberately left unset),
 - related GitHub/Linear issues that will be updated after merge.
 
-Do not ask for merge confirmation while any finding is outstanding — hand it to the existing worktree session, then re-verify proportionally when the user returns. Ask the user for explicit confirmation to merge.
+Do not ask for merge confirmation while any finding is outstanding — hand it to the existing visible Herdr session, poll through its fix/verification/push result, then re-verify proportionally. Ask the user for explicit confirmation to merge in the coordinator session.
 
 After confirmation, merge using the repository's preferred strategy. If unknown, inspect repo conventions or ask. In multi-worktree repos where the base branch is checked out in the canonical root, run the merge from that canonical root (not from the feature worktree): `gh pr merge --delete-branch` may complete the server-side merge but fail local branch cleanup if it tries to check out a base branch already used by another worktree.
 

@@ -189,8 +189,8 @@ git add packages/edge-city/agentvillage
 bun install                                # Install dependencies for all workspaces
 bun run dev                                # Interactive: select root or a worktree to run dev
 bun run worktree:list                       # List worktrees and their setup status
-bun run worktree:session -- <type>/<desc>    # Create/reuse worktree + setup + named Pi tmux session
 bun run worktree:setup <name>               # Install node_modules & symlink .env files into a worktree
+herdr worktree open --path <path> --label <name> --focus --json # Open/focus the visible worktree workspace
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 bun run skills:validate                      # Validate every project-local Pi skill
@@ -477,21 +477,41 @@ TSDoc on all classes (summary) and public methods (`@param`, `@returns`, `@throw
 
 ### Worktrees
 
-**Always use worktrees** for features and fixes. Keep `dev` stable. Worktrees live in `.worktrees/` (gitignored). Branches use semantic `<type>/<description>` names; the launcher derives the dashed folder and does not accept a separate folder argument.
+**Always use worktrees** for features and fixes. Keep the canonical root on `dev` and
+read-only for source mutations. Worktrees live in `.worktrees/` (gitignored). Branches
+use semantic `<type>/<description>` names and the only valid folder is the dashed form
+`<type>-<description>`; never accept a separate folder name.
+
+Before socket orchestration, follow the Herdr setup in
+`docs/guides/getting-started.md`; its server and Pi integration must be available. From
+the canonical root, create or reuse the exact Git worktree after checking
+`git worktree list --porcelain`, then always run setup:
 
 ```bash
-bun run worktree:session -- feat/user-authentication             # detached tmux by default
-bun run worktree:session -- fix/login-redirect-loop --attach     # attach after setup
-bun run worktree:session -- chore/session-automation --dry-run --json
+bun run worktree:setup feat-user-authentication
+herdr worktree open \
+  --path "$PWD/.worktrees/feat-user-authentication" \
+  --label feat-user-authentication \
+  --focus \
+  --json
+herdr agent start feat-user-authentication --kind pi --pane <returned-pane-id>
 ```
 
-The launcher creates or reuses the matching worktree, runs `worktree:setup`, verifies
-the tmux pane cwd, and starts a deterministic Pi session with `pi --name`. tmux is the
-first observable-session layer; Pi RPC/dashboard automation is deferred.
+Herdr is the default visible execution plane. Record the workspace and pane IDs returned
+by `herdr worktree open`; reuse an existing workspace/Pi only when its worktree path,
+branch, and cwd match. The canonical/root Pi remains the coordinator, sends one complete
+handoff, and polls with `herdr agent get/read/wait` directly—never through a hidden
+implementation subagent, background watcher process, or watcher pane. It answers routine
+implementation questions with the safe/recommended option and escalates only genuine
+product/architecture ambiguity, destructive actions, external infrastructure mutation,
+credentials/secrets, or merge approval. A structured question/editor draft must be
+answered through targeted `herdr pane read/send-text/send-keys`, not a new agent prompt.
+Never infer merge approval.
 
-Agents ask only for genuine architecture/scope ambiguity, destructive actions, external
-infrastructure mutations, or merge approval. They do not ask before ordinary edits,
-tests, commits, pushes, or PR creation.
+Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
+workspaces, and Pi sessions, with one writer per worktree. Reuse the same visible session
+for review and finish-pr fix loops. The legacy `bun run worktree:session` helper remains
+a fallback when Herdr is unavailable, not the default workflow.
 
 ### Conventional Commits
 
@@ -524,9 +544,13 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 
 ## Superpowers Workflow
 
-### Implementation via Subagents in Worktrees
+### Implementation in Visible Herdr Worktrees
 
-When executing implementation plans, **always use subagent-driven development with worktree isolation** (`isolation: "worktree"`). This keeps `dev` stable and allows parallel independent tasks. Combine the `superpowers:subagent-driven-development` and `superpowers:using-git-worktrees` skills.
+Execute implementation and fix plans in visible Herdr-managed Pi sessions for isolated
+Git worktrees. The canonical/root Pi coordinates, remains active, polls Herdr directly,
+and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
+parallel work is genuinely useful, use separate worktrees/workspaces with one writer per
+checkout. Follow the `create-worktree` and `run-worktree-session` skills.
 
 ### Receiving Code Review (`/address-code-review`)
 
