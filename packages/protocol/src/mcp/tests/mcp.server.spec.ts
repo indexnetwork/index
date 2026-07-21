@@ -55,6 +55,13 @@ describe("MCP_INSTRUCTIONS", () => {
     expect(MCP_INSTRUCTIONS.toLowerCase()).toContain("community");
   });
 
+  test("separates agent completion, owner acceptance, and H2H evidence", () => {
+    expect(MCP_INSTRUCTIONS).toContain("means only that agents concluded");
+    expect(MCP_INSTRUCTIONS).toContain("may leave a `pending` match awaiting owner review");
+    expect(MCP_INSTRUCTIONS).toContain("Agent acceptance is not \"connected\"");
+    expect(MCP_INSTRUCTIONS).toContain("Status alone never proves an H2H thread");
+  });
+
   test("does not carry Claude Code sub-skill dispatch idioms", () => {
     expect(MCP_INSTRUCTIONS.toLowerCase()).not.toContain("sub-skill");
     expect(MCP_INSTRUCTIONS).not.toContain("index-network:");

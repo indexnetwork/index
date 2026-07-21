@@ -15,11 +15,15 @@ describe('ConversationDatabaseAdapter', () => {
   const adapter = new ConversationDatabaseAdapter();
   const createdIds: string[] = [];
   const createdIntentIds: string[] = [];
+  const createdOpportunityIds: string[] = [];
   const createdUserIds: string[] = [];
 
   afterAll(async () => {
     for (const id of createdIds) {
-      try { await adapter.deleteConversation(id); } catch {}
+      try { await adapter.deleteConversation(id); } catch { /* Best-effort cleanup. */ }
+    }
+    if (createdOpportunityIds.length > 0) {
+      await db.delete(schema.opportunities).where(inArray(schema.opportunities.id, createdOpportunityIds));
     }
     if (createdIntentIds.length > 0) {
       await db.delete(schema.intents).where(inArray(schema.intents.id, createdIntentIds));
@@ -147,6 +151,47 @@ describe('ConversationDatabaseAdapter', () => {
       expect(staleIds).not.toContain(completed.id);
       expect(staleIds).not.toContain(nonNegotiation.id);
       expect(stale.every((task) => task.metadata && (task.metadata as Record<string, unknown>).type === 'negotiation')).toBe(true);
+    }, 10000);
+  });
+
+  describe('getOpportunityLifecyclesForNegotiations', () => {
+    it('returns current status and owner-acceptance evidence without projecting acceptor identity', async () => {
+      const suffix = `${Date.now()}-${crypto.randomUUID()}`;
+      const ownerId = `narration-owner-${suffix}`;
+      const otherId = `narration-other-${suffix}`;
+      await db.insert(schema.users).values([
+        { id: ownerId, email: `${ownerId}@test.local`, name: 'Narration Owner' },
+        { id: otherId, email: `${otherId}@test.local`, name: 'Narration Other' },
+      ]);
+      createdUserIds.push(ownerId, otherId);
+
+      const common = {
+        detection: { source: 'manual' as const, timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'narration-network', userId: ownerId, role: 'peer' },
+          { networkId: 'narration-network', userId: otherId, role: 'peer' },
+        ],
+        interpretation: { category: 'test', reasoning: 'Lifecycle narration test.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status: 'accepted' as const,
+      };
+      const inserted = await db.insert(schema.opportunities).values([
+        { ...common, acceptedBy: ownerId },
+        { ...common, acceptedBy: otherId },
+      ]).returning({ id: schema.opportunities.id });
+      const opportunityIds = inserted.map((row) => row.id);
+      createdOpportunityIds.push(...opportunityIds);
+
+      const result = await adapter.getOpportunityLifecyclesForNegotiations(
+        [...opportunityIds, 'missing-opportunity'],
+        ownerId,
+      );
+
+      expect(result[inserted[0].id]).toEqual({ status: 'accepted', acceptedByOwner: true });
+      expect(result[inserted[1].id]).toEqual({ status: 'accepted', acceptedByOwner: false });
+      expect(result['missing-opportunity']).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain(otherId);
     }, 10000);
   });
 

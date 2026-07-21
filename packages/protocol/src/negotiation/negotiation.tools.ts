@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type { DefineTool, ToolDeps } from '../shared/agent/tool.helpers.js';
 import { success, error } from '../shared/agent/tool.helpers.js';
+import type { NegotiationOpportunityLifecycle, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import { IndexNegotiator } from './negotiation.agent.js';
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationOutcome } from './negotiation.state.js';
 import { allowedActionsFor, isTerminalAction, readProtocolVersion, rejectActionFor, resolveSeat, seatViolationMessage } from './negotiation.protocol.js';
@@ -44,6 +45,135 @@ function readTaskNetworkId(meta: {
 
 const SCOPE_DENIAL = 'Access denied: this negotiation is not in your bound network scope.';
 
+const DIRECT_CONVERSATION_EVIDENCE_UNAVAILABLE = 'not_provided' as const;
+
+type NegotiationConnectionState =
+  | 'potential_match_awaiting_owner_review'
+  | 'owner_accepted'
+  | 'accepted_without_owner_evidence'
+  | 'rejected'
+  | 'negotiation_stalled'
+  | 'draft_not_sent'
+  | 'expired'
+  | 'agents_negotiating'
+  | 'latent'
+  | 'unknown';
+
+interface NegotiationLifecycleNarration {
+  agentNegotiation: 'concluded' | 'in_progress' | 'awaiting_agent' | 'unknown';
+  opportunityStatus: OpportunityStatus | null;
+  connectionState: NegotiationConnectionState;
+  ownerAction: 'accepted' | 'not_recorded';
+  directConversationEvidence: typeof DIRECT_CONVERSATION_EVIDENCE_UNAVAILABLE;
+  lifecycleLabel: string;
+}
+
+/**
+ * Builds additive, lifecycle-explicit narration metadata. Task completion only
+ * means the agents concluded; it never establishes owner acceptance or an H2H
+ * conversation.
+ */
+function buildLifecycleNarration(
+  negotiationStatus: string,
+  opportunity?: NegotiationOpportunityLifecycle,
+): NegotiationLifecycleNarration {
+  const agentNegotiation: NegotiationLifecycleNarration['agentNegotiation'] = negotiationStatus === 'completed'
+    ? 'concluded'
+    : negotiationStatus === 'active'
+      ? 'in_progress'
+      : negotiationStatus === 'waiting_for_agent'
+        ? 'awaiting_agent'
+        : 'unknown';
+  const common = {
+    agentNegotiation,
+    opportunityStatus: opportunity?.status ?? null,
+    ownerAction: opportunity?.acceptedByOwner ? 'accepted' as const : 'not_recorded' as const,
+    directConversationEvidence: DIRECT_CONVERSATION_EVIDENCE_UNAVAILABLE,
+  };
+
+  switch (opportunity?.status) {
+    case 'pending':
+      return {
+        ...common,
+        connectionState: 'potential_match_awaiting_owner_review',
+        lifecycleLabel: negotiationStatus === 'completed'
+          ? "Agents concluded with a potential match; awaiting the owner's review."
+          : "A potential match is awaiting the owner's review.",
+      };
+    case 'accepted':
+      return opportunity.acceptedByOwner
+        ? {
+          ...common,
+          connectionState: 'owner_accepted',
+          lifecycleLabel: 'The owner explicitly accepted this opportunity.',
+        }
+        : {
+          ...common,
+          connectionState: 'accepted_without_owner_evidence',
+          lifecycleLabel: 'The opportunity is accepted; this result does not record an owner acceptance.',
+        };
+    case 'rejected':
+      return {
+        ...common,
+        connectionState: 'rejected',
+        lifecycleLabel: 'The opportunity was rejected; no connection was established.',
+      };
+    case 'stalled':
+      return {
+        ...common,
+        connectionState: 'negotiation_stalled',
+        lifecycleLabel: 'The agent negotiation stalled; no connection was established.',
+      };
+    case 'draft':
+      return {
+        ...common,
+        connectionState: 'draft_not_sent',
+        lifecycleLabel: 'The opportunity is still a draft; it has not been sent or accepted.',
+      };
+    case 'expired':
+      return {
+        ...common,
+        connectionState: 'expired',
+        lifecycleLabel: 'The opportunity expired; no connection was established.',
+      };
+    case 'negotiating':
+      return {
+        ...common,
+        connectionState: 'agents_negotiating',
+        lifecycleLabel: 'The agents are still negotiating; no owner decision is recorded.',
+      };
+    case 'latent':
+      return {
+        ...common,
+        connectionState: 'latent',
+        lifecycleLabel: 'The potential match is latent; no owner decision is recorded.',
+      };
+    default:
+      return {
+        ...common,
+        connectionState: 'unknown',
+        lifecycleLabel: negotiationStatus === 'completed'
+          ? 'The agent negotiation concluded; the current opportunity lifecycle is unavailable.'
+          : 'The current opportunity lifecycle is unavailable.',
+      };
+  }
+}
+
+/** Reads lifecycle evidence without making older host adapters mandatory. */
+async function readOpportunityLifecycles(
+  database: ToolDeps['negotiationDatabase'],
+  opportunityIds: string[],
+  ownerUserId: string,
+): Promise<Record<string, NegotiationOpportunityLifecycle>> {
+  if (opportunityIds.length === 0 || !database.getOpportunityLifecyclesForNegotiations) return {};
+  try {
+    return await database.getOpportunityLifecyclesForNegotiations(opportunityIds, ownerUserId);
+  } catch (err) {
+    logger.warn('Failed to load opportunity lifecycle for negotiation narration', { err });
+    return {};
+  }
+}
+
 /** Extracts the ordered NegotiationTurn list from A2A message data parts. */
 function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
   return messages
@@ -70,7 +200,10 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
       '**Statuses:**\n' +
       '- `active` — Negotiation is in progress, agents are exchanging turns.\n' +
       '- `waiting_for_agent` — The graph has yielded and is waiting for an agent response (e.g. from the user via respond_to_negotiation) or a timeout.\n' +
-      '- `completed` — Negotiation has concluded (accepted, rejected, or reached turn cap).\n\n' +
+      '- `completed` — The agent negotiation has concluded (agent-side accept/reject, or turn cap). This is not a completed connection or an owner decision.\n\n' +
+      '**Lifecycle narration:** Every result includes additive `lifecycle` fields that distinguish the agent-negotiation state, ' +
+      'current opportunity status, and persisted owner acceptance. Agent-side `accept` means only that agents found a potential match; ' +
+      '`pending` still awaits owner review. `directConversationEvidence` is `not_provided`, so this tool never establishes that an H2H message thread exists.\n\n' +
       '**When to use:** To see ongoing and past negotiations, check which negotiations need attention, ' +
       'or find a negotiation ID for get_negotiation or respond_to_negotiation.',
     querySchema: z.object({
@@ -105,6 +238,15 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           : undefined;
 
         const tasks = await negotiationDatabase.getTasksForUser(context.userId, dbState ? { state: dbState } : undefined);
+        const opportunityIds = [...new Set(tasks
+          .map((task) => (task.metadata as { opportunityId?: unknown } | null)?.opportunityId)
+          .filter((opportunityId): opportunityId is string => typeof opportunityId === 'string' && opportunityId.trim().length > 0)
+          .map((opportunityId) => opportunityId.trim()))];
+        const opportunityLifecycles = await readOpportunityLifecycles(
+          negotiationDatabase,
+          opportunityIds,
+          context.userId,
+        );
         const scopedNetworkId = focusedNetworkId(context);
         const pinnedIntentId = focusedIntentId(context);
         const effectiveScope = query.scope ?? (pinnedIntentId ? 'signal' : 'all');
@@ -113,12 +255,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         }
 
         const signalIntentIdsByOpportunity = effectiveScope === 'signal'
-          ? await negotiationDatabase.getIntentIdsForOpportunities(
-            [...new Set(tasks
-              .map((task) => (task.metadata as { opportunityId?: unknown } | null)?.opportunityId)
-              .filter((opportunityId): opportunityId is string => typeof opportunityId === 'string' && opportunityId.trim().length > 0))],
-            context.userId,
-          )
+          ? await negotiationDatabase.getIntentIdsForOpportunities(opportunityIds, context.userId)
           : null;
         const scopeMetadata = effectiveScope === 'signal'
           ? { scope: 'signal' as const, intentId: pinnedIntentId! }
@@ -194,7 +331,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             isContinuation: meta.isContinuation ?? false,
             priorTurnCount: meta.priorTurnCount ?? 0,
             latestAction: lastTurnData?.action ?? null,
+            latestActionActor: 'agent' as const,
             latestMessagePreview: lastTurnData?.message ?? null,
+            lifecycle: buildLifecycleNarration(status, opportunityLifecycles[opportunityId]),
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
           };
@@ -216,6 +355,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
               speaker,
               role: speaker === (isSource ? 'source' : 'candidate') ? 'own' : 'other',
               action: td?.action ?? 'unknown',
+              actionActor: 'agent' as const,
               message: td?.message ?? null,
             };
           });
@@ -278,9 +418,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
       'Negotiations are bilateral exchanges where two AI agents negotiate on behalf of users. Each turn contains an action ' +
       '(propose, accept, reject, counter, question), an assessment with reasoning and suggested roles, and an optional message.\n\n' +
       '**Access control:** You must be a party to the negotiation (source or candidate) to view it.\n\n' +
-      '**Statuses:** `active` — in progress. `waiting_for_agent` — waiting for an agent response or timeout. `completed` — concluded.\n\n' +
-      '**When to use:** To review the full negotiation history before responding, to understand why a negotiation was ' +
-      'accepted or rejected, or to see the current state of an active negotiation.\n\n' +
+      '**Statuses:** `active` — in progress. `waiting_for_agent` — waiting for an agent response or timeout. `completed` — the agents concluded, not that the owner accepted or a connection/message thread exists.\n\n' +
+      '**Lifecycle narration:** The additive `lifecycle` object is authoritative for user-facing wording. A turn action of `accept` is agent-side; ' +
+      'only `lifecycle.ownerAction=accepted` records this owner as the human acceptor. `conversationType=agent_negotiation` identifies the returned ' +
+      'conversationId as the A2A negotiation transcript; this result does not provide H2H conversation evidence.\n\n' +
+      '**When to use:** To review the full negotiation history before responding, to understand why the agents ' +
+      'accepted or rejected a potential match, or to see the current state of an active negotiation.\n\n' +
       '**Negotiation-turn-mode usage.** If you are running as a silent background subagent (dispatched by the ' +
       "openclaw runtime's poller in response to a claimed negotiation turn), call this tool FIRST with the " +
       'negotiationId from your task prompt. This returns the current state, both parties\' context, and the ' +
@@ -363,10 +506,17 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           };
         }
 
-        // Load messages and artifacts
-        const [messages, artifacts] = await Promise.all([
+        const lifecycleOpportunityId = meta.opportunityId?.trim() || undefined;
+
+        // Load messages, artifacts, and the independently persisted opportunity lifecycle.
+        const [messages, artifacts, opportunityLifecycles] = await Promise.all([
           negotiationDatabase.getMessagesForConversation(task.conversationId),
           negotiationDatabase.getArtifactsForTask(task.id),
+          readOpportunityLifecycles(
+            negotiationDatabase,
+            lifecycleOpportunityId ? [lifecycleOpportunityId] : [],
+            context.userId,
+          ),
         ]);
 
         // Parse turns from messages (speaker from senderId, not parity —
@@ -389,6 +539,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             speaker,
             senderId: m.senderId,
             action: turnData?.action ?? 'unknown',
+            actionActor: 'agent' as const,
             reasoning: turnData?.assessment?.reasoning ?? null,
             suggestedRoles: turnData?.assessment?.suggestedRoles ?? null,
             message: turnData?.message ?? null,
@@ -429,6 +580,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         return success({
           id: task.id,
           conversationId: task.conversationId,
+          conversationType: 'agent_negotiation' as const,
           status,
           role: isSource ? 'source' : 'candidate',
           seat,
@@ -442,6 +594,10 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           turnsAdded: turnCount - priorTurnCount,
           turns,
           outcome,
+          lifecycle: buildLifecycleNarration(
+            status,
+            lifecycleOpportunityId ? opportunityLifecycles[lifecycleOpportunityId] : undefined,
+          ),
           context: negotiationContext,
           createdAt: task.createdAt,
           updatedAt: task.updatedAt,

@@ -50,6 +50,7 @@ export type {
   EnrichmentGraphDatabase,
   PremiseGraphDatabase,
   NegotiationGraphDatabase,
+  NegotiationOpportunityLifecycle,
   Opportunity,
   OpportunityActor,
   OpportunityStatus,

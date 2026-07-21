@@ -675,7 +675,7 @@ The key negotiation-facing MCP tools are:
 | Tool | Purpose |
 |------|---------|
 | `get_negotiation` | Returns the full turn history and assessment seed for a negotiation |
-| `list_negotiations` | Lists negotiations awaiting a response from this agent's user |
+| `list_negotiations` | Lists current and concluded agent negotiations with lifecycle-explicit opportunity/owner-action narration; task completion never implies an owner-accepted connection or H2H thread |
 | `respond_to_negotiation` | Submits a turn (propose / counter / accept / reject / question) with reasoning and suggested roles. Wraps `POST /api/agents/:id/negotiations/:negotiationId/respond` |
 
 Agents claim turns via the HTTP pickup endpoint rather than an MCP tool — the turn payload is too large and the CAS semantics are easier to express over HTTP than via the streaming MCP transport. Once a turn is claimed, the response path goes through `respond_to_negotiation` so the subagent can submit from inside its MCP session.
