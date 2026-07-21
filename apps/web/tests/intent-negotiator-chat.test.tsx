@@ -116,6 +116,20 @@ describe('IntentNegotiatorChat', () => {
     expect(input.getAttribute('placeholder')).toBe("Message Alice's Negotiator…");
   });
 
+  test('marks restored persisted history so stale signal summaries are not read as current', async () => {
+    mocks.apiClient.post.mockResolvedValue({ ...SESSION_RESPONSE, created: false });
+    mocks.chat.messages = [
+      { id: 'old-1', role: 'assistant', content: 'An earlier summary', timestamp: new Date(Date.now() - 86_400_000) },
+    ];
+    mocks.chat.loadSession.mockResolvedValue(true);
+
+    renderChat();
+
+    const divider = await screen.findByTestId('negotiator-restored-history-divider');
+    expect(divider).toHaveTextContent('earlier conversation');
+    expect(divider).toHaveTextContent('may not reflect current signal state');
+  });
+
   test('renders pending intent questions as the opening turns (existing pipeline)', async () => {
     renderChat({ questions: [QUESTION] });
 

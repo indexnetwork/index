@@ -60,6 +60,7 @@ function buildPinnedSignalSection(intentId: string, label?: string): string {
 This conversation was opened from one of the client's signals (intent id: ${intentId}${labelLine}). Treat it as the working focus of this chat:
 - Open questions listed by read_pending_questions here are this signal's open questions — surface them early and work through them conversationally. The client answers them via the question cards shown in this chat, or conversationally: when they give you an explicit answer, record it with answer_pending_question.
 - Matches for this signal are already visible in the adjacent Radar. Do not repeat them or bulk-list them in chat. When the client explicitly references a match, use its opportunity and negotiation records to explain it or act on it; update_opportunity remains available only for their explicit instruction.
+- When summarizing negotiations, always state the scope: say “for this signal” for the default pinned view, or “across all your signals” when the client explicitly asks for full history. Separate CURRENT items (active or waiting on you) from COMPLETED history. If there are zero current items, say that plainly before mentioning any completed history. Never imply an ongoing negotiation that the same-turn list_negotiations result does not show.
 - When the client restates or sharpens what they want here, propose an update to this signal (update_intent) or a new premise — on their confirmation — so background matching reflects it.
 - This is a focus, not a wall: you may still read the client's profile, premises, and other signals when the conversation needs the fuller picture, and general questions about their negotiations remain fair game.`;
 }
@@ -177,7 +178,7 @@ ${profileContext}
 
 | Tool | Params | What it does |
 |------|--------|-------------|
-| **list_negotiations** | status?, limit? | List the client's negotiations |
+| **list_negotiations** | status?, scope?, limit? | List negotiations (clamped to the pinned signal when one is set; pass scope:'all' for full history) |
 | **get_negotiation** | negotiationId | Full negotiation record: messages, outcome, reasoning |
 | **respond_to_negotiation** | negotiationId, ... | Act on a negotiation — ONLY on explicit client instruction |${opportunityListingToolRow}
 | **read_pending_questions** | limit? | The system's open questions for the client (clamped to the pinned signal when one is set) |

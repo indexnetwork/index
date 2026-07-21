@@ -15,6 +15,17 @@ import { log } from "@/lib/logger";
 
 const logger = log.ui.from("IntentNegotiatorChat");
 
+function formatRelativeTimestamp(timestamp: Date | undefined): string | null {
+  if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
+  const elapsedMs = Date.now() - timestamp.getTime();
+  const elapsedMinutes = Math.floor(Math.abs(elapsedMs) / 60_000);
+  if (elapsedMinutes < 1) return "just now";
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours}h ago`;
+  return `${Math.floor(elapsedHours / 24)}d ago`;
+}
+
 export interface IntentNegotiatorChatProps {
   /** The intent this chat is pinned to. */
   intentId: string;
@@ -83,6 +94,7 @@ export default function IntentNegotiatorChat({
 
   const [agentName, setAgentName] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [restoredHistoryLoaded, setRestoredHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const clearChatRef = useRef(clearChat);
@@ -107,11 +119,14 @@ export default function IntentNegotiatorChat({
         created: boolean;
         agent: { id: string; name: string; description: string | null };
       }>("/chat/negotiator/session", { intentId })
-      .then(async ({ session, agent }) => {
+      .then(async ({ session, created, agent }) => {
         if (!active) return;
         setAgentName(agent.name);
-        await loadSession(session.id);
-        if (active) setReady(true);
+        const historyLoaded = await loadSession(session.id);
+        if (active) {
+          if (!created && historyLoaded) setRestoredHistoryLoaded(true);
+          setReady(true);
+        }
       })
       .catch((err) => {
         logger.error("Failed to bootstrap intent negotiator chat", { error: err, intentId });
@@ -173,6 +188,10 @@ export default function IntentNegotiatorChat({
   );
 
   const placeholder = agentName ? `Message ${agentName}…` : "Message your Personal Agent…";
+  const hasRestoredHistory = restoredHistoryLoaded && messages.length > 0;
+  const restoredHistoryLastActive = hasRestoredHistory
+    ? formatRelativeTimestamp(messages[messages.length - 1]?.timestamp)
+    : null;
 
   return (
     <div
@@ -232,6 +251,17 @@ export default function IntentNegotiatorChat({
                   onDismiss={onDismissQuestion}
                   showTypingIndicator={questionChainPending}
                 />
+              </div>
+            )}
+
+            {hasRestoredHistory && (
+              <div
+                className="border-y border-gray-100 py-1 text-center text-[11px] text-gray-400 font-ibm-plex-mono"
+                data-testid="negotiator-restored-history-divider"
+                role="note"
+              >
+                earlier conversation
+                {restoredHistoryLastActive ? ` · last active ${restoredHistoryLastActive}` : ""} — may not reflect current signal state
               </div>
             )}
 

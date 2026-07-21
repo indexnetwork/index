@@ -1305,6 +1305,34 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Resolves the intent carried by the given user's actor for each opportunity.
+   * Missing opportunities or actor intents remain null for fail-closed callers.
+   *
+   * @param opportunityIds - Opportunity IDs to inspect
+   * @param userId - User whose actor intent should be resolved
+   * @returns One intent ID (or null) per requested opportunity ID
+   */
+  async getIntentIdsForOpportunities(opportunityIds: string[], userId: string): Promise<Record<string, string | null>> {
+    const ids = [...new Set(opportunityIds.map((id) => id.trim()).filter(Boolean))];
+    const resolved = Object.fromEntries(ids.map((id) => [id, null as string | null]));
+    if (ids.length === 0) return resolved;
+
+    const rows = await db
+      .select({ id: schema.opportunities.id, actors: schema.opportunities.actors })
+      .from(schema.opportunities)
+      .where(inArray(schema.opportunities.id, ids));
+
+    for (const row of rows) {
+      const actorIntent = row.actors.find(
+        (actor) => actor.userId === userId && typeof actor.intent === 'string' && actor.intent.trim().length > 0,
+      )?.intent?.trim();
+      if (actorIntent) resolved[row.id] = actorIntent;
+    }
+
+    return resolved;
+  }
+
+  /**
    * Looks up the negotiation task attached to an opportunity, preferring the
    * most-recently-created row if multiple exist (shouldn't, but defensive).
    *

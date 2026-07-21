@@ -778,7 +778,7 @@ export default function IntentDetailPage() {
                         </span>
                         live
                       </span>
-                      <span>agent is looking in the background</span>
+                      <span>background matching on — negotiation activity appears in Radar</span>
                     </>
                   )}
                   {lifecycleStatus === "PAUSED" && (

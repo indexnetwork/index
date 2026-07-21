@@ -3,14 +3,18 @@ import { z } from "zod";
 import { createNegotiationTools } from "../negotiation.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
-function makeContext(userId = "user-src", networkId?: string): ResolvedToolContext {
+function makeContext(userId = "user-src", networkId?: string, intentId?: string): ResolvedToolContext {
   return {
     userId,
     user: { id: userId, name: "Alice", email: "a@test" } as never,
     userProfile: null,
     userNetworks: [],
     isMcp: true,
-    ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
+    ...(intentId
+      ? { scopeType: 'intent' as const, scopeId: intentId }
+      : networkId
+        ? { scopeType: 'network' as const, scopeId: networkId }
+        : {}),
   } as unknown as ResolvedToolContext;
 }
 
@@ -28,7 +32,7 @@ function makeTask(
   state: string,
   sourceUserId: string,
   candidateUserId: string,
-  options: { networkId?: string; id?: string } = {},
+  options: { networkId?: string; id?: string; opportunityId?: string } = {},
 ) {
   return {
     id: options.id ?? "task-1",
@@ -40,6 +44,7 @@ function makeTask(
       candidateUserId,
       maxTurns: 6,
       ...(options.networkId ? { networkId: options.networkId } : {}),
+      ...(options.opportunityId ? { opportunityId: options.opportunityId } : {}),
     },
     createdAt: new Date("2026-01-01"),
     updatedAt: new Date("2026-01-02"),
@@ -226,6 +231,82 @@ describe("list_negotiations — pagination", () => {
 
     expect(result.data.negotiations).toHaveLength(3);
     expect(result.data.totalCount).toBeUndefined();
+  });
+});
+
+// ── intent-scope enforcement ──────────────────────────────────────────────────
+
+describe("list_negotiations — intent scope", () => {
+  test("clamps the pinned signal to matching actor intent and drops unresolvable tasks", async () => {
+    const matching = makeTask("working", "user-src", "user-cand", { id: "task-match", opportunityId: "opp-match" });
+    const differentIntent = makeTask("working", "user-src", "user-cand", { id: "task-other", opportunityId: "opp-other" });
+    const withoutOpportunity = makeTask("working", "user-src", "user-cand", { id: "task-legacy" });
+    const withoutIntent = makeTask("working", "user-src", "user-cand", { id: "task-no-intent", opportunityId: "opp-no-intent" });
+    let intentLookupCalls = 0;
+    const getIntentIdsForOpportunities = async (ids: string[]) => {
+      intentLookupCalls += 1;
+      return Object.fromEntries(
+        ids.map((id) => [id, id === "opp-match" ? "intent-pinned" : id === "opp-no-intent" ? null : "intent-other"]),
+      );
+    };
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [matching, differentIntent, withoutOpportunity, withoutIntent],
+        getIntentIdsForOpportunities,
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool("list_negotiations", deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext("user-src", undefined, "intent-pinned"), query: {} }),
+    );
+
+    expect(result.data.scope).toBe("signal");
+    expect(result.data.intentId).toBe("intent-pinned");
+    expect(result.data.negotiations.map((negotiation: { id: string }) => negotiation.id)).toEqual(["task-match"]);
+    expect(intentLookupCalls).toBe(1);
+  });
+
+  test("scope:'all' widens a pinned session and reports the explicit scope", async () => {
+    const first = makeTask("completed", "user-src", "user-cand", { id: "task-1" });
+    const second = makeTask("working", "user-src", "user-other", { id: "task-2" });
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [first, second],
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool("list_negotiations", deps);
+    const result = JSON.parse(
+      await tool.handler({
+        context: makeContext("user-src", undefined, "intent-pinned"),
+        query: { scope: "all" },
+      }),
+    );
+
+    expect(result.data.scope).toBe("all");
+    expect(result.data.negotiations).toHaveLength(2);
+  });
+
+  test("defaults an unpinned session to all negotiations", async () => {
+    const task = makeTask("completed", "user-src", "user-cand");
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool("list_negotiations", deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext("user-src"), query: {} }),
+    );
+
+    expect(result.data.scope).toBe("all");
+    expect(result.data.negotiations).toHaveLength(1);
   });
 });
 
