@@ -108,6 +108,7 @@ const envSchema = z.object({
   NEGOTIATOR_CHAT_ENABLED: optionalBoolean,
   WEB_SIGNAL_AGENT_ENABLED: optionalBoolean,
   WEB_AGENT_SURFACE_ENABLED: optionalBoolean,
+  WEB_AGENT_ACTIONS_ENABLED: optionalBoolean,
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,

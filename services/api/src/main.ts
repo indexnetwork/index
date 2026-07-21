@@ -22,6 +22,7 @@ import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
 import { AgentController } from './controllers/agent.controller';
+import { AgentActionController } from './controllers/agent-action.controller';
 import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
@@ -97,7 +98,11 @@ import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
 import { agentService } from './services/agent.service';
+import { intentService } from './services/intent.service';
+import { userService } from './services/user.service';
+import { AgentActionService } from './services/agent-action.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
+import { agentActionProposalDatabaseAdapter } from './adapters/agent-action-proposal.database.adapter';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
 // emoji, LOG_FILTER/LOG_LEVEL, Sentry, embedding redaction + payload truncation).
@@ -565,6 +570,19 @@ const storageAdapter = new S3StorageAdapter({
 // Set storage adapter on fileService for S3 file operations
 fileService.setStorageAdapter(storageAdapter);
 
+const agentActionService = new AgentActionService(agentActionProposalDatabaseAdapter, {
+  getIntent: (intentId, userId) => intentService.getById(intentId, userId),
+  retractPremise: (premiseId, userId, expectedUpdatedAt) => userService.retractPremise(premiseId, userId, expectedUpdatedAt),
+  updateIntentDescription: (intentId, userId, description, expectedUpdatedAt) => userService.updateIntentDescription(intentId, userId, description, expectedUpdatedAt),
+  transitionStatus: async (intentId, userId, status, expectedUpdatedAtMs) => {
+    const result = await intentService.transitionStatus(intentId, userId, status, undefined, expectedUpdatedAtMs);
+    if (result.kind === 'success') return result;
+    if (result.kind === 'conflict') return { kind: 'conflict' as const };
+    if (result.kind === 'stale') return { kind: 'stale' as const };
+    return { kind: 'other' as const };
+  },
+});
+
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(EnrichmentController, new EnrichmentController());
@@ -581,6 +599,7 @@ controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
 controllerInstances.set(AgentController, new AgentController());
+controllerInstances.set(AgentActionController, new AgentActionController(agentActionService));
 const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter, contactService);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));

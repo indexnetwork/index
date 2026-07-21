@@ -250,10 +250,12 @@ export class IntentDatabaseAdapter {
     userId: string;
     status: 'ACTIVE' | 'PAUSED';
     networkScopeId?: string | null;
+    expectedUpdatedAtMs?: number;
   }): Promise<
     | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
     | { kind: 'not_found' }
     | { kind: 'scope_violation' }
+    | { kind: 'stale' }
     | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean }
   > {
     return db.transaction(async (tx) => {
@@ -273,6 +275,10 @@ export class IntentDatabaseAdapter {
         .for('update');
       const current = rows[0];
       if (!current) return { kind: 'not_found' } as const;
+
+      if (input.expectedUpdatedAtMs !== undefined && current.updatedAt.getTime() !== input.expectedUpdatedAtMs) {
+        return { kind: 'stale' } as const;
+      }
 
       if (input.networkScopeId) {
         const scoped = await tx

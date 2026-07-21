@@ -207,6 +207,7 @@ export class IntentService {
     userId: string,
     status: 'ACTIVE' | 'PAUSED',
     networkScopeId?: string | null,
+    expectedUpdatedAtMs?: number,
   ) {
     logger.verbose('Transitioning intent lifecycle', { intentId, userId, status, networkScopeId });
     const result = await this.adapter.transitionIntentLifecycle({
@@ -214,6 +215,7 @@ export class IntentService {
       userId,
       status,
       networkScopeId,
+      expectedUpdatedAtMs,
     });
     if (result.kind !== 'success') return result;
 

@@ -10,6 +10,7 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- Add dark-gated `POST /api/agent/actions/confirm` owner confirmation for reporter cleanup-action proposals (IND-490 PR1). Proposals are persisted with owner/snapshot state, confirmations are session-only, sequential, replay-safe, and use existing premise/intent lifecycle paths; `WEB_AGENT_ACTIONS_ENABLED` remains off everywhere.
 - Add the dark-gated `reporter` persona and owner-scoped `getAgentActivitySummary` adapter read for the PR1 Agent reporting surface (IND-476). The new `report_agent_activity` tool exposes only reproducible counts, never counterparty identity or transcripts; `WEB_AGENT_SURFACE_ENABLED` is registered and surfaced as `features.agentSurface` without changing Railway configuration.
 - Add per-viewer conversation read cursors, server-side unread counts, and `POST /conversations/:id/read` (IND-475; migration `0098`).
 - Record viewer-safe match provenance on start-chat DMs and expose intent-scoped `via` summaries for chat signal provenance (IND-475).

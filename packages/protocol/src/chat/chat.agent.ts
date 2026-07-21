@@ -284,6 +284,7 @@ export class ChatAgent {
       networkId: scopedNetworkId,
       sessionId: context.sessionId,
       contactsEnabled: context.contactsEnabled,
+      actionToolsEnabled: context.actionToolsEnabled,
     });
     if (explicitScope.scopeType && explicitScope.scopeId) {
       resolved.scopeType = explicitScope.scopeType;

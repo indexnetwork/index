@@ -98,3 +98,5 @@ src/lib/limiter/tests/mcp.isolated.ts
 src/lib/limiter/tests/identifier.isolated.ts
 src/queues/tests/discovery-run.queue.deps.isolated.ts
 src/controllers/tests/question.visitmining.isolated.ts
+src/controllers/tests/agent-action.controller.isolated.ts
+src/services/tests/agent-action.service.isolated.ts
