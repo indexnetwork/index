@@ -19,13 +19,20 @@ const mocks = vi.hoisted(() => ({
   apiPatch: vi.fn(),
   addNotification: vi.fn(),
   showError: vi.fn(),
+  signOut: vi.fn(),
+  openLoginModal: vi.fn(),
 }));
 
 vi.mock("@/contexts/AIChatContext", () => ({
   useAIChat: () => mocks.state,
 }));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuthContext: () => ({ isAuthenticated: true, features: { signalAgent: true } }),
+  useAuthContext: () => ({
+    isAuthenticated: true,
+    features: { signalAgent: true },
+    signOut: mocks.signOut,
+    openLoginModal: mocks.openLoginModal,
+  }),
 }));
 vi.mock("@/contexts/IndexesContext", () => ({
   useNetworksState: () => ({
@@ -85,13 +92,15 @@ beforeEach(() => {
   mocks.state.liveQuestions = [];
   mocks.state.isLoading = false;
   mocks.state.startSignalSession.mockReset();
-  mocks.state.sendWebMessage.mockReset();
+  mocks.state.sendWebMessage.mockReset().mockResolvedValue(undefined);
   mocks.state.clearChat.mockReset();
   mocks.answer.mockReset().mockResolvedValue({ success: true, resumed: true });
   mocks.apiPost.mockReset().mockResolvedValue({ intentId: "intent-1" });
   mocks.apiPatch.mockReset().mockResolvedValue({});
   mocks.addNotification.mockReset();
   mocks.showError.mockReset();
+  mocks.signOut.mockReset().mockResolvedValue(undefined);
+  mocks.openLoginModal.mockReset();
 });
 
 describe("guided Signal creation", () => {
@@ -103,7 +112,11 @@ describe("guided Signal creation", () => {
       "new-signal-kickoff",
       undefined,
       undefined,
-      { hidden: true, persona: "signal" },
+      expect.objectContaining({
+        hidden: true,
+        persona: "signal",
+        onError: expect.any(Function),
+      }),
     );
 
     const current = question("question-1");
@@ -126,6 +139,42 @@ describe("guided Signal creation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     await waitFor(() => expect(mocks.answer).toHaveBeenCalledWith("question-1", { selectedOptions: ["A collaborator"] }));
     expect(screen.getByText("A collaborator")).toBeInTheDocument();
+  });
+
+  test("offers an in-page retry when kickoff fails", async () => {
+    mocks.state.sendWebMessage.mockImplementationOnce((...args: unknown[]) => {
+      const options = args[3] as { onError?: (error: unknown) => void } | undefined;
+      options?.onError?.(new Error("network unavailable"));
+      return Promise.resolve();
+    });
+
+    renderPage();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("We couldn't start your signal. Please try again.");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(mocks.state.sendWebMessage).toHaveBeenCalledTimes(2));
+    expect(mocks.state.startSignalSession).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("location")).toHaveTextContent("/i/new");
+  });
+
+  test("redirects expired kickoff sessions to login with an auth error", async () => {
+    const { AuthSessionError } = await import("@/lib/auth-client");
+    mocks.state.sendWebMessage.mockImplementationOnce((...args: unknown[]) => {
+      const options = args[3] as { onError?: (error: unknown) => void } | undefined;
+      options?.onError?.(new AuthSessionError());
+      return Promise.resolve();
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(mocks.showError).toHaveBeenCalledWith(
+      "Session expired",
+      "Please sign in again to start your signal.",
+    ));
+    await waitFor(() => expect(mocks.signOut).toHaveBeenCalledTimes(1));
+    expect(mocks.openLoginModal).toHaveBeenCalledWith(expect.stringContaining("/i/new"));
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
   });
 
   test("shows the proposal confirmation card and confirms through the existing endpoint", async () => {

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useRef } from 
 import { useLocation } from "react-router";
 import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
 import { apiClient } from "@/lib/api";
+import { AuthSessionError, clearJwtToken } from "@/lib/auth-client";
 import type { Suggestion } from "@/hooks/useSuggestions";
 import type { Question } from "@/components/DecisionQuestions/types";
 import type { PendingQuestion } from "@/services/questions";
@@ -123,6 +124,8 @@ export interface ChatSendOptions {
   /** @deprecated Product surfaces should use their dedicated send helper. */
   surface?: "web" | "onboarding";
   existingMessageId?: string;
+  /** Surface-specific recovery hook. Errors remain handled by the shared chat state machine. */
+  onError?: (error: unknown) => void;
 }
 
 interface ChatMessage {
@@ -411,6 +414,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     token: symbol;
     controller: AbortController;
     transport: ChatTransport;
+    assistantMessageId?: string;
     abortReason?: SendAbortReason;
     refreshSidebarWhenStale: boolean;
   };
@@ -425,9 +429,21 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const invalidateActiveSend = useCallback((reason: SendAbortReason, abort = true) => {
     const active = activeSendRef.current;
     if (!active) return;
+    const wasOwner = operationOwnerRef.current === active.token;
     active.abortReason = reason;
     if (abort && !active.controller.signal.aborted) active.controller.abort();
     if (activeSendRef.current === active) activeSendRef.current = null;
+    if (wasOwner) {
+      operationOwnerRef.current = null;
+      setIsLoading(false);
+    }
+    if (active.assistantMessageId) {
+      setMessages((current) => current.map((message) =>
+        message.id === active.assistantMessageId
+          ? { ...message, isStreaming: false }
+          : message,
+      ));
+    }
   }, []);
 
   React.useEffect(() => () => {
@@ -630,6 +646,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
       // Add placeholder for assistant response
       const assistantMessageId = crypto.randomUUID();
+      operation.assistantMessageId = assistantMessageId;
       setMessages((prev) => [
         ...prev,
         {
@@ -642,6 +659,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       ]);
 
       setIsLoading(true);
+      let didNotifyError = false;
+      const notifySendError = (error: unknown) => {
+        if (didNotifyError) return;
+        didNotifyError = true;
+        options?.onError?.(error);
+      };
       /** Local trace buffer scoped to this sendMessage call — avoids cross-message corruption. */
       const streamTraceEvents: TraceEvent[] = [];
       /** Push a trace event to the local buffer and append it to the assistant message. */
@@ -692,6 +715,10 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!response.ok) {
+          if (response.status === 401) {
+            clearJwtToken();
+            throw new AuthSessionError();
+          }
           const failure = await response.json().catch(() => null);
           if (!ownsOperation(operation.token)) return;
           const parsedBlock = parseTurnBlock(failure);
@@ -1176,7 +1203,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       }
                     }
                     break;
-                  case "error":
+                  case "error": {
+                    const streamError = new Error("Chat stream failed");
+                    notifySendError(streamError);
                     setMessages((prev) =>
                       prev.map((msg) =>
                         msg.id === assistantMessageId
@@ -1189,6 +1218,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       ),
                     );
                     break;
+                  }
                 }
               } catch (e) {
                 logger.error("Failed to parse SSE event", { error: e });
@@ -1217,12 +1247,15 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           );
         } else {
           logger.error("Chat error", { error });
+          notifySendError(error);
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMessageId
                 ? {
                     ...msg,
-                    content: "Failed to get response. Please try again.",
+                    content: error instanceof AuthSessionError
+                      ? "Your session expired. Please sign in again."
+                      : "Failed to get response. Please try again.",
                     isStreaming: false,
                   }
                 : msg,
@@ -1230,21 +1263,25 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           );
         }
       } finally {
+        // Every operation owns its placeholder even after losing global state
+        // ownership. Finalize it without touching a successor's loading state.
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, isStreaming: false }
+              : msg,
+          ),
+        );
         if (ownsOperation(operation.token)) {
           operationOwnerRef.current = null;
           if (activeSendRef.current === operation) activeSendRef.current = null;
           setIsLoading(false);
           // Queue drain is handled by the useEffect below (watches isLoading transition to false).
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? { ...msg, isStreaming: false }
-                : msg,
-            ),
-          );
         } else if (activeSendRef.current === operation) {
-          // Local cleanup only; never clear a newer operation's controller or UI state.
+          // No successor owns the active-send slot, so local cleanup may also
+          // release loading. A newer operation always replaces this reference.
           activeSendRef.current = null;
+          setIsLoading(false);
         }
       }
     },

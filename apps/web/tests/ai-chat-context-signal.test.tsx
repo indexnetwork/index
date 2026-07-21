@@ -126,6 +126,7 @@ function Probe() {
       <span data-testid="persona">{chat.sessionPersona ?? 'none'}</span>
       <span data-testid="messages">{chat.messages.map((message) => message.content).join('|')}</span>
       <span data-testid="message-count">{chat.messages.length}</span>
+      <span data-testid="streaming-count">{chat.messages.filter((message) => message.isStreaming).length}</span>
       <span data-testid="block">{chat.turnBlock?.code ?? 'none'}</span>
       <span data-testid="block-message">{chat.turnBlock?.message ?? 'none'}</span>
       <span data-testid="block-action">{chat.turnBlock?.action?.type ?? 'none'}</span>
@@ -322,18 +323,22 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(oldSignal).not.toBe(currentSignal);
     expect(oldSignal.aborted).toBe(true);
     expect(currentSignal.aborted).toBe(false);
+    expect(text('loading')).toBe('yes');
+    expect(text('streaming-count')).toBe('1');
 
     await act(async () => {
       old.resolve(streamResponse({ response: 'old' }));
       await old.promise;
     });
     expect(text('loading')).toBe('yes');
+    expect(text('streaming-count')).toBe('1');
 
     await act(async () => {
       current.resolve(streamResponse({ response: 'new' }));
       await current.promise;
     });
     await waitFor(() => expect(text('loading')).toBe('no'));
+    expect(text('streaming-count')).toBe('0');
     expect(text('messages')).toContain('new');
     expect(text('messages')).not.toContain('old');
   });
