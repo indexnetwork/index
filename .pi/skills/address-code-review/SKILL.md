@@ -25,7 +25,8 @@ Do not silently resolve Copilot conversations.
 
 - The repository uses GitHub pull requests.
 - The `gh` CLI is installed and authenticated.
-- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the PR's user-mediated worktree Pi session** — when this skill runs in the canonical-root session, e.g. via `finish-pr`, give that session one consolidated fix prompt (see `run-worktree-session`); only the reply/resolve happens in the canonical-root session.
+- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the PR's existing visible Herdr-managed Pi worktree session** — when this skill runs in the canonical-root coordinator, e.g. via `finish-pr`, give that session one consolidated fix prompt, poll it directly, and keep reply/resolve operations in the coordinator (see `run-worktree-session`).
+- Do not use hidden `Agent` subagents for code-review fixes, and do not create a watcher process or watcher pane. Reuse one visible Herdr workspace/Pi agent for every review round on the PR.
 - If the user does not provide a PR number, infer it from the current branch.
 
 ## Command safety rule
@@ -127,15 +128,48 @@ If you update `.github/instructions/pr-reviewer.instructions.md`:
 
 ### 4. Apply fixes when needed
 
-When a fix is needed (in the PR's user-mediated worktree Pi session — see Preconditions):
+When a fix is needed, add every actionable thread to one complete prompt for the PR's
+existing visible Herdr-managed Pi session. Include the absolute worktree path, PR head
+branch, exact findings, requested changes, and targeted checks. Before delivery, verify
+the existing agent and read its recent output:
 
-1. Edit the code.
-2. Run targeted tests, lint, typecheck, or a focused verification command when practical.
-3. Commit and push the fix if the user expects the PR to be updated remotely.
-4. Reply to the Copilot review comment with a concise summary of the fix.
-5. Resolve the thread.
+```bash
+herdr agent get "$AGENT_NAME"
+herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
+herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/review-fixes.md)"
+```
 
-When running in the canonical-root session, add all code-review findings to one prompt for the existing worktree session. Once the user returns with the pushed commit, reply (referencing it) and resolve; do not create a separate worktree session for each thread.
+Use `herdr agent prompt` only when no structured question/editor draft is active. The
+coordinator remains active and polls the agent directly:
+
+```bash
+herdr agent wait "$AGENT_NAME" --until blocked --until idle --until done --timeout 30000
+herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
+```
+
+A timeout is a polling checkpoint. Continue until the visible Pi has:
+
+1. verified its cwd and PR head branch;
+2. edited the code;
+3. run targeted tests, lint, typecheck, or another focused check;
+4. committed and pushed the fixes.
+
+For routine implementation questions, inspect the output and answer the recommended or
+safest project-compliant option automatically. Escalate only genuine
+product/architecture ambiguity, destructive operations, external infrastructure
+mutation, credentials/secrets, or merge approval. If a structured prompt is active,
+answer it through targeted pane input instead of appending a new agent prompt:
+
+```bash
+herdr pane read "$PANE_ID" --source visible --lines 120
+herdr pane send-text "$PANE_ID" "<safe answer>"
+herdr pane send-keys "$PANE_ID" enter
+```
+
+After the pushed commit is verified, reply to each affected Copilot comment with a
+concise summary referencing the commit, then resolve the thread. Reuse the same
+workspace, pane, and agent for all review rounds; do not create a worktree/session per
+thread.
 
 Reply to a PR review comment using this exact REST endpoint shape:
 

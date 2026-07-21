@@ -23,6 +23,7 @@ Install the following before cloning the repository.
 | **pgvector** extension | 0.5+ | 2000-dimensional vector similarity search |
 | **Redis** | 6+ | Job queues (BullMQ) and caching |
 | **Git** | 2.30+ | Version control, worktrees |
+| **Herdr** | current CLI | Visible worktree workspaces and Pi sessions |
 
 Install Bun (if not already installed):
 
@@ -361,30 +362,73 @@ This shows all BullMQ job queues, their status, and lets you retry failed jobs o
 
 ## Git workflow
 
-### Worktrees
+### Worktrees and visible Pi sessions
 
-All feature and fix work happens in git worktrees, keeping the main working tree (`dev` branch) stable.
+All feature and fix work happens in Git worktrees, keeping the canonical working tree
+on `dev` and read-only for source changes. Worktrees live in `.worktrees/` (gitignored).
+Use a semantic slash branch such as `feat/my-feature`; its only valid folder is the
+dashed form `feat-my-feature`.
 
-Worktrees live in `.worktrees/` (gitignored). Use a semantic slash branch; the
-session launcher derives the dashed folder and does not accept a separate folder.
+From the canonical root, inspect existing registrations before creating anything:
 
 ```bash
-# Create/reuse the worktree, run setup, and start a named Pi tmux session
-bun run worktree:session -- feat/my-feature
+git worktree list --porcelain
+```
 
-# Inspect the exact no-mutation plan as deterministic JSON
-bun run worktree:session -- feat/my-feature --dry-run --json
+Reuse an existing checkout only when its absolute path and branch match. Otherwise,
+create the semantic branch/worktree, then run the mandatory setup:
 
+```bash
+git fetch origin dev
+git worktree add -b feat/my-feature .worktrees/feat-my-feature origin/dev
+bun run worktree:setup feat-my-feature
+```
+
+For an existing local branch that is not mounted elsewhere, omit `-b`:
+
+```bash
+git worktree add .worktrees/feat-my-feature feat/my-feature
+bun run worktree:setup feat-my-feature
+```
+
+Setup symlinks root `.env*` files into the worktree and installs workspace
+dependencies. Then open or focus the exact checkout in Herdr:
+
+```bash
+herdr worktree open \
+  --path "$PWD/.worktrees/feat-my-feature" \
+  --label feat-my-feature \
+  --focus \
+  --json
+```
+
+Record `.result.workspace.workspace_id` and `.result.root_pane.pane_id` from the JSON.
+If the returned root pane is an interactive shell with no agent, start the stable Pi
+agent named from the dashed folder:
+
+```bash
+herdr agent start feat-my-feature --kind pi --pane <returned-pane-id>
+```
+
+Before mutation, the visible Pi verifies `pwd`, `git branch --show-current`, and
+`git status --short --branch`. The canonical/root Pi sends one complete handoff and
+polls the same agent directly with `herdr agent get`, `herdr agent read`, and
+`herdr agent wait`; it does not create a background watcher. Routine questions are
+answered with the safe/recommended option. Structured prompts are read and answered
+through targeted `herdr pane` text/keys rather than a new agent prompt.
+
+Use one writer per worktree. Parallel work requires separate branches, worktrees,
+Herdr workspaces, and Pi sessions. Reuse the same visible session for review and PR-fix
+rounds. The legacy `bun run worktree:session` helper remains only a fallback when Herdr
+is unavailable.
+
+```bash
 # Start dev servers from the worktree
 bun run worktree:dev feat-my-feature
 
 # List all worktrees and their setup status
 bun run worktree:list
 ```
-
-The launcher invokes `worktree:setup`, which symlinks root `.env*` files into the
-worktree root and installs workspace dependencies. tmux is detached by default; attach
-with `tmux attach-session -t pi-feat-my-feature` or pass `--attach`.
 
 ### Conventional commits
 
