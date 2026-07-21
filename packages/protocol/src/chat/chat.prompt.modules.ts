@@ -32,6 +32,8 @@ export interface IterationContext {
   recentTools: Array<{ name: string; args: Record<string, unknown> }>;
   /** Text of the latest user message (for regex matching). */
   currentMessage?: string;
+  /** Whether an earlier assistant turn visibly contained a valid action proposal. */
+  hasPriorAgentActionProposal?: boolean;
   /** Resolved tool context (user, profile, indexes, etc.). */
   ctx: ResolvedToolContext;
 }

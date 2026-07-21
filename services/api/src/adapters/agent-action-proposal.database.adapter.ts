@@ -16,6 +16,13 @@ export type AgentActionProposalClaim =
   | { kind: 'replay'; result: AgentActionProposalResultRecord[] }
   | { kind: 'claimed'; proposal: AgentActionProposalRow };
 
+export type AgentActionProposalDisplay = {
+  id: string;
+  actions: Array<Omit<AgentActionProposalActionRecord, 'snapshot'>>;
+  status: AgentActionProposalRow['status'];
+  result: AgentActionProposalResultRecord[] | null;
+};
+
 /** Durable proposal storage and single-use claim protocol for Agent actions. */
 export class AgentActionProposalDatabaseAdapter {
   async createProposal(input: CreateAgentActionProposalInput): Promise<void> {
@@ -25,6 +32,25 @@ export class AgentActionProposalDatabaseAdapter {
       ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       actions: input.actions,
     });
+  }
+
+  async getProposal(proposalId: string, userId: string): Promise<AgentActionProposalDisplay | null> {
+    const [proposal] = await db
+      .select()
+      .from(agentActionProposals)
+      .where(and(
+        eq(agentActionProposals.id, proposalId),
+        eq(agentActionProposals.userId, userId),
+      ))
+      .limit(1);
+    if (!proposal) return null;
+
+    return {
+      id: proposal.id,
+      actions: proposal.actions.map(({ snapshot: _snapshot, ...action }) => action),
+      status: proposal.status,
+      result: proposal.result,
+    };
   }
 
   async claimProposal(proposalId: string, userId: string): Promise<AgentActionProposalClaim> {

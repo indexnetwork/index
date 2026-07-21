@@ -71,6 +71,8 @@ const mocks = vi.hoisted(() => {
       networkJoin?: (networkId: string, title: string) => unknown;
       opportunityAccept?: (opportunityId: string, userId: string) => unknown;
       opportunityReject?: (opportunityId: string, userId: string) => unknown;
+      agentActionResolve?: (proposalId: string) => unknown;
+      agentActionConfirm?: (proposalId: string) => unknown;
     },
     proposalStatuses: {} as Record<string, string>,
     injectedCallbacks: {} as {
@@ -188,6 +190,8 @@ vi.mock('@/components/chat/AssistantMessageContent', () => ({
     onOpportunityPrimaryAction,
     onOpportunitySecondaryAction,
     onNetworkJoin,
+    onAgentActionResolve,
+    onAgentActionConfirm,
     OAuthLink,
     intentProposalStatusMap,
   }: {
@@ -198,6 +202,8 @@ vi.mock('@/components/chat/AssistantMessageContent', () => ({
     onOpportunityPrimaryAction?: (opportunityId: string, userId: string) => unknown;
     onOpportunitySecondaryAction?: (opportunityId: string, userId: string) => unknown;
     onNetworkJoin?: (networkId: string, title: string) => unknown;
+    onAgentActionResolve?: (proposalId: string) => unknown;
+    onAgentActionConfirm?: (proposalId: string) => unknown;
     OAuthLink?: ComponentType<{ children?: ReactNode }>;
     intentProposalStatusMap?: Record<string, string>;
   }) => {
@@ -208,6 +214,8 @@ vi.mock('@/components/chat/AssistantMessageContent', () => ({
       networkJoin: onNetworkJoin,
       opportunityAccept: onOpportunityPrimaryAction,
       opportunityReject: onOpportunitySecondaryAction,
+      agentActionResolve: onAgentActionResolve,
+      agentActionConfirm: onAgentActionConfirm,
     };
     mocks.proposalStatuses = intentProposalStatusMap ?? {};
     useEffect(() => {
@@ -1061,6 +1069,36 @@ describe('Read-only surface header (IND-476)', () => {
 
     expect(screen.getByText('Untitled chat')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Back to home' })).not.toBeNull();
+  });
+
+  test('hydrated reporter sessions stay read-only and expose canonical proposal callbacks', async () => {
+    const proposalId = '11111111-1111-4111-8111-111111111111';
+    mocks.chat.messages = [{ id: 'm1', role: 'assistant', content: 'Cleanup request', timestamp: new Date() }];
+    mocks.chat.sessionId = 'reporter-session-1';
+    mocks.chat.sessionPersona = 'reporter';
+    mocks.chat.sessionLoadState = { status: 'ready', targetSessionId: 'reporter-session-1', error: null };
+    mocks.chat.isSessionReady.mockReturnValue(true);
+    mocks.apiClient.get.mockResolvedValue({
+      success: true,
+      proposalId,
+      status: 'pending',
+      actions: [{ type: 'pause_signal', entityId: '22222222-2222-4222-8222-222222222222', currentState: 'ACTIVE', proposedOperation: 'PAUSE_SIGNAL' }],
+      results: null,
+    });
+    mocks.apiClient.post.mockResolvedValue({ success: true, proposalId, status: 'replayed', results: [] });
+
+    renderWithRouter(<ChatContent sessionIdParam="reporter-session-1" />, { route: '/d/reporter-session-1' });
+
+    await waitFor(() => expect(mocks.assistantCallbacks.agentActionResolve).toBeTypeOf('function'));
+    expect(mocks.assistantCallbacks.opportunityAccept).toBeUndefined();
+    expect(mocks.assistantCallbacks.opportunityReject).toBeUndefined();
+    expect(mocks.assistantCallbacks.approve).toBeUndefined();
+    expect(mocks.assistantCallbacks.networkJoin).toBeUndefined();
+
+    await mocks.assistantCallbacks.agentActionResolve?.(proposalId);
+    expect(mocks.apiClient.get).toHaveBeenCalledWith(`/agent/actions/proposals/${proposalId}`);
+    await mocks.assistantCallbacks.agentActionConfirm?.(proposalId);
+    expect(mocks.apiClient.post).toHaveBeenCalledWith('/agent/actions/confirm', { proposalId });
   });
 
   test('reporter surface sends with an established URL-less session', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, Loader2, RotateCcw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -43,8 +43,17 @@ export interface AgentActionConfirmationResponse {
   results: AgentActionProposalResult[];
 }
 
+export interface AgentActionProposalResolutionResponse {
+  success: true;
+  proposalId: string;
+  status: "pending" | "executing" | "consumed";
+  actions: AgentActionProposalAction[];
+  results: AgentActionProposalResult[] | null;
+}
+
 interface AgentActionProposalCardProps {
   card: AgentActionProposalData;
+  onResolve?: (proposalId: string) => Promise<AgentActionProposalResolutionResponse>;
   onConfirm?: (proposalId: string) => Promise<AgentActionConfirmationResponse>;
 }
 
@@ -88,10 +97,29 @@ function errorIsRetryable(error: unknown): boolean {
  * owner confirmation callback, which receives the proposal id and nothing from
  * the display payload.
  */
-export default function AgentActionProposalCard({ card, onConfirm }: AgentActionProposalCardProps) {
+export default function AgentActionProposalCard({ card, onResolve, onConfirm }: AgentActionProposalCardProps) {
+  const [canonicalProposal, setCanonicalProposal] = useState<AgentActionProposalResolutionResponse | null>(null);
+  const [resolutionState, setResolutionState] = useState<"loading" | "ready" | "missing">(onResolve ? "loading" : "missing");
   const [confirmation, setConfirmation] = useState<AgentActionConfirmationResponse | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<"retryable" | "failed" | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!onResolve) return () => { active = false; };
+    void onResolve(card.proposalId)
+      .then((resolved) => {
+        if (!active) return;
+        setCanonicalProposal(resolved);
+        setResolutionState("ready");
+      })
+      .catch(() => {
+        if (!active) return;
+        setCanonicalProposal(null);
+        setResolutionState("missing");
+      });
+    return () => { active = false; };
+  }, [card.proposalId, onResolve]);
 
   const handleConfirm = useCallback(async () => {
     if (!onConfirm || confirming) return;
@@ -105,6 +133,11 @@ export default function AgentActionProposalCard({ card, onConfirm }: AgentAction
       setConfirming(false);
     }
   }, [card.proposalId, confirming, onConfirm]);
+
+  if (resolutionState === "loading") return <AgentActionProposalSkeleton />;
+  if (resolutionState === "missing" || !canonicalProposal) return null;
+  const existingResults = confirmation?.results ?? canonicalProposal.results ?? [];
+  const showingPreviouslyConsumed = !confirmation && canonicalProposal.status === "consumed";
 
   return (
     <div
@@ -132,7 +165,7 @@ export default function AgentActionProposalCard({ card, onConfirm }: AgentAction
       </div>
 
       <ol className="divide-y divide-gray-100">
-        {card.actions.map((action) => (
+        {canonicalProposal.actions.map((action) => (
           <li key={`${action.type}-${action.entityId}`} className="px-4 py-3 text-xs text-gray-700">
             <div className="flex items-start justify-between gap-3">
               <span className="font-medium text-gray-900">{actionLabel(action.type)}</span>
@@ -143,7 +176,13 @@ export default function AgentActionProposalCard({ card, onConfirm }: AgentAction
             <div className="mt-1 font-ibm-plex-mono text-[10px] text-gray-500">
               {action.entityId} · current state: {action.currentState}
             </div>
-            {action.reason && <p className="mt-1 text-gray-500">{action.reason}</p>}
+            {action.type === "narrow_signal" && action.description && (
+              <p className="mt-2 text-gray-800">
+                <span className="font-medium">Replacement signal:</span> {action.description}
+              </p>
+            )}
+            {action.evidence && <p className="mt-1 text-gray-500"><span className="font-medium">Evidence:</span> {action.evidence}</p>}
+            {action.reason && <p className="mt-1 text-gray-500"><span className="font-medium">Reason:</span> {action.reason}</p>}
           </li>
         ))}
       </ol>
@@ -161,10 +200,12 @@ export default function AgentActionProposalCard({ card, onConfirm }: AgentAction
       {confirmation && (
         <div className="border-t border-green-100 bg-green-50 px-4 py-3 text-xs text-green-800" role="status">
           <div className="font-medium">
-            {confirmation.status === "replayed" ? "Already confirmed — replayed safely." : "Confirmed safely."}
+            {confirmation?.status === "replayed" || showingPreviouslyConsumed
+              ? "Already confirmed — replayed safely."
+              : "Confirmed safely."}
           </div>
           <ul className="mt-2 space-y-1">
-            {confirmation.results.map((result, index) => (
+            {existingResults.map((result, index) => (
               <li key={`${result.type}-${result.entityId}-${index}`}>
                 {result.operation}: {result.previousState} → {result.resultingState} ({result.outcome})
                 {result.reason ? ` — ${result.reason}` : ""}

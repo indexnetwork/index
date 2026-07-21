@@ -1,5 +1,5 @@
 import type { AgentActionProposalResultRecord, AgentActionProposalRow } from '../schemas/database.schema';
-import type { AgentActionProposalDatabaseAdapter } from '../adapters/agent-action-proposal.database.adapter';
+import type { AgentActionProposalDatabaseAdapter, AgentActionProposalDisplay } from '../adapters/agent-action-proposal.database.adapter';
 import { chatDatabaseAdapter, type ChatDatabaseAdapter } from '../adapters/database.adapter';
 
 export type AgentActionPauseResult =
@@ -28,13 +28,31 @@ export type AgentActionConfirmResult = {
   results: AgentActionProposalResultRecord[];
 };
 
+export type AgentActionProposalReadResult = {
+  proposalId: string;
+  status: AgentActionProposalDisplay['status'];
+  actions: AgentActionProposalDisplay['actions'];
+  results: AgentActionProposalResultRecord[] | null;
+};
+
 /** Executes owner-confirmed reporter cleanup proposals through existing paths. */
 export class AgentActionService {
   constructor(
-    private readonly proposals: Pick<AgentActionProposalDatabaseAdapter, 'claimProposal' | 'consumeProposal'>,
+    private readonly proposals: Pick<AgentActionProposalDatabaseAdapter, 'getProposal' | 'claimProposal' | 'consumeProposal'>,
     private readonly runtime: AgentActionRuntime,
     private readonly premises: Pick<ChatDatabaseAdapter, 'getPremise'> = chatDatabaseAdapter,
   ) {}
+
+  async readProposal(userId: string, proposalId: string): Promise<AgentActionProposalReadResult | null> {
+    const proposal = await this.proposals.getProposal(proposalId, userId);
+    if (!proposal) return null;
+    return {
+      proposalId: proposal.id,
+      status: proposal.status,
+      actions: proposal.actions,
+      results: proposal.status === 'consumed' ? proposal.result ?? [] : null,
+    };
+  }
 
   async confirm(userId: string, proposalId: string): Promise<
     | { kind: 'not_found' }

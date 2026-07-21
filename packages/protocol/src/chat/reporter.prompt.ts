@@ -20,20 +20,25 @@ export function isReporterBriefingKickoff(message?: string): boolean {
   return normalized === REPORTER_BRIEFING_KICKOFF;
 }
 
-/** Recognizes a short natural-language acknowledgement of a visible request. */
-export function isReporterActionConfirmation(message?: string): boolean {
+/** Recognizes a short acknowledgement only when a prior proposal is visible. */
+export function isReporterActionConfirmation(message?: string, hasPriorProposal = false): boolean {
   const normalized = message?.trim().toLocaleLowerCase()
     .replace(/[.!?,;:]+$/g, "")
     .replace(/\s+/g, " ");
-  if (!normalized) return false;
+  if (!normalized || !hasPriorProposal) return false;
   return new Set([
     "i confirm",
     "confirm",
+    "confirm it",
     "approve",
     "approved",
+    "approve it",
     "i approve",
     "yes",
     "yes i confirm",
+    "yes please",
+    "please do it",
+    "proceed",
     "go ahead",
   ]).has(normalized);
 }
@@ -54,7 +59,10 @@ Do not claim a metric unless it appears in a tool result from this turn. If a se
 
 function buildTurnGuidance(iterCtx?: IterationContext): string {
   const currentMessage = iterCtx?.currentMessage;
-  const confirmation = isReporterActionConfirmation(currentMessage);
+  const confirmation = isReporterActionConfirmation(
+    currentMessage,
+    iterCtx?.hasPriorAgentActionProposal === true,
+  );
   return `
 
 ## Turn discipline

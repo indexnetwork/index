@@ -17,6 +17,8 @@ import { Timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import { deduplicateQuestions } from "./chat.question-dedup.js";
 
+const AGENT_ACTION_PROPOSAL_FENCE_PATTERN = /```agent_action_proposal\s*\n([\s\S]*?)\n```/g;
+
 const logger = protocolLogger("ChatAgent");
 
 // Re-export for external consumers
@@ -262,6 +264,42 @@ export class ChatAgent {
   }
 
   /**
+   * Detects a prior visible action proposal without considering current-turn
+   * tool calls. The reporter uses this only to make typed confirmation
+   * language contextual rather than executable on its own.
+   */
+  static hasPriorAgentActionProposal(messages: BaseMessage[]): boolean {
+    let currentHumanIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]._getType() === "human") {
+        currentHumanIndex = index;
+        break;
+      }
+    }
+    if (currentHumanIndex < 0) return false;
+
+    for (let index = 0; index < currentHumanIndex; index += 1) {
+      const message = messages[index];
+      if (message._getType() !== "ai" || typeof message.content !== "string") continue;
+      AGENT_ACTION_PROPOSAL_FENCE_PATTERN.lastIndex = 0;
+      for (const match of message.content.matchAll(AGENT_ACTION_PROPOSAL_FENCE_PATTERN)) {
+        try {
+          const payload = JSON.parse(match[1]) as { proposalId?: unknown; actions?: unknown };
+          if (
+            typeof payload.proposalId === "string"
+            && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.proposalId)
+            && Array.isArray(payload.actions)
+            && payload.actions.length > 0
+          ) return true;
+        } catch {
+          // An invalid prior fence is not visible proposal context.
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
    * Async factory: creates a ChatAgent with resolved user/index context.
    * Resolves user/network identity from DB during tool initialization.
    *
@@ -309,6 +347,7 @@ export class ChatAgent {
     const iterCtx: IterationContext = {
       recentTools: extractRecentToolCalls(messages),
       currentMessage: ChatAgent.getCurrentUserMessage(messages),
+      hasPriorAgentActionProposal: ChatAgent.hasPriorAgentActionProposal(messages),
       ctx: this.resolvedContext,
     };
     const systemContent = this.persona.buildSystemContent(this.resolvedContext, iterCtx);
@@ -895,6 +934,7 @@ export class ChatAgent {
       const iterCtx: IterationContext = {
         recentTools: extractRecentToolCalls(messages),
         currentMessage: ChatAgent.getCurrentUserMessage(messages),
+        hasPriorAgentActionProposal: ChatAgent.hasPriorAgentActionProposal(messages),
         ctx: this.resolvedContext,
       };
       const systemContent = this.persona.buildSystemContent(this.resolvedContext, iterCtx);

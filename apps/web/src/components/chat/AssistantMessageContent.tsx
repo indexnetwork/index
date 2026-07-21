@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import { Loader2 } from "lucide-react";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import IntentProposalCard, { type IntentProposalData, IntentProposalSkeleton } from "@/components/chat/IntentProposalCard";
-import AgentActionProposalCard, { AgentActionProposalSkeleton, type AgentActionConfirmationResponse, type AgentActionProposalData } from "@/components/chat/AgentActionProposalCard";
+import AgentActionProposalCard, { AgentActionProposalSkeleton, type AgentActionConfirmationResponse, type AgentActionProposalData, type AgentActionProposalResolutionResponse } from "@/components/chat/AgentActionProposalCard";
 import NetworksPanel from "@/components/chat/NetworksPanel";
 import { cn } from "@/lib/utils";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
@@ -234,6 +234,7 @@ export interface AssistantMessageContentProps {
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
+  onAgentActionResolve?: (proposalId: string) => Promise<AgentActionProposalResolutionResponse>;
   onAgentActionConfirm?: (proposalId: string) => Promise<AgentActionConfirmationResponse>;
   OAuthLink?: ComponentType<ComponentPropsWithoutRef<"a">>;
   onNetworkJoin?: (networkId: string, networkTitle: string) => void;
@@ -257,6 +258,7 @@ export default function AssistantMessageContent({
   onIntentProposalReject,
   onIntentProposalUndo,
   intentProposalStatusMap,
+  onAgentActionResolve,
   onAgentActionConfirm,
   OAuthLink,
   onNetworkJoin,
@@ -333,6 +335,7 @@ export default function AssistantMessageContent({
             <div key={segment.data.proposalId} className="my-3">
               <AgentActionProposalCard
                 card={segment.data}
+                onResolve={onAgentActionResolve}
                 onConfirm={onAgentActionConfirm}
               />
             </div>

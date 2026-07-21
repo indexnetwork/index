@@ -123,12 +123,19 @@ describe("REPORTER_PERSONA", () => {
     const followUp = buildReporterSystemContent(context(), {
       iteration: 1,
       currentMessage: "I confirm",
+      hasPriorAgentActionProposal: true,
     } as never);
-    expect(isReporterActionConfirmation("I confirm")).toBe(true);
-    expect(isReporterActionConfirmation("yes.")).toBe(true);
-    expect(isReporterActionConfirmation("yes, what happened today?")).toBe(false);
+    expect(isReporterActionConfirmation("I confirm")).toBe(false);
+    expect(isReporterActionConfirmation("yes.")).toBe(false);
+    expect(isReporterActionConfirmation("yes", true)).toBe(true);
+    for (const phrase of ["confirm it", "yes please", "please do it", "approve it", "proceed"]) {
+      expect(isReporterActionConfirmation(phrase, true)).toBe(true);
+    }
+    expect(isReporterActionConfirmation("yes, what happened today?", true)).toBe(false);
     expect(followUp).toContain("answer only the user's current request");
     expect(followUp).toContain("Do not call report_agent_activity or propose_cleanup_actions");
+    expect(buildReporterSystemContent(context(), { iteration: 1, currentMessage: "yes" } as never))
+      .not.toContain("visible proposal card's Confirm control");
     expect(followUp).toContain("visible proposal card's Confirm control");
 
     const ordinary = buildReporterSystemContent(context(), {

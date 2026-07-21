@@ -32,6 +32,30 @@ function intent(status: 'ACTIVE' | 'PAUSED' = 'ACTIVE') {
 }
 
 describe('AgentActionService isolated confirmation', () => {
+  it('reads only the owner-scoped canonical display fields', async () => {
+    const proposal = {
+      id: '77777777-7777-4777-8777-777777777777',
+      status: 'consumed' as const,
+      actions: [{ type: 'narrow_signal' as const, entityId: 'intent-1', currentState: 'ACTIVE', proposedOperation: 'NARROW_SIGNAL', description: 'Canonical replacement' }],
+      result: [{ type: 'narrow_signal' as const, entityId: 'intent-1', operation: 'NARROW_SIGNAL', previousState: 'ACTIVE', resultingState: 'ACTIVE', outcome: 'applied' as const }],
+    };
+    const getProposal = mock(async (proposalId: string, userId: string) => (
+      proposalId === proposal.id && userId === USER_ID ? proposal : null
+    ));
+    const service = new AgentActionService(
+      { getProposal, claimProposal: mock(async () => ({ kind: 'missing' as const })), consumeProposal: mock(async () => {}) },
+      { getIntent: mock(async () => null), retractPremise: mock(async () => 'not_found' as const), updateIntentDescription: mock(async () => 'not_found' as const), transitionStatus: mock(async () => ({ kind: 'other' as const })) } as never,
+      { getPremise: mock(async () => null) },
+    );
+
+    await expect(service.readProposal(USER_ID, proposal.id)).resolves.toEqual({
+      proposalId: proposal.id,
+      status: 'consumed',
+      actions: proposal.actions,
+      results: proposal.result,
+    });
+    await expect(service.readProposal('other-user', proposal.id)).resolves.toBeNull();
+  });
   it('retracts both owner premises and replays the stored result', async () => {
     const rows = new Map([[PREMISE_A, premise(PREMISE_A)], [PREMISE_B, premise(PREMISE_B)]]);
     const proposal = {
@@ -48,6 +72,7 @@ describe('AgentActionService isolated confirmation', () => {
     let consumed: unknown[] = [];
     const claim = mock(async () => ({ kind: 'claimed' as const, proposal }));
     const proposals = {
+      getProposal: mock(async () => null),
       claimProposal: claim,
       consumeProposal: mock(async (_id: string, _user: string, result: unknown[]) => { consumed = result; }),
     };
@@ -88,7 +113,7 @@ describe('AgentActionService isolated confirmation', () => {
       ],
     };
     const service = new AgentActionService(
-      { claimProposal: mock(async () => ({ kind: 'claimed' as const, proposal })), consumeProposal: mock(async () => {}) },
+      { getProposal: mock(async () => null), claimProposal: mock(async () => ({ kind: 'claimed' as const, proposal })), consumeProposal: mock(async () => {}) },
       { getIntent: mock(async () => intent()), retractPremise: mock(async () => 'not_found' as const), updateIntentDescription: mock(async () => 'applied' as const), transitionStatus: mock(async () => ({ kind: 'success' as const, status: 'PAUSED' as const, changed: true, lifecycleVersionMs: 1, id: INTENT_ID })) },
       { getPremise: mock(async (id: string) => rows.get(id) ?? null) },
     );
@@ -103,6 +128,7 @@ describe('AgentActionService isolated confirmation', () => {
     const transitionStatus = mock(async () => ({ kind: 'success' as const, status: 'PAUSED' as const, changed: true, lifecycleVersionMs: 1, id: INTENT_ID }));
     const updateIntentDescription = mock(async () => 'applied' as const);
     const proposals = {
+      getProposal: mock(async () => null),
       claimProposal: mock(async () => ({ kind: 'claimed' as const, proposal: {
         proposalId: '66666666-6666-4666-8666-666666666666', userId: USER_ID,
         actions: [

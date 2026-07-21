@@ -20,6 +20,20 @@ const fence = (id = proposalId) => [
   "```",
 ].join("\n");
 
+const canonicalResponse = {
+  success: true as const,
+  proposalId,
+  status: "pending" as const,
+  actions: [{
+    type: "pause_signal" as const,
+    entityId,
+    currentState: "ACTIVE",
+    proposedOperation: "PAUSE_SIGNAL",
+    skipped: false,
+  }],
+  results: null,
+};
+
 const response = {
   success: true as const,
   proposalId,
@@ -35,7 +49,7 @@ const response = {
 };
 
 describe("AssistantMessageContent agent action proposals", () => {
-  it("renders a valid proposal fence as one card, including persisted content", () => {
+  it("renders a valid proposal fence as one card, including persisted content", async () => {
     const live = parseAllBlocks(fence());
     const persisted = parseAllBlocks(fence());
     expect(live).toEqual(persisted);
@@ -45,11 +59,12 @@ describe("AssistantMessageContent agent action proposals", () => {
       <AssistantMessageContent
         content={`${fence()}\n\n${fence()}`}
         isStreaming={false}
+        onAgentActionResolve={vi.fn().mockResolvedValue(canonicalResponse)}
         onAgentActionConfirm={vi.fn().mockResolvedValue(response)}
       />,
     );
 
-    expect(screen.getByTestId("agent-action-proposal-card")).toBeInTheDocument();
+    expect(await screen.findByTestId("agent-action-proposal-card")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Confirm" })).toHaveLength(1);
     expect(screen.queryByText(/agent_action_proposal/)).not.toBeInTheDocument();
   });
@@ -91,11 +106,12 @@ describe("AssistantMessageContent agent action proposals", () => {
       <AssistantMessageContent
         content={fence()}
         isStreaming={false}
+        onAgentActionResolve={vi.fn().mockResolvedValue(canonicalResponse)}
         onAgentActionConfirm={onConfirm}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(proposalId));
     expect(await screen.findByRole("status")).toHaveTextContent(/Confirmed safely/);
     expect(screen.getByText(/ACTIVE → PAUSED/)).toBeInTheDocument();

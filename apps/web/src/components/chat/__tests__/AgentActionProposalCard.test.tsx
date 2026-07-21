@@ -13,6 +13,14 @@ const card: AgentActionProposalData = {
   }],
 };
 
+const resolved = (actions = card.actions, status: "pending" | "consumed" = "pending") => ({
+  success: true as const,
+  proposalId: card.proposalId,
+  status,
+  actions,
+  results: status === "consumed" ? result("consumed").results : null,
+});
+
 const result = (status: "consumed" | "replayed") => ({
   success: true as const,
   proposalId: card.proposalId,
@@ -32,8 +40,9 @@ describe("AgentActionProposalCard", () => {
     const onConfirm = vi.fn()
       .mockResolvedValueOnce(result("consumed"))
       .mockResolvedValueOnce(result("replayed"));
-    render(<AgentActionProposalCard card={card} onConfirm={onConfirm} />);
+    render(<AgentActionProposalCard card={card} onResolve={vi.fn().mockResolvedValue(resolved())} onConfirm={onConfirm} />);
 
+    await screen.findByRole("button", { name: "Confirm" });
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     await screen.findByText("Confirmed safely.");
     fireEvent.click(screen.getByRole("button", { name: "Confirm again" }));
@@ -41,12 +50,25 @@ describe("AgentActionProposalCard", () => {
     expect(await screen.findByText(/Already confirmed — replayed safely/)).toBeInTheDocument();
   });
 
+  it("renders the canonical narrow-signal replacement text", async () => {
+    const narrowAction = {
+      type: "narrow_signal" as const,
+      entityId: card.actions[0].entityId,
+      currentState: "ACTIVE",
+      proposedOperation: "NARROW_SIGNAL",
+      description: "Find local product collaborators",
+    };
+    render(<AgentActionProposalCard card={{ ...card, actions: [narrowAction] }} onResolve={vi.fn().mockResolvedValue(resolved([narrowAction]))} onConfirm={vi.fn()} />);
+
+    expect(await screen.findByText("Find local product collaborators")).toBeInTheDocument();
+  });
+
   it("renders a retryable error and retries", async () => {
     const error = Object.assign(new Error("in progress"), { status: 409 });
     const onConfirm = vi.fn().mockRejectedValueOnce(error).mockResolvedValueOnce(result("replayed"));
-    render(<AgentActionProposalCard card={card} onConfirm={onConfirm} />);
+    render(<AgentActionProposalCard card={card} onResolve={vi.fn().mockResolvedValue(resolved())} onConfirm={onConfirm} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/still in progress/);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("status")).toHaveTextContent(/replayed safely/);
