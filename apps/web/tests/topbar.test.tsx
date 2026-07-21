@@ -13,7 +13,7 @@ import TopBar from '@/components/TopBar';
 
 const mocks = vi.hoisted(() => ({
   questionsState: { personalAgentPending: 0 },
-  conversations: [] as Array<{ unreadCount: number }>,
+  conversations: [] as Array<Record<string, unknown>>,
   navigate: vi.fn(),
 }));
 
@@ -56,6 +56,30 @@ vi.mock('@/components/UserAvatar', () => ({
   default: () => <div data-testid="avatar" />,
 }));
 
+function conversationSummary(
+  id: string,
+  unreadCount: number,
+  participantTypes: Array<'user' | 'agent'> = ['user', 'user'],
+  persona = 'orchestrator',
+) {
+  return {
+    id,
+    persona,
+    participants: participantTypes.map((participantType, index) => ({
+      participantId: `${participantType}-${index}`,
+      participantType,
+      name: null,
+      avatar: null,
+    })),
+    lastMessage: null,
+    metadata: null,
+    via: [],
+    unreadCount,
+    lastMessageAt: null,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 function renderTopBar(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
@@ -77,14 +101,36 @@ describe('TopBar Personal Agent badge', () => {
     expect(screen.getByRole('button', { name: /^Agent$/ })).toBeInTheDocument();
   });
 
-  test('chat badge counts unread threads', () => {
-    mocks.conversations = [{ unreadCount: 2 }, { unreadCount: 1 }, { unreadCount: 0 }];
+  test('chat badge counts visible unread H2H threads rather than unread messages', () => {
+    mocks.conversations = [
+      conversationSummary('visible-1', 12),
+      conversationSummary('visible-2', 1),
+      conversationSummary('read', 0),
+    ];
     renderTopBar();
     expect(screen.getByTestId('chat-unread-badge')).toHaveTextContent('2');
   });
 
-  test('chat badge disappears when all threads are read', () => {
-    mocks.conversations = [{ unreadCount: 0 }];
+  test('chat badge excludes sidebar-hidden persona sessions', () => {
+    mocks.conversations = [
+      // H2H rows also inherit the orchestrator default, so participant topology
+      // rather than persona determines whether a conversation is visible.
+      conversationSummary('visible-h2h', 1, ['user', 'user'], 'orchestrator'),
+      conversationSummary('signal', 1, ['user', 'agent'], 'signal'),
+      conversationSummary('reporter', 1, ['user', 'agent'], 'reporter'),
+      conversationSummary('negotiator', 1, ['user', 'agent'], 'negotiator'),
+      conversationSummary('legacy-orchestrator', 1, ['user', 'agent'], 'orchestrator'),
+      conversationSummary('hidden-group', 1, ['user', 'user', 'user'], 'orchestrator'),
+    ];
+    renderTopBar();
+    expect(screen.getByTestId('chat-unread-badge')).toHaveTextContent('1');
+  });
+
+  test('chat badge disappears when all visible threads are read', () => {
+    mocks.conversations = [
+      conversationSummary('read-h2h', 0),
+      conversationSummary('unread-signal', 3, ['user', 'agent'], 'signal'),
+    ];
     renderTopBar();
     expect(screen.queryByTestId('chat-unread-badge')).toBeNull();
   });

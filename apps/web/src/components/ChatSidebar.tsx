@@ -4,6 +4,7 @@ import { MoreHorizontal, Trash2 } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
+import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 
 type NegotiationStatus = 'accepted' | 'rejected' | 'in_progress' | null;
 
@@ -16,6 +17,7 @@ interface RecentChat {
   lastMessageIsInternal: boolean;
   viaTitle?: string;
   unreadCount: number;
+  showUnreadCount: boolean;
   negotiationStatus: NegotiationStatus;
   sortTimestamp: number;
 }
@@ -72,10 +74,7 @@ export default function ChatSidebar() {
   }, [user?.id, refreshConversations, refreshNegotiations]);
 
   const filteredConversations = mode === 'h2h'
-    ? conversations.filter((conv) => {
-        const participants = conv.participants ?? [];
-        return participants.length === 2 && participants.every((p) => p.participantType === 'user');
-      })
+    ? conversations.filter(isVisibleH2HConversation)
     // Negotiations with zero messages are orphaned conversation rows (no turns
     // ever landed, or the task parked and never completed) — hide them.
     // Still show ones whose only content is an internal assessment.reasoning.
@@ -107,6 +106,7 @@ export default function ChatSidebar() {
         lastMessage: preview,
         lastMessageIsInternal: !messageText && !!reasoningText,
         unreadCount: conv.unreadCount,
+        showUnreadCount: false,
         negotiationStatus,
         sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
@@ -122,6 +122,7 @@ export default function ChatSidebar() {
       lastMessageIsInternal: false,
       viaTitle: conv.via?.[0]?.title,
       unreadCount: conv.unreadCount,
+      showUnreadCount: conv.unreadCount > 0,
       negotiationStatus: null,
       sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
     };
@@ -186,7 +187,7 @@ export default function ChatSidebar() {
                 >
                   <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={28} className="flex-shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className={`truncate text-sm flex items-center gap-1.5 ${chat.unreadCount > 0 ? 'font-bold' : 'font-medium'} text-black`}>
+                    <p className={`truncate text-sm flex items-center gap-1.5 ${chat.showUnreadCount ? 'font-bold' : 'font-medium'} text-black`}>
                       {chat.negotiationStatus && (
                         <span
                           className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[chat.negotiationStatus].cls}`}
@@ -195,7 +196,7 @@ export default function ChatSidebar() {
                         />
                       )}
                       <span className="truncate">{chat.name}</span>
-                      {chat.unreadCount > 0 && (
+                      {chat.showUnreadCount && (
                         <span
                           data-testid={`chat-unread-${chat.groupId}`}
                           aria-label={`${chat.unreadCount} unread message${chat.unreadCount === 1 ? '' : 's'}`}

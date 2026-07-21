@@ -9,6 +9,7 @@ import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useQuestions } from '@/contexts/QuestionsContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import UserAvatar from '@/components/UserAvatar';
+import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('TopBar');
@@ -28,7 +29,9 @@ export default function TopBar() {
   const { setSelectedNetworkIds } = useNetworkFilter();
   const { personalAgentPending } = useQuestions();
   const { conversations } = useConversation();
-  const unreadConversationCount = conversations.filter((conversation) => conversation.unreadCount > 0).length;
+  const unreadConversationCount = conversations.filter(
+    (conversation) => isVisibleH2HConversation(conversation) && conversation.unreadCount > 0,
+  ).length;
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
