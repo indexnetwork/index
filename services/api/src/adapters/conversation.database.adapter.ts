@@ -1,4 +1,4 @@
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, opportunities, or, sql } from './database.shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { acquireNegotiationAttemptLock, qualifyingNegotiationAttemptTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
@@ -251,7 +251,7 @@ export class ConversationDatabaseAdapter {
     // Everything below only needs `ids` — run the lookups in one parallel
     // wave instead of sequential round trips; this method is on the chat
     // sidebar's critical path (GET /conversations and /conversations/negotiations).
-    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta] = await Promise.all([
+    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta, unreadRows] = await Promise.all([
       db
         .select()
         .from(schema.conversations)
@@ -305,7 +305,36 @@ export class ConversationDatabaseAdapter {
         .select()
         .from(schema.conversationMetadata)
         .where(inArray(schema.conversationMetadata.conversationId, ids)),
+      // Count only messages from other participants after this viewer's
+      // participant-scoped read cursor. An inner join makes missing viewer
+      // participant rows a defensive zero rather than counting everything.
+      db
+        .select({
+          conversationId: schema.messages.conversationId,
+          unreadCount: count(schema.messages.id),
+        })
+        .from(schema.messages)
+        .innerJoin(
+          schema.conversationParticipants,
+          and(
+            eq(schema.conversationParticipants.conversationId, schema.messages.conversationId),
+            eq(schema.conversationParticipants.participantId, userId),
+          ),
+        )
+        .where(and(
+          inArray(schema.messages.conversationId, ids),
+          ne(schema.messages.senderId, userId),
+          or(
+            isNull(schema.conversationParticipants.lastReadAt),
+            gt(schema.messages.createdAt, schema.conversationParticipants.lastReadAt),
+          ),
+        ))
+        .groupBy(schema.messages.conversationId),
     ]);
+
+    const unreadCountByConv = new Map(
+      unreadRows.map((row) => [row.conversationId, Number(row.unreadCount)]),
+    );
 
     // Resolve user names/avatars for participants
     const userIds = [...new Set(allParticipants.filter(p => p.participantType === 'user').map(p => p.participantId))];
@@ -440,6 +469,7 @@ export class ConversationDatabaseAdapter {
       lastMessage: lastMessageByConv.get(c.id) ?? null,
       metadata: metaByConv.get(c.id) ?? null,
       via: viaByConv.get(c.id) ?? [],
+      unreadCount: unreadCountByConv.get(c.id) ?? 0,
     }));
   }
 
@@ -870,9 +900,26 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Marks a conversation read for a specific participant.
+   * @param userId - The participant marking the conversation read
+   * @param conversationId - Conversation ID
+   */
+  async markConversationRead(userId: string, conversationId: string): Promise<void> {
+    await db
+      .update(schema.conversationParticipants)
+      .set({ lastReadAt: new Date() })
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, conversationId),
+          eq(schema.conversationParticipants.participantId, userId),
+        ),
+      );
+  }
+
+  /**
    * Hides a conversation for a specific user by setting hiddenAt.
    * @param userId - The user hiding the conversation
-   * @param conversationId - Conversation ID
+   * @param conversationId - The conversation to hide
    */
   async hideConversation(userId: string, conversationId: string): Promise<void> {
     await db

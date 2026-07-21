@@ -199,6 +199,49 @@ describe('ConversationDatabaseAdapter', () => {
     }, 30000);
   });
 
+  describe('unread tracking', () => {
+    it('counts only counterpart messages and clears only the viewer cursor', async () => {
+      const viewerId = `unread-viewer-${Date.now()}`;
+      const peerId = `unread-peer-${Date.now()}`;
+      const dm = await adapter.getOrCreateDM(viewerId, peerId);
+      createdIds.push(dm.id);
+
+      await adapter.createMessage({
+        conversationId: dm.id,
+        senderId: peerId,
+        role: 'user',
+        parts: [{ text: 'counterpart message' }],
+      });
+      await adapter.createMessage({
+        conversationId: dm.id,
+        senderId: viewerId,
+        role: 'user',
+        parts: [{ text: 'own message' }],
+      });
+
+      let summary = (await adapter.getConversationsForUser(viewerId)).find((conversation) => conversation.id === dm.id);
+      expect(summary?.unreadCount).toBe(1);
+
+      await adapter.markConversationRead(viewerId, dm.id);
+      const marked = await adapter.getConversation(dm.id);
+      expect(marked?.participants.find((p) => p.participantId === viewerId)?.lastReadAt).not.toBeNull();
+      expect(marked?.participants.find((p) => p.participantId === peerId)?.lastReadAt).toBeNull();
+
+      summary = (await adapter.getConversationsForUser(viewerId)).find((conversation) => conversation.id === dm.id);
+      expect(summary?.unreadCount).toBe(0);
+
+      await adapter.createMessage({
+        conversationId: dm.id,
+        senderId: peerId,
+        role: 'user',
+        parts: [{ text: 'new counterpart message' }],
+      });
+      summary = (await adapter.getConversationsForUser(viewerId)).find((conversation) => conversation.id === dm.id);
+      expect(summary?.unreadCount).toBe(1);
+    }, 20000);
+
+  });
+
   describe('hideConversation', () => {
     it('sets hiddenAt on participant', async () => {
       await adapter.hideConversation('test-user-1', createdIds[0]);

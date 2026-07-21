@@ -85,6 +85,17 @@ describe('ConversationService', () => {
       ).rejects.toThrow(/not a participant/i);
     }, 15000);
 
+    it('should reject markConversationRead for non-participant', async () => {
+      const conv = await conversationService.createConversation([
+        { participantId: 'read-auth-user-a', participantType: 'user' },
+      ]);
+      cleanupIds.push(conv.id);
+
+      await expect(
+        conversationService.markConversationRead('non-participant-user', conv.id),
+      ).rejects.toThrow(/not a participant/i);
+    }, 15000);
+
     it('should reject hideConversation for non-participant', async () => {
       const conv = await conversationService.createConversation([
         { participantId: 'auth-user-a', participantType: 'user' },

@@ -172,6 +172,20 @@ export class ConversationService {
   }
 
   /**
+   * Marks a conversation read for a specific participant.
+   * @param userId - The participant marking the conversation read (must be a participant)
+   * @param conversationId - Conversation ID
+   * @throws Error if userId is not a participant
+   */
+  async markConversationRead(userId: string, conversationId: string) {
+    await this.verifyParticipant(userId, conversationId);
+    const participantId = await this.db.isParticipant(conversationId, userId)
+      ? userId
+      : `agent:${userId}`;
+    return this.db.markConversationRead(participantId, conversationId);
+  }
+
+  /**
    * Hides a conversation for a specific user by setting hiddenAt.
    * @param userId - The user hiding the conversation (must be a participant)
    * @param conversationId - Conversation ID
