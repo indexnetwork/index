@@ -13,11 +13,13 @@ const logger = log.context.from('AuthContext');
 /**
  * Server-driven feature flags returned alongside the user on GET /auth/me
  * (sibling of `user`, not part of it). `negotiatorChat` gates the pinned
- * Personal Agent entry; `signalAgent` gates the main-web Signal cutover.
+ * Personal Agent entry; `signalAgent` gates the main-web Signal cutover;
+ * `agentSurface` gates the read-only Reporter Agent surface.
  */
 export type UserFeatures = {
   negotiatorChat?: boolean;
   signalAgent?: boolean;
+  agentSurface?: boolean;
 };
 
 type AuthContextType = {

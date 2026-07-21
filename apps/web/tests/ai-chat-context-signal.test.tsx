@@ -96,6 +96,9 @@ function Probe() {
       if (resolvedSessionId) setResolutionTarget(resolvedSessionId);
     });
   };
+  const resolveReporter = () => {
+    void chat.resolveIntentSession({ id: 'reporter-scope', label: 'Reporter scope' }, 'reporter');
+  };
   return (
     <div>
       <button onClick={() => void chat.sendWebMessage('first', undefined, undefined, { persona: 'signal' })}>
@@ -107,6 +110,8 @@ function Probe() {
       <button onClick={() => chat.clearChat()}>clear</button>
       <button onClick={() => chat.clearChat({ abortStream: false })}>clear detached</button>
       <button onClick={() => chat.startSignalSession()}>start signal</button>
+      <button onClick={() => chat.startReporterSession()}>start reporter</button>
+      <button onClick={() => void chat.sendWebMessage('reporter message')}>reporter message</button>
       <button onClick={() => void chat.loadSession('session-a')}>load a</button>
       <button onClick={() => void chat.loadSession('session-b')}>load b</button>
       <button onClick={() => void chat.loadSession('old-session')}>load old</button>
@@ -115,6 +120,7 @@ function Probe() {
       </button>
       <button onClick={() => resolveIntent('intent-a')}>resolve intent a</button>
       <button onClick={() => resolveIntent('intent-b')}>resolve intent b</button>
+      <button onClick={resolveReporter}>resolve reporter</button>
       <button onClick={() => chat.submitMidStreamMessage('queued follow-up', [])}>queue follow-up</button>
       <span data-testid="session">{chat.sessionId ?? 'none'}</span>
       <span data-testid="persona">{chat.sessionPersona ?? 'none'}</span>
@@ -179,6 +185,24 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'compatibility' }));
     await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(3));
     expect(mocks.apiClient.stream.mock.calls[2]?.[0]).toBe('/chat/stream');
+  });
+
+  test('reporter sessions resolve on the web route and forced sends use web transport', async () => {
+    mocks.apiClient.post.mockResolvedValueOnce({ session: { id: 'reporter-scope' } });
+    mocks.apiClient.stream.mockResolvedValueOnce(streamResponse({ sessionId: 'reporter-session', persona: 'reporter' }));
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'resolve reporter' }));
+    await waitFor(() => expect(mocks.apiClient.post).toHaveBeenCalledWith(
+      '/chat/web/session/resolve',
+      expect.objectContaining({ persona: 'reporter' }),
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'reporter message' }));
+    await waitFor(() => expect(text('session')).toBe('reporter-session'));
+    expect(mocks.apiClient.stream.mock.calls[0]?.[0]).toBe('/chat/web/stream');
+    expect(mocks.apiClient.stream.mock.calls[0]?.[1]).toMatchObject({ persona: 'reporter' });
   });
 
   test('onboarding sends use the dedicated server-clamped route', async () => {

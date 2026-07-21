@@ -119,7 +119,7 @@ export interface QueuedMessage {
 export interface ChatSendOptions {
   hidden?: boolean;
   prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
-  persona?: "signal";
+  persona?: "signal" | "reporter";
   /** @deprecated Product surfaces should use their dedicated send helper. */
   surface?: "web" | "onboarding";
   existingMessageId?: string;
@@ -192,7 +192,7 @@ interface AIChatContextType {
   /** Resolve or create the stable persona session for an intent scope. */
   resolveIntentSession: (
     intent: { id: string; label?: string },
-    persona?: "signal",
+    persona?: "signal" | "reporter",
   ) => Promise<string | null>;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
@@ -225,6 +225,8 @@ interface AIChatContextType {
   clearChat: (options?: { abortStream?: boolean; preserveForcedPersona?: boolean }) => void;
   /** Clear the current chat and force the next new web session to request Signal. */
   startSignalSession: () => void;
+  /** Start a fresh main-web reporter session. */
+  startReporterSession: () => void;
   /** Load a session, returning false for failed or superseded requests. */
   loadSession: (sessionId: string) => Promise<boolean>;
   /** Observable target-specific load state for disabling route interactions until ready. */
@@ -380,7 +382,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [sessionPersona, setSessionPersona] = useState<string | null>(null);
   const [turnBlock, setTurnBlock] = useState<ChatTurnBlock | null>(null);
-  const forceSignalNextSessionRef = useRef(false);
+  const forcePersonaNextSessionRef = useRef<"signal" | "reporter" | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionLoadState, setSessionLoadState] = useState<ChatSessionLoadState>({
@@ -444,7 +446,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const resolveIntentSession = useCallback(async (
     intent: { id: string; label?: string },
-    persona?: "signal",
+    persona?: "signal" | "reporter",
   ): Promise<string | null> => {
     const resolutionToken = Symbol(`resolve-intent-session:${intent.id}`);
     intentResolutionOwnerRef.current = resolutionToken;
@@ -574,10 +576,14 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       if (!displayContent) return;
 
       const requestedPersona = options?.persona
-        ?? (!sessionId && forceSignalNextSessionRef.current ? "signal" : undefined);
+        ?? (!sessionId ? forcePersonaNextSessionRef.current ?? undefined : undefined);
       const effectiveTransport: ChatTransport = transport === "onboarding"
         ? "onboarding"
-        : transport === "web" || requestedPersona === "signal" || sessionPersona === "signal"
+        : transport === "web"
+          || requestedPersona === "signal"
+          || requestedPersona === "reporter"
+          || sessionPersona === "signal"
+          || sessionPersona === "reporter"
           ? "web"
           : "compatibility";
 
@@ -701,7 +707,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           // mark it route-ready so the ensuing /d/:id navigation never reloads
           // or briefly replaces it with a loading shell.
           setSessionLoadState({ status: "ready", targetSessionId: newSessionId, error: null });
-          forceSignalNextSessionRef.current = false;
+          forcePersonaNextSessionRef.current = null;
           // The scope selected at session creation becomes the session's bound scope.
           if (chatScope) {
             setSessionScope(chatScope);
@@ -1242,7 +1248,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const transport: ChatTransport = options?.surface === "onboarding"
       ? "onboarding"
-      : options?.surface === "web" || options?.persona === "signal" || sessionPersona === "signal"
+      : options?.surface === "web"
+        || options?.persona === "signal"
+        || options?.persona === "reporter"
+        || sessionPersona === "signal"
+        || sessionPersona === "reporter"
         ? "web"
         : "compatibility";
     return sendMessageWithTransport(transport, message, fileIds, attachmentNames, options);
@@ -1337,7 +1347,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setSessionTitle(null);
     setSessionPersona(null);
     if (!options?.preserveForcedPersona) {
-      forceSignalNextSessionRef.current = false;
+      forcePersonaNextSessionRef.current = null;
     }
     setTurnBlock(null);
     setSessionScope(null); // Clear session-bound scope so new chat can use UI selection
@@ -1346,7 +1356,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const startSignalSession = useCallback(() => {
     clearChat();
-    forceSignalNextSessionRef.current = true;
+    forcePersonaNextSessionRef.current = "signal";
+  }, [clearChat]);
+
+  const startReporterSession = useCallback(() => {
+    clearChat();
+    forcePersonaNextSessionRef.current = "reporter";
   }, [clearChat]);
 
   const loadSession = useCallback(async (id: string): Promise<boolean> => {
@@ -1366,7 +1381,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setSessionNetworkId(null);
     setMessages([]);
     setSuggestions([]);
-    forceSignalNextSessionRef.current = false;
+    forcePersonaNextSessionRef.current = null;
 
     interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
     interruptTimeoutsRef.current.clear();
@@ -1511,6 +1526,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         sendOnboardingMessage,
         clearChat,
         startSignalSession,
+        startReporterSession,
         loadSession,
         sessionLoadState,
         isSessionReady,

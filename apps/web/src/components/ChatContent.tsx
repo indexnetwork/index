@@ -27,7 +27,7 @@ import remarkGfm from "remark-gfm";
 import { useNetworkFilter } from "@/contexts/IndexFilterContext";
 import { useNetworksState } from "@/contexts/IndexesContext";
 import { apiClient } from "@/lib/api";
-import { useSuggestions } from "@/hooks/useSuggestions";
+import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
@@ -54,8 +54,16 @@ interface HomeIntent {
 
 interface ChatContentProps {
   sessionIdParam?: string | null;
+  persona?: "signal" | "reporter";
+  readOnlySurface?: boolean;
+  suggestionOverride?: Suggestion[];
 }
-export default function ChatContent({ sessionIdParam }: ChatContentProps) {
+export default function ChatContent({
+  sessionIdParam,
+  persona,
+  readOnlySurface = false,
+  suggestionOverride,
+}: ChatContentProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const sessionIdFromUrl = sessionIdParam ?? null;
@@ -85,6 +93,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   } = useAIChat();
   const { features } = useAuthContext();
   const signalAgentEnabled = features?.signalAgent === true;
+  const reporterSurface = persona === "reporter";
   const routedSessionReady = !sessionIdFromUrl
     || isSessionReady(sessionIdFromUrl)
     || (sessionId === sessionIdFromUrl && sessionLoadState.status === "idle");
@@ -516,10 +525,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       navigatingToHomeRef.current = false;
       return;
     }
+    if (reporterSurface) return;
     if (sessionId && !sessionIdFromUrl) {
       navigate(`/d/${sessionId}`);
     }
-  }, [sessionId, sessionIdFromUrl, navigate]);
+  }, [reporterSurface, sessionId, sessionIdFromUrl, navigate]);
 
   const archiveProposalIntent = useCallback(
     async (proposalId: string, intentId: string) => {
@@ -723,7 +733,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         msgContent,
         fileArg,
         nameArg,
-        !sessionId && signalAgentEnabled ? { persona: "signal" as const } : undefined,
+        !sessionId && persona
+          ? { persona }
+          : !sessionId && signalAgentEnabled
+            ? { persona: "signal" as const }
+            : undefined,
       );
     }
     inputRef.current?.focus();
@@ -1078,6 +1092,13 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
           </div>
           <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
+            {reporterSurface && (
+              <SuggestionChips
+                suggestions={suggestionOverride ?? []}
+                disabled={isUploadingFiles}
+                onSuggestionClick={handleSuggestionClick}
+              />
+            )}
             {turnBlock ? renderContinuationPanel() : (
             <form
               onSubmit={handleSubmit}
@@ -1133,7 +1154,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   autoFocus
                   inputRef={inputRef}
                 />
-                {renderScopeDropdown()}
+                {!reporterSurface && renderScopeDropdown()}
                 {isLoading ? (
                   <Button
                     type="button"
@@ -1159,7 +1180,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             </form>
             )}
           </div>
-          {signalAgentEnabled && (
+          {signalAgentEnabled && !reporterSurface && (
             <button
               type="button"
               onClick={() => navigate("/i/new")}
@@ -1172,15 +1193,17 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               </span>
             </button>
           )}
-          <div className="mt-8">
-            <IntentList
-              intents={homeIntents}
-              isLoading={homeIntentsLoading}
-              emptyMessage="No signals yet"
-              onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
-              onArchiveIntent={turnBlock ? undefined : handleArchiveHomeIntent}
-            />
-          </div>
+          {!reporterSurface && (
+            <div className="mt-8">
+              <IntentList
+                intents={homeIntents}
+                isLoading={homeIntentsLoading}
+                emptyMessage="No signals yet"
+                onIntentClick={(intent) => navigate(`/i/${intent.id}`)}
+                onArchiveIntent={turnBlock ? undefined : handleArchiveHomeIntent}
+              />
+            </div>
+          )}
         </ContentContainer>
       </div>
     );
@@ -1192,7 +1215,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   return (
     <>
-      {!legacyOrchestratorReadOnly && inviteModalElement}
+      {!legacyOrchestratorReadOnly && !readOnlySurface && inviteModalElement}
       {/* Sticky header - full width, min-h-17 matches ChatView header height */}
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-17">
         <button
@@ -1208,7 +1231,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        {isEditingTitle && !legacyOrchestratorReadOnly ? (
+        {isEditingTitle && !legacyOrchestratorReadOnly && !readOnlySurface ? (
           <input
             ref={titleInputRef}
             type="text"
@@ -1232,14 +1255,14 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             <button
               type="button"
               onClick={startEditingTitle}
-              disabled={!sessionId || legacyOrchestratorReadOnly}
+              disabled={!sessionId || legacyOrchestratorReadOnly || readOnlySurface}
               className="text-left font-bold font-ibm-plex-mono text-lg text-black truncate hover:text-gray-700 disabled:pointer-events-none focus:outline-none rounded"
             >
               {displayTitle}
             </button>
             {sessionId && (
               <>
-                {!legacyOrchestratorReadOnly && (
+                {!legacyOrchestratorReadOnly && !readOnlySurface && (
                   <>
                     <button
                       type="button"
@@ -1356,7 +1379,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           <AssistantMessageContent
                             content={msg.content}
                             isStreaming={msg.isStreaming ?? false}
-                            onOpportunityPrimaryAction={legacyOrchestratorReadOnly ? undefined : (
+                            onOpportunityPrimaryAction={legacyOrchestratorReadOnly || readOnlySurface ? undefined : (
                               oppId,
                               userId,
                               viewerRole,
@@ -1373,7 +1396,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                                 isGhost,
                               );
                             }}
-                            onOpportunitySecondaryAction={legacyOrchestratorReadOnly ? undefined : (
+                            onOpportunitySecondaryAction={legacyOrchestratorReadOnly || readOnlySurface ? undefined : (
                               oppId,
                               userId,
                               viewerRole,
@@ -1392,12 +1415,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             }}
                             opportunityLoadingMap={opportunityActionLoading}
                             currentStatusMap={opportunityStatusMap}
-                            onIntentProposalApprove={legacyOrchestratorReadOnly ? undefined : handleIntentProposalApprove}
-                            onIntentProposalReject={legacyOrchestratorReadOnly ? undefined : handleIntentProposalReject}
-                            onIntentProposalUndo={legacyOrchestratorReadOnly ? undefined : handleIntentProposalUndo}
+                            onIntentProposalApprove={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleIntentProposalApprove}
+                            onIntentProposalReject={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleIntentProposalReject}
+                            onIntentProposalUndo={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
-                            OAuthLink={legacyOrchestratorReadOnly ? undefined : OAuthLink}
-                            onNetworkJoin={legacyOrchestratorReadOnly ? undefined : handleNetworkJoin}
+                            OAuthLink={legacyOrchestratorReadOnly || readOnlySurface ? undefined : OAuthLink}
+                            onNetworkJoin={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleNetworkJoin}
                             networkPanelPendingJoinIds={networkPanelPendingJoinIds}
                           />
                         </article>
@@ -1467,7 +1490,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             key={draft.opportunityId}
                             card={cardData}
                             currentStatus={cardStatus}
-                            onPrimaryAction={legacyOrchestratorReadOnly ? undefined : (oppId, userId) => {
+                            onPrimaryAction={legacyOrchestratorReadOnly || readOnlySurface ? undefined : (oppId, userId) => {
                               if (mutationsBlockedRef.current) return;
                               return handleStreamingDraftStartChat(oppId, userId);
                             }}
@@ -1479,6 +1502,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   )}
                 {msg.role === "assistant" &&
                   !legacyOrchestratorReadOnly &&
+                  !readOnlySurface &&
                   msg.decisionQuestions &&
                   msg.decisionQuestions.length > 0 && (
                     <DecisionQuestions
@@ -1500,6 +1524,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   )}
                 {msg.role === "assistant" &&
                   !legacyOrchestratorReadOnly &&
+                  !readOnlySurface &&
                   injectedByMessageId.has(msg.id) && (
                     <InjectedQuestions
                       questions={injectedByMessageId.get(msg.id)!}
@@ -1509,7 +1534,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   )}
               </div>
             ))}
-            {!legacyOrchestratorReadOnly && injectedByMessageId.has(null) && (
+            {!legacyOrchestratorReadOnly && !readOnlySurface && injectedByMessageId.has(null) && (
               <div data-testid={isNegotiatorDm ? "negotiator-question-inbox" : undefined}>
                 {isNegotiatorDm && (
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mt-4 mb-2">
@@ -1537,7 +1562,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             ) : (
               <>
                 <SuggestionChips
-                  suggestions={suggestions}
+                  suggestions={suggestionOverride ?? suggestions}
                   disabled={isUploadingFiles}
                   onSuggestionClick={handleSuggestionClick}
                 />

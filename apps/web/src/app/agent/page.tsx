@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
 import ChatContent from "@/components/ChatContent";
+import AgentReporterSurface from "@/components/AgentReporterSurface";
 import NegotiatorMemoryPanel from "@/components/NegotiatorMemoryPanel";
 import { ContentContainer } from "@/components/layout";
 
@@ -19,7 +20,7 @@ import { ContentContainer } from "@/components/layout";
 export default function AgentPage() {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab?: string }>();
-  const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
+  const { user, isAuthenticated, isLoading: authLoading, features } = useAuthContext();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -54,7 +55,7 @@ export default function AgentPage() {
 
   return (
     <ClientLayout>
-      <ChatContent />
+      {features?.agentSurface === true ? <AgentReporterSurface /> : <ChatContent />}
     </ClientLayout>
   );
 }
