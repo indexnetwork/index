@@ -956,6 +956,20 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
+  /**
+   * Record that the intent's first background discovery run completed
+   * successfully. Idempotent: only stamps when the column is still null, so
+   * later re-discovery (pool answers, lifecycle resumes) never rewrites the
+   * original completion time. Read-side "warming" derivation clears on this
+   * stamp instead of waiting out the 24-hour freshness window (IND-482).
+   */
+  async markIntentFirstDiscoverySucceeded(intentId: string): Promise<void> {
+    await db
+      .update(intents)
+      .set({ firstDiscoverySucceededAt: new Date() })
+      .where(and(eq(intents.id, intentId), isNull(intents.firstDiscoverySucceededAt)));
+  }
+
   async getNetworkMemberContext(networkId: string, userId: string) {
     const rows = await db
       .select({
