@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Hide the generic chat session title bar ("Untitled chat", back/rename/share controls) on read-only surfaces like the `/agent` reporter, which renders its own header (IND-476). Test config now resolves the reporter kickoff marker from protocol source so web tests no longer depend on a built `packages/protocol/dist`.
+
 ### Added
 
 - Add the flag-gated read-only Reporter Agent surface on `/agent` (IND-476): opening briefings use the shared reporter kickoff marker, status counts use fetched signals and pending questions, and suggested asks route through the reporter persona.
