@@ -110,6 +110,11 @@ export default function AgentActionProposalCard({ card, onResolve, onConfirm }: 
     void onResolve(card.proposalId)
       .then((resolved) => {
         if (!active) return;
+        if (resolved.proposalId !== card.proposalId) {
+          setCanonicalProposal(null);
+          setResolutionState("missing");
+          return;
+        }
         setCanonicalProposal(resolved);
         setResolutionState("ready");
       })
@@ -138,6 +143,7 @@ export default function AgentActionProposalCard({ card, onResolve, onConfirm }: 
   if (resolutionState === "missing" || !canonicalProposal) return null;
   const existingResults = confirmation?.results ?? canonicalProposal.results ?? [];
   const showingPreviouslyConsumed = !confirmation && canonicalProposal.status === "consumed";
+  const hasConfirmed = confirmation !== null || canonicalProposal.status === "consumed";
 
   return (
     <div
@@ -158,8 +164,8 @@ export default function AgentActionProposalCard({ card, onResolve, onConfirm }: 
             disabled={confirming}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#041729] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#16334a] disabled:cursor-wait disabled:opacity-60"
           >
-            {confirming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : confirmation ? <RotateCcw className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
-            {confirming ? "Confirming…" : confirmation ? "Confirm again" : "Confirm"}
+            {confirming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : hasConfirmed ? <RotateCcw className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+            {confirming ? "Confirming…" : hasConfirmed ? "Confirm again" : "Confirm"}
           </button>
         )}
       </div>
@@ -197,12 +203,14 @@ export default function AgentActionProposalCard({ card, onResolve, onConfirm }: 
         </div>
       )}
 
-      {confirmation && (
+      {hasConfirmed && (
         <div className="border-t border-green-100 bg-green-50 px-4 py-3 text-xs text-green-800" role="status">
           <div className="font-medium">
-            {confirmation?.status === "replayed" || showingPreviouslyConsumed
+            {confirmation?.status === "replayed"
               ? "Already confirmed — replayed safely."
-              : "Confirmed safely."}
+              : showingPreviouslyConsumed
+                ? "Already confirmed."
+                : "Confirmed safely."}
           </div>
           <ul className="mt-2 space-y-1">
             {existingResults.map((result, index) => (

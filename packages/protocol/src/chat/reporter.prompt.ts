@@ -43,6 +43,15 @@ export function isReporterActionConfirmation(message?: string, hasPriorProposal 
   ]).has(normalized);
 }
 
+/** Deterministic reporter response for contextual typed acknowledgements. */
+export function resolveReporterDeterministicResponse(iterCtx: IterationContext): string | null {
+  if (!isReporterActionConfirmation(
+    iterCtx.currentMessage,
+    iterCtx.hasPriorAgentActionProposal === true,
+  )) return null;
+  return "Use the visible proposal card's Confirm control to approve this request. I won't run or recreate it from a chat acknowledgement.";
+}
+
 function buildBriefingGuidance(iterCtx?: IterationContext): string {
   if (!isReporterBriefingKickoff(iterCtx?.currentMessage)) return "";
 

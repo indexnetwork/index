@@ -14,7 +14,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Add the reporter cleanup-action proposal card for strict `agent_action_proposal` fences, session-only owner confirmation, idempotent replay results, and inert malformed/partial payload handling (IND-493).
+- Add the reporter cleanup-action proposal card for strict `agent_action_proposal` fences, canonical owner-scoped hydration before rendering or confirmation, exact narrow-signal replacement copy, hydrated reporter-session read-only safety, idempotent replay results, and inert malformed/partial payload handling (IND-493).
 - Add the flag-gated read-only Reporter Agent surface on `/agent` (IND-476): opening briefings use the shared reporter kickoff marker, status counts use fetched signals and pending questions, and suggested asks route through the reporter persona.
 - Add unread indicators to conversation rows and a thread-count badge to the Chats navigation entry, with mark-read wiring for open threads (IND-475).
 - Add viewer-scoped `via:` signal chips, client-rendered match-seeded openers, and optional inbox provenance subtitles for human match threads (IND-475).

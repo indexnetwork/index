@@ -115,6 +115,10 @@ export default function ChatContent({
   const mutationsBlocked = legacyOrchestratorReadOnly
     || routeSessionMismatch
     || (Boolean(sessionIdFromUrl) && !routedSessionReady);
+  const reporterActionsAllowed = reporterSurface
+    && effectiveReadOnlySurface
+    && !routeSessionMismatch
+    && routedSessionReady;
   const mutationsBlockedRef = useRef(mutationsBlocked);
   const routeSessionIdRef = useRef(sessionIdFromUrl);
   const inMemorySessionIdRef = useRef(sessionId);
@@ -1440,8 +1444,8 @@ export default function ChatContent({
                             onIntentProposalReject={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalReject}
                             onIntentProposalUndo={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
-                            onAgentActionResolve={reporterSurface && effectiveReadOnlySurface ? handleAgentActionResolve : undefined}
-                            onAgentActionConfirm={reporterSurface && effectiveReadOnlySurface ? handleAgentActionConfirm : undefined}
+                            onAgentActionResolve={reporterActionsAllowed ? handleAgentActionResolve : undefined}
+                            onAgentActionConfirm={reporterActionsAllowed ? handleAgentActionConfirm : undefined}
                             OAuthLink={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : OAuthLink}
                             onNetworkJoin={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleNetworkJoin}
                             networkPanelPendingJoinIds={networkPanelPendingJoinIds}

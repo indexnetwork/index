@@ -10,7 +10,7 @@ const ConfirmSchema = z.object({
   proposalId: z.string().uuid('proposalId must be a UUID'),
 }).strict();
 
-/** Session-only confirmation endpoint for gated reporter cleanup proposals. */
+/** Session-only canonical reads and confirmations for gated reporter cleanup proposals. */
 @Controller('/agent/actions')
 export class AgentActionController {
   constructor(

@@ -43,6 +43,7 @@ export class AgentActionService {
     private readonly premises: Pick<ChatDatabaseAdapter, 'getPremise'> = chatDatabaseAdapter,
   ) {}
 
+  /** Returns canonical display-safe proposal state for the authenticated owner. */
   async readProposal(userId: string, proposalId: string): Promise<AgentActionProposalReadResult | null> {
     const proposal = await this.proposals.getProposal(proposalId, userId);
     if (!proposal) return null;

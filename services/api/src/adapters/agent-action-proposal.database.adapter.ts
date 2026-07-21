@@ -23,6 +23,34 @@ export type AgentActionProposalDisplay = {
   result: AgentActionProposalResultRecord[] | null;
 };
 
+function toDisplayAction(
+  action: AgentActionProposalActionRecord,
+): AgentActionProposalDisplay['actions'][number] {
+  return {
+    type: action.type,
+    entityId: action.entityId,
+    currentState: action.currentState,
+    proposedOperation: action.proposedOperation,
+    ...(action.evidence !== undefined ? { evidence: action.evidence } : {}),
+    ...(action.skipped !== undefined ? { skipped: action.skipped } : {}),
+    ...(action.reason !== undefined ? { reason: action.reason } : {}),
+    ...(action.description !== undefined ? { description: action.description } : {}),
+  };
+}
+
+function toDisplayResult(result: AgentActionProposalResultRecord): AgentActionProposalResultRecord {
+  return {
+    type: result.type,
+    entityId: result.entityId,
+    operation: result.operation,
+    previousState: result.previousState,
+    resultingState: result.resultingState,
+    ...(result.evidence !== undefined ? { evidence: result.evidence } : {}),
+    outcome: result.outcome,
+    ...(result.reason !== undefined ? { reason: result.reason } : {}),
+  };
+}
+
 /** Durable proposal storage and single-use claim protocol for Agent actions. */
 export class AgentActionProposalDatabaseAdapter {
   async createProposal(input: CreateAgentActionProposalInput): Promise<void> {
@@ -34,6 +62,7 @@ export class AgentActionProposalDatabaseAdapter {
     });
   }
 
+  /** Returns one owner-scoped proposal projected to display-safe fields. */
   async getProposal(proposalId: string, userId: string): Promise<AgentActionProposalDisplay | null> {
     const [proposal] = await db
       .select()
@@ -47,9 +76,9 @@ export class AgentActionProposalDatabaseAdapter {
 
     return {
       id: proposal.id,
-      actions: proposal.actions.map(({ snapshot: _snapshot, ...action }) => action),
+      actions: proposal.actions.map(toDisplayAction),
       status: proposal.status,
-      result: proposal.result,
+      result: proposal.result?.map(toDisplayResult) ?? null,
     };
   }
 

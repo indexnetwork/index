@@ -18,6 +18,50 @@ import { requestContext } from "../shared/observability/request-context.js";
 import { deduplicateQuestions } from "./chat.question-dedup.js";
 
 const AGENT_ACTION_PROPOSAL_FENCE_PATTERN = /```agent_action_proposal\s*\n([\s\S]*?)\n```/g;
+const AGENT_ACTION_PROPOSAL_KEYS = new Set(["proposalId", "actions"]);
+const AGENT_ACTION_KEYS = new Set([
+  "type",
+  "entityId",
+  "currentState",
+  "proposedOperation",
+  "skipped",
+  "reason",
+  "description",
+  "evidence",
+]);
+const AGENT_ACTION_OPERATIONS = {
+  retract_premise: "RETRACT_PREMISE",
+  narrow_signal: "NARROW_SIGNAL",
+  pause_signal: "PAUSE_SIGNAL",
+} as const;
+
+function isVisibleAgentActionProposal(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const proposal = payload as Record<string, unknown>;
+  if (Object.keys(proposal).some((key) => !AGENT_ACTION_PROPOSAL_KEYS.has(key))) return false;
+  if (
+    typeof proposal.proposalId !== "string"
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(proposal.proposalId)
+    || !Array.isArray(proposal.actions)
+    || proposal.actions.length < 1
+    || proposal.actions.length > 5
+  ) return false;
+
+  return proposal.actions.every((rawAction) => {
+    if (!rawAction || typeof rawAction !== "object" || Array.isArray(rawAction)) return false;
+    const action = rawAction as Record<string, unknown>;
+    if (Object.keys(action).some((key) => !AGENT_ACTION_KEYS.has(key))) return false;
+    if (typeof action.type !== "string" || !(action.type in AGENT_ACTION_OPERATIONS)) return false;
+    const type = action.type as keyof typeof AGENT_ACTION_OPERATIONS;
+    if (action.proposedOperation !== AGENT_ACTION_OPERATIONS[type]) return false;
+    if (typeof action.entityId !== "string" || !action.entityId.trim()) return false;
+    if (typeof action.currentState !== "string" || !action.currentState.trim()) return false;
+    if (action.skipped !== undefined && typeof action.skipped !== "boolean") return false;
+    return ["reason", "description", "evidence"].every(
+      (key) => action[key] === undefined || typeof action[key] === "string",
+    );
+  });
+}
 
 const logger = protocolLogger("ChatAgent");
 
@@ -284,13 +328,7 @@ export class ChatAgent {
       AGENT_ACTION_PROPOSAL_FENCE_PATTERN.lastIndex = 0;
       for (const match of message.content.matchAll(AGENT_ACTION_PROPOSAL_FENCE_PATTERN)) {
         try {
-          const payload = JSON.parse(match[1]) as { proposalId?: unknown; actions?: unknown };
-          if (
-            typeof payload.proposalId === "string"
-            && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.proposalId)
-            && Array.isArray(payload.actions)
-            && payload.actions.length > 0
-          ) return true;
+          if (isVisibleAgentActionProposal(JSON.parse(match[1]))) return true;
         } catch {
           // An invalid prior fence is not visible proposal context.
         }
@@ -350,6 +388,18 @@ export class ChatAgent {
       hasPriorAgentActionProposal: ChatAgent.hasPriorAgentActionProposal(messages),
       ctx: this.resolvedContext,
     };
+    const deterministicResponse = this.persona.resolveDeterministicResponse?.(
+      this.resolvedContext,
+      iterCtx,
+    );
+    if (deterministicResponse !== undefined && deterministicResponse !== null) {
+      const response = new AIMessage(deterministicResponse);
+      return {
+        shouldContinue: false,
+        responseText: deterministicResponse,
+        messages: [...messages, response],
+      };
+    }
     const systemContent = this.persona.buildSystemContent(this.resolvedContext, iterCtx);
 
     const fullMessages: BaseMessage[] = [
@@ -937,6 +987,26 @@ export class ChatAgent {
         hasPriorAgentActionProposal: ChatAgent.hasPriorAgentActionProposal(messages),
         ctx: this.resolvedContext,
       };
+      const deterministicResponse = this.persona.resolveDeterministicResponse?.(
+        this.resolvedContext,
+        iterCtx,
+      );
+      if (deterministicResponse !== undefined && deterministicResponse !== null) {
+        emit({ type: "text_chunk", content: deterministicResponse });
+        messages = [...messages, new AIMessage(deterministicResponse)];
+        iterationCount++;
+        return {
+          responseText: deterministicResponse,
+          messages,
+          iterationCount,
+          debugMeta: {
+            graph: "agent_loop",
+            iterations: iterationCount,
+            tools: toolsDebug,
+            llm,
+          },
+        };
+      }
       const systemContent = this.persona.buildSystemContent(this.resolvedContext, iterCtx);
       const fullMessages: BaseMessage[] = [
         new SystemMessage(systemContent),

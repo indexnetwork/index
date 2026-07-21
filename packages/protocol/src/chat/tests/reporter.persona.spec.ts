@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from "bun:test";
 
 import { ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import { REPORTER_BRIEFING_KICKOFF, REPORTER_PERSONA, REPORTER_PERSONA_ID, REPORTER_TOOL_NAMES, filterReporterTools, narrowReporterTools } from "../reporter.persona.js";
-import { buildReporterSystemContent, isReporterActionConfirmation, isReporterBriefingKickoff } from "../reporter.prompt.js";
+import { buildReporterSystemContent, isReporterActionConfirmation, isReporterBriefingKickoff, resolveReporterDeterministicResponse } from "../reporter.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 import type { UserDatabase } from "../../shared/interfaces/database.interface.js";
 
@@ -85,6 +85,15 @@ describe("REPORTER_PERSONA", () => {
       createIntentCallback: false,
       hallucinationRecovery: false,
     });
+    expect(REPORTER_PERSONA.resolveDeterministicResponse?.(context(), {
+      iteration: 1,
+      currentMessage: "yes",
+      hasPriorAgentActionProposal: true,
+    } as never)).toBe(resolveReporterDeterministicResponse({
+      iteration: 1,
+      currentMessage: "yes",
+      hasPriorAgentActionProposal: true,
+    } as never));
   });
 
   it("pins the exact positive allowlist", () => {
@@ -127,8 +136,21 @@ describe("REPORTER_PERSONA", () => {
     } as never);
     expect(isReporterActionConfirmation("I confirm")).toBe(false);
     expect(isReporterActionConfirmation("yes.")).toBe(false);
-    expect(isReporterActionConfirmation("yes", true)).toBe(true);
-    for (const phrase of ["confirm it", "yes please", "please do it", "approve it", "proceed"]) {
+    for (const phrase of [
+      "i confirm",
+      "confirm",
+      "confirm it",
+      "approve",
+      "approved",
+      "approve it",
+      "i approve",
+      "yes",
+      "yes i confirm",
+      "yes please",
+      "please do it",
+      "proceed",
+      "go ahead",
+    ]) {
       expect(isReporterActionConfirmation(phrase, true)).toBe(true);
     }
     expect(isReporterActionConfirmation("yes, what happened today?", true)).toBe(false);

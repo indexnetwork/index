@@ -25,9 +25,17 @@ describe("ChatAgent prior action proposal context", () => {
     ])).toBe(false);
   });
 
-  it("rejects malformed or current-turn-only fences", () => {
+  it("rejects malformed, non-canonical, or current-turn-only fences", () => {
     expect(ChatAgent.hasPriorAgentActionProposal([
       new AIMessage({ content: "```agent_action_proposal\nnot json\n```" }),
+      new HumanMessage("yes"),
+    ])).toBe(false);
+    expect(ChatAgent.hasPriorAgentActionProposal([
+      new AIMessage({ content: proposal.replace('"PAUSE_SIGNAL"', '"DELETE_SIGNAL"') }),
+      new HumanMessage("yes"),
+    ])).toBe(false);
+    expect(ChatAgent.hasPriorAgentActionProposal([
+      new AIMessage({ content: proposal.replace('"actions":', '"snapshot":{"payload":"private"},"actions":') }),
       new HumanMessage("yes"),
     ])).toBe(false);
     expect(ChatAgent.hasPriorAgentActionProposal([

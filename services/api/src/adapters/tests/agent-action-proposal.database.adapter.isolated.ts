@@ -26,6 +26,7 @@ const pendingRow = {
     proposedOperation: 'NARROW_SIGNAL',
     description: 'Canonical replacement',
     snapshot: { status: 'ACTIVE', updatedAt: new Date().toISOString(), payload: 'private payload' },
+    internalSecret: 'private action metadata',
   }],
   status: 'pending' as const,
   result: null,
@@ -44,6 +45,7 @@ const consumedRow = {
     previousState: 'ACTIVE',
     resultingState: 'PAUSED',
     outcome: 'applied' as const,
+    internalSecret: 'private result metadata',
   }],
 };
 
@@ -66,6 +68,7 @@ describe('AgentActionProposalDatabaseAdapter.getProposal', () => {
       }],
     });
     expect(JSON.stringify(proposal)).not.toContain('private payload');
+    expect(JSON.stringify(proposal)).not.toContain('private action metadata');
     expect(where).toHaveBeenCalled();
   });
 
@@ -75,10 +78,12 @@ describe('AgentActionProposalDatabaseAdapter.getProposal', () => {
     await expect(adapter.getProposal(pendingId, 'other-user')).resolves.toBeNull();
 
     selectedRows = [consumedRow];
-    await expect(adapter.getProposal(consumedId, 'owner-user')).resolves.toMatchObject({
+    const consumed = await adapter.getProposal(consumedId, 'owner-user');
+    expect(consumed).toMatchObject({
       id: consumedId,
       status: 'consumed',
       result: [{ outcome: 'applied' }],
     });
+    expect(JSON.stringify(consumed)).not.toContain('private result metadata');
   });
 });

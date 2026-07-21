@@ -50,17 +50,36 @@ describe("AgentActionProposalCard", () => {
     expect(await screen.findByText(/Already confirmed — replayed safely/)).toBeInTheDocument();
   });
 
-  it("renders the canonical narrow-signal replacement text", async () => {
-    const narrowAction = {
+  it("hydrates consumed proposals with their canonical results and replay control", async () => {
+    render(<AgentActionProposalCard card={card} onResolve={vi.fn().mockResolvedValue(resolved(card.actions, "consumed"))} onConfirm={vi.fn()} />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Already confirmed.");
+    expect(screen.getByRole("button", { name: "Confirm again" })).toBeInTheDocument();
+    expect(screen.getByText(/ACTIVE → RETRACTED/)).toBeInTheDocument();
+  });
+
+  it("stays inert when canonical resolution returns a different proposal", async () => {
+    render(<AgentActionProposalCard card={card} onResolve={vi.fn().mockResolvedValue({ ...resolved(), proposalId: "99999999-9999-4999-8999-999999999999" })} onConfirm={vi.fn()} />);
+
+    await waitFor(() => expect(screen.queryByTestId("agent-action-proposal-loading")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("agent-action-proposal-card")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirm/ })).not.toBeInTheDocument();
+  });
+
+  it("renders the canonical narrow-signal replacement text instead of fence text", async () => {
+    const canonicalAction = {
       type: "narrow_signal" as const,
       entityId: card.actions[0].entityId,
       currentState: "ACTIVE",
       proposedOperation: "NARROW_SIGNAL",
       description: "Find local product collaborators",
     };
-    render(<AgentActionProposalCard card={{ ...card, actions: [narrowAction] }} onResolve={vi.fn().mockResolvedValue(resolved([narrowAction]))} onConfirm={vi.fn()} />);
+    const fenceAction = { ...canonicalAction, description: "Untrusted fence replacement" };
+    render(<AgentActionProposalCard card={{ ...card, actions: [fenceAction] }} onResolve={vi.fn().mockResolvedValue(resolved([canonicalAction]))} onConfirm={vi.fn()} />);
 
-    expect(await screen.findByText("Find local product collaborators")).toBeInTheDocument();
+    const label = await screen.findByText("Replacement signal:");
+    expect(label.parentElement).toHaveTextContent(/^Replacement signal: Find local product collaborators$/);
+    expect(screen.queryByText("Untrusted fence replacement")).not.toBeInTheDocument();
   });
 
   it("renders a retryable error and retries", async () => {

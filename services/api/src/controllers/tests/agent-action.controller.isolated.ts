@@ -16,13 +16,18 @@ function request(body: unknown): Request {
 }
 
 describe('AgentActionController isolated confirmation', () => {
-  it('returns not found while the action flag is off', async () => {
-    const controller = new AgentActionController({
+  it('returns not found without reading or confirming while the action flag is off', async () => {
+    const service = {
       readProposal: mock(async () => null),
       confirm: mock(async () => ({ kind: 'not_found' as const })),
-    }, () => false);
-    const response = await controller.confirm(request({ proposalId: '11111111-1111-4111-8111-111111111111' }), user);
-    expect(response.status).toBe(404);
+    };
+    const controller = new AgentActionController(service, () => false);
+    const readResponse = await controller.readProposal(request({}), user, { proposalId: PROPOSAL_ID });
+    const confirmResponse = await controller.confirm(request({ proposalId: PROPOSAL_ID }), user);
+    expect(readResponse.status).toBe(404);
+    expect(confirmResponse.status).toBe(404);
+    expect(service.readProposal).not.toHaveBeenCalled();
+    expect(service.confirm).not.toHaveBeenCalled();
   });
 
   it('validates and returns the service result when enabled', async () => {

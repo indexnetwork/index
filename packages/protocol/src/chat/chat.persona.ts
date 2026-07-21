@@ -51,6 +51,11 @@ export interface ChatPersonaConfig {
   buildSystemContent: (ctx: ResolvedToolContext, iterCtx: IterationContext) => string;
   /** Creates the persona's toolset bound to the resolved user context. */
   createTools: (deps: ToolContext, preResolvedContext?: ResolvedToolContext) => Promise<ChatTools>;
+  /**
+   * Optionally resolves a turn without an LLM or tools. Use only for narrow,
+   * deterministic safety redirects derived entirely from iteration context.
+   */
+  resolveDeterministicResponse?: (ctx: ResolvedToolContext, iterCtx: IterationContext) => string | null;
   /** Orchestrator-specific loop behaviors this persona opts into. */
   loopBehaviors: ChatPersonaLoopBehaviors;
 }
