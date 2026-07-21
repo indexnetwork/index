@@ -17,6 +17,7 @@ import { DecisionQuestions } from "@/components/DecisionQuestions";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/AssistantMessageContent";
+import type { AgentActionConfirmationResponse } from "@/components/chat/AgentActionProposalCard";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
@@ -29,6 +30,7 @@ import { useNetworksState } from "@/contexts/IndexesContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
+import { confirmAgentActionProposal, getAgentActionProposal } from "@/services/agent-actions";
 
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import { log } from "@/lib/logger";
@@ -93,7 +95,8 @@ export default function ChatContent({
   } = useAIChat();
   const { features } = useAuthContext();
   const signalAgentEnabled = features?.signalAgent === true;
-  const reporterSurface = persona === "reporter";
+  const reporterSurface = persona === "reporter" || sessionPersona === "reporter";
+  const effectiveReadOnlySurface = readOnlySurface || sessionPersona === "reporter";
   const routedSessionReady = !sessionIdFromUrl
     || isSessionReady(sessionIdFromUrl)
     || (sessionId === sessionIdFromUrl && sessionLoadState.status === "idle");
@@ -112,6 +115,10 @@ export default function ChatContent({
   const mutationsBlocked = legacyOrchestratorReadOnly
     || routeSessionMismatch
     || (Boolean(sessionIdFromUrl) && !routedSessionReady);
+  const reporterActionsAllowed = reporterSurface
+    && effectiveReadOnlySurface
+    && !routeSessionMismatch
+    && routedSessionReady;
   const mutationsBlockedRef = useRef(mutationsBlocked);
   const routeSessionIdRef = useRef(sessionIdFromUrl);
   const inMemorySessionIdRef = useRef(sessionId);
@@ -158,6 +165,21 @@ export default function ChatContent({
       showError("Failed to create share link");
     }
   }, [sessionId, showError]);
+
+  const handleAgentActionResolve = useCallback(
+    (proposalId: string) => {
+      if (!sessionId) return Promise.reject(new Error("Active conversation is required"));
+      return getAgentActionProposal(proposalId, sessionId);
+    },
+    [sessionId],
+  );
+  const handleAgentActionConfirm = useCallback(
+    (proposalId: string): Promise<AgentActionConfirmationResponse> => {
+      if (!sessionId) return Promise.reject(new Error("Active conversation is required"));
+      return confirmAgentActionProposal(proposalId, sessionId);
+    },
+    [sessionId],
+  );
 
   const opportunitiesService = useOpportunities();
 
@@ -1220,10 +1242,10 @@ export default function ChatContent({
 
   return (
     <>
-      {!legacyOrchestratorReadOnly && !readOnlySurface && inviteModalElement}
+      {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && inviteModalElement}
       {/* Sticky header - full width, min-h-17 matches ChatView header height.
           Hidden on read-only surfaces (e.g. /agent reporter), which render their own header. */}
-      {!readOnlySurface && (
+      {!effectiveReadOnlySurface && (
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-17">
         <button
           type="button"
@@ -1238,7 +1260,7 @@ export default function ChatContent({
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        {isEditingTitle && !legacyOrchestratorReadOnly && !readOnlySurface ? (
+        {isEditingTitle && !legacyOrchestratorReadOnly && !effectiveReadOnlySurface ? (
           <input
             ref={titleInputRef}
             type="text"
@@ -1262,14 +1284,14 @@ export default function ChatContent({
             <button
               type="button"
               onClick={startEditingTitle}
-              disabled={!sessionId || legacyOrchestratorReadOnly || readOnlySurface}
+              disabled={!sessionId || legacyOrchestratorReadOnly || effectiveReadOnlySurface}
               className="text-left font-bold font-ibm-plex-mono text-lg text-black truncate hover:text-gray-700 disabled:pointer-events-none focus:outline-none rounded"
             >
               {displayTitle}
             </button>
             {sessionId && (
               <>
-                {!legacyOrchestratorReadOnly && !readOnlySurface && (
+                {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && (
                   <>
                     <button
                       type="button"
@@ -1387,7 +1409,7 @@ export default function ChatContent({
                           <AssistantMessageContent
                             content={msg.content}
                             isStreaming={msg.isStreaming ?? false}
-                            onOpportunityPrimaryAction={legacyOrchestratorReadOnly || readOnlySurface ? undefined : (
+                            onOpportunityPrimaryAction={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : (
                               oppId,
                               userId,
                               viewerRole,
@@ -1404,7 +1426,7 @@ export default function ChatContent({
                                 isGhost,
                               );
                             }}
-                            onOpportunitySecondaryAction={legacyOrchestratorReadOnly || readOnlySurface ? undefined : (
+                            onOpportunitySecondaryAction={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : (
                               oppId,
                               userId,
                               viewerRole,
@@ -1423,12 +1445,14 @@ export default function ChatContent({
                             }}
                             opportunityLoadingMap={opportunityActionLoading}
                             currentStatusMap={opportunityStatusMap}
-                            onIntentProposalApprove={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleIntentProposalApprove}
-                            onIntentProposalReject={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleIntentProposalReject}
-                            onIntentProposalUndo={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleIntentProposalUndo}
+                            onIntentProposalApprove={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalApprove}
+                            onIntentProposalReject={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalReject}
+                            onIntentProposalUndo={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
-                            OAuthLink={legacyOrchestratorReadOnly || readOnlySurface ? undefined : OAuthLink}
-                            onNetworkJoin={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleNetworkJoin}
+                            onAgentActionResolve={reporterActionsAllowed && sessionId ? handleAgentActionResolve : undefined}
+                            onAgentActionConfirm={reporterActionsAllowed && sessionId ? handleAgentActionConfirm : undefined}
+                            OAuthLink={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : OAuthLink}
+                            onNetworkJoin={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleNetworkJoin}
                             networkPanelPendingJoinIds={networkPanelPendingJoinIds}
                           />
                         </article>
@@ -1498,7 +1522,7 @@ export default function ChatContent({
                             key={draft.opportunityId}
                             card={cardData}
                             currentStatus={cardStatus}
-                            onPrimaryAction={legacyOrchestratorReadOnly || readOnlySurface ? undefined : (oppId, userId) => {
+                            onPrimaryAction={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : (oppId, userId) => {
                               if (mutationsBlockedRef.current) return;
                               return handleStreamingDraftStartChat(oppId, userId);
                             }}
@@ -1510,7 +1534,7 @@ export default function ChatContent({
                   )}
                 {msg.role === "assistant" &&
                   !legacyOrchestratorReadOnly &&
-                  !readOnlySurface &&
+                  !effectiveReadOnlySurface &&
                   msg.decisionQuestions &&
                   msg.decisionQuestions.length > 0 && (
                     <DecisionQuestions
@@ -1532,7 +1556,7 @@ export default function ChatContent({
                   )}
                 {msg.role === "assistant" &&
                   !legacyOrchestratorReadOnly &&
-                  !readOnlySurface &&
+                  !effectiveReadOnlySurface &&
                   injectedByMessageId.has(msg.id) && (
                     <InjectedQuestions
                       questions={injectedByMessageId.get(msg.id)!}
@@ -1542,7 +1566,7 @@ export default function ChatContent({
                   )}
               </div>
             ))}
-            {!legacyOrchestratorReadOnly && !readOnlySurface && injectedByMessageId.has(null) && (
+            {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && injectedByMessageId.has(null) && (
               <div data-testid={isNegotiatorDm ? "negotiator-question-inbox" : undefined}>
                 {isNegotiatorDm && (
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mt-4 mb-2">

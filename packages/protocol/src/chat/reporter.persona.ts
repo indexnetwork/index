@@ -6,7 +6,7 @@ import { error, resolveChatContext, success } from "../shared/agent/tool.helpers
 import type { UserDatabase } from "../shared/interfaces/database.interface.js";
 import { focusedNetworkId, scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
-import { buildReporterSystemContent } from "./reporter.prompt.js";
+import { buildReporterSystemContent, resolveReporterDeterministicResponse } from "./reporter.prompt.js";
 import { createReporterActionTool } from "./reporter.action.tools.js";
 
 /** Public kickoff marker used by the Agent surface to request its opening briefing. */
@@ -258,6 +258,7 @@ export const REPORTER_PERSONA: ChatPersonaConfig = {
   id: REPORTER_PERSONA_ID,
   buildSystemContent: (ctx, iterCtx) => buildReporterSystemContent(ctx, iterCtx),
   createTools: (deps, preResolvedContext) => createReporterTools(deps, preResolvedContext),
+  resolveDeterministicResponse: (_ctx, iterCtx) => resolveReporterDeterministicResponse(iterCtx),
   loopBehaviors: {
     createIntentCallback: false,
     hallucinationRecovery: false,

@@ -1,5 +1,5 @@
 import type { AgentActionProposalResultRecord, AgentActionProposalRow } from '../schemas/database.schema';
-import type { AgentActionProposalDatabaseAdapter } from '../adapters/agent-action-proposal.database.adapter';
+import type { AgentActionProposalDatabaseAdapter, AgentActionProposalDisplay } from '../adapters/agent-action-proposal.database.adapter';
 import { chatDatabaseAdapter, type ChatDatabaseAdapter } from '../adapters/database.adapter';
 
 export type AgentActionPauseResult =
@@ -28,20 +28,39 @@ export type AgentActionConfirmResult = {
   results: AgentActionProposalResultRecord[];
 };
 
+export type AgentActionProposalReadResult = {
+  proposalId: string;
+  status: AgentActionProposalDisplay['status'];
+  actions: AgentActionProposalDisplay['actions'];
+  results: AgentActionProposalResultRecord[] | null;
+};
+
 /** Executes owner-confirmed reporter cleanup proposals through existing paths. */
 export class AgentActionService {
   constructor(
-    private readonly proposals: Pick<AgentActionProposalDatabaseAdapter, 'claimProposal' | 'consumeProposal'>,
+    private readonly proposals: Pick<AgentActionProposalDatabaseAdapter, 'getProposal' | 'claimProposal' | 'consumeProposal'>,
     private readonly runtime: AgentActionRuntime,
     private readonly premises: Pick<ChatDatabaseAdapter, 'getPremise'> = chatDatabaseAdapter,
   ) {}
 
-  async confirm(userId: string, proposalId: string): Promise<
+  /** Returns canonical display-safe proposal state for the authenticated owner. */
+  async readProposal(userId: string, proposalId: string, conversationId: string): Promise<AgentActionProposalReadResult | null> {
+    const proposal = await this.proposals.getProposal(proposalId, userId, conversationId);
+    if (!proposal) return null;
+    return {
+      proposalId: proposal.id,
+      status: proposal.status,
+      actions: proposal.actions,
+      results: proposal.status === 'consumed' ? proposal.result ?? [] : null,
+    };
+  }
+
+  async confirm(userId: string, proposalId: string, conversationId: string): Promise<
     | { kind: 'not_found' }
     | { kind: 'in_progress' }
     | { kind: 'success'; result: AgentActionConfirmResult }
   > {
-    const claim = await this.proposals.claimProposal(proposalId, userId);
+    const claim = await this.proposals.claimProposal(proposalId, userId, conversationId);
     if (claim.kind === 'missing') return { kind: 'not_found' };
     if (claim.kind === 'in_progress') return claim;
     if (claim.kind === 'replay') {
@@ -53,29 +72,26 @@ export class AgentActionService {
 
     const results: AgentActionProposalResultRecord[] = [];
     for (const action of claim.proposal.actions) {
-      if (action.skipped || !action.snapshot) {
-        results.push({
-          type: action.type,
-          entityId: action.entityId,
-          operation: action.proposedOperation,
-          previousState: action.currentState,
-          resultingState: action.currentState,
-          ...(action.evidence ? { evidence: action.evidence } : {}),
-          outcome: 'skipped',
-          ...(action.reason ? { reason: action.reason } : {}),
-        });
-        continue;
+      try {
+        results.push(await this.confirmAction(userId, action));
+      } catch {
+        results.push(this.skipped(action, 'Action failed at runtime and was not retried automatically.'));
       }
-
-      if (action.type === 'retract_premise') {
-        results.push(await this.confirmPremise(userId, action));
-        continue;
-      }
-      results.push(await this.confirmIntent(userId, action));
     }
 
-    await this.proposals.consumeProposal(proposalId, userId, results);
+    await this.proposals.consumeProposal(proposalId, userId, conversationId, results);
     return { kind: 'success', result: { proposalId, status: 'consumed', results } };
+  }
+
+  private async confirmAction(
+    userId: string,
+    action: AgentActionProposalRow['actions'][number],
+  ): Promise<AgentActionProposalResultRecord> {
+    if (action.skipped || !action.snapshot) {
+      return this.skipped(action, action.reason ?? 'Action was not eligible for confirmation.');
+    }
+    if (action.type === 'retract_premise') return this.confirmPremise(userId, action);
+    return this.confirmIntent(userId, action);
   }
 
   private async confirmPremise(

@@ -643,6 +643,7 @@ export const agentActionProposals = pgTable('agent_action_proposals', {
   actions: jsonb('actions').$type<AgentActionProposalActionRecord[]>().notNull(),
   status: agentActionProposalStatusEnum('status').notNull().default('pending'),
   result: jsonb('result').$type<AgentActionProposalResultRecord[]>(),
+  executionLeaseAt: timestamp('execution_lease_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
 }, (table) => ({

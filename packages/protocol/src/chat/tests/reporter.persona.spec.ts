@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from "bun:test";
 
 import { ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import { REPORTER_BRIEFING_KICKOFF, REPORTER_PERSONA, REPORTER_PERSONA_ID, REPORTER_TOOL_NAMES, filterReporterTools, narrowReporterTools } from "../reporter.persona.js";
-import { buildReporterSystemContent, isReporterBriefingKickoff } from "../reporter.prompt.js";
+import { buildReporterSystemContent, isReporterActionConfirmation, isReporterBriefingKickoff, resolveReporterDeterministicResponse } from "../reporter.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 import type { UserDatabase } from "../../shared/interfaces/database.interface.js";
 
@@ -85,6 +85,15 @@ describe("REPORTER_PERSONA", () => {
       createIntentCallback: false,
       hallucinationRecovery: false,
     });
+    expect(REPORTER_PERSONA.resolveDeterministicResponse?.(context(), {
+      iteration: 1,
+      currentMessage: "yes",
+      hasPriorAgentActionProposal: true,
+    } as never)).toBe(resolveReporterDeterministicResponse({
+      iteration: 1,
+      currentMessage: "yes",
+      hasPriorAgentActionProposal: true,
+    } as never));
   });
 
   it("pins the exact positive allowlist", () => {
@@ -110,12 +119,53 @@ describe("REPORTER_PERSONA", () => {
     expect(REPORTER_BRIEFING_KICKOFF).toBe("reporter-briefing-kickoff");
     expect(isReporterBriefingKickoff(REPORTER_BRIEFING_KICKOFF)).toBe(true);
     expect(isReporterBriefingKickoff("please report on my agent")).toBe(false);
+    expect(isReporterBriefingKickoff("agent briefing")).toBe(false);
     const briefing = buildReporterSystemContent(context(), {
       iteration: 1,
       currentMessage: REPORTER_BRIEFING_KICKOFF,
     } as never);
     expect(briefing).toContain("Call report_agent_activity first");
     expect(briefing).toContain("what did you do today?");
+  });
+
+  it("keeps focused follow-ups narrow and typed confirmation non-executable", () => {
+    const followUp = buildReporterSystemContent(context(), {
+      iteration: 1,
+      currentMessage: "I confirm",
+      hasPriorAgentActionProposal: true,
+    } as never);
+    expect(isReporterActionConfirmation("I confirm")).toBe(false);
+    expect(isReporterActionConfirmation("yes.")).toBe(false);
+    for (const phrase of [
+      "i confirm",
+      "confirm",
+      "confirm it",
+      "approve",
+      "approved",
+      "approve it",
+      "i approve",
+      "yes",
+      "yes i confirm",
+      "yes please",
+      "please do it",
+      "proceed",
+      "go ahead",
+    ]) {
+      expect(isReporterActionConfirmation(phrase, true)).toBe(true);
+    }
+    expect(isReporterActionConfirmation("yes, what happened today?", true)).toBe(false);
+    expect(followUp).toContain("answer only the user's current request");
+    expect(followUp).toContain("Do not call report_agent_activity or propose_cleanup_actions");
+    expect(buildReporterSystemContent(context(), { iteration: 1, currentMessage: "yes" } as never))
+      .not.toContain("visible proposal card's Confirm control");
+    expect(followUp).toContain("visible proposal card's Confirm control");
+
+    const ordinary = buildReporterSystemContent(context(), {
+      iteration: 1,
+      currentMessage: "What did you do today?",
+    } as never);
+    expect(ordinary).not.toContain("## Opening briefing");
+    expect(ordinary).toContain("perform only the reads needed to answer it");
   });
 
   it("narrows shared self reads and opportunity rows to aggregate output", async () => {
