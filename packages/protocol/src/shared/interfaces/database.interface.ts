@@ -2513,6 +2513,13 @@ export type NegotiationGraphDatabase = Pick<
     updatedAt: Date;
   }>>;
 
+  /**
+   * Resolves each opportunity to the intent carried by the given user's actor.
+   * Missing opportunities or actor intents are returned as null so callers can
+   * enforce fail-closed scope filtering for legacy task metadata.
+   */
+  getIntentIdsForOpportunities(opportunityIds: string[], userId: string): Promise<Record<string, string | null>>;
+
   /** Gets a specific task by ID. */
   getTask(taskId: string): Promise<{
     id: string;

@@ -215,7 +215,7 @@ describe('Intent detail lifecycle', () => {
     renderIntentPage();
 
     expect(await screen.findByText('live')).toBeInTheDocument();
-    expect(screen.getByText('agent is looking in the background')).toBeInTheDocument();
+    expect(screen.getByText('background matching on — negotiation activity appears in Radar')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
     await expectWorkspacePreserved();

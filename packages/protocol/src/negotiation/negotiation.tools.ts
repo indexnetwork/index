@@ -8,7 +8,7 @@ import { allowedActionsFor, isTerminalAction, readProtocolVersion, rejectActionF
 import { NEGOTIATION_ACTIONS } from '../shared/schemas/negotiation-state.schema.js';
 import type { NegotiationTurnPayload } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
-import { focusedNetworkId } from '../shared/agent/tool.scope.js';
+import { focusedIntentId, focusedNetworkId } from '../shared/agent/tool.scope.js';
 
 const logger = protocolLogger('ChatTools:Negotiation');
 
@@ -76,6 +76,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
     querySchema: z.object({
       status: z.enum(['active', 'waiting_for_agent', 'completed', 'all']).optional()
         .describe('Filter by negotiation status. Omit or use "all" to return all negotiations.'),
+      scope: z.enum(['signal', 'all']).optional()
+        .describe('Scope to the pinned signal (requires an intent-pinned session), or pass "all" for the full negotiation history.'),
       since: z.string().datetime().optional()
         .describe('ISO 8601 date-time. Only return negotiations created at or after this timestamp.'),
       limit: z.number().int().min(1).max(100).optional()
@@ -104,6 +106,23 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
 
         const tasks = await negotiationDatabase.getTasksForUser(context.userId, dbState ? { state: dbState } : undefined);
         const scopedNetworkId = focusedNetworkId(context);
+        const pinnedIntentId = focusedIntentId(context);
+        const effectiveScope = query.scope ?? (pinnedIntentId ? 'signal' : 'all');
+        if (effectiveScope === 'signal' && !pinnedIntentId) {
+          return error('Signal scope requires a pinned intent.');
+        }
+
+        const signalIntentIdsByOpportunity = effectiveScope === 'signal'
+          ? await negotiationDatabase.getIntentIdsForOpportunities(
+            [...new Set(tasks
+              .map((task) => (task.metadata as { opportunityId?: unknown } | null)?.opportunityId)
+              .filter((opportunityId): opportunityId is string => typeof opportunityId === 'string' && opportunityId.trim().length > 0))],
+            context.userId,
+          )
+          : null;
+        const scopeMetadata = effectiveScope === 'signal'
+          ? { scope: 'signal' as const, intentId: pinnedIntentId! }
+          : { scope: 'all' as const };
 
         const negotiations = await Promise.all(tasks.map(async (task) => {
           const meta = task.metadata as {
@@ -111,6 +130,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
             candidateUserId?: string;
             type?: string;
             maxTurns?: number;
+            opportunityId?: string;
             networkId?: string;
             turnContext?: { indexContext?: { networkId?: string; prompt?: string } };
             isContinuation?: boolean;
@@ -124,6 +144,16 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           if (scopedNetworkId) {
             const taskNetworkId = readTaskNetworkId(meta);
             if (taskNetworkId !== scopedNetworkId) return null;
+          }
+
+          // Intent-scope filter: a pinned negotiator workspace only shows
+          // opportunity-bound tasks whose actor intent belongs to this user and
+          // matches the pinned signal. Tasks without resolvable provenance are
+          // dropped rather than widened into the user's full history.
+          const opportunityId = typeof meta.opportunityId === 'string' ? meta.opportunityId.trim() : '';
+          if (effectiveScope === 'signal'
+            && (!opportunityId || signalIntentIdsByOpportunity?.[opportunityId] !== pinnedIntentId)) {
+            return null;
           }
 
           const isSource = meta.sourceUserId === context.userId;
@@ -219,6 +249,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           const offset = (page - 1) * limit;
           const paged = filtered.slice(offset, offset + limit);
           return success({
+            ...scopeMetadata,
             count: paged.length,
             totalCount: filtered.length,
             limit,
@@ -229,6 +260,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         }
 
         return success({
+          ...scopeMetadata,
           count: filtered.length,
           negotiations: filtered,
         });

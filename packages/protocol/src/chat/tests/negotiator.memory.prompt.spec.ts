@@ -52,4 +52,19 @@ describe("buildNegotiatorSystemContent — memory section (IND-407)", () => {
     expect(withEmpty).toBe(withoutField);
     expect(withoutField).not.toContain("## Your negotiator memory");
   });
+
+  it("labels pinned negotiation summaries by signal scope and separates current history", () => {
+    const pinnedContext = {
+      ...makeCtx(),
+      scopeType: "intent",
+      scopeId: "intent-42",
+    } as unknown as ResolvedToolContext;
+    const prompt = buildNegotiatorSystemContent(pinnedContext, AGENT_OPTS);
+
+    expect(prompt).toContain("for this signal");
+    expect(prompt).toContain("across all your signals");
+    expect(prompt).toContain("zero current items");
+    expect(prompt).toContain("same-turn list_negotiations result");
+    expect(prompt).toContain("| **list_negotiations** | status?, scope?, limit? |");
+  });
 });
