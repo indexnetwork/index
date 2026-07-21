@@ -33,7 +33,9 @@ mock.module("@indexnetwork/protocol", () => {
     ORCHESTRATOR_PERSONA_ID: "orchestrator",
     SIGNAL_PERSONA_ID: "signal",
     NEGOTIATOR_PERSONA_ID: "negotiator",
+    REPORTER_PERSONA_ID: "reporter",
     SIGNAL_PERSONA: { id: "signal" },
+    REPORTER_PERSONA: { id: "reporter" },
     createNegotiatorPersona: mock(() => ({ id: "negotiator" })),
   };
 });
@@ -68,6 +70,7 @@ mock.module("../../adapters/checkpointer.adapter", () => ({
 
 afterEach(() => {
   delete process.env.WEB_SIGNAL_AGENT_ENABLED;
+  delete process.env.WEB_AGENT_SURFACE_ENABLED;
 });
 
 afterAll(() => {
@@ -381,6 +384,52 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
     expect(result.code).toBe("WEB_SIGNAL_AGENT_DISABLED");
   });
 
+  it("denies a new reporter session when the Agent surface flag is off", () => {
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      requestedPersona: "reporter",
+    })).toMatchObject({
+      ok: false,
+      status: 409,
+      code: "WEB_AGENT_SURFACE_DISABLED",
+    });
+  });
+
+  it("resolves reporter only on web when the Agent surface flag is on", () => {
+    process.env.WEB_AGENT_SURFACE_ENABLED = "true";
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      requestedPersona: "reporter",
+    })).toEqual({ ok: true, persona: "reporter" });
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "non_web",
+      requestedPersona: "reporter",
+    })).toMatchObject({
+      ok: false,
+      status: 403,
+      code: "WEB_AGENT_PERSONA_FORBIDDEN",
+    });
+  });
+
+  it("keeps persisted reporter authority and fails closed on mismatch or flag rollback", () => {
+    process.env.WEB_AGENT_SURFACE_ENABLED = "true";
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "reporter",
+    })).toEqual({ ok: true, persona: "reporter" });
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "reporter",
+      requestedPersona: "signal",
+    })).toMatchObject({ code: "CHAT_PERSONA_MISMATCH", status: 409 });
+
+    process.env.WEB_AGENT_SURFACE_ENABLED = "false";
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "web",
+      storedPersona: "reporter",
+    })).toMatchObject({ code: "WEB_AGENT_SURFACE_DISABLED", status: 409 });
+  });
+
   it("leaves the separate negotiator persona unchanged", () => {
     process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
     expect(svc.resolveStreamPersonaPolicy({
@@ -456,7 +505,7 @@ describe("ChatSessionService.getUserSessions", () => {
     expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "negotiator");
   });
 
-  it("lists only orchestrator and Signal sessions for web history", async () => {
+  it("lists orchestrator, Signal, and reporter sessions for web history", async () => {
     const sessions = [makeSession(), makeSession({ id: "signal-session", persona: "signal" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
@@ -469,7 +518,7 @@ describe("ChatSessionService.getUserSessions", () => {
     expect(db.getUserChatSessions).toHaveBeenCalledWith(
       USER_ID,
       10,
-      ["orchestrator", "signal"],
+      ["orchestrator", "signal", "reporter"],
     );
   });
 });

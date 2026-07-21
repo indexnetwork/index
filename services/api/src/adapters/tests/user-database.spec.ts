@@ -150,6 +150,18 @@ function createMockDb(): ChatDatabaseAdapter {
     getPublicIndexesNotJoined: mock(() => Promise.resolve({ networks: [] })),
     joinPublicNetwork: mock(() => Promise.resolve({ success: true })),
 
+    // Agent reporting
+    getAgentActivitySummary: mock(() => Promise.resolve({
+      sinceHours: 24,
+      liveSignalsWatched: 0,
+      opportunitiesSurfaced: 0,
+      opportunitiesBySignal: [],
+      pendingQuestionCount: 0,
+      questionsAnswered: 0,
+      negotiationsStarted: 0,
+      negotiationsCompleted: 0,
+    })),
+
     // Opportunities
     getOpportunitiesForUser: mock(() => Promise.resolve([])),
     getOpportunity: mock(() => Promise.resolve(null)),
@@ -306,6 +318,13 @@ describe('createUserDatabase', () => {
     it('unassignIntentFromIndex throws for intent owned by another user', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntent);
       await expect(userDb.unassignIntentFromIndex('intent-2', 'idx-a')).rejects.toThrow('Access denied');
+    });
+  });
+
+  describe('agent reporting binds authUserId', () => {
+    it('getAgentActivitySummary delegates with authUserId', async () => {
+      await userDb.getAgentActivitySummary({ sinceHours: 24 });
+      expect(mockDb.getAgentActivitySummary).toHaveBeenCalledWith(AUTH_USER, { sinceHours: 24 });
     });
   });
 

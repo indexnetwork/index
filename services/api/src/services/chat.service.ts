@@ -1,12 +1,13 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
-import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
+import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA, REPORTER_PERSONA_ID, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { isWebSignalAgentEnabled } from '../lib/signal-feature';
+import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { HumanMessage } from '@langchain/core/messages';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -20,7 +21,9 @@ export type ChatPersonaPolicyCode =
   | 'CHAT_PERSONA_MISMATCH'
   | 'CHAT_PERSONA_UNSUPPORTED'
   | 'WEB_SIGNAL_AGENT_DISABLED'
-  | 'WEB_SIGNAL_PERSONA_FORBIDDEN';
+  | 'WEB_SIGNAL_PERSONA_FORBIDDEN'
+  | 'WEB_AGENT_SURFACE_DISABLED'
+  | 'WEB_AGENT_PERSONA_FORBIDDEN';
 
 export type ChatPersonaPolicyResult =
   | { ok: true; persona: ChatPersonaId }
@@ -29,13 +32,14 @@ export type ChatPersonaPolicyResult =
       status: 403 | 409;
       code: ChatPersonaPolicyCode;
       error: string;
-      action?: { type: 'start_signal_session'; href: '/' };
+      action?: { type: 'start_signal_session' | 'start_reporter_session'; href: string };
     };
 
 const KNOWN_CHAT_PERSONAS: ReadonlySet<string> = new Set([
   ORCHESTRATOR_PERSONA_ID,
   SIGNAL_PERSONA_ID,
   NEGOTIATOR_PERSONA_ID,
+  REPORTER_PERSONA_ID,
 ]);
 
 /**
@@ -111,6 +115,7 @@ export class ChatSessionService {
     storedPersona?: string;
   }): ChatPersonaPolicyResult {
     const webSignalEnabled = isWebSignalAgentEnabled();
+    const agentSurfaceEnabled = isAgentSurfaceEnabled();
     const requestedPersona = input.requestedPersona?.trim() || undefined;
     const storedPersona = input.storedPersona?.trim() || undefined;
 
@@ -156,6 +161,26 @@ export class ChatSessionService {
         };
       }
 
+      if (storedPersona === REPORTER_PERSONA_ID) {
+        if (!agentSurfaceEnabled) {
+          return {
+            ok: false,
+            status: 409,
+            code: 'WEB_AGENT_SURFACE_DISABLED',
+            error: 'Agent reporting is not available right now. Your chat history is still saved.',
+          };
+        }
+        if (input.surface !== 'web') {
+          return {
+            ok: false,
+            status: 403,
+            code: 'WEB_AGENT_PERSONA_FORBIDDEN',
+            error: 'This chat can only be continued in the web app.',
+          };
+        }
+        return { ok: true, persona: REPORTER_PERSONA_ID };
+      }
+
       if (storedPersona === SIGNAL_PERSONA_ID) {
         if (!webSignalEnabled) {
           return {
@@ -191,6 +216,26 @@ export class ChatSessionService {
       }
 
       return { ok: true, persona: storedPersona as ChatPersonaId };
+    }
+
+    if (requestedPersona === REPORTER_PERSONA_ID) {
+      if (!agentSurfaceEnabled) {
+        return {
+          ok: false,
+          status: 409,
+          code: 'WEB_AGENT_SURFACE_DISABLED',
+          error: 'Agent reporting is not available right now.',
+        };
+      }
+      if (input.surface !== 'web') {
+        return {
+          ok: false,
+          status: 403,
+          code: 'WEB_AGENT_PERSONA_FORBIDDEN',
+          error: 'Agent reporting chats can only be started in the web app.',
+        };
+      }
+      return { ok: true, persona: REPORTER_PERSONA_ID };
     }
 
     if (requestedPersona === SIGNAL_PERSONA_ID) {
@@ -549,7 +594,7 @@ export class ChatSessionService {
     return this.db.getUserChatSessions(
       userId,
       limit,
-      [ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID],
+      [ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID],
     );
   }
 
@@ -737,6 +782,15 @@ export class ChatSessionService {
    */
   getSignalGraphFactory(): ChatGraphFactory {
     return this.factory.withPersona(SIGNAL_PERSONA);
+  }
+
+  /**
+   * Derive the read-only reporter graph factory while sharing the persona-neutral runtime.
+   *
+   * @returns A reporter-persona sibling factory
+   */
+  getReporterGraphFactory(): ChatGraphFactory {
+    return this.factory.withPersona(REPORTER_PERSONA);
   }
 
   /**

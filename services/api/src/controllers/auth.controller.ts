@@ -9,6 +9,7 @@ import { userService } from '../services/user.service';
 import { enrichmentService } from '../services/enrichment.service';
 import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
 import { isWebSignalAgentEnabled } from '../lib/signal-feature';
+import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
@@ -106,6 +107,7 @@ export class AuthController {
       features: {
         negotiatorChat: isNegotiatorChatEnabled(),
         signalAgent: isWebSignalAgentEnabled(),
+        agentSurface: isAgentSurfaceEnabled(),
       },
     });
   }

@@ -178,6 +178,12 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     joinPublicNetwork: (networkId: string) => db.joinPublicNetwork(networkId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // Agent reporting (own activity only)
+    // ─────────────────────────────────────────────────────────────────────────────
+    getAgentActivitySummary: (input: Parameters<ChatDatabaseAdapter['getAgentActivitySummary']>[1]) =>
+      db.getAgentActivitySummary(authUserId, input),
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // Opportunity Operations
     // ─────────────────────────────────────────────────────────────────────────────
     getOpportunitiesForUser: (options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForUser']>[1]) => db.getOpportunitiesForUser(authUserId, options),

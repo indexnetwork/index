@@ -13,7 +13,7 @@ import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
+import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
@@ -81,7 +81,7 @@ const streamBodySchema = z.object({
   /** The recipient user ID for DM-style chats (used for ghost invite emails). */
   recipientUserId: z.string().nullish(),
   /** Explicit persona assertion for a newly bootstrapped persona chat. */
-  persona: z.enum(['negotiator', 'signal']).nullish(),
+  persona: z.enum(['negotiator', 'signal', 'reporter']).nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -104,7 +104,7 @@ const negotiatorSessionBodySchema = z.object({
 const resolveSessionBodySchema = z.object({
   scopeType: z.enum(['intent']),
   scopeId: z.string().min(1),
-  persona: z.enum(['signal']).optional(),
+  persona: z.enum(['signal', 'reporter']).optional(),
 });
 
 const interruptBodySchema = z.object({
@@ -481,7 +481,9 @@ export class ChatController {
     const sessionId = currentSessionId;
     const factory = sessionPersona === SIGNAL_PERSONA_ID
       ? chatSessionService.getSignalGraphFactory()
-      : sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
+      : sessionPersona === REPORTER_PERSONA_ID
+        ? chatSessionService.getReporterGraphFactory()
+        : sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
         ? await chatSessionService.getNegotiatorGraphFactory(
             negotiatorAgent,
             user.id,
@@ -962,7 +964,7 @@ export class ChatController {
     return this.getSessionForPersonas(
       req,
       user,
-      new Set([ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
+      new Set([ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
     );
   }
 

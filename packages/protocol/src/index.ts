@@ -39,6 +39,7 @@ export type { ContactServiceAdapter } from "./shared/interfaces/contact.interfac
 export type {
   ChatGraphCompositeDatabase,
   UserDatabase,
+  AgentActivitySummary,
   SystemDatabase,
   OpportunityGraphDatabase,
   OpportunityControllerDatabase,
@@ -101,6 +102,15 @@ export {
   filterSignalTools,
   narrowSignalTools,
 } from "./chat/signal.persona.js";
+export {
+  REPORTER_PERSONA_ID,
+  REPORTER_PERSONA,
+  REPORTER_BRIEFING_KICKOFF,
+  REPORTER_TOOL_NAMES,
+  createReporterTools,
+  filterReporterTools,
+  narrowReporterTools,
+} from "./chat/reporter.persona.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";
