@@ -1,14 +1,18 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test } from 'bun:test';
 import { eq } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 import { agentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../../adapters/agent-token.adapter';
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { SessionOnlyGuard, SessionRequiredError } from '../auth.guard';
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('session-only.guard', () => {
   let userId: string;

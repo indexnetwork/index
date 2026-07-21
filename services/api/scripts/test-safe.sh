@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
-# Run bun test excluding files that use mock.module() (listed in .test-isolated).
-# Those files permanently contaminate Bun's module cache and must run in their
-# own process. Use `bun run test:isolated` to run them individually.
+# Run the complete baseline. Bare Bun discovery includes isolated-suite.spec.ts,
+# which validates and executes every process-contaminating test in a fresh child.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-files=$(find src tests -name '*.spec.ts' -o -name '*.test.ts' \
-  | grep -vFf <(grep -v '^\s*#' .test-isolated | grep -v '^\s*$') \
-  | sort)
-exec bun test $files
+exec env NODE_ENV=test API_TEST_REQUIRE_DATABASE=1 bun test

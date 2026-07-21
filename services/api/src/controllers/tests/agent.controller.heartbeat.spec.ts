@@ -1,13 +1,8 @@
-import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
-// ---------------------------------------------------------------------------
-// Module mocks — must be registered BEFORE the controller is imported so that
-// the module-level singletons inside agent.controller.ts resolve to our fakes.
-// ---------------------------------------------------------------------------
+import { AgentController } from '../agent.controller';
 
-// Shared call log so tests can assert the relative ordering of pickup vs
-// heartbeat — the controller must authorize (via pickup or getById) before
-// bumping lastSeenAt, otherwise an unauthorized probe could spoof liveness.
+// Shared call log so tests can assert authorization happens before heartbeat updates.
 const callOrder: string[] = [];
 
 const touchLastSeenMock = mock(async (_agentId: string): Promise<void> => {
@@ -17,95 +12,37 @@ const getByIdMock = mock(async (_agentId: string, _userId: string) => {
   callOrder.push('getById');
   return { id: _agentId };
 });
-
-mock.module('../../services/agent.service', () => ({
-  agentService: {
-    touchLastSeen: touchLastSeenMock,
-    getById: getByIdMock,
-    listForUser: mock(async () => []),
-    create: mock(async () => ({})),
-    update: mock(async () => ({})),
-    delete: mock(async () => {}),
-    addTransport: mock(async () => ({})),
-    removeTransport: mock(async () => {}),
-    grantPermission: mock(async () => ({})),
-    revokePermission: mock(async () => {}),
-    listTokens: mock(async () => []),
-    createToken: mock(async () => ({})),
-    revokeToken: mock(async () => {}),
-    hasPermission: mock(async () => true),
-    findAuthorizedAgents: mock(async () => []),
-    grantDefaultSystemPermissions: mock(async () => {}),
-  },
-}));
-
 const negotiationPickupMock = mock(async (_agentId: string, _userId: string) => {
   callOrder.push('pickupNegotiation');
   return null;
 });
-
-mock.module('../../services/negotiation-polling.service', () => ({
-  negotiationPollingService: {
-    pickup: negotiationPickupMock,
-    respond: mock(async () => ({})),
-  },
-  NotFoundError: class NotFoundError extends Error {},
-  ConflictError: class ConflictError extends Error {},
-  UnauthorizedError: class UnauthorizedError extends Error {},
-}));
-
 const testMessagePickupMock = mock(async (_agentId: string) => {
   callOrder.push('pickupTestMessage');
   return null;
 });
-
-mock.module('../../services/agent-test-message.service', () => ({
-  AgentTestMessageService: class {
-    pickup = testMessagePickupMock;
-    enqueue = mock(async () => ({}));
-    confirmDelivered = mock(async () => {});
-  },
-}));
-
 const opportunityPickupMock = mock(async (_agentId: string) => {
   callOrder.push('pickupOpportunity');
   return null;
 });
+const fetchPendingCandidatesMock = mock(async (_agentId: string, _limit?: number) => ({
+  opportunities: [],
+  totalPending: 0,
+}));
 
-const fetchPendingCandidatesMock = mock(async (_agentId: string, _limit?: number) => ({ opportunities: [], totalPending: 0 }));
-
-const opportunityDeliveryInstance = {
+const agents = {
+  touchLastSeen: touchLastSeenMock,
+  getById: getByIdMock,
+};
+const negotiations = {
+  pickup: negotiationPickupMock,
+};
+const testMessages = {
+  pickup: testMessagePickupMock,
+};
+const deliveries = {
   pickupPending: opportunityPickupMock,
-  confirmDelivered: mock(async () => {}),
   fetchPendingCandidates: fetchPendingCandidatesMock,
 };
-
-mock.module('../../services/opportunity-delivery.service', () => ({
-  OpportunityDeliveryService: class {
-    pickupPending = opportunityPickupMock;
-    confirmDelivered = mock(async () => {});
-    fetchPendingCandidates = fetchPendingCandidatesMock;
-  },
-  opportunityDeliveryService: opportunityDeliveryInstance,
-}));
-
-// Guards: bypass auth so we can call handlers directly
-mock.module('../../guards/auth.guard', () => ({
-  AuthGuard: {},
-  resolveApiKeyAgentId: mock(async () => null),
-}));
-
-// ---------------------------------------------------------------------------
-// Import controller after mocks are in place
-// ---------------------------------------------------------------------------
-const { AgentController } = await import('../agent.controller');
-
-// ---------------------------------------------------------------------------
-// Restore mocks after all tests
-// ---------------------------------------------------------------------------
-afterAll(() => {
-  mock.restore();
-});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -117,7 +54,12 @@ const TEST_USER_ID = 'user-456';
 const mockUser = { id: TEST_USER_ID, email: 'test@example.com' };
 
 function makeController() {
-  return new AgentController();
+  return new AgentController(
+    agents as never,
+    negotiations as never,
+    testMessages as never,
+    deliveries as never,
+  );
 }
 
 function makeParams(id: string): Record<string, string> {

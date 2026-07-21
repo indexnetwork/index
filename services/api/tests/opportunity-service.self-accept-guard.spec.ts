@@ -1,10 +1,6 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-// Set OPENROUTER_API_KEY before any protocol module is imported so that
-// the model.config.ts module-level guard does not throw.
-process.env.OPENROUTER_API_KEY ??= 'test-key-placeholder';
-
 import { describe, it, expect, mock } from 'bun:test';
 import { OpportunityService } from '../src/services/opportunity.service';
 
@@ -24,6 +20,7 @@ const OTHER_INTENT_ID = '00000000-0000-4000-8000-00000000a222';
 const makeOpp = (overrides: Record<string, unknown> = {}) => ({
   id: OPP_ID,
   status: 'pending',
+  interpretation: { reasoning: 'Complementary test opportunity' },
   actors: [
     { userId: SENDER_ID, role: 'peer', actedAt: '2026-05-12T10:00:00.000Z' },
     { userId: COUNTERPART_ID, role: 'peer' },

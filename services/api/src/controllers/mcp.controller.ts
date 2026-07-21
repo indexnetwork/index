@@ -452,7 +452,13 @@ const seenInvalidSurfaces = new Set<string>();
  * @returns `'telegram'` if and only if the trimmed lower-case value is exactly
  *   `'telegram'`; `'web'` otherwise (including for `null`, `''`, and unknowns).
  */
-export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
+export function parseClientSurface(
+  raw: string | null,
+  warnUnknown: (value: string) => void = (value) => logger.warn(
+    'Unknown x-index-surface value; coercing to web',
+    { value },
+  ),
+): 'telegram' | 'web' {
   if (raw === null) return 'web';
   const normalized = raw.trim().toLowerCase();
   if (normalized === '') return 'web';
@@ -461,9 +467,7 @@ export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
   if (normalized === 'web') return 'web';
   if (!seenInvalidSurfaces.has(normalized)) {
     seenInvalidSurfaces.add(normalized);
-    logger.warn('Unknown x-index-surface value; coercing to web', {
-      value: normalized,
-    });
+    warnUnknown(normalized);
   }
   return 'web';
 }

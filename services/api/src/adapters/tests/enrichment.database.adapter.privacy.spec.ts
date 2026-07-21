@@ -1,19 +1,14 @@
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
+import { describe, expect, it } from 'bun:test';
 
-import { afterAll, describe, expect, it, mock } from 'bun:test';
+import type { DrizzleDB } from '../../lib/drizzle/drizzle';
+import { networks, premises, users } from '../../schemas/database.schema';
 
-import { premises, users, networks } from '../../schemas/database.schema';
+import { EnrichmentDatabaseAdapter } from '../enrichment.database.adapter';
 
-// ---------------------------------------------------------------------------
 // Fake drizzle db: getEnrichmentPrivacyContext issues three parallel reads
-// (users, networks, premises). We branch on the `.from(table)` reference and
-// let each test control what the premises read returns. We also record which
-// tables were queried so we can assert the gate reads `premises`, NOT
-// `user_profiles` (the WS10/IND-367 repoint — user_profiles was dropped in WS8).
-// `db` is sourced by the adapter from database.shared, which re-exports the
-// default import of lib/drizzle/drizzle — so mocking that path here propagates.
-// ---------------------------------------------------------------------------
+// (users, networks, premises). Branch on the `.from(table)` reference and let
+// each test control the premises result. Recording the tables proves the gate
+// reads `premises`, not the user_profiles table removed in WS8.
 const fromTables: unknown[] = [];
 let premiseRows: Array<{ id: string }> = [];
 const userRows = [{ onboarding: null, isGhost: false }];
@@ -30,33 +25,26 @@ function makeQuery(rows: unknown[]) {
       return builder;
     },
     where() { return builder; },
-    // getEnrichmentPrivacyContext awaits the builder after .limit(1)
     limit() { return Promise.resolve(builder._rows); },
     _rows: rows as unknown[],
   };
   return builder;
 }
 
-mock.module('../../lib/drizzle/drizzle', () => ({
-  default: { select: () => makeQuery([]) },
-  closeDb: async () => {},
-}));
-
-const { EnrichmentDatabaseAdapter } = await import('../enrichment.database.adapter');
-
-afterAll(() => mock.restore());
+const fakeDb = {
+  select: () => makeQuery([]),
+} as unknown as DrizzleDB;
 
 describe('EnrichmentDatabaseAdapter.getEnrichmentPrivacyContext — enrichment signal (WS10)', () => {
   it('reports hasActivePremise=true and reads `premises`, not user_profiles', async () => {
     fromTables.length = 0;
     premiseRows = [{ id: 'premise-1' }];
 
-    const ctx = await new EnrichmentDatabaseAdapter().getEnrichmentPrivacyContext('u1', 'n1');
+    const ctx = await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentPrivacyContext('u1', 'n1');
 
     expect(ctx.hasActivePremise).toBe(true);
     expect(ctx.user).toEqual({ onboarding: null, isGhost: false });
     expect(ctx.network).toEqual({ permissions: [] });
-    // The "has been enriched?" signal keys on `premises` (WS8 dropped user_profiles).
     expect(fromTables).toContain(premises);
     expect(fromTables).toContain(users);
     expect(fromTables).toContain(networks);
@@ -66,7 +54,7 @@ describe('EnrichmentDatabaseAdapter.getEnrichmentPrivacyContext — enrichment s
     fromTables.length = 0;
     premiseRows = [];
 
-    const ctx = await new EnrichmentDatabaseAdapter().getEnrichmentPrivacyContext('u2', 'n1');
+    const ctx = await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentPrivacyContext('u2', 'n1');
 
     expect(ctx.hasActivePremise).toBe(false);
     expect(fromTables).toContain(premises);

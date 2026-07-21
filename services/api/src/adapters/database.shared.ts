@@ -17,6 +17,7 @@ import { NetworkMembershipEvents } from '../events/network_membership.event';
 
 // Re-export the import surface so domain adapter files import everything from one module.
 export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log, NetworkMembershipEvents };
+export { canActorSeeOpportunity } from './opportunity.visibility';
 export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not };
 export type { User, NotificationPreferences, OnboardingState, TelegramPrefs, Conversation, ConversationParticipant, Message, Task, Artifact, Id };
 export const logger = log.lib.from('database.adapter');
@@ -616,35 +617,6 @@ export interface SimilarIntent {
  * @param authUserId - The authenticated user's ID
  * @returns A UserDatabase bound to authUserId
  */
-/**
- * Role-based opportunity visibility check.
- * Mirrors the Latent Opportunity Lifecycle visibility matrix:
- * - Introducer/peer: always visible.
- * - Patient/party: visible unless status is latent AND an introducer exists.
- * - Agent: visible only for terminal statuses, or non-latent when no introducer.
- */
-export function canActorSeeOpportunity(
-  actors: Array<{ userId: string; role: string }>,
-  status: string,
-  userId: string,
-): boolean {
-  const hasIntroducer = actors.some((a) => a.role === 'introducer');
-  const userRoles = actors.filter((a) => a.userId === userId).map((a) => a.role);
-  if (userRoles.length === 0) return false;
-
-  return userRoles.some((role) => {
-    if (role === 'introducer' || role === 'peer') return true;
-    if (role === 'patient' || role === 'party')
-      return status !== 'latent' || !hasIntroducer;
-    if (role === 'agent')
-      return (
-        ['accepted', 'rejected', 'expired'].includes(status) ||
-        (status !== 'latent' && !hasIntroducer)
-      );
-    return false;
-  });
-}
-
 export interface ResolvedParticipant {
   participantId: string;
   participantType: 'user' | 'agent';

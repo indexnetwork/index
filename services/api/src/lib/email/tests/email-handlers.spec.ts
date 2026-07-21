@@ -1,103 +1,113 @@
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { describe, it, expect, jest, beforeEach, mock, afterAll } from 'bun:test';
-import { sendConnectionRequestEmail, sendConnectionAcceptedEmail } from '../notification.sender';
-import * as emailModule from '../transport.producer';
-import * as templatesModule from '../templates/connection-request.template'; // We need to mock specific templates now
-import * as connectionAcceptedTemplateModule from '../templates/connection-accepted.template';
+import { NotificationSender } from '../notification.sender';
 
-// Mock dependencies
-mock.module('../transport.producer', () => ({
-  sendEmail: jest.fn()
-}));
+const recipient = {
+  id: 'test-user-id',
+  onboarding: { completedAt: new Date() },
+  settings: {
+    preferences: { connectionUpdates: true },
+    unsubscribeToken: 'token',
+  },
+};
 
-mock.module('../templates/connection-request.template', () => ({
-  connectionRequestTemplate: jest.fn(() => ({ subject: 'Request Subject', html: '<p>Request HTML</p>', text: 'Request Text' }))
-}));
-mock.module('../templates/connection-accepted.template', () => ({
-  connectionAcceptedTemplate: jest.fn(() => ({ subject: 'Accepted Subject', html: '<p>Accepted HTML</p>', text: 'Accepted Text' }))
-}));
-
-mock.module('../../drizzle/drizzle', () => ({
-  default: {
-    select: jest.fn(() => ({
-      from: jest.fn(() => ({
-        leftJoin: jest.fn(() => ({
-          where: jest.fn(() => ({
-            limit: jest.fn(() => Promise.resolve([{
-              id: 'test-user-id',
-              onboarding: { completedAt: new Date() },
-              settings: { preferences: { connectionUpdates: true }, unsubscribeToken: 'token' }
-            }]))
-          }))
-        }))
-      }))
+function makeDatabase() {
+  return {
+    select: mock(() => ({
+      from: mock(() => ({
+        leftJoin: mock(() => ({
+          where: mock(() => ({
+            limit: mock(async () => [recipient]),
+          })),
+        })),
+      })),
     })),
-    insert: jest.fn(() => ({
-      values: jest.fn(() => ({
-        returning: jest.fn(() => Promise.resolve([{}]))
-      }))
-    }))
-  }
+    insert: mock(() => ({
+      values: mock(() => ({
+        returning: mock(async () => [{ unsubscribeToken: 'token' }]),
+      })),
+    })),
+  };
+}
+
+const sendEmail = mock(async () => undefined);
+const requestTemplate = mock(() => ({
+  subject: 'Request Subject',
+  html: '<p>Request HTML</p>',
+  text: 'Request Text',
+}));
+const acceptedTemplate = mock(() => ({
+  subject: 'Accepted Subject',
+  html: '<p>Accepted HTML</p>',
+  text: 'Accepted Text',
 }));
 
-afterAll(() => {
-  mock.restore();
-});
+function makeSender() {
+  return new NotificationSender({
+    database: makeDatabase() as never,
+    sendEmail,
+    requestTemplate,
+    acceptedTemplate,
+  });
+}
 
 describe('Email Handlers', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    sendEmail.mockClear();
+    requestTemplate.mockClear();
+    acceptedTemplate.mockClear();
   });
 
-  describe('sendConnectionRequestEmail', () => {
-    it('should call sendEmail with correct arguments', async () => {
-      const to = 'test@example.com';
-      const initiatorName = 'Alice';
-      const receiverName = 'Bob';
-      const synthesisHtml = '<p>Synthesis</p>';
-      const subject = 'Connection Request';
+  it('sends a connection-request email with the rendered template', async () => {
+    const sender = makeSender();
+    const to = 'test@example.com';
+    const initiatorName = 'Alice';
+    const receiverName = 'Bob';
+    const synthesisHtml = '<p>Synthesis</p>';
+    const subject = 'Connection Request';
 
-      await sendConnectionRequestEmail(to, initiatorName, receiverName, synthesisHtml, subject);
+    await sender.sendConnectionRequestEmail(to, initiatorName, receiverName, synthesisHtml, subject);
 
-      const unsubscribeUrl = `${process.env.API_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
-      expect(templatesModule.connectionRequestTemplate).toHaveBeenCalledWith(initiatorName, receiverName, synthesisHtml, subject, unsubscribeUrl);
-      expect(emailModule.sendEmail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to,
-          subject: 'Request Subject',
-          html: '<p>Request HTML</p>',
-          text: 'Request Text',
-        })
-      );
-    });
+    const unsubscribeUrl = `${process.env.API_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
+    expect(requestTemplate).toHaveBeenCalledWith(
+      initiatorName,
+      receiverName,
+      synthesisHtml,
+      subject,
+      unsubscribeUrl,
+    );
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to,
+      subject: 'Request Subject',
+      html: '<p>Request HTML</p>',
+      text: 'Request Text',
+    }));
   });
 
-  describe('sendConnectionAcceptedEmail', () => {
-    it('should call sendEmail with correct arguments', async () => {
-      const to = ['alice@example.com', 'bob@example.com'];
-      const initiatorName = 'Alice';
-      const accepterName = 'Bob';
-      const synthesisHtml = '<p>Intro</p>';
+  it('sends one connection-accepted email per recipient', async () => {
+    const sender = makeSender();
+    const to = ['alice@example.com', 'bob@example.com'];
+    const initiatorName = 'Alice';
+    const accepterName = 'Bob';
+    const synthesisHtml = '<p>Intro</p>';
 
-      await sendConnectionAcceptedEmail(to, initiatorName, accepterName, synthesisHtml);
+    await sender.sendConnectionAcceptedEmail(to, initiatorName, accepterName, synthesisHtml);
 
-      const unsubscribeUrl = `${process.env.API_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
-      expect(connectionAcceptedTemplateModule.connectionAcceptedTemplate).toHaveBeenCalledWith(initiatorName, accepterName, synthesisHtml, unsubscribeUrl);
-      // Sends one email per recipient
-      expect(emailModule.sendEmail).toHaveBeenCalledTimes(2);
-      for (const recipient of to) {
-        expect(emailModule.sendEmail).toHaveBeenCalledWith(
-          expect.objectContaining({
-            to: recipient,
-            subject: 'Accepted Subject',
-            html: '<p>Accepted HTML</p>',
-            text: 'Accepted Text',
-          })
-        );
-      }
-    });
+    const unsubscribeUrl = `${process.env.API_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
+    expect(acceptedTemplate).toHaveBeenCalledWith(
+      initiatorName,
+      accepterName,
+      synthesisHtml,
+      unsubscribeUrl,
+    );
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    for (const email of to) {
+      expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+        to: email,
+        subject: 'Accepted Subject',
+        html: '<p>Accepted HTML</p>',
+        text: 'Accepted Text',
+      }));
+    }
   });
-
 });

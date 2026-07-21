@@ -1,12 +1,13 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test } from 'bun:test';
 import { eq, inArray, sql } from 'drizzle-orm/sql';
 
 import { QuestionerAdapter, type AdapterPersistableQuestion } from '../questioner.adapter';
 import { UserDatabaseAdapter } from '../database.adapter';
 import db from '../../lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { intents, opportunities, questions } from '../../schemas/database.schema';
 import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { isPoolArtifactFresh } from '../../queues/pool/poolquestions.constants';
@@ -23,6 +24,9 @@ function discriminator(label: string, opportunityIds = [crypto.randomUUID()]) {
     assignments: opportunityIds.map((opportunityId) => ({ opportunityId, side: 'Builder' })),
   };
 }
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('QuestionerAdapter material intent lifecycle', () => {
   const users = new UserDatabaseAdapter();

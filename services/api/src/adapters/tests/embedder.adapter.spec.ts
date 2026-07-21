@@ -7,12 +7,16 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
+import { describe, expect, it, beforeAll as bunBeforeAll, afterAll as bunAfterAll } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { users, networks, networkMembers, intents, intentNetworks } from '../../schemas/database.schema';
 import { EmbedderAdapter } from '../embedder.adapter';
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 const TEST_PREFIX = 'embedder_spec_' + Date.now() + '_';
 
@@ -252,9 +256,9 @@ describe('EmbedderAdapter', () => {
 });
 
 describe('EmbedderAdapter – generate (optional)', () => {
-  it('should generate embedding for text when OPENROUTER_API_KEY is set', async () => {
-    if (!process.env.OPENROUTER_API_KEY) {
-      return; // skip when no key
+  it('should generate embedding for text when paid integration tests are enabled', async () => {
+    if (process.env.RUN_PAID_INTEGRATION_TESTS !== '1' || !process.env.OPENROUTER_API_KEY) {
+      return;
     }
     const adapter = new EmbedderAdapter();
     try {

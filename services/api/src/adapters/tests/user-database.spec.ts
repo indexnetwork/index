@@ -284,7 +284,12 @@ describe('createUserDatabase', () => {
     it('assignIntentToNetwork succeeds for owned intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
       await userDb.assignIntentToNetwork('intent-1', 'idx-a', 0.9);
-      expect(mockDb.assignIntentToNetwork).toHaveBeenCalledWith('intent-1', 'idx-a', 0.9);
+      expect(mockDb.assignIntentToNetwork).toHaveBeenCalledWith(
+        'intent-1',
+        'idx-a',
+        0.9,
+        undefined,
+      );
     });
 
     it('assignIntentToNetwork throws for intent owned by another user', async () => {

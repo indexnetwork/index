@@ -16,7 +16,7 @@ BEGIN
     COALESCE(NULLIF(BTRIM(w.description), ''), 'Migrated webhook ' || LEFT(w.url, 48)),
     w.description,
     'personal',
-    CASE WHEN w.active THEN 'active' ELSE 'inactive' END,
+    (CASE WHEN w.active THEN 'active' ELSE 'inactive' END)::agent_status,
     jsonb_build_object(
       'migratedFrom', 'webhook',
       'legacyWebhookId', w.id,

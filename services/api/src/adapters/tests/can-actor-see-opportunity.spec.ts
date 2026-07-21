@@ -6,12 +6,9 @@
  * Pure function, no DB. Pins the security chokepoint surfaced in the PR #1029
  * review after the adapter split moved it into `database.shared.ts`.
  */
-/** Config (loaded so importing database.shared does not trip module init). */
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
-
 import { describe, expect, it } from 'bun:test';
-import { canActorSeeOpportunity } from '../database.shared';
+
+import { canActorSeeOpportunity } from '../opportunity.visibility';
 
 const ME = 'user-me';
 const OTHER = 'user-other';

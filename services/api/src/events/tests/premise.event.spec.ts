@@ -1,96 +1,9 @@
-/**
- * Unit tests for PremiseEvents hooks and PremiseQueue cascade/regen logic.
- * No DB or Redis needed — all external deps are mocked at module level.
- *
- * Note: env stubs are set here so the module-level adapter singletons can
- * instantiate without real credentials. These keys are never used in tests
- * because the injected deps bypass the production code paths.
- */
+/** Unit tests for PremiseEvents hooks and constructor-injected PremiseQueue logic. */
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
-// Must be before any imports: Bun hoists mock.module and static imports together,
-// so we also need env stubs for adapters that instantiate at module evaluation time.
-process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? 'test-placeholder';
-process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? 'test-placeholder';
-process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://localhost:5432/test';
-
-import { describe, expect, it, mock, beforeEach, afterEach, afterAll } from 'bun:test';
-
-// ---------------------------------------------------------------------------
-// node-cron mock — prevent real cron scheduling
-// ---------------------------------------------------------------------------
-mock.module('node-cron', () => ({
-  default: {
-    schedule: mock(() => ({ start: () => {}, stop: () => {} })),
-  },
-}));
-
-// ---------------------------------------------------------------------------
-// QueueFactory mock — prevent Redis connections on construction
-// ---------------------------------------------------------------------------
-mock.module('../../lib/bullmq/bullmq', () => ({
-  QueueFactory: {
-    createQueue: () => ({
-      add: mock(async () => ({ id: 'job-1' })),
-      close: mock(async () => {}),
-    }),
-    createWorker: mock(() => ({ close: mock(async () => {}) })),
-    createQueueEvents: mock(() => ({})),
-  },
-}));
-
-// ---------------------------------------------------------------------------
-// Adapter mocks — prevent singleton instantiation (OpenAI/DB clients) at import time.
-// Paths are relative to THIS test file (src/events/tests/), resolving to src/adapters/*.
-// ---------------------------------------------------------------------------
-mock.module('../../adapters/embedder.adapter', () => ({
-  EmbedderAdapter: class {
-    embed = async () => [];
-  },
-  embedderAdapter: { embed: async () => [] },
-}));
-
-mock.module('../../adapters/scraper.adapter', () => ({
-  ScraperAdapter: class {
-    scrape = async () => '';
-  },
-  scraperAdapter: { scrape: async () => '' },
-}));
-
-mock.module('../../adapters/database.adapter', () => ({
-  ChatDatabaseAdapter: class {
-    getExpiredPremises = async () => [];
-    updatePremise = async () => {};
-  },
-  OpportunityDatabaseAdapter: class {
-    getOpportunitiesForUser = async () => [];
-    updateOpportunityStatus = async () => {};
-  },
-  EnrichmentDatabaseAdapter: class {
-    getProfile = async () => null;
-  },
-}));
-
-// ---------------------------------------------------------------------------
-// Protocol mock — EnrichmentGraphFactory not needed for unit tests
-// ---------------------------------------------------------------------------
-mock.module('@indexnetwork/protocol', () => ({
-  EnrichmentGraphFactory: class {
-    createGraph() {
-      return { invoke: mock(async () => {}) };
-    }
-  },
-}));
-
-afterAll(() => {
-  mock.restore();
-});
-
-// ---------------------------------------------------------------------------
-// Imports (must come after mock.module calls)
-// ---------------------------------------------------------------------------
 import { PremiseEvents } from '../premise.event';
 import { PremiseQueue } from '../../queues/premise.queue';
-import type { PremiseQueueDeps, NonTerminalStatus, IntentReverificationVerdict } from '../../queues/premise.queue';
+import type { IntentReverificationVerdict, NonTerminalStatus, PremiseQueueDeps } from '../../queues/premise.queue';
 
 /** Deps that silence the re-verification path for opportunity-focused tests. */
 const noReverifyDeps: Pick<PremiseQueueDeps, 'getPremiseEmbedding'> = {

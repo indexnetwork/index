@@ -1,15 +1,19 @@
 import '../src/startup.env';
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
 import { eq } from 'drizzle-orm';
 
 import { AgentController } from '../src/controllers/agent.controller';
 import db from '../src/lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../src/lib/testing/database-test-budget';
 import { agentTestMessages, agents, users } from '../src/schemas/database.schema';
 import type { PickupResult } from '../src/services/agent-test-message.service';
 import { agentService } from '../src/services/agent.service';
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 // ---------------------------------------------------------------------------
 // Helpers — mirror the pattern from agent-test-message.controller.spec.ts

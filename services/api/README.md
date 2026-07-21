@@ -17,6 +17,26 @@ bun run db:migrate    # Apply migrations
 bun run db:studio     # Drizzle Studio (DB GUI)
 ```
 
+## Tests
+
+Use a repo-root `.env.test` that points to a dedicated disposable database:
+
+```bash
+# In .env.test: NODE_ENV=test, TEST_DATABASE_SAFE=1, disposable DATABASE_URL
+bun run db:migrate:test
+bun test                # complete baseline, including isolated subprocesses
+bun run test:isolated   # isolated manifest only
+bun run test:all        # explicit alias of the complete bare-Bun baseline
+```
+
+Test mode is captured before `.env.test` loads. A conflicting `NODE_ENV` aborts,
+and `db:migrate:test` cannot bypass `TEST_DATABASE_SAFE=1` through dotenv.
+Paid providers, a dedicated disposable Redis instance, and localhost-server E2E
+tests are opt-in via `RUN_PAID_INTEGRATION_TESTS=1`,
+`RUN_REDIS_INTEGRATION_TESTS=1` plus an explicit `REDIS_URL`, and
+`RUN_LOCAL_API_E2E=1`, respectively. See
+[the getting-started guide](../../docs/guides/getting-started.md#testing).
+
 ## More
 
 - **[../../README.md](../../README.md)** — Project overview and getting started

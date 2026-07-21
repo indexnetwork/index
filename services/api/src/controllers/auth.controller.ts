@@ -40,11 +40,11 @@ const updateProfileSchema = z.object({
   }).optional(),
 });
 
-function hasAtLeastOneSocial(socials: unknown): boolean {
+export function hasAtLeastOneSocial(socials: unknown): boolean {
   return Array.isArray(socials) && socials.length > 0;
 }
 
-function shouldAutoGenerateProfile(user: {
+export function shouldAutoGenerateProfile(user: {
   name?: string | null;
   socials?: unknown;
   hasProfile?: boolean;

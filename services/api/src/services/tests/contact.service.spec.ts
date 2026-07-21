@@ -66,7 +66,7 @@ async function createTestUser(id: string, email: string, name: string): Promise<
 }
 
 beforeAll(async () => {
-  svc = new ContactService();
+  svc = new ContactService(undefined, () => true);
 
   ownerId = crypto.randomUUID();
   existingUserId = crypto.randomUUID();

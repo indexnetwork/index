@@ -269,18 +269,58 @@ Once both servers are running, open http://localhost:3000 in your browser.
 
 ### Testing
 
+API database tests require a **dedicated disposable PostgreSQL database**. Never
+point `.env.test` at a shared development database or either production branch.
+From the repository root:
+
+```bash
+cp .env.example .env.test
+```
+
+Change the copied file's `NODE_ENV=development` to `NODE_ENV=test` (or remove
+the declaration), set `DATABASE_URL` to the disposable database, and opt in
+explicitly with `TEST_DATABASE_SAFE=1`. Test entry points capture test mode
+before dotenv loads and reject conflicting `NODE_ENV` values, so
+`db:migrate:test` cannot bypass the safety marker. Then provision the schema:
+
+```bash
+cd services/api
+bun run db:migrate:test
+```
+
+Bare/full-suite runs perform a bounded connectivity and schema probe before test
+modules load. The probe redacts credentials and reports missing migrations with
+a direct `db:migrate:test` remediation. Tests that use Bun's process-global
+module mocks or mutate process-wide environment variables have the
+non-discoverable `.isolated.ts` suffix. A discoverable orchestrator validates
+exact manifest/filesystem parity and runs every entry in a fresh Bun subprocess;
+missing, duplicate, malformed, or unregistered entries fail before execution.
+
 ```bash
 cd services/api
 
 # Run a specific test file (preferred)
 bun test tests/e2e.spec.ts
 
+# Run the complete hermetic/disposable-DB baseline, including isolated files
+bun test
+
+# Run only the strict isolated manifest
+bun run test:isolated
+
+# Explicit alias of the complete bare-Bun baseline
+bun run test:all
+
 # Run tests in watch mode
 bun test --watch
-
-# Run the full suite (slow -- avoid unless necessary)
-bun test
 ```
+
+Live integrations are off by default. Use `RUN_PAID_INTEGRATION_TESTS=1` with
+the required provider credentials for paid tests. Redis tests require both
+`RUN_REDIS_INTEGRATION_TESTS=1` and an explicit `REDIS_URL` for a dedicated
+disposable Redis instance; they never probe localhost or a configured Redis
+without the gate. `RUN_LOCAL_API_E2E=1` enables tests that require a separately
+running localhost API server.
 
 Always target specific test files affected by your changes rather than running the full suite.
 

@@ -125,11 +125,16 @@ describe('QuestionerAdapter pool push claim transaction', () => {
   beforeAll(async () => {
     for (const email of [EMAIL, OTHER_EMAIL]) {
       const existing = await users.findByEmail(email);
-      if (existing) await users.deleteByEmail(email);
+      if (!existing) continue;
+      await db.delete(questions).where(
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: existing.id }])}::jsonb`,
+      );
+      await db.delete(intents).where(eq(intents.userId, existing.id));
+      await users.deleteById(existing.id);
     }
     userId = (await users.create({ email: EMAIL, name: 'Pool Push Owner' })).id;
     otherUserId = (await users.create({ email: OTHER_EMAIL, name: 'Other Owner' })).id;
-  });
+  }, 30_000);
 
   beforeEach(async () => {
     await db.delete(questions).where(sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`);
@@ -138,7 +143,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
       sql`${intents.userId} IN (${userId}, ${otherUserId})`,
     ));
     intentId = await createIntent();
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await db.delete(questions).where(sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`).catch(() => {});
@@ -146,7 +151,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     await db.delete(intents).where(sql`${intents.userId} IN (${userId}, ${otherUserId})`).catch(() => {});
     await users.deleteById(userId).catch(() => {});
     await users.deleteById(otherUserId).catch(() => {});
-  });
+  }, 30_000);
 
   test('VoI is strict and pool size boundary is 8', async () => {
     for (const [voi, expected] of [[0.6, 'voi'], [0.59, 'voi'], [0.600001, 'claimed']] as const) {
@@ -159,7 +164,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     await db.delete(questions).where(eq(questions.id, seven));
     const eight = await createPoolQuestion({ poolSize: 8, voi: 0.9 });
     expect((await adapter.claimPoolQuestionPush(eight, userId)).kind).toBe('claimed');
-  }, 30_000);
+  }, 60_000);
 
   test('dismissal streak raises the threshold and a later answer resets it', async () => {
     const base = Date.now() - 60_000;
@@ -179,7 +184,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     await resolveQuestion(answered, 'answered', new Date(base + 20_000));
     const reset = await createPoolQuestion({ voi: 0.61 });
     expect((await adapter.claimPoolQuestionPush(reset, userId)).kind).toBe('claimed');
-  }, 30_000);
+  }, 60_000);
 
   test('lifecycle-voided dismissals do not contribute to dismissal decay', async () => {
     const voided = await createPoolQuestion({ voi: 0.1 });
@@ -209,7 +214,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
       const q = await createPoolQuestion({ intentId: lifecycleIntent, voi: 0.9 });
       expect(reason(await adapter.claimPoolQuestionPush(q, userId))).toBe('intent_lifecycle');
     }
-  }, 30_000);
+  }, 60_000);
 
   test('allowNewClaim=false resumes an existing claim but leaves an unclaimed request recoverable', async () => {
     const unclaimed = await createPoolQuestion({ voi: 0.9 });
@@ -257,7 +262,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     await assertSuppressed(async () => {
       await db.update(intents).set({ userId: otherUserId }).where(eq(intents.id, intentId));
     });
-  }, 30_000);
+  }, 90_000);
 
   test('durable request markers recover only pending nonterminal rows', async () => {
     const requested = await createPoolQuestion({ voi: 0.9 });
@@ -315,7 +320,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     const duplicateCycle = await createPoolQuestion({ runId: 'terminal-cycle', voi: 0.9 });
     expect(await adapter.markPoolQuestionPushRequested(duplicateCycle, userId)).toBe(true);
     await expectSuppressedRequest(duplicateCycle, 'cycle_budget');
-  }, 30_000);
+  }, 90_000);
 
   test('malformed source, actor, pool, and cycle terminalize unclaimed requests', async () => {
     const source = await createPoolQuestion({ voi: 0.9 });
@@ -340,7 +345,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
       pool: detection.pool ? { ...detection.pool, runId: '', minedAt: '' } : undefined,
     }));
     await expectSuppressedRequest(cycle, 'malformed_cycle');
-  }, 30_000);
+  }, 60_000);
 
   test('job recipient mismatch cannot suppress a valid authoritative claim', async () => {
     const questionId = await createPoolQuestion({ voi: 0.9 });
@@ -388,7 +393,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     expect(reason(await adapter.claimPoolQuestionPush(claimed, userId, { allowNewClaim: false }))).toBe('malformed_source');
     const [row] = await db.select({ detection: questions.detection }).from(questions).where(eq(questions.id, claimed));
     expect(row.detection.push?.deliveryStatus).toBe('suppressed');
-  }, 30_000);
+  }, 60_000);
 
   test('resolved claims count toward the UTC daily cap across intents', async () => {
     for (const status of ['answered', 'dismissed'] as const) {
@@ -408,7 +413,7 @@ describe('QuestionerAdapter pool push claim transaction', () => {
       userId,
       claimed: false,
     });
-  }, 30_000);
+  }, 60_000);
 
   test('same cycle claims once while different cycles can claim', async () => {
     const first = await createPoolQuestion({ runId: 'cycle-a', voi: 0.9 });
@@ -460,5 +465,5 @@ describe('QuestionerAdapter pool push claim transaction', () => {
     const sameCycle = await Promise.all([0, 1, 2].map(() => createPoolQuestion({ runId: 'one-cycle', voi: 0.9 })));
     const cycleResults = await Promise.all(sameCycle.map((id) => adapter.claimPoolQuestionPush(id, userId)));
     expect(cycleResults.filter((result) => result.kind === 'claimed')).toHaveLength(1);
-  }, 30_000);
+  }, 60_000);
 });

@@ -1,0 +1,1867 @@
+/**
+ * Integration tests for all database adapters in database.adapter.ts.
+ * Requires DATABASE_URL and migrated schema. Run: bun test src/adapters/database.adapter.spec.ts
+ */
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, it as bunIt, mock } from 'bun:test';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
+import { v4 as uuidv4 } from 'uuid';
+import db from '../../lib/drizzle/drizzle';
+import { users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
+import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
+import { PremiseEvents } from '../../events/premise.event';
+import { IntentEvents } from '../../events/intent.event';
+import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 90_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 45_000);
+const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
+
+interface TestFixture {
+  userAId: string;
+  userBId: string;
+  networkId: string;
+  intent1Id: string;
+  intent2Id: string | null;
+  /** Extra intent ids created during tests (e.g. Chat createIntent) for cleanup */
+  extraIntentIds: string[];
+}
+let fixture: TestFixture;
+let intent2Id: string | null = null;
+
+beforeAll(async () => {
+  const userAId = uuidv4();
+  const userBId = uuidv4();
+  const networkId = uuidv4();
+  const intent1Id = uuidv4();
+  await db.insert(users).values([
+    {
+      id: userAId,
+      email: TEST_PREFIX + userAId + '@test.com',
+      name: TEST_PREFIX + 'UserA',
+      intro: 'Bio A',
+      location: 'Loc A',
+    },
+    {
+      id: userBId,
+      email: TEST_PREFIX + userBId + '@test.com',
+      name: TEST_PREFIX + 'UserB',
+      intro: 'Bio B',
+      location: 'Loc B',
+    },
+  ]);
+  await db.insert(networks).values({
+    id: networkId,
+    title: TEST_PREFIX + 'Test Index',
+    prompt: 'Test network prompt',
+  });
+  await db.insert(networkMembers).values([
+    { networkId, userId: userAId, permissions: ['owner'], autoAssign: false },
+    { networkId, userId: userBId, permissions: ['member'], prompt: 'Member prompt', autoAssign: true },
+  ]);
+  await db.insert(intents).values({
+    id: intent1Id,
+    userId: userAId,
+    payload: TEST_PREFIX + 'Intent 1 payload',
+    summary: 'Summary 1',
+    sourceType: 'discovery_form',
+    sourceId: userAId,
+  });
+  await db.insert(intentNetworks).values({ intentId: intent1Id, networkId });
+  fixture = { userAId, userBId, networkId, intent1Id, intent2Id: null, extraIntentIds: [] };
+}, 30_000);
+
+afterAll(async () => {
+  const intentIds = [
+    fixture.intent1Id,
+    fixture.intent2Id,
+    ...fixture.extraIntentIds,
+  ].filter(Boolean) as string[];
+  if (intentIds.length > 0) {
+    await db.delete(intentNetworks).where(inArray(intentNetworks.intentId, intentIds));
+    await db.delete(intents).where(inArray(intents.id, intentIds));
+  }
+  await db.delete(opportunities).where(sql`${opportunities.context}->>'networkId' = ${fixture.networkId}`);
+  await db.delete(networkMembers).where(eq(networkMembers.networkId, fixture.networkId));
+  await db.delete(networks).where(eq(networks.id, fixture.networkId));
+  await db.delete(users).where(inArray(users.id, [fixture.userAId, fixture.userBId]));
+}, 30_000);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// IntentDatabaseAdapter
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('IntentDatabaseAdapter', () => {
+  const adapter = new IntentDatabaseAdapter();
+
+  it('should return empty array for user with no intents', async () => {
+    const list = await adapter.getActiveIntents(fixture.userBId);
+    expect(list).toEqual([]);
+  });
+
+  it('should return active intents for user', async () => {
+    const list = await adapter.getActiveIntents(fixture.userAId);
+    expect(list.length).toBeGreaterThanOrEqual(1);
+    expect(list.some((i) => i.id === fixture.intent1Id && i.payload.includes('Intent 1'))).toBe(true);
+  });
+
+  it('should create intent and return row', async () => {
+    const created = await adapter.createIntent({
+      userId: fixture.userBId,
+      payload: TEST_PREFIX + 'New intent payload',
+      summary: 'New summary',
+    });
+    expect(created.id).toBeDefined();
+    expect(created.payload).toContain('New intent payload');
+    expect(created.userId).toBe(fixture.userBId);
+    intent2Id = created.id;
+    fixture.intent2Id = intent2Id;
+  });
+
+  it('should update intent', async () => {
+    if (!intent2Id) throw new Error('intent2Id not set');
+    const updated = await adapter.updateIntent(intent2Id, {
+      payload: TEST_PREFIX + 'Updated payload',
+      summary: 'Updated summary',
+    });
+    expect(updated).not.toBeNull();
+    expect(updated!.payload).toContain('Updated payload');
+    expect(updated!.summary).toBe('Updated summary');
+  });
+
+  it('emits one awaited event only for a material normalized payload or summary edit', async () => {
+    if (!intent2Id) throw new Error('intent2Id not set');
+    const handler = mock(async () => {});
+    IntentEvents.onMaterialUpdated = handler;
+    const current = await adapter.updateIntent(intent2Id, {
+      payload: `  ${TEST_PREFIX}Updated   payload  `,
+      summary: ' Updated summary ',
+    });
+    expect(current).not.toBeNull();
+    expect(handler).not.toHaveBeenCalled();
+
+    await adapter.updateIntent(intent2Id, { summary: 'Materially different summary' });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]?.[0]).toMatchObject({
+      intentId: intent2Id,
+      userId: fixture.userBId,
+    });
+    IntentEvents.onMaterialUpdated = async () => {};
+  });
+
+  it('should archive intent', async () => {
+    if (!intent2Id) throw new Error('intent2Id not set');
+    const result = await adapter.archiveIntent(intent2Id);
+    expect(result.success).toBe(true);
+    const list = await adapter.getActiveIntents(fixture.userBId);
+    expect(list.some((i) => i.id === intent2Id)).toBe(false);
+  });
+
+  it('should return success: false when archiving non-existent intent', async () => {
+    const result = await adapter.archiveIntent(uuidv4());
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ChatDatabaseAdapter
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ChatDatabaseAdapter', () => {
+  const adapter = new ChatDatabaseAdapter();
+
+  it('emits the same material update event at the chat persistence chokepoint', async () => {
+    const handler = mock(async () => {});
+    IntentEvents.onMaterialUpdated = handler;
+    await adapter.updateIntent(fixture.intent1Id, { embedding: Array(2000).fill(0.01) });
+    expect(handler).not.toHaveBeenCalled();
+    await adapter.updateIntent(fixture.intent1Id, { payload: `${TEST_PREFIX}Chat materially updated payload` });
+    expect(handler).toHaveBeenCalledTimes(1);
+    IntentEvents.onMaterialUpdated = async () => {};
+  });
+
+  it('should get profile sourced from the users table', async () => {
+    // getProfile now sources identity from `users` (name/intro->bio/location); the typed
+    // skills/interests/narrative are dropped (empty) -- see WS5 (IND-363).
+    const profile = await adapter.getProfile(fixture.userAId);
+    expect(profile).not.toBeNull();
+    expect(profile!.userId).toBe(fixture.userAId);
+    expect(profile!.identity).toEqual({ name: TEST_PREFIX + 'UserA', bio: 'Bio A', location: 'Loc A' });
+    expect(profile!.context).toBe('');
+  });
+
+  it('should get null profile for a non-existent user', async () => {
+    const profile = await adapter.getProfile(uuidv4());
+    expect(profile).toBeNull();
+  });
+
+  it('should get active intents for user', async () => {
+    const list = await adapter.getActiveIntents(fixture.userAId);
+    expect(list.length).toBeGreaterThanOrEqual(1);
+    expect(list.some((i) => i.id === fixture.intent1Id)).toBe(true);
+  });
+
+  it('should create intent via Chat adapter', async () => {
+    const created = await adapter.createIntent({
+      userId: fixture.userBId,
+      payload: TEST_PREFIX + 'Chat adapter intent',
+    });
+    expect(created.id).toBeDefined();
+    expect(created.userId).toBe(fixture.userBId);
+    fixture.extraIntentIds.push(created.id);
+    const list = await adapter.getActiveIntents(fixture.userBId);
+    expect(list.some((i) => i.id === created.id)).toBe(true);
+    await adapter.archiveIntent(created.id);
+  });
+
+  it('should get intents in index for member by network id', async () => {
+    const list = await adapter.getIntentsInIndexForMember(fixture.userAId, fixture.networkId);
+    expect(list.length).toBeGreaterThanOrEqual(1);
+    expect(list.some((i) => i.id === fixture.intent1Id)).toBe(true);
+  });
+
+  it('should get user by id', async () => {
+    const user = await adapter.getUser(fixture.userAId);
+    expect(user).not.toBeNull();
+    expect(user!.id).toBe(fixture.userAId);
+    expect(user!.name).toContain('UserA');
+  });
+
+  it('saveProfile updates the identity returned from users', async () => {
+    const profile = {
+      userId: fixture.userBId,
+      identity: { name: 'User B', bio: 'Saved Bio', location: '' },
+      context: 'Context B',
+    };
+    await adapter.saveProfile(fixture.userBId, profile);
+    const got = await adapter.getProfile(fixture.userBId);
+    expect(got).not.toBeNull();
+    expect(got!.identity.name).toBe('User B');
+    expect(got!.identity.bio).toBe('Saved Bio');
+    expect(got!.context).toBe('');
+  });
+
+  it('should save HyDE profile to hyde_documents', async () => {
+    const desc = 'Hypothetical description';
+    const embedding = new Array(2000).fill(0.1);
+    await adapter.saveHydeDocument({
+      sourceType: 'query',
+      sourceId: fixture.userAId,
+      strategy: 'mirror',
+      targetCorpus: 'profiles',
+      hydeText: desc,
+      hydeEmbedding: embedding,
+    });
+    const doc = await adapter.getHydeDocument('query', fixture.userAId, 'mirror');
+    expect(doc).not.toBeNull();
+    expect(doc!.hydeText).toBe(desc);
+  });
+
+  it('should get network memberships for user', async () => {
+    const memberships = await adapter.getNetworkMemberships(fixture.userAId);
+    expect(memberships.length).toBeGreaterThanOrEqual(1);
+    const m = memberships.find((x) => x.networkId === fixture.networkId);
+    expect(m).toBeDefined();
+    expect(m!.networkTitle).toContain('Test Index');
+  });
+
+  it('should include experiment networks in shared networks', async () => {
+    const experimentNetworkId = uuidv4();
+    await db.insert(networks).values({
+      id: experimentNetworkId,
+      title: TEST_PREFIX + 'Experiment Shared Network',
+      prompt: 'Experiment network prompt',
+      isExperiment: true,
+    });
+    await db.insert(networkMembers).values([
+      { networkId: experimentNetworkId, userId: fixture.userAId, permissions: ['member'], autoAssign: true },
+      { networkId: experimentNetworkId, userId: fixture.userBId, permissions: ['member'], autoAssign: true },
+    ]);
+
+    try {
+      const shared = await adapter.getSharedNetworks(fixture.userAId, fixture.userBId);
+      const experiment = shared.find((network) => network.id === experimentNetworkId);
+      expect(experiment).toBeDefined();
+      expect(experiment!.title).toContain('Experiment Shared Network');
+      expect(experiment!._count.members).toBe(2);
+    } finally {
+      await db.delete(networkMembers).where(eq(networkMembers.networkId, experimentNetworkId));
+      await db.delete(networks).where(eq(networks.id, experimentNetworkId));
+    }
+  });
+
+  it('should get user network ids for auto-assign member', async () => {
+    const indexIds = await adapter.getUserIndexIds(fixture.userBId);
+    expect(indexIds).toContain(fixture.networkId);
+  });
+
+  it('should get intent for indexing', async () => {
+    const row = await adapter.getIntentForIndexing(fixture.intent1Id);
+    expect(row).not.toBeNull();
+    expect(row!.id).toBe(fixture.intent1Id);
+    expect(row!.userId).toBe(fixture.userAId);
+  });
+
+  it('should get network member context for member with autoAssign', async () => {
+    const ctx = await adapter.getNetworkMemberContext(fixture.networkId, fixture.userBId);
+    expect(ctx).not.toBeNull();
+    expect(ctx!.networkId).toBe(fixture.networkId);
+    expect(ctx!.memberPrompt).toBe('Member prompt');
+  });
+
+  it('should report intent assigned to index', async () => {
+    const assigned = await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.networkId);
+    expect(assigned).toBe(true);
+  });
+
+  it('should get network ids for intent', async () => {
+    const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
+    expect(indexIds).toEqual([fixture.networkId]);
+    const empty = await adapter.getNetworkIdsForIntent(uuidv4());
+    expect(empty).toEqual([]);
+  });
+
+  it('should assign and unassign intent to index', async () => {
+    const newIntentId = uuidv4();
+    await db.insert(intents).values({
+      id: newIntentId,
+      userId: fixture.userBId,
+      payload: TEST_PREFIX + 'For assign test',
+      sourceType: 'discovery_form',
+      sourceId: fixture.userBId,
+    });
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
+    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    await db.delete(intents).where(eq(intents.id, newIntentId));
+  });
+
+  it('should persist assignment metadata for intent-network assignment', async () => {
+    const newIntentId = uuidv4();
+    const metadata = {
+      resourceType: 'intent' as const,
+      mode: 'automatic' as const,
+      scope: 'global' as const,
+      policy: 'unified-threshold-v1' as const,
+      threshold: 0.7,
+      promptPresence: 'both' as const,
+      rawScores: { indexScore: 0.8, memberScore: 0.7 },
+      finalScore: 0.76,
+      assigned: true,
+      reason: 'Matched network and member prompts.',
+      evaluator: 'intent-networker',
+      source: 'test',
+      createdAt: '2026-06-09T00:00:00.000Z',
+    };
+
+    await db.insert(intents).values({
+      id: newIntentId,
+      userId: fixture.userBId,
+      payload: TEST_PREFIX + 'Assignment metadata test',
+      sourceType: 'discovery_form',
+      sourceId: fixture.userBId,
+    });
+
+    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId, 0.76, metadata);
+    const scores = await adapter.getIntentIndexScores(newIntentId);
+    const row = scores.find((score) => score.networkId === fixture.networkId);
+
+    expect(row?.relevancyScore).toBe(0.76);
+    expect(row?.assignmentMetadata).toEqual(metadata);
+
+    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
+    await db.delete(intents).where(eq(intents.id, newIntentId));
+  });
+
+  it('should persist assignment metadata for premise-network assignment', async () => {
+    const premise = await adapter.createPremise({
+      userId: fixture.userBId,
+      assertion: { text: TEST_PREFIX + 'Premise metadata test', tier: 'assertive' },
+      provenance: { source: 'explicit', confidence: 1, timestamp: '2026-06-09T00:00:00.000Z' },
+      validity: { volatile: false },
+    });
+    const metadata = {
+      resourceType: 'premise' as const,
+      mode: 'automatic' as const,
+      scope: 'global' as const,
+      policy: 'unified-threshold-v1' as const,
+      threshold: 0.7,
+      promptPresence: 'index' as const,
+      rawScores: { indexScore: 0.9 },
+      finalScore: 0.9,
+      assigned: true,
+      reason: 'Matched network prompt.',
+      evaluator: 'premise-indexer',
+      source: 'test',
+      createdAt: '2026-06-09T00:00:00.000Z',
+    };
+
+    await adapter.assignPremiseToNetwork(premise.id, fixture.networkId, 0.9, metadata);
+    const rows = await adapter.getPremiseNetworks(premise.id);
+    const row = rows.find((score) => score.networkId === fixture.networkId);
+
+    expect(row?.relevancyScore).toBe(0.9);
+    expect(row?.assignmentMetadata).toEqual(metadata);
+
+    await db.delete(premises).where(eq(premises.id, premise.id));
+  });
+
+  it('fires PremiseEvents at the adapter chokepoint for create/update/retract/expire', async () => {
+    const events: Array<{ kind: string; premiseId: string; userId: string }> = [];
+    const saved = { ...PremiseEvents };
+    PremiseEvents.onCreated = (premiseId, userId) => events.push({ kind: 'created', premiseId, userId });
+    PremiseEvents.onUpdated = (premiseId, userId) => events.push({ kind: 'updated', premiseId, userId });
+    PremiseEvents.onRetracted = (premiseId, userId) => events.push({ kind: 'retracted', premiseId, userId });
+    PremiseEvents.onExpired = (premiseId, userId) => events.push({ kind: 'expired', premiseId, userId });
+
+    let premiseId: string | null = null;
+    try {
+      const premise = await adapter.createPremise({
+        userId: fixture.userBId,
+        assertion: { text: TEST_PREFIX + 'lifecycle-event-test', tier: 'assertive' },
+        provenance: { source: 'explicit', confidence: 1, timestamp: new Date().toISOString() },
+        validity: { volatile: false },
+      });
+      premiseId = premise.id;
+
+      await adapter.updatePremise(premise.id, { validity: { volatile: false } });
+      await adapter.updatePremise(premise.id, { status: 'RETRACTED', retractedAt: new Date() });
+      await adapter.updatePremise(premise.id, { status: 'EXPIRED' });
+
+      expect(events).toEqual([
+        { kind: 'created', premiseId: premise.id, userId: fixture.userBId },
+        { kind: 'updated', premiseId: premise.id, userId: fixture.userBId },
+        { kind: 'retracted', premiseId: premise.id, userId: fixture.userBId },
+        { kind: 'expired', premiseId: premise.id, userId: fixture.userBId },
+      ]);
+    } finally {
+      Object.assign(PremiseEvents, saved);
+      if (premiseId) await db.delete(premises).where(eq(premises.id, premiseId));
+    }
+  });
+
+  it('should return premises matching a specific provenance source', async () => {
+    const integrationPremise = await adapter.createPremise({
+      userId: fixture.userBId,
+      assertion: { text: TEST_PREFIX + 'integration-source-test', tier: 'assertive' as const },
+      provenance: { source: 'integration', sourceId: 'social-id-1', confidence: 1, timestamp: new Date().toISOString() },
+      validity: { volatile: false },
+    });
+    const explicitPremise = await adapter.createPremise({
+      userId: fixture.userBId,
+      assertion: { text: TEST_PREFIX + 'explicit-source-test', tier: 'assertive' as const },
+      provenance: { source: 'explicit', confidence: 1, timestamp: new Date().toISOString() },
+      validity: { volatile: false },
+    });
+
+    try {
+      const integrationResults = await adapter.getPremisesBySource(fixture.userBId, 'integration');
+      const explicitResults = await adapter.getPremisesBySource(fixture.userBId, 'explicit');
+
+      expect(integrationResults.some(p => p.id === integrationPremise.id)).toBe(true);
+      expect(integrationResults.some(p => p.id === explicitPremise.id)).toBe(false);
+      expect(explicitResults.some(p => p.id === explicitPremise.id)).toBe(true);
+      expect(explicitResults.some(p => p.id === integrationPremise.id)).toBe(false);
+    } finally {
+      await db.delete(premises).where(inArray(premises.id, [integrationPremise.id, explicitPremise.id]));
+    }
+  });
+
+  it('should return empty array for user with no premises of that source', async () => {
+    const results = await adapter.getPremisesBySource(uuidv4(), 'integration');
+    expect(results).toEqual([]);
+  });
+
+  it('should get owned indexes for owner', async () => {
+    const owned = await adapter.getOwnedIndexes(fixture.userAId);
+    expect(owned.length).toBeGreaterThanOrEqual(1);
+    const o = owned.find((x) => x.id === fixture.networkId);
+    expect(o).toBeDefined();
+    expect(o!.memberCount).toBeGreaterThanOrEqual(1);
+    expect(o!.intentCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should report network owner', async () => {
+    expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
+    expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
+  });
+
+  it('should get network members for member', async () => {
+    const members = await adapter.getNetworkMembersForMember(fixture.networkId, fixture.userBId);
+    expect(members.length).toBeGreaterThanOrEqual(1);
+    expect(members.some((m) => m.userId === fixture.userAId || m.userId === fixture.userBId)).toBe(true);
+  });
+
+  it('should get network members for owner', async () => {
+    const members = await adapter.getNetworkMembersForOwner(fixture.networkId, fixture.userAId);
+    expect(members.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should throw when getNetworkMembersForOwner as non-owner', async () => {
+    await expect(adapter.getNetworkMembersForOwner(fixture.networkId, fixture.userBId)).rejects.toThrow('Access denied');
+  });
+
+  it('should get index intents for owner', async () => {
+    const list = await adapter.getNetworkIntentsForOwner(fixture.networkId, fixture.userAId);
+    expect(list.length).toBeGreaterThanOrEqual(1);
+    expect(list.some((i) => i.id === fixture.intent1Id)).toBe(true);
+  });
+
+  it('should get index intents for member', async () => {
+    const list = await adapter.getNetworkIntentsForMember(fixture.networkId, fixture.userBId);
+    expect(list.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should report network membership', async () => {
+    expect(await adapter.isNetworkMember(fixture.networkId, fixture.userAId)).toBe(true);
+    expect(await adapter.isNetworkMember(fixture.networkId, fixture.userBId)).toBe(true);
+    expect(await adapter.isNetworkMember(fixture.networkId, uuidv4())).toBe(false);
+  });
+
+  describe('updateMemberRole', () => {
+    // Reset A=owner, B=member before each test to prevent cascading state corruption
+    const resetRoles = async () => {
+      await db.update(networkMembers).set({ permissions: ['owner'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userAId}`
+      );
+      await db.update(networkMembers).set({ permissions: ['member'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
+      );
+    };
+
+    it('should promote a member to owner', async () => {
+      await resetRoles();
+      const result = await adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'owner');
+      expect(result.member).toBeDefined();
+      expect(result.member!.permissions).toEqual(['owner']);
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(true);
+    }, 15000);
+
+    it('should demote an owner to member when multiple owners exist', async () => {
+      await resetRoles();
+      // Setup: make B an owner so there are two
+      await db.update(networkMembers).set({ permissions: ['owner'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
+      );
+      // Act: A demotes B (two owners → one is fine)
+      const result = await adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'member');
+      expect(result.member!.permissions).toEqual(['member']);
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
+    }, 15000);
+
+    it('should reject demoting the last owner under concurrent demotions', async () => {
+      await resetRoles();
+      // Make both A and B owners (2 total)
+      await db.update(networkMembers).set({ permissions: ['owner'] }).where(
+        sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${fixture.userBId}`
+      );
+
+      // Concurrently: A demotes B, B demotes A.
+      // FOR UPDATE lock serializes the transactions — the second sees ownerCount = 1
+      // after the first commits and rejects the demotion.
+      const results = await Promise.allSettled([
+        adapter.updateMemberRole(fixture.networkId, fixture.userBId, fixture.userAId, 'member'),
+        adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userBId, 'member'),
+      ]);
+
+      const fulfilled = results.filter(r => r.status === 'fulfilled');
+      const rejected = results.filter(r => r.status === 'rejected');
+      expect(fulfilled.length).toBe(1);
+      expect(rejected.length).toBe(1);
+      // The rejected call hits either the demotion guard ("Cannot demote the last owner")
+      // or the access check ("Access denied") depending on timing — both prevent 0 owners.
+      const errorMsg = (rejected[0] as PromiseRejectedResult).reason.message;
+      expect(
+        errorMsg === 'Cannot demote the last owner' ||
+        errorMsg === 'Access denied: Only owners can change member roles'
+      ).toBe(true);
+
+      // Exactly one owner remains
+      const owners = await db
+        .select({ userId: networkMembers.userId })
+        .from(networkMembers)
+        .where(and(
+          eq(networkMembers.networkId, fixture.networkId),
+          sql`'owner' = ANY(${networkMembers.permissions})`,
+          isNull(networkMembers.deletedAt)
+        ));
+      expect(owners.length).toBe(1);
+    }, 30000);
+
+    it('should reject self role change', async () => {
+      await resetRoles();
+      await expect(
+        adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userAId, 'owner')
+      ).rejects.toThrow('Cannot change your own role');
+    }, 15000);
+
+    it('should reject role change by non-owner', async () => {
+      await resetRoles();
+      expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
+      await expect(
+        adapter.updateMemberRole(fixture.networkId, fixture.userAId, fixture.userBId, 'member')
+      ).rejects.toThrow('Access denied');
+    }, 15000);
+
+    it('should reject role change on a contact', async () => {
+      await resetRoles();
+      const contactUserId = uuidv4();
+      await db.insert(users).values({
+        id: contactUserId,
+        email: TEST_PREFIX + contactUserId + '@test.com',
+        name: TEST_PREFIX + 'ContactUser',
+      });
+      await db.insert(networkMembers).values({
+        networkId: fixture.networkId,
+        userId: contactUserId,
+        permissions: ['contact'],
+        autoAssign: false,
+      });
+      try {
+        await expect(
+          adapter.updateMemberRole(fixture.networkId, contactUserId, fixture.userAId, 'owner')
+        ).rejects.toThrow('Cannot change role of a contact');
+      } finally {
+        await db.delete(networkMembers).where(
+          sql`${networkMembers.networkId} = ${fixture.networkId} AND ${networkMembers.userId} = ${contactUserId}`
+        );
+        await db.delete(users).where(eq(users.id, contactUserId));
+      }
+    }, 15000);
+  });
+
+  describe('getUserByEmail (IND-166)', () => {
+    const caseTestUserId = uuidv4();
+    const caseTestEmail = TEST_PREFIX + 'CaseSensitive@Test.COM';
+    const softDeleteUserId = uuidv4();
+    const softDeleteEmail = TEST_PREFIX + 'softdeleted@test.com';
+
+    it('setup: create test users for email lookup tests', async () => {
+      // User with mixed-case email stored as-is (simulating pre-normalization data)
+      await db.insert(users).values({
+        id: caseTestUserId,
+        email: caseTestEmail.toLowerCase(), // stored normalized
+        name: TEST_PREFIX + 'CaseUser',
+      });
+      // Soft-deleted user
+      await db.insert(users).values({
+        id: softDeleteUserId,
+        email: softDeleteEmail,
+        name: TEST_PREFIX + 'DeletedUser',
+        deletedAt: new Date(),
+      });
+    });
+
+    it('should find user with case-insensitive email lookup', async () => {
+      // Search with uppercase variant
+      const found = await adapter.getUserByEmail(caseTestEmail);
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(caseTestUserId);
+    });
+
+    it('should find user when searching with lowercase email', async () => {
+      const found = await adapter.getUserByEmail(caseTestEmail.toLowerCase());
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(caseTestUserId);
+    });
+
+    it('should find user when searching with all-uppercase email', async () => {
+      const found = await adapter.getUserByEmail(caseTestEmail.toUpperCase());
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(caseTestUserId);
+    });
+
+    it('should NOT find soft-deleted user', async () => {
+      const found = await adapter.getUserByEmail(softDeleteEmail);
+      expect(found).toBeNull();
+    });
+
+    it('should return null for non-existent email', async () => {
+      const found = await adapter.getUserByEmail('nonexistent-' + Date.now() + '@test.com');
+      expect(found).toBeNull();
+    });
+
+    it('cleanup: remove test users', async () => {
+      await db.delete(users).where(inArray(users.id, [caseTestUserId, softDeleteUserId]));
+    });
+  });
+
+  it('should update index settings as owner', async () => {
+    const updated = await adapter.updateIndexSettings(fixture.networkId, fixture.userAId, {
+      title: TEST_PREFIX + 'Updated Title',
+    });
+    expect(updated.title).toContain('Updated Title');
+    const again = await adapter.getOwnedIndexes(fixture.userAId);
+    const idx = again.find((x) => x.id === fixture.networkId);
+    expect(idx!.title).toContain('Updated Title');
+  });
+
+  it('should throw when updateIndexSettings as non-owner', async () => {
+    await expect(
+      adapter.updateIndexSettings(fixture.networkId, fixture.userBId, { title: 'Hacked' })
+    ).rejects.toThrow('Access denied');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EnrichmentDatabaseAdapter
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('EnrichmentDatabaseAdapter', () => {
+  const adapter = new EnrichmentDatabaseAdapter();
+
+  it('should get profile when exists', async () => {
+    const profile = await adapter.getProfile(fixture.userAId);
+    expect(profile).not.toBeNull();
+    expect(profile!.userId).toBe(fixture.userAId);
+  });
+
+  it('saveProfile upsert updates getProfile through the users table', async () => {
+    const profile = {
+      userId: fixture.userBId,
+      identity: { name: 'P B', bio: 'Bio', location: '' },
+      narrative: { context: 'N' },
+      attributes: { interests: [], skills: [] },
+      embedding: null as number[] | null,
+    };
+    await adapter.saveProfile(fixture.userBId, profile);
+    const got = await adapter.getProfile(fixture.userBId);
+    expect(got!.identity.name).toBe('P B');
+  });
+
+  it('should save HyDE profile to hyde_documents', async () => {
+    await adapter.saveHydeDocument({
+      sourceType: 'query',
+      sourceId: fixture.userBId,
+      strategy: 'mirror',
+      targetCorpus: 'profiles',
+      hydeText: 'HyDE desc',
+      hydeEmbedding: new Array(2000).fill(0.2),
+    });
+    const hydeAdapter = new HydeDatabaseAdapter();
+    const doc = await hydeAdapter.getHydeDocument('query', fixture.userBId, 'mirror');
+    expect(doc).not.toBeNull();
+    expect(doc!.hydeText).toBe('HyDE desc');
+  });
+
+  it('should get user', async () => {
+    const user = await adapter.getUser(fixture.userAId);
+    expect(user).not.toBeNull();
+    expect(user!.id).toBe(fixture.userAId);
+  });
+
+  it('should dedup socials when detectSocialLabel reclassifies a website as linkedin', async () => {
+    await adapter.setUserSocials(fixture.userAId, [
+      { label: 'linkedin', value: 'some-slug' },
+      { label: 'custom', value: 'https://www.linkedin.com/in/some-slug' },
+      { label: 'custom', value: 'http://example.org' },
+    ]);
+    const rows = await adapter.getUserSocials(fixture.userAId);
+    const linkedinRows = rows.filter(r => r.label === 'linkedin');
+    const customRows = rows.filter(r => r.label === 'custom');
+    expect(linkedinRows).toHaveLength(1);
+    expect(linkedinRows[0].value).toBe('some-slug');
+    expect(customRows).toHaveLength(1);
+    expect(customRows[0].value).toBe('http://example.org');
+
+    await db.delete(userSocials).where(eq(userSocials.userId, fixture.userAId));
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OpportunityDatabaseAdapter
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('OpportunityDatabaseAdapter', () => {
+  const adapter = new OpportunityDatabaseAdapter();
+
+  it('should get profile when exists', async () => {
+    const profile = await adapter.getProfile(fixture.userAId);
+    expect(profile).not.toBeNull();
+    expect(profile!.userId).toBe(fixture.userAId);
+  });
+
+  it('should return a users-sourced row for an un-enriched user (empty arrays); null for non-existent', async () => {
+    const newUserId = uuidv4();
+    await db.insert(users).values({
+      id: newUserId,
+      email: TEST_PREFIX + newUserId + '@test.com',
+      name: 'NoProfile',
+      intro: 'NP bio',
+      location: 'NP loc',
+    });
+    const profile = await adapter.getProfile(newUserId);
+    expect(profile).not.toBeNull();
+    expect(profile!.identity).toEqual({ name: 'NoProfile', bio: 'NP bio', location: 'NP loc' });
+    expect(profile!.context).toBe('');
+    expect(await adapter.getProfile(uuidv4())).toBeNull();
+    await db.delete(users).where(eq(users.id, newUserId));
+  });
+
+  it('should create opportunity with JSONB actors and query by actor', async () => {
+    const created = await adapter.createOpportunity({
+      detection: {
+        source: 'opportunity_graph',
+        createdBy: 'agent-opportunity-finder',
+        triggeredBy: fixture.intent1Id,
+        timestamp: new Date().toISOString(),
+      },
+      actors: [
+        { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+        { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+      ],
+      interpretation: {
+        category: 'collaboration',
+        reasoning: 'Test opportunity',
+        confidence: 0.85,
+      },
+      context: { networkId: fixture.networkId },
+      confidence: '0.85',
+    });
+    expect(created.id).toBeDefined();
+    expect(created.actors).toHaveLength(2);
+    expect(created.status).toBe('pending');
+
+    const forUserA = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+    expect(forUserA.some((o) => o.id === created.id)).toBe(true);
+    const forUserB = await adapter.getOpportunitiesForUser(fixture.userBId);
+    expect(forUserB.some((o) => o.id === created.id)).toBe(true);
+
+    const byId = await adapter.getOpportunity(created.id);
+    expect(byId).not.toBeNull();
+    expect(byId!.interpretation.reasoning).toBe('Test opportunity');
+  });
+
+  it('should report deduplication (opportunityExistsBetweenActors)', async () => {
+    const actorIds = [fixture.userAId, fixture.userBId];
+    const exists = await adapter.opportunityExistsBetweenActors(actorIds, fixture.networkId);
+    expect(exists).toBe(true);
+
+    const otherUserId = uuidv4();
+    const notExists = await adapter.opportunityExistsBetweenActors([fixture.userAId, otherUserId], fixture.networkId);
+    expect(notExists).toBe(false);
+  });
+
+  it('should update opportunity status and persist', async () => {
+    const list = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId, limit: 1 });
+    expect(list.length).toBeGreaterThanOrEqual(1);
+    const opp = list[0];
+    const updated = await adapter.updateOpportunityStatus(opp.id, 'accepted', fixture.userAId);
+    expect(updated).not.toBeNull();
+    expect(updated!.status).toBe('accepted');
+    const refetched = await adapter.getOpportunity(opp.id);
+    expect(refetched!.status).toBe('accepted');
+  });
+
+  describe('role-based visibility (getOpportunitiesForUser)', () => {
+    const thirdUserId = uuidv4();
+
+    it('latent, no introducer: patient sees, agent does not', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'latent',
+      });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forAgent = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
+      expect(forPatient.some((o) => o.id === created.id)).toBe(true);
+      expect(forAgent.some((o) => o.id === created.id)).toBe(false);
+    });
+
+    it('latent, with introducer: only introducer sees', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'introducer' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: thirdUserId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'latent',
+      });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
+      expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
+      expect(forPatient.some((o) => o.id === created.id)).toBe(false);
+    });
+
+    it('pending, no introducer: both patient and agent see', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forAgent = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
+      expect(forPatient.some((o) => o.id === created.id)).toBe(true);
+      expect(forAgent.some((o) => o.id === created.id)).toBe(true);
+    });
+
+    it('pending, with introducer: introducer and patient see, agent does not', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'introducer' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: thirdUserId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
+      const forAgent = await adapter.getOpportunitiesForUser(thirdUserId, { networkId: fixture.networkId });
+      expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
+      expect(forPatient.some((o) => o.id === created.id)).toBe(true);
+      expect(forAgent.some((o) => o.id === created.id)).toBe(false);
+    });
+
+    it('accepted, with introducer: all actors see', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'introducer' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: thirdUserId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'accepted',
+      });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
+      const forAgent = await adapter.getOpportunitiesForUser(thirdUserId, { networkId: fixture.networkId });
+      expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
+      expect(forPatient.some((o) => o.id === created.id)).toBe(true);
+      expect(forAgent.some((o) => o.id === created.id)).toBe(true);
+    });
+
+    it('latent, peers: both peers see', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'peer' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'peer' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'latent',
+      });
+      const forPeerA = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forPeerB = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
+      expect(forPeerA.some((o) => o.id === created.id)).toBe(true);
+      expect(forPeerB.some((o) => o.id === created.id)).toBe(true);
+    });
+  });
+
+  describe('network-scope filter (getOpportunitiesForUser)', () => {
+    it('does not leak when a counterpart actor lives on the scoped network but the viewer\'s own actor is elsewhere', async () => {
+      // The viewer (userA) is anchored on otherNetworkId in this opportunity.
+      // A counterpart (userB) is anchored on fixture.networkId. The old filter
+      // (visibility @> [{userId}]  AND  EXISTS actor.networkId = X) treats those
+      // two facts independently and lets the opp through when querying with
+      // networkId = fixture.networkId. The strict per-actor filter must exclude it.
+      const otherNetworkId = uuidv4();
+      await db.insert(networks).values({
+        id: otherNetworkId,
+        title: TEST_PREFIX + 'Other Network',
+        prompt: 'Other network prompt',
+      });
+      await db.insert(networkMembers).values({
+        networkId: otherNetworkId,
+        userId: fixture.userAId,
+        permissions: ['member'],
+        autoAssign: false,
+      });
+
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: otherNetworkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Cross-network scope leak', confidence: 0.8 },
+        context: { networkId: otherNetworkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      try {
+        const scopedToFixture = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+        expect(scopedToFixture.some((o) => o.id === created.id)).toBe(false);
+
+        // Even with the viewer's own actor scope, the strict gate excludes the
+        // row because the counterpart is not also anchored on that network.
+        const scopedToActual = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: otherNetworkId });
+        expect(scopedToActual.some((o) => o.id === created.id)).toBe(false);
+      } finally {
+        // Opp's context.networkId is otherNetworkId, so the afterAll cleanup
+        // (which filters by fixture.networkId) won't touch it — clean explicitly.
+        await db.delete(opportunities).where(eq(opportunities.id, created.id));
+        await db.delete(networkMembers).where(eq(networkMembers.networkId, otherNetworkId));
+        await db.delete(networks).where(eq(networks.id, otherNetworkId));
+      }
+    });
+
+    it('does not leak when the viewer is on the scoped network but a counterpart actor is on another network', async () => {
+      // The viewer (userA) IS anchored on fixture.networkId, so the per-viewer
+      // check passes — but a counterpart (userB) is anchored ONLY on
+      // otherNetworkId. Returning this opp to a reader scoped to fixture.networkId
+      // leaks userB's user/profile/intent across the network boundary via the
+      // card. The scope gate must require every participant to be on the network.
+      const otherNetworkId = uuidv4();
+      await db.insert(networks).values({
+        id: otherNetworkId,
+        title: TEST_PREFIX + 'Counterpart Network',
+        prompt: 'Counterpart network prompt',
+      });
+
+      const leaky = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: otherNetworkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Counterpart out of scope', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      // Control: a wholly in-scope opp (both participants on fixture.networkId)
+      // must still be returned — the gate must not over-exclude.
+      const clean = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Wholly in scope', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      // A participant present on BOTH the scoped network and another network is
+      // in-scope — duplicate actor rows on other networks must not hide the opp.
+      const duplicate = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+          { networkId: otherNetworkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Duplicate stamp', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      try {
+        const scoped = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+        expect(scoped.some((o) => o.id === leaky.id)).toBe(false);
+        expect(scoped.some((o) => o.id === clean.id)).toBe(true);
+        expect(scoped.some((o) => o.id === duplicate.id)).toBe(true);
+      } finally {
+        await db.delete(opportunities).where(inArray(opportunities.id, [leaky.id, clean.id, duplicate.id]));
+        await db.delete(networks).where(eq(networks.id, otherNetworkId));
+      }
+    });
+
+    it('getOpportunitiesForNetwork keys on actor.networkId, not context.networkId', async () => {
+      // Opp's `context.networkId` points at fixture.networkId, but no actor is
+      // anchored there — both actors live on otherNetworkId. The old context-
+      // tagged check returned the opp; the actor-anchored check excludes it
+      // and instead returns the opp on the actors' actual network.
+      const otherNetworkId = uuidv4();
+      await db.insert(networks).values({
+        id: otherNetworkId,
+        title: TEST_PREFIX + 'Other Network 2',
+        prompt: 'Other network prompt',
+      });
+
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: otherNetworkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: otherNetworkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Context-vs-actor mismatch', confidence: 0.8 },
+        // Stale / drifted context tag — actors are the source of truth.
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      try {
+        const forFixture = await adapter.getOpportunitiesForNetwork(fixture.networkId);
+        expect(forFixture.some((o) => o.id === created.id)).toBe(false);
+
+        const forOther = await adapter.getOpportunitiesForNetwork(otherNetworkId);
+        expect(forOther.some((o) => o.id === created.id)).toBe(true);
+      } finally {
+        await db.delete(opportunities).where(eq(opportunities.id, created.id));
+        await db.delete(networks).where(eq(networks.id, otherNetworkId));
+      }
+    });
+
+    it('getOpportunitiesForNetwork narrows results by the statuses filter (IND-254)', async () => {
+      // The network/community list relies on this SQL `statuses` filter to hide
+      // stale/pre-draft opportunities (the service passes a live-status allow-list).
+      // Assert the adapter actually narrows by status, and that with no filter it
+      // returns every status (the default allow-list lives in the service, not here).
+      const mk = (status: 'pending' | 'expired' | 'latent') =>
+        adapter.createOpportunity({
+          detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+          actors: [
+            { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+            { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+          ],
+          interpretation: { category: 'collaboration', reasoning: `status filter ${status}`, confidence: 0.8 },
+          context: { networkId: fixture.networkId },
+          confidence: '0.8',
+          status,
+        });
+      const pendingOpp = await mk('pending');
+      const expiredOpp = await mk('expired');
+      const latentOpp = await mk('latent');
+
+      try {
+        const live = await adapter.getOpportunitiesForNetwork(fixture.networkId, { statuses: ['negotiating', 'pending', 'stalled', 'accepted'] });
+        expect(live.some((o) => o.id === pendingOpp.id)).toBe(true);
+        expect(live.some((o) => o.id === expiredOpp.id)).toBe(false);
+        expect(live.some((o) => o.id === latentOpp.id)).toBe(false);
+
+        // No status filter ⇒ adapter returns every status (no default narrowing here).
+        const all = await adapter.getOpportunitiesForNetwork(fixture.networkId);
+        expect(all.some((o) => o.id === pendingOpp.id)).toBe(true);
+        expect(all.some((o) => o.id === expiredOpp.id)).toBe(true);
+        expect(all.some((o) => o.id === latentOpp.id)).toBe(true);
+      } finally {
+        await db.delete(opportunities).where(inArray(opportunities.id, [pendingOpp.id, expiredOpp.id, latentOpp.id]));
+      }
+    });
+  });
+
+  describe('draft visibility (getOpportunitiesForUser)', () => {
+    it('without conversationId excludes draft opportunities', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'party' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { networkId: fixture.networkId, conversationId: 'chat-session-1' },
+        confidence: '0.8',
+        status: 'draft',
+      });
+      const list = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      expect(list.some((o) => o.id === created.id)).toBe(false);
+    });
+
+    it('with conversationId includes draft only for that session', async () => {
+      const conv1 = 'conv-session-1';
+      const conv2 = 'conv-session-2';
+      const draft1 = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'party' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Draft 1', confidence: 0.8 },
+        context: { networkId: fixture.networkId, conversationId: conv1 },
+        confidence: '0.8',
+        status: 'draft',
+      });
+      const draft2 = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'party' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Draft 2', confidence: 0.8 },
+        context: { networkId: fixture.networkId, conversationId: conv2 },
+        confidence: '0.8',
+        status: 'draft',
+      });
+      const forConv1 = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId, conversationId: conv1 });
+      const forConv2 = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId, conversationId: conv2 });
+      expect(forConv1.some((o) => o.id === draft1.id)).toBe(true);
+      expect(forConv1.some((o) => o.id === draft2.id)).toBe(false);
+      expect(forConv2.some((o) => o.id === draft2.id)).toBe(true);
+      expect(forConv2.some((o) => o.id === draft1.id)).toBe(false);
+    });
+  });
+
+  describe('findOpportunitiesByActors', () => {
+    const introId = TEST_PREFIX + 'finder-intro';
+    const actorAId = TEST_PREFIX + 'finder-A';
+    const actorBId = TEST_PREFIX + 'finder-B';
+    const actorCId = TEST_PREFIX + 'finder-C';
+    const networkId = TEST_PREFIX + 'finder-net';
+    let oppPairId: string;
+    let oppPairAcceptedId: string;
+    let oppWithIntroducerId: string;
+    let oppThreeActorId: string;
+
+    beforeAll(async () => {
+      // Seed users
+      for (const id of [introId, actorAId, actorBId, actorCId]) {
+        await db.insert(users).values({ id, email: TEST_PREFIX + id + '@test.com', name: id }).onConflictDoNothing();
+      }
+
+      const baseInterpretation = { category: 'collaboration', reasoning: 'finder test', confidence: 0.8 };
+
+      // 1) Pair A+B, pending
+      const pair = await db.insert(opportunities).values({
+        actors: [{ userId: actorAId, role: 'patient' }, { userId: actorBId, role: 'peer' }],
+        context: { networkId },
+        status: 'pending',
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        interpretation: baseInterpretation,
+        confidence: '0.8',
+      }).returning({ id: opportunities.id });
+      oppPairId = pair[0].id;
+
+      // 2) Pair A+B, accepted
+      const accepted = await db.insert(opportunities).values({
+        actors: [{ userId: actorAId, role: 'patient' }, { userId: actorBId, role: 'peer' }],
+        context: { networkId },
+        status: 'accepted',
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        interpretation: baseInterpretation,
+        confidence: '0.8',
+      }).returning({ id: opportunities.id });
+      oppPairAcceptedId = accepted[0].id;
+
+      // 3) Trio with introducer: intro + A + B
+      const intro = await db.insert(opportunities).values({
+        actors: [
+          { userId: introId, role: 'introducer' },
+          { userId: actorAId, role: 'patient' },
+          { userId: actorBId, role: 'peer' },
+        ],
+        context: { networkId },
+        status: 'pending',
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        interpretation: baseInterpretation,
+        confidence: '0.8',
+      }).returning({ id: opportunities.id });
+      oppWithIntroducerId = intro[0].id;
+
+      // 4) Three non-introducer actors: A + B + C
+      const trio = await db.insert(opportunities).values({
+        actors: [
+          { userId: actorAId, role: 'patient' },
+          { userId: actorBId, role: 'peer' },
+          { userId: actorCId, role: 'peer' },
+        ],
+        context: { networkId },
+        status: 'pending',
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        interpretation: baseInterpretation,
+        confidence: '0.8',
+      }).returning({ id: opportunities.id });
+      oppThreeActorId = trio[0].id;
+    });
+
+    afterAll(async () => {
+      await db.delete(opportunities).where(
+        inArray(opportunities.id, [oppPairId, oppPairAcceptedId, oppWithIntroducerId, oppThreeActorId])
+      );
+      await db.delete(users).where(inArray(users.id, [introId, actorAId, actorBId, actorCId]));
+    });
+
+    it('default (includeIntroducers omitted) excludes introducer-role actors from match', async () => {
+      const rows = await adapter.findOpportunitiesByActors([introId, actorAId]);
+      // intro is introducer-role in opp #3 → that opp does NOT match for introId
+      const ids = rows.map((r) => r.id);
+      expect(ids).not.toContain(oppWithIntroducerId);
+    });
+
+    it('includeIntroducers=true matches actors regardless of role', async () => {
+      const rows = await adapter.findOpportunitiesByActors(
+        [introId, actorAId],
+        { includeIntroducers: true }
+      );
+      const ids = rows.map((r) => r.id);
+      expect(ids).toContain(oppWithIntroducerId);
+    });
+
+    it('matches opportunities containing all given actorIds (superset allowed)', async () => {
+      const rows = await adapter.findOpportunitiesByActors([actorAId, actorBId]);
+      const ids = new Set(rows.map((r) => r.id));
+      // Pair, accepted-pair, trio, AND intro-opp all contain both A and B in non-introducer
+      // roles. The introducer filter only excludes when the SEARCHED-FOR userId itself has
+      // the introducer role in that opp — A and B are not introducers in the intro-opp.
+      expect(ids.has(oppPairId)).toBe(true);
+      expect(ids.has(oppPairAcceptedId)).toBe(true);
+      expect(ids.has(oppThreeActorId)).toBe(true);
+      expect(ids.has(oppWithIntroducerId)).toBe(true);
+    });
+
+    it('statuses include-filter narrows results', async () => {
+      const rows = await adapter.findOpportunitiesByActors(
+        [actorAId, actorBId],
+        { statuses: ['accepted'] }
+      );
+      const ids = rows.map((r) => r.id);
+      expect(ids).toEqual([oppPairAcceptedId]);
+    });
+
+    it('excludeStatuses removes matching statuses', async () => {
+      const rows = await adapter.findOpportunitiesByActors(
+        [actorAId, actorBId],
+        { excludeStatuses: ['accepted'] }
+      );
+      const ids = rows.map((r) => r.id);
+      expect(ids).not.toContain(oppPairAcceptedId);
+      expect(ids).toContain(oppPairId);
+      expect(ids).toContain(oppThreeActorId);
+    });
+
+    it('empty actorIds returns []', async () => {
+      const rows = await adapter.findOpportunitiesByActors([]);
+      expect(rows).toEqual([]);
+    });
+
+    it('orders by updatedAt desc', async () => {
+      const rows = await adapter.findOpportunitiesByActors([actorAId, actorBId]);
+      for (let i = 1; i < rows.length; i++) {
+        expect(new Date(rows[i - 1].updatedAt).getTime()).toBeGreaterThanOrEqual(new Date(rows[i].updatedAt).getTime());
+      }
+    });
+  });
+
+  describe('expireStaleOpportunities', () => {
+    it('should expire opportunities past their expiresAt', async () => {
+      const past = new Date(Date.now() - 60_000);
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Stale opp', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        expiresAt: past,
+      });
+      expect(created.status).toBe('pending');
+
+      const count = await adapter.expireStaleOpportunities();
+      expect(count).toBeGreaterThanOrEqual(1);
+
+      const refetched = await adapter.getOpportunity(created.id);
+      expect(refetched!.status).toBe('expired');
+    });
+
+    it('should not expire opportunities with future expiresAt', async () => {
+      const future = new Date(Date.now() + 3_600_000);
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Future opp', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        expiresAt: future,
+      });
+
+      await adapter.expireStaleOpportunities();
+      const refetched = await adapter.getOpportunity(created.id);
+      expect(refetched!.status).toBe('pending');
+    });
+
+    it('should not expire accepted or rejected opportunities even if past expiresAt', async () => {
+      const past = new Date(Date.now() - 60_000);
+      const accepted = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Accepted opp', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'accepted',
+        expiresAt: past,
+      });
+      const rejected = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Rejected opp', confidence: 0.7 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.7',
+        status: 'rejected',
+        expiresAt: past,
+      });
+
+      await adapter.expireStaleOpportunities();
+
+      const refetchedAccepted = await adapter.getOpportunity(accepted.id);
+      const refetchedRejected = await adapter.getOpportunity(rejected.id);
+      expect(refetchedAccepted!.status).toBe('accepted');
+      expect(refetchedRejected!.status).toBe('rejected');
+    });
+
+    it('should not expire opportunities without expiresAt', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'No expiry opp', confidence: 0.8 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+      });
+
+      await adapter.expireStaleOpportunities();
+      const refetched = await adapter.getOpportunity(created.id);
+      expect(refetched!.status).toBe('pending');
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HydeDatabaseAdapter
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('HydeDatabaseAdapter', () => {
+  const adapter = new HydeDatabaseAdapter();
+  const sourceType = 'intent' as const;
+  const sourceId = uuidv4();
+  const strategy = 'mirror';
+  const targetCorpus = 'profiles';
+  const embedding = new Array(2000).fill(0).map((_, i) => (i % 100) / 100);
+
+  afterAll(async () => {
+    await adapter.deleteHydeDocumentsForSource(sourceType, sourceId);
+  });
+
+  describe('save and get by source+strategy', () => {
+    it('should create HyDE document and retrieve by source+strategy', async () => {
+      const saved = await adapter.saveHydeDocument({
+        sourceType,
+        sourceId,
+        sourceText: 'Looking for a technical co-founder.',
+        strategy,
+        targetCorpus,
+        hydeText: 'I am a technical co-founder seeking a business partner.',
+        hydeEmbedding: embedding,
+      });
+
+      expect(saved.id).toBeDefined();
+      expect(saved.sourceType).toBe(sourceType);
+      expect(saved.sourceId).toBe(sourceId);
+      expect(saved.strategy).toBe(strategy);
+      expect(saved.targetCorpus).toBe(targetCorpus);
+      expect(saved.hydeText).toContain('technical co-founder');
+      expect(saved.hydeEmbedding).toHaveLength(2000);
+
+      const found = await adapter.getHydeDocument(sourceType, sourceId, strategy);
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(saved.id);
+      expect(found!.hydeText).toBe(saved.hydeText);
+    });
+  });
+
+  describe('saveHydeDocument (upsert)', () => {
+    it('should upsert and replace existing document', async () => {
+      const first = await adapter.saveHydeDocument({
+        sourceType,
+        sourceId,
+        sourceText: 'First text',
+        strategy,
+        targetCorpus,
+        hydeText: 'First hyde text',
+        hydeEmbedding: embedding,
+      });
+
+      const updated = await adapter.saveHydeDocument({
+        sourceType,
+        sourceId,
+        sourceText: 'Second text',
+        strategy,
+        targetCorpus,
+        hydeText: 'Second hyde text (replaced)',
+        hydeEmbedding: embedding.slice().reverse(),
+      });
+
+      expect(updated.id).toBe(first.id);
+      expect(updated.hydeText).toBe('Second hyde text (replaced)');
+
+      const found = await adapter.getHydeDocument(sourceType, sourceId, strategy);
+      expect(found!.hydeText).toBe('Second hyde text (replaced)');
+    });
+  });
+
+  describe('getHydeDocumentsForSource', () => {
+    it('should return all documents for source', async () => {
+      const secondStrategy = 'reciprocal';
+      await adapter.saveHydeDocument({
+        sourceType,
+        sourceId,
+        strategy: secondStrategy,
+        targetCorpus: 'intents',
+        hydeText: 'Reciprocal hyde for intents',
+        hydeEmbedding: embedding,
+      });
+
+      const all = await adapter.getHydeDocumentsForSource(sourceType, sourceId);
+      expect(all.length).toBeGreaterThanOrEqual(2);
+      const strategies = all.map((d) => d.strategy);
+      expect(strategies).toContain(strategy);
+      expect(strategies).toContain(secondStrategy);
+    });
+  });
+
+  describe('deleteHydeDocumentsForSource', () => {
+    it('should delete by source and clear all strategies', async () => {
+      const count = await adapter.deleteHydeDocumentsForSource(sourceType, sourceId);
+      expect(count).toBeGreaterThanOrEqual(2);
+
+      const after = await adapter.getHydeDocumentsForSource(sourceType, sourceId);
+      expect(after).toHaveLength(0);
+
+      const one = await adapter.getHydeDocument(sourceType, sourceId, strategy);
+      expect(one).toBeNull();
+    });
+  });
+});
+
+describe('HydeDatabaseAdapter – deleteExpired and getStale', () => {
+  const adapter = new HydeDatabaseAdapter();
+  const sourceType = 'query' as const;
+  const sourceId = uuidv4();
+  const embedding = new Array(2000).fill(0).map((_, i) => (i % 100) / 100);
+  const past = new Date(Date.now() - 60_000);
+  const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  afterAll(async () => {
+    await adapter.deleteHydeDocumentsForSource(sourceType, sourceId);
+  });
+
+  it('should delete only expired documents', async () => {
+    await adapter.saveHydeDocument({
+      sourceType,
+      sourceId,
+      strategy: 'mentor',
+      targetCorpus: 'profiles',
+      hydeText: 'Expired doc',
+      hydeEmbedding: embedding,
+      expiresAt: past,
+    });
+    await adapter.saveHydeDocument({
+      sourceType,
+      sourceId,
+      strategy: 'investor',
+      targetCorpus: 'profiles',
+      hydeText: 'Not expired doc',
+      hydeEmbedding: embedding,
+      expiresAt: future,
+    });
+
+    const deleted = await adapter.deleteExpiredHydeDocuments();
+    expect(deleted).toBeGreaterThanOrEqual(1);
+
+    const forSource = await adapter.getHydeDocumentsForSource(sourceType, sourceId);
+    const mentorDoc = forSource.find((d) => d.strategy === 'mentor');
+    const investorDoc = forSource.find((d) => d.strategy === 'investor');
+    expect(mentorDoc).toBeUndefined();
+    expect(investorDoc).toBeDefined();
+  });
+
+  it('should return stale documents by createdAt threshold', async () => {
+    const staleThreshold = new Date(Date.now() + 10_000);
+    const stale = await adapter.getStaleHydeDocuments(staleThreshold);
+    expect(Array.isArray(stale)).toBe(true);
+    for (const doc of stale) {
+      expect(doc.createdAt.getTime()).toBeLessThan(staleThreshold.getTime());
+    }
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Intent predicate parity (EDG-53)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Intent predicate parity (EDG-53)', () => {
+  const intentAdapter = new IntentDatabaseAdapter();
+  const chatAdapter = new ChatDatabaseAdapter();
+
+  it('getActiveIntents agrees across REST and MCP adapters', async () => {
+    const rest = await intentAdapter.getActiveIntents(fixture.userAId);
+    const mcp = await chatAdapter.getActiveIntents(fixture.userAId);
+    expect(mcp.length).toBe(rest.length);
+    expect(new Set(mcp.map((i) => i.id))).toEqual(new Set(rest.map((i) => i.id)));
+  });
+
+  it('getActiveIntentsAcrossIndexes agrees across REST and MCP adapters', async () => {
+    const rest = await intentAdapter.getActiveIntentsAcrossIndexes(fixture.userAId, [fixture.networkId]);
+    const mcp = await chatAdapter.getActiveIntentsAcrossIndexes(fixture.userAId, [fixture.networkId]);
+    expect(mcp.length).toBe(rest.length);
+    expect(new Set(mcp.map((i) => i.id))).toEqual(new Set(rest.map((i) => i.id)));
+  });
+
+  it('listIntents total equals unscoped getActiveIntents count', async () => {
+    const active = await intentAdapter.getActiveIntents(fixture.userAId);
+    const { total } = await intentAdapter.listIntents(fixture.userAId, { page: 1, limit: 100, archived: false });
+    expect(total).toBe(active.length);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Network overview reads: honest, user-scoped premise + intent lists (EDG-53)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Network overview member reads (EDG-53)', () => {
+  const chatAdapter = new ChatDatabaseAdapter();
+  const activePremiseId = uuidv4();
+  const retractedPremiseId = uuidv4();
+  const deletedPremiseId = uuidv4();
+  const userBPremiseId = uuidv4();
+  const ownIntentId = uuidv4();
+  const otherMemberIntentId = uuidv4();
+
+  const assertion = (text: string, summary?: string) => ({ text, tier: 'assertive' as const, summary });
+  const provenance = { source: 'explicit' as const, confidence: 0.9, timestamp: new Date().toISOString() };
+  const validity = { volatile: false };
+
+  beforeAll(async () => {
+    await db.insert(premises).values([
+      { id: activePremiseId, userId: fixture.userAId, assertion: assertion('Active premise', 'Active summary'), provenance, validity, status: 'ACTIVE' },
+      { id: retractedPremiseId, userId: fixture.userAId, assertion: assertion('Retracted premise'), provenance, validity, status: 'RETRACTED' },
+      { id: deletedPremiseId, userId: fixture.userAId, assertion: assertion('Deleted premise'), provenance, validity, status: 'ACTIVE', deletedAt: new Date() },
+      { id: userBPremiseId, userId: fixture.userBId, assertion: assertion('UserB premise'), provenance, validity, status: 'ACTIVE' },
+    ]);
+    await db.insert(premiseNetworks).values([
+      { premiseId: activePremiseId, networkId: fixture.networkId },
+      { premiseId: retractedPremiseId, networkId: fixture.networkId },
+      { premiseId: deletedPremiseId, networkId: fixture.networkId },
+      { premiseId: userBPremiseId, networkId: fixture.networkId },
+    ]);
+    await db.insert(intents).values([
+      { id: ownIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'Own intent 2', summary: 'S', sourceType: 'discovery_form', sourceId: fixture.userAId },
+      { id: otherMemberIntentId, userId: fixture.userBId, payload: TEST_PREFIX + 'Other member intent', summary: 'S', sourceType: 'discovery_form', sourceId: fixture.userBId },
+    ]);
+    await db.insert(intentNetworks).values([
+      { intentId: ownIntentId, networkId: fixture.networkId },
+      { intentId: otherMemberIntentId, networkId: fixture.networkId },
+    ]);
+  });
+
+  afterAll(async () => {
+    await db.delete(premiseNetworks).where(eq(premiseNetworks.networkId, fixture.networkId));
+    await db.delete(premises).where(inArray(premises.id, [activePremiseId, retractedPremiseId, deletedPremiseId, userBPremiseId]));
+    await db.delete(intentNetworks).where(inArray(intentNetworks.intentId, [ownIntentId, otherMemberIntentId]));
+    await db.delete(intents).where(inArray(intents.id, [ownIntentId, otherMemberIntentId]));
+  });
+
+  it('getNetworkPremisesForMember returns only the member ACTIVE, non-deleted premises', async () => {
+    const ids = new Set((await chatAdapter.getNetworkPremisesForMember(fixture.networkId, fixture.userAId)).map((r) => r.id));
+    expect(ids.has(activePremiseId)).toBe(true);
+    expect(ids.has(retractedPremiseId)).toBe(false); // non-ACTIVE excluded
+    expect(ids.has(deletedPremiseId)).toBe(false);    // soft-deleted excluded
+    expect(ids.has(userBPremiseId)).toBe(false);      // other member excluded
+  });
+
+  it('getNetworkPremisesForMember maps assertion.text/summary', async () => {
+    const rows = await chatAdapter.getNetworkPremisesForMember(fixture.networkId, fixture.userAId);
+    const active = rows.find((r) => r.id === activePremiseId)!;
+    expect(active.text).toBe('Active premise');
+    expect(active.summary).toBe('Active summary');
+  });
+
+  it('getNetworkIntentsForMemberOwn returns only the caller own active intents, never other members', async () => {
+    const rows = await chatAdapter.getNetworkIntentsForMemberOwn(fixture.networkId, fixture.userAId);
+    const ids = new Set(rows.map((r) => r.id));
+    expect(ids.has(fixture.intent1Id)).toBe(true);     // userA's original intent
+    expect(ids.has(ownIntentId)).toBe(true);            // userA's second intent
+    expect(ids.has(otherMemberIntentId)).toBe(false);   // userB's intent excluded
+    expect(rows.every((r) => r.userId === fixture.userAId)).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Premise cascade targeting (IND-423)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Premise cascade targeting (IND-423)', () => {
+  const oppAdapter = new OpportunityDatabaseAdapter();
+  const chatAdapter = new ChatDatabaseAdapter();
+
+  const premiseAId = uuidv4();
+  const premiseBId = uuidv4();
+  const createdOppIds: string[] = [];
+  const createdIntentIds: string[] = [];
+
+  const CASCADE_STATUSES = ['draft', 'latent', 'pending', 'negotiating'];
+
+  const detection = () => ({
+    source: 'opportunity_graph' as const,
+    createdBy: 'agent-opportunity-finder',
+    timestamp: new Date().toISOString(),
+  });
+  const interpretation = { category: 'collaboration', reasoning: 'IND-423 fixture', confidence: 0.8 };
+
+  const makeOpp = async (opts: {
+    status: 'draft' | 'latent' | 'pending' | 'negotiating' | 'accepted';
+    evidence?: Array<Record<string, unknown>>;
+    actorPremise?: string;
+  }) => {
+    const created = await oppAdapter.createOpportunity({
+      detection: detection(),
+      actors: [
+        {
+          networkId: fixture.networkId,
+          userId: fixture.userAId,
+          role: 'agent',
+          ...(opts.actorPremise ? { premise: opts.actorPremise } : {}),
+        },
+        { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+      ],
+      interpretation,
+      context: { networkId: fixture.networkId },
+      confidence: '0.8',
+      status: opts.status,
+      ...(opts.evidence !== undefined ? { metadata: { evidence: opts.evidence } } : {}),
+    });
+    createdOppIds.push(created.id);
+    return created;
+  };
+
+  afterAll(async () => {
+    if (createdOppIds.length) await db.delete(opportunities).where(inArray(opportunities.id, createdOppIds));
+    await db.delete(premises).where(inArray(premises.id, [premiseAId, premiseBId]));
+    if (createdIntentIds.length) await db.delete(intents).where(inArray(intents.id, createdIntentIds));
+  });
+
+  describe('getOpportunitiesCitingPremise', () => {
+    let citedViaSource: string;
+    let citedViaCandidate: string;
+    let citedViaActor: string;
+    let citesOtherPremise: string;
+    let noProvenance: string;
+    let citedButAccepted: string;
+
+    beforeAll(async () => {
+      citedViaSource = (await makeOpp({
+        status: 'pending',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.8, sourcePremiseId: premiseAId }],
+      })).id;
+      citedViaCandidate = (await makeOpp({
+        status: 'negotiating',
+        evidence: [{ kind: 'query_premise', networkId: fixture.networkId, score: 0.7, candidatePremiseId: premiseAId }],
+      })).id;
+      citedViaActor = (await makeOpp({ status: 'draft', actorPremise: premiseAId })).id;
+      citesOtherPremise = (await makeOpp({
+        status: 'pending',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.9, sourcePremiseId: premiseBId }],
+      })).id;
+      noProvenance = (await makeOpp({ status: 'pending' })).id;
+      citedButAccepted = (await makeOpp({
+        status: 'accepted',
+        evidence: [{ kind: 'premise_similarity', networkId: fixture.networkId, score: 0.8, sourcePremiseId: premiseAId }],
+      })).id;
+    });
+
+    it('returns opportunities citing the premise via evidence or actor grounding', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citedViaSource)).toBe(true);
+      expect(ids.has(citedViaCandidate)).toBe(true);
+      expect(ids.has(citedViaActor)).toBe(true);
+    });
+
+    it('does not return opportunities evidenced solely by other premises (no collateral)', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citesOtherPremise)).toBe(false);
+      expect(ids.has(noProvenance)).toBe(false);
+    });
+
+    it('respects the status filter: accepted opportunities stay out of cascade scope', async () => {
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(fixture.userAId, premiseAId, { statuses: CASCADE_STATUSES });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(citedButAccepted)).toBe(false);
+    });
+
+    it('scopes to the requesting user via the actors guard', async () => {
+      const otherUserId = uuidv4();
+      const rows = await oppAdapter.getOpportunitiesCitingPremise(otherUserId, premiseAId, { statuses: CASCADE_STATUSES });
+      expect(rows.length).toBe(0);
+    });
+  });
+
+  describe('getIntentsGroundedOnEmbedding', () => {
+    // Orthogonal unit vectors so cosine similarity is exactly 1 (aligned) or 0 (orthogonal).
+    const dim = 2000;
+    const premiseEmbedding = new Array(dim).fill(0).map((_, i) => (i === 0 ? 1 : 0));
+    const orthogonalEmbedding = new Array(dim).fill(0).map((_, i) => (i === 1 ? 1 : 0));
+
+    const alignedIntentId = uuidv4();
+    const orthogonalIntentId = uuidv4();
+    const alignedOtherUserIntentId = uuidv4();
+    const alignedArchivedIntentId = uuidv4();
+
+    beforeAll(async () => {
+      createdIntentIds.push(alignedIntentId, orthogonalIntentId, alignedOtherUserIntentId, alignedArchivedIntentId);
+      await db.insert(intents).values([
+        { id: alignedIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'aligned intent', embedding: premiseEmbedding, status: 'ACTIVE' },
+        { id: orthogonalIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'orthogonal intent', embedding: orthogonalEmbedding, status: 'ACTIVE' },
+        { id: alignedOtherUserIntentId, userId: fixture.userBId, payload: TEST_PREFIX + 'other user aligned', embedding: premiseEmbedding, status: 'ACTIVE' },
+        { id: alignedArchivedIntentId, userId: fixture.userAId, payload: TEST_PREFIX + 'archived aligned', embedding: premiseEmbedding, status: 'ACTIVE', archivedAt: new Date() },
+      ]);
+    });
+
+    it('returns only the user own ACTIVE non-archived intents above the similarity floor', async () => {
+      const rows = await chatAdapter.getIntentsGroundedOnEmbedding({
+        userId: fixture.userAId,
+        embedding: premiseEmbedding,
+        minSimilarity: 0.5,
+        limit: 5,
+      });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(alignedIntentId)).toBe(true);
+      expect(ids.has(orthogonalIntentId)).toBe(false);      // below similarity floor
+      expect(ids.has(alignedOtherUserIntentId)).toBe(false); // other user's intent
+      expect(ids.has(alignedArchivedIntentId)).toBe(false);  // archived
+      const aligned = rows.find((r) => r.id === alignedIntentId);
+      expect(aligned!.similarity).toBeGreaterThan(0.99);
+      expect(aligned!.payload).toBe(TEST_PREFIX + 'aligned intent');
+    });
+
+    it('respects the limit cap', async () => {
+      const rows = await chatAdapter.getIntentsGroundedOnEmbedding({
+        userId: fixture.userAId,
+        embedding: premiseEmbedding,
+        minSimilarity: 0.5,
+        limit: 1,
+      });
+      expect(rows.length).toBeLessThanOrEqual(1);
+    });
+  });
+});

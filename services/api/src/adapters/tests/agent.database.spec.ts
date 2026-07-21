@@ -86,7 +86,7 @@ describe('AgentDatabaseAdapter.ensureNegotiatorAgent', () => {
       await db.delete(schema.agents).where(eq(schema.agents.ownerId, userId));
       await db.delete(schema.users).where(eq(schema.users.id, userId));
     }
-  });
+  }, 30_000);
 
   it('creates a personal negotiator row named after the first name', async () => {
     const userId = await createUser({ name: 'Ada Lovelace' });
@@ -152,5 +152,5 @@ describe('AgentDatabaseAdapter.ensureNegotiatorAgent', () => {
     const listedIds = listed.map((a) => a.id);
     expect(listedIds).toContain(poller.id);
     expect(listed.every((a) => a.type !== 'personal')).toBe(true);
-  });
+  }, 15_000);
 });

@@ -1,21 +1,52 @@
 import '../src/startup.env';
 
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it, mock } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 
-import { experimentService } from '../src/services/experiment.service';
+import { ExperimentService } from '../src/services/experiment.service';
 import { AuthGuard } from '../src/guards/auth.guard';
 import db from '../src/lib/drizzle/drizzle';
-import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userSocials, users } from '../src/schemas/database.schema';
+import { agentPermissions, agents, networkMembers, networks, personalNetworks, users } from '../src/schemas/database.schema';
 
-const cleanup: Array<() => Promise<void>> = [];
-
-afterAll(async () => {
-  for (const f of [...cleanup].reverse()) await f();
+const addEnrichUserJob = mock(async () => ({}));
+const experimentService = new ExperimentService({
+  addEnrichUserJob,
+  addEnrichUserJobBulk: mock(async () => []),
 });
 
-async function setupExperimentNetwork() {
+const fixtureUserIds = new Set<string>();
+const fixtureNetworkIds = new Set<string>();
+
+async function cleanupFixtures(): Promise<void> {
+  const userIds = [...fixtureUserIds];
+  const networkIds = [...fixtureNetworkIds];
+  const personal = userIds.length > 0
+    ? await db.select({ networkId: personalNetworks.networkId })
+      .from(personalNetworks)
+      .where(inArray(personalNetworks.userId, userIds))
+    : [];
+  const allNetworkIds = [...new Set([...networkIds, ...personal.map((row) => row.networkId)])];
+
+  if (userIds.length > 0 || allNetworkIds.length > 0) {
+    const conditions = [];
+    if (userIds.length > 0) conditions.push(inArray(networkMembers.userId, userIds));
+    if (allNetworkIds.length > 0) conditions.push(inArray(networkMembers.networkId, allNetworkIds));
+    await db.delete(networkMembers).where(conditions.length === 1 ? conditions[0] : or(...conditions));
+  }
+  if (userIds.length > 0) {
+    await db.delete(personalNetworks).where(inArray(personalNetworks.userId, userIds));
+    await db.delete(users).where(inArray(users.id, userIds));
+  }
+  if (allNetworkIds.length > 0) await db.delete(networks).where(inArray(networks.id, allNetworkIds));
+
+  fixtureUserIds.clear();
+  fixtureNetworkIds.clear();
+}
+
+afterAll(cleanupFixtures, 30_000);
+
+async function setupExperimentNetwork(): Promise<{ networkId: string }> {
   const [network] = await db
     .insert(networks)
     .values({
@@ -25,30 +56,8 @@ async function setupExperimentNetwork() {
       experimentMasterKeyHash: 'test-hash-not-verified-at-service-layer',
     })
     .returning({ id: networks.id });
-
-  cleanup.push(async () => {
-    await db.delete(networkMembers).where(eq(networkMembers.networkId, network.id));
-    await db.delete(networks).where(eq(networks.id, network.id));
-  });
-
+  fixtureNetworkIds.add(network.id);
   return { networkId: network.id };
-}
-
-async function cleanupUser(userId: string) {
-  await db.delete(apikeys).where(eq(apikeys.userId, userId));
-  await db.delete(agentPermissions).where(eq(agentPermissions.userId, userId));
-  await db.delete(agents).where(eq(agents.ownerId, userId));
-  await db.delete(networkMembers).where(eq(networkMembers.userId, userId));
-  await db.delete(userSocials).where(eq(userSocials.userId, userId));
-  const pn = await db
-    .select({ networkId: personalNetworks.networkId })
-    .from(personalNetworks)
-    .where(eq(personalNetworks.userId, userId));
-  await db.delete(personalNetworks).where(eq(personalNetworks.userId, userId));
-  for (const { networkId: pnId } of pn) {
-    await db.delete(networks).where(eq(networks.id, pnId));
-  }
-  await db.delete(users).where(eq(users.id, userId));
 }
 
 describe('experimentService.signup', () => {
@@ -57,8 +66,7 @@ describe('experimentService.signup', () => {
     const email = `minimal-${randomUUID()}@example.com`;
 
     const result = await experimentService.signup(networkId, { email });
-
-    cleanup.push(() => cleanupUser(result.user.id));
+    fixtureUserIds.add(result.user.id);
 
     expect(result.user.email).toBe(email);
     expect(result.apiKey).toBeTruthy();
@@ -81,22 +89,19 @@ describe('experimentService.signup', () => {
       location: 'Healdsburg, CA',
       socials: [
         { label: 'telegram', value: '@alice_test' },
-        { label: 'twitter',  value: 'alice_test' },
+        { label: 'twitter', value: 'alice_test' },
       ],
     });
+    fixtureUserIds.add(result.user.id);
 
-    cleanup.push(() => cleanupUser(result.user.id));
-
-    const [u] = await db
+    const [user] = await db
       .select({ name: users.name, onboarding: users.onboarding })
       .from(users)
       .where(eq(users.id, result.user.id));
-    expect(u.name).not.toBe('Alice Test');
-
-    const seed = u.onboarding.profileSeeds?.find(
+    expect(user.name).toBe('Alice Test');
+    expect(user.onboarding.profileSeeds?.find(
       (item) => item.networkId === networkId && item.source === 'experiment_signup',
-    );
-    expect(seed).toMatchObject({
+    )).toMatchObject({
       name: 'Alice Test',
       bio: 'Independent researcher.',
       location: 'Healdsburg, CA',
@@ -107,13 +112,12 @@ describe('experimentService.signup', () => {
     });
   }, 15_000);
 
-  it('re-signup mints a new key on the SAME agent without revoking the old key', async () => {
+  it('re-signup mints a new key on the same agent without revoking the old key', async () => {
     const { networkId } = await setupExperimentNetwork();
     const email = `resig-${randomUUID()}@example.com`;
 
     const first = await experimentService.signup(networkId, { email });
-    cleanup.push(() => cleanupUser(first.user.id));
-
+    fixtureUserIds.add(first.user.id);
     const second = await experimentService.signup(networkId, { email });
 
     expect(second.apiKey).not.toBe(first.apiKey);
@@ -122,15 +126,13 @@ describe('experimentService.signup', () => {
       .select({ id: agents.id })
       .from(agents)
       .innerJoin(agentPermissions, eq(agentPermissions.agentId, agents.id))
-      .where(
-        and(
-          eq(agentPermissions.userId, first.user.id),
-          eq(agentPermissions.scope, 'network'),
-          eq(agentPermissions.scopeId, networkId),
-          isNull(agents.deletedAt),
-        ),
-      );
-    expect(scopedAgents.length).toBe(1);
+      .where(and(
+        eq(agentPermissions.userId, first.user.id),
+        eq(agentPermissions.scope, 'network'),
+        eq(agentPermissions.scopeId, networkId),
+        isNull(agents.deletedAt),
+      ));
+    expect(scopedAgents).toHaveLength(1);
 
     const firstAuth = await AuthGuard(new Request('http://localhost/test', {
       headers: { 'x-api-key': first.apiKey },
@@ -147,8 +149,7 @@ describe('experimentService.signup', () => {
     const email = `existing-${randomUUID()}@example.com`;
 
     const first = await experimentService.signup(networkId, { email });
-    cleanup.push(() => cleanupUser(first.user.id));
-
+    fixtureUserIds.add(first.user.id);
     const second = await experimentService.signup(networkId, { email });
 
     expect(second.created).toBe(false);

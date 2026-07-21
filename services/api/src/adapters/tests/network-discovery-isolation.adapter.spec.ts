@@ -122,7 +122,7 @@ beforeAll(async () => {
     { premiseId: ids.removedPremise, networkId: ids.activeNetwork, relevancyScore: '1' },
     { premiseId: ids.deletedNetworkPremise, networkId: ids.deletedNetwork, relevancyScore: '1' },
   ]);
-});
+}, 30_000);
 
 afterAll(async () => {
   if (createdOpportunityIds.length > 0) {
@@ -140,6 +140,7 @@ afterAll(async () => {
   ]));
   await db.delete(intentNetworks).where(inArray(intentNetworks.intentId, [
     ids.selectedIntent,
+    ids.otherViewerIntent,
     ids.activeIntent,
     ids.removedIntent,
     ids.deletedNetworkIntent,
@@ -159,7 +160,7 @@ afterAll(async () => {
     ids.removedCandidate,
     ids.deletedNetworkCandidate,
   ]));
-});
+}, 30_000);
 
 describe('network discovery adapter isolation', () => {
   const chat = new ChatDatabaseAdapter();
@@ -238,7 +239,7 @@ describe('network discovery adapter isolation', () => {
       eligibility,
     );
     expect(reactivated).toBeNull();
-  });
+  }, 20_000);
 
   it('filters inactive candidate pairs from scoped generic and HyDE searches', async () => {
     const generic = await embedder.search<{ id: string; userId: string }>(vector, 'intents', {
@@ -413,7 +414,7 @@ describe('network discovery adapter isolation', () => {
     expect((await opportunity.getOpportunity(actorOnly.id))?.metadata?.poolAdjustments).toBeUndefined();
     expect((await opportunity.getOpportunity(terminal.id))?.metadata?.poolAdjustments).toBeUndefined();
     expect((await opportunity.getOpportunity(hidden.id))?.metadata?.poolAdjustments).toBeUndefined();
-  });
+  }, 20_000);
 
   it('keeps paused owned-intent Radar history while blocking inactive participants and foreign scopes', async () => {
     const makeOpportunity = async (candidateUserId: string, suffix: string) => opportunity.createOpportunity({

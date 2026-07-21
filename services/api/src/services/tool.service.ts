@@ -38,12 +38,17 @@ export class ToolService {
   private cache = new RedisCacheAdapter();
   private compiledGraphs: ToolDeps['graphs'] | null = null;
   private cachedToolList: Array<{ name: string; description: string; schema: Record<string, unknown> }> | null = null;
+  private contactsEnabled: boolean;
 
   constructor(
     private contactService: ContactServiceAdapter,
     private integrationImporter: ToolDeps['integrationImporter'],
     private integration: IntegrationAdapter,
-  ) {}
+    options: { graphs?: ToolDeps['graphs']; contactsEnabled?: boolean } = {},
+  ) {
+    this.compiledGraphs = options.graphs ?? null;
+    this.contactsEnabled = options.contactsEnabled ?? process.env.CONTACTS_ENABLED === 'true';
+  }
 
   /**
    * Assemble the shared ToolDeps for a registry, given the context-scoped
@@ -65,6 +70,7 @@ export class ToolService {
       cache: this.cache,
       integration: this.integration,
       contactService: this.contactService,
+      contactsEnabled: this.contactsEnabled,
       integrationImporter: this.integrationImporter,
       enricher: { enrichUserProfile },
       getUserContextText: ensureGlobalUserContext,

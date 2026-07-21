@@ -1,11 +1,15 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, it, expect, afterAll } from 'bun:test';
+import { describe, it, expect, afterAll as bunAfterAll } from 'bun:test';
 import { inArray } from 'drizzle-orm';
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
+
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { ConversationDatabaseAdapter } from '../database.adapter';
+
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('ConversationDatabaseAdapter', () => {
   const adapter = new ConversationDatabaseAdapter();

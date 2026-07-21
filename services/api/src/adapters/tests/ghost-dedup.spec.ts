@@ -105,7 +105,7 @@ beforeAll(async () => {
     userId: ids.mergeGhostId,
     permissions: ['contact'],
   });
-});
+}, 30_000);
 
 afterAll(async () => {
   const allIds = Object.values(ids).filter(Boolean);
@@ -115,7 +115,7 @@ afterAll(async () => {
   );
   await db.delete(networks).where(eq(networks.id, ids.mergeNetworkId));
   await db.delete(users).where(inArray(users.id, allIds));
-});
+}, 30_000);
 
 describe('EnrichmentDatabaseAdapter.findDuplicateUser', () => {
   it('matches by LinkedIn handle and prefers real user over ghost', async () => {
@@ -208,7 +208,7 @@ describe('EnrichmentDatabaseAdapter.mergeGhostUser', () => {
         eq(networkMembers.userId, targetId),
       ));
     expect(membership).toHaveLength(1);
-  });
+  }, 20_000);
 
   it('skips memberships where target already belongs to the network', async () => {
     const ghostId = uuidv4();
@@ -246,7 +246,7 @@ describe('EnrichmentDatabaseAdapter.mergeGhostUser', () => {
       await db.delete(networks).where(eq(networks.id, netId));
       await db.delete(users).where(inArray(users.id, [ghostId, targetId]));
     }
-  });
+  }, 20_000);
 
   it('re-points intents from ghost to target', async () => {
     const ghostId = uuidv4();
@@ -273,7 +273,7 @@ describe('EnrichmentDatabaseAdapter.mergeGhostUser', () => {
       await db.delete(intents).where(eq(intents.id, intentId));
       await db.delete(users).where(inArray(users.id, [ghostId, targetId]));
     }
-  });
+  }, 20_000);
 
   it('re-points opportunity actors JSONB from ghost to target', async () => {
     const ghostId = uuidv4();
@@ -316,5 +316,5 @@ describe('EnrichmentDatabaseAdapter.mergeGhostUser', () => {
       await db.delete(networks).where(eq(networks.id, netId));
       await db.delete(users).where(inArray(users.id, [ghostId, targetId]));
     }
-  });
+  }, 20_000);
 });

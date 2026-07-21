@@ -9,25 +9,12 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test';
-
-// Mock getPersonalIndexId before importing the module under test.
-// This prevents verifySharedIndex from hitting the real DB.
-const mockGetPersonalIndexId = mock(() => Promise.resolve(null));
-mock.module('../database.adapter', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports -- self-mock needs runtime require to preserve original exports
-  const actual = require('../database.adapter');
-  return {
-    ...actual,
-    getPersonalIndexId: mockGetPersonalIndexId,
-  };
-});
-
-afterAll(() => {
-  mock.restore();
-});
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
 
 import { createSystemDatabase } from '../database.adapter';
+
+// Prevent verifySharedIndex from hitting the real DB.
+const mockGetPersonalIndexId = mock(() => Promise.resolve(null));
 import type { ChatDatabaseAdapter } from '../database.adapter';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,7 +90,13 @@ describe('createSystemDatabase', () => {
 
   beforeEach(() => {
     mockDb = createMockDb();
-    sysDb = createSystemDatabase(mockDb, AUTH_USER, [SCOPED_INDEX, SCOPED_INDEX_2]);
+    sysDb = createSystemDatabase(
+      mockDb,
+      AUTH_USER,
+      [SCOPED_INDEX, SCOPED_INDEX_2],
+      undefined,
+      mockGetPersonalIndexId,
+    );
   });
 
   it('exposes authUserId and indexScope', () => {
@@ -365,14 +358,20 @@ describe('createSystemDatabase', () => {
     });
 
     it('returns empty array when indexScope is empty', async () => {
-      const emptyScope = createSystemDatabase(mockDb, AUTH_USER, [], createMockEmbedder());
+      const emptyScope = createSystemDatabase(
+        mockDb,
+        AUTH_USER,
+        [],
+        createMockEmbedder(),
+        mockGetPersonalIndexId,
+      );
       const result = await emptyScope.findSimilarIntentsInScope([1, 2, 3]);
       expect(result).toEqual([]);
     });
 
     it('calls embedder.search and maps results with intent data', async () => {
       const mockEmbedder = createMockEmbedder();
-      const sysDbWithEmbedder = createSystemDatabase(mockDb, AUTH_USER, [SCOPED_INDEX], mockEmbedder);
+      const sysDbWithEmbedder = createSystemDatabase(mockDb, AUTH_USER, [SCOPED_INDEX], mockEmbedder, mockGetPersonalIndexId);
 
       const intentData = {
         id: 'intent-1',
@@ -404,7 +403,7 @@ describe('createSystemDatabase', () => {
 
     it('filters out intents that no longer exist', async () => {
       const mockEmbedder = createMockEmbedder();
-      const sysDbWithEmbedder = createSystemDatabase(mockDb, AUTH_USER, [SCOPED_INDEX], mockEmbedder);
+      const sysDbWithEmbedder = createSystemDatabase(mockDb, AUTH_USER, [SCOPED_INDEX], mockEmbedder, mockGetPersonalIndexId);
 
       (mockEmbedder.search as ReturnType<typeof mock>).mockResolvedValueOnce([
         { item: { id: 'intent-1', payload: 'test', summary: null, userId: AUTH_USER }, score: 0.9 },
@@ -426,7 +425,7 @@ describe('createSystemDatabase', () => {
 
     it('uses default limit=10 and threshold=0.7 when options omitted', async () => {
       const mockEmbedder = createMockEmbedder();
-      const sysDbWithEmbedder = createSystemDatabase(mockDb, AUTH_USER, [SCOPED_INDEX], mockEmbedder);
+      const sysDbWithEmbedder = createSystemDatabase(mockDb, AUTH_USER, [SCOPED_INDEX], mockEmbedder, mockGetPersonalIndexId);
 
       (mockEmbedder.search as ReturnType<typeof mock>).mockResolvedValueOnce([]);
 

@@ -5,13 +5,12 @@
  * be invoked with the parked seat + the task's protocol version — an
  * initiator-seat fallback can never accept on the user's behalf. Speaker
  * attribution derives from the last message's sender, not turn parity.
- * Hermetic: protocol barrel mocked (capturing IndexNegotiator), database faked.
+ * Hermetic: negotiator invocation and database are injected directly.
  */
-import { config } from 'dotenv';
-config({ path: '.env.test', override: true });
-process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'test-key';
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { describe, expect, it, mock, afterAll, beforeEach } from 'bun:test';
+import { log } from '../../lib/log';
+import { runTimeoutFallback } from '../negotiations/timeout.shared';
 
 let MOCK_TURN: Record<string, unknown> = {
   action: 'counter',
@@ -19,28 +18,10 @@ let MOCK_TURN: Record<string, unknown> = {
 };
 const invokeInputs: Array<Record<string, unknown>> = [];
 
-mock.module('@indexnetwork/protocol', () => ({
-  IndexNegotiator: class {
-    async invoke(input: Record<string, unknown>) {
-      invokeInputs.push(input);
-      return MOCK_TURN;
-    }
-  },
-  AMBIENT_PARK_WINDOW_MS: 1000,
-  isTerminalAction: (a: string) => a === 'accept' || a === 'reject' || a === 'withdraw' || a === 'decline',
-  isRejectLikeAction: (a: string) => a === 'reject' || a === 'withdraw' || a === 'decline',
-  readProtocolVersion: (m: { protocolVersion?: unknown } | null) =>
-    (m?.protocolVersion === 'v2' ? 'v2' : m?.protocolVersion === 'v1' ? 'v1' : null),
-  resolveSeat: (userId: string, m: { initiatorUserId?: string; sourceUserId?: string } | null) =>
-    ((m?.initiatorUserId || m?.sourceUserId) === userId ? 'initiator' : 'counterparty'),
-}));
-
-afterAll(() => {
-  mock.restore();
-});
-
-const { runTimeoutFallback } = await import('../negotiations/timeout.shared');
-const { log } = await import('../../lib/log');
+const invokeNegotiator = async (input: Record<string, unknown>) => {
+  invokeInputs.push(input);
+  return MOCK_TURN as never;
+};
 
 function makeDb() {
   return {
@@ -75,6 +56,7 @@ function run(meta: Record<string, unknown>, messages: Array<Record<string, unkno
       seedReasoning: 'seed',
       maxTurns: opts?.maxTurns ?? 6,
       rearm: async () => {},
+      invokeNegotiator,
     }),
   };
 }

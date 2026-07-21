@@ -42,6 +42,7 @@
     "src/agents/playground/vite.config.mts",
     "src/**/*.spec.ts",
     "src/**/*.test.ts",
+    "src/**/*.isolated.ts",
     "src/**/*.spec.tsx",
     "src/**/*.test.tsx"
   ]

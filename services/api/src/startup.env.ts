@@ -1,21 +1,17 @@
-import { config } from 'dotenv';
 import path from 'node:path';
 import { z } from 'zod';
 
-const environment = process.env.NODE_ENV;
-
-const dotenvPathByEnvironment: Record<string, string> = {
-  development: '.env.development',
-  test: '.env.test',
-};
+import { loadEnvironmentWithTestLock } from './lib/env/test-environment';
 // Runtime env files live at the repo root (see root .env.example). Resolve
 // relative to this file so the path works regardless of cwd. No bare `.env`
 // fallback: development is the default when NODE_ENV is unset; deployments
 // use platform-injected variables, never files.
 const repoRoot = path.resolve(import.meta.dir, '../../..');
-const dotenvPath = path.join(repoRoot, (environment && dotenvPathByEnvironment[environment]) || '.env.development');
-
-config({ path: dotenvPath });
+loadEnvironmentWithTestLock({
+  requestedNodeEnv: process.env.NODE_ENV,
+  testEnvPath: path.join(repoRoot, '.env.test'),
+  developmentEnvPath: path.join(repoRoot, '.env.development'),
+});
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -129,6 +125,12 @@ const envSchema = z.object({
   POOL_QUESTIONS_VISIT_TRIGGER: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   NEGOTIATION_EVIDENCE_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
   OUTCOME_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
+
+  // Test harness (repo-root .env.test only)
+  TEST_DATABASE_SAFE: optionalOne,
+  RUN_PAID_INTEGRATION_TESTS: optionalOne,
+  RUN_REDIS_INTEGRATION_TESTS: optionalOne,
+  RUN_LOCAL_API_E2E: optionalOne,
 
   // 9. MCP / tool runtime
   MCP_MAX_REQUEST_BYTES: optionalInt,
