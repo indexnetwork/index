@@ -17,6 +17,7 @@ import { DecisionQuestions } from "@/components/DecisionQuestions";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/AssistantMessageContent";
+import type { AgentActionConfirmationResponse } from "@/components/chat/AgentActionProposalCard";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
@@ -29,6 +30,7 @@ import { useNetworksState } from "@/contexts/IndexesContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
+import { confirmAgentActionProposal } from "@/services/agent-actions";
 
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import { log } from "@/lib/logger";
@@ -158,6 +160,12 @@ export default function ChatContent({
       showError("Failed to create share link");
     }
   }, [sessionId, showError]);
+
+  const handleAgentActionConfirm = useCallback(
+    (proposalId: string): Promise<AgentActionConfirmationResponse> =>
+      confirmAgentActionProposal(proposalId),
+    [],
+  );
 
   const opportunitiesService = useOpportunities();
 
@@ -1427,6 +1435,7 @@ export default function ChatContent({
                             onIntentProposalReject={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleIntentProposalReject}
                             onIntentProposalUndo={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
+                            onAgentActionConfirm={persona === "reporter" && readOnlySurface ? handleAgentActionConfirm : undefined}
                             OAuthLink={legacyOrchestratorReadOnly || readOnlySurface ? undefined : OAuthLink}
                             onNetworkJoin={legacyOrchestratorReadOnly || readOnlySurface ? undefined : handleNetworkJoin}
                             networkPanelPendingJoinIds={networkPanelPendingJoinIds}

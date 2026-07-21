@@ -17,11 +17,24 @@ export function isReporterBriefingKickoff(message?: string): boolean {
     .replace(/^_+|_+$/g, "");
   if (!normalized) return false;
 
+  return normalized === REPORTER_BRIEFING_KICKOFF;
+}
+
+/** Recognizes a short natural-language acknowledgement of a visible request. */
+export function isReporterActionConfirmation(message?: string): boolean {
+  const normalized = message?.trim().toLocaleLowerCase()
+    .replace(/[.!?,;:]+$/g, "")
+    .replace(/\s+/g, " ");
+  if (!normalized) return false;
   return new Set([
-    REPORTER_BRIEFING_KICKOFF,
-    "reporter-briefing",
-    "reporter briefing",
-    "agent briefing",
+    "i confirm",
+    "confirm",
+    "approve",
+    "approved",
+    "i approve",
+    "yes",
+    "yes i confirm",
+    "go ahead",
   ]).has(normalized);
 }
 
@@ -37,6 +50,17 @@ This is the Agent-surface briefing kickoff. Call report_agent_activity first wit
 3. how do I look to others?;
 4. what should I sharpen?
 Do not claim a metric unless it appears in a tool result from this turn. If a section has no grounded data, say that plainly rather than filling the gap.`;
+}
+
+function buildTurnGuidance(iterCtx?: IterationContext): string {
+  const currentMessage = iterCtx?.currentMessage;
+  const confirmation = isReporterActionConfirmation(currentMessage);
+  return `
+
+## Turn discipline
+- The detailed four-section opening briefing is reserved for the exact reporter-briefing-kickoff marker. Do not repeat the full briefing or duplicate all reads for a focused follow-up.
+- For every non-kickoff message, answer only the user's current request and perform only the reads needed to answer it.
+${confirmation ? `- This message is only a natural-language acknowledgement. Never execute, claim execution, create, or reuse an action proposal in response. Do not call report_agent_activity or propose_cleanup_actions. Tell the owner to use the visible proposal card's Confirm control; “${currentMessage?.trim()}” is not endpoint confirmation.` : ""}`;
 }
 
 /**
@@ -125,5 +149,5 @@ ${profileContext}
 ${membershipContext}
 \`\`\`
 
-Only the identity, context, and membership metadata above are preloaded. Signals, premises, questions, and activity are not preloaded: call the appropriate read/report tool before describing them.${buildBriefingGuidance(iterCtx)}`;
+Only the identity, context, and membership metadata above are preloaded. Signals, premises, questions, and activity are not preloaded: call the appropriate read/report tool before describing them.${buildTurnGuidance(iterCtx)}${buildBriefingGuidance(iterCtx)}`;
 }
