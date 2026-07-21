@@ -32,6 +32,17 @@ function run(cmd: string, cwd: string) {
   });
 }
 
+function expectSuccess(
+  result: Awaited<ReturnType<typeof run>>,
+  command: string,
+): void {
+  if (result.code !== 0) {
+    throw new Error(
+      `${command} exited ${result.code}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
+    );
+  }
+}
+
 /**
  * Scaffold a minimal repo + fixture worktree. Runtime env files live at the
  * repo root; legacy package dirs may still hold not-yet-migrated files.
@@ -80,8 +91,9 @@ describe("worktree-setup.sh", () => {
     await run("git init", repo);
     await run("git add . && git commit -m 'init'", repo);
 
-    const result = await run("bash scripts/worktree-setup.sh fixture", repo);
-    expect(result.code).toBe(0);
+    const command = "bash scripts/worktree-setup.sh fixture";
+    const result = await run(command, repo);
+    expectSuccess(result, command);
 
     for (const name of [".env.development", ".env.test"]) {
       const linkPath = join(worktreeDir, name);
@@ -104,8 +116,9 @@ describe("worktree-setup.sh", () => {
     await run("git init", repo);
     await run("git add . && git commit -m 'init'", repo);
 
-    const result = await run("bash scripts/worktree-setup.sh fixture", repo);
-    expect(result.code).toBe(0);
+    const command = "bash scripts/worktree-setup.sh fixture";
+    const result = await run(command, repo);
+    expectSuccess(result, command);
 
     const devLink = join(worktreeDir, ".env.development");
     expect(lstatSync(devLink).isSymbolicLink()).toBe(true);
@@ -129,8 +142,9 @@ describe("worktree-setup.sh", () => {
     await run("git init", repo);
     await run("git add . && git commit -m 'init'", repo);
 
-    const result = await run("bash scripts/worktree-setup.sh fixture", repo);
-    expect(result.code).toBe(0);
+    const command = "bash scripts/worktree-setup.sh fixture";
+    const result = await run(command, repo);
+    expectSuccess(result, command);
 
     const linkPath = join(worktreeDir, ".env.test");
     expect(lstatSync(linkPath).isSymbolicLink()).toBe(true);
