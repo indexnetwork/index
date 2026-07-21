@@ -240,13 +240,21 @@ describe("ChatAgent persona injection", () => {
       "go ahead",
     ]) {
       const { events, writer } = createEventCollector();
-      const result = await agent.streamRun([proposal, new HumanMessage(phrase)], writer);
+      const result = await agent.streamRun([
+        new HumanMessage("Review my signals"),
+        proposal,
+        new HumanMessage(phrase),
+      ], writer);
       expect(result.responseText).toContain("visible proposal card's Confirm control");
       expect(result.debugMeta.llm.calls).toBe(0);
       expect(events.some((event) => event.type === "llm_start")).toBe(false);
     }
 
-    const iteration = await agent.runIteration([proposal, new HumanMessage("confirm it")], 0);
+    const iteration = await agent.runIteration([
+      new HumanMessage("Review my signals"),
+      proposal,
+      new HumanMessage("confirm it"),
+    ], 0);
     expect(iteration.responseText).toContain("visible proposal card's Confirm control");
     expect(iteration.shouldContinue).toBe(false);
     expect(mockModelInstance.stream).not.toHaveBeenCalled();

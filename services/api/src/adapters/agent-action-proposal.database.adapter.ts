@@ -16,6 +16,9 @@ export type AgentActionProposalClaim =
   | { kind: 'replay'; result: AgentActionProposalResultRecord[] }
   | { kind: 'claimed'; proposal: AgentActionProposalRow };
 
+/** Executing proposals hold a bounded lease so interrupted confirmations can recover. */
+export const AGENT_ACTION_EXECUTION_LEASE_MS = 5 * 60 * 1000;
+
 export type AgentActionProposalDisplay = {
   id: string;
   actions: Array<Omit<AgentActionProposalActionRecord, 'snapshot'>>;
@@ -51,8 +54,10 @@ function toDisplayResult(result: AgentActionProposalResultRecord): AgentActionPr
   };
 }
 
-/** Durable proposal storage and single-use claim protocol for Agent actions. */
+/** Durable proposal storage and recoverable single-use claim protocol for Agent actions. */
 export class AgentActionProposalDatabaseAdapter {
+  constructor(private readonly now: () => Date = () => new Date()) {}
+
   async createProposal(input: CreateAgentActionProposalInput): Promise<void> {
     await db.insert(agentActionProposals).values({
       id: input.proposalId,
@@ -62,14 +67,15 @@ export class AgentActionProposalDatabaseAdapter {
     });
   }
 
-  /** Returns one owner-scoped proposal projected to display-safe fields. */
-  async getProposal(proposalId: string, userId: string): Promise<AgentActionProposalDisplay | null> {
+  /** Returns one conversation- and owner-scoped proposal projected to display-safe fields. */
+  async getProposal(proposalId: string, userId: string, conversationId: string): Promise<AgentActionProposalDisplay | null> {
     const [proposal] = await db
       .select()
       .from(agentActionProposals)
       .where(and(
         eq(agentActionProposals.id, proposalId),
         eq(agentActionProposals.userId, userId),
+        eq(agentActionProposals.conversationId, conversationId),
       ))
       .limit(1);
     if (!proposal) return null;
@@ -82,7 +88,7 @@ export class AgentActionProposalDatabaseAdapter {
     };
   }
 
-  async claimProposal(proposalId: string, userId: string): Promise<AgentActionProposalClaim> {
+  async claimProposal(proposalId: string, userId: string, conversationId: string): Promise<AgentActionProposalClaim> {
     return db.transaction(async (tx) => {
       const [proposal] = await tx
         .select()
@@ -90,6 +96,7 @@ export class AgentActionProposalDatabaseAdapter {
         .where(and(
           eq(agentActionProposals.id, proposalId),
           eq(agentActionProposals.userId, userId),
+          eq(agentActionProposals.conversationId, conversationId),
         ))
         .limit(1)
         .for('update');
@@ -97,15 +104,21 @@ export class AgentActionProposalDatabaseAdapter {
       if (proposal.status === 'consumed') {
         return { kind: 'replay', result: proposal.result ?? [] } as const;
       }
-      if (proposal.status === 'executing') return { kind: 'in_progress' } as const;
+
+      const claimedAt = this.now();
+      const leaseIsFresh = proposal.status === 'executing'
+        && proposal.executionLeaseAt !== null
+        && proposal.executionLeaseAt.getTime() > claimedAt.getTime() - AGENT_ACTION_EXECUTION_LEASE_MS;
+      if (leaseIsFresh) return { kind: 'in_progress' } as const;
 
       const [claimed] = await tx
         .update(agentActionProposals)
-        .set({ status: 'executing' })
+        .set({ status: 'executing', executionLeaseAt: claimedAt })
         .where(and(
           eq(agentActionProposals.id, proposalId),
           eq(agentActionProposals.userId, userId),
-          eq(agentActionProposals.status, 'pending'),
+          eq(agentActionProposals.conversationId, conversationId),
+          eq(agentActionProposals.status, proposal.status),
         ))
         .returning();
       if (!claimed) return { kind: 'in_progress' } as const;
@@ -116,14 +129,16 @@ export class AgentActionProposalDatabaseAdapter {
   async consumeProposal(
     proposalId: string,
     userId: string,
+    conversationId: string,
     result: AgentActionProposalResultRecord[],
   ): Promise<void> {
     await db
       .update(agentActionProposals)
-      .set({ status: 'consumed', result, consumedAt: new Date() })
+      .set({ status: 'consumed', result, executionLeaseAt: null, consumedAt: this.now() })
       .where(and(
         eq(agentActionProposals.id, proposalId),
         eq(agentActionProposals.userId, userId),
+        eq(agentActionProposals.conversationId, conversationId),
         eq(agentActionProposals.status, 'executing'),
       ));
   }

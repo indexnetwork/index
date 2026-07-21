@@ -715,6 +715,13 @@
       "when": 1784647354511,
       "tag": "0101_add_agent_action_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1784662680411,
+      "tag": "0102_add_agent_action_execution_lease",
+      "breakpoints": true
     }
   ]
 }

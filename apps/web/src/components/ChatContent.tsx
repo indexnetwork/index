@@ -167,13 +167,18 @@ export default function ChatContent({
   }, [sessionId, showError]);
 
   const handleAgentActionResolve = useCallback(
-    (proposalId: string) => getAgentActionProposal(proposalId),
-    [],
+    (proposalId: string) => {
+      if (!sessionId) return Promise.reject(new Error("Active conversation is required"));
+      return getAgentActionProposal(proposalId, sessionId);
+    },
+    [sessionId],
   );
   const handleAgentActionConfirm = useCallback(
-    (proposalId: string): Promise<AgentActionConfirmationResponse> =>
-      confirmAgentActionProposal(proposalId),
-    [],
+    (proposalId: string): Promise<AgentActionConfirmationResponse> => {
+      if (!sessionId) return Promise.reject(new Error("Active conversation is required"));
+      return confirmAgentActionProposal(proposalId, sessionId);
+    },
+    [sessionId],
   );
 
   const opportunitiesService = useOpportunities();
@@ -1444,8 +1449,8 @@ export default function ChatContent({
                             onIntentProposalReject={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalReject}
                             onIntentProposalUndo={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
-                            onAgentActionResolve={reporterActionsAllowed ? handleAgentActionResolve : undefined}
-                            onAgentActionConfirm={reporterActionsAllowed ? handleAgentActionConfirm : undefined}
+                            onAgentActionResolve={reporterActionsAllowed && sessionId ? handleAgentActionResolve : undefined}
+                            onAgentActionConfirm={reporterActionsAllowed && sessionId ? handleAgentActionConfirm : undefined}
                             OAuthLink={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : OAuthLink}
                             onNetworkJoin={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleNetworkJoin}
                             networkPanelPendingJoinIds={networkPanelPendingJoinIds}

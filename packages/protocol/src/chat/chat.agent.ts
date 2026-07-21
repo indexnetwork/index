@@ -314,24 +314,33 @@ export class ChatAgent {
    */
   static hasPriorAgentActionProposal(messages: BaseMessage[]): boolean {
     let currentHumanIndex = -1;
+    let previousHumanIndex = -1;
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messages[index]._getType() === "human") {
+      if (messages[index]._getType() !== "human") continue;
+      if (currentHumanIndex < 0) {
         currentHumanIndex = index;
+      } else {
+        previousHumanIndex = index;
         break;
       }
     }
-    if (currentHumanIndex < 0) return false;
+    if (currentHumanIndex < 0 || previousHumanIndex < 0) return false;
 
-    for (let index = 0; index < currentHumanIndex; index += 1) {
-      const message = messages[index];
-      if (message._getType() !== "ai" || typeof message.content !== "string") continue;
-      AGENT_ACTION_PROPOSAL_FENCE_PATTERN.lastIndex = 0;
-      for (const match of message.content.matchAll(AGENT_ACTION_PROPOSAL_FENCE_PATTERN)) {
-        try {
-          if (isVisibleAgentActionProposal(JSON.parse(match[1]))) return true;
-        } catch {
-          // An invalid prior fence is not visible proposal context.
-        }
+    let latestAssistant: BaseMessage | undefined;
+    for (let index = currentHumanIndex - 1; index > previousHumanIndex; index -= 1) {
+      if (messages[index]._getType() === "ai") {
+        latestAssistant = messages[index];
+        break;
+      }
+    }
+    if (!latestAssistant || typeof latestAssistant.content !== "string") return false;
+
+    AGENT_ACTION_PROPOSAL_FENCE_PATTERN.lastIndex = 0;
+    for (const match of latestAssistant.content.matchAll(AGENT_ACTION_PROPOSAL_FENCE_PATTERN)) {
+      try {
+        if (isVisibleAgentActionProposal(JSON.parse(match[1]))) return true;
+      } catch {
+        // An invalid prior fence is not visible proposal context.
       }
     }
     return false;

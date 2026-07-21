@@ -1096,9 +1096,14 @@ describe('Read-only surface header (IND-476)', () => {
     expect(mocks.assistantCallbacks.networkJoin).toBeUndefined();
 
     await mocks.assistantCallbacks.agentActionResolve?.(proposalId);
-    expect(mocks.apiClient.get).toHaveBeenCalledWith(`/agent/actions/proposals/${proposalId}`);
+    expect(mocks.apiClient.get).toHaveBeenCalledWith(
+      `/agent/actions/proposals/${proposalId}?conversationId=reporter-session-1`,
+    );
     await mocks.assistantCallbacks.agentActionConfirm?.(proposalId);
-    expect(mocks.apiClient.post).toHaveBeenCalledWith('/agent/actions/confirm', { proposalId });
+    expect(mocks.apiClient.post).toHaveBeenCalledWith('/agent/actions/confirm', {
+      proposalId,
+      conversationId: 'reporter-session-1',
+    });
   });
 
   test('reporter surface sends with an established URL-less session', async () => {

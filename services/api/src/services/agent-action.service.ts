@@ -44,8 +44,8 @@ export class AgentActionService {
   ) {}
 
   /** Returns canonical display-safe proposal state for the authenticated owner. */
-  async readProposal(userId: string, proposalId: string): Promise<AgentActionProposalReadResult | null> {
-    const proposal = await this.proposals.getProposal(proposalId, userId);
+  async readProposal(userId: string, proposalId: string, conversationId: string): Promise<AgentActionProposalReadResult | null> {
+    const proposal = await this.proposals.getProposal(proposalId, userId, conversationId);
     if (!proposal) return null;
     return {
       proposalId: proposal.id,
@@ -55,12 +55,12 @@ export class AgentActionService {
     };
   }
 
-  async confirm(userId: string, proposalId: string): Promise<
+  async confirm(userId: string, proposalId: string, conversationId: string): Promise<
     | { kind: 'not_found' }
     | { kind: 'in_progress' }
     | { kind: 'success'; result: AgentActionConfirmResult }
   > {
-    const claim = await this.proposals.claimProposal(proposalId, userId);
+    const claim = await this.proposals.claimProposal(proposalId, userId, conversationId);
     if (claim.kind === 'missing') return { kind: 'not_found' };
     if (claim.kind === 'in_progress') return claim;
     if (claim.kind === 'replay') {
@@ -72,29 +72,26 @@ export class AgentActionService {
 
     const results: AgentActionProposalResultRecord[] = [];
     for (const action of claim.proposal.actions) {
-      if (action.skipped || !action.snapshot) {
-        results.push({
-          type: action.type,
-          entityId: action.entityId,
-          operation: action.proposedOperation,
-          previousState: action.currentState,
-          resultingState: action.currentState,
-          ...(action.evidence ? { evidence: action.evidence } : {}),
-          outcome: 'skipped',
-          ...(action.reason ? { reason: action.reason } : {}),
-        });
-        continue;
+      try {
+        results.push(await this.confirmAction(userId, action));
+      } catch {
+        results.push(this.skipped(action, 'Action failed at runtime and was not retried automatically.'));
       }
-
-      if (action.type === 'retract_premise') {
-        results.push(await this.confirmPremise(userId, action));
-        continue;
-      }
-      results.push(await this.confirmIntent(userId, action));
     }
 
-    await this.proposals.consumeProposal(proposalId, userId, results);
+    await this.proposals.consumeProposal(proposalId, userId, conversationId, results);
     return { kind: 'success', result: { proposalId, status: 'consumed', results } };
+  }
+
+  private async confirmAction(
+    userId: string,
+    action: AgentActionProposalRow['actions'][number],
+  ): Promise<AgentActionProposalResultRecord> {
+    if (action.skipped || !action.snapshot) {
+      return this.skipped(action, action.reason ?? 'Action was not eligible for confirmation.');
+    }
+    if (action.type === 'retract_premise') return this.confirmPremise(userId, action);
+    return this.confirmIntent(userId, action);
   }
 
   private async confirmPremise(

@@ -58,12 +58,27 @@ describe("AgentActionProposalCard", () => {
     expect(screen.getByText(/ACTIVE → RETRACTED/)).toBeInTheDocument();
   });
 
-  it("stays inert when canonical resolution returns a different proposal", async () => {
+  it("shows an inert verification failure when canonical resolution returns a different proposal", async () => {
     render(<AgentActionProposalCard card={card} onResolve={vi.fn().mockResolvedValue({ ...resolved(), proposalId: "99999999-9999-4999-8999-999999999999" })} onConfirm={vi.fn()} />);
 
-    await waitFor(() => expect(screen.queryByTestId("agent-action-proposal-loading")).not.toBeInTheDocument());
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not be verified");
     expect(screen.queryByTestId("agent-action-proposal-card")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Confirm/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps confirmation unavailable after hydration failure and retries successfully", async () => {
+    const onResolve = vi.fn()
+      .mockRejectedValueOnce(new Error("network unavailable"))
+      .mockResolvedValueOnce(resolved());
+    render(<AgentActionProposalCard card={card} onResolve={onResolve} onConfirm={vi.fn()} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not be verified");
+    expect(screen.queryByRole("button", { name: /Confirm/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("button", { name: "Confirm" })).toBeInTheDocument();
+    expect(onResolve).toHaveBeenCalledTimes(2);
   });
 
   it("renders the canonical narrow-signal replacement text instead of fence text", async () => {

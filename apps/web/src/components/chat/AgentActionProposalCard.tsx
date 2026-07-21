@@ -99,20 +99,27 @@ function errorIsRetryable(error: unknown): boolean {
  */
 export default function AgentActionProposalCard({ card, onResolve, onConfirm }: AgentActionProposalCardProps) {
   const [canonicalProposal, setCanonicalProposal] = useState<AgentActionProposalResolutionResponse | null>(null);
-  const [resolutionState, setResolutionState] = useState<"loading" | "ready" | "missing">(onResolve ? "loading" : "missing");
+  const [resolutionState, setResolutionState] = useState<"loading" | "ready" | "error" | "missing">(onResolve ? "loading" : "missing");
+  const [resolutionAttempt, setResolutionAttempt] = useState(0);
   const [confirmation, setConfirmation] = useState<AgentActionConfirmationResponse | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<"retryable" | "failed" | null>(null);
 
   useEffect(() => {
     let active = true;
-    if (!onResolve) return () => { active = false; };
+    setCanonicalProposal(null);
+    setConfirmation(null);
+    setError(null);
+    if (!onResolve) {
+      setResolutionState("missing");
+      return () => { active = false; };
+    }
+    setResolutionState("loading");
     void onResolve(card.proposalId)
       .then((resolved) => {
         if (!active) return;
         if (resolved.proposalId !== card.proposalId) {
-          setCanonicalProposal(null);
-          setResolutionState("missing");
+          setResolutionState("error");
           return;
         }
         setCanonicalProposal(resolved);
@@ -120,11 +127,15 @@ export default function AgentActionProposalCard({ card, onResolve, onConfirm }: 
       })
       .catch(() => {
         if (!active) return;
-        setCanonicalProposal(null);
-        setResolutionState("missing");
+        setResolutionState("error");
       });
     return () => { active = false; };
-  }, [card.proposalId, onResolve]);
+  }, [card.proposalId, onResolve, resolutionAttempt]);
+
+  const handleResolveRetry = useCallback(() => {
+    if (!onResolve) return;
+    setResolutionAttempt((attempt) => attempt + 1);
+  }, [onResolve]);
 
   const handleConfirm = useCallback(async () => {
     if (!onConfirm || confirming) return;
@@ -140,7 +151,23 @@ export default function AgentActionProposalCard({ card, onResolve, onConfirm }: 
   }, [card.proposalId, confirming, onConfirm]);
 
   if (resolutionState === "loading") return <AgentActionProposalSkeleton />;
-  if (resolutionState === "missing" || !canonicalProposal) return null;
+  if (resolutionState === "missing") return null;
+  if (resolutionState === "error" || !canonicalProposal) {
+    return (
+      <div
+        data-testid="agent-action-proposal-resolution-error"
+        className="my-2 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 shadow-sm"
+        role="alert"
+      >
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        <span>This action request could not be verified. No action is available.</span>
+        <button type="button" onClick={handleResolveRetry} className="ml-auto inline-flex items-center gap-1 font-medium underline">
+          <RotateCcw className="h-3.5 w-3.5" />
+          Retry
+        </button>
+      </div>
+    );
+  }
   const existingResults = confirmation?.results ?? canonicalProposal.results ?? [];
   const showingPreviouslyConsumed = !confirmation && canonicalProposal.status === "consumed";
   const hasConfirmed = confirmation !== null || canonicalProposal.status === "consumed";

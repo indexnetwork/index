@@ -6,8 +6,11 @@ import { isAgentActionsEnabled } from '../lib/agent-surface-feature';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import type { AgentActionService } from '../services/agent-action.service';
 
+const ProposalIdSchema = z.string().uuid('proposalId must be a UUID');
+const ConversationIdSchema = z.string().uuid('conversationId must be a UUID');
 const ConfirmSchema = z.object({
-  proposalId: z.string().uuid('proposalId must be a UUID'),
+  proposalId: ProposalIdSchema,
+  conversationId: ConversationIdSchema,
 }).strict();
 
 /** Session-only canonical reads and confirmations for gated reporter cleanup proposals. */
@@ -20,10 +23,16 @@ export class AgentActionController {
 
   @Get('/proposals/:proposalId')
   @UseGuards(RateLimit('read'), SessionOnlyGuard)
-  async readProposal(_req: Request, user: AuthenticatedUser, params: { proposalId: string }) {
+  async readProposal(req: Request, user: AuthenticatedUser, params: { proposalId: string }) {
     if (!this.enabled()) return Response.json({ error: 'Not found' }, { status: 404 });
 
-    const parsed = z.string().uuid('proposalId must be a UUID').safeParse(params.proposalId);
+    const parsed = z.object({
+      proposalId: ProposalIdSchema,
+      conversationId: ConversationIdSchema,
+    }).safeParse({
+      proposalId: params.proposalId,
+      conversationId: new URL(req.url).searchParams.get('conversationId'),
+    });
     if (!parsed.success) {
       return Response.json(
         { error: 'Validation failed', details: parsed.error.flatten() },
@@ -31,7 +40,7 @@ export class AgentActionController {
       );
     }
 
-    const proposal = await this.service.readProposal(user.id, parsed.data);
+    const proposal = await this.service.readProposal(user.id, parsed.data.proposalId, parsed.data.conversationId);
     if (!proposal) return Response.json({ error: 'Action proposal not found' }, { status: 404 });
 
     return Response.json({
@@ -56,7 +65,7 @@ export class AgentActionController {
       );
     }
 
-    const result = await this.service.confirm(user.id, parsed.data.proposalId);
+    const result = await this.service.confirm(user.id, parsed.data.proposalId, parsed.data.conversationId);
     if (result.kind === 'not_found') {
       return Response.json({ error: 'Action proposal not found' }, { status: 404 });
     }
