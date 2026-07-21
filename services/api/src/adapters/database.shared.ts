@@ -636,6 +636,7 @@ export interface ConversationSummary {
   lastMessage: { parts: unknown[]; senderId: string; createdAt: Date } | null;
   metadata: Record<string, unknown> | null;
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
+  unreadCount: number;
 }
 
 /**

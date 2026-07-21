@@ -13,6 +13,7 @@ import TopBar from '@/components/TopBar';
 
 const mocks = vi.hoisted(() => ({
   questionsState: { personalAgentPending: 0 },
+  conversations: [] as Array<{ unreadCount: number }>,
   navigate: vi.fn(),
 }));
 
@@ -47,6 +48,10 @@ vi.mock('@/contexts/QuestionsContext', () => ({
   useQuestions: () => ({ personalAgentPending: mocks.questionsState.personalAgentPending }),
 }));
 
+vi.mock('@/contexts/ConversationContext', () => ({
+  useConversation: () => ({ conversations: mocks.conversations }),
+}));
+
 vi.mock('@/components/UserAvatar', () => ({
   default: () => <div data-testid="avatar" />,
 }));
@@ -63,12 +68,25 @@ describe('TopBar Personal Agent badge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.questionsState.personalAgentPending = 0;
+    mocks.conversations = [];
   });
 
   test('renders primary nav including Signals and Agent', () => {
     renderTopBar();
     expect(screen.getByRole('button', { name: 'Signals' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Agent$/ })).toBeInTheDocument();
+  });
+
+  test('chat badge counts unread threads', () => {
+    mocks.conversations = [{ unreadCount: 2 }, { unreadCount: 1 }, { unreadCount: 0 }];
+    renderTopBar();
+    expect(screen.getByTestId('chat-unread-badge')).toHaveTextContent('2');
+  });
+
+  test('chat badge disappears when all threads are read', () => {
+    mocks.conversations = [{ unreadCount: 0 }];
+    renderTopBar();
+    expect(screen.queryByTestId('chat-unread-badge')).toBeNull();
   });
 
   test('pending-question badge renders on the Agent entry when the inbox has open questions', () => {

@@ -7,6 +7,7 @@ import { useOpportunities } from '@/contexts/APIContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useQuestions } from '@/contexts/QuestionsContext';
+import { useConversation } from '@/contexts/ConversationContext';
 import UserAvatar from '@/components/UserAvatar';
 import { log } from '@/lib/logger';
 
@@ -26,6 +27,8 @@ export default function TopBar() {
   const { clearChat } = useAIChat();
   const { setSelectedNetworkIds } = useNetworkFilter();
   const { personalAgentPending } = useQuestions();
+  const { conversations } = useConversation();
+  const unreadConversationCount = conversations.filter((conversation) => conversation.unreadCount > 0).length;
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -113,6 +116,14 @@ export default function TopBar() {
         className={`${navItemClass(!!isMessagesView)} ${navigatingToChat ? 'opacity-50 cursor-wait' : ''}`}
       >
         Chat
+        {unreadConversationCount > 0 && (
+          <span
+            data-testid="chat-unread-badge"
+            className="ml-1.5 inline-block min-w-[20px] rounded-full bg-[#041729] px-2 py-0.5 text-center text-xs text-white"
+          >
+            {unreadConversationCount > 99 ? '99+' : unreadConversationCount}
+          </span>
+        )}
       </button>
       <button onClick={() => navigate('/networks')} className={navItemClass(!!isNetworksView)}>
         Networks

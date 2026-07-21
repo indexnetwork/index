@@ -42,6 +42,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     sendMessage: conversationSend,
     loadMessages,
     getOrCreateDM,
+    markConversationRead,
     hideConversation,
   } = useConversation();
 
@@ -86,6 +87,11 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     const summary = conversations.find((conversation) => conversation.id === conversationId);
     if (summary) setConversationSummary(summary);
   }, [conversationId, conversations]);
+
+  useEffect(() => {
+    if (!conversationId || (conversationSummary?.unreadCount ?? 0) <= 0) return;
+    void markConversationRead(conversationId);
+  }, [conversationId, conversationSummary?.unreadCount, markConversationRead]);
 
   useEffect(() => {
     if (!userId) return;

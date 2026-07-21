@@ -15,6 +15,7 @@ interface RecentChat {
   lastMessage: string;
   lastMessageIsInternal: boolean;
   viaTitle?: string;
+  unreadCount: number;
   negotiationStatus: NegotiationStatus;
   sortTimestamp: number;
 }
@@ -105,6 +106,7 @@ export default function ChatSidebar() {
         name: conv.metadata?.title ?? counterpartLabels.join(', '),
         lastMessage: preview,
         lastMessageIsInternal: !messageText && !!reasoningText,
+        unreadCount: conv.unreadCount,
         negotiationStatus,
         sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
@@ -119,6 +121,7 @@ export default function ChatSidebar() {
       lastMessage: lastText,
       lastMessageIsInternal: false,
       viaTitle: conv.via?.[0]?.title,
+      unreadCount: conv.unreadCount,
       negotiationStatus: null,
       sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
     };
@@ -183,7 +186,7 @@ export default function ChatSidebar() {
                 >
                   <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={28} className="flex-shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-black flex items-center gap-1.5">
+                    <p className={`truncate text-sm flex items-center gap-1.5 ${chat.unreadCount > 0 ? 'font-bold' : 'font-medium'} text-black`}>
                       {chat.negotiationStatus && (
                         <span
                           className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[chat.negotiationStatus].cls}`}
@@ -192,6 +195,15 @@ export default function ChatSidebar() {
                         />
                       )}
                       <span className="truncate">{chat.name}</span>
+                      {chat.unreadCount > 0 && (
+                        <span
+                          data-testid={`chat-unread-${chat.groupId}`}
+                          aria-label={`${chat.unreadCount} unread message${chat.unreadCount === 1 ? '' : 's'}`}
+                          className="inline-flex min-w-4 h-4 items-center justify-center rounded-full bg-[#041729] px-1 text-[10px] font-bold text-white flex-shrink-0"
+                        >
+                          {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                        </span>
+                      )}
                     </p>
                     {chat.viaTitle && (
                       <p className="truncate text-[11px] font-ibm-plex-mono text-gray-400">via {chat.viaTitle}</p>

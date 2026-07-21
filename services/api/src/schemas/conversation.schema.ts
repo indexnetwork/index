@@ -60,6 +60,7 @@ export const conversationParticipants = pgTable(
     participantType: participantTypeEnum('participant_type').notNull(),
     joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
     hiddenAt: timestamp('hidden_at', { withTimezone: true }),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.conversationId, table.participantId] }),

@@ -139,6 +139,37 @@ export class ConversationController {
   }
 
   /**
+   * POST /conversations/:id/read — mark a conversation read for the caller.
+   * Accepts full UUID or short ID prefix.
+   */
+  @Post('/:id/read')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async markConversationRead(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const rawId = params?.id;
+    if (!rawId) {
+      return Response.json({ error: 'Conversation ID required' }, { status: 400 });
+    }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
+
+    try {
+      await this.conversationService.markConversationRead(user.id, conversationId);
+      return Response.json({ success: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith('Forbidden')) {
+        return Response.json({ error: message }, { status: 403 });
+      }
+      logger.error('markConversationRead failed', { userId: user.id, conversationId, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
    * POST /conversations/:id/messages — send a message in a conversation.
    * Accepts full UUID or short ID prefix.
    *

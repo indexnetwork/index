@@ -694,6 +694,13 @@
       "when": 1784452865792,
       "tag": "0098_complete_apikey_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1784615298754,
+      "tag": "0099_add_conversation_last_read_at",
+      "breakpoints": true
     }
   ]
 }
