@@ -1,4 +1,6 @@
-import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
+import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, gt, gte, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
+
+import { tasks } from '../schemas/conversation.schema';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -56,6 +58,113 @@ export class ChatDatabaseAdapter {
       logger.error('ChatDatabaseAdapter.getActiveIntents error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
+  }
+
+  /**
+   * Returns aggregate activity counts for one user's own signals, questions,
+   * opportunities, and opportunity negotiations. Counterparty data is never
+   * selected by these queries.
+   *
+   * @param userId - Authenticated owner whose records are summarized.
+   * @param input - Requested reporting window, clamped to 1-168 hours.
+   * @returns Reproducible owner-scoped activity totals.
+   */
+  async getAgentActivitySummary(
+    userId: string,
+    input: { sinceHours: number },
+  ): Promise<{
+    sinceHours: number;
+    liveSignalsWatched: number;
+    opportunitiesSurfaced: number;
+    opportunitiesBySignal: Array<{ intentId: string; title: string; count: number }>;
+    pendingQuestionCount: number;
+    questionsAnswered: number;
+    negotiationsStarted: number;
+    negotiationsCompleted: number;
+  }> {
+    const sinceHours = Math.max(1, Math.min(168, Math.trunc(input.sinceHours)));
+    const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
+    const ownActor = sql`${schema.opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`;
+    const ownIntentOpportunity = sql`EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(${schema.opportunities.actors}) AS actor
+      JOIN ${schema.intents} AS owned_intent
+        ON owned_intent.id = actor->>'intent'
+       AND owned_intent.user_id = ${userId}
+      WHERE actor->>'userId' = ${userId}
+    )`;
+    const ownQuestion = sql`${schema.questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`;
+
+    const [liveRows, surfacedRows, bySignalRows, pendingRows, answeredRows, negotiationRows] = await Promise.all([
+      db.select({ count: count() })
+        .from(schema.intents)
+        .where(activeOwnIntentsWhere(userId)),
+      db.select({ count: count() })
+        .from(schema.opportunities)
+        .where(and(gte(schema.opportunities.createdAt, since), ownIntentOpportunity)),
+      db.select({
+        intentId: schema.intents.id,
+        title: sql<string>`coalesce(nullif(btrim(${schema.intents.summary}), ''), ${schema.intents.payload})`,
+        count: count(schema.opportunities.id),
+      })
+        .from(schema.intents)
+        .innerJoin(schema.opportunities, and(
+          gte(schema.opportunities.createdAt, since),
+          sql`EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(${schema.opportunities.actors}) AS actor
+            WHERE actor->>'userId' = ${userId}
+              AND actor->>'intent' = ${schema.intents.id}
+          )`,
+        ))
+        .where(eq(schema.intents.userId, userId))
+        .groupBy(schema.intents.id, schema.intents.summary, schema.intents.payload)
+        .orderBy(desc(count(schema.opportunities.id))),
+      db.select({ count: count() })
+        .from(schema.questions)
+        .where(and(
+          eq(schema.questions.status, 'pending'),
+          ownQuestion,
+          or(isNull(schema.questions.expiresAt), gt(schema.questions.expiresAt, new Date())),
+        )),
+      db.select({ count: count() })
+        .from(schema.questions)
+        .where(and(
+          eq(schema.questions.status, 'answered'),
+          ownQuestion,
+          sql`${schema.questions.answer}->>'answeredAt' >= ${since.toISOString()}`,
+        )),
+      db.select({
+        started: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.createdAt} >= ${since})`,
+        completed: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.state} = 'completed' and ${tasks.updatedAt} >= ${since})`,
+      })
+        .from(tasks)
+        .innerJoin(schema.opportunities, sql`${tasks.metadata}->>'opportunityId' = ${schema.opportunities.id}`)
+        .where(and(
+          sql`${tasks.metadata}->>'type' = 'negotiation'`,
+          ownActor,
+          or(
+            gte(tasks.createdAt, since),
+            and(eq(tasks.state, 'completed'), gte(tasks.updatedAt, since)),
+          ),
+        )),
+
+    ]);
+
+    return {
+      sinceHours,
+      liveSignalsWatched: Number(liveRows[0]?.count ?? 0),
+      opportunitiesSurfaced: Number(surfacedRows[0]?.count ?? 0),
+      opportunitiesBySignal: bySignalRows.map((row) => ({
+        intentId: row.intentId,
+        title: row.title,
+        count: Number(row.count),
+      })),
+      pendingQuestionCount: Number(pendingRows[0]?.count ?? 0),
+      questionsAnswered: Number(answeredRows[0]?.count ?? 0),
+      negotiationsStarted: Number(negotiationRows[0]?.started ?? 0),
+      negotiationsCompleted: Number(negotiationRows[0]?.completed ?? 0),
+    };
   }
 
   async searchOwnIntents(

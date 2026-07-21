@@ -40,6 +40,7 @@ src/controllers/tests/intent.controller.isolated.ts
 src/adapters/tests/auth.adapter.isolated.ts
 src/adapters/tests/database.adapter.isolated.ts
 src/adapters/tests/chat-summary.database.adapter.isolated.ts
+src/adapters/tests/agent-activity.database.adapter.isolated.ts
 src/controllers/tests/chat.controller.isolated.ts
 src/controllers/tests/invitation-gaps.controller.isolated.ts
 src/controllers/tests/invitation.controller.isolated.ts

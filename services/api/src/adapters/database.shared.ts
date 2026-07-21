@@ -3,7 +3,7 @@
  * tables, operators, DTO types, and cross-adapter helper functions.
  * No dependency on lib/protocol. Imported by every database/*.adapter.ts file.
  */
-import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm/sql';
+import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm/sql';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
@@ -18,7 +18,7 @@ import { NetworkMembershipEvents } from '../events/network_membership.event';
 // Re-export the import surface so domain adapter files import everything from one module.
 export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log, NetworkMembershipEvents };
 export { canActorSeeOpportunity } from './opportunity.visibility';
-export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not };
+export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not };
 export type { User, NotificationPreferences, OnboardingState, TelegramPrefs, Conversation, ConversationParticipant, Message, Task, Artifact, Id };
 export const logger = log.lib.from('database.adapter');
 
@@ -355,7 +355,7 @@ export function ownIntentsListWhere(
  * Database adapter for intent CRUD (Intent Graph).
  */
 export type ChatScopeType = 'network' | 'intent';
-export type ChatPersonaId = 'orchestrator' | 'signal' | 'negotiator';
+export type ChatPersonaId = 'orchestrator' | 'signal' | 'negotiator' | 'reporter';
 
 export interface ChatSession {
   id: string;

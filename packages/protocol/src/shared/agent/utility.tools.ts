@@ -298,5 +298,21 @@ Discovery is the process of finding meaningful connections between users based o
     },
   });
 
-  return [scrapeUrl, readDocs] as const;
+  const reportAgentActivity = defineTool({
+    name: "report_agent_activity",
+    description:
+      "Reports grounded, aggregate-only activity for the authenticated user's agent over a recent time window. " +
+      "It includes live signal count, opportunities surfaced by the user's own signals, pending/answered question counts, " +
+      "and negotiation totals. It never returns counterpart identities, transcripts, or per-counterparty rows.",
+    querySchema: z.object({
+      sinceHours: z.number().int().optional().default(24).describe("Look back this many hours; values are clamped to 1-168 (default 24)."),
+    }).strict(),
+    handler: async ({ query }) => {
+      const sinceHours = Math.max(1, Math.min(168, query.sinceHours));
+      const summary = await deps.userDb.getAgentActivitySummary({ sinceHours });
+      return success(summary);
+    },
+  });
+
+  return [scrapeUrl, readDocs, reportAgentActivity] as const;
 }
