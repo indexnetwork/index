@@ -534,6 +534,7 @@ export class IntentDatabaseAdapter {
         archivedAt: schema.intents.archivedAt,
         sourceType: schema.intents.sourceType,
         sourceId: schema.intents.sourceId,
+        firstDiscoverySucceededAt: schema.intents.firstDiscoverySucceededAt,
       })
         .from(schema.intents)
         .where(where)
@@ -560,14 +561,19 @@ export class IntentDatabaseAdapter {
    *   `waitingOpportunityCount` populated (empty/zero when none).
    */
   private async attachIntentExtras(
-    rows: Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming'>[],
+    rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming'> & {
+      /** Stamped by the from-intent queue on first successful discovery (IND-482). */
+      firstDiscoverySucceededAt: Date | null;
+    })[],
     userId: string,
   ): Promise<IntentListRow[]> {
     if (rows.length === 0) return [];
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Only rows that are fresh AND not already stamped need the legacy
+    // discovery-run lookup (async MCP runs record success there instead).
     const freshIntentIds = rows
-      .filter(r => r.createdAt > warmingCutoff)
+      .filter(r => r.createdAt > warmingCutoff && r.firstDiscoverySucceededAt == null)
       .map(r => r.id);
     const [networks, counts, succeededDiscoveryIntentIds] = await Promise.all([
       this.networksByIntent(intentIds),
@@ -575,12 +581,14 @@ export class IntentDatabaseAdapter {
       this.succeededDiscoveryIntentIds(freshIntentIds),
     ]);
     const succeededIds = new Set(succeededDiscoveryIntentIds);
-    return rows.map(r => ({
+    return rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
       ...r,
       networks: networks.get(r.id) ?? [],
       pendingQuestionCount: counts.get(r.id)?.questions ?? 0,
       waitingOpportunityCount: counts.get(r.id)?.opportunities ?? 0,
-      warming: r.createdAt > warmingCutoff && !succeededIds.has(r.id),
+      warming: r.createdAt > warmingCutoff
+        && firstDiscoverySucceededAt == null
+        && !succeededIds.has(r.id),
     }));
   }
 
@@ -697,6 +705,7 @@ export class IntentDatabaseAdapter {
       archivedAt: schema.intents.archivedAt,
       sourceType: schema.intents.sourceType,
       sourceId: schema.intents.sourceId,
+      firstDiscoverySucceededAt: schema.intents.firstDiscoverySucceededAt,
     })
       .from(schema.intents)
       .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))

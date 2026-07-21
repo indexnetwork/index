@@ -36,6 +36,7 @@ const asDb = (db: FromIntentDatabaseOverrides): FromIntentDatabase => ({
   getAssignmentNetworkMembershipsForUser:
     db.getAssignmentNetworkMembershipsForUser
     ?? (async () => [{ networkId: 'idx1', isPersonal: false }]),
+  markIntentFirstDiscoverySucceeded: db.markIntentFirstDiscoverySucceeded ?? (async () => {}),
 });
 
 describe('FromIntentQueue', () => {
@@ -127,6 +128,7 @@ describe('FromIntentQueue', () => {
 
     it('discover: skips paused, archived, and wrong-owner jobs at admission', async () => {
       const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
       const minePoolDiscriminators = mock((_trigger: unknown) => {});
       const rows = [
         { id: 'paused', payload: 'P', userId: 'u1', sourceType: null, sourceId: null, status: 'PAUSED' as const, archivedAt: null },
@@ -135,13 +137,14 @@ describe('FromIntentQueue', () => {
       ];
       for (const row of rows) {
         const queue = new FromIntentQueue({
-          database: asDb({ getIntentForIndexing: async () => row }),
+          database: asDb({ getIntentForIndexing: async () => row, markIntentFirstDiscoverySucceeded }),
           invokeOpportunityGraph,
           minePoolDiscriminators,
         });
         await queue.processJob('discover_opportunities', { intentId: row.id, userId: 'u1' });
       }
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
       expect(minePoolDiscriminators).not.toHaveBeenCalled();
     });
 
@@ -187,17 +190,20 @@ describe('FromIntentQueue', () => {
       expect(minePoolDiscriminators).not.toHaveBeenCalled();
     });
 
-    it('discover: intent found, invokeOpportunityGraph called when provided', async () => {
+    it('discover: stamps first-discovery success after the graph completes', async () => {
       const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
-      const db = {
+      const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
+      const db = asDb({
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
-      };
-      const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph });
+        markIntentFirstDiscoverySucceeded,
+      });
+      const queue = new FromIntentQueue({ database: db, invokeOpportunityGraph });
       await queue.processJob('discover_opportunities', {
         intentId: 'i1',
         userId: 'u1',
         networkIds: ['idx1'],
       });
+      expect(markIntentFirstDiscoverySucceeded).toHaveBeenCalledWith('i1');
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'u1',
@@ -208,6 +214,24 @@ describe('FromIntentQueue', () => {
           options: { initialStatus: 'latent' },
         })
       );
+    });
+
+    it('discover: does not stamp when the graph fails', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {
+        throw new Error('graph failed');
+      });
+      const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
+          markIntentFirstDiscoverySucceeded,
+        }),
+        invokeOpportunityGraph,
+      });
+
+      await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
+        .rejects.toThrow('graph failed');
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
     });
 
     it('pool-answer discovery appends all durable answer context and narrates after mining', async () => {
@@ -321,11 +345,13 @@ describe('FromIntentQueue', () => {
 
     it('fails closed when the intent has no network assignments', async () => {
       const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
       const queue = new FromIntentQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getNetworkIdsForIntent: async () => [],
           getAssignmentNetworkMembershipsForUser: async () => [{ networkId: 'idx-owner-only', isPersonal: false }],
+          markIntentFirstDiscoverySucceeded,
         }),
         invokeOpportunityGraph,
       });
@@ -333,6 +359,7 @@ describe('FromIntentQueue', () => {
       await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
     });
 
     it('fails closed when assignment membership lookup excludes a soft-deleted membership', async () => {

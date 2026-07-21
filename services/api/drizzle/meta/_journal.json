@@ -701,6 +701,13 @@
       "when": 1784615298754,
       "tag": "0099_add_conversation_last_read_at",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1784643405363,
+      "tag": "0100_add_intent_first_discovery_succeeded_at",
+      "breakpoints": true
     }
   ]
 }

@@ -205,6 +205,11 @@ describe("IntentDatabaseAdapter Integration", () => {
       payload: 'Fresh intent with completed discovery',
       summary: 'Fresh completed intent',
     });
+    const freshStamped = await adapter.createIntent({
+      userId: testUserId,
+      payload: 'Fresh intent with stamped discovery',
+      summary: 'Fresh stamped intent',
+    });
     const oldIntent = await adapter.createIntent({
       userId: testUserId,
       payload: 'Old intent without discovery',
@@ -213,6 +218,9 @@ describe("IntentDatabaseAdapter Integration", () => {
     await db.update(intentsTable).set({
       createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
     }).where(eq(intentsTable.id, oldIntent.id));
+    await db.update(intentsTable).set({
+      firstDiscoverySucceededAt: new Date(),
+    }).where(eq(intentsTable.id, freshStamped.id));
     const [run] = await db.insert(opportunityDiscoveryRunsTable).values({
       userId: testUserId,
       status: 'succeeded',
@@ -226,10 +234,11 @@ describe("IntentDatabaseAdapter Integration", () => {
       const { rows } = await adapter.listIntents(testUserId, { page: 1, limit: 100, archived: false });
       expect(rows.find((row) => row.id === freshWarming.id)?.warming).toBe(true);
       expect(rows.find((row) => row.id === freshComplete.id)?.warming).toBe(false);
+      expect(rows.find((row) => row.id === freshStamped.id)?.warming).toBe(false);
       expect(rows.find((row) => row.id === oldIntent.id)?.warming).toBe(false);
     } finally {
       await db.delete(opportunityDiscoveryRunsTable).where(eq(opportunityDiscoveryRunsTable.id, run.id));
-      for (const intent of [freshWarming, freshComplete, oldIntent]) {
+      for (const intent of [freshWarming, freshComplete, freshStamped, oldIntent]) {
         await db.delete(intentsTable).where(eq(intentsTable.id, intent.id));
       }
     }
@@ -540,7 +549,9 @@ describe("IntentController Integration", () => {
     expect(Array.isArray(data.intents)).toBe(true);
     expect(data.pagination).toBeDefined();
     expect(data.intents!.length).toBeGreaterThanOrEqual(1);
-    expect(typeof data.intents!.find((intent) => intent.id === testIntentId)?.warming).toBe('boolean');
+    const intent = data.intents!.find((intent) => intent.id === testIntentId);
+    expect(typeof intent?.warming).toBe('boolean');
+    expect(intent).not.toHaveProperty('firstDiscoverySucceededAt');
   });
 
   test("getById should return 404 when intent not found", async () => {

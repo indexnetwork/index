@@ -609,6 +609,13 @@ export const intents = pgTable('intents', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
+  /**
+   * When the intent's first background discovery run completed successfully
+   * (any path: web from-intent queue or async MCP discovery-run). Null until
+   * then. Read-side "warming" derivation clears as soon as this is stamped,
+   * instead of waiting out the 24-hour freshness window (IND-482).
+   */
+  firstDiscoverySucceededAt: timestamp('first_discovery_succeeded_at', { withTimezone: true }),
   userId: text('user_id').notNull().references(() => users.id),
   sourceId: text('source_id'),
   sourceType: sourceType('source_type'),
