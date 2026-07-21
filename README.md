@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <i align="center">Discovery Protocol</i>
+  <i align="center">Social Discovery Protocol</i>
 </p>
 
 <h4 align="center">
