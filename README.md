@@ -228,9 +228,8 @@ We welcome contributions! Before submitting a Pull Request:
 git clone https://github.com/YOUR_USERNAME/index.git
 cd index
 
-# Create a worktree for your feature
-git worktree add .worktrees/feat-your-feature dev
-bun run worktree:setup feat-your-feature
+# Create/reuse the worktree and named Pi tmux session
+bun run worktree:session -- feat/your-feature
 
 # Start dev servers from the worktree
 bun run worktree:dev feat-your-feature

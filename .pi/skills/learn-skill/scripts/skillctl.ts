@@ -12,7 +12,7 @@
  *   bun skillctl.ts locate <name>          Show every location a skill name resolves to
  *   bun skillctl.ts resolve <name>         Decide the write action: create | update | migrate
  *   bun skillctl.ts migrate <name>         Copy a protected skill into the local target
- *   bun skillctl.ts validate <path>        Validate a SKILL.md (or skill dir) frontmatter
+ *   bun skillctl.ts validate <path|all> [--json] Validate one or every local skill
  *   bun skillctl.ts similar <terms...>     Find skills overlapping given terms (dedup aid)
  *   bun skillctl.ts plan <name> [terms..]  Dry-run: action + dedup hints + active integrations
  *   bun skillctl.ts detect                 Report which configured rpiv helpers are installed
@@ -22,13 +22,20 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, cpSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, basename } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
+
+import { parse as parseYaml } from "yaml";
 
 const skillRoot = resolve(import.meta.dir, "..");
 const configPath = join(skillRoot, "config.json");
 
 type Features = { crossLink: boolean; dedup: boolean; modularize: boolean };
 type Modularize = { maxBodyLines: number; sharedDir: string; minDuplicateBlockLines: number };
+type SkillNaming = {
+  policy: "imperative-action-object";
+  minimumSegments: number;
+  imperativeVerbs: string[];
+};
 type Integrations = {
   useTodo: boolean;
   useAskUserQuestion: boolean;
@@ -39,6 +46,7 @@ type Config = {
   target: string;
   protectedLocations: string[];
   allowProtectedWrites: boolean;
+  skillNaming: SkillNaming;
   features: Features;
   modularize: Modularize;
   integrations: Integrations;
@@ -48,6 +56,14 @@ const DEFAULTS: Config = {
   target: ".pi/skills",
   protectedLocations: ["~/.pi/agent/skills", "~/.agents/skills"],
   allowProtectedWrites: false,
+  skillNaming: {
+    policy: "imperative-action-object",
+    minimumSegments: 2,
+    imperativeVerbs: [
+      "address", "audit", "backfill", "bump", "clean", "configure", "create", "debug",
+      "finish", "fix", "inspect", "learn", "manage", "open", "review", "run", "verify",
+    ],
+  },
   features: { crossLink: true, dedup: true, modularize: true },
   modularize: { maxBodyLines: 120, sharedDir: "_shared", minDuplicateBlockLines: 4 },
   integrations: { useTodo: true, useAskUserQuestion: true, useArgs: true, useAdvisor: false },
@@ -75,6 +91,7 @@ function loadConfig(): Config {
       target: raw.target ?? DEFAULTS.target,
       protectedLocations: raw.protectedLocations ?? DEFAULTS.protectedLocations,
       allowProtectedWrites: raw.allowProtectedWrites ?? DEFAULTS.allowProtectedWrites,
+      skillNaming: { ...DEFAULTS.skillNaming, ...(raw.skillNaming ?? {}) },
       features: { ...DEFAULTS.features, ...(raw.features ?? {}) },
       modularize: { ...DEFAULTS.modularize, ...(raw.modularize ?? {}) },
       integrations: { ...DEFAULTS.integrations, ...(raw.integrations ?? {}) },
@@ -97,17 +114,34 @@ type FoundSkill = {
   protected: boolean;
 };
 
-function parseFrontmatter(skillFile: string): { name?: string; description?: string } {
+type FrontmatterResult = {
+  value: Record<string, unknown> | null;
+  errors: string[];
+};
+
+function parseFrontmatterDocument(skillFile: string): FrontmatterResult {
   const text = readFileSync(skillFile, "utf8");
-  const m = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!m) return {};
-  const body = m[1];
-  const name = body.match(/^name:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "");
-  const description = body
-    .match(/^description:\s*(.+)$/m)?.[1]
-    ?.trim()
-    .replace(/^["']|["']$/g, "");
-  return { name, description };
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) return { value: null, errors: ["missing YAML frontmatter"] };
+
+  try {
+    const value: unknown = parseYaml(match[1]);
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return { value: null, errors: ["frontmatter must be a YAML mapping"] };
+    }
+    return { value: value as Record<string, unknown>, errors: [] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
+    return { value: null, errors: [`invalid YAML frontmatter: ${message}`] };
+  }
+}
+
+function parseFrontmatter(skillFile: string): { name?: string; description?: string } {
+  const parsed = parseFrontmatterDocument(skillFile).value;
+  return {
+    name: typeof parsed?.name === "string" ? parsed.name : undefined,
+    description: typeof parsed?.description === "string" ? parsed.description : undefined,
+  };
 }
 
 function scanLocation(loc: string, isProtected: boolean): FoundSkill[] {
@@ -200,23 +234,107 @@ function integrationStatus() {
   });
 }
 
-function validate(skillFile: string): string[] {
+type SkillValidation = {
+  path: string;
+  name: string | null;
+  errors: string[];
+};
+
+type ValidationReport = {
+  schemaVersion: 1;
+  valid: boolean;
+  skills: SkillValidation[];
+};
+
+function repoRelative(path: string): string {
+  const rel = relative(process.cwd(), path);
+  return rel === "" ? "." : rel.replaceAll("\\", "/");
+}
+
+function localSkillFiles(): string[] {
+  const files: string[] = [];
+  const visit = (dir: string): void => {
+    if (!existsSync(dir)) return;
+    const entries = readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile() && entry.name === "SKILL.md") files.push(path);
+    }
+  };
+  visit(targetDir);
+  return files.sort((a, b) => repoRelative(a).localeCompare(repoRelative(b)));
+}
+
+function validateSkill(skillFile: string, duplicateNames: ReadonlySet<string>): SkillValidation {
   const errors: string[] = [];
-  const { name, description } = parseFrontmatter(skillFile);
-  if (!name) {
-    errors.push("missing 'name' in frontmatter");
-  } else {
-    if (name.length < 1 || name.length > 64) errors.push("name must be 1-64 chars");
-    if (!/^[a-z0-9-]+$/.test(name)) errors.push("name must be lowercase a-z, 0-9, hyphens only");
-    if (/^-|-$/.test(name)) errors.push("name must not start/end with a hyphen");
-    if (/--/.test(name)) errors.push("name must not contain consecutive hyphens");
+  const parsed = parseFrontmatterDocument(skillFile);
+  errors.push(...parsed.errors);
+
+  const rawName = parsed.value?.name;
+  const rawDescription = parsed.value?.description;
+  const name = typeof rawName === "string" ? rawName : null;
+
+  if (parsed.value) {
+    if (typeof rawName !== "string") {
+      errors.push("'name' must be a string");
+    } else {
+      if (rawName.length < 1 || rawName.length > 64) errors.push("name must be 1-64 chars");
+      if (!/^[a-z0-9-]+$/.test(rawName)) errors.push("name must be lowercase a-z, 0-9, hyphens only");
+      if (/^-|-$/.test(rawName)) errors.push("name must not start/end with a hyphen");
+      if (/--/.test(rawName)) errors.push("name must not contain consecutive hyphens");
+      if (rawName !== basename(dirname(skillFile))) errors.push("name must equal the parent directory name");
+
+      const segments = rawName.split("-").filter(Boolean);
+      if (segments.length < config.skillNaming.minimumSegments) {
+        errors.push(`name must contain at least ${config.skillNaming.minimumSegments} hyphen-separated segments`);
+      }
+      if (!config.skillNaming.imperativeVerbs.includes(segments[0] ?? "")) {
+        errors.push(`name must start with an allowed imperative verb: ${config.skillNaming.imperativeVerbs.join(", ")}`);
+      }
+      if (duplicateNames.has(rawName)) errors.push("name must be unique among project-local skills");
+    }
+
+    if (typeof rawDescription !== "string") {
+      errors.push("'description' must be a string (skill will NOT load)");
+    } else {
+      if (rawDescription.trim().length === 0) errors.push("description must be trimmed and nonempty");
+      if (rawDescription !== rawDescription.trim()) errors.push("description must not have leading/trailing whitespace");
+      if (rawDescription.length > 1024) errors.push("description must be <= 1024 chars");
+    }
   }
-  if (!description) {
-    errors.push("missing 'description' in frontmatter (skill will NOT load)");
-  } else if (description.length > 1024) {
-    errors.push("description must be <= 1024 chars");
+
+  return { path: repoRelative(skillFile), name, errors };
+}
+
+function validationReport(skillFiles: string[]): ValidationReport {
+  const allLocal = localSkillFiles();
+  const counts = new Map<string, number>();
+  for (const skillFile of allLocal) {
+    const name = parseFrontmatter(skillFile).name;
+    if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
   }
-  return errors;
+  const duplicateNames = new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
+  const skills = skillFiles
+    .map((skillFile) => validateSkill(skillFile, duplicateNames))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  return { schemaVersion: 1, valid: skills.every((skill) => skill.errors.length === 0), skills };
+}
+
+function printValidation(report: ValidationReport, asJson: boolean): void {
+  if (asJson) {
+    console.log(JSON.stringify(report));
+    return;
+  }
+  for (const skill of report.skills) {
+    if (skill.errors.length === 0) {
+      console.log(`OK: ${skill.path}`);
+      continue;
+    }
+    console.error(`INVALID: ${skill.path}`);
+    for (const error of skill.errors) console.error(`  - ${error}`);
+  }
 }
 
 /** SKILL.md body with frontmatter stripped. */
@@ -341,17 +459,29 @@ switch (cmd) {
   }
 
   case "validate": {
-    if (!arg) { console.error("usage: validate <path>"); process.exit(2); }
-    const skillFile = resolveSkillFile(arg);
-    if (!existsSync(skillFile)) { console.error(`not found: ${skillFile}`); process.exit(1); }
-    const errors = validate(skillFile);
-    if (errors.length === 0) {
-      console.log(`OK: ${skillFile}`);
-    } else {
-      console.error(`INVALID: ${skillFile}`);
-      for (const e of errors) console.error(`  - ${e}`);
-      process.exit(1);
+    const allowedFlags = new Set(["--json"]);
+    if (!arg || arg.startsWith("--") || rest.some((item) => !allowedFlags.has(item)) || rest.filter((item) => item === "--json").length > 1) {
+      console.error("usage: validate <path|all> [--json]");
+      process.exit(2);
     }
+    const asJson = rest.includes("--json");
+    let report: ValidationReport;
+    if (arg === "all") {
+      report = validationReport(localSkillFiles());
+    } else {
+      const skillFile = resolveSkillFile(arg);
+      if (!existsSync(skillFile) || !statSync(skillFile).isFile()) {
+        report = {
+          schemaVersion: 1,
+          valid: false,
+          skills: [{ path: repoRelative(skillFile), name: null, errors: ["SKILL.md not found"] }],
+        };
+      } else {
+        report = validationReport([skillFile]);
+      }
+    }
+    printValidation(report, asJson);
+    if (!report.valid) process.exit(1);
     break;
   }
 
@@ -460,7 +590,8 @@ Usage:
   bun skillctl.ts locate <name>       Show every location a skill name resolves to
   bun skillctl.ts resolve <name>      Decide write action: create | update | migrate
   bun skillctl.ts migrate <name>      Copy a protected skill into the local target
-  bun skillctl.ts validate <path>     Validate a SKILL.md (or skill dir) frontmatter
+  bun skillctl.ts validate <path|all> [--json]
+                                      Validate one or every project-local SKILL.md
   bun skillctl.ts similar <terms...>  Find skills overlapping given terms (dedup aid)
   bun skillctl.ts plan <name> [terms] Dry-run: action + dedup hints + active integrations
   bun skillctl.ts detect              Report which configured rpiv helpers are installed

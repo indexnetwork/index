@@ -365,14 +365,15 @@ This shows all BullMQ job queues, their status, and lets you retry failed jobs o
 
 All feature and fix work happens in git worktrees, keeping the main working tree (`dev` branch) stable.
 
-Worktrees live in `.worktrees/` (gitignored). Folder names use dashes; branches inside can use slashes.
+Worktrees live in `.worktrees/` (gitignored). Use a semantic slash branch; the
+session launcher derives the dashed folder and does not accept a separate folder.
 
 ```bash
-# Create a worktree for a new feature
-git worktree add .worktrees/feat-my-feature dev
+# Create/reuse the worktree, run setup, and start a named Pi tmux session
+bun run worktree:session -- feat/my-feature
 
-# Set up env symlinks and install dependencies
-bun run worktree:setup feat-my-feature
+# Inspect the exact no-mutation plan as deterministic JSON
+bun run worktree:session -- feat/my-feature --dry-run --json
 
 # Start dev servers from the worktree
 bun run worktree:dev feat-my-feature
@@ -381,7 +382,9 @@ bun run worktree:dev feat-my-feature
 bun run worktree:list
 ```
 
-The `worktree:setup` script symlinks the root `.env*` files from the main working tree into the worktree root (so you do not need to copy them) and installs `node_modules` in each workspace.
+The launcher invokes `worktree:setup`, which symlinks root `.env*` files into the
+worktree root and installs workspace dependencies. tmux is detached by default; attach
+with `tmux attach-session -t pi-feat-my-feature` or pass `--attach`.
 
 ### Conventional commits
 
