@@ -82,6 +82,12 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
     const data = items[itemIndex];
     try {
       const normalizedData = normalizeCreateOpportunityActorIntents(data);
+      if (
+        intentDedupScope
+        && intentDedupScope.triggerIntentId !== networkEligibility?.triggerIntentId
+      ) {
+        throw new Error('Intent-scoped dedup trigger must match network eligibility');
+      }
       const enrichment = await enrichOrCreate(database, embedder, normalizedData, intentDedupScope && networkEligibility
         ? {
             ownedIntentScope: {

@@ -302,6 +302,42 @@ describe('persistOpportunities', () => {
     expect(input.actors[0]?.intent).toBe('null');
   });
 
+  it('fails closed before atomic persistence when dedup and eligibility triggers differ', async () => {
+    let atomicCalls = 0;
+    const database: PersistOpportunityDatabase = {
+      findOpportunitiesByActors: async () => [],
+      createOpportunity: async () => makeOpportunity(),
+      updateOpportunityStatus: async () => {},
+      persistIntentScopedOpportunityIfNetworkEligible: async () => {
+        atomicCalls += 1;
+        return { created: makeOpportunity(), expired: [] };
+      },
+    };
+    const result = await persistOpportunities({
+      database,
+      embedder: mockEmbedder,
+      items: [makeCreateData({
+        detection: {
+          source: 'opportunity_graph',
+          timestamp: new Date().toISOString(),
+          triggeredBy: 'intent-dedup' as never,
+        },
+      })],
+      networkEligibility: {
+        ownerUserId: 'user-1',
+        allowedNetworkIds: ['net-1'],
+        triggerIntentId: 'intent-eligibility',
+      },
+      intentDedupScope: { triggerIntentId: 'intent-dedup', dedupWindowMs: 1_000 },
+    });
+
+    expect(atomicCalls).toBe(0);
+    expect(result.created).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect((result.errors?.[0]?.error as Error).message)
+      .toBe('Intent-scoped dedup trigger must match network eligibility');
+  });
+
   it('uses the owned-intent atomic boundary and returns typed final conflicts', async () => {
     const existingCreatedAt = new Date(Date.now() - 60_000);
     let atomicCalls = 0;

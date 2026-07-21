@@ -3,7 +3,7 @@ import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
-import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere } from './negotiation-attempt.atomic';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -22,18 +22,6 @@ interface IntentScopedOpportunityPersistenceConflict {
 type IntentScopedOpportunityPersistenceResult =
   | { created: OpportunityRow; expired: OpportunityRow[] }
   | { conflict: IntentScopedOpportunityPersistenceConflict };
-
-const ACTIVE_NEGOTIATION_FRESH_MS = 5 * 60 * 1000;
-const ASK_USER_LOCK_SLACK_MS = 60 * 60 * 1000;
-const DEFAULT_ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-function askUserLockWindowMs(): number {
-  const parsed = Number(process.env.NEGOTIATION_ASK_USER_WINDOW_MS);
-  const answerWindowMs = Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_ASK_USER_WINDOW_MS;
-  return answerWindowMs + ASK_USER_LOCK_SLACK_MS;
-}
 
 function opportunityTriggerForOwner(opportunity: OpportunityRow, ownerUserId: string): string | undefined {
   return opportunity.detection.triggeredBy
@@ -371,7 +359,8 @@ export class OpportunityDatabaseAdapter {
     const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
     const actorUserIds = participantUserIds(data);
     if (
-      actorNetworkIds.length === 0
+      data.detection.triggeredBy !== eligibility.triggerIntentId
+      || actorNetworkIds.length === 0
       || actorNetworkIds.some((id) => !allowedNetworkIds.has(id))
       || actorUserIds.length < 2
       || !Number.isFinite(dedupWindowMs)
@@ -445,25 +434,8 @@ export class OpportunityDatabaseAdapter {
       const [activeNegotiationRow] = await tx
         .select({ opportunity: opportunities })
         .from(opportunities)
-        .innerJoin(
-          schema.tasks,
-          sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunities.id}
-            AND ${schema.tasks.metadata}->>'type' = 'negotiation'`,
-        )
-        .where(and(
-          ...actorContainment,
-          eq(opportunities.status, 'negotiating'),
-          or(
-            and(
-              inArray(schema.tasks.state, ['submitted', 'working', 'waiting_for_agent', 'claimed']),
-              sql`${schema.tasks.updatedAt} >= NOW() - (${ACTIVE_NEGOTIATION_FRESH_MS} * INTERVAL '1 millisecond')`,
-            ),
-            and(
-              eq(schema.tasks.state, 'input_required'),
-              sql`${schema.tasks.updatedAt} >= NOW() - (${askUserLockWindowMs()} * INTERVAL '1 millisecond')`,
-            ),
-          ),
-        ))
+        .innerJoin(schema.tasks, sql`TRUE`)
+        .where(qualifyingPairNegotiationTaskWhere(actorUserIds))
         .orderBy(desc(schema.tasks.updatedAt))
         .limit(1);
       if (activeNegotiationRow) {

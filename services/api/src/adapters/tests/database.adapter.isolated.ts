@@ -1212,6 +1212,37 @@ describe('OpportunityDatabaseAdapter', () => {
   });
 
   describe('intent-scoped atomic persistence', () => {
+    it('fails closed without inserting when write provenance mismatches eligibility trigger', async () => {
+      const writeTriggerIntentId = uuidv4();
+      const eligibilityTriggerIntentId = uuidv4();
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          timestamp: new Date().toISOString(),
+          triggeredBy: writeTriggerIntentId,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: writeTriggerIntentId },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Mismatched trigger must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: eligibilityTriggerIntentId,
+      }, 30 * 24 * 60 * 60 * 1000);
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'triggeredBy' = ${writeTriggerIntentId}`);
+
+      expect(result).toBeNull();
+      expect(inserted).toEqual([]);
+    });
+
     it('blocks final persistence while another trigger has a fresh active negotiation', async () => {
       const triggerIntentId = uuidv4();
       fixture.extraIntentIds.push(triggerIntentId);

@@ -53,7 +53,7 @@ function askUserLockWindowMs(): number {
 /** Pair-global tasks fresh enough to block a concurrent cross-trigger attempt. */
 export function qualifyingPairNegotiationTaskWhere(
   actorUserIds: string[],
-  excludeOpportunityId: string,
+  excludeOpportunityId?: string,
 ) {
   const actorContainment = actorUserIds.map((userId) => sql`EXISTS (
     SELECT 1 FROM jsonb_array_elements(${schema.opportunities.actors}) elem
@@ -63,7 +63,9 @@ export function qualifyingPairNegotiationTaskWhere(
   return sql`
     ${schema.tasks.metadata}->>'type' = 'negotiation'
     AND ${schema.tasks.metadata}->>'opportunityId' = ${schema.opportunities.id}
-    AND ${schema.opportunities.id} <> ${excludeOpportunityId}
+    ${excludeOpportunityId
+      ? sql`AND ${schema.opportunities.id} <> ${excludeOpportunityId}`
+      : sql``}
     AND ${schema.opportunities.status} = 'negotiating'
     AND ${sql.join(actorContainment, sql` AND `)}
     AND (

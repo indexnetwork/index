@@ -123,10 +123,7 @@ export async function createNegotiationTaskForAttemptInTransaction(
     const [pairTask] = await tx
       .select({ id: schema.tasks.id })
       .from(schema.tasks)
-      .innerJoin(
-        opportunities,
-        sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunities.id}`,
-      )
+      .innerJoin(opportunities, sql`TRUE`)
       .where(qualifyingPairNegotiationTaskWhere(actorUserIds, input.opportunityId))
       .limit(1);
     if (pairTask) return null;
