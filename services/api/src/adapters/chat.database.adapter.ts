@@ -135,8 +135,8 @@ export class ChatDatabaseAdapter {
           sql`${schema.questions.answer}->>'answeredAt' >= ${since.toISOString()}`,
         )),
       db.select({
-        started: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.createdAt} >= ${since})`,
-        completed: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.state} = 'completed' and ${tasks.updatedAt} >= ${since})`,
+        started: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.createdAt} >= ${since.toISOString()})`,
+        completed: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.state} = 'completed' and ${tasks.updatedAt} >= ${since.toISOString()})`,
       })
         .from(tasks)
         .innerJoin(schema.opportunities, sql`${tasks.metadata}->>'opportunityId' = ${schema.opportunities.id}`)
