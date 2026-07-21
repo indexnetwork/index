@@ -20,6 +20,7 @@ const createdUserIds: string[] = [];
 
 async function createNegotiatingOpportunity(
   actors?: Array<{ userId: string; networkId: string; role: 'patient' | 'agent' }>,
+  status: 'latent' | 'draft' | 'pending' | 'negotiating' = 'negotiating',
 ) {
   const opportunity = await adapter.createOpportunity({
     detection: {
@@ -38,7 +39,7 @@ async function createNegotiatingOpportunity(
     },
     context: {},
     confidence: '0.8',
-    status: 'negotiating',
+    status,
   });
   createdOpportunityIds.push(opportunity.id);
   return opportunity;
@@ -52,6 +53,7 @@ async function createAttemptInput(
   return {
     conversationId: conversation.id,
     opportunityId: opportunity.id,
+    expectedStatus: opportunity.status,
     expectedUpdatedAt: opportunity.updatedAt,
     metadata: {
       type: 'negotiation',
@@ -279,6 +281,40 @@ describe('OpportunityDatabaseAdapter.compensateTasklessNegotiatingOpportunity', 
     expect(preserved?.status).toBe('negotiating');
   });
 
+  test('atomically promotes an exact latent attempt and creates one task', async () => {
+    const opportunity = await createNegotiatingOpportunity(undefined, 'latent');
+    const input = await createAttemptInput(opportunity);
+
+    const task = await conversationAdapter.createNegotiationTaskForAttempt(input);
+    const promoted = await adapter.getOpportunity(opportunity.id);
+    const persistedTasks = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.metadata}->>'opportunityId' = ${opportunity.id}`);
+
+    expect(task).not.toBeNull();
+    expect(promoted?.status).toBe('negotiating');
+    expect(persistedTasks).toHaveLength(1);
+  });
+
+  test('rolls back the latent promotion when task insertion fails', async () => {
+    const opportunity = await createNegotiatingOpportunity(undefined, 'latent');
+    const input = await createAttemptInput(opportunity);
+    input.conversationId = crypto.randomUUID();
+
+    await expect(conversationAdapter.createNegotiationTaskForAttempt(input)).rejects.toThrow();
+
+    const preserved = await adapter.getOpportunity(opportunity.id);
+    const persistedTasks = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.metadata}->>'opportunityId' = ${opportunity.id}`);
+
+    expect(preserved?.status).toBe('latent');
+    expect(preserved?.updatedAt.getTime()).toBe(opportunity.updatedAt.getTime());
+    expect(persistedTasks).toHaveLength(0);
+  });
+
   test('waits behind task creation, then preserves negotiating with the committed task', async () => {
     const opportunity = await createNegotiatingOpportunity();
     const input = await createAttemptInput(opportunity);
@@ -363,8 +399,8 @@ describe('OpportunityDatabaseAdapter.compensateTasklessNegotiatingOpportunity', 
       { userId: crypto.randomUUID(), networkId: crypto.randomUUID(), role: 'patient' as const },
       { userId: crypto.randomUUID(), networkId: crypto.randomUUID(), role: 'agent' as const },
     ];
-    const firstOpportunity = await createNegotiatingOpportunity(actors);
-    const secondOpportunity = await createNegotiatingOpportunity(actors);
+    const firstOpportunity = await createNegotiatingOpportunity(actors, 'latent');
+    const secondOpportunity = await createNegotiatingOpportunity(actors, 'latent');
     const firstInput = await createAttemptInput(firstOpportunity);
     const secondInput = await createAttemptInput(secondOpportunity);
 
@@ -378,16 +414,43 @@ describe('OpportunityDatabaseAdapter.compensateTasklessNegotiatingOpportunity', 
       .select({ id: tasks.id })
       .from(tasks)
       .where(sql`${tasks.metadata}->>'opportunityId' IN (${firstOpportunity.id}, ${secondOpportunity.id})`);
+    const opportunityStates = await db
+      .select({ id: opportunities.id, status: opportunities.status })
+      .from(opportunities)
+      .where(inArray(opportunities.id, [firstOpportunity.id, secondOpportunity.id]));
     expect(persisted).toHaveLength(1);
+    expect(opportunityStates.filter(({ status }) => status === 'negotiating')).toHaveLength(1);
+    expect(opportunityStates.filter(({ status }) => status === 'latent')).toHaveLength(1);
   });
 
-  test('stale task creation fails closed after a newer opportunity version/status', async () => {
-    const opportunity = await createNegotiatingOpportunity();
+  test('status-drifted task creation fails closed at the same version', async () => {
+    const opportunity = await createNegotiatingOpportunity(undefined, 'latent');
+    const input = await createAttemptInput(opportunity);
+    await db
+      .update(opportunities)
+      .set({ status: 'draft', updatedAt: opportunity.updatedAt })
+      .where(eq(opportunities.id, opportunity.id));
+
+    const createdTask = await conversationAdapter.createNegotiationTaskForAttempt(input);
+    const preserved = await adapter.getOpportunity(opportunity.id);
+    const persistedTasks = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(sql`${tasks.metadata}->>'opportunityId' = ${opportunity.id}`);
+
+    expect(createdTask).toBeNull();
+    expect(preserved?.status).toBe('draft');
+    expect(preserved?.updatedAt.getTime()).toBe(opportunity.updatedAt.getTime());
+    expect(persistedTasks).toHaveLength(0);
+  });
+
+  test('stale task creation fails closed after a newer opportunity version', async () => {
+    const opportunity = await createNegotiatingOpportunity(undefined, 'latent');
     const input = await createAttemptInput(opportunity);
     const newerUpdatedAt = new Date(opportunity.updatedAt.getTime() + 1_000);
     await db
       .update(opportunities)
-      .set({ status: 'pending', updatedAt: newerUpdatedAt })
+      .set({ updatedAt: newerUpdatedAt })
       .where(eq(opportunities.id, opportunity.id));
 
     const createdTask = await conversationAdapter.createNegotiationTaskForAttempt(input);
@@ -395,8 +458,11 @@ describe('OpportunityDatabaseAdapter.compensateTasklessNegotiatingOpportunity', 
       .select({ id: tasks.id })
       .from(tasks)
       .where(sql`${tasks.metadata}->>'opportunityId' = ${opportunity.id}`);
+    const preserved = await adapter.getOpportunity(opportunity.id);
 
     expect(createdTask).toBeNull();
+    expect(preserved?.status).toBe('latent');
+    expect(preserved?.updatedAt.getTime()).toBe(newerUpdatedAt.getTime());
     expect(persistedTasks).toHaveLength(0);
   });
 });
