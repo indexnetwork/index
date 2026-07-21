@@ -482,7 +482,9 @@ read-only for source mutations. Worktrees live in `.worktrees/` (gitignored). Br
 use semantic `<type>/<description>` names and the only valid folder is the dashed form
 `<type>-<description>`; never accept a separate folder name.
 
-From the canonical root, create or reuse the exact Git worktree after checking
+Before socket orchestration, follow the Herdr setup in
+`docs/guides/getting-started.md`; its server and Pi integration must be available. From
+the canonical root, create or reuse the exact Git worktree after checking
 `git worktree list --porcelain`, then always run setup:
 
 ```bash

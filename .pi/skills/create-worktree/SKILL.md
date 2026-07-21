@@ -13,6 +13,23 @@ Git worktree there, run the mandatory setup, then open the exact checkout in Her
 Herdr is the default visible execution plane; do not launch a hidden implementation
 subagent.
 
+## Herdr preflight
+
+Before worktree orchestration, verify the installed CLI, running server, and Pi
+integration:
+
+```bash
+command -v herdr
+herdr status server
+herdr integration status
+```
+
+If the server/client is not running, have the user launch `herdr` from the repository
+so the workspace remains visible. If the Pi integration is missing or outdated, follow
+`docs/guides/getting-started.md` and install it before starting the agent. Do not silently
+fall back to hidden execution; use the legacy helper only when the user explicitly
+chooses that fallback because Herdr is unavailable.
+
 ## Branch and folder policy
 
 Branches must match:

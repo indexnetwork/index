@@ -31,6 +31,19 @@ Install Bun (if not already installed):
 curl -fsSL https://bun.sh/install | bash
 ```
 
+Install Herdr on macOS or Linux, then install and verify its official Pi integration:
+
+```bash
+curl -fsSL https://herdr.dev/install.sh | sh
+herdr integration install pi
+herdr integration status
+```
+
+Before coordinator socket commands such as `herdr worktree open` are used, launch
+`herdr` once from the repository so its visible client/server session is running (or
+ensure an existing Herdr server/client is active). Verify the server when needed with
+`herdr status server`.
+
 Install the pgvector extension for PostgreSQL. The method varies by platform:
 
 ```bash
