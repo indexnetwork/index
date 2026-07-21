@@ -60,6 +60,8 @@ import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
+import { isAgentActionsEnabled } from '../lib/agent-surface-feature';
+import { agentActionProposalDatabaseAdapter } from '../adapters/agent-action-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
 
@@ -121,6 +123,8 @@ const protocolDeps = {
   intentQueue,
   contactService,
   contactsEnabled: process.env.CONTACTS_ENABLED === 'true',
+  actionToolsEnabled: isAgentActionsEnabled(),
+  actionProposalStore: agentActionProposalDatabaseAdapter,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
   negotiationSummary: negotiationSummaryService,

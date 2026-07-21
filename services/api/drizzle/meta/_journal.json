@@ -708,6 +708,13 @@
       "when": 1784643405363,
       "tag": "0100_add_intent_first_discovery_succeeded_at",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1784647354511,
+      "tag": "0101_add_agent_action_proposals",
+      "breakpoints": true
     }
   ]
 }

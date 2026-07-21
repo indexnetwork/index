@@ -66,6 +66,7 @@ Session-only endpoints:
 - `POST /api/agents/:id/tokens`, `DELETE /api/agents/:id/tokens/:tokenId`
 - `POST /api/agents/:id/permissions`, `DELETE /api/agents/:id/permissions/:permissionId`
 - `POST /api/agents/:id/transports`, `DELETE /api/agents/:id/transports/:transportId`
+- `POST /api/agent/actions/confirm`
 
 ### DebugGuard
 
@@ -97,6 +98,14 @@ All error responses follow a consistent JSON format:
 ```
 
 ---
+
+## Agent reporter cleanup actions
+
+The dark-shipped reporter action path is gated by `WEB_AGENT_ACTIONS_ENABLED=true` and the reporter surface flag. The proposal tool persists owner-scoped, full-UUID action plans; chat never mutates domain rows. The endpoint below is session-only and returns `404` while the action flag is off.
+
+### POST /api/agent/actions/confirm
+
+Confirm one persisted proposal with `{ "proposalId": "<uuid>" }`. The server re-reads each owner premise or signal immediately before the sequential mutation, skips stale/non-owner/terminal entries, treats already-retracted or already-paused entries as idempotent success, and stores the result for replay. Supported operations are premise retraction, signal description narrowing, and signal pause. A second confirmation returns the stored result with `status: "replayed"`.
 
 ## Non-Controller Routes
 

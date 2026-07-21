@@ -3746,6 +3746,86 @@ export class ChatDatabaseAdapter {
     };
   }
 
+  /** Atomically retract an owned premise if its proposal snapshot is still current. */
+  async retractPremiseIfCurrent(
+    premiseId: string,
+    userId: string,
+    expectedUpdatedAt: Date,
+  ): Promise<'applied' | 'alreadyDone' | 'stale' | 'not_found'> {
+    const result = await db.transaction(async (tx) => {
+      const [current] = await tx.select({
+        id: schema.premises.id,
+        userId: schema.premises.userId,
+        status: schema.premises.status,
+        updatedAt: schema.premises.updatedAt,
+      }).from(schema.premises).where(eq(schema.premises.id, premiseId)).limit(1).for('update');
+      if (!current || current.userId !== userId) return { kind: 'not_found' as const };
+      if (current.status === 'RETRACTED') return { kind: 'alreadyDone' as const };
+      if (current.status !== 'ACTIVE' || current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        return { kind: 'stale' as const };
+      }
+      const [updated] = await tx.update(schema.premises)
+        .set({ status: 'RETRACTED', retractedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(schema.premises.id, premiseId), eq(schema.premises.userId, userId)))
+        .returning({ id: schema.premises.id, userId: schema.premises.userId });
+      return updated ? { kind: 'applied' as const, id: updated.id, userId: updated.userId } : { kind: 'stale' as const };
+    });
+    if (result.kind === 'applied') {
+      try {
+        PremiseEvents.onRetracted(result.id, result.userId);
+      } catch (error) {
+        logger.error('PremiseEvents emit failed after guarded premise retraction', { premiseId, error });
+      }
+    }
+    return result.kind;
+  }
+
+  /** Atomically update an owned intent only when its proposal snapshot is current. */
+  async updateIntentIfCurrent(
+    intentId: string,
+    userId: string,
+    payload: string,
+    expectedUpdatedAt: Date,
+  ): Promise<'applied' | 'stale' | 'not_found'> {
+    const result = await db.transaction(async (tx) => {
+      const [before] = await tx.select({
+        id: schema.intents.id,
+        userId: schema.intents.userId,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        status: schema.intents.status,
+        archivedAt: schema.intents.archivedAt,
+        updatedAt: schema.intents.updatedAt,
+      }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
+      if (!before || before.userId !== userId) return { kind: 'not_found' as const };
+      if (before.archivedAt || before.status === 'FULFILLED' || before.status === 'EXPIRED' || before.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        return { kind: 'stale' as const };
+      }
+      const updatedAt = new Date(Math.max(Date.now(), before.updatedAt.getTime() + 1));
+      const [updated] = await tx.update(schema.intents)
+        .set({ payload, updatedAt })
+        .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+        .returning({ id: schema.intents.id, userId: schema.intents.userId, payload: schema.intents.payload, summary: schema.intents.summary });
+      if (!updated) return { kind: 'stale' as const };
+      return {
+        kind: 'applied' as const,
+        id: updated.id,
+        userId: updated.userId,
+        oldFingerprint: computeIntentFingerprint(before.payload, before.summary),
+        newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
+      };
+    });
+    if (result.kind === 'applied' && result.oldFingerprint !== result.newFingerprint) {
+      await IntentEvents.onMaterialUpdated({
+        intentId: result.id,
+        userId: result.userId,
+        oldFingerprint: result.oldFingerprint,
+        newFingerprint: result.newFingerprint,
+      });
+    }
+    return result.kind;
+  }
+
   async assignPremiseToNetwork(
     premiseId: string,
     networkId: string,

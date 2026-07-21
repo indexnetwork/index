@@ -265,6 +265,9 @@ export class IntentController {
         { status: 409 },
       );
     }
+    if (result.kind === 'stale') {
+      return Response.json({ error: 'Intent changed before the status update could be applied', code: 'stale' }, { status: 409 });
+    }
     if (result.kind === 'enqueue_failed') {
       return Response.json({
         error: 'Failed to enqueue intent resume',

@@ -118,6 +118,8 @@ export interface ResolvedToolContext {
    * are also de-registered). Fail-closed: treat only `true` as enabled.
    */
   contactsEnabled?: boolean;
+  /** True only when the gated reporter cleanup-action proposal tool is registered. */
+  actionToolsEnabled?: boolean;
 }
 
 /**
@@ -166,6 +168,8 @@ export interface ToolContext {
    * contact tools are always registered.
    */
   contactsEnabled?: boolean;
+  /** True only when the gated reporter cleanup-action proposal tool is registered. */
+  actionToolsEnabled?: boolean;
   /** Chat session reader for loading conversation history. */
   chatSession: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
@@ -217,6 +221,8 @@ export interface ToolContext {
    * the backend composition root; when absent the tool is not registered.
    */
   chatQuestions?: ChatQuestionsHost;
+  /** Optional durable persistence for reporter cleanup-action proposals. */
+  actionProposalStore?: import('../../chat/reporter.action.tools.js').AgentActionProposalStore;
   /**
    * Host bridge for the negotiator persona's `remember`/`forget` memory
    * tools (P5.4). Injected by the composition root only when negotiator
@@ -338,8 +344,10 @@ export async function resolveChatContext(params: {
   sessionId?: string;
   /** CONTACTS_ENABLED flag, forwarded onto the resolved context for prompt gating. */
   contactsEnabled?: boolean;
+  /** Reporter action gate forwarded into the persona prompt/context. */
+  actionToolsEnabled?: boolean;
 }): Promise<ResolvedToolContext> {
-  const { database, userId, networkId, sessionId, contactsEnabled } = params;
+  const { database, userId, networkId, sessionId, contactsEnabled, actionToolsEnabled } = params;
 
   const [user, rawProfile, userNetworks, globalContext] = await Promise.all([
     database.getUser(userId),
@@ -443,6 +451,7 @@ export async function resolveChatContext(params: {
     isOnboarding: !(user.onboarding?.completedAt),
     hasName,
     contactsEnabled,
+    actionToolsEnabled,
     ...(sessionId !== undefined ? { sessionId } : {}),
   };
 }

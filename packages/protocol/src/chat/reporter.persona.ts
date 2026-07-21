@@ -7,6 +7,7 @@ import type { UserDatabase } from "../shared/interfaces/database.interface.js";
 import { focusedNetworkId, scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
 import { buildReporterSystemContent } from "./reporter.prompt.js";
+import { createReporterActionTool } from "./reporter.action.tools.js";
 
 /** Public kickoff marker used by the Agent surface to request its opening briefing. */
 export { REPORTER_BRIEFING_KICKOFF } from "./reporter.prompt.js";
@@ -234,6 +235,7 @@ export async function createReporterTools(
     networkId: explicitScope.scopeType === "network" ? explicitScope.scopeId : deps.networkId,
     sessionId: deps.sessionId,
     contactsEnabled: deps.contactsEnabled,
+    actionToolsEnabled: deps.actionToolsEnabled,
   });
   if (explicitScope.scopeType && explicitScope.scopeId) {
     resolvedContext.scopeType = explicitScope.scopeType;
@@ -242,12 +244,13 @@ export async function createReporterTools(
 
   const userDb = deps.userDb ?? deps.createUserDatabase(deps.database, resolvedContext.userId);
   const allowed = filterReporterTools(await createChatTools(deps, resolvedContext)) as ChatTools;
-
-  return narrowReporterTools(allowed, {
+  const narrowed = narrowReporterTools(allowed, {
     context: resolvedContext,
     userDb,
     findPendingQuestions: deps.findPendingQuestions,
   });
+  const actionTool = createReporterActionTool(deps, resolvedContext, userDb);
+  return actionTool ? [...narrowed, actionTool] as ChatTools : narrowed;
 }
 
 /** Restricted read-only Agent reporter persona. */

@@ -72,6 +72,7 @@ export async function createChatTools(
       networkId: explicitScope.scopeType === 'network' ? explicitScope.scopeId : deps.networkId,
       sessionId: deps.sessionId,
       contactsEnabled: deps.contactsEnabled,
+      actionToolsEnabled: deps.actionToolsEnabled,
     }));
 
   if (!preResolvedContext && explicitScope.scopeType && explicitScope.scopeId) {

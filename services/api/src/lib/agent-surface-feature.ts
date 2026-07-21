@@ -10,3 +10,8 @@
 export function isAgentSurfaceEnabled(): boolean {
   return process.env.WEB_AGENT_SURFACE_ENABLED === 'true';
 }
+
+/** Cleanup-action proposals are effective only on the reporter surface. */
+export function isAgentActionsEnabled(): boolean {
+  return isAgentSurfaceEnabled() && process.env.WEB_AGENT_ACTIONS_ENABLED === 'true';
+}
