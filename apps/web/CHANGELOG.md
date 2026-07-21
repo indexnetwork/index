@@ -30,6 +30,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Preserve messages submitted while the Reporter Agent's opening briefing is creating its first web session, so Enter and Send submissions are queued rather than dropped; add an accessible label to the send control.
 - Keep the answered Q&A log visible in the Personal Agent negotiator chat branch after questions are answered (IND-481).
 - Clear stale browser auth sessions automatically when user lookup fails.
 - Show experiment networks such as Edge City in shared profile networks and link them to their network pages.

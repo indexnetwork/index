@@ -205,6 +205,33 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(mocks.apiClient.stream.mock.calls[0]?.[1]).toMatchObject({ persona: 'reporter' });
   });
 
+  test('preserves a message submitted before the first web session id arrives', async () => {
+    const first = deferred<Response>();
+    mocks.apiClient.stream
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(streamResponse({ response: 'follow-up response' }));
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'web first' }));
+    await waitFor(() => expect(text('loading')).toBe('yes'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'queue follow-up' }));
+    expect(text('messages')).toContain('queued follow-up');
+    expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve(streamResponse({ sessionId: 'web-session', persona: 'reporter' }));
+      await first.promise;
+    });
+
+    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(2));
+    expect(mocks.apiClient.stream.mock.calls[1]?.[0]).toBe('/chat/web/stream');
+    expect(mocks.apiClient.stream.mock.calls[1]?.[1]).toMatchObject({
+      message: 'queued follow-up',
+      sessionId: 'web-session',
+    });
+  });
+
   test('onboarding sends use the dedicated server-clamped route', async () => {
     mocks.apiClient.stream.mockResolvedValueOnce(streamResponse({
       sessionId: 'onboarding-session',

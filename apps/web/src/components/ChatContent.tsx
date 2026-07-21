@@ -928,6 +928,8 @@ export default function ChatContent({
                 type="submit"
                 size="icon"
                 disabled={!canSend || isUploadingFiles}
+                title="Send message"
+                aria-label="Send message"
                 className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
               >
                 <ArrowUp className="h-4 w-4" />
@@ -1171,6 +1173,8 @@ export default function ChatContent({
                     type="submit"
                     size="icon"
                     disabled={!canSend || isUploadingFiles}
+                    title="Send message"
+                    aria-label="Send message"
                     className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
                   >
                     <ArrowUp className="h-4 w-4" />
