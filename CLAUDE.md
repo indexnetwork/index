@@ -189,9 +189,13 @@ git add packages/edge-city/agentvillage
 bun install                                # Install dependencies for all workspaces
 bun run dev                                # Interactive: select root or a worktree to run dev
 bun run worktree:list                       # List worktrees and their setup status
+bun run worktree:session -- <type>/<desc>    # Create/reuse worktree + setup + named Pi tmux session
 bun run worktree:setup <name>               # Install node_modules & symlink .env files into a worktree
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
+bun run skills:validate                      # Validate every project-local Pi skill
+bun run test:scripts                         # Run focused deterministic script tests
+bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
 
 ### Deployment Config
@@ -473,13 +477,21 @@ TSDoc on all classes (summary) and public methods (`@param`, `@returns`, `@throw
 
 ### Worktrees
 
-**Always use worktrees** for features and fixes. Keep `dev` stable. Worktrees live in `.worktrees/` (gitignored). **Folder names use dashes** (e.g. `feat-my-feature`); branches can use slashes.
+**Always use worktrees** for features and fixes. Keep `dev` stable. Worktrees live in `.worktrees/` (gitignored). Branches use semantic `<type>/<description>` names; the launcher derives the dashed folder and does not accept a separate folder argument.
 
 ```bash
-git worktree add .worktrees/feat-foo dev
-bun run worktree:setup feat-foo            # symlink .env files + bun install
-bun run worktree:dev feat-foo              # start all dev servers
+bun run worktree:session -- feat/user-authentication             # detached tmux by default
+bun run worktree:session -- fix/login-redirect-loop --attach     # attach after setup
+bun run worktree:session -- chore/session-automation --dry-run --json
 ```
+
+The launcher creates or reuses the matching worktree, runs `worktree:setup`, verifies
+the tmux pane cwd, and starts a deterministic Pi session with `pi --name`. tmux is the
+first observable-session layer; Pi RPC/dashboard automation is deferred.
+
+Agents ask only for genuine architecture/scope ambiguity, destructive actions, external
+infrastructure mutations, or merge approval. They do not ask before ordinary edits,
+tests, commits, pushes, or PR creation.
 
 ### Conventional Commits
 
@@ -516,7 +528,7 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 
 When executing implementation plans, **always use subagent-driven development with worktree isolation** (`isolation: "worktree"`). This keeps `dev` stable and allows parallel independent tasks. Combine the `superpowers:subagent-driven-development` and `superpowers:using-git-worktrees` skills.
 
-### Receiving Code Review (`/receiving-code-review`)
+### Receiving Code Review (`/address-code-review`)
 
 Code reviews on this project are done by **GitHub Copilot**, triggered manually by the user (via the Reviewers menu on the PR, or `gh pr edit PR-NUMBER --add-reviewer @copilot`). Copilot does not auto-review on push and replies do not trigger it — only an explicit re-review request does.
 
@@ -553,6 +565,6 @@ gotcha, or a convention — run the `learn-skill` skill to persist it before end
 - It is configurable via `.pi/skills/learn-skill/config.json` (target, protected
   locations, dedup/cross-link features, and rpiv integrations: todo,
   ask-user-question, args, advisor).
-- Use `.pi/skills/pi-skill-authoring` for the mechanics of writing a correct `SKILL.md`.
+- Use `.pi/skills/create-skill` for the mechanics of writing a correct `SKILL.md`.
 - Skip silently when nothing meets the "reusable and non-obvious" bar — never capture
   one-off facts.

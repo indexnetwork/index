@@ -25,7 +25,7 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 
 ## Supporting rpiv skills
 
-Use other rpiv skills when they fit: `worktree-session-pipeline` for the user-mediated worktree handoff and fix loop, `flag-rollout-consistency` for env-flag flips across Railway/local surfaces, `receiving-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `release-prod-safety` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
+Use other rpiv skills when they fit: `run-worktree-session` for the user-mediated worktree handoff and fix loop, `manage-feature-flags` for env-flag flips across Railway/local surfaces, `address-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `verify-production-release` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
 
 ## Handing fixes to the worktree session
 
@@ -52,27 +52,23 @@ change, or uncertain impact. Never merge from a feature worktree.
 
 ## Workflow
 
-### 1. Identify the PR
+### 1. Identify and snapshot the PR
 
-If the user provides a PR number, use it. Otherwise infer from the current branch:
-
-```bash
-gh pr view --json number,title,headRefName,baseRefName,url,state,mergeStateStatus,reviewDecision,isDraft,author
-```
-
-Identify owner and repo:
+Use the deterministic factual snapshot as the first inspection. It accepts a PR number,
+URL, or branch and returns repository/PR identity, checks, reviews, fully paginated
+threads/comments, local matching worktree status, and ancestry facts:
 
 ```bash
-gh repo view --json owner,name,url
+bun run pr:snapshot -- <number|URL|branch> [--repo owner/repo]
 ```
 
-Fetch fuller PR metadata:
+Save or parse its JSON rather than repeating ad hoc `gh`/Git parsing. The helper makes
+no readiness or severity judgment; this workflow still evaluates the facts. Use the
+snapshot's actual head ref/OID and base ref/OID rather than assuming folder or branch
+names. Local worktree folders are dashed while branches are slashed.
 
-```bash
-gh pr view PR_NUMBER --json number,title,body,url,state,isDraft,headRefName,headRefOid,headRepository,headRepositoryOwner,baseRefName,mergeStateStatus,reviewDecision,commits,files,closingIssuesReferences,latestReviews,statusCheckRollup
-```
-
-Stop if the PR is closed, merged, draft, or targeting the wrong base branch unless the user explicitly confirms how to proceed. Record the actual `headRefName`/`headRefOid`; do not assume the local worktree branch name is the PR head. Local worktree folders are dashed (`feat-something`) while branches are slashed (`feat/something`), and helper checkouts may lag the PR head.
+Stop if the snapshotted PR is closed, merged, draft, or targeting the wrong base unless
+the user explicitly confirms how to proceed.
 
 ### 2. Identify related GitHub and Linear issues
 
@@ -138,14 +134,14 @@ comm -12 \
 From that worktree: run `git rebase origin/<base>`, resolve conflicts meaningfully per the guidance below, `git push --force-with-lease origin HEAD:<head>` (never plain `--force`), and rerun targeted tests. Never blanket `git checkout --ours/--theirs` across files. For each conflict, read both sides and understand why each changed the region; if the intent of either side is unclear, stop and ask the user instead of guessing. Repo-specific guidance:
 
 - `package.json` version collisions (very common here): take the base's version as the floor and re-apply the PR's semver bump on top — e.g. base went 4.4.1→4.5.0 and the PR also bumped to 4.5.0 → the PR becomes 4.6.0 (feat) or 4.5.1 (fix). Step 4b re-verifies the result.
-- `bun.lock`: never hand-merge. Resolve `package.json` first, then regenerate with `bun install` and stage the result (a stale lockfile also fails prod builds under `--frozen-lockfile` — see `release-prod-safety`).
+- `bun.lock`: never hand-merge. Resolve `package.json` first, then regenerate with `bun install` and stage the result (a stale lockfile also fails prod builds under `--frozen-lockfile` — see `verify-production-release`).
 - Drizzle migrations (`services/api/drizzle/`): keep both sides' migration files; renumber the PR's new migration(s) after the base's latest, and update the entry `idx`/`tag` in `drizzle/meta/_journal.json` to match. Afterwards `bun run db:generate` must report "No schema changes".
 - Generated files (e.g. bundled SKILL.md files from `scripts/build-skills.ts`): take either side textually, then regenerate with the build command rather than hand-merging.
 
 Operational notes for the session operating the verified worktree:
 
 - A rebase replays commits one by one — expect conflicts in more than one commit; `git add` + `git rebase --continue` through them.
-- Rebases re-sign every replayed commit; on `gpg: signing failed: Inappropriate ioctl for device`, follow the `git-worktree-workflow` skill (have the user cache their passphrase, or set worktree-local `git config --worktree commit.gpgsign false`), then retry.
+- Rebases re-sign every replayed commit; on `gpg: signing failed: Inappropriate ioctl for device`, follow the `create-worktree` skill (have the user cache their passphrase, or set worktree-local `git config --worktree commit.gpgsign false`), then retry.
 - A textually clean rebase can still be semantically wrong (both sides touched different lines of the same logic) — re-run targeted builds/tests against the rebased tree before pushing, then re-run the full readiness pass.
 - If the conflicts are unresolvable without product decisions, or the rebase goes sideways: `git rebase --abort`, restore the branch to its pre-rebase state, and present the conflict summary and options to the user.
 
@@ -181,7 +177,7 @@ git diff origin/BASE...HEAD --stat -- packages/protocol packages/cli services/ap
 git diff origin/BASE...HEAD -- packages/protocol/package.json packages/cli/package.json services/api/package.json apps/web/package.json | grep '"version"'
 ```
 
-If a bump is missing, include it in the consolidated worktree prompt: add a `chore: bump <pkg> to X.Y.Z (…)` commit, then run `bun install` and commit any root `bun.lock` change — a stale root lockfile fails the prod build under `--frozen-lockfile` (see `release-prod-safety`). Historical precedents (versions long since superseded — the pattern is what matters): PR #1087 (feat, protocol minor bump), #1082 (fix, patch bump), #1081 (feat touching all packages — all bumped).
+If a bump is missing, include it in the consolidated worktree prompt: add a `chore: bump <pkg> to X.Y.Z (…)` commit, then run `bun install` and commit any root `bun.lock` change — a stale root lockfile fails the prod build under `--frozen-lockfile` (see `verify-production-release`). Historical precedents (versions long since superseded — the pattern is what matters): PR #1087 (feat, protocol minor bump), #1082 (fix, patch bump), #1081 (feat touching all packages — all bumped).
 
 ### 4c. Check environment variable surfaces
 
@@ -199,20 +195,25 @@ If nothing changed, record "no env changes" and move on. Otherwise, for each aff
    - `startup.env.ts` registration and `.env.example` (committed — `tests/env-example-drift.spec.ts` keeps them in sync). Missing entries are committed-code gaps → add them only from the verified PR worktree.
    - Root `.env.development` and `.env.test` (gitignored local files — `.env.development` mirrors Railway dev). Read them and report set/unset.
    - Railway dev service variables (query via Railway MCP; `bun scripts/audit-railway-env.ts` diffs a Railway service against the schema). For dev→main release PRs, check the production service too.
-3. **Ask the user what to do**, per variable or as one batched question, with the plain-English explanations included: set/update a value in Railway, add it to `.env.development`/`.env.test`, or deliberately leave a flag off. Setting Railway variables is a mutation — it needs explicit user confirmation per the safety rules (use the `flag-rollout-consistency` skill for the mechanics: ship-dark→flip order, snake_case ids, auto-redeploy). Editing the gitignored root `.env.development`/`.env.test` is allowed from this session after confirmation — they are not worktree contents and not committed. Make committed-file fixes (`.env.example`, `startup.env.ts`) only from the verified PR worktree.
+3. **Ask the user what to do**, per variable or as one batched question, with the plain-English explanations included: set/update a value in Railway, add it to `.env.development`/`.env.test`, or deliberately leave a flag off. Setting Railway variables is a mutation — it needs explicit user confirmation per the safety rules (use the `manage-feature-flags` skill for the mechanics: ship-dark→flip order, snake_case ids, auto-redeploy). Editing the gitignored root `.env.development`/`.env.test` is allowed from this session after confirmation — they are not worktree contents and not committed. Make committed-file fixes (`.env.example`, `startup.env.ts`) only from the verified PR worktree.
 
 Record the user's decisions for the step-6 summary.
 
 ### 5. Check GitHub readiness before merge
 
-Check PR status and reviews:
+Wait for checks when needed, then refresh the same factual snapshot before each
+readiness decision and after every pushed fix/rebase:
 
 ```bash
 gh pr checks PR_NUMBER --watch
-gh pr view PR_NUMBER --json mergeStateStatus,reviewDecision,statusCheckRollup,isDraft
+bun run pr:snapshot -- PR_NUMBER [--repo owner/repo]
 ```
 
-Check unresolved review threads. Use the `receiving-code-review` skill if unresolved Copilot or human review feedback remains. Replying to threads with technical reasoning and resolving them is GitHub-side; include any required code change in the consolidated worktree prompt.
+Evaluate the refreshed checks, review decision, local worktree status, ancestry, and
+unresolved review threads. Use the `address-code-review` skill if unresolved Copilot or
+human review feedback remains. Replying to threads with technical reasoning and
+resolving them is GitHub-side; include any required code change in the consolidated
+worktree prompt.
 
 Do not merge if required checks are failing/pending, required reviews are missing, the PR is draft, unresolved blocking review conversations remain, or local verification failed.
 

@@ -13,7 +13,7 @@
  *   dismissal-driven reversal removes them.
  * - `detail` carries the template chip text built from the user's OWN answer
  *   ("Hands-on builders vs advisors: you chose Advisor") — never LLM
- *   reasoning (opportunity-presentation-safety).
+ *   reasoning (review-opportunity-presentation).
  */
 import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
 import type { QuestionPoolDiscriminator } from "../../shared/schemas/question.schema.js";

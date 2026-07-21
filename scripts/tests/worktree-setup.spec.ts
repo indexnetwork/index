@@ -12,7 +12,8 @@ function makeTempRepo() {
 }
 
 function run(cmd: string, cwd: string) {
-  const proc = Bun.spawn(["bash", "-lc", cmd], {
+  // A login shell may cd back to GITHUB_WORKSPACE and ignore the fixture cwd.
+  const proc = Bun.spawn(["bash", "-c", cmd], {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
@@ -30,6 +31,17 @@ function run(cmd: string, cwd: string) {
     const stderr = await new Response(proc.stderr).text();
     return { code, stdout, stderr };
   });
+}
+
+function expectSuccess(
+  result: Awaited<ReturnType<typeof run>>,
+  command: string,
+): void {
+  if (result.code !== 0) {
+    throw new Error(
+      `${command} exited ${result.code}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
+    );
+  }
 }
 
 /**
@@ -80,8 +92,9 @@ describe("worktree-setup.sh", () => {
     await run("git init", repo);
     await run("git add . && git commit -m 'init'", repo);
 
-    const result = await run("bash scripts/worktree-setup.sh fixture", repo);
-    expect(result.code).toBe(0);
+    const command = "bash scripts/worktree-setup.sh fixture";
+    const result = await run(command, repo);
+    expectSuccess(result, command);
 
     for (const name of [".env.development", ".env.test"]) {
       const linkPath = join(worktreeDir, name);
@@ -104,8 +117,9 @@ describe("worktree-setup.sh", () => {
     await run("git init", repo);
     await run("git add . && git commit -m 'init'", repo);
 
-    const result = await run("bash scripts/worktree-setup.sh fixture", repo);
-    expect(result.code).toBe(0);
+    const command = "bash scripts/worktree-setup.sh fixture";
+    const result = await run(command, repo);
+    expectSuccess(result, command);
 
     const devLink = join(worktreeDir, ".env.development");
     expect(lstatSync(devLink).isSymbolicLink()).toBe(true);
@@ -129,8 +143,9 @@ describe("worktree-setup.sh", () => {
     await run("git init", repo);
     await run("git add . && git commit -m 'init'", repo);
 
-    const result = await run("bash scripts/worktree-setup.sh fixture", repo);
-    expect(result.code).toBe(0);
+    const command = "bash scripts/worktree-setup.sh fixture";
+    const result = await run(command, repo);
+    expectSuccess(result, command);
 
     const linkPath = join(worktreeDir, ".env.test");
     expect(lstatSync(linkPath).isSymbolicLink()).toBe(true);

@@ -218,11 +218,14 @@ gh pr create \
   --body-file /tmp/release-pr-body.md
 ```
 
-After creation, fetch and report the PR:
+After creation, fetch the normalized factual snapshot and report from it:
 
 ```bash
-gh pr view "$BRANCH" --json number,title,url,baseRefName,headRefName,state,isDraft,statusCheckRollup
+bun run pr:snapshot -- "$BRANCH"
 ```
+
+Do not call the snapshot before PR creation; it is a post-create/update verification
+step for this workflow.
 
 ### 7. If the PR already exists
 
@@ -232,7 +235,7 @@ If `gh pr create` reports that a PR already exists for the branch, update its bo
 gh pr edit "$BRANCH" --title "Release $DATE" --body-file /tmp/release-pr-body.md
 ```
 
-Then fetch the PR details with `gh pr view`.
+Then refresh details with `bun run pr:snapshot -- "$BRANCH"`.
 
 ### 8. Final summary
 
