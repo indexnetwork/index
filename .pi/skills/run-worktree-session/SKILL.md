@@ -2,7 +2,7 @@
 name: run-worktree-session
 description: >-
   Run feature and fix implementation in a visible Herdr-managed Pi worktree session,
-  with direct coordinator polling and a focused verify-commit-push-PR loop. Use when
+  with event-driven root-to-child coordination and a verify-commit-push-PR loop. Use when
   Index work moves from root investigation into implementation or returns for review
   and finish-pr fixes.
 ---
@@ -20,21 +20,22 @@ Follow `create-worktree` from the canonical root:
 1. derive the semantic branch, dashed folder, and absolute worktree path;
 2. create or reuse the exact Git worktree after collision checks;
 3. run `bun run worktree:setup <folder>`;
-4. open or focus it with Herdr;
-5. start Pi only if the returned root pane has no existing agent.
+4. open it with Herdr without changing the active `index` workspace;
+5. launch Pi only if the returned root pane has no existing agent.
 
 The installed CLI contract is:
 
 ```bash
-herdr worktree open --path "$WORKTREE" --label "$FOLDER" --focus --json
-herdr agent start "$AGENT_ALIAS" --kind pi --pane "$PANE_ID"
+herdr worktree open --path "$WORKTREE" --label "$FOLDER" --no-focus --json
 # optional preselected model/thinking at launch:
-herdr agent start "$AGENT_ALIAS" --kind pi --pane "$PANE_ID" -- --model provider/model:thinking
+herdr pane send-text "$PANE_ID" "pi --model provider/model:thinking"
+herdr pane send-keys "$PANE_ID" enter
 ```
 
-`AGENT_ALIAS` defaults to the dashed folder but must fit Herdr's live-name limit
-`[a-z][a-z0-9_-]{0,31}`; shorten it when the folder is longer (the workspace label
-stays the full dashed folder).
+All pane reads, text, and keys are explicit-ID-targeted and non-focusing. Prefer this
+pane launch path. Do not use `herdr agent start` normally; if an environment forces
+that fallback, capture the active workspace first and immediately restore `index` so
+focus is never left changed.
 
 Capture the returned workspace and pane IDs. Reuse the existing workspace/Pi when
 Herdr reports the worktree is already open. Reject a cwd, branch, workspace, pane, or
@@ -51,47 +52,45 @@ Prepare one prompt file outside the repository containing:
 - instructions to verify cwd/branch, commit, push, and open/update the PR;
 - an instruction not to create another worktree or hidden implementation subagent.
 
-Before delivery, inspect the visible agent and recent pane output:
+Before delivery, inspect the exact pane and recent visible output:
 
 ```bash
-herdr agent get "$AGENT_NAME"
-herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
+herdr pane read "$PANE_ID" --source visible --lines 200
 ```
 
 Send the full handoff as one atomic prompt only when the agent is ready and no
-structured question or editor draft is active. `--wait` submits and waits in one call
-for the first settled `idle`, `done`, or `blocked` state:
+structured question or editor draft is active. The wait rule depends on the
+coordinator: the interactive main workspace dynamically identified by label `index`
+must submit `herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)"`
+without `--wait` and return idle; it reconciles durable root state only on a later
+natural turn or explicit orchestration tick. A dedicated root orchestrator outside
+`index` may and should instead use exactly one server-owned, indefinite root → child
+handoff:
 
 ```bash
 herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)" --wait
 ```
 
-Do not commit task-specific handoff files under `.pi`.
+Do not add a timeout. Do not commit task-specific handoff files under `.pi`.
 
-## 3. Wait event-driven from the coordinator
+## 3. Reconcile results without polling
 
-The coordinator stays active while implementation runs and waits on the same visible
-agent. **`sleep` polling is banned** — Herdr waits are server-owned and event-driven,
-and `sleep` both wastes wall-clock and hides `blocked` states. Do not delegate
-observation to a background watcher process or watcher pane.
+**`sleep` polling is banned.** Do not use polling or timeout retry loops,
+`herdr agent wait`, background watcher processes, or watcher panes. The interactive
+main workspace (`index`) returns after its fire-and-return root handoff and reconciles
+durable root state only on a later natural turn or explicit orchestration tick.
 
-`agent prompt --wait` usually carries the whole turn. When a follow-up wait is needed
-(after a timeout checkpoint or a resolved question), poll directly:
-
-```bash
-herdr agent get "$AGENT_NAME"
-herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
-herdr agent wait "$AGENT_NAME" --timeout 30000
-```
-
-A wait timeout is a polling checkpoint, not a failure. Read new output, handle any
-question, and wait again until the agent reports completion or a real blocker.
-Ground decisions in the visible output rather than assuming that `working`, `idle`, or
-`done` alone proves success — `idle` and `done` are both settled states, and a settled
-state still requires transcript and git/PR/test verification.
-
-For parallel agents, issue multiple `herdr agent prompt NAME "..." --wait` (or
-`agent wait`) tool calls in one turn so the server-owned waits run concurrently.
+A dedicated root outside `index` receives a child result through its one
+`agent prompt --wait` handoff. After it returns, inspect the structured `RESULT` and
+factual git/PR/test state; `working`, `idle`, `done`, and `blocked` alone are never
+proof of success. Its workspace label must end in `-root` before it can publish a
+final `RESULT` via the project-local durable orchestration bridge; implementation
+children cannot publish. Validated rpiv lifecycle alone publishes a genuine blocked
+question event. Neither path injects an agent prompt or relies on a toast. The trusted `index` extension attaches those events only on the
+user's next natural turn; Herdr notifications are optional visibility only and cannot
+resume Pi. For parallel children, the dedicated root may issue multiple complete
+`herdr agent prompt NAME "..." --wait` calls in one turn so the server owns the waits
+concurrently.
 
 ## 4. Answer questions safely
 
@@ -109,8 +108,8 @@ Escalate to the user only for:
 
 Never infer merge approval.
 
-`agent prompt --wait` and `agent wait` return `blocked` when Herdr recognizes an
-approval or question UI. If a structured question, selector, or editor draft is
+A dedicated root's `agent prompt --wait` can return `blocked` when Herdr recognizes
+an approval or question UI. If a structured question, selector, or editor draft is
 active, do **not** use `herdr agent prompt`: it can append text to stale input. Read
 the pane, then answer the active UI through its pane ID with targeted text/keys:
 
@@ -152,9 +151,10 @@ root) before removing the Git worktree, so no stale sidebar entry survives.
 ## 6. Reuse for fix rounds
 
 For review or finish-pr findings, return to the same Herdr workspace, pane, and Pi
-agent. Send one consolidated fix prompt, poll directly, answer routine questions, and
-wait for the focused checks/commit/push result. Do not create a fresh worktree, agent,
-or prompt per comment.
+agent. Send one consolidated fix prompt under the same asymmetric handoff rule,
+answer routine questions through the targeted pane, and reconcile the durable
+checks/commit/push result without polling. Do not create a fresh worktree, agent, or
+prompt per comment.
 
 Parallel work uses separate visible Herdr workspaces and separate Git worktrees, with
 one writer per worktree. Merge or reconcile those branches deliberately; never let two

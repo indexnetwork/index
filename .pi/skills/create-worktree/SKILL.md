@@ -84,16 +84,16 @@ bun run worktree:setup "$FOLDER"
 
 Setup is mandatory: it installs dependencies and links the root environment files.
 
-## Open or focus the Herdr workspace
+## Open the Herdr workspace without focus
 
 Open the exact existing Git worktree and use the dashed folder as the stable workspace
-label:
+label. Always preserve the user's active `index` workspace by opening without focus:
 
 ```bash
 herdr worktree open \
   --path "$WORKTREE" \
   --label "$FOLDER" \
-  --focus \
+  --no-focus \
   --json
 ```
 
@@ -108,26 +108,22 @@ herdr pane get "$PANE_ID"
 herdr agent get "$PANE_ID"
 ```
 
-If the root pane is an interactive shell with no Pi agent, start one. The default
-stable agent name is the dashed folder, but Herdr live agent names must match
-`[a-z][a-z0-9_-]{0,31}` (32 chars max) — when the folder exceeds the limit, use a
-shorter unique alias (e.g. `agent-orchestration`) and keep the longer dashed
-workspace label unchanged; the label and the agent alias are independent:
+If the root pane is an interactive shell with no Pi agent, launch Pi through the
+exact non-focusing pane ID. To preselect a model and thinking level (chosen per
+`run-agent-orchestration`'s model routing — never switched mid-implementation), send
+it as part of the targeted launch command:
 
 ```bash
-herdr agent start "$AGENT_ALIAS" --kind pi --pane "$PANE_ID"
+herdr pane send-text "$PANE_ID" "pi --model provider/model:thinking"
+herdr pane send-keys "$PANE_ID" enter
 ```
 
-To preselect a model and thinking level at launch (chosen per
-`run-agent-orchestration`'s model routing — never switched mid-implementation), pass
-an explicit agent argument after `--`:
-
-```bash
-herdr agent start "$AGENT_ALIAS" --kind pi --pane "$PANE_ID" -- --model provider/model:thinking
-```
-
-If Pi already exists in that pane, reuse it only when its cwd is `WORKTREE` and its
-identity belongs to this workspace. Never start a second writer in the same worktree.
+All pane reads, text, and keys are explicit-ID-targeted and non-focusing. If Pi
+already exists in that pane, reuse it only when its cwd is `WORKTREE` and its identity
+belongs to this workspace. Never start a second writer in the same worktree. Do not
+use `herdr agent start` as the normal launch path; if an environment forces that
+fallback, capture the active workspace first and immediately restore `index` so focus
+is never left changed.
 
 ## Verify before mutation
 

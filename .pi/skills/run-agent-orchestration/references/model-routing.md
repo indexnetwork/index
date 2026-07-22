@@ -1,50 +1,110 @@
-# Model routing (launch-time, balanced, no GPT-5.5)
+# Model routing (launch-time, OpenAI-first, no GPT-5.5)
 
-Models are chosen **at child launch time** and never switched mid-implementation —
-a child that needs a stronger model is stopped and relaunched with a fresh handoff,
+Models are chosen **at child launch time** and never switched mid-implementation.
+A child that needs a stronger model is stopped and relaunched with a fresh handoff,
 not hot-swapped.
 
-Before every launch, read the visible Pi footer quota/headroom and route by the table
-below. Routing is deterministic skill logic based on visible footer state; do not
-parse quota UI with a brittle extension. (A preset/model-routing extension is a later
-option only if a stable quota API becomes available.)
+Before **every** child launch, the root orchestrator re-reads the visible Pi footer
+quota state and routes by the table and quota bands below. Routing is deterministic
+skill logic based on that visible footer; do not parse quota UI with a brittle
+extension. A preset/model-routing extension is a later option only if a stable quota
+API becomes available.
 
 **GPT-5.5 is banned.** Use the GPT-5.6 Sol/Terra/Luna variants instead.
 
-## Launch syntax
+## Launch syntax and focus safety
 
-Pass the model as an explicit agent argument after `--`:
+Open worktrees without stealing the user's active `index` workspace, then launch Pi
+through the exact, non-focusing pane ID:
 
 ```bash
-herdr agent start NAME --kind pi --pane ID -- --model provider/model:thinking
+herdr worktree open --path WORKTREE_PATH --label LABEL --no-focus --json
+herdr pane send-text PANE_ID "pi --model provider/model:thinking"
+herdr pane send-keys PANE_ID enter
 ```
 
-## Default balanced routing
+All direct pane reads, text, and keys must target the exact pane ID and must not
+focus it. Do not use `--focus`; the `index` workspace remains the user's active
+workspace. `herdr agent start` is not the normal launch path. If it is unavoidable as
+a fallback, capture the current active workspace first and immediately restore
+`index` afterward; never leave the user's focus changed.
 
-| Agent / role | Model | Fallback |
+## Coordination wait safety
+
+This reference's launch rules do not make the user-facing main session wait. In the
+`index` (`wX`) workspace, main → root submissions use `herdr agent prompt NAME "..."`
+without `--wait` and return immediately; main only inspects root state on a later
+natural user turn or explicit orchestration tick. No polling, sleeps, watcher
+processes, or timeout loops are allowed on that path.
+
+Dedicated root orchestrators and implementation children run outside `index`. For
+root → child coordination, use exactly one server-owned
+`herdr agent prompt NAME "..." --wait` with no timeout. Children signal via a
+structured question (`blocked`) or final `RESULT`; do not sleep-poll, run watchers,
+or use timeout loops.
+
+## Durable callback to `index`
+
+Model routing does not change the delivery path. The project-local orchestration bridge
+authorizes publication only from an observable Herdr workspace label ending in `-root`;
+`index` and implementation children fail closed. It resolves the unique workspace
+labeled `index` and its reported Pi session identity, then persists root `RESULT` and
+validated-rpiv blocked-question events before one best-effort Unix-socket wake. It never uses a fixed main agent name, screen scraping, editor
+injection, workspace focus, `herdr agent prompt`, or `herdr agent wait` from `index`.
+
+The `index` extension only updates a non-focusing inbox count when awake. On the next
+user-submitted natural turn, `before_agent_start` atomically claims the durable events
+and attaches persistent `ORCHESTRATOR_EVENT` context. Missing listeners, focused
+editors, and disabled Herdr toasts do not alter that safety guarantee: the spool waits
+for the later natural turn. `notification.show` is optional visibility only, has no
+persistent inbox in Herdr 0.7.5, and cannot resume Pi.
+
+The bridge remains project-local and requires trusted project extensions plus a reload
+of the root and `index` sessions after installation. Never clear, overwrite, or infer
+the safety of a user draft; never focus `index`; and never wait from the main
+workspace.
+
+## Default OpenAI-first routing
+
+| Agent / role | Model | Fallback / escalation |
 |---|---|---|
-| Root orchestrator | `anthropic/claude-fable-5:high` | `openai-codex/gpt-5.6-terra:high` |
-| Protocol specialist / privacy-critical | `anthropic/claude-opus-4-8:high` | `openai-codex/gpt-5.6-sol:high` |
-| API backend implementation | `openai-codex/gpt-5.6-terra:high` | escalate to Sol only for cross-cutting, concurrency, or rebase failures |
-| Web implementation (normal) | `openai-codex/gpt-5.6-terra:high` | `:medium` allowed for tightly scoped changes; Sol escalation as above |
-| Mechanical UI / tests / docs / recon | `openai-codex/gpt-5.6-luna:medium` or `kimi-coding/k3:high` | Kimi preferred for broad reconnaissance/mechanical work when quality risk is low |
-| Release / review / rebase | `anthropic/claude-fable-5:high` | Opus for protocol/privacy review; `openai-codex/gpt-5.6-sol:high` as fallback |
+| Root orchestrator | `openai-codex/gpt-5.6-terra:high` | `openai-codex/gpt-5.6-sol:high` |
+| Protocol specialist / privacy-critical | `openai-codex/gpt-5.6-sol:high` | `anthropic/claude-opus-4-8:high` for quota-aware independent review |
+| API backend implementation (normal) | `openai-codex/gpt-5.6-terra:high` | Sol only for cross-cutting, concurrency, or rebase escalation |
+| Web implementation (normal) | `openai-codex/gpt-5.6-terra:high` (`:medium` for tightly scoped changes) | Sol only for cross-cutting, concurrency, or rebase escalation |
+| Mechanical UI / tests / docs / recon | `openai-codex/gpt-5.6-luna:medium` or `openai-codex/gpt-5.6-luna:high` | Use the appropriate Luna thinking level for scope |
+| Release / review / rebase | `openai-codex/gpt-5.6-terra:high` | `openai-codex/gpt-5.6-sol:high` for critical review |
 
-Notes:
+`anthropic/claude-sonnet-5` and `anthropic/claude-haiku-4-5` are secondary Claude
+alternatives only when Claude global headroom is healthy; they are never ordinary
+defaults. `anthropic/claude-fable-5` and `kimi-coding/k3` are reserve/emergency
+models, not normal routing rows.
 
-- **Sol is escalation, not the normal default.** Reach for it only after a
-  Terra/Fable attempt demonstrably fails on cross-cutting, concurrency, or rebase
-  work, or for protocol/privacy-critical review where the table says so.
-- Luna/Kimi tier is for low-risk mechanical work; never for protocol, auth, or
-  data-mutation code.
+Sol is an escalation model rather than the normal default, except for the
+protocol/privacy-critical primary route above. Luna is only for low-risk mechanical
+work, never protocol, auth, or data-mutation code.
 
-## Provider headroom reserve
+## Quota bands
 
-Preserve provider headroom: if a provider's visible weekly remaining quota is below
-the documented reserve — **recommend 20%** — route ordinary new work to that row's
-fallback instead. Exceptions are allowed only for high-risk work (protocol/privacy,
-destructive-adjacent operations); when an exception is taken, report it to the user
-with the quota reading that justified it.
+Measure the bands as the **consumed percentage shown in the visible Pi footer**:
+
+| Consumed | Band | Routing rule |
+|---|---|---|
+| `<70%` | Healthy | Normal routing is permitted. |
+| `70–79%` | Conservation | Do not choose that provider/model when a suitable Sol/Terra/Luna route exists. |
+| `80–89%` | Reserve | No ordinary new launches. Allow only an explicit high-risk exception and document it to the user with the quota reading. |
+| `>=90%` | Exhausted / hold | No new launches without explicit user override. |
+
+Apply these bands to both provider-wide meters and model-specific meters; the
+**stricter band wins**. For example, Fable-specific consumption of 93% is hold even
+when the Anthropic global meter is healthier.
+
+Before every child launch, re-read the footer. If the selected model has crossed a
+band, cycle deterministically to the next suitable OpenAI model for the role: Terra
+→ Sol for risk/escalation paths, and Luna for low-risk work. Never hot-swap a running
+implementation session; stop it and relaunch it with a fresh handoff when it needs a
+stronger model. If no suitable route remains under the bands, hold and request the
+user's explicit override rather than launching a reserve/emergency model by default.
 
 ## Overrides
 

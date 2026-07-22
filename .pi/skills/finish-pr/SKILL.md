@@ -19,7 +19,7 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 - Never claim deployment success from a queued/in-progress status. Wait for a terminal success state or report that it is still pending.
 - If Railway MCP tools are unavailable, report deployment as unverified; do not claim success or close related issues until it can be verified. GitHub merge safety does not depend on MCP availability.
 - If checks fail, keep issues open and report the blocker.
-- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, send one consolidated prompt to the existing visible Herdr-managed Pi session for the PR worktree, then poll it directly from the coordinator. That session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
+- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, send one consolidated prompt to the existing visible Herdr-managed Pi session for the PR worktree. If the coordinator is the interactive workspace dynamically identified by label `index`, that prompt is fire-and-return without `--wait`; reconcile durable root state only on a later natural turn or explicit orchestration tick. That session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
 - Do not use hidden `Agent` subagents for implementation/fix rounds, and do not create a watcher process or watcher pane. Reuse the same Herdr workspace, pane, and Pi agent.
 - A PR-branch rebase is executed only from the verified PR worktree, and only ever on the PR's own feature branch — never a shared/long-lived head branch (`dev`, `main` — e.g. a release PR's head): that rewrites shared history and breaks other worktrees. Use `--force-with-lease`, never plain `--force`.
 - Do not remove a git worktree without confirming the PR is merged, the working tree is clean (no uncommitted/unpushed work), and the user has not asked to keep it. When in doubt, ask before removing.
@@ -55,13 +55,17 @@ git branch --show-current
 git status --short --branch
 ```
 
-The coordinator remains active and polls directly; no watcher process or pane:
-
-```bash
-herdr agent get "$AGENT_NAME"
-herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
-herdr agent wait "$AGENT_NAME" --until blocked --until idle --until done --timeout 30000
-```
+Do not poll, sleep, run watcher processes/panes, use timeout loops, or prescribe
+`herdr agent wait`. The interactive `index` coordinator returns after the fire-and-
+return prompt and reconciles durable root state only on a later natural turn or
+explicit orchestration tick. Only dedicated roots whose Herdr workspace label ends in `-root` publish RESULT
+through the project-local durable orchestration bridge; validated rpiv lifecycle alone
+publishes genuine blocked input. The trusted `index` extension attaches it only to that
+later natural turn. Do not inject an agent prompt or rely on
+Herdr notifications, which are optional visibility only and cannot resume Pi. A
+dedicated root outside `index` may use one server-owned, indefinite root → child
+`herdr agent prompt NAME "..." --wait` when it needs to coordinate implementation;
+never use that wait from `index`.
 
 On a routine question, inspect the visible output and automatically choose the safe,
 recommended project-compliant option. Escalate only product/architecture ambiguity,
@@ -79,7 +83,9 @@ Reuse the same workspace/session for every fix loop; do not create a fresh workt
 Pi agent for each finding. After a narrow fix, rerun its affected local checks plus
 PR-head, required-check, and unresolved-thread status. Re-run the full readiness pass
 only after a rebase, broad change, or uncertain impact. Never merge from a feature
-worktree and never infer merge approval from delegated output.
+worktree and never infer merge approval from delegated output. All pane reads, text,
+and keys remain exact-ID-targeted and non-focusing; no `herdr worktree open` may steal
+focus from `index` (`--no-focus`, never `--focus`).
 
 ## Workflow
 
