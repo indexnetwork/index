@@ -89,21 +89,31 @@ Removal procedure:
    cd /Users/yanek/Projects/index
    ```
 
-2. Before removing the worktree, inspect and restore any external local pointers that target it. Example: a local Hermes plugin install may be a symlink to the PR worktree; repoint it to the canonical package before deletion so local tooling does not reference a removed path:
+2. Close the exact Herdr workspace for the finished worktree **before** removing the Git worktree. A removed worktree leaves its Herdr workspace and idle Pi agent behind as a stale sidebar entry; closing the workspace stops the Pi/terminal and removes that entry. Use the workspace ID recorded when the session was opened and re-verify identity before closing — never guess from the label alone, and never close the canonical root workspace (or any other active workspace):
+
+   ```bash
+   herdr workspace get "$WORKSPACE_ID"   # path/branch must match the finished worktree
+   herdr workspace close "$WORKSPACE_ID"
+   herdr workspace list                   # verify the workspace is gone
+   ```
+
+   If the recorded ID's path/branch does not match the finished worktree, or the close fails, **stop and report** — do not close another workspace or remove the Git worktree until identity is resolved. Verify the workspace disappeared from `herdr workspace list` before proceeding.
+
+3. Before removing the worktree, inspect and restore any external local pointers that target it. Example: a local Hermes plugin install may be a symlink to the PR worktree; repoint it to the canonical package before deletion so local tooling does not reference a removed path:
 
    ```bash
    ls -ld "$HOME/.hermes/plugins/index-network" || true
    ln -sfn "/Users/yanek/Projects/index/packages/hermes-plugin" "$HOME/.hermes/plugins/index-network"
    ```
 
-3. Remove the PR's worktree. Use `--force` only when it carries disposable leftovers that are already preserved on the merged PR/base:
+4. Remove the PR's worktree. Use `--force` only when it carries disposable leftovers that are already preserved on the merged PR/base:
 
    ```bash
    git fetch origin <base-branch>
    git worktree remove --force .worktrees/WORKTREE_NAME
    ```
 
-4. Prune stale administrative entries and report the remaining worktrees; leave unrelated worktrees in place:
+5. Prune stale administrative entries and report the remaining worktrees; leave unrelated worktrees in place:
 
    ```bash
    git worktree prune
