@@ -15,6 +15,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Restore the initially closed Personal Agent/Questions column on desktop intent workspaces by limiting drawer-only hidden, non-interactive, and translated state styles to mobile viewports (IND-505).
 - Conversation-list rows with no messages no longer render a visually empty subtitle: they now show a muted, italic one-line `No messages yet` placeholder, truncated like a real excerpt and distinct from real last-message styling. No raw evaluator reasoning, match reasons, or fabricated text is ever rendered (IND-504).
 - Place intent-page Personal Agent questions in the conversation timeline: anchored questions follow their triggering assistant message, unanchored pending questions stay at the current end, and answered exchanges use authoritative anchors or timestamps instead of a permanent pre-chat block.
 - Persist Reporter Agent opening briefings across reloads for 24 hours by default, hydrate the server-resolved session without replaying the hidden kickoff, and make **New conversation** atomically create and bind one fresh briefing while aborting and quarantining stale streams (IND-484).
