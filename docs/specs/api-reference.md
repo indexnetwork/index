@@ -2460,12 +2460,19 @@ List intents with pagination and filters.
       "summary": "...",
       "createdAt": "...",
       "updatedAt": "...",
-      "archivedAt": "... | null"
+      "archivedAt": "... | null",
+      "waitingOpportunityCount": "number"
     }
   ],
+  "totalWaitingOpportunities": "number",
   "pagination": { ... }
 }
 ```
+
+`waitingOpportunityCount` includes only distinct, still-pending opportunities
+awaiting the authenticated user that are attributed to that signal. The top-level
+`totalWaitingOpportunities` deduplicates rows that are attributed to more than one
+listed signal.
 
 ### POST /api/intents/confirm
 

@@ -47,17 +47,36 @@ describe('DiscoverHome', () => {
     vi.useRealTimers();
   });
 
-  test('renders header totals from listed signals and their opportunities', async () => {
+  test('renders the deduplicated header total rather than summing signal badges', async () => {
     mocks.apiClient.post.mockResolvedValueOnce({
       intents: [
         intent({ id: 'intent-1', waitingOpportunityCount: 2 }),
         intent({ id: 'intent-2', waitingOpportunityCount: 1 }),
       ],
+      totalWaitingOpportunities: 2,
     });
 
     renderHome();
 
-    expect(await screen.findByText('2 signals · 3 opportunities')).toBeInTheDocument();
+    expect(await screen.findByText('2 signals · 2 opportunities')).toBeInTheDocument();
+  });
+
+  test('renders only positive opportunity badges', async () => {
+    mocks.apiClient.post.mockResolvedValueOnce({
+      intents: [
+        intent({ id: 'zero', summary: 'Zero count', waitingOpportunityCount: 0 }),
+        intent({ id: 'undefined', summary: 'Undefined count', waitingOpportunityCount: undefined }),
+        intent({ id: 'positive', summary: 'Positive count', waitingOpportunityCount: 2 }),
+      ],
+      totalWaitingOpportunities: 2,
+    });
+
+    renderHome();
+
+    expect(await screen.findByText('3 signals · 2 opportunities')).toBeInTheDocument();
+    expect(screen.getByTitle('2 opportunities for you')).toBeInTheDocument();
+    expect(screen.getAllByTitle(/opportunities for you/)).toHaveLength(1);
+    expect(screen.queryByTitle('0 opportunities for you')).not.toBeInTheDocument();
   });
 
   test('renders WARMING and an unknown opportunity count without a live dot', async () => {

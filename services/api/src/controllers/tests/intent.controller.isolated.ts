@@ -1,5 +1,5 @@
 import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, mock, test as bunTest } from 'bun:test';
-import { and, eq } from 'drizzle-orm/sql';
+import { and, eq, inArray } from 'drizzle-orm/sql';
 
 import { IntentController } from "../intent.controller";
 import { IntentDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
@@ -9,7 +9,7 @@ import { ScopeViolationError } from '../../guards/agent-scope.guard';
 import { IntentNetworkMembershipError } from '../../services/intent.service';
 import db from '../../lib/drizzle/drizzle';
 import { IntentEvents } from '../../events/intent.event';
-import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunityDiscoveryRuns as opportunityDiscoveryRunsTable } from '../../schemas/database.schema';
+import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunities as opportunitiesTable, opportunityDiscoveryRuns as opportunityDiscoveryRunsTable } from '../../schemas/database.schema';
 import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
@@ -552,6 +552,64 @@ describe("IntentController Integration", () => {
     const intent = data.intents!.find((intent) => intent.id === testIntentId);
     expect(typeof intent?.warming).toBe('boolean');
     expect(intent).not.toHaveProperty('firstDiscoverySucceededAt');
+  });
+
+  test('list returns per-signal waiting counts and a deduplicated total', async () => {
+    const secondIntent = await intentAdapter.createIntent({
+      userId: testUserId,
+      payload: 'Second controller count signal',
+      summary: 'Second count signal',
+    });
+    const opportunityIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    const timestamp = new Date().toISOString();
+    try {
+      await db.insert(opportunitiesTable).values([
+        {
+          id: opportunityIds[0],
+          detection: { source: 'opportunity_graph', triggeredBy: testIntentId, timestamp },
+          actors: [{ userId: testUserId, networkId: crypto.randomUUID(), role: 'peer' }],
+          interpretation: { category: 'test', reasoning: 'controller count fixture', confidence: 0.8 },
+          context: {},
+          confidence: '0.8',
+          status: 'pending',
+        },
+        {
+          id: opportunityIds[1],
+          detection: { source: 'opportunity_graph', timestamp },
+          actors: [{ userId: testUserId, networkId: crypto.randomUUID(), role: 'peer', intent: secondIntent.id }],
+          interpretation: { category: 'test', reasoning: 'controller count fixture', confidence: 0.8 },
+          context: {},
+          confidence: '0.8',
+          status: 'pending',
+        },
+        {
+          id: opportunityIds[2],
+          detection: { source: 'opportunity_graph', triggeredBy: testIntentId, timestamp },
+          actors: [{ userId: testUserId, networkId: crypto.randomUUID(), role: 'peer', intent: secondIntent.id }],
+          interpretation: { category: 'test', reasoning: 'controller count fixture', confidence: 0.8 },
+          context: {},
+          confidence: '0.8',
+          status: 'pending',
+        },
+      ]);
+
+      const response = await controller.list(new Request('http://localhost/intents/list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page: 1, limit: 20 }),
+      }), mockUser());
+      const body = (await response.json()) as {
+        intents: Array<{ id: string; waitingOpportunityCount: number }>;
+        totalWaitingOpportunities: number;
+      };
+
+      expect(body.intents.find((intent) => intent.id === testIntentId)?.waitingOpportunityCount).toBe(2);
+      expect(body.intents.find((intent) => intent.id === secondIntent.id)?.waitingOpportunityCount).toBe(2);
+      expect(body.totalWaitingOpportunities).toBe(3);
+    } finally {
+      await db.delete(opportunitiesTable).where(inArray(opportunitiesTable.id, opportunityIds));
+      await db.delete(intentsTable).where(eq(intentsTable.id, secondIntent.id));
+    }
   });
 
   test("getById should return 404 when intent not found", async () => {

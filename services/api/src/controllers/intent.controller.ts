@@ -67,6 +67,7 @@ export class IntentController {
         updatedAt: r.updatedAt.toISOString(),
         archivedAt: r.archivedAt?.toISOString() ?? null,
       })),
+      totalWaitingOpportunities: result.totalWaitingOpportunities,
       pagination: result.pagination,
     });
   }
