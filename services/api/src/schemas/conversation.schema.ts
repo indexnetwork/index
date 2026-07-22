@@ -60,6 +60,7 @@ export const conversationParticipants = pgTable(
     participantType: participantTypeEnum('participant_type').notNull(),
     joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
     hiddenAt: timestamp('hidden_at', { withTimezone: true }),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.conversationId, table.participantId] }),
@@ -104,6 +105,34 @@ export const tasks = pgTable(
  * `parts` is a JSONB array of A2A message parts (text, data, file, etc.).
  * `referenceTaskIds` optionally links a message to related tasks.
  */
+/**
+ * Durable timeline segment within a conversation.
+ *
+ * A2A task runs map one-to-one to a session through `taskId`. H2A and H2H
+ * sessions are separated by the server-side inactivity boundary.
+ */
+export const conversationSessions = pgTable(
+  'conversation_sessions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    conversationStartedIdx: index('conversation_sessions_conversation_started_idx').on(
+      table.conversationId,
+      table.startedAt,
+      table.id,
+    ),
+    taskIdUnique: uniqueIndex('conversation_sessions_task_id_uniq').on(table.taskId),
+  }),
+);
+
 export const messages = pgTable(
   'messages',
   {
@@ -112,6 +141,7 @@ export const messages = pgTable(
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
     taskId: text('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    sessionId: text('session_id').references(() => conversationSessions.id, { onDelete: 'set null' }),
     senderId: text('sender_id').notNull(),
     role: messageRoleEnum('role').notNull(),
     parts: jsonb('parts').notNull(),
@@ -124,9 +154,15 @@ export const messages = pgTable(
     conversationCreatedAtIdx: index('messages_conversation_id_created_at_idx').on(
       table.conversationId,
       table.createdAt,
+      table.id,
     ),
     senderIdIdx: index('messages_sender_id_idx').on(table.senderId),
     taskIdIdx: index('messages_task_id_idx').on(table.taskId),
+    sessionCreatedAtIdx: index('messages_session_id_created_at_idx').on(
+      table.sessionId,
+      table.createdAt,
+      table.id,
+    ),
   }),
 );
 
@@ -235,6 +271,7 @@ export const chatSessionScopes = pgTable(
 
 export const conversationsRelations = relations(conversations, ({ many, one }) => ({
   participants: many(conversationParticipants),
+  sessions: many(conversationSessions),
   messages: many(messages),
   tasks: many(tasks),
   metadata: one(conversationMetadata, {
@@ -250,10 +287,26 @@ export const conversationParticipantsRelations = relations(conversationParticipa
   }),
 }));
 
+export const conversationSessionsRelations = relations(conversationSessions, ({ one, many }) => ({
+  conversation: one(conversations, {
+    fields: [conversationSessions.conversationId],
+    references: [conversations.id],
+  }),
+  task: one(tasks, {
+    fields: [conversationSessions.taskId],
+    references: [tasks.id],
+  }),
+  messages: many(messages),
+}));
+
 export const messagesRelations = relations(messages, ({ one }) => ({
   conversation: one(conversations, {
     fields: [messages.conversationId],
     references: [conversations.id],
+  }),
+  session: one(conversationSessions, {
+    fields: [messages.sessionId],
+    references: [conversationSessions.id],
   }),
   task: one(tasks, {
     fields: [messages.taskId],
@@ -312,6 +365,9 @@ export const chatSessionSummariesRelations = relations(chatSessionSummaries, ({ 
 
 export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
+
+export type ConversationSession = typeof conversationSessions.$inferSelect;
+export type NewConversationSession = typeof conversationSessions.$inferInsert;
 
 export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
 export type NewConversationParticipant = typeof conversationParticipants.$inferInsert;

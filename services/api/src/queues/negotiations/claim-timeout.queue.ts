@@ -1,15 +1,11 @@
-import { Job } from 'bullmq';
-import { and, eq } from 'drizzle-orm/sql';
-
-import db from '../../lib/drizzle/drizzle';
-import * as convSchema from '../../schemas/conversation.schema';
-import { log } from '../../lib/log';
-import { QueueFactory } from '../../lib/bullmq/bullmq';
-import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
-import { AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
+import type { Job, Queue } from 'bullmq';
 import type { NegotiationGraphDatabase } from '@indexnetwork/protocol';
 
-import { runTimeoutFallback, type NegotiationTaskMeta } from './timeout.shared';
+import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
+import { QueueFactory } from '../../lib/bullmq/bullmq';
+import { log } from '../../lib/log';
+
+import type { NegotiationTaskMeta, TimeoutNegotiatorInvoke } from './timeout.shared';
 
 /** BullMQ queue name for negotiation claim-timeout jobs. */
 export const QUEUE_NAME = 'negotiation-claim-timeout';
@@ -21,9 +17,15 @@ export interface NegotiationClaimTimeoutJobData {
   agentId: string;
 }
 
+export type NegotiationClaimTimeoutDatabase = NegotiationGraphDatabase &
+  Pick<ConversationDatabaseAdapter, 'transitionClaimedTaskToWorking'>;
+
 /** Optional deps for testing. */
 export interface NegotiationClaimTimeoutQueueDeps {
-  database?: NegotiationGraphDatabase;
+  database?: NegotiationClaimTimeoutDatabase;
+  queue?: Queue<NegotiationClaimTimeoutJobData>;
+  invokeNegotiator?: TimeoutNegotiatorInvoke;
+  rearm?: (negotiationId: string, turnNumber: number) => Promise<void>;
 }
 
 /**
@@ -46,7 +48,7 @@ export interface NegotiationClaimTimeoutQueueDeps {
 export class NegotiationClaimTimeoutQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<NegotiationClaimTimeoutJobData>(QUEUE_NAME);
+  private queueInstance: Queue<NegotiationClaimTimeoutJobData> | null = null;
 
   private readonly logger = log.job.from('NegotiationClaimTimeoutJob');
   private readonly queueLogger = log.queue.from('NegotiationClaimTimeoutQueue');
@@ -55,6 +57,11 @@ export class NegotiationClaimTimeoutQueue {
 
   constructor(deps?: NegotiationClaimTimeoutQueueDeps) {
     this.deps = deps;
+  }
+
+  get queue(): Queue<NegotiationClaimTimeoutJobData> {
+    this.queueInstance ??= this.deps?.queue ?? QueueFactory.createQueue<NegotiationClaimTimeoutJobData>(QUEUE_NAME);
+    return this.queueInstance;
   }
 
   /**
@@ -167,7 +174,10 @@ export class NegotiationClaimTimeoutQueue {
       await this.worker.close();
       this.worker = null;
     }
-    await this.queue.close();
+    if (this.queueInstance) {
+      await this.queueInstance.close();
+      this.queueInstance = null;
+    }
   }
 
   /**
@@ -176,22 +186,14 @@ export class NegotiationClaimTimeoutQueue {
    */
   private async handleClaimTimeout(data: NegotiationClaimTimeoutJobData): Promise<void> {
     const { negotiationId, turnNumber, agentId } = data;
-    const database = this.deps?.database ?? conversationDatabaseAdapter;
+    const database = this.deps?.database ??
+      (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
 
     // Atomically transition out of 'claimed' to 'working' before doing any
     // work. If another path (agent respond) is racing this worker, only one
     // side will flip the state — the other no-ops. This prevents both paths
     // from appending a turn for the same claimed state.
-    const [task] = await db
-      .update(convSchema.tasks)
-      .set({ state: 'working', updatedAt: new Date() })
-      .where(
-        and(
-          eq(convSchema.tasks.id, negotiationId),
-          eq(convSchema.tasks.state, 'claimed'),
-        ),
-      )
-      .returning();
+    const task = await database.transitionClaimedTaskToWorking(negotiationId);
 
     if (!task) {
       this.logger.info('Task no longer claimed, skipping (stale job)', {
@@ -219,6 +221,7 @@ export class NegotiationClaimTimeoutQueue {
       return;
     }
 
+    const { runTimeoutFallback } = await import('./timeout.shared');
     await runTimeoutFallback({
       database,
       logger: this.logger,
@@ -236,10 +239,18 @@ export class NegotiationClaimTimeoutQueue {
       seedReasoning: 'Claim timeout fallback',
       maxTurns: meta.maxTurns ?? 6,
       fallbackLogExtra: { agentId },
+      invokeNegotiator: this.deps?.invokeNegotiator,
       // Import dynamically to avoid a circular dependency with timeout.queue;
       // arm the park-window timeout for the next speaker.
       rearm: async (newTurnCount) => {
-        const { negotiationTimeoutQueue } = await import('./timeout.queue');
+        if (this.deps?.rearm) {
+          await this.deps.rearm(negotiationId, newTurnCount);
+          return;
+        }
+        const [{ negotiationTimeoutQueue }, { AMBIENT_PARK_WINDOW_MS }] = await Promise.all([
+          import('./timeout.queue'),
+          import('@indexnetwork/protocol'),
+        ]);
         await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
       },
     });

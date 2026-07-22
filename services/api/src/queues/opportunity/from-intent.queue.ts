@@ -26,7 +26,7 @@ export interface FromIntentJobData {
 
 export type FromIntentDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser'
+  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded'
 >;
 
 export interface FromIntentGraphInvokeOptions {
@@ -201,6 +201,21 @@ export class FromIntentQueue {
       errorLabel: 'from-intent',
       logContext: { intentId, userId },
     });
+
+    // Discovery completed without throwing: stamp first-discovery success so
+    // the read-side WARMING derivation clears immediately instead of waiting
+    // out the 24-hour freshness window (IND-482). Failed runs throw above and
+    // skipped runs return earlier, so neither reaches this stamp. Stamp
+    // failures must not fail the (already successful) discovery job.
+    try {
+      await this.database.markIntentFirstDiscoverySucceeded(intentId);
+    } catch (error) {
+      this.logger.warn('Failed to stamp first-discovery success', {
+        intentId,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     // Pool-discriminator mining + question enqueue (IND-417/418): web intent
     // creation/edit is the frontend's discovery path — without this hook only

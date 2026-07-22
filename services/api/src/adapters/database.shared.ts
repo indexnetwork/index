@@ -3,22 +3,23 @@
  * tables, operators, DTO types, and cross-adapter helper functions.
  * No dependency on lib/protocol. Imported by every database/*.adapter.ts file.
  */
-import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm/sql';
+import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm/sql';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
 import { normalizeEmbedding } from '../lib/embedding/vector';
 import { normalizeTelegramSocialValue } from '../lib/telegram/socials';
 import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
-import type { Conversation, ConversationParticipant, Message, Task, Artifact } from '../schemas/conversation.schema';
+import type { Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact } from '../schemas/conversation.schema';
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
 import { NetworkMembershipEvents } from '../events/network_membership.event';
 
 // Re-export the import surface so domain adapter files import everything from one module.
 export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log, NetworkMembershipEvents };
-export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not };
-export type { User, NotificationPreferences, OnboardingState, TelegramPrefs, Conversation, ConversationParticipant, Message, Task, Artifact, Id };
+export { canActorSeeOpportunity } from './opportunity.visibility';
+export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not };
+export type { User, NotificationPreferences, OnboardingState, TelegramPrefs, Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact, Id };
 export const logger = log.lib.from('database.adapter');
 
 export function detectSocialLabel(value: string): string {
@@ -169,6 +170,16 @@ export interface IntentListRow {
    * the UI surface orphaned intents instead of hiding the assignment outcome.
    */
   networks: { id: string; title: string }[];
+  /** Count of pending intent-scoped questions awaiting the user for this intent. */
+  pendingQuestionCount: number;
+  /**
+   * Count of distinct `pending` opportunities awaiting this owner that are
+   * attributed to this signal by `detection.triggeredBy` or the owner's
+   * non-introducer actor intent. Rows the owner already acted on are excluded.
+   */
+  waitingOpportunityCount: number;
+  /** True while a fresh intent has not completed its first discovery run. */
+  warming: boolean;
 }
 // UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
 // locally to honor the adapter layering rule of not importing protocol interfaces).
@@ -348,6 +359,7 @@ export function ownIntentsListWhere(
  * Database adapter for intent CRUD (Intent Graph).
  */
 export type ChatScopeType = 'network' | 'intent';
+export type ChatPersonaId = 'orchestrator' | 'signal' | 'negotiator' | 'reporter' | 'onboarding';
 
 export interface ChatSession {
   id: string;
@@ -416,7 +428,7 @@ export interface CreateSessionInput {
   userId: string;
   title?: string;
   /** Chat persona for this session. Omit for the default ('orchestrator'). */
-  persona?: string;
+  persona?: ChatPersonaId;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId?: string;
   scopeType?: ChatScopeType;
@@ -609,35 +621,6 @@ export interface SimilarIntent {
  * @param authUserId - The authenticated user's ID
  * @returns A UserDatabase bound to authUserId
  */
-/**
- * Role-based opportunity visibility check.
- * Mirrors the Latent Opportunity Lifecycle visibility matrix:
- * - Introducer/peer: always visible.
- * - Patient/party: visible unless status is latent AND an introducer exists.
- * - Agent: visible only for terminal statuses, or non-latent when no introducer.
- */
-export function canActorSeeOpportunity(
-  actors: Array<{ userId: string; role: string }>,
-  status: string,
-  userId: string,
-): boolean {
-  const hasIntroducer = actors.some((a) => a.role === 'introducer');
-  const userRoles = actors.filter((a) => a.userId === userId).map((a) => a.role);
-  if (userRoles.length === 0) return false;
-
-  return userRoles.some((role) => {
-    if (role === 'introducer' || role === 'peer') return true;
-    if (role === 'patient' || role === 'party')
-      return status !== 'latent' || !hasIntroducer;
-    if (role === 'agent')
-      return (
-        ['accepted', 'rejected', 'expired'].includes(status) ||
-        (status !== 'latent' && !hasIntroducer)
-      );
-    return false;
-  });
-}
-
 export interface ResolvedParticipant {
   participantId: string;
   participantType: 'user' | 'agent';
@@ -656,6 +639,8 @@ export interface ConversationSummary {
   participants: ResolvedParticipant[];
   lastMessage: { parts: unknown[]; senderId: string; createdAt: Date } | null;
   metadata: Record<string, unknown> | null;
+  via: Array<{ intentId: string; opportunityId: string; title: string }>;
+  unreadCount: number;
 }
 
 /**

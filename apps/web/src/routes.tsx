@@ -9,6 +9,8 @@ import { AIChatProvider } from "@/contexts/AIChatContext";
 import { QuestionsProvider } from "@/contexts/QuestionsContext";
 
 import ClientWrapper from "@/components/ClientWrapper";
+import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
+import { lazyRoute } from "@/lib/lazy-route-recovery";
 
 /**
  * Root layout that wraps all routes with the provider tree and app shell.
@@ -40,147 +42,151 @@ function RootLayout() {
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         path: "/",
-        lazy: () => import("@/app/page"),
+        lazy: lazyRoute("/", () => import("@/app/page")),
       },
       {
         path: "/about",
-        lazy: () => import("@/app/about/page"),
+        lazy: lazyRoute("/about", () => import("@/app/about/page")),
       },
       {
         path: "/found-in-translation",
-        lazy: () => import("@/app/found-in-translation/page"),
+        lazy: lazyRoute("/found-in-translation", () => import("@/app/found-in-translation/page")),
       },
       {
         path: "/overview",
-        lazy: () => import("@/app/overview/page"),
+        lazy: lazyRoute("/overview", () => import("@/app/overview/page")),
       },
       {
         path: "/protocol",
-        lazy: () => import("@/app/protocol/page"),
+        lazy: lazyRoute("/protocol", () => import("@/app/protocol/page")),
       },
       {
         path: "/blog",
-        lazy: () => import("@/app/blog/page"),
+        lazy: lazyRoute("/blog", () => import("@/app/blog/page")),
       },
       {
         path: "/blog/:slug",
-        lazy: () => import("@/app/blog/[slug]/page"),
+        lazy: lazyRoute("/blog/:slug", () => import("@/app/blog/[slug]/page")),
       },
       {
         path: "/chat",
-        lazy: () => import("@/app/chat/page"),
+        lazy: lazyRoute("/chat", () => import("@/app/chat/page")),
       },
       {
         path: "/chat/:conversationId",
-        lazy: () => import("@/app/chat/[conversationId]/page"),
+        lazy: lazyRoute("/chat/:conversationId", () => import("@/app/chat/[conversationId]/page")),
       },
       {
         path: "/d/:id",
-        lazy: () => import("@/app/d/[id]/page"),
+        lazy: lazyRoute("/d/:id", () => import("@/app/d/[id]/page")),
+      },
+      {
+        path: "/i/new",
+        lazy: lazyRoute("/i/new", () => import("@/app/i/new/page")),
       },
       {
         path: "/i/:intentId",
-        lazy: () => import("@/app/i/[intentId]/page"),
+        lazy: lazyRoute("/i/:intentId", () => import("@/app/i/[intentId]/page")),
       },
       {
         path: "/index/:indexId",
-        lazy: () => import("@/app/index/[indexId]/page"),
+        lazy: lazyRoute("/index/:indexId", () => import("@/app/index/[indexId]/page")),
       },
       {
         path: "/c/:code",
-        lazy: () => import("@/app/c/[code]/page"),
+        lazy: lazyRoute("/c/:code", () => import("@/app/c/[code]/page")),
       },
       {
         path: "/l/:code",
-        lazy: () => import("@/app/l/[code]/page"),
+        lazy: lazyRoute("/l/:code", () => import("@/app/l/[code]/page")),
       },
       {
         path: "/agents",
-        lazy: () => import("@/app/agents/page"),
+        lazy: lazyRoute("/agents", () => import("@/app/agents/page")),
       },
       {
         path: "/agents/:id",
-        lazy: () => import("@/app/agents/[id]/page"),
+        lazy: lazyRoute("/agents/:id", () => import("@/app/agents/[id]/page")),
       },
       {
         path: "/networks",
-        lazy: () => import("@/app/networks/page"),
+        lazy: lazyRoute("/networks", () => import("@/app/networks/page")),
       },
       {
         path: "/networks/:id/*",
-        lazy: () => import("@/app/networks/[id]/page"),
+        lazy: lazyRoute("/networks/:id/*", () => import("@/app/networks/[id]/page")),
       },
       {
         path: "/mynetwork/*",
-        lazy: () => import("@/app/mynetwork/page"),
+        lazy: lazyRoute("/mynetwork/*", () => import("@/app/mynetwork/page")),
       },
       {
         path: "/pages/privacy-policy",
-        lazy: () => import("@/app/pages/privacy-policy/page"),
+        lazy: lazyRoute("/pages/privacy-policy", () => import("@/app/pages/privacy-policy/page")),
       },
       {
         path: "/pages/terms-of-use",
-        lazy: () => import("@/app/pages/terms-of-use/page"),
+        lazy: lazyRoute("/pages/terms-of-use", () => import("@/app/pages/terms-of-use/page")),
       },
       {
         path: "/settings",
-        lazy: () => import("@/app/settings/page"),
+        lazy: lazyRoute("/settings", () => import("@/app/settings/page")),
       },
       {
         path: "/questions",
-        lazy: () => import("@/app/questions/page"),
+        lazy: lazyRoute("/questions", () => import("@/app/questions/page")),
       },
       {
         path: "/profile",
         element: <Navigate to="/settings" replace />,
       },
-      
       {
         path: "/s/:token",
-        lazy: () => import("@/app/s/[token]/page"),
+        lazy: lazyRoute("/s/:token", () => import("@/app/s/[token]/page")),
       },
       {
         path: "/u/:id",
-        lazy: () => import("@/app/u/[id]/page"),
+        lazy: lazyRoute("/u/:id", () => import("@/app/u/[id]/page")),
       },
       {
         path: "/u/:id/chat",
-        lazy: () => import("@/app/u/[id]/chat/page"),
+        lazy: lazyRoute("/u/:id/chat", () => import("@/app/u/[id]/chat/page")),
       },
       {
         path: "/opportunities/:id/skip",
-        lazy: () => import("@/app/opportunities/[id]/skip/page"),
+        lazy: lazyRoute("/opportunities/:id/skip", () => import("@/app/opportunities/[id]/skip/page")),
       },
       {
         path: "/onboarding",
-        lazy: () => import("@/app/onboarding/page"),
+        lazy: lazyRoute("/onboarding", () => import("@/app/onboarding/page")),
       },
       {
         path: "/oauth/callback",
-        lazy: () => import("@/app/oauth/callback/page"),
+        lazy: lazyRoute("/oauth/callback", () => import("@/app/oauth/callback/page")),
       },
       {
         path: "/cli-auth",
-        lazy: () => import("@/app/cli-auth/page"),
+        lazy: lazyRoute("/cli-auth", () => import("@/app/cli-auth/page")),
       },
       {
         path: "/login",
-        lazy: () => import("@/app/login/page"),
+        lazy: lazyRoute("/login", () => import("@/app/login/page")),
       },
       {
         path: "/dev/intent-proposal",
-        lazy: () => import("@/app/dev/intent-proposal/page"),
+        lazy: lazyRoute("/dev/intent-proposal", () => import("@/app/dev/intent-proposal/page")),
       },
       {
         path: "/agent/:tab?",
-        lazy: () => import("@/app/agent/page"),
+        lazy: lazyRoute("/agent/:tab?", () => import("@/app/agent/page")),
       },
       {
         path: "*",
-        lazy: () => import("@/app/not-found"),
+        lazy: lazyRoute("*", () => import("@/app/not-found")),
       },
     ],
   },

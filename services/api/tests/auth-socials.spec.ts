@@ -33,7 +33,7 @@ describe("shouldAutoGenerateProfile", () => {
       shouldAutoGenerateProfile({
         name: "Alice",
         socials: [{ id: "1", userId: "u", label: "linkedin", value: "alice" }],
-        profile: null,
+        hasProfile: false,
       })
     ).toBe(true);
   });
@@ -43,7 +43,7 @@ describe("shouldAutoGenerateProfile", () => {
       shouldAutoGenerateProfile({
         name: null,
         socials: [{ id: "1", userId: "u", label: "linkedin", value: "alice" }],
-        profile: null,
+        hasProfile: false,
       })
     ).toBe(false);
   });
@@ -53,7 +53,7 @@ describe("shouldAutoGenerateProfile", () => {
       shouldAutoGenerateProfile({
         name: "   ",
         socials: [{ id: "1", userId: "u", label: "linkedin", value: "alice" }],
-        profile: null,
+        hasProfile: false,
       })
     ).toBe(false);
   });
@@ -63,7 +63,7 @@ describe("shouldAutoGenerateProfile", () => {
       shouldAutoGenerateProfile({
         name: "Alice",
         socials: [],
-        profile: null,
+        hasProfile: false,
       })
     ).toBe(false);
   });
@@ -73,7 +73,7 @@ describe("shouldAutoGenerateProfile", () => {
       shouldAutoGenerateProfile({
         name: "Alice",
         socials: null,
-        profile: null,
+        hasProfile: false,
       })
     ).toBe(false);
   });
@@ -83,7 +83,7 @@ describe("shouldAutoGenerateProfile", () => {
       shouldAutoGenerateProfile({
         name: "Alice",
         socials: [{ id: "1", userId: "u", label: "linkedin", value: "alice" }],
-        profile: { identity: { name: "Alice" } },
+        hasProfile: true,
       })
     ).toBe(false);
   });
@@ -96,7 +96,7 @@ describe("shouldAutoGenerateProfile", () => {
           { id: "1", userId: "u", label: "linkedin", value: "bob" },
           { id: "2", userId: "u", label: "twitter", value: "bob" },
         ],
-        profile: undefined,
+        hasProfile: false,
       })
     ).toBe(true);
   });

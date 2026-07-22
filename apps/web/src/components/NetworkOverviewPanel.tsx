@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { LogOut } from 'lucide-react';
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAIChat } from '@/contexts/AIChatContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
@@ -23,11 +23,13 @@ interface NetworkOverviewPanelProps {
   onLeaveRequestHandled?: () => void;
 }
 
-export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
+export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
   const navigate = useNavigate();
   const { removeIndex } = useNetworksState();
   const { success, error } = useNotifications();
   const { clearChat, resolveIntentSession } = useAIChat();
+  const { features } = useAuthContext();
+  const signalAgentEnabled = features?.signalAgent === true;
   const { setSelectedNetworkIds } = useNetworkFilter();
   const api = useAuthenticatedAPI();
   const indexesService = useNetworks();
@@ -42,7 +44,6 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
     }
   }, [onLeaveRequest, onLeaveRequestHandled]);
   
-  // Intents state
   const [intents, setIntents] = useState<{
     id: string;
     payload: string;
@@ -51,22 +52,19 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
     userId: string;
     userName: string;
   }[]>([]);
-  const [intentsLoading, setIntentsLoading] = useState(true);
-  const [premises, setPremises] = useState<{ id: string; text: string; summary: string | null; createdAt: string }[]>([]);
+  const [overviewLoading, setOverviewLoading] = useState(true);
   const [userContext, setUserContext] = useState<{ text: string; generatedAt: string } | null>(null);
 
-  // Load the full network overview (intents, premises, user_context) when component mounts
   useEffect(() => {
     const loadOverview = async () => {
       try {
         const overview = await indexesService.getNetworkOverview(index.id);
         setIntents(overview.intents);
-        setPremises(overview.premises);
         setUserContext(overview.userContext);
       } catch (err) {
         logger.error('Error loading network overview', { error: err });
       } finally {
-        setIntentsLoading(false);
+        setOverviewLoading(false);
       }
     };
     loadOverview();
@@ -77,12 +75,16 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
       clearChat({ abortStream: false });
       setSelectedNetworkIds([]);
       const label = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
-      const sessionId = await resolveIntentSession({ id: intent.id, label });
+      const sessionId = await resolveIntentSession(
+        { id: intent.id, label },
+        signalAgentEnabled ? 'signal' : undefined,
+      );
+      if (!sessionId) return;
       navigate(`/d/${sessionId}`);
     } catch {
-      error('Failed to open intent chat');
+      error('Failed to open signal chat');
     }
-  }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error]);
+  }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error, signalAgentEnabled]);
 
   const handleLeaveNetwork = async () => {
     try {
@@ -100,69 +102,47 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
     }
   };
 
-  const isPublic = index.permissions?.joinPolicy === 'anyone';
-
   return (
     <>
       <div className="space-y-8">
-
-        {/* My Intents */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-              My Intents
-            </p>
-            {!intentsLoading && (
-              <span className="text-xs text-gray-400">{intents.length} intent{intents.length !== 1 ? 's' : ''}</span>
-            )}
-          </div>
-          <IntentList
-            intents={intents}
-            isLoading={intentsLoading}
-            emptyMessage="You haven't shared any intents in this network yet"
-            onIntentClick={handleOpenIntentChat}
-          />
-        </div>
-
-        {/* My Premises */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-              My Premises
-            </p>
-            {!intentsLoading && (
-              <span className="text-xs text-gray-400">{premises.length} premise{premises.length !== 1 ? 's' : ''}</span>
-            )}
-          </div>
-          {intentsLoading ? null : premises.length === 0 ? (
-            <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-              <p>No premises assigned to this network yet</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+            Your Context
+          </p>
+          {overviewLoading ? (
+            <div
+              role="status"
+              className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg"
+            >
+              Loading your network context…
+            </div>
+          ) : userContext && userContext.text.trim().length > 0 ? (
+            <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{userContext.text}</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {premises.map((p) => (
-                <div key={p.id} className="p-4 rounded-lg border border-gray-200 bg-white">
-                  <p className="text-sm text-gray-900 leading-relaxed">
-                    {(p.summary && p.summary.trim().length > 0 ? p.summary : p.text).trim()}
-                  </p>
-                </div>
-              ))}
+            <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
+              <p>Your context for this network is still being generated</p>
             </div>
           )}
         </div>
 
-        {/* Your Context */}
-        {userContext && userContext.text.trim().length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-              Your Context
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+              Your Signals
             </p>
-            <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{userContext.text}</p>
-            </div>
+            {!overviewLoading && (
+              <span className="text-xs text-gray-400">{intents.length} signal{intents.length !== 1 ? 's' : ''}</span>
+            )}
           </div>
-        )}
-
+          <IntentList
+            intents={intents}
+            isLoading={overviewLoading}
+            emptyMessage="You haven't shared any signals in this network yet"
+            onIntentClick={handleOpenIntentChat}
+          />
+        </div>
       </div>
 
       <AlertDialog.Root open={showLeaveConfirmation} onOpenChange={setShowLeaveConfirmation}>

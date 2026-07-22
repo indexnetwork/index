@@ -680,6 +680,62 @@
       "when": 1784397197143,
       "tag": "0096_normalize_opportunity_actor_intents",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1784452865791,
+      "tag": "0097_add_frame_drift_execution_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1784452865792,
+      "tag": "0098_complete_apikey_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1784615298754,
+      "tag": "0099_add_conversation_last_read_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1784643405363,
+      "tag": "0100_add_intent_first_discovery_succeeded_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1784647354511,
+      "tag": "0101_add_agent_action_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1784662680411,
+      "tag": "0102_add_agent_action_execution_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1784711542573,
+      "tag": "0103_add_conversation_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1784711827927,
+      "tag": "0104_update_message_cursor_index",
+      "breakpoints": true
     }
   ]
 }

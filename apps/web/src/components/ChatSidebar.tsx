@@ -2,8 +2,11 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { MoreHorizontal, Trash2 } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
+import ConversationPreviewLine from '@/components/ConversationPreviewLine';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
+import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
+import { resolveConversationPreview } from '@/lib/conversation-preview';
 
 type NegotiationStatus = 'accepted' | 'rejected' | 'in_progress' | null;
 
@@ -14,6 +17,9 @@ interface RecentChat {
   name: string;
   lastMessage: string;
   lastMessageIsInternal: boolean;
+  viaTitle?: string;
+  unreadCount: number;
+  showUnreadCount: boolean;
   negotiationStatus: NegotiationStatus;
   sortTimestamp: number;
 }
@@ -70,10 +76,7 @@ export default function ChatSidebar() {
   }, [user?.id, refreshConversations, refreshNegotiations]);
 
   const filteredConversations = mode === 'h2h'
-    ? conversations.filter((conv) => {
-        const participants = conv.participants ?? [];
-        return participants.length === 2 && participants.every((p) => p.participantType === 'user');
-      })
+    ? conversations.filter(isVisibleH2HConversation)
     // Negotiations with zero messages are orphaned conversation rows (no turns
     // ever landed, or the task parked and never completed) — hide them.
     // Still show ones whose only content is an internal assessment.reasoning.
@@ -104,6 +107,8 @@ export default function ChatSidebar() {
         name: conv.metadata?.title ?? counterpartLabels.join(', '),
         lastMessage: preview,
         lastMessageIsInternal: !messageText && !!reasoningText,
+        unreadCount: conv.unreadCount,
+        showUnreadCount: false,
         negotiationStatus,
         sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
@@ -117,6 +122,9 @@ export default function ChatSidebar() {
       name: conv.metadata?.title ?? peer?.name ?? 'Conversation',
       lastMessage: lastText,
       lastMessageIsInternal: false,
+      viaTitle: conv.via?.[0]?.title,
+      unreadCount: conv.unreadCount,
+      showUnreadCount: conv.unreadCount > 0,
       negotiationStatus: null,
       sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
     };
@@ -181,7 +189,7 @@ export default function ChatSidebar() {
                 >
                   <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={28} className="flex-shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-black flex items-center gap-1.5">
+                    <p className={`truncate text-sm flex items-center gap-1.5 ${chat.showUnreadCount ? 'font-bold' : 'font-medium'} text-black`}>
                       {chat.negotiationStatus && (
                         <span
                           className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[chat.negotiationStatus].cls}`}
@@ -190,15 +198,25 @@ export default function ChatSidebar() {
                         />
                       )}
                       <span className="truncate">{chat.name}</span>
-                    </p>
-                    <p className="truncate text-sm font-normal text-gray-500">
-                      {chat.lastMessageIsInternal && (
-                        <span className="mr-1 italic text-gray-400">Internal:</span>
+                      {chat.showUnreadCount && (
+                        <span
+                          data-testid={`chat-unread-${chat.groupId}`}
+                          aria-label={`${chat.unreadCount} unread message${chat.unreadCount === 1 ? '' : 's'}`}
+                          className="inline-flex min-w-4 h-4 items-center justify-center rounded-full bg-[#041729] px-1 text-[10px] font-bold text-white flex-shrink-0"
+                        >
+                          {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                        </span>
                       )}
-                      <span className={chat.lastMessageIsInternal ? 'italic text-gray-400' : undefined}>
-                        {chat.lastMessage.replace(/[*_~`#>]/g, '')}
-                      </span>
                     </p>
+                    {chat.viaTitle && (
+                      <p className="truncate text-[11px] font-ibm-plex-mono text-gray-400">via {chat.viaTitle}</p>
+                    )}
+                    <ConversationPreviewLine
+                      preview={resolveConversationPreview({
+                        lastMessage: chat.lastMessage,
+                        lastMessageIsInternal: chat.lastMessageIsInternal,
+                      })}
+                    />
                   </div>
                 </button>
                 <span className="absolute right-8 top-2 text-[11px] leading-none font-normal text-gray-400">

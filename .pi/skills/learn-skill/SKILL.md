@@ -19,6 +19,9 @@ project-local target so a machine-wide skill is never silently mutated.
 | `target` | `.pi/skills` | Where new/migrated/updated skills are written, resolved relative to the current project (cwd). |
 | `protectedLocations` | `~/.pi/agent/skills`, `~/.agents/skills` | Never modified in place. |
 | `allowProtectedWrites` | `false` | Escape hatch — when `true`, allows editing a protected skill in place instead of migrating. Leave `false` unless explicitly intended. |
+| `skillNaming.policy` | `imperative-action-object` | Requires every local skill name to begin with an approved imperative verb and name its object. |
+| `skillNaming.minimumSegments` | `2` | Minimum number of hyphen-separated name segments. |
+| `skillNaming.imperativeVerbs` | configured allowlist | Approved first verbs for project-local skills. |
 | `features.crossLink` | `true` | Generated skills get see-also / next-step links to related skills. |
 | `features.dedup` | `true` | Before creating, scan for an overlapping skill and prefer updating it. |
 | `features.modularize` | `true` | Keep skills modular: split oversized bodies, extract shared partials, split multi-concern skills. |
@@ -45,7 +48,8 @@ Run all commands from the project root (so `cwd` is the project whose `.pi/skill
 Only capture a learning that is **reusable and non-obvious**: a multi-step workflow,
 a fix for a recurring failure, an exact command sequence, an environment gotcha, or a
 convention. Skip one-off facts and anything already covered by an existing skill.
-Name it as `lowercase-hyphenated` (≤64 chars).
+Name it as an imperative action-object using an allowed first verb from `config.json`
+(e.g. `inspect-edge-city-railway`), lowercase and hyphenated (≤64 chars).
 
 If `integrations.useTodo` is active and the capture spans multiple skills or steps,
 track the work with the `todo` tool. If `integrations.useAskUserQuestion` is active and
@@ -141,12 +145,18 @@ copies — never touch protected/home skills.
 
 ### 4. Validate (and optionally review)
 
+Validate the edited skill first, then validate the full project-local skill set so
+name uniqueness, directory matching, and repository naming policy cannot drift:
+
 ```bash
 bun .pi/skills/learn-skill/scripts/skillctl.ts validate <target>/<skill-name>
+bun run skills:validate
 ```
 
-Fix any reported errors (name rules, description present + ≤1024 chars). A skill with a
-missing description will not load.
+Fix every reported error (valid YAML mapping, action-object name rules, parent-directory
+match, uniqueness, and a trimmed nonempty string description ≤1024 chars). A skill with
+a missing description will not load. Use `validate all --json` when a deterministic
+machine-readable report is needed.
 
 If `integrations.useAdvisor` is active, hand the drafted skill to the `advisor` tool for
 a second opinion before finalizing, and fold in any correction.

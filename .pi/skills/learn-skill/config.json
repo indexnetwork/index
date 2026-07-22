@@ -6,6 +6,29 @@
     "~/.agents/skills"
   ],
   "allowProtectedWrites": false,
+  "skillNaming": {
+    "policy": "imperative-action-object",
+    "minimumSegments": 2,
+    "imperativeVerbs": [
+      "address",
+      "audit",
+      "backfill",
+      "bump",
+      "clean",
+      "configure",
+      "create",
+      "debug",
+      "finish",
+      "fix",
+      "inspect",
+      "learn",
+      "manage",
+      "open",
+      "review",
+      "run",
+      "verify"
+    ]
+  },
   "features": {
     "crossLink": true,
     "dedup": true,

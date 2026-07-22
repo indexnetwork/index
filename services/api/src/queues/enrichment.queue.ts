@@ -43,9 +43,11 @@ export interface EnrichmentPrivacyDecision {
 }
 
 export interface EnrichmentQueueDeps {
+  queue?: ReturnType<typeof QueueFactory.createQueue<EnrichmentJobPayload>>;
   invokeProfileWrite?: (userId: string) => Promise<void>;
   invokeEnrichUser?: (userId: string) => Promise<void>;
   checkPrivacy?: (input: { jobName: 'ensure_profile_hyde' | 'enrich.user'; userId: string; networkId?: string; reason?: string }) => Promise<EnrichmentPrivacyDecision>;
+  privacyDatabase?: Pick<EnrichmentDatabaseAdapter, 'getEnrichmentPrivacyContext'>;
 }
 
 /**
@@ -63,7 +65,7 @@ export interface EnrichmentQueueDeps {
 export class EnrichmentQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<EnrichmentJobPayload>(QUEUE_NAME);
+  readonly queue: ReturnType<typeof QueueFactory.createQueue<EnrichmentJobPayload>>;
 
   private readonly logger = log.job.from('EnrichmentJob');
   private readonly profileHydeLogger = log.job.from('EnrichmentJob:ProfileHyde');
@@ -77,6 +79,7 @@ export class EnrichmentQueue {
 
   constructor(deps?: EnrichmentQueueDeps) {
     this.deps = deps;
+    this.queue = deps?.queue ?? QueueFactory.createQueue<EnrichmentJobPayload>(QUEUE_NAME);
   }
 
   /**
@@ -273,7 +276,8 @@ export class EnrichmentQueue {
     // (WS10/IND-367 — same existence-via-user_profiles anti-pattern WS5 removed from
     // profile.graph). `getProfile` returns a users-sourced row for every user, so it
     // can't signal enrichment; the premise graph is the source of truth.
-    const { user, network, hasActivePremise } = await new EnrichmentDatabaseAdapter()
+    const privacyDatabase = this.deps?.privacyDatabase ?? new EnrichmentDatabaseAdapter();
+    const { user, network, hasActivePremise } = await privacyDatabase
       .getEnrichmentPrivacyContext(data.userId, data.networkId);
 
     const hasExistingProfile = hasActivePremise;

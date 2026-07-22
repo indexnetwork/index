@@ -3,12 +3,49 @@ import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
-import { acquireNegotiationAttemptLock, qualifyingNegotiationAttemptTaskWhere } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere } from './negotiation-attempt.atomic';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
   allowedNetworkIds: string[];
   triggerIntentId?: string;
+}
+
+interface IntentScopedOpportunityPersistenceConflict {
+  reason: 'same_trigger_recent_duplicate' | 'pair_active_negotiation';
+  existingOpportunityId: string;
+  existingTriggerIntentId?: string;
+  existingStatus: OpportunityRow['status'];
+  existingCreatedAt: Date;
+}
+
+type IntentScopedOpportunityPersistenceResult =
+  | { created: OpportunityRow; expired: OpportunityRow[] }
+  | { conflict: IntentScopedOpportunityPersistenceConflict };
+
+function opportunityTriggerForOwner(opportunity: OpportunityRow, ownerUserId: string): string | undefined {
+  return opportunity.detection.triggeredBy
+    ?? opportunity.actors.find((actor) => actor.userId === ownerUserId)?.intent;
+}
+
+function participantUserIds(data: CreateOpportunityInput): string[] {
+  return [...new Set(data.actors
+    .filter((actor) => actor.role !== 'introducer')
+    .map((actor) => actor.userId))].sort();
+}
+
+async function acquireIntentScopedPairLocks(
+  tx: DrizzleTx,
+  actorUserIds: string[],
+  triggerIntentId: string,
+): Promise<void> {
+  const pairKey = actorUserIds.join('|');
+  await acquireNegotiationPairLock(tx, actorUserIds);
+  await tx.execute(sql`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${`opportunity-pair-intent:${pairKey}:${triggerIntentId}`}, 0)
+    )
+  `);
 }
 
 /**
@@ -306,6 +343,176 @@ export class OpportunityDatabaseAdapter {
     });
     if (created) emitOpportunityPendingBestEffort(created);
     return created;
+  }
+
+  /**
+   * Persist one owned-intent discovery result under pair + pair/intent advisory
+   * locks, re-checking dedup and active negotiation state at the final boundary.
+   */
+  async persistIntentScopedOpportunityIfNetworkEligible(
+    data: CreateOpportunityInput,
+    expireIds: string[],
+    eligibility: OpportunityNetworkEligibilityInput & { triggerIntentId: string },
+    dedupWindowMs: number,
+  ): Promise<IntentScopedOpportunityPersistenceResult | null> {
+    const actorNetworkIds = [...new Set(data.actors.map((actor) => actor.networkId))];
+    const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
+    const actorUserIds = participantUserIds(data);
+    if (
+      data.detection.triggeredBy !== eligibility.triggerIntentId
+      || actorNetworkIds.length === 0
+      || actorNetworkIds.some((id) => !allowedNetworkIds.has(id))
+      || actorUserIds.length < 2
+      || !Number.isFinite(dedupWindowMs)
+      || dedupWindowMs <= 0
+    ) return null;
+
+    const requestedPairs = [
+      ...data.actors.map((actor) => ({ userId: actor.userId, networkId: actor.networkId })),
+      ...actorNetworkIds.map((networkId) => ({ userId: eligibility.ownerUserId, networkId })),
+    ];
+    const pairs = [...new Map(requestedPairs.map((pair) => [
+      `${pair.userId}\u0000${pair.networkId}`,
+      pair,
+    ] as const)).values()];
+    const actorContainment = actorUserIds.map((userId) => sql`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
+      WHERE elem->>'userId' = ${userId}
+        AND elem->>'role' IS DISTINCT FROM 'introducer'
+    )`);
+    const sameTrigger = or(
+      sql`${opportunities.detection}->>'triggeredBy' = ${eligibility.triggerIntentId}`,
+      sql`${opportunities.actors} @> ${JSON.stringify([{
+        userId: eligibility.ownerUserId,
+        intent: eligibility.triggerIntentId,
+      }])}::jsonb`,
+    );
+
+    const result = await db.transaction(async (tx) => {
+      await acquireIntentScopedPairLocks(tx, actorUserIds, eligibility.triggerIntentId);
+
+      const [ownedIntent] = await tx
+        .select({ id: schema.intents.id })
+        .from(schema.intents)
+        .where(and(
+          eq(schema.intents.id, eligibility.triggerIntentId),
+          eq(schema.intents.userId, eligibility.ownerUserId),
+          isNull(schema.intents.archivedAt),
+          or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+        ))
+        .for('share');
+      if (!ownedIntent) return null;
+
+      const assignments = await tx
+        .select({ networkId: schema.intentNetworks.networkId })
+        .from(schema.intentNetworks)
+        .where(and(
+          eq(schema.intentNetworks.intentId, eligibility.triggerIntentId),
+          inArray(schema.intentNetworks.networkId, actorNetworkIds),
+        ))
+        .for('share');
+      if (new Set(assignments.map((row) => row.networkId)).size !== actorNetworkIds.length) return null;
+
+      const activePairs = await tx
+        .select({
+          userId: schema.networkMembers.userId,
+          networkId: schema.networkMembers.networkId,
+        })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
+        .where(and(
+          or(...pairs.map((pair) => and(
+            eq(schema.networkMembers.userId, pair.userId),
+            eq(schema.networkMembers.networkId, pair.networkId),
+          ))),
+          isNull(schema.networkMembers.deletedAt),
+          isNull(schema.networks.deletedAt),
+        ))
+        .for('share');
+      if (activePairs.length !== pairs.length) return null;
+
+      const [activeNegotiationRow] = await tx
+        .select({ opportunity: opportunities })
+        .from(opportunities)
+        .innerJoin(schema.tasks, sql`TRUE`)
+        .where(qualifyingPairNegotiationTaskWhere(actorUserIds))
+        .orderBy(desc(schema.tasks.updatedAt))
+        .limit(1);
+      if (activeNegotiationRow) {
+        const existing = toOpportunityRow(activeNegotiationRow.opportunity);
+        return {
+          conflict: {
+            reason: 'pair_active_negotiation' as const,
+            existingOpportunityId: existing.id,
+            existingTriggerIntentId: opportunityTriggerForOwner(existing, eligibility.ownerUserId),
+            existingStatus: existing.status,
+            existingCreatedAt: existing.createdAt,
+          },
+        };
+      }
+
+      const [sameTriggerRecentRow] = await tx
+        .select()
+        .from(opportunities)
+        .where(and(
+          ...actorContainment,
+          sameTrigger,
+          ne(opportunities.status, 'draft'),
+          sql`${opportunities.createdAt} >= NOW() - (${dedupWindowMs} * INTERVAL '1 millisecond')`,
+        ))
+        .orderBy(desc(opportunities.createdAt))
+        .limit(1);
+      if (sameTriggerRecentRow) {
+        const existing = toOpportunityRow(sameTriggerRecentRow);
+        return {
+          conflict: {
+            reason: 'same_trigger_recent_duplicate' as const,
+            existingOpportunityId: existing.id,
+            existingTriggerIntentId: opportunityTriggerForOwner(existing, eligibility.ownerUserId),
+            existingStatus: existing.status,
+            existingCreatedAt: existing.createdAt,
+          },
+        };
+      }
+
+      const [inserted] = await tx
+        .insert(opportunities)
+        .values({
+          detection: data.detection,
+          actors: data.actors,
+          interpretation: data.interpretation,
+          context: data.context,
+          confidence: data.confidence,
+          status: data.status ?? 'pending',
+          updatedAt: new Date(),
+          expiresAt: data.expiresAt ?? null,
+          ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+        })
+        .returning();
+      if (!inserted) {
+        throw new Error('OpportunityDatabaseAdapter.persistIntentScopedOpportunityIfNetworkEligible: no row returned');
+      }
+
+      const expired: OpportunityRow[] = [];
+      if (expireIds.length > 0) {
+        const now = new Date();
+        for (const opportunityId of expireIds) {
+          const [row] = await tx
+            .update(opportunities)
+            .set({ status: 'expired', updatedAt: now })
+            .where(and(
+              eq(opportunities.id, opportunityId),
+              sameTrigger,
+            ))
+            .returning();
+          if (row) expired.push(toOpportunityRow(row));
+        }
+      }
+      return { created: toOpportunityRow(inserted), expired };
+    });
+
+    if (result && 'created' in result && result.created) emitOpportunityPendingBestEffort(result.created);
+    return result;
   }
 
   /**

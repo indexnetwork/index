@@ -31,6 +31,12 @@ export default defineConfig(({ mode, command }) => {
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
+        // Keep the reporter kickoff marker browser-safe without bundling the
+        // protocol runtime barrel (which includes Node-only graph modules).
+        "@indexnetwork/protocol": path.resolve(
+          __dirname,
+          "../../packages/protocol/src/chat/reporter.prompt.ts",
+        ),
       },
     },
     preview: {

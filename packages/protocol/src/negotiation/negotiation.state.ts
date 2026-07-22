@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
-import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
+import type { NegotiationUserAnswer, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { ScreenDecisionRecord } from "./negotiation.screen.js";
 import type { DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
@@ -90,7 +90,8 @@ export interface NegotiationGraphLike {
     seedAssessment: Omit<SeedAssessment, "actors">;
     discoveryQuery?: string;
     opportunityId?: string;
-    /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+    /** Exact persisted lifecycle state claimed by this negotiation attempt. */
+    opportunityStatus?: OpportunityStatus;
     opportunityUpdatedAt?: Date;
     maxTurns?: number;
     timeoutMs?: number;
@@ -207,7 +208,11 @@ export const NegotiationGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => "",
   }),
-  /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+  /** Exact persisted lifecycle state claimed by this negotiation attempt. */
+  opportunityStatus: Annotation<OpportunityStatus | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
   opportunityUpdatedAt: Annotation<Date | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,

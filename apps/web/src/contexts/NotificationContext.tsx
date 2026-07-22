@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { Check, X, AlertCircle, Info } from 'lucide-react';
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'intent_broadcast';
@@ -11,7 +11,7 @@ export interface Notification {
   avatarUrl?: string;
   duration?: number; // in milliseconds, default 4000
   onClick?: () => void;
-  onAction?: () => void;
+  onAction?: () => void | Promise<void>;
 }
 
 interface NotificationContextType {
@@ -47,11 +47,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       return updatedNotifications;
     });
 
-    // Auto-remove after duration
-    const duration = notification.duration || 4000;
-    setTimeout(() => {
-      removeNotification(id);
-    }, duration);
+    // Actionable intent toasts own their timer so async Undo can pause it.
+    if (notification.type !== 'intent_broadcast' || !notification.onAction) {
+      const duration = notification.duration || 4000;
+      setTimeout(() => {
+        removeNotification(id);
+      }, duration);
+    }
   }, [removeNotification]);
 
   // Convenience methods for different types
@@ -205,14 +207,29 @@ function IntentBroadcastToast({
   index: number;
 }) {
   const [isUndoing, setIsUndoing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isUndoing || actionError) return;
+    const timeout = setTimeout(
+      () => onRemove(notification.id),
+      notification.duration || 4000,
+    );
+    return () => clearTimeout(timeout);
+  }, [actionError, isUndoing, notification.duration, notification.id, onRemove]);
 
   const handleUndo = async () => {
     if (!notification.onAction || isUndoing) return;
     setIsUndoing(true);
+    setActionError(null);
     try {
       await notification.onAction();
       onRemove(notification.id);
-    } catch {
+    } catch (error) {
+      setActionError(error instanceof Error && error.message
+        ? `Undo failed: ${error.message}`
+        : "Undo failed. Please try again.");
+    } finally {
       setIsUndoing(false);
     }
   };
@@ -237,6 +254,9 @@ function IntentBroadcastToast({
           <p className="text-[13px] text-[#3D3D3D] leading-relaxed mt-0.5 line-clamp-2">
             {notification.message || notification.title}
           </p>
+          {actionError && (
+            <p role="alert" className="mt-1 text-xs text-red-600">{actionError}</p>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {notification.onAction && (

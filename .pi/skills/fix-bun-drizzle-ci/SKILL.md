@@ -69,5 +69,5 @@ This is usually a Bun/Linux module-resolution problem against Drizzle's root bar
 ## See also
 
 - `finish-pr` — use this during post-merge verification when GitHub checks fail.
-- `git-worktree-workflow` — make the follow-up fix in a worktree, not canonical `dev`.
-- `release-prod-safety` — use for separate frozen-lockfile/destructive-migration release checks.
+- `create-worktree` — make the follow-up fix in a worktree, not canonical `dev`.
+- `verify-production-release` — use for separate frozen-lockfile/destructive-migration release checks.

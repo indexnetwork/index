@@ -31,7 +31,7 @@ function permissionLabel(action: string): string {
     case 'manage:profile':
       return 'Profile';
     case 'manage:intents':
-      return 'Intents';
+      return 'Signals';
     case 'manage:networks':
       return 'Networks';
     case 'manage:contacts':

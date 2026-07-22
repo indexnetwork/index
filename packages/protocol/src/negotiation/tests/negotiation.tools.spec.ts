@@ -3,14 +3,18 @@ import { z } from "zod";
 import { createNegotiationTools } from "../negotiation.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
-function makeContext(userId = "user-src", networkId?: string): ResolvedToolContext {
+function makeContext(userId = "user-src", networkId?: string, intentId?: string): ResolvedToolContext {
   return {
     userId,
     user: { id: userId, name: "Alice", email: "a@test" } as never,
     userProfile: null,
     userNetworks: [],
     isMcp: true,
-    ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
+    ...(intentId
+      ? { scopeType: 'intent' as const, scopeId: intentId }
+      : networkId
+        ? { scopeType: 'network' as const, scopeId: networkId }
+        : {}),
   } as unknown as ResolvedToolContext;
 }
 
@@ -28,7 +32,7 @@ function makeTask(
   state: string,
   sourceUserId: string,
   candidateUserId: string,
-  options: { networkId?: string; id?: string } = {},
+  options: { networkId?: string; id?: string; opportunityId?: string } = {},
 ) {
   return {
     id: options.id ?? "task-1",
@@ -40,6 +44,7 @@ function makeTask(
       candidateUserId,
       maxTurns: 6,
       ...(options.networkId ? { networkId: options.networkId } : {}),
+      ...(options.opportunityId ? { opportunityId: options.opportunityId } : {}),
     },
     createdAt: new Date("2026-01-01"),
     updatedAt: new Date("2026-01-02"),
@@ -226,6 +231,82 @@ describe("list_negotiations — pagination", () => {
 
     expect(result.data.negotiations).toHaveLength(3);
     expect(result.data.totalCount).toBeUndefined();
+  });
+});
+
+// ── intent-scope enforcement ──────────────────────────────────────────────────
+
+describe("list_negotiations — intent scope", () => {
+  test("clamps the pinned signal to matching actor intent and drops unresolvable tasks", async () => {
+    const matching = makeTask("working", "user-src", "user-cand", { id: "task-match", opportunityId: "opp-match" });
+    const differentIntent = makeTask("working", "user-src", "user-cand", { id: "task-other", opportunityId: "opp-other" });
+    const withoutOpportunity = makeTask("working", "user-src", "user-cand", { id: "task-legacy" });
+    const withoutIntent = makeTask("working", "user-src", "user-cand", { id: "task-no-intent", opportunityId: "opp-no-intent" });
+    let intentLookupCalls = 0;
+    const getIntentIdsForOpportunities = async (ids: string[]) => {
+      intentLookupCalls += 1;
+      return Object.fromEntries(
+        ids.map((id) => [id, id === "opp-match" ? "intent-pinned" : id === "opp-no-intent" ? null : "intent-other"]),
+      );
+    };
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [matching, differentIntent, withoutOpportunity, withoutIntent],
+        getIntentIdsForOpportunities,
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool("list_negotiations", deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext("user-src", undefined, "intent-pinned"), query: {} }),
+    );
+
+    expect(result.data.scope).toBe("signal");
+    expect(result.data.intentId).toBe("intent-pinned");
+    expect(result.data.negotiations.map((negotiation: { id: string }) => negotiation.id)).toEqual(["task-match"]);
+    expect(intentLookupCalls).toBe(1);
+  });
+
+  test("scope:'all' widens a pinned session and reports the explicit scope", async () => {
+    const first = makeTask("completed", "user-src", "user-cand", { id: "task-1" });
+    const second = makeTask("working", "user-src", "user-other", { id: "task-2" });
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [first, second],
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool("list_negotiations", deps);
+    const result = JSON.parse(
+      await tool.handler({
+        context: makeContext("user-src", undefined, "intent-pinned"),
+        query: { scope: "all" },
+      }),
+    );
+
+    expect(result.data.scope).toBe("all");
+    expect(result.data.negotiations).toHaveLength(2);
+  });
+
+  test("defaults an unpinned session to all negotiations", async () => {
+    const task = makeTask("completed", "user-src", "user-cand");
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => [task],
+        getMessagesForConversation: async () => [],
+      },
+    };
+
+    const tool = captureTool("list_negotiations", deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext("user-src"), query: {} }),
+    );
+
+    expect(result.data.scope).toBe("all");
+    expect(result.data.negotiations).toHaveLength(1);
   });
 });
 
@@ -764,6 +845,103 @@ describe('list_negotiations — detail:"narrative"', () => {
 
     expect(result.data.negotiations[0].outcome).toBeNull();
   });
+
+  test('mixed concluded history preserves opportunity lifecycle and supplies no H2H evidence', async () => {
+    const statuses = ['pending', 'rejected', 'stalled', 'draft', 'expired'] as const;
+    const tasks = statuses.map((status) => makeTask(
+      'completed',
+      'user-src',
+      `user-${status}`,
+      { id: `task-${status}`, opportunityId: `opp-${status}` },
+    ));
+    let requestedOpportunityIds: string[] = [];
+
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => tasks,
+        getMessagesForConversation: async () => [
+          makeMessage('accept', 'Agent-side assessment.', 'I accept this potential match.'),
+        ],
+        getArtifactsForTask: async () => [{
+          name: 'negotiation-outcome',
+          parts: [{ kind: 'data', data: { hasOpportunity: true } }],
+        }],
+        getOpportunityLifecyclesForNegotiations: async (opportunityIds: string[]) => {
+          requestedOpportunityIds = opportunityIds;
+          return Object.fromEntries(statuses.map((status) => [`opp-${status}`, {
+            status,
+            acceptedByOwner: false,
+          }]));
+        },
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(
+      await tool.handler({ context: makeContext('user-src'), query: { detail: 'narrative' } })
+    );
+
+    expect(requestedOpportunityIds).toEqual(statuses.map((status) => `opp-${status}`));
+    const byStatus = Object.fromEntries(result.data.negotiations.map((item: {
+      lifecycle: { opportunityStatus: string };
+    }) => [item.lifecycle.opportunityStatus, item]));
+
+    expect(byStatus.pending.lifecycle).toEqual({
+      agentNegotiation: 'concluded',
+      opportunityStatus: 'pending',
+      connectionState: 'potential_match_awaiting_owner_review',
+      ownerAction: 'not_recorded',
+      directConversationEvidence: 'not_provided',
+      lifecycleLabel: "Agents concluded with a potential match; awaiting the owner's review.",
+    });
+    expect(byStatus.rejected.lifecycle.connectionState).toBe('rejected');
+    expect(byStatus.stalled.lifecycle.connectionState).toBe('negotiation_stalled');
+    expect(byStatus.draft.lifecycle.connectionState).toBe('draft_not_sent');
+    expect(byStatus.expired.lifecycle.connectionState).toBe('expired');
+
+    const labels = Object.values(byStatus)
+      .map((item) => item.lifecycle.lifecycleLabel)
+      .join(' ');
+    expect(labels).not.toMatch(/\b(?:I|you) accepted\b/i);
+    expect(labels).not.toMatch(/completed connection/i);
+    expect(labels).not.toMatch(/direct (?:conversation|message)|message thread/i);
+    for (const item of Object.values(byStatus)) {
+      expect(item.latestActionActor).toBe('agent');
+      expect(item.recentTurns[0].actionActor).toBe('agent');
+      expect(item.lifecycle.ownerAction).toBe('not_recorded');
+      expect(item.lifecycle.directConversationEvidence).toBe('not_provided');
+    }
+  });
+
+  test('owner acceptance wording requires persisted owner-acceptor evidence', async () => {
+    const tasks = [
+      makeTask('completed', 'user-src', 'user-owner', { id: 'task-owner', opportunityId: 'opp-owner' }),
+      makeTask('completed', 'user-src', 'user-other', { id: 'task-other', opportunityId: 'opp-other' }),
+    ];
+    const deps = {
+      negotiationDatabase: {
+        getTasksForUser: async () => tasks,
+        getMessagesForConversation: async () => [],
+        getOpportunityLifecyclesForNegotiations: async () => ({
+          'opp-owner': { status: 'accepted', acceptedByOwner: true },
+          'opp-other': { status: 'accepted', acceptedByOwner: false },
+        }),
+      },
+    };
+
+    const tool = captureTool('list_negotiations', deps);
+    const result = JSON.parse(await tool.handler({ context: makeContext('user-src'), query: {} }));
+    const byId = Object.fromEntries(result.data.negotiations.map((item: { id: string }) => [item.id, item]));
+
+    expect(byId['task-owner'].lifecycle.ownerAction).toBe('accepted');
+    expect(byId['task-owner'].lifecycle.connectionState).toBe('owner_accepted');
+    expect(byId['task-owner'].lifecycle.lifecycleLabel).toBe('The owner explicitly accepted this opportunity.');
+    expect(byId['task-other'].lifecycle.ownerAction).toBe('not_recorded');
+    expect(byId['task-other'].lifecycle.connectionState).toBe('accepted_without_owner_evidence');
+    expect(byId['task-other'].lifecycle.lifecycleLabel).not.toMatch(/\b(?:I|you) accepted\b/i);
+    expect(byId['task-owner'].lifecycle.directConversationEvidence).toBe('not_provided');
+    expect(byId['task-other'].lifecycle.directConversationEvidence).toBe('not_provided');
+  });
 });
 
 describe("get_negotiation — network scope", () => {
@@ -811,6 +989,8 @@ describe("get_negotiation — network scope", () => {
 
     expect(result.success).toBe(true);
     expect(result.data.id).toBe("task-1");
+    expect(result.data.conversationType).toBe("agent_negotiation");
+    expect(result.data.lifecycle.directConversationEvidence).toBe("not_provided");
   });
 });
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { questionService } from '../services/question.service';
+import { chatSessionService } from '../services/chat.service';
 import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
@@ -106,9 +107,9 @@ export class QuestionController {
     }
     const status = statusResult.data;
 
-    if (status !== 'pending') {
+    if (status === 'dismissed') {
       return Response.json(
-        { error: 'Only status=pending is currently supported' },
+        { error: 'Only status=pending or status=answered is currently supported' },
         { status: 400 },
       );
     }
@@ -155,7 +156,24 @@ export class QuestionController {
       filters.scopeType = 'intent';
       filters.scopeId = scope.scopeId;
     }
-    if (conversationId) filters.conversationId = conversationId;
+    if (conversationId) {
+      if (!uuidQuerySchema.safeParse(conversationId).success) {
+        return Response.json({ error: 'Question not found' }, { status: 404 });
+      }
+      const session = await chatSessionService.getSession(conversationId, user.id);
+      if (!session) {
+        return Response.json({ error: 'Question not found' }, { status: 404 });
+      }
+      // Preserve the caller's explicit mode filter: chat-triggered intent,
+      // enrichment, discovery, and negotiation questions are still anchored to
+      // this conversation and must remain answerable. Pool-discovery rows never
+      // render in generic conversation injection.
+      filters.conversationId = conversationId;
+      filters.excludeModes = [...new Set([
+        ...(filters.excludeModes ?? []),
+        'pool_discovery' as const,
+      ])];
+    }
     if (noConversation === 'true') filters.noConversation = true;
 
     // Pool questions are intent-page-only rows. Even delivered pushes affect
@@ -165,13 +183,15 @@ export class QuestionController {
     }
 
     const hasFilters = Object.keys(filters).length > 0;
-    const questions = await questionService.findPending(user.id, hasFilters ? filters : undefined);
+    const questions = status === 'answered'
+      ? await questionService.findAnswered(user.id, hasFilters ? filters : undefined)
+      : await questionService.findPending(user.id, hasFilters ? filters : undefined);
 
     // IND-439: an owner's intent-page fetch with no live pending pool question
     // may re-mine the pool (flag-gated, debounced, fire-and-forget — default
     // off is a strict no-op). Network-scoped keys never see pool questions and
     // never trigger; the worker enforces ownership authoritatively.
-    if (scope.scopeType === 'intent' && scope.scopeId && !networkScopeId) {
+    if (status === 'pending' && scope.scopeType === 'intent' && scope.scopeId && !networkScopeId) {
       maybeEnqueueVisitPoolMining({
         userId: user.id,
         intentId: scope.scopeId,

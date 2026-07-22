@@ -60,6 +60,8 @@ import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
+import { isAgentActionsEnabled } from '../lib/agent-surface-feature';
+import { agentActionProposalDatabaseAdapter } from '../adapters/agent-action-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
 
@@ -121,6 +123,8 @@ const protocolDeps = {
   intentQueue,
   contactService,
   contactsEnabled: process.env.CONTACTS_ENABLED === 'true',
+  actionToolsEnabled: isAgentActionsEnabled(),
+  actionProposalStore: agentActionProposalDatabaseAdapter,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
   negotiationSummary: negotiationSummaryService,
@@ -175,7 +179,8 @@ const protocolDeps = {
 
 const chatSessionReader = {
   getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
-  listSessions: (userId: string, limit?: number) => conversationDatabaseAdapter.listChatSessionSummaries(userId, limit),
+  listSessions: (userId: string, limit?: number) =>
+    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit, 'orchestrator'),
   getSession: (userId: string, sessionId: string, messageLimit?: number) =>
     conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
 };
@@ -451,7 +456,13 @@ const seenInvalidSurfaces = new Set<string>();
  * @returns `'telegram'` if and only if the trimmed lower-case value is exactly
  *   `'telegram'`; `'web'` otherwise (including for `null`, `''`, and unknowns).
  */
-export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
+export function parseClientSurface(
+  raw: string | null,
+  warnUnknown: (value: string) => void = (value) => logger.warn(
+    'Unknown x-index-surface value; coercing to web',
+    { value },
+  ),
+): 'telegram' | 'web' {
   if (raw === null) return 'web';
   const normalized = raw.trim().toLowerCase();
   if (normalized === '') return 'web';
@@ -460,9 +471,7 @@ export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
   if (normalized === 'web') return 'web';
   if (!seenInvalidSurfaces.has(normalized)) {
     seenInvalidSurfaces.add(normalized);
-    logger.warn('Unknown x-index-surface value; coercing to web', {
-      value: normalized,
-    });
+    warnUnknown(normalized);
   }
   return 'web';
 }

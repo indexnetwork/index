@@ -16,7 +16,8 @@ describe('OpportunityEvaluator — rethrow on error', () => {
       },
     };
 
-    const evaluator = new OpportunityEvaluator({ entityBundleModel: fakeModel });
+    const evaluator = Object.create(OpportunityEvaluator.prototype) as OpportunityEvaluator;
+    (evaluator as unknown as { entityBundleModel: typeof fakeModel }).entityBundleModel = fakeModel;
 
     const input: EvaluatorInput = {
       discovererId: 'user-1',
@@ -41,11 +42,9 @@ describe('OpportunityEvaluator — rethrow on error', () => {
       },
     };
 
-    // analyzeMatch is private; access via the public invoke method which calls it internally.
-    // We inject a failing model via the constructor's entityBundleModel (for invokeEntityBundle),
-    // but analyzeMatch uses this.model which is created from createModel(). Instead, access it
-    // directly via (evaluator as any).
-    const evaluator = new OpportunityEvaluator();
+    // Construct without the production model-building constructor so this error-path unit test
+    // remains hermetic and never requires an OpenRouter credential.
+    const evaluator = Object.create(OpportunityEvaluator.prototype) as OpportunityEvaluator;
 
     // Override the private model to throw
     (evaluator as unknown as { model: typeof fakeModel }).model = fakeModel;

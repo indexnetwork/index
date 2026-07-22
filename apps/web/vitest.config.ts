@@ -7,6 +7,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Mirrors vite.config.ts: resolve the reporter kickoff marker from source
+      // so tests never depend on a built packages/protocol/dist.
+      '@indexnetwork/protocol': path.resolve(
+        __dirname,
+        '../../packages/protocol/src/chat/reporter.prompt.ts',
+      ),
     },
   },
   test: {

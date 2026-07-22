@@ -258,7 +258,7 @@ export default function (pi: ExtensionAPI) {
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nProject branch guard: the canonical root ${CANONICAL_ROOT} should remain on ${REQUIRED_BRANCH}. ${posture} Create and use ${WORKTREES_DIR}/<name> for implementation changes, and run mutating commands from the worktree. See the git-worktree-workflow skill (.pi/skills/git-worktree-workflow/SKILL.md) for the naming convention, the mandatory \`bun run worktree:setup\` step, and the sanctioned escapes this guard allows.`,
+				`\n\nProject branch guard: the canonical root ${CANONICAL_ROOT} should remain on ${REQUIRED_BRANCH}. ${posture} Create and use ${WORKTREES_DIR}/<name> for implementation changes via \`bun run worktree:session -- <type>/<description>\`, and run mutating commands from the worktree. See the create-worktree skill (.pi/skills/create-worktree/SKILL.md) for the launcher contract and sanctioned escapes this guard allows.`,
 		};
 	});
 
@@ -269,7 +269,7 @@ export default function (pi: ExtensionAPI) {
 					ctx,
 					event,
 					`Blocked ${event.toolName} in canonical root. Create/use a worktree under ${WORKTREES_DIR} instead.`,
-					`⚠️ root-dev-guard: this ${event.toolName} targeted the canonical root (${event.input.path}) while it is on ${REQUIRED_BRANCH}. It was allowed (warn mode) but dirties ${REQUIRED_BRANCH} — prefer a worktree under ${WORKTREES_DIR}/<name> (see git-worktree-workflow).`,
+					`⚠️ root-dev-guard: this ${event.toolName} targeted the canonical root (${event.input.path}) while it is on ${REQUIRED_BRANCH}. It was allowed (warn mode) but dirties ${REQUIRED_BRANCH} — prefer \`bun run worktree:session -- <type>/<description>\` (see create-worktree).`,
 				);
 			}
 		}

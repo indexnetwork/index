@@ -50,7 +50,7 @@ function deriveIntentDiscoveryNetworkIds(memberships: AssignmentNetworkMembershi
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetworkIfMember' | 'deleteHydeDocumentsForSource' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -380,7 +380,7 @@ export class IntentQueue implements IntentGraphQueue {
    * Pure assignment: no HyDE regeneration and no opportunity discovery, so it is
    * safe to call for reconciliation/backfill without spamming users with new
    * opportunity notifications on existing intents. Idempotent —
-   * {@link ChatDatabaseAdapter.assignIntentToNetwork} upserts on
+   * {@link ChatDatabaseAdapter.assignIntentToNetworkIfMember} upserts on
    * (intentId, networkId).
    *
    * @param intentId - Intent to assign.
@@ -425,18 +425,22 @@ export class IntentQueue implements IntentGraphQueue {
       evaluatedCount = userIndexIds.length;
       this.assignLogger.info('User assignment networks found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
 
-      // Instantiate once per run so the same withStructuredOutput binding is
-      // reused across all network evaluations in the Promise.all below (the
-      // IIFE runs once and the closure captures the single indexer instance).
-      const evaluateIntentAssignment = this.deps?.evaluateIntentAssignment ?? (() => {
-        const indexer = new IntentIndexer();
-        return (o: {
-          intent: string;
-          indexPrompt: string | null;
-          memberPrompt: string | null;
-          sourceName?: string | null;
-        }) => indexer.invoke(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null);
-      })();
+      // Instantiate the model-backed evaluator only when at least one network
+      // actually has prompts. Prompt-less networks deterministically assign at
+      // score 1 and must not require an OpenRouter credential.
+      let evaluateIntentAssignment = this.deps?.evaluateIntentAssignment;
+      const getIntentAssignmentEvaluator = () => {
+        evaluateIntentAssignment ??= (() => {
+          const indexer = new IntentIndexer();
+          return (o: {
+            intent: string;
+            indexPrompt: string | null;
+            memberPrompt: string | null;
+            sourceName?: string | null;
+          }) => indexer.invoke(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null);
+        })();
+        return evaluateIntentAssignment;
+      };
 
       const sourceName = intent.sourceType
         ? `${intent.sourceType}:${intent.sourceId ?? ''}`
@@ -455,7 +459,12 @@ export class IntentQueue implements IntentGraphQueue {
           let result: IntentIndexerOutput | null = null;
           if (hasPrompts) {
             try {
-              result = await evaluateIntentAssignment({ intent: intent.payload, indexPrompt, memberPrompt, sourceName });
+              result = await getIntentAssignmentEvaluator()({
+                intent: intent.payload,
+                indexPrompt,
+                memberPrompt,
+                sourceName,
+              });
             } catch (err) {
               this.assignLogger.warn('IntentIndexer failed for network', { intentId, networkId, error: err });
             }
@@ -482,8 +491,22 @@ export class IntentQueue implements IntentGraphQueue {
         const { networkId, decision } = scoringResult;
         if (!decision.assigned) continue;
         try {
-          await db.assignIntentToNetwork(intentId, networkId, decision.finalScore, decision.metadata);
-          assignedNetworkIds.push(networkId);
+          const outcome = await db.assignIntentToNetworkIfMember(
+            userId,
+            intentId,
+            networkId,
+            decision.finalScore,
+            decision.metadata,
+          );
+          if (outcome.kind === 'assigned' || outcome.kind === 'already_assigned') {
+            assignedNetworkIds.push(networkId);
+          } else {
+            this.assignLogger.debug('Assign intent to network skipped by final authority', {
+              intentId,
+              networkId,
+              outcome: outcome.kind,
+            });
+          }
         } catch (assignErr) {
           this.assignLogger.debug('Assign intent to network skipped', { intentId, networkId, error: assignErr });
         }

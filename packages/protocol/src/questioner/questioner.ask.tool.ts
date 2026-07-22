@@ -251,13 +251,9 @@ export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDep
       // ── 4. Stream the cards to the frontend ────────────────────────────
       emit({
         type: "user_question",
-        questions: persisted.map((q) => ({
-          id: q.id,
-          title: q.payload.title,
-          prompt: q.payload.prompt,
-          options: q.payload.options,
-          multiSelect: q.payload.multiSelect,
-        })),
+        // The event is an opaque action reference. Question text is canonical
+        // only after the recipient resolves this ID through the server.
+        questions: persisted.map((q) => ({ id: q.id })),
       });
 
       // ── 5. Block until answered / dismissed / timeout / abort ──────────

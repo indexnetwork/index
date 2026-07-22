@@ -41,11 +41,20 @@ export interface AssignmentNetworkMembership extends ScopeMembership {
   isPersonal: boolean;
 }
 
+/** Final-authority result for an existing intent-to-network assignment. */
+export type IntentNetworkFinalAssignmentResult =
+  | { kind: 'assigned' }
+  | { kind: 'already_assigned' }
+  | { kind: 'membership_required' }
+  | { kind: 'intent_not_owned_or_not_found' };
+
 /** Onboarding flow state stored as JSON on the user record. */
 export interface OnboardingState {
   completedAt?: string;
+  profileConfirmedAt?: string;
+  firstSignalIntentId?: string;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
   privacy?: OnboardingPrivacyState;
@@ -500,6 +509,16 @@ export interface CreateHydeDocumentData {
 
 export type OpportunityStatus = 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
 
+/**
+ * Minimal opportunity lifecycle evidence used to narrate an agent negotiation.
+ * `acceptedByOwner` is true only when the authenticated owner is the persisted
+ * human acceptor; other terminal states do not imply an owner action.
+ */
+export interface NegotiationOpportunityLifecycle {
+  status: OpportunityStatus;
+  acceptedByOwner: boolean;
+}
+
 export interface Opportunity {
   id: string;
   detection: OpportunityDetection;
@@ -522,6 +541,22 @@ export interface OpportunityNetworkEligibility {
   /** When present, each actor network must remain assigned to this intent through commit. */
   triggerIntentId?: string;
 }
+
+export type OpportunityDedupConflictReason =
+  | 'same_trigger_recent_duplicate'
+  | 'pair_active_negotiation';
+
+export interface OpportunityDedupConflict {
+  reason: OpportunityDedupConflictReason;
+  existingOpportunityId: string;
+  existingTriggerIntentId?: string;
+  existingStatus: OpportunityStatus;
+  existingCreatedAt: Date;
+}
+
+export type IntentScopedOpportunityPersistenceResult =
+  | { created: Opportunity; expired: Opportunity[] }
+  | { conflict: OpportunityDedupConflict };
 
 export interface CreateOpportunityData {
   detection: OpportunityDetection;
@@ -941,6 +976,19 @@ export interface Database {
   ): Promise<void>;
 
   /**
+   * Atomically assign an owned, non-archived intent only while the exact
+   * accepted network membership and network remain active. Implementations
+   * hold intent, network, and membership row locks through the insert.
+   */
+  assignIntentToNetworkIfMember(
+    userId: string,
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: NetworkAssignmentMetadata,
+  ): Promise<IntentNetworkFinalAssignmentResult>;
+
+  /**
    * Returns per-index relevancy scores for an intent's index assignments.
    */
   getIntentIndexScores(intentId: string): Promise<Array<{
@@ -1271,6 +1319,19 @@ export interface Database {
     data: CreateOpportunityData,
     eligibility: OpportunityNetworkEligibility,
   ): Promise<Opportunity | null>;
+
+  /**
+   * Intent-scoped discovery persistence boundary. Implementations serialize on
+   * normalized participant pair + trigger intent, re-check same-trigger recent
+   * duplicates and pair-global active negotiations, then create/expire while
+   * the existing network eligibility locks remain held.
+   */
+  persistIntentScopedOpportunityIfNetworkEligible?(
+    data: CreateOpportunityData,
+    expireIds: string[],
+    eligibility: OpportunityNetworkEligibility & { triggerIntentId: string },
+    dedupWindowMs: number,
+  ): Promise<IntentScopedOpportunityPersistenceResult | null>;
 
   /**
    * Atomically update status only while the supplied participant anchors remain
@@ -1746,6 +1807,29 @@ export interface Database {
  *
  * Use via `createUserDatabase(db, authUserId)` factory function.
  */
+export interface AgentActivitySummary {
+  /** The requested reporting window, in hours. */
+  sinceHours: number;
+  /** Number of the user's own non-archived ACTIVE intents. */
+  liveSignalsWatched: number;
+  /** Opportunities created in the window and linked to one of the user's intents. */
+  opportunitiesSurfaced: number;
+  /** Opportunity counts grouped by the user's own signal. */
+  opportunitiesBySignal: Array<{
+    intentId: string;
+    title: string;
+    count: number;
+  }>;
+  /** Current, non-expired questions waiting for the user. */
+  pendingQuestionCount: number;
+  /** Questions answered by the user during the window. */
+  questionsAnswered: number;
+  /** Distinct opportunity negotiations started during the window. */
+  negotiationsStarted: number;
+  /** Distinct opportunity negotiations completed during the window. */
+  negotiationsCompleted: number;
+}
+
 export interface UserDatabase {
   /** The bound authenticated user ID */
   readonly authUserId: string;
@@ -1898,6 +1982,13 @@ export interface UserDatabase {
 
   /** Join a public network (validates joinPolicy === 'anyone'). */
   joinPublicNetwork(networkId: string): Promise<{ success: boolean; alreadyMember?: boolean }>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Agent reporting (own activity only)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Summarize the authenticated user's own agent activity without counterparty rows. */
+  getAgentActivitySummary(input: { sinceHours: number }): Promise<AgentActivitySummary>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Opportunity Operations (where user is actor)
@@ -2181,6 +2272,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
+  | 'persistIntentScopedOpportunityIfNetworkEligible'
   | 'updateOpportunityStatusIfNetworkEligible'
   | 'getOpportunity'
   | 'getOpportunitiesByIds'
@@ -2212,6 +2304,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getNetworkAssignmentContext'
   | 'isIntentAssignedToIndex'
   | 'assignIntentToNetwork'
+  | 'assignIntentToNetworkIfMember'
   | 'unassignIntentFromIndex'
   | 'getNetworkIdsForIntent'
   | 'getIntentIndexScores'
@@ -2272,6 +2365,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
+  | 'persistIntentScopedOpportunityIfNetworkEligible'
   | 'updateOpportunityStatusIfNetworkEligible'
   | 'opportunityExistsBetweenActors'
   | 'findOpportunitiesByActors'
@@ -2432,13 +2526,14 @@ export type NegotiationGraphDatabase = Pick<
   }): Promise<{ id: string; senderId: string; role: 'user' | 'agent'; parts: unknown; createdAt: Date }>;
 
   /**
-   * Atomically claims an exact persisted opportunity attempt and creates its
-   * negotiation task. Returns null when the status/version is stale or another
-   * qualifying task already owns the attempt.
+   * Atomically claims an exact persisted opportunity attempt, promotes it to
+   * negotiating, and creates its task. Returns null when the status/version is
+   * stale or another qualifying task already owns the attempt.
    */
   createNegotiationTaskForAttempt(input: {
     conversationId: string;
     opportunityId: string;
+    expectedStatus: OpportunityStatus;
     expectedUpdatedAt: Date;
     metadata: Record<string, unknown>;
   }): Promise<{ id: string; conversationId: string; state: string } | null>;
@@ -2461,6 +2556,24 @@ export type NegotiationGraphDatabase = Pick<
     createdAt: Date;
     updatedAt: Date;
   }>>;
+
+  /**
+   * Resolves each opportunity to the intent carried by the given user's actor.
+   * Missing opportunities or actor intents are returned as null so callers can
+   * enforce fail-closed scope filtering for legacy task metadata.
+   */
+  getIntentIdsForOpportunities(opportunityIds: string[], userId: string): Promise<Record<string, string | null>>;
+
+  /**
+   * Batch-loads current opportunity lifecycle evidence for negotiation
+   * narration. Implementations must omit opportunities that do not contain the
+   * authenticated owner actor. Optional for backward-compatible hosts; callers
+   * must treat a missing implementation as unavailable evidence, never as acceptance.
+   */
+  getOpportunityLifecyclesForNegotiations?(
+    opportunityIds: string[],
+    ownerUserId: string,
+  ): Promise<Record<string, NegotiationOpportunityLifecycle>>;
 
   /** Gets a specific task by ID. */
   getTask(taskId: string): Promise<{
@@ -2614,7 +2727,7 @@ export type IntentNetworkGraphDatabase = Pick<
   | 'getNetworkAssignmentContext'
   | 'getNetwork'
   | 'isIntentAssignedToIndex'
-  | 'assignIntentToNetwork'
+  | 'assignIntentToNetworkIfMember'
   | 'unassignIntentFromIndex'
   | 'getIntent'
   | 'isNetworkMember'

@@ -3,7 +3,7 @@ title: "Opportunity Status Lifecycle"
 type: design
 tags: [opportunity, status, lifecycle, negotiation, premise-cascade, expiry, reactivation, mermaid]
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-07-22
 ---
 
 # Opportunity Status Lifecycle
@@ -124,7 +124,15 @@ stateDiagram-v2
     end note
 ```
 
-Background discovery forces `latent`. `OpportunityService.discoverOpportunities()` sets explicit `initialStatus: 'latent'` (`services/api/src/services/opportunity.service.ts:789-799`, at `:791` and `:799`), so `resolveInitialStatus()` yields `latent` instead of the ambient default `pending`. The persist node resolves status (`packages/protocol/src/opportunity/opportunity.graph.ts:2565`) and inserts via the adapter (`services/api/src/adapters/database.adapter.ts:5001-5010`).
+Background discovery forces `latent`. `OpportunityService.discoverOpportunities()` sets explicit `initialStatus: 'latent'` (`services/api/src/services/opportunity.service.ts:789-799`, at `:791` and `:799`), so `resolveInitialStatus()` yields `latent` instead of the ambient default `pending`. The persist node resolves status (`packages/protocol/src/opportunity/opportunity.graph.ts`) and inserts through `OpportunityDatabaseAdapter`.
+
+For authoritative owned-intent runs, opportunity reuse is **intent-aware**. The canonical linkage is `detection.triggeredBy = triggerIntentId`, with the owner's `actors[].intent` retained as a legacy-compatible fallback. The 30-day duplicate window and expired/stalled/latent/orphan lifecycle reuse apply only to same-trigger rows; another trigger's latent, pending, accepted, rejected, stalled, or expired row does not suppress or get relabelled for the current intent. A fresh active negotiation remains a pair-global guard. IND-495's production investigation and the independent IND-494 report showed the same starvation pattern: strong evaluated candidates already had recent pending rows from older trigger intents, so pair-global suppression produced zero rows for the new intent.
+
+The final insert boundary (`persistIntentScopedOpportunityIfNetworkEligible`) takes transaction-scoped advisory locks for the normalized participant pair and pair+trigger intent, rechecks same-trigger recency and pair-global active negotiation state, then revalidates intent ownership/assignment and active memberships before insert. Enrichment receives the same owned-intent scope, so it cannot merge or expire another trigger's row. Negotiation task creation separately shares the pair-global advisory lock, ensuring different trigger rows cannot start concurrent active tasks.
+
+Negotiation startup is an exact-state atomic claim. The graph passes both the persisted pre-negotiation status and `updatedAt`; under the opportunity row lock and pair-global lock, the adapter rechecks that state plus the existing active-task constraints, then promotes an eligible `latent | draft | pending | negotiating` winner to `negotiating` and inserts exactly one task in the same transaction. Stale and pair-losing claims leave the opportunity unchanged, and task-insert failure rolls back the promotion. A graph init rejection with no task ID performs no finalize task, artifact, or opportunity-status writes. This startup contract is independent of the default-off negotiation watchdog, which only repairs stale tasks that already exist.
+
+Create-time discovery starts only from `IntentQueue` after assignment and HyDE generation. `IntentEvents.onCreated` runs maintenance but does not enqueue discovery, preserving the fail-closed empty-scope rule without racing assignment. Completion telemetry keeps the evaluator funnel separate from persistence: no search candidates, evaluator rejection, same-trigger suppression, pair-active suppression, cross-trigger admission, and final atomic conflicts are reported distinctly. This deliberately does not force a minimum candidate pool; the separate question of why only a small candidate set reaches negotiation can be investigated without conflating it with persistence starvation.
 
 ### 3.B Chat / orchestrator draft + send
 

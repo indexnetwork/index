@@ -323,6 +323,29 @@ describe("OpportunityService.updateOpportunityStatus — atomic Lens B capture",
     expect(recorder.triggerMine).toHaveBeenCalledWith(preparedCapture.scope);
   });
 
+  it("user-session rejected action prepares and enqueues one outcome outbox entry", async () => {
+    const recorder = recorderStub();
+    const db = createMockDb(twoActorOpportunity);
+    db.updateOpportunityStatus = mock(async (_id, _status, _acceptedBy, outbox) => {
+      expect(outbox).toBeDefined();
+      outbox!.result.inserted = true;
+      return { ...twoActorOpportunity, status: "rejected" };
+    });
+    const service = new OpportunityService(db, undefined, { check: async () => null }, recorder);
+
+    const result = await service.updateOpportunityStatus(OPP_ID, "rejected", USER_A, {
+      actionProvenance: "user_session",
+    });
+
+    expect(result).not.toHaveProperty("error");
+    expect(recorder.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      action: "rejected",
+      provenance: "user_session",
+    }));
+    expect(db.updateOpportunityStatus).toHaveBeenCalledTimes(1);
+    expect(recorder.triggerMine).toHaveBeenCalledWith(preparedCapture.scope);
+  });
+
   it("forwards exact selected-intent scope into recorder preparation", async () => {
     const recorder = recorderStub();
     const scopedOpportunity: Opportunity = {

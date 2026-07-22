@@ -41,10 +41,11 @@ mock.module("../../shared/agent/model.config", () => ({
   },
 }));
 
-import { AIMessageChunk, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessage, AIMessageChunk, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import { ChatAgent, type AgentStreamEvent } from "../chat.agent.js";
 import type { ChatPersonaConfig } from "../chat.persona.js";
+import { resolveReporterDeterministicResponse } from "../reporter.prompt.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -192,6 +193,77 @@ describe("ChatAgent persona injection", () => {
 
     const discover = tools.find((t) => t.name === "discover_opportunities")!;
     expect(discover.invoke).toHaveBeenCalledTimes(1);
+  }, 15000);
+
+  it("bypasses the model and tools for contextual reporter confirmations only", async () => {
+    const tools: MockTool[] = ["report_agent_activity", "propose_cleanup_actions"].map((name) => ({
+      name,
+      description: name,
+      schema: {},
+      invoke: mock(async () => JSON.stringify({ success: true })),
+    }));
+    const persona = makePersona(
+      tools,
+      { createIntentCallback: false, hallucinationRecovery: false },
+    );
+    persona.resolveDeterministicResponse = (_ctx, iterCtx) => resolveReporterDeterministicResponse(iterCtx);
+    const agent = await createTestAgent(persona);
+    const proposal = new AIMessage({
+      content: [
+        "```agent_action_proposal",
+        JSON.stringify({
+          proposalId: "11111111-1111-4111-8111-111111111111",
+          actions: [{
+            type: "pause_signal",
+            entityId: "22222222-2222-4222-8222-222222222222",
+            currentState: "ACTIVE",
+            proposedOperation: "PAUSE_SIGNAL",
+          }],
+        }),
+        "```",
+      ].join("\n"),
+    });
+
+    for (const phrase of [
+      "i confirm",
+      "confirm",
+      "confirm it",
+      "approve",
+      "approved",
+      "approve it",
+      "i approve",
+      "yes",
+      "yes i confirm",
+      "yes please",
+      "please do it",
+      "proceed",
+      "go ahead",
+    ]) {
+      const { events, writer } = createEventCollector();
+      const result = await agent.streamRun([
+        new HumanMessage("Review my signals"),
+        proposal,
+        new HumanMessage(phrase),
+      ], writer);
+      expect(result.responseText).toContain("visible proposal card's Confirm control");
+      expect(result.debugMeta.llm.calls).toBe(0);
+      expect(events.some((event) => event.type === "llm_start")).toBe(false);
+    }
+
+    const iteration = await agent.runIteration([
+      new HumanMessage("Review my signals"),
+      proposal,
+      new HumanMessage("confirm it"),
+    ], 0);
+    expect(iteration.responseText).toContain("visible proposal card's Confirm control");
+    expect(iteration.shouldContinue).toBe(false);
+    expect(mockModelInstance.stream).not.toHaveBeenCalled();
+    for (const candidate of tools) expect(candidate.invoke).not.toHaveBeenCalled();
+
+    mockModelInstance.stream = mock(() => makeTextStream("Ordinary response."));
+    const ordinary = await agent.streamRun([new HumanMessage("yes")]);
+    expect(ordinary.responseText).toBe("Ordinary response.");
+    expect(mockModelInstance.stream).toHaveBeenCalledTimes(1);
   }, 15000);
 });
 

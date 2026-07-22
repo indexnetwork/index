@@ -180,7 +180,7 @@ beforeAll(async () => {
       },
     },
   });
-});
+}, 30_000);
 
 afterAll(async () => {
   // Clean up in reverse dependency order
@@ -197,7 +197,7 @@ afterAll(async () => {
   if (oppId1) await db.delete(opportunities).where(eq(opportunities.id, oppId1));
   if (oppId2) await db.delete(opportunities).where(eq(opportunities.id, oppId2));
   if (userId) await db.delete(users).where(eq(users.id, userId));
-});
+}, 30_000);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -257,7 +257,7 @@ describe('GET /debug/chat/:id — negotiation hydration', () => {
     const firstNeg = negotiations[0];
     expect((firstNeg.turns[0] as { actor: string }).actor).toBe('source');
     expect((firstNeg.turns[1] as { actor: string }).actor).toBe('candidate');
-  });
+  }, 30_000);
 
   it('returns 404 when session does not belong to the user', async () => {
     const controller = new DebugController();

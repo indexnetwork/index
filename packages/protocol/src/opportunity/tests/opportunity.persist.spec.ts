@@ -302,6 +302,143 @@ describe('persistOpportunities', () => {
     expect(input.actors[0]?.intent).toBe('null');
   });
 
+  it('fails closed before atomic persistence when dedup and eligibility triggers differ', async () => {
+    let atomicCalls = 0;
+    const database: PersistOpportunityDatabase = {
+      findOpportunitiesByActors: async () => [],
+      createOpportunity: async () => makeOpportunity(),
+      updateOpportunityStatus: async () => {},
+      persistIntentScopedOpportunityIfNetworkEligible: async () => {
+        atomicCalls += 1;
+        return { created: makeOpportunity(), expired: [] };
+      },
+    };
+    const result = await persistOpportunities({
+      database,
+      embedder: mockEmbedder,
+      items: [makeCreateData({
+        detection: {
+          source: 'opportunity_graph',
+          timestamp: new Date().toISOString(),
+          triggeredBy: 'intent-dedup' as never,
+        },
+      })],
+      networkEligibility: {
+        ownerUserId: 'user-1',
+        allowedNetworkIds: ['net-1'],
+        triggerIntentId: 'intent-eligibility',
+      },
+      intentDedupScope: { triggerIntentId: 'intent-dedup', dedupWindowMs: 1_000 },
+    });
+
+    expect(atomicCalls).toBe(0);
+    expect(result.created).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect((result.errors?.[0]?.error as Error).message)
+      .toBe('Intent-scoped dedup trigger must match network eligibility');
+  });
+
+  it('uses the owned-intent atomic boundary and returns typed final conflicts', async () => {
+    const existingCreatedAt = new Date(Date.now() - 60_000);
+    let atomicCalls = 0;
+    const database: PersistOpportunityDatabase = {
+      findOpportunitiesByActors: async () => [],
+      createOpportunity: async () => makeOpportunity(),
+      updateOpportunityStatus: async () => {},
+      persistIntentScopedOpportunityIfNetworkEligible: async () => {
+        atomicCalls += 1;
+        return {
+          conflict: {
+            reason: 'same_trigger_recent_duplicate',
+            existingOpportunityId: 'opp-existing',
+            existingTriggerIntentId: 'intent-current',
+            existingStatus: 'pending',
+            existingCreatedAt,
+          },
+        };
+      },
+    };
+    const item = makeCreateData({
+      detection: {
+        source: 'opportunity_graph',
+        timestamp: new Date().toISOString(),
+        triggeredBy: 'intent-current' as never,
+      },
+      actors: [
+        { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'intent-current' },
+        { networkId: 'net-1', userId: 'user-2', role: 'agent' },
+      ] as never,
+    });
+
+    const result = await persistOpportunities({
+      database,
+      embedder: mockEmbedder,
+      items: [item],
+      networkEligibility: {
+        ownerUserId: 'user-1',
+        allowedNetworkIds: ['net-1'],
+        triggerIntentId: 'intent-current',
+      },
+      intentDedupScope: { triggerIntentId: 'intent-current', dedupWindowMs: 30 * 24 * 60 * 60 * 1000 },
+    });
+
+    expect(atomicCalls).toBe(1);
+    expect(result.created).toHaveLength(0);
+    expect(result.conflicts).toEqual([{
+      itemIndex: 0,
+      finalAtomic: true,
+      reason: 'same_trigger_recent_duplicate',
+      existingOpportunityId: 'opp-existing',
+      existingTriggerIntentId: 'intent-current',
+      existingStatus: 'pending',
+      existingCreatedAt,
+    }]);
+  });
+
+  it('owned-intent enrichment never offers cross-trigger rows for expiration', async () => {
+    const crossTrigger = makeOpportunity({
+      id: 'opp-other-trigger',
+      actors: [
+        { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'intent-other' },
+        { networkId: 'net-1', userId: 'user-2', role: 'agent' },
+      ],
+      detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: 'intent-other' as never },
+      interpretation: {
+        category: 'collaboration', reasoning: 'Good fit', confidence: 0.8, signals: [],
+      },
+    });
+    let receivedExpireIds: string[] | undefined;
+    const created = makeOpportunity({ id: 'opp-current-trigger' });
+    const database: PersistOpportunityDatabase = {
+      findOpportunitiesByActors: async () => [crossTrigger],
+      createOpportunity: async () => created,
+      updateOpportunityStatus: async () => {},
+      persistIntentScopedOpportunityIfNetworkEligible: async (_data, expireIds) => {
+        receivedExpireIds = expireIds;
+        return { created, expired: [] };
+      },
+    };
+    const item = makeCreateData({
+      detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: 'intent-current' as never },
+      actors: [
+        { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'intent-current' },
+        { networkId: 'net-1', userId: 'user-2', role: 'agent' },
+      ] as never,
+    });
+
+    const result = await persistOpportunities({
+      database,
+      embedder: mockEmbedder,
+      items: [item],
+      networkEligibility: { ownerUserId: 'user-1', allowedNetworkIds: ['net-1'], triggerIntentId: 'intent-current' },
+      intentDedupScope: { triggerIntentId: 'intent-current', dedupWindowMs: 1_000 },
+    });
+
+    expect(receivedExpireIds).toEqual([]);
+    expect(result.created).toEqual([created]);
+    expect(result.expired).toEqual([]);
+  });
+
   it('normalizes actors immediately before every create path', async () => {
     const existing = makeOpportunity({
       id: 'opp-existing',

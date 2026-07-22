@@ -5,11 +5,15 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, beforeAll as bunBeforeAll, afterAll as bunAfterAll } from "bun:test";
 import { StorageController } from "../storage.controller";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { UserDatabaseAdapter, FileDatabaseAdapter } from "../../adapters/database.adapter";
 import { StorageService } from "../../services/storage.service";
+import { withMinimumDatabaseHookBudget } from "../../lib/testing/database-test-budget";
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 const uploadedFiles = new Map<string, Buffer>();
 

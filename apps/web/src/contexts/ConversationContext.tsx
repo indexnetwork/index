@@ -10,15 +10,25 @@ const logger = log.context.from('ConversationContext');
 const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
 const SSE_URL = `${PROTOCOL_BASE}/api/conversations/stream`;
 
+interface ConversationSessionHistoryState {
+  hasPreviousSession: boolean;
+  previousSessionCursor: string | null;
+  loadingPrevious: boolean;
+}
+
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: ConversationSummary[];
   messages: Map<string, ConversationMessage[]>;
+  sessionHistory: Map<string, ConversationSessionHistoryState>;
   isConnected: boolean;
   loadMessages: (conversationId: string, opts?: { limit?: number; before?: string }) => Promise<void>;
+  loadSessionHistory: (conversationId: string, opts?: { taskId?: string; beforeSessionId?: string }) => Promise<void>;
+  loadPreviousSessionMessages: (conversationId: string, taskId?: string) => Promise<void>;
   sendMessage: (conversationId: string, parts: unknown[]) => Promise<ConversationMessage | null>;
   refreshConversations: () => Promise<void>;
   refreshNegotiations: () => Promise<void>;
+  markConversationRead: (conversationId: string) => Promise<void>;
   hideConversation: (conversationId: string) => Promise<void>;
   getOrCreateDM: (peerUserId: string) => Promise<ConversationSummary>;
 }
@@ -33,6 +43,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [negotiations, setNegotiations] = useState<ConversationSummary[]>([]);
   const [messages, setMessages] = useState<Map<string, ConversationMessage[]>>(new Map());
+  const [sessionHistory, setSessionHistory] = useState<Map<string, ConversationSessionHistoryState>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,6 +100,67 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       logger.error('Failed to load messages', { error: err });
     }
   }, []);
+
+  const loadSessionHistory = useCallback(async (
+    conversationId: string,
+    opts?: { taskId?: string; beforeSessionId?: string },
+  ) => {
+    try {
+      const params = new URLSearchParams({ sessionHistory: 'true' });
+      if (opts?.taskId) params.set('taskId', opts.taskId);
+      if (opts?.beforeSessionId) params.set('beforeSessionId', opts.beforeSessionId);
+      const data = await apiClient.get<{
+        messages: ConversationMessage[];
+        sessionId: string | null;
+        hasPreviousSession: boolean;
+        previousSessionCursor: string | null;
+      }>(`/conversations/${conversationId}/messages?${params.toString()}`);
+      setMessages((previous) => {
+        const next = new Map(previous);
+        const existing = next.get(conversationId) ?? [];
+        const received = data.messages.map((message) => ({ ...message, sessionId: data.sessionId }));
+        if (!opts?.beforeSessionId) {
+          next.set(conversationId, received);
+          return next;
+        }
+        const knownIds = new Set(existing.map((message) => message.id));
+        next.set(conversationId, [...received.filter((message) => !knownIds.has(message.id)), ...existing].sort((left, right) => (
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+          || left.id.localeCompare(right.id)
+        )));
+        return next;
+      });
+      setSessionHistory((previous) => {
+        const next = new Map(previous);
+        next.set(conversationId, {
+          hasPreviousSession: data.hasPreviousSession,
+          previousSessionCursor: data.previousSessionCursor,
+          loadingPrevious: false,
+        });
+        return next;
+      });
+    } catch (error) {
+      logger.error('Failed to load conversation session history', { error, conversationId });
+      setSessionHistory((previous) => {
+        const next = new Map(previous);
+        const current = next.get(conversationId);
+        if (current) next.set(conversationId, { ...current, loadingPrevious: false });
+        return next;
+      });
+    }
+  }, []);
+
+  const loadPreviousSessionMessages = useCallback(async (conversationId: string, taskId?: string) => {
+    const current = sessionHistory.get(conversationId);
+    if (!current?.hasPreviousSession || !current.previousSessionCursor || current.loadingPrevious) return;
+    setSessionHistory((previous) => {
+      const next = new Map(previous);
+      const history = next.get(conversationId);
+      if (history) next.set(conversationId, { ...history, loadingPrevious: true });
+      return next;
+    });
+    await loadSessionHistory(conversationId, { taskId, beforeSessionId: current.previousSessionCursor });
+  }, [loadSessionHistory, sessionHistory]);
 
   const sendMessage = useCallback(async (conversationId: string, parts: unknown[]): Promise<ConversationMessage | null> => {
     if (!user?.id) {
@@ -165,11 +237,33 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     }
   }, [user, apiClient]);
 
+  const markConversationRead = useCallback(async (conversationId: string) => {
+    // Clear locally before the request returns so nav/sidebar badges respond
+    // immediately. The server operation is idempotent and viewer-scoped.
+    setConversations((prev) => prev.map((conversation) => (
+      conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation
+    )));
+    setNegotiations((prev) => prev.map((conversation) => (
+      conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation
+    )));
+
+    try {
+      await apiClient.post(`/conversations/${conversationId}/read`);
+    } catch (err) {
+      logger.error('Failed to mark conversation read', { conversationId, error: err });
+    }
+  }, []);
+
   const hideConversation = useCallback(async (conversationId: string) => {
     try {
       await apiClient.delete(`/conversations/${conversationId}`);
       setConversations((prev) => prev.filter((c) => c.id !== conversationId));
       setMessages((prev) => {
+        const next = new Map(prev);
+        next.delete(conversationId);
+        return next;
+      });
+      setSessionHistory((prev) => {
         const next = new Map(prev);
         next.delete(conversationId);
         return next;
@@ -186,8 +280,9 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     );
     // Add to list if not already present
     setConversations((prev) => {
-      if (prev.some((c) => c.id === data.conversation.id)) return prev;
-      return [data.conversation, ...prev];
+      const existingIndex = prev.findIndex((c) => c.id === data.conversation.id);
+      if (existingIndex < 0) return [data.conversation, ...prev];
+      return prev.map((conversation, index) => index === existingIndex ? data.conversation : conversation);
     });
     return data.conversation;
   }, []);
@@ -249,6 +344,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                         ...c,
                         lastMessage: { parts: msg.parts, senderId: msg.senderId, createdAt: msg.createdAt },
                         lastMessageAt: msg.createdAt,
+                        unreadCount: msg.senderId === user?.id ? c.unreadCount : c.unreadCount + 1,
                       }
                     : c
                 );
@@ -281,7 +377,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         retryTimeoutRef.current = setTimeout(() => { connectSSERef.current(); }, delay);
       }
     }
-  }, []);
+  }, [user?.id]);
   useEffect(() => { connectSSERef.current = connectSSE; }, [connectSSE]);
 
   // Connect SSE and load conversations when authenticated
@@ -302,6 +398,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       setIsConnected(false);
       setConversations([]);
       setMessages(new Map());
+      setSessionHistory(new Map());
       return;
     }
 
@@ -328,11 +425,15 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         conversations,
         negotiations,
         messages,
+        sessionHistory,
         isConnected,
         loadMessages,
+        loadSessionHistory,
+        loadPreviousSessionMessages,
         sendMessage,
         refreshConversations,
         refreshNegotiations,
+        markConversationRead,
         hideConversation,
         getOrCreateDM,
       }}

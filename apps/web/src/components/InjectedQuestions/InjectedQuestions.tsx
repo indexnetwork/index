@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { OptionRow } from '@/components/DecisionQuestions/OptionRow';
+import { toSignalProductLanguage } from '@/lib/product-language';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
 
 const OTHER_VALUE = '__other__';
@@ -8,9 +9,15 @@ interface InjectedQuestionCardProps {
   question: PendingQuestion;
   onAnswer: (questionId: string, body: AnswerBody) => Promise<void>;
   onDismiss: (questionId: string) => Promise<void>;
+  showAskedKicker?: boolean;
 }
 
-function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestionCardProps) {
+function InjectedQuestionCard({
+  question,
+  onAnswer,
+  onDismiss,
+  showAskedKicker = false,
+}: InjectedQuestionCardProps) {
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [otherText, setOtherText] = useState('');
   const [otherSelected, setOtherSelected] = useState(false);
@@ -57,13 +64,18 @@ function InjectedQuestionCard({ question, onAnswer, onDismiss }: InjectedQuestio
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
+      {showAskedKicker && (
+        <p className="mb-2 text-xs uppercase tracking-wider text-gray-500 font-ibm-plex-mono">
+          ASKED JUST NOW
+        </p>
+      )}
       {payload.evidence && (
         <div className="mb-2">
           <span
             data-testid="question-evidence-chip"
             className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
           >
-            {`\u25CE ${payload.evidence}`}
+            {`\u25CE ${toSignalProductLanguage(payload.evidence)}`}
           </span>
         </div>
       )}
@@ -161,6 +173,8 @@ interface InjectedQuestionsProps {
   onDismiss: (questionId: string) => Promise<void>;
   /** Show a typing indicator below the cards (follow-up may be incoming). */
   showTypingIndicator?: boolean;
+  /** Render the intent-workspace-only pending-question kicker. */
+  showAskedKicker?: boolean;
 }
 
 export function InjectedQuestions({
@@ -168,6 +182,7 @@ export function InjectedQuestions({
   onAnswer,
   onDismiss,
   showTypingIndicator,
+  showAskedKicker,
 }: InjectedQuestionsProps) {
   if (questions.length === 0 && !showTypingIndicator) return null;
 
@@ -179,6 +194,7 @@ export function InjectedQuestions({
           question={q}
           onAnswer={onAnswer}
           onDismiss={onDismiss}
+          showAskedKicker={showAskedKicker}
         />
       ))}
       {showTypingIndicator && <TypingDots />}

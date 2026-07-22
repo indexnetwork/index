@@ -2,11 +2,12 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { eq } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
+import { hashApiKey } from '../lib/apikey/credential';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { apikeys, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
-import { recordRequestAuthContext } from '../lib/request-auth-context';
+import { getRequestAuthContext, recordRequestAuthContext } from '../lib/request-auth-context';
 
 const logger = log.server.from('auth.guard');
 
@@ -19,13 +20,6 @@ export interface AuthenticatedUser {
 const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', API_URL)
 );
-
-/** SHA-256 hash a raw API key into the base64url form stored in `apikeys.key`. */
-async function hashApiKey(apiKey: string): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(apiKey));
-  return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
 
 /**
  * Resolve an authenticated user from a Better Auth JWT.
@@ -95,33 +89,43 @@ export const SessionOnlyGuard = async (req: Request): Promise<AuthenticatedUser>
   throw new Error('Access token required');
 };
 
-function parseApiKeyAgentId(metadata: string | null): string | null {
+function parseApiKeyMetadata(metadata: string | null): Record<string, unknown> | null {
   if (!metadata) return null;
   try {
-    const parsed = JSON.parse(metadata) as Record<string, unknown>;
-    return typeof parsed.agentId === 'string' ? parsed.agentId : null;
+    const parsed: unknown = JSON.parse(metadata);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
   } catch {
     return null;
   }
 }
 
+function parseApiKeyAgentId(metadata: string | null): string | null {
+  const parsed = parseApiKeyMetadata(metadata);
+  return typeof parsed?.agentId === 'string' ? parsed.agentId : null;
+}
+
+function isLegacyCliV1Metadata(metadata: string | null): boolean {
+  const parsed = parseApiKeyMetadata(metadata);
+  return parsed?.client === 'cli'
+    && parsed.protocolVersion === 1
+    && parsed.agentId === undefined;
+}
+
 /**
  * True iff the request is authenticated by a genuine Better Auth session JWT
  * (`Authorization: Bearer` header or `?token=`), i.e. a human acting in the
- * product — NOT an agent/API-key principal. Mirrors the JWT gate used by
- * `resolveJwtUser`/`AuthGuard`, so it stays in lockstep with how auth is
- * actually resolved.
+ * product — NOT an agent/API-key principal. Reads the authoritative context
+ * recorded by the successful guard, so a temporary Bearer-carried CLI key is
+ * still API-key provenance rather than being inferred from header shape.
  *
  * Used to prove owner-action provenance for Lens B outcome capture (IND-434):
  * only explicit human session actions may become preference labels; API-key /
  * agent-mediated status mutations must never be recorded as owner decisions.
  */
-export const isSessionAuthenticated = (req: Request): boolean => {
-  const authHeader = req.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) return true;
-  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
-  return Boolean(queryToken);
-};
+export const isSessionAuthenticated = (req: Request): boolean =>
+  getRequestAuthContext(req)?.kind === 'session';
 
 /**
  * Resolve the `metadata.agentId` of the API key on the request, or null if
@@ -149,27 +153,15 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
   return parseApiKeyAgentId(row?.metadata ?? null);
 };
 
-/**
- * AuthGuard: tries JWT first, then falls back to API key (`x-api-key` header).
- * API keys are SHA-256 hashed and looked up in the `apikeys` table, then the
- * owning user is loaded from `users` to build the same AuthenticatedUser shape.
- */
-export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
-  const authHeader = req.headers.get('Authorization');
-  const url = new URL(req.url, 'http://localhost');
-  const queryToken = url.searchParams.get('token');
-
-  if (authHeader?.startsWith('Bearer ') || queryToken) {
-    return resolveJwtUser(req);
-  }
-
-  const apiKey = req.headers.get('x-api-key');
-  if (!apiKey) {
-    throw new Error('Access token or API key required');
-  }
-
+async function resolveApiKeyCredential(
+  req: Request,
+  apiKey: string,
+  options: {
+    metadataAllowed?: (metadata: string | null) => boolean;
+    forceNullAgentId?: boolean;
+  } = {},
+): Promise<AuthenticatedUser> {
   const hashed = await hashApiKey(apiKey);
-
   const [row] = await db
     .select({
       referenceId: apikeys.referenceId,
@@ -182,7 +174,7 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
     .where(eq(apikeys.key, hashed))
     .limit(1);
 
-  // Log a prefix of the stored SHA-256 hash, never raw x-api-key material.
+  // Log a prefix of the stored SHA-256 hash, never raw credential material.
   const keyHashPrefix = hashed.slice(0, 8);
   const ua = req.headers.get('user-agent') ?? 'unknown';
 
@@ -192,6 +184,10 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
   }
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
     logger.warn('API key rejected', { reason: 'expired', keyHashPrefix, ua });
+    throw new Error('Invalid API key');
+  }
+  if (options.metadataAllowed && !options.metadataAllowed(row.metadata)) {
+    logger.warn('API key rejected', { reason: 'incompatible_bearer_metadata', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
 
@@ -220,7 +216,7 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
 
   recordRequestAuthContext(req, {
     kind: 'api_key',
-    agentId: parseApiKeyAgentId(row.metadata),
+    agentId: options.forceNullAgentId ? null : parseApiKeyAgentId(row.metadata),
   });
 
   return {
@@ -228,4 +224,40 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
     email: user.email ?? null,
     name: user.name,
   };
+}
+
+/**
+ * AuthGuard: verifies genuine JWTs first, then accepts normal `x-api-key`
+ * credentials. TEMPORARY: a failed Bearer JWT may fall back only to a
+ * metadata-tagged CLI protocol-v1 API key so already-released CLIs can recover
+ * via `index login`. Query tokens and all other API-key kinds never fall back.
+ */
+export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
+  const authHeader = req.headers.get('Authorization');
+  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
+
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      return await resolveJwtUser(req);
+    } catch (jwtError) {
+      try {
+        return await resolveApiKeyCredential(req, authHeader.slice(7), {
+          metadataAllowed: isLegacyCliV1Metadata,
+          forceNullAgentId: true,
+        });
+      } catch {
+        throw jwtError;
+      }
+    }
+  }
+
+  // Never interpret query-string tokens as API keys.
+  if (queryToken) return resolveJwtUser(req);
+
+  const apiKey = req.headers.get('x-api-key');
+  if (!apiKey) {
+    throw new Error('Access token or API key required');
+  }
+
+  return resolveApiKeyCredential(req, apiKey);
 };

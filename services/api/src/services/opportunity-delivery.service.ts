@@ -20,7 +20,7 @@ import { OpportunityPresenter, canUserSeeOpportunity, classifyOpportunity, gathe
 import type { Cache } from '../adapters/cache.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
-import db from '../lib/drizzle/drizzle';
+import db, { type DrizzleDB } from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 import { conversations } from '../schemas/conversation.schema';
@@ -35,6 +35,8 @@ const TRIGGER_PENDING = 'pending_pickup';
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
+
+export type OpportunityDeliveryDatabase = Pick<DrizzleDB, 'select' | 'execute' | 'insert' | 'update'>;
 
 export interface RenderedCard {
   headline: string;
@@ -83,14 +85,17 @@ export interface AcceptedCandidate {
  * `opportunity_deliveries` ledger. One instance is safe to share across requests.
  */
 export class OpportunityDeliveryService {
+  private presenter: OpportunityPresenter | null;
   private readonly presenterDb: PresenterDatabase;
   private readonly cache: Cache | null;
 
   constructor(
-    private readonly presenter: OpportunityPresenter = new OpportunityPresenter(),
+    presenter?: OpportunityPresenter,
     presenterDb?: PresenterDatabase,
     cache?: Cache,
+    private readonly database: OpportunityDeliveryDatabase = db,
   ) {
+    this.presenter = presenter ?? null;
     this.presenterDb = presenterDb ?? (chatDatabaseAdapter as unknown as PresenterDatabase);
     this.cache = cache ?? null;
   }
@@ -114,7 +119,7 @@ export class OpportunityDeliveryService {
     //  - no committed delivery row (delivered_at IS NOT NULL) exists for this (user, opp, channel, status)
     //  - no live reservation exists (reserved_at within TTL window, delivered_at IS NULL)
     // We limit to 20 and filter with canUserSeeOpportunity in JS to stay consistent with protocol rules.
-    const result = await db.execute(sql`
+    const result = await this.database.execute(sql`
       SELECT o.id, o.actors, o.status, o.interpretation, o.detection
       FROM opportunities o
       WHERE o.status IN ('pending', 'draft')
@@ -176,7 +181,7 @@ export class OpportunityDeliveryService {
     // Insert reservation row. The uniqueIndex is partial (WHERE delivered_at IS NOT NULL),
     // so multiple reservation rows can co-exist — only the first confirmDelivered wins.
     // Record the actual opp status so draft deliveries don't re-deliver after promotion to pending.
-    await db.insert(opportunityDeliveries).values({
+    await this.database.insert(opportunityDeliveries).values({
       opportunityId: chosen.id,
       userId,
       agentId,
@@ -214,7 +219,7 @@ export class OpportunityDeliveryService {
     userId: string,
     reservationToken: string,
   ): Promise<void> {
-    const rows = await db
+    const rows = await this.database
       .update(opportunityDeliveries)
       .set({ deliveredAt: new Date() })
       .where(
@@ -259,7 +264,7 @@ export class OpportunityDeliveryService {
     agentId: string | null;
     trigger: 'ambient' | 'digest' | 'accepted';
   }): Promise<'confirmed' | 'already_delivered'> {
-    const [opp] = await db
+    const [opp] = await this.database
       .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
       .from(opportunities)
       .where(eq(opportunities.id, opportunityId));
@@ -271,7 +276,7 @@ export class OpportunityDeliveryService {
       throw new Error('not_authorized');
     }
 
-    const existing = await db
+    const existing = await this.database
       .select({ id: opportunityDeliveries.id })
       .from(opportunityDeliveries)
       .where(
@@ -288,7 +293,7 @@ export class OpportunityDeliveryService {
     if (existing.length > 0) return 'already_delivered';
 
     try {
-      await db.insert(opportunityDeliveries).values({
+      await this.database.insert(opportunityDeliveries).values({
         opportunityId,
         userId,
         agentId,
@@ -338,7 +343,7 @@ export class OpportunityDeliveryService {
   }): Promise<Array<{ opportunityId: string; deliveredAtStatus: string; deliveredAt: Date }>> {
     if (opportunityIds.length === 0) return [];
 
-    const rows = await db
+    const rows = await this.database
       .select({
         opportunityId: opportunityDeliveries.opportunityId,
         deliveredAtStatus: opportunityDeliveries.deliveredAtStatus,
@@ -375,7 +380,7 @@ export class OpportunityDeliveryService {
    * @returns Result with candidates (rendered cards + feedCategory), totalPending count, ordered oldest-first.
    */
   async fetchPendingCandidates(agentId: string, limit?: number): Promise<PendingCandidatesResult> {
-    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
+    const [agent] = await this.database.select().from(agents).where(eq(agents.id, agentId));
     if (!agent) throw new Error('agent_not_found');
     if (!agent.notifyOnOpportunity) return { opportunities: [], totalPending: 0 };
 
@@ -452,7 +457,7 @@ export class OpportunityDeliveryService {
     if (candidates.length === 0) return [];
 
     const ids = candidates.map((c) => c.id);
-    const deliveryRows = await db.execute(sql`
+    const deliveryRows = await this.database.execute(sql`
       SELECT opportunity_id, delivered_at_status
       FROM opportunity_deliveries
       WHERE opportunity_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
@@ -483,7 +488,7 @@ export class OpportunityDeliveryService {
     const raw = limit !== undefined && Number.isFinite(limit) ? Math.trunc(limit) : 10;
     const effectiveLimit = Math.min(20, Math.max(1, raw));
 
-    const result = await db.execute(sql`
+    const result = await this.database.execute(sql`
       SELECT o.id, o.actors, o.accepted_by
       FROM opportunities o
       WHERE o.status = 'accepted'
@@ -519,7 +524,7 @@ export class OpportunityDeliveryService {
         const accepterUserId = row.accepted_by;
 
         // Fetch accepter name and Telegram handle in a single query
-        const [userData] = await db
+        const [userData] = await this.database
           .select({
             name: users.name,
             telegramHandle: userSocials.value,
@@ -536,7 +541,7 @@ export class OpportunityDeliveryService {
 
         // Resolve conversation URL from existing DM between the two users (read-only)
         const dmPair = [userId, accepterUserId].sort().join(':');
-        const [existingConv] = await db
+        const [existingConv] = await this.database
           .select({ id: conversations.id })
           .from(conversations)
           .where(eq(conversations.dmPair, dmPair))
@@ -575,7 +580,7 @@ export class OpportunityDeliveryService {
     agentId: string,
     since: Date,
   ): Promise<{ ambient: number; digest: number }> {
-    const result = await db.execute(sql`
+    const result = await this.database.execute(sql`
       SELECT trigger, COUNT(*)::int AS count
       FROM opportunity_deliveries
       WHERE agent_id = ${agentId}
@@ -604,9 +609,14 @@ export class OpportunityDeliveryService {
    * @throws Error when the agent does not exist.
    */
   private async resolveAgentOwner(agentId: string): Promise<string> {
-    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
+    const [agent] = await this.database.select().from(agents).where(eq(agents.id, agentId));
     if (!agent) throw new Error('agent_not_found');
     return agent.ownerId;
+  }
+
+  private getPresenter(): OpportunityPresenter {
+    this.presenter ??= new OpportunityPresenter();
+    return this.presenter;
   }
 
   /**
@@ -620,7 +630,7 @@ export class OpportunityDeliveryService {
     opportunityId: string,
     userId: string,
   ): Promise<RenderedCard> {
-    const [opp] = await db
+    const [opp] = await this.database
       .select()
       .from(opportunities)
       .where(eq(opportunities.id, opportunityId));
@@ -640,7 +650,7 @@ export class OpportunityDeliveryService {
 
         const cards = await getOrCreateDeliveryCardBatch(
           this.cache,
-          this.presenter,
+          this.getPresenter(),
           this.presenterDb,
           [oppWithContext],
           userId,
@@ -672,7 +682,7 @@ export class OpportunityDeliveryService {
       );
       presenterInput.opportunityStatus = 'pending';
 
-      const presented = await this.presenter.presentHomeCard(presenterInput);
+      const presented = await this.getPresenter().presentHomeCard(presenterInput);
       return {
         headline: presented.headline,
         personalizedSummary: presented.personalizedSummary,

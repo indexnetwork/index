@@ -190,8 +190,12 @@ bun install                                # Install dependencies for all worksp
 bun run dev                                # Interactive: select root or a worktree to run dev
 bun run worktree:list                       # List worktrees and their setup status
 bun run worktree:setup <name>               # Install node_modules & symlink .env files into a worktree
+herdr worktree open --path <path> --label <name> --focus --json # Open/focus the visible worktree workspace
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
+bun run skills:validate                      # Validate every project-local Pi skill
+bun run test:scripts                         # Run focused deterministic script tests
+bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
 
 ### Deployment Config
@@ -306,7 +310,7 @@ Intent creation is synchronous; complex processing (indexing, generation) is asy
 
 ### Frame-Drift Monitoring
 
-IND-430 adds disabled-by-default, measurement-only daily monitoring through `FrameDriftQueue` → `FrameDriftMonitoringService` → `FrameDriftDatabaseAdapter`. A unique `frame_drift_observation_runs` header claims the whole bucket before any measurement read; in the same repeatable-read transaction, its rows immutably record privacy-thresholded, user-balanced capture-time premise/intent/user-context centroids and a bounded **non-causal** intent-assignment-pair normalized opportunity-yield proxy. `minUsers` applies both to centroid contributors and to each yield-pair side. `[bucketStart,bucketEnd)` is the closed opportunity window; centroids and denominator are observed at `capturedAt`, not reconstructed as of bucket end, and historical qualifying aggregates are not recomputed after later user deletion. The source-vector model field is explicitly `configuredEmbeddingModel`/`configured_embedding_model`: it records capture configuration, not source provenance. It has no API/UI and must never mutate embeddings, prompts, vocabulary, assignments, opportunities, or networks. BullMQ's once-daily UTC scheduler is omitted from Bull Board; enabled registration and disabled removal retry automatically, and disabled startup creates no worker. See `docs/design/frame-drift-monitoring.md` for privacy, attribution, stable cohort, logging, and limitations.
+IND-430 adds disabled-by-default, measurement-only daily monitoring through `FrameDriftQueue` → `FrameDriftMonitoringService` → `FrameDriftDatabaseAdapter`. A unique `frame_drift_observation_runs` header claims the whole bucket before any measurement read; in the same repeatable-read transaction, its rows immutably record privacy-thresholded, user-balanced capture-time premise/intent/user-context centroids and a bounded **non-causal** intent-assignment-pair normalized opportunity-yield proxy. `minUsers` applies both to centroid contributors and to each yield-pair side. `[bucketStart,bucketEnd)` is the closed opportunity window; centroids and denominator are observed at `capturedAt`, not reconstructed as of bucket end, and historical qualifying aggregates are not recomputed after later user deletion. The source-vector model field is explicitly `configuredEmbeddingModel`/`configured_embedding_model`: it records capture configuration, not source provenance. It has no API/UI and must never mutate embeddings, prompts, vocabulary, assignments, opportunities, or networks. BullMQ's once-daily UTC scheduler is omitted from Bull Board; enabled startup reuses a materially matching scheduler without upsert (including overdue `next` values), upserts only missing/changed definitions, and retries lookup/upsert, while disabled removal retries and creates no worker. The separate `frame_drift_execution_attempts` ledger records one privacy-minimized started/terminal row per BullMQ attempt and has no observation-run FK or role in the atomic measurement transaction. Tracking is awaited before measurement and failures retry the job; absent rows remain unobserved/unknown rather than proof that BullMQ never enqueued. See `docs/design/frame-drift-monitoring.md` for privacy, attribution, stable cohort, scheduling, attempt semantics, logging, and limitations.
 
 ### Pool-Aware Intent Questions
 
@@ -328,9 +332,11 @@ Events in `src/events/`: `IntentEvents.onCreated/onPaused/onResumed/onArchived`;
 
 ### Agent Registry
 
+**Main-web Signal Agent.** `WEB_SIGNAL_AGENT_ENABLED` is a strict, default-off cutover for new session-authenticated home/ordinary web chats. Flag-on creation explicitly persists `conversations.persona='signal'`; follow-ups inherit that stored persona, while request mismatches and unknown stored personas fail closed. Legacy orchestrator web sessions remain readable but are server-side read-only and the UI starts a separate Signal chat rather than rewriting history. Authentication provenance, not a caller-controlled route/surface value, classifies session-authenticated compatibility stream/message/resolver calls as web; API-key callers keep compatibility orchestrator behavior. The sole session-only onboarding exception authoritatively requires an incomplete `users.onboarding` record and forces orchestrator, so completed users cannot use it as a bypass. Compatibility histories are orchestrator-only, while the session-only web history returns legacy orchestrator plus Signal sessions. The Signal persona reuses the persona-neutral `ChatGraphFactory` runtime with a positive allowlist limited to signals/intents, assignment to existing memberships, profile context/premises, read-only network/membership context, pasted-URL scraping, and chat clarification. Signal wrappers live-recheck membership and clamp focused reads; confirmed network assignment validates and locks current membership in the same transaction as intent/assignment creation. It has no opportunity/discovery-run, negotiation, contact/import, agent/network administration, or membership-mutation tools, and disables the discovery-coupled create-intent callback while retaining proposal hallucination recovery. Browser-based `index login` mints a 90-day CLI API credential and the CLI sends it with `x-api-key`, preserving the non-web orchestrator surface without making generic session JWTs a bypass. API-key, Telegram, MCP, CLI, direct-tool, and default orchestrator behavior is otherwise unchanged.
+
 All agents are first-class database entities backed by `agents`, `agent_transports`, and `agent_permissions`. System agents (`Index Chat Orchestrator`, `Index Negotiator`) are seeded with well-known UUIDs and receive default permissions during onboarding. MCP auth resolves to `userId + agentId` pairs when API keys include `metadata.agentId`. API-key principal resolution is centralized in `src/lib/apikey/principal.ts` (`resolveApiKeyUserId`), shared by the MCP auth resolver (`mcp.controller.ts`) and `AuthGuard` so the same key cannot resolve to different users across codepaths: it prefers a verified session, then `userId`, then `referenceId`, and rejects (fails closed) any key whose two principal columns are both set but disagree. `AuthGuard` accepts JWT or API key everywhere except **session-only endpoints** (`SessionOnlyGuard` in `auth.guard.ts`): `DELETE /auth/account` and the `/agents` management writes (create/update/delete agent, tokens, permissions, transports) reject API keys with 403 (`SessionRequiredError`), so a leaked agent key cannot delete the account or mint successor credentials that survive rotation; the agent-poller endpoints (negotiations pickup/respond, test messages, opportunity pickup/delivery) intentionally stay API-key reachable. Telegram-surfaced MCP requests additionally verify that the request's `x-index-telegram-username`/`-handle` matches the authenticated user's stored telegram handle and isn't owned by another user (`findTelegramHandleOwners` normalizes stored `@h` / `t.me` URL variants to the bare handle), rejecting on mismatch. Personal agents connect by polling `/agents/:id/negotiations/pickup` with an API key; each poll bumps `agents.last_seen_at`. The dispatcher consults that heartbeat: if no personal agent is fresh (seen within 90 s), the system negotiator runs inline; otherwise the turn is parked in `tasks.state='waiting_for_agent'` with a bounded park-window budget (`AMBIENT_PARK_WINDOW_MS`, 5 min by default) that carries over from the `waiting_for_agent` timer to the `claimed` timer rather than stacking.
 
-**Network-scoped agents.** Agents can be bound to a single network via `agent_permissions.scope='network', scopeId=<networkId>`. The `agent-scope.guard.ts` resolves a request's agent scope (null for global agents, the bound `scopeId` otherwise) and `assertAgentNetworkScope(req, networkId)` is wired into network/intent/opportunity controllers — write paths assert, list paths filter via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`. The MCP layer promotes `networkScopeId` into the canonical `{ scopeType: 'network', scopeId }` envelope; tools derive concrete allowed networks from that envelope plus memberships, and the request-scoped `systemDb` is built from the same derived set. **Discovery honors the scope too:** the opportunity tool derives focused discovery networks from the scope envelope (focused network only, not the personal-index write reach) before invoking the graph, so `discover_opportunities` stays within the bound network. Ambient discovery threads the bound network through the intent HyDE handler into the from-intent queue (`networkIds: [networkScopeId]`), so background matching never reaches networks outside the agent's scope. Every trigger-intent job recomputes its authoritative search set as `intent_networks assignments ∩ active owner memberships ∩ optional explicit caller/agent scope`; empty intersections fail closed and all surviving assigned networks are forwarded. Scoped intent/premise/context searches require an active candidate membership on the exact returned network (permission-agnostic so personal-network contacts remain valid), and the graph rechecks both participants before evaluation, then uses transaction-held active-membership plus active-owned-intent assignment locks for final creation/reactivation so member removal, pause/archive, or unassignment cannot race persistence. Intent Radar also requires the viewer-owned intent's current assigned/member scope and active participant anchors. **Opportunity reads are gated too:** whenever a network is specified — either a scoped key's clamped `networkId` or a user explicitly filtering to a community — `getOpportunitiesForUser(userId, { networkId })` returns an opportunity only when *every* participant (distinct actor user) is anchored on that network, not just the requesting user. Otherwise a cross-network opportunity leaked the out-of-network counterpart's user/profile/intent through the card. An unscoped read (no `networkId`) is unaffected — nothing is filtered when neither the key nor the request specifies a network. Event/community metadata is never evidence of attendance, membership, residence, acquaintance, or shared presence: evaluator/presenter prompts prohibit those inferences, evaluator output is rejected deterministically when it makes them, user-facing fallbacks and raw list reasoning strip them, and presentation caches use versioned keys so unsafe legacy copy is not served. Used by experiment-network CSV import (`networkInvitationService.invite`): each imported user receives a network-scoped agent + API key by email — possession of the inbox verifies receipt of that scoped credential, not unrestricted index.network web access; no `users.experimentNetworkId` column is needed.
+**Network-scoped agents.** Agents can be bound to a single network via `agent_permissions.scope='network', scopeId=<networkId>`. The `agent-scope.guard.ts` resolves a request's agent scope (null for global agents, the bound `scopeId` otherwise) and `assertAgentNetworkScope(req, networkId)` is wired into network/intent/opportunity controllers — write paths assert, list paths filter via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`. The MCP layer promotes `networkScopeId` into the canonical `{ scopeType: 'network', scopeId }` envelope; tools derive concrete allowed networks from that envelope plus memberships, and the request-scoped `systemDb` is built from the same derived set. **Discovery honors the scope too:** the opportunity tool derives focused discovery networks from the scope envelope (focused network only, not the personal-index write reach) before invoking the graph, so `discover_opportunities` stays within the bound network. Ambient discovery threads the bound network through the intent HyDE handler into the from-intent queue (`networkIds: [networkScopeId]`), so background matching never reaches networks outside the agent's scope. Every trigger-intent job recomputes its authoritative search set as `intent_networks assignments ∩ active owner memberships ∩ optional explicit caller/agent scope`; empty intersections fail closed and all surviving assigned networks are forwarded. Scoped intent/premise/context searches require an active candidate membership on the exact returned network (permission-agnostic so personal-network contacts remain valid), and the graph rechecks both participants before evaluation, then uses transaction-held active-membership plus active-owned-intent assignment locks for final creation/reactivation so member removal, pause/archive, or unassignment cannot race persistence. Owned-intent persistence is also trigger-aware: 30-day/lifecycle reuse and enrichment are same-trigger-only (`detection.triggeredBy`, with owner actor-intent fallback), while a normalized participant-pair + trigger advisory lock performs the final duplicate recheck and a shared pair-global negotiation claim prevents concurrent active tasks across different trigger rows. That claim verifies the exact persisted pre-negotiation status plus `updatedAt` under the opportunity and pair locks, then atomically promotes only the winner to `negotiating` while inserting its task; stale, losing, and rolled-back claims retain their prior opportunity state. Create-time discovery is enqueued only by the post-assignment HyDE worker, never directly from `IntentEvents.onCreated`. Intent Radar also requires the viewer-owned intent's current assigned/member scope and active participant anchors. **Opportunity reads are gated too:** whenever a network is specified — either a scoped key's clamped `networkId` or a user explicitly filtering to a community — `getOpportunitiesForUser(userId, { networkId })` returns an opportunity only when *every* participant (distinct actor user) is anchored on that network, not just the requesting user. Otherwise a cross-network opportunity leaked the out-of-network counterpart's user/profile/intent through the card. An unscoped read (no `networkId`) is unaffected — nothing is filtered when neither the key nor the request specifies a network. Event/community metadata is never evidence of attendance, membership, residence, acquaintance, or shared presence: evaluator/presenter prompts prohibit those inferences, evaluator output is rejected deterministically when it makes them, user-facing fallbacks and raw list reasoning strip them, and presentation caches use versioned keys so unsafe legacy copy is not served. Used by experiment-network CSV import (`networkInvitationService.invite`): each imported user receives a network-scoped agent + API key by email — possession of the inbox verifies receipt of that scoped credential, not unrestricted index.network web access; no `users.experimentNetworkId` column is needed.
 
 ### Trace Event Instrumentation
 
@@ -471,13 +477,41 @@ TSDoc on all classes (summary) and public methods (`@param`, `@returns`, `@throw
 
 ### Worktrees
 
-**Always use worktrees** for features and fixes. Keep `dev` stable. Worktrees live in `.worktrees/` (gitignored). **Folder names use dashes** (e.g. `feat-my-feature`); branches can use slashes.
+**Always use worktrees** for features and fixes. Keep the canonical root on `dev` and
+read-only for source mutations. Worktrees live in `.worktrees/` (gitignored). Branches
+use semantic `<type>/<description>` names and the only valid folder is the dashed form
+`<type>-<description>`; never accept a separate folder name.
+
+Before socket orchestration, follow the Herdr setup in
+`docs/guides/getting-started.md`; its server and Pi integration must be available. From
+the canonical root, create or reuse the exact Git worktree after checking
+`git worktree list --porcelain`, then always run setup:
 
 ```bash
-git worktree add .worktrees/feat-foo dev
-bun run worktree:setup feat-foo            # symlink .env files + bun install
-bun run worktree:dev feat-foo              # start all dev servers
+bun run worktree:setup feat-user-authentication
+herdr worktree open \
+  --path "$PWD/.worktrees/feat-user-authentication" \
+  --label feat-user-authentication \
+  --focus \
+  --json
+herdr agent start feat-user-authentication --kind pi --pane <returned-pane-id>
 ```
+
+Herdr is the default visible execution plane. Record the workspace and pane IDs returned
+by `herdr worktree open`; reuse an existing workspace/Pi only when its worktree path,
+branch, and cwd match. The canonical/root Pi remains the coordinator, sends one complete
+handoff, and polls with `herdr agent get/read/wait` directly—never through a hidden
+implementation subagent, background watcher process, or watcher pane. It answers routine
+implementation questions with the safe/recommended option and escalates only genuine
+product/architecture ambiguity, destructive actions, external infrastructure mutation,
+credentials/secrets, or merge approval. A structured question/editor draft must be
+answered through targeted `herdr pane read/send-text/send-keys`, not a new agent prompt.
+Never infer merge approval.
+
+Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
+workspaces, and Pi sessions, with one writer per worktree. Reuse the same visible session
+for review and finish-pr fix loops. The legacy `bun run worktree:session` helper remains
+a fallback when Herdr is unavailable, not the default workflow.
 
 ### Conventional Commits
 
@@ -510,11 +544,15 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 
 ## Superpowers Workflow
 
-### Implementation via Subagents in Worktrees
+### Implementation in Visible Herdr Worktrees
 
-When executing implementation plans, **always use subagent-driven development with worktree isolation** (`isolation: "worktree"`). This keeps `dev` stable and allows parallel independent tasks. Combine the `superpowers:subagent-driven-development` and `superpowers:using-git-worktrees` skills.
+Execute implementation and fix plans in visible Herdr-managed Pi sessions for isolated
+Git worktrees. The canonical/root Pi coordinates, remains active, polls Herdr directly,
+and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
+parallel work is genuinely useful, use separate worktrees/workspaces with one writer per
+checkout. Follow the `create-worktree` and `run-worktree-session` skills.
 
-### Receiving Code Review (`/receiving-code-review`)
+### Receiving Code Review (`/address-code-review`)
 
 Code reviews on this project are done by **GitHub Copilot**, triggered manually by the user (via the Reviewers menu on the PR, or `gh pr edit PR-NUMBER --add-reviewer @copilot`). Copilot does not auto-review on push and replies do not trigger it — only an explicit re-review request does.
 
@@ -551,6 +589,6 @@ gotcha, or a convention — run the `learn-skill` skill to persist it before end
 - It is configurable via `.pi/skills/learn-skill/config.json` (target, protected
   locations, dedup/cross-link features, and rpiv integrations: todo,
   ask-user-question, args, advisor).
-- Use `.pi/skills/pi-skill-authoring` for the mechanics of writing a correct `SKILL.md`.
+- Use `.pi/skills/create-skill` for the mechanics of writing a correct `SKILL.md`.
 - Skip silently when nothing meets the "reusable and non-obvious" bar — never capture
   one-off facts.

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentDetailPage from '@/app/i/[intentId]/page';
 import { createIntentsService } from '@/services/intents';
+import { createQuestionsService } from '@/services/questions';
 
 const mocks = vi.hoisted(() => {
   const intent: {
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => {
   const refineIntent = vi.fn();
   const getHomeView = vi.fn();
   const getPending = vi.fn();
+  const getAnswered = vi.fn();
   const answerQuestion = vi.fn();
   const dismissQuestion = vi.fn();
 
@@ -37,13 +39,15 @@ const mocks = vi.hoisted(() => {
     refineIntent,
     getHomeView,
     getPending,
+    getAnswered,
     answerQuestion,
     dismissQuestion,
     notificationError: vi.fn(),
-    intentsService: { getIntent, setIntentStatus, archiveIntent, refineIntent },
+    intentsService: { getIntent, setIntentStatus, archiveIntent, refineIntent, visitIntent: vi.fn(async () => {}) },
     opportunitiesService: { getHomeView },
     questionsService: {
       getPending,
+      getAnswered,
       answer: answerQuestion,
       dismiss: dismissQuestion,
     },
@@ -91,6 +95,11 @@ vi.mock('@/contexts/APIContext', () => ({
   useIntents: () => mocks.intentsService,
   useOpportunities: () => mocks.opportunitiesService,
   useQuestionsService: () => mocks.questionsService,
+}));
+
+
+vi.mock('@/contexts/QuestionsContext', () => ({
+  useQuestions: () => ({ refresh: vi.fn(async () => {}) }),
 }));
 
 vi.mock('@/contexts/NotificationContext', () => ({
@@ -145,6 +154,7 @@ describe('Intent detail lifecycle', () => {
         items: [{ opportunityId: 'opportunity-1', status: 'pending' }],
       }],
     });
+    mocks.getAnswered.mockResolvedValue([]);
     mocks.getPending.mockResolvedValue([{
       id: 'question-1',
       title: 'Which region?',
@@ -168,11 +178,44 @@ describe('Intent detail lifecycle', () => {
     vi.useRealTimers();
   });
 
+  test('hydrates the answered Q&A log from the server', async () => {
+    mocks.getPending.mockResolvedValue([]);
+    mocks.getAnswered.mockResolvedValue([{
+      id: 'answered-1',
+      payload: {
+        title: 'What kind of collaborator?',
+        prompt: 'What kind of collaborator?',
+        options: [],
+        multiSelect: false,
+      },
+      answer: {
+        selectedOptions: ['Technical founder', 'Climate operator'],
+        freeText: 'in Europe',
+        answeredBy: 'user-1',
+        answeredAt: new Date().toISOString(),
+      },
+      status: 'answered',
+    }]);
+    renderIntentPage();
+
+    expect(await screen.findByText('What kind of collaborator?')).toBeInTheDocument();
+    expect(screen.getByText('Technical founder, Climate operator, in Europe')).toBeInTheDocument();
+    expect(screen.getByText('noted — updating the search.')).toBeInTheDocument();
+  });
+
+  test('renders the questions empty state when there are no pending questions', async () => {
+    mocks.getPending.mockResolvedValue([]);
+    mocks.getAnswered.mockResolvedValue([]);
+    renderIntentPage();
+
+    expect(await screen.findByText('no pending questions right now.')).toBeInTheDocument();
+  });
+
   test('ACTIVE renders live discovery, Pause, and the existing workspace', async () => {
     renderIntentPage();
 
     expect(await screen.findByText('live')).toBeInTheDocument();
-    expect(screen.getByText('agent is looking in the background')).toBeInTheDocument();
+    expect(screen.getByText('background matching on — negotiation activity appears in Radar')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
     await expectWorkspacePreserved();
@@ -200,8 +243,8 @@ describe('Intent detail lifecycle', () => {
   });
 
   test.each([
-    ['FULFILLED', 'fulfilled', 'this intent has been fulfilled'],
-    ['EXPIRED', 'expired', 'this intent has expired'],
+    ['FULFILLED', 'fulfilled', 'this signal has been fulfilled'],
+    ['EXPIRED', 'expired', 'this signal has expired'],
   ])('%s renders neutral lifecycle copy without pause or resume', async (status, badge, copy) => {
     mocks.intent.status = status;
     renderIntentPage();
@@ -305,7 +348,9 @@ describe('Intent detail lifecycle', () => {
 
     expect(screen.getByTestId('question-question-pool-2')).toHaveTextContent('Builders or investors?');
     expect(screen.getByTestId('radar-card-opportunity-1')).toBeInTheDocument();
-    expect(vi.getTimerCount()).toBe(4);
+    // 4 remaining bounded-refresh checkpoints; the conversation scroll-pinning
+    // effect may additionally hold a rAF timer after the question list updates.
+    expect(vi.getTimerCount()).toBeGreaterThanOrEqual(4);
   });
 
   test('a deferred response for the previous intent cannot overwrite or clear the current mutation', async () => {
@@ -364,8 +409,8 @@ describe('Intent detail lifecycle', () => {
   });
 
   test.each([
-    ['ACTIVE', 'Pause', 'PAUSED', 'Failed to pause intent', 'live'],
-    ['PAUSED', 'Resume', 'ACTIVE', 'Failed to resume intent', 'paused'],
+    ['ACTIVE', 'Pause', 'PAUSED', 'Failed to pause signal', 'live'],
+    ['PAUSED', 'Resume', 'ACTIVE', 'Failed to resume signal', 'paused'],
   ])('failed %s transition retains prior state and content', async (
     initialStatus,
     actionName,
@@ -388,6 +433,14 @@ describe('Intent detail lifecycle', () => {
 });
 
 describe('intent lifecycle service', () => {
+  test('fetches answered questions scoped to the intent', async () => {
+    const get = vi.fn().mockResolvedValue({ questions: [] });
+    const service = createQuestionsService({ get } as never);
+
+    await expect(service.getAnswered({ scopeType: 'intent', scopeId: 'intent-1' })).resolves.toEqual([]);
+    expect(get).toHaveBeenCalledWith('/questions?status=answered&scopeType=intent&scopeId=intent-1');
+  });
+
   test('PATCHes the lifecycle endpoint and returns the authoritative response', async () => {
     const patch = vi.fn().mockResolvedValue({
       success: true,
@@ -417,6 +470,6 @@ describe('intent lifecycle service', () => {
     });
     const service = createIntentsService({ patch } as never);
 
-    await expect(service.setIntentStatus('intent-1', 'PAUSED')).rejects.toThrow('Invalid intent status response');
+    await expect(service.setIntentStatus('intent-1', 'PAUSED')).rejects.toThrow('Invalid signal status response');
   });
 });

@@ -51,6 +51,8 @@ export type EnrichOrCreateOptions = {
    * Pass an empty array `[]` to consider all statuses.
    */
   excludeStatuses?: OpportunityStatus[];
+  /** Restrict merge/expiration candidates to the authoritative owned intent. */
+  ownedIntentScope?: { triggerIntentId: string; ownerUserId: string };
 };
 
 /**
@@ -104,6 +106,15 @@ function getNonIntroducerUserIds(data: CreateOpportunityData): Id<'users'>[] {
 /**
  * Extract intent IDs from actors.
  */
+function belongsToOwnedIntent(
+  opportunity: Opportunity,
+  scope: { triggerIntentId: string; ownerUserId: string },
+): boolean {
+  if (opportunity.detection.triggeredBy === scope.triggerIntentId) return true;
+  return opportunity.actors.some((actor) =>
+    actor.userId === scope.ownerUserId && actor.intent === scope.triggerIntentId);
+}
+
 function getIntentIdsFromActors(actors: OpportunityActor[]): Set<string> {
   const ids = new Set<string>();
   for (const a of actors) {
@@ -225,7 +236,18 @@ export async function enrichOrCreate(
   }
 
   const excludeStatuses = options?.excludeStatuses ?? DEFAULT_ENRICHER_EXCLUDE_STATUSES;
-  const overlapping = await database.findOpportunitiesByActors(actorUserIds, { excludeStatuses });
+  const pairOverlaps = await database.findOpportunitiesByActors(actorUserIds, { excludeStatuses });
+  const ownedIntentScope = options?.ownedIntentScope;
+  const overlapping = ownedIntentScope
+    ? pairOverlaps.filter((opportunity) => belongsToOwnedIntent(opportunity, ownedIntentScope))
+    : pairOverlaps;
+  if (ownedIntentScope && pairOverlaps.length > overlapping.length) {
+    logger.info('Excluded cross-trigger overlaps from owned-intent enrichment', {
+      triggerIntentId: ownedIntentScope.triggerIntentId,
+      pairOverlapCount: pairOverlaps.length,
+      sameTriggerOverlapCount: overlapping.length,
+    });
+  }
   if (overlapping.length === 0) {
     return { enriched: false, data: newData };
   }

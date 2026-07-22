@@ -16,7 +16,7 @@
  * Surfaces choose *policy* (send a sanitized fallback vs skip entirely) via
  * `allowFallback`; they no longer choose (or forget) sanitization steps.
  *
- * See `.pi/skills/opportunity-presentation-safety/SKILL.md` for the review
+ * See `.pi/skills/review-opportunity-presentation/SKILL.md` for the review
  * checklist this module exists to satisfy.
  */
 

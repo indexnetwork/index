@@ -20,6 +20,17 @@ export interface EnrichmentRunJobData {
   runId: string;
 }
 
+interface EnrichmentRunQueueDeps {
+  queue?: ReturnType<typeof QueueFactory.createQueue<EnrichmentRunJobData>>;
+  runs?: typeof enrichmentRunAdapter;
+  executeRun?: (run: EnrichmentRunRecord) => Promise<unknown>;
+  createWorker?: (
+    name: string,
+    processor: (job: Job<EnrichmentRunJobData>) => Promise<void>,
+  ) => ReturnType<typeof QueueFactory.createWorker<EnrichmentRunJobData>>;
+  captureException?: typeof captureAppException;
+}
+
 function assertEnrichmentRunOutputFits(toolName: string, raw: string): void {
   const policy = getToolTimeoutPolicy(toolName);
   const outputBytes = new TextEncoder().encode(raw).byteLength;
@@ -33,11 +44,24 @@ function assertEnrichmentRunOutputFits(toolName: string, raw: string): void {
 export class EnrichmentRunQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<EnrichmentRunJobData>(QUEUE_NAME);
+  readonly queue: ReturnType<typeof QueueFactory.createQueue<EnrichmentRunJobData>>;
 
   private readonly logger = log.job.from('EnrichmentRunJob');
   private readonly queueLogger = log.queue.from('EnrichmentRunQueue');
+  private readonly runs: typeof enrichmentRunAdapter;
+  private readonly executeRunOverride?: (run: EnrichmentRunRecord) => Promise<unknown>;
+  private readonly createWorker: NonNullable<EnrichmentRunQueueDeps['createWorker']>;
+  private readonly captureException: typeof captureAppException;
   private worker: ReturnType<typeof QueueFactory.createWorker<EnrichmentRunJobData>> | null = null;
+
+  constructor(deps: EnrichmentRunQueueDeps = {}) {
+    this.queue = deps.queue ?? QueueFactory.createQueue<EnrichmentRunJobData>(QUEUE_NAME);
+    this.runs = deps.runs ?? enrichmentRunAdapter;
+    this.executeRunOverride = deps.executeRun;
+    this.createWorker = deps.createWorker
+      ?? ((name, processor) => QueueFactory.createWorker(name, processor));
+    this.captureException = deps.captureException ?? captureAppException;
+  }
 
   async enqueue(runId: string): Promise<{ jobId?: string | number }> {
     const job = await this.queue.add('run_profile_tool', { runId }, {
@@ -77,7 +101,7 @@ export class EnrichmentRunQueue {
       this.queueLogger.info('Processing job', { jobId: job.id });
       await this.processJob(job.name, job.data);
     };
-    this.worker = QueueFactory.createWorker<EnrichmentRunJobData>(QUEUE_NAME, processor);
+    this.worker = this.createWorker(QUEUE_NAME, processor);
   }
 
   async close(): Promise<void> {
@@ -89,16 +113,16 @@ export class EnrichmentRunQueue {
   }
 
   private async handleRun(runId: string): Promise<void> {
-    const run = await enrichmentRunAdapter.markRunning(runId);
+    const run = await this.runs.markRunning(runId);
     if (!run) return;
-    if (await enrichmentRunAdapter.isCancelRequested(runId)) {
-      await enrichmentRunAdapter.markCancelled(runId, 'cancelled before start');
+    if (await this.runs.isCancelRequested(runId)) {
+      await this.runs.markCancelled(runId, 'cancelled before start');
       return;
     }
 
     const abortController = new AbortController();
     const cancelPoll = setInterval(() => {
-      enrichmentRunAdapter.isCancelRequested(runId)
+      this.runs.isCancelRequested(runId)
         .then((cancelled) => {
           if (cancelled && !abortController.signal.aborted) {
             abortController.abort(new Error('Profile run cancelled'));
@@ -111,23 +135,26 @@ export class EnrichmentRunQueue {
     }, 1000);
 
     try {
-      await enrichmentRunAdapter.updateProgress(runId, { stage: 'running', operation: run.operation });
-      const result = await requestContext.run({ abortSignal: abortController.signal }, () => this.executeRun(run));
-      if (abortController.signal.aborted || await enrichmentRunAdapter.isCancelRequested(runId)) {
-        await enrichmentRunAdapter.markCancelled(runId, 'cancelled');
+      await this.runs.updateProgress(runId, { stage: 'running', operation: run.operation });
+      const result = await requestContext.run(
+        { abortSignal: abortController.signal },
+        () => this.executeRunOverride ? this.executeRunOverride(run) : this.executeRun(run),
+      );
+      if (abortController.signal.aborted || await this.runs.isCancelRequested(runId)) {
+        await this.runs.markCancelled(runId, 'cancelled');
         return;
       }
-      await enrichmentRunAdapter.markSucceeded(runId, result);
+      await this.runs.markSucceeded(runId, result);
       this.logger.info('Completed', { runId, userId: run.userId, operation: run.operation });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (abortController.signal.aborted || await enrichmentRunAdapter.isCancelRequested(runId)) {
-        await enrichmentRunAdapter.markCancelled(runId, message);
+      if (abortController.signal.aborted || await this.runs.isCancelRequested(runId)) {
+        await this.runs.markCancelled(runId, message);
         return;
       }
-      await enrichmentRunAdapter.markFailed(runId, message);
+      await this.runs.markFailed(runId, message);
       this.logger.error('Failed', { runId, userId: run.userId, operation: run.operation, error: message });
-      captureAppException(err, {
+      this.captureException(err, {
         subsystem: 'protocol',
         operation: 'enrichment-run.queue',
         tags: {

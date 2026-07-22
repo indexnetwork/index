@@ -1,9 +1,10 @@
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, afterEach as bunAfterEach, beforeEach as bunBeforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 
-import { sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import db from '../src/lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../src/lib/testing/database-test-budget';
 import { agents, opportunityDeliveries, opportunities, users } from '../src/schemas/database.schema';
 import { OpportunityDeliveryService } from '../src/services/opportunity-delivery.service';
 import type { RenderedCard } from '../src/services/opportunity-delivery.service';
@@ -47,11 +48,16 @@ const stubPresenterDb = {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+const fixtureUserIds = new Set<string>();
+const fixtureAgentIds = new Set<string>();
+const fixtureOpportunityIds = new Set<string>();
+
 async function seedUser(): Promise<string> {
   const [user] = await db
     .insert(users)
     .values({ email: `test-${randomUUID()}@example.com`, name: 'Test User' })
     .returning({ id: users.id });
+  fixtureUserIds.add(user.id);
   return user.id;
 }
 
@@ -60,6 +66,7 @@ async function seedAgent(userId: string): Promise<string> {
     .insert(agents)
     .values({ ownerId: userId, name: 'test-agent', type: 'external' })
     .returning({ id: agents.id });
+  fixtureAgentIds.add(agent.id);
   return agent.id;
 }
 
@@ -75,12 +82,34 @@ async function seedPendingOpportunity(userId: string): Promise<string> {
       status: 'pending',
     })
     .returning({ id: opportunities.id });
+  fixtureOpportunityIds.add(opp.id);
   return opp.id;
+}
+
+async function cleanupFixtures(): Promise<void> {
+  const opportunityIds = [...fixtureOpportunityIds];
+  const agentIds = [...fixtureAgentIds];
+  const userIds = [...fixtureUserIds];
+
+  if (opportunityIds.length > 0) {
+    await db.delete(opportunityDeliveries).where(inArray(opportunityDeliveries.opportunityId, opportunityIds));
+    await db.delete(opportunities).where(inArray(opportunities.id, opportunityIds));
+  }
+  if (agentIds.length > 0) await db.delete(agents).where(inArray(agents.id, agentIds));
+  if (userIds.length > 0) await db.delete(users).where(inArray(users.id, userIds));
+
+  fixtureOpportunityIds.clear();
+  fixtureAgentIds.clear();
+  fixtureUserIds.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Suite
 // ─────────────────────────────────────────────────────────────────────────────
+
+const beforeEach = withMinimumDatabaseHookBudget(bunBeforeEach, 30_000);
+const afterEach = withMinimumDatabaseHookBudget(bunAfterEach, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('OpportunityDeliveryService', () => {
   const service = new OpportunityDeliveryService(
@@ -92,17 +121,12 @@ describe('OpportunityDeliveryService', () => {
   let agentId: string;
 
   beforeEach(async () => {
-    // Full wipe: order matters (FK constraints)
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
     userId = await seedUser();
     agentId = await seedAgent(userId);
   });
 
-  afterAll(async () => {
-    await db.execute(sql`DELETE FROM opportunity_deliveries`);
-    await db.execute(sql`DELETE FROM opportunities`);
-  });
+  afterEach(cleanupFixtures);
+  afterAll(cleanupFixtures);
 
   // ── 1. Null when no pending opportunities ──────────────────────────────────
 
@@ -171,15 +195,19 @@ describe('OpportunityDeliveryService', () => {
   // ── 5. Expired reservation is re-pickable ─────────────────────────────────
 
   test('expired reservation is re-pickable (after backdating reserved_at by 2 minutes)', async () => {
-    await seedPendingOpportunity(userId);
+    const opportunityId = await seedPendingOpportunity(userId);
 
     // Create a reservation
     await service.pickupPending(agentId);
 
-    // Backdate all open reservations so they appear expired
-    await db.execute(
-      sql`UPDATE opportunity_deliveries SET reserved_at = now() - interval '2 minutes' WHERE delivered_at IS NULL`,
-    );
+    // Backdate only this fixture's open reservation so it appears expired.
+    await db.update(opportunityDeliveries)
+      .set({ reservedAt: sql`now() - interval '2 minutes'` })
+      .where(and(
+        eq(opportunityDeliveries.opportunityId, opportunityId),
+        eq(opportunityDeliveries.userId, userId),
+        isNull(opportunityDeliveries.deliveredAt),
+      ));
 
     // Should be pickable again
     const next = await service.pickupPending(agentId);

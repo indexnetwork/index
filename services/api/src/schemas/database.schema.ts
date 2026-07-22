@@ -18,6 +18,7 @@ export const networkTypeEnum = pgEnum('network_type', ['community', 'event']);
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
+export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
 
 export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
 
@@ -44,8 +45,10 @@ export interface OnboardingProfileSeed {
 
 export interface OnboardingState {
   completedAt?: string;
+  profileConfirmedAt?: string;
+  firstSignalIntentId?: string;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
   privacy?: OnboardingPrivacyState;
@@ -518,6 +521,8 @@ export interface QuestionDetection {
   underspecificationType?: import('@indexnetwork/protocol').UnderspecificationType | null;
   /** ID of the assistant message that triggered this question. */
   messageId?: string;
+  /** Durable conversation-session binding for verified in-chat rendering. */
+  sessionId?: string;
   /**
    * pool_discovery only: mined pool snapshot (assignments + chain alternates).
    * INTERNAL — stripped from every client-facing read (web + MCP).
@@ -600,6 +605,59 @@ export const questions = pgTable('questions', {
 export type QuestionRow = typeof questions.$inferSelect;
 export type NewQuestionRow = typeof questions.$inferInsert;
 
+export interface AgentActionProposalSnapshotRecord {
+  status: string;
+  updatedAt?: string;
+  payload?: string;
+  summary?: string | null;
+  assertionText?: string;
+}
+
+interface AgentActionProposalActionBase {
+  entityId: string;
+  currentState: string;
+  proposedOperation: string;
+  evidence?: string;
+  skipped?: boolean;
+  reason?: string;
+  snapshot?: AgentActionProposalSnapshotRecord;
+  description?: string;
+}
+
+export type AgentActionProposalActionRecord =
+  | (AgentActionProposalActionBase & { type: 'retract_premise' })
+  | (AgentActionProposalActionBase & { type: 'narrow_signal' })
+  | (AgentActionProposalActionBase & { type: 'pause_signal' });
+
+export interface AgentActionProposalResultRecord {
+  type: 'retract_premise' | 'narrow_signal' | 'pause_signal';
+  entityId: string;
+  operation: string;
+  previousState: string;
+  resultingState: string;
+  evidence?: string;
+  outcome: 'applied' | 'alreadyDone' | 'skipped' | 'stale';
+  reason?: string;
+}
+
+export const agentActionProposals = pgTable('agent_action_proposals', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id'),
+  actions: jsonb('actions').$type<AgentActionProposalActionRecord[]>().notNull(),
+  status: agentActionProposalStatusEnum('status').notNull().default('pending'),
+  result: jsonb('result').$type<AgentActionProposalResultRecord[]>(),
+  executionLeaseAt: timestamp('execution_lease_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+}, (table) => ({
+  userIdIdx: index('agent_action_proposals_user_id_idx').on(table.userId),
+  conversationIdx: index('agent_action_proposals_conversation_id_idx').on(table.conversationId),
+}));
+
+export type AgentActionProposalRow = typeof agentActionProposals.$inferSelect;
+export type NewAgentActionProposalRow = typeof agentActionProposals.$inferInsert;
+
 export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   payload: text('payload').notNull(),
@@ -609,6 +667,13 @@ export const intents = pgTable('intents', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
+  /**
+   * When the intent's first background discovery run completed successfully
+   * (any path: web from-intent queue or async MCP discovery-run). Null until
+   * then. Read-side "warming" derivation clears as soon as this is stamped,
+   * instead of waiting out the 24-hour freshness window (IND-482).
+   */
+  firstDiscoverySucceededAt: timestamp('first_discovery_succeeded_at', { withTimezone: true }),
   userId: text('user_id').notNull().references(() => users.id),
   sourceId: text('source_id'),
   sourceType: sourceType('source_type'),
@@ -649,6 +714,79 @@ export const networks = pgTable('networks', {
 }));
 
 export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
+export type FrameDriftExecutionTerminalStatus = 'inserted' | 'duplicate' | 'skipped' | 'failed';
+export type FrameDriftExecutionFailureCategory = 'measurement';
+
+export const frameDriftExecutionAttempts = pgTable('frame_drift_execution_attempts', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  queueName: text('queue_name').notNull(),
+  schedulerId: text('scheduler_id').notNull(),
+  jobId: text('job_id').notNull(),
+  jobName: text('job_name').notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+  bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
+  bucketEnd: timestamp('bucket_end', { withTimezone: true }).notNull(),
+  attempt: integer('attempt').notNull(),
+  maxAttempts: integer('max_attempts').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  terminalStatus: text('terminal_status').$type<FrameDriftExecutionTerminalStatus>(),
+  willRetry: boolean('will_retry'),
+  failureCategory: text('failure_category').$type<FrameDriftExecutionFailureCategory>(),
+}, (table) => ({
+  jobAttemptUnique: uniqueIndex('frame_drift_execution_attempts_job_attempt_uniq')
+    .on(table.jobId, table.attempt),
+  bucketStartIdx: index('frame_drift_execution_attempts_bucket_start_idx').on(table.bucketStart),
+  incompleteIdx: index('frame_drift_execution_attempts_incomplete_idx')
+    .on(table.startedAt)
+    .where(sql`${table.completedAt} IS NULL`),
+  identityCheck: check('frame_drift_execution_attempts_identity_check', sql`
+    length(btrim(${table.queueName})) > 0
+    AND length(btrim(${table.schedulerId})) > 0
+    AND length(btrim(${table.jobId})) > 0
+    AND length(btrim(${table.jobName})) > 0
+  `),
+  dailyBucketCheck: check('frame_drift_execution_attempts_daily_bucket_check', sql`
+    ${table.bucketEnd} = ${table.bucketStart} + interval '1 day'
+    AND date_trunc('day', ${table.bucketStart} AT TIME ZONE 'UTC') = ${table.bucketStart} AT TIME ZONE 'UTC'
+    AND date_trunc('day', ${table.bucketEnd} AT TIME ZONE 'UTC') = ${table.bucketEnd} AT TIME ZONE 'UTC'
+    AND ${table.scheduledAt} >= ${table.bucketEnd}
+    AND ${table.scheduledAt} < ${table.bucketEnd} + interval '1 day'
+  `),
+  attemptBoundsCheck: check('frame_drift_execution_attempts_attempt_bounds_check', sql`
+    ${table.attempt} BETWEEN 1 AND ${table.maxAttempts}
+    AND ${table.maxAttempts} BETWEEN 1 AND 100
+  `),
+  terminalStatusCheck: check('frame_drift_execution_attempts_terminal_status_check', sql`
+    ${table.terminalStatus} IS NULL
+    OR ${table.terminalStatus} IN ('inserted', 'duplicate', 'skipped', 'failed')
+  `),
+  failureCategoryCheck: check('frame_drift_execution_attempts_failure_category_check', sql`
+    ${table.failureCategory} IS NULL OR ${table.failureCategory} = 'measurement'
+  `),
+  terminalStateCheck: check('frame_drift_execution_attempts_terminal_state_check', sql`
+    (
+      ${table.terminalStatus} IS NULL
+      AND ${table.completedAt} IS NULL
+      AND ${table.willRetry} IS NULL
+      AND ${table.failureCategory} IS NULL
+    ) OR (
+      ${table.terminalStatus} IN ('inserted', 'duplicate', 'skipped')
+      AND ${table.completedAt} IS NOT NULL
+      AND ${table.completedAt} >= ${table.startedAt}
+      AND ${table.willRetry} IS NOT NULL
+      AND ${table.willRetry} = false
+      AND ${table.failureCategory} IS NULL
+    ) OR (
+      ${table.terminalStatus} = 'failed'
+      AND ${table.completedAt} IS NOT NULL
+      AND ${table.completedAt} >= ${table.startedAt}
+      AND ${table.willRetry} IS NOT NULL
+      AND ${table.failureCategory} IS NOT NULL
+      AND ${table.failureCategory} = 'measurement'
+    )
+  `),
+}));
 
 export const frameDriftObservationRuns = pgTable('frame_drift_observation_runs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

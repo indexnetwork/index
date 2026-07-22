@@ -7,7 +7,7 @@ description: Use when a PR needs Copilot code review and the full review-fix-rer
 
 Automate the Copilot review cycle on a PR: request review, wait for completion, handle every comment, re-request, repeat until clean.
 
-**REQUIRED:** Apply superpowers:receiving-code-review when evaluating each comment. Do NOT bulk-resolve threads without reading and evaluating them first.
+**REQUIRED:** Apply superpowers:address-code-review when evaluating each comment. Do NOT bulk-resolve threads without reading and evaluating them first.
 
 ## The Loop
 
@@ -19,7 +19,7 @@ digraph copilot_loop {
     "Poll for review completion\n(30s interval, 10 min cap)" [shape=box];
     "Fetch unresolved threads\n(GraphQL)" [shape=box];
     "Unresolved threads?" [shape=diamond];
-    "Evaluate each thread\n(receiving-code-review)" [shape=box];
+    "Evaluate each thread\n(address-code-review)" [shape=box];
     "Fix or reply,\nthen resolve each" [shape=box];
     "Commit and push fixes" [shape=box];
     "Round < 5?" [shape=diamond];
@@ -27,14 +27,14 @@ digraph copilot_loop {
     "Surface remaining to user" [shape=box];
 
     "Check for existing\nunresolved threads" -> "Threads already waiting?";
-    "Threads already waiting?" -> "Evaluate each thread\n(receiving-code-review)" [label="yes"];
+    "Threads already waiting?" -> "Evaluate each thread\n(address-code-review)" [label="yes"];
     "Threads already waiting?" -> "Request Copilot review" [label="no"];
     "Request Copilot review" -> "Poll for review completion\n(30s interval, 10 min cap)";
     "Poll for review completion\n(30s interval, 10 min cap)" -> "Fetch unresolved threads\n(GraphQL)";
     "Fetch unresolved threads\n(GraphQL)" -> "Unresolved threads?";
     "Unresolved threads?" -> "Done — report summary" [label="none"];
-    "Unresolved threads?" -> "Evaluate each thread\n(receiving-code-review)" [label="yes"];
-    "Evaluate each thread\n(receiving-code-review)" -> "Fix or reply,\nthen resolve each";
+    "Unresolved threads?" -> "Evaluate each thread\n(address-code-review)" [label="yes"];
+    "Evaluate each thread\n(address-code-review)" -> "Fix or reply,\nthen resolve each";
     "Fix or reply,\nthen resolve each" -> "Commit and push fixes";
     "Commit and push fixes" -> "Round < 5?";
     "Round < 5?" -> "Request Copilot review" [label="yes"];
@@ -108,7 +108,7 @@ gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "{thre
 
 5. **Fetch unresolved threads**: GraphQL query, filter for Copilot-authored and unresolved. If zero → **DONE.** Report a summary of what was fixed, pushed back on, and how many rounds it took.
 
-6. **Evaluate EACH thread individually**: Read the comment body, check the referenced file and line in the codebase, apply the receiving-code-review pattern (verify before implementing, push back if wrong, fix if correct). This is where the actual work happens.
+6. **Evaluate EACH thread individually**: Read the comment body, check the referenced file and line in the codebase, apply the address-code-review pattern (verify before implementing, push back if wrong, fix if correct). This is where the actual work happens.
 
 7. **For each thread**:
    - **Fix needed**: Implement the fix, `git add` the affected file.
@@ -131,7 +131,7 @@ gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "{thre
 
 | Mistake | Fix |
 |---------|-----|
-| Bulk-resolve without reading | Evaluate each thread per receiving-code-review first |
+| Bulk-resolve without reading | Evaluate each thread per address-code-review first |
 | Wrong bot login | See Bot Identity table — REST and GraphQL differ |
 | Push after re-requesting review | Push fixes BEFORE re-requesting |
 | `gh pr comment` for thread replies | Use `pulls/{pr}/comments/{id}/replies` — `gh pr comment` posts top-level comments |

@@ -29,13 +29,7 @@ export type TraceEmitter = (
         // Carries persisted question ids so the frontend can answer them
         // through the questions REST endpoints while the stream is live.
         type: "user_question";
-        questions: Array<{
-          id: string;
-          title: string;
-          prompt: string;
-          options: Array<{ label: string; description: string }>;
-          multiSelect: boolean;
-        }>;
+        questions: Array<{ id: string }>;
       }
     | {
         // Lightweight keep-alive/status line. Used by long-blocking tools

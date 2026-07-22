@@ -1,14 +1,18 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test } from 'bun:test';
 import { inArray } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 import { generateMasterKey } from '../../lib/experiment/master-key';
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { ExperimentMasterKeyGuard } from '../experiment.guard';
 import { networkService } from '../../services/network.service';
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('ExperimentMasterKeyGuard after rotation', () => {
   let networkId: string;

@@ -2,7 +2,7 @@ import { StateGraph } from "@langchain/langgraph";
 
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { requestContext, type TraceEmitter } from "../shared/observability/request-context.js";
-import type { NegotiationGraphDatabase } from "../shared/interfaces/database.interface.js";
+import type { NegotiationGraphDatabase, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "./negotiation.state.js";
@@ -275,10 +275,15 @@ export class NegotiationGraphFactory {
           isContinuation,
           priorTurnCount: priorTurns.length,
         };
-        const task = state.opportunityId && state.opportunityUpdatedAt
+        if (state.opportunityId && Boolean(state.opportunityStatus) !== Boolean(state.opportunityUpdatedAt)) {
+          throw new Error('Negotiation attempt requires both opportunity status and updatedAt');
+        }
+
+        const task = state.opportunityId && state.opportunityStatus && state.opportunityUpdatedAt
           ? await database.createNegotiationTaskForAttempt({
               conversationId: conversation.id,
               opportunityId: state.opportunityId,
+              expectedStatus: state.opportunityStatus,
               expectedUpdatedAt: state.opportunityUpdatedAt,
               metadata: taskMetadata,
             })
@@ -288,9 +293,9 @@ export class NegotiationGraphFactory {
           throw new Error('Negotiation attempt is stale or already claimed');
         }
 
-        // Attempt-bound discovery already persisted `negotiating` and the atomic
-        // task claim verified that exact version. Legacy/direct invocations with
-        // only an opportunity ID retain the prior best-effort status update.
+        // Attempt-bound discovery atomically promoted the exact persisted state
+        // to `negotiating` while inserting the task. Legacy/direct invocations
+        // with only an opportunity ID retain the prior best-effort status update.
         if (state.opportunityId && !state.opportunityUpdatedAt) {
           await database.updateOpportunityStatus(state.opportunityId, 'negotiating').catch((err) => {
             initLog.error('Failed to set opportunity status to negotiating', { opportunityId: state.opportunityId, error: err });
@@ -863,6 +868,17 @@ export class NegotiationGraphFactory {
         return {};
       }
 
+      // Init can fail closed before an attempt owns a task. Such a rejection is
+      // not a completed negotiation and must not write through an empty task ID,
+      // create an artifact, or advance the opportunity lifecycle.
+      if (!state.taskId) {
+        finalizeLog.info('Skipping outcome persistence because no negotiation task was claimed', {
+          opportunityId: state.opportunityId || undefined,
+          error: state.error || undefined,
+        });
+        return {};
+      }
+
       const history: NegotiationTurn[] = turnsFromMessages(state.messages);
 
       const lastTurn = state.lastTurn;
@@ -1070,7 +1086,8 @@ export interface NegotiationCandidate {
    * (`accept` → 'pending', `reject` → 'rejected', otherwise → 'stalled').
    */
   opportunityId?: string;
-  /** Exact persisted lifecycle version claimed by this negotiation attempt. */
+  /** Exact persisted lifecycle state claimed by this negotiation attempt. */
+  opportunityStatus?: OpportunityStatus;
   opportunityUpdatedAt?: Date;
 }
 
@@ -1167,6 +1184,7 @@ export async function negotiateCandidates(
           },
           ...(candidate.discoveryQuery && { discoveryQuery: candidate.discoveryQuery }),
           ...(candidate.opportunityId && { opportunityId: candidate.opportunityId }),
+          ...(candidate.opportunityStatus && { opportunityStatus: candidate.opportunityStatus }),
           ...(candidate.opportunityUpdatedAt && { opportunityUpdatedAt: candidate.opportunityUpdatedAt }),
           ...(initiatorUserId && { initiatorUserId }),
           ...(maxTurns !== undefined && { maxTurns }),

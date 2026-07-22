@@ -31,6 +31,6 @@ new_convs AS (
   RETURNING id, dm_pair
 )
 INSERT INTO conversation_participants (conversation_id, participant_id, participant_type)
-SELECT id, split_part(dm_pair, ':', 1), 'user' FROM new_convs
+SELECT id, split_part(dm_pair, ':', 1), 'user'::participant_type FROM new_convs
 UNION ALL
-SELECT id, split_part(dm_pair, ':', 2), 'user' FROM new_convs;
+SELECT id, split_part(dm_pair, ':', 2), 'user'::participant_type FROM new_convs;

@@ -1,13 +1,19 @@
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
-import { acquireNegotiationAttemptLock, qualifyingNegotiationAttemptTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
-/**
- * Persona value for the user's negotiator DM session (P4.1 / IND-402).
- * Mirrors `NEGOTIATOR_PERSONA_ID` in @indexnetwork/protocol; kept as a local
- * literal so the data layer does not import the protocol package.
- */
+/** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
+const ORCHESTRATOR_PERSONA = 'orchestrator';
+const SIGNAL_PERSONA = 'signal';
 const NEGOTIATOR_PERSONA = 'negotiator';
+const REPORTER_PERSONA = 'reporter';
+
+/** Persona-specific registry key for Signal Agent's canonical intent scope. */
+const SIGNAL_INTENT_SCOPE_TYPE = 'signal-intent';
+
+function intentRegistryScopeType(persona?: string): string {
+  return persona === SIGNAL_PERSONA ? SIGNAL_INTENT_SCOPE_TYPE : 'intent';
+}
 
 /**
  * Stable-session registry key for the negotiator DM in `chat_session_scopes`.
@@ -30,16 +36,79 @@ const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } a
  */
 const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
 
+const DEFAULT_CHAT_SESSION_GAP_MS = 24 * 60 * 60 * 1000;
+
+function getChatSessionGapMs(): number {
+  const configured = Number.parseInt(process.env.CHAT_SESSION_GAP_MS ?? '', 10);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_CHAT_SESSION_GAP_MS;
+}
+
+interface MatchProvenanceEntry {
+  opportunityId: string;
+  intents: Array<{ userId: string; intentId: string }>;
+  recordedAt: string;
+}
+
+function isMatchProvenanceEntry(value: unknown): value is MatchProvenanceEntry {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.opportunityId === 'string'
+    && typeof entry.recordedAt === 'string'
+    && Array.isArray(entry.intents)
+    && entry.intents.every((intent) => {
+      if (typeof intent !== 'object' || intent === null || Array.isArray(intent)) return false;
+      const record = intent as Record<string, unknown>;
+      return typeof record.userId === 'string' && typeof record.intentId === 'string';
+    });
+}
+
+type PersistedOpportunity = typeof opportunities.$inferSelect;
+type PersistedOpportunityStatus = PersistedOpportunity['status'];
+
+const NEGOTIATION_START_STATUSES = new Set<PersistedOpportunityStatus>([
+  'latent',
+  'draft',
+  'pending',
+  'negotiating',
+]);
+
 export interface CreateNegotiationTaskForAttemptInput {
   conversationId: string;
   opportunityId: string;
+  expectedStatus: PersistedOpportunityStatus;
   expectedUpdatedAt: Date;
   metadata: Record<string, unknown>;
 }
 
+export interface StaleNegotiationTasksInput {
+  submittedOlderThanMs: number;
+  workingOlderThanMs: number;
+  limit?: number;
+}
+
+export interface StaleNegotiationTask {
+  id: string;
+  conversationId: string;
+  state: 'submitted' | 'working';
+  createdAt: Date;
+  updatedAt: Date;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface WatchdogTaskTransitionInput {
+  taskId: string;
+  expectedState: 'submitted' | 'working';
+  expectedUpdatedAt: Date;
+  nextState: 'canceled' | 'failed';
+  metadata: Record<string, unknown>;
+  statusMessage: Record<string, unknown>;
+}
+
 /**
- * Claim an exact negotiating opportunity version and insert its task while the
- * shared attempt lock and opportunity row lock are held.
+ * Claim an exact eligible opportunity state, promote it to negotiating, and
+ * insert its task while the shared attempt, row, and pair locks are held.
  */
 export async function createNegotiationTaskForAttemptInTransaction(
   tx: NegotiationAttemptTransaction,
@@ -52,15 +121,39 @@ export async function createNegotiationTaskForAttemptInTransaction(
   await acquireNegotiationAttemptLock(tx, input.opportunityId);
 
   const [opportunity] = await tx
-    .select({ status: opportunities.status, updatedAt: opportunities.updatedAt })
+    .select({
+      status: opportunities.status,
+      updatedAt: opportunities.updatedAt,
+      actors: opportunities.actors,
+    })
     .from(opportunities)
     .where(eq(opportunities.id, input.opportunityId))
     .for('update');
+  if (!opportunity) return null;
+
+  const actorUserIds = [...new Set(opportunity.actors
+    .filter((actor) => actor.role !== 'introducer')
+    .map((actor) => actor.userId))].sort();
+  if (actorUserIds.length >= 2) {
+    await acquireNegotiationPairLock(tx, actorUserIds);
+  }
+
   if (
-    opportunity?.status !== 'negotiating'
+    opportunity.status !== input.expectedStatus
+    || !NEGOTIATION_START_STATUSES.has(opportunity.status)
     || opportunity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
   ) {
     return null;
+  }
+
+  if (actorUserIds.length >= 2) {
+    const [pairTask] = await tx
+      .select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .innerJoin(opportunities, sql`TRUE`)
+      .where(qualifyingPairNegotiationTaskWhere(actorUserIds, input.opportunityId))
+      .limit(1);
+    if (pairTask) return null;
   }
 
   const [qualifyingTask] = await tx
@@ -69,6 +162,19 @@ export async function createNegotiationTaskForAttemptInTransaction(
     .where(qualifyingNegotiationAttemptTaskWhere(input.opportunityId, input.expectedUpdatedAt))
     .limit(1);
   if (qualifyingTask) return null;
+
+  if (opportunity.status !== 'negotiating') {
+    const [promoted] = await tx
+      .update(opportunities)
+      .set({ status: 'negotiating', updatedAt: new Date() })
+      .where(and(
+        eq(opportunities.id, input.opportunityId),
+        eq(opportunities.status, input.expectedStatus),
+        eq(opportunities.updatedAt, input.expectedUpdatedAt),
+      ))
+      .returning({ id: opportunities.id });
+    if (!promoted) return null;
+  }
 
   const [task] = await tx
     .insert(schema.tasks)
@@ -227,7 +333,7 @@ export class ConversationDatabaseAdapter {
     // Everything below only needs `ids` — run the lookups in one parallel
     // wave instead of sequential round trips; this method is on the chat
     // sidebar's critical path (GET /conversations and /conversations/negotiations).
-    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta] = await Promise.all([
+    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta, unreadRows] = await Promise.all([
       db
         .select()
         .from(schema.conversations)
@@ -281,7 +387,36 @@ export class ConversationDatabaseAdapter {
         .select()
         .from(schema.conversationMetadata)
         .where(inArray(schema.conversationMetadata.conversationId, ids)),
+      // Count only messages from other participants after this viewer's
+      // participant-scoped read cursor. An inner join makes missing viewer
+      // participant rows a defensive zero rather than counting everything.
+      db
+        .select({
+          conversationId: schema.messages.conversationId,
+          unreadCount: count(schema.messages.id),
+        })
+        .from(schema.messages)
+        .innerJoin(
+          schema.conversationParticipants,
+          and(
+            eq(schema.conversationParticipants.conversationId, schema.messages.conversationId),
+            eq(schema.conversationParticipants.participantId, userId),
+          ),
+        )
+        .where(and(
+          inArray(schema.messages.conversationId, ids),
+          ne(schema.messages.senderId, userId),
+          or(
+            isNull(schema.conversationParticipants.lastReadAt),
+            gt(schema.messages.createdAt, schema.conversationParticipants.lastReadAt),
+          ),
+        ))
+        .groupBy(schema.messages.conversationId),
     ]);
+
+    const unreadCountByConv = new Map(
+      unreadRows.map((row) => [row.conversationId, Number(row.unreadCount)]),
+    );
 
     // Resolve user names/avatars for participants
     const userIds = [...new Set(allParticipants.filter(p => p.participantType === 'user').map(p => p.participantId))];
@@ -355,8 +490,59 @@ export class ConversationDatabaseAdapter {
     }
 
     const metaByConv = new Map<string, Record<string, unknown>>();
+    const provenanceIntentIds = new Set<string>();
     for (const m of allMeta) {
-      metaByConv.set(m.conversationId, m.metadata as Record<string, unknown>);
+      const metadata = m.metadata as Record<string, unknown>;
+      const publicMetadata = { ...metadata };
+      delete publicMetadata.matchProvenance;
+      metaByConv.set(m.conversationId, publicMetadata);
+      if (Array.isArray(metadata.matchProvenance)) {
+        for (const rawEntry of metadata.matchProvenance) {
+          if (!isMatchProvenanceEntry(rawEntry)) continue;
+          for (const intent of rawEntry.intents) {
+            if (intent.userId === userId) provenanceIntentIds.add(intent.intentId);
+          }
+        }
+      }
+    }
+
+    // Resolve only the viewer's own intent titles. Filtering by owner in the
+    // query is a second privacy boundary: counterpart intent IDs in metadata
+    // can never become visible through a conversation summary.
+    const viewerIntentRows = provenanceIntentIds.size > 0
+      ? await db
+        .select({ id: schema.intents.id, payload: schema.intents.payload, summary: schema.intents.summary })
+        .from(schema.intents)
+        .where(and(
+          inArray(schema.intents.id, [...provenanceIntentIds]),
+          eq(schema.intents.userId, userId),
+        ))
+      : [];
+    const viewerIntentTitles = new Map(
+      viewerIntentRows.map((intent) => [intent.id, intent.summary?.trim() || intent.payload]),
+    );
+
+    const viaByConv = new Map<string, Array<{ intentId: string; opportunityId: string; title: string }>>();
+    for (const metadataRow of allMeta) {
+      const metadata = metadataRow.metadata as Record<string, unknown>;
+      if (!Array.isArray(metadata.matchProvenance)) continue;
+      const entries = metadata.matchProvenance
+        .filter(isMatchProvenanceEntry)
+        .map((entry, index) => ({ entry, index }))
+        .sort((a, b) => {
+          const recordedAtDelta = new Date(b.entry.recordedAt).getTime() - new Date(a.entry.recordedAt).getTime();
+          return Number.isNaN(recordedAtDelta) || recordedAtDelta === 0
+            ? b.index - a.index
+            : recordedAtDelta;
+        });
+      const via: Array<{ intentId: string; opportunityId: string; title: string }> = [];
+      for (const { entry } of entries) {
+        for (const intent of entry.intents) {
+          const title = intent.userId === userId ? viewerIntentTitles.get(intent.intentId) : undefined;
+          if (title) via.push({ intentId: intent.intentId, opportunityId: entry.opportunityId, title });
+        }
+      }
+      viaByConv.set(metadataRow.conversationId, via);
     }
 
     return convs.map((c) => ({
@@ -364,6 +550,8 @@ export class ConversationDatabaseAdapter {
       participants: participantsByConv.get(c.id) ?? [],
       lastMessage: lastMessageByConv.get(c.id) ?? null,
       metadata: metaByConv.get(c.id) ?? null,
+      via: viaByConv.get(c.id) ?? [],
+      unreadCount: unreadCountByConv.get(c.id) ?? 0,
     }));
   }
 
@@ -456,9 +644,13 @@ export class ConversationDatabaseAdapter {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Creates a message and updates the conversation's lastMessageAt.
-   * @param data - Message payload
-   * @returns The inserted message row
+   * Creates a message, stamps its durable conversation session, and updates the
+   * conversation timestamp. A transaction-scoped advisory lock serializes
+   * writers for a conversation so concurrent writes cannot open duplicate
+   * sessions.
+   *
+   * @param data - Message payload.
+   * @returns The inserted and session-stamped message row.
    */
   async createMessage(data: {
     conversationId: string;
@@ -470,26 +662,19 @@ export class ConversationDatabaseAdapter {
     extensions?: string[];
     referenceTaskIds?: string[];
   }): Promise<Message> {
-    const id = crypto.randomUUID();
+    const msg = await this.insertMessageWithConversationSession({
+      id: crypto.randomUUID(),
+      conversationId: data.conversationId,
+      senderId: data.senderId,
+      role: data.role,
+      parts: data.parts,
+      taskId: data.taskId ?? null,
+      metadata: data.metadata ?? null,
+      extensions: data.extensions ?? null,
+      referenceTaskIds: data.referenceTaskIds ?? null,
+    });
 
-    const [msg] = await db
-      .insert(schema.messages)
-      .values({
-        id,
-        conversationId: data.conversationId,
-        senderId: data.senderId,
-        role: data.role,
-        parts: data.parts,
-        taskId: data.taskId ?? null,
-        metadata: data.metadata ?? null,
-        extensions: data.extensions ?? null,
-        referenceTaskIds: data.referenceTaskIds ?? null,
-      })
-      .returning();
-
-    await this.updateLastMessageAt(data.conversationId);
-
-    // Clear hiddenAt for the sender so conversation reappears in their list
+    // Clear hiddenAt for the sender so conversation reappears in their list.
     await db
       .update(schema.conversationParticipants)
       .set({ hiddenAt: null })
@@ -499,6 +684,105 @@ export class ConversationDatabaseAdapter {
       ));
 
     return msg;
+  }
+
+  /**
+   * Persist a message under the durable session selected for its task or
+   * conversation activity window.
+   *
+   * @param data - Fully normalized message fields.
+   * @returns The newly persisted message.
+   */
+  private async insertMessageWithConversationSession(data: {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    taskId: string | null;
+    metadata: Record<string, unknown> | null;
+    extensions: string[] | null;
+    referenceTaskIds: string[] | null;
+  }): Promise<Message> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`conversation-session:${data.conversationId}`}, 0)
+        )
+      `);
+
+      const now = new Date();
+      let sessionId: string;
+
+      if (data.taskId) {
+        const [existingTaskSession] = await tx
+          .select({ id: schema.conversationSessions.id })
+          .from(schema.conversationSessions)
+          .where(eq(schema.conversationSessions.taskId, data.taskId))
+          .limit(1);
+
+        if (existingTaskSession) {
+          sessionId = existingTaskSession.id;
+          await tx
+            .update(schema.conversationSessions)
+            .set({ lastMessageAt: now })
+            .where(eq(schema.conversationSessions.id, sessionId));
+        } else {
+          sessionId = crypto.randomUUID();
+          await tx.insert(schema.conversationSessions).values({
+            id: sessionId,
+            conversationId: data.conversationId,
+            taskId: data.taskId,
+            startedAt: now,
+            lastMessageAt: now,
+          });
+        }
+      } else {
+        const [currentSession] = await tx
+          .select()
+          .from(schema.conversationSessions)
+          .where(and(
+            eq(schema.conversationSessions.conversationId, data.conversationId),
+            isNull(schema.conversationSessions.taskId),
+          ))
+          .orderBy(
+            desc(schema.conversationSessions.lastMessageAt),
+            desc(schema.conversationSessions.startedAt),
+            desc(schema.conversationSessions.id),
+          )
+          .limit(1);
+
+        const startsNewSession = !currentSession
+          || now.getTime() - currentSession.lastMessageAt.getTime() > getChatSessionGapMs();
+        if (startsNewSession) {
+          sessionId = crypto.randomUUID();
+          await tx.insert(schema.conversationSessions).values({
+            id: sessionId,
+            conversationId: data.conversationId,
+            startedAt: now,
+            lastMessageAt: now,
+          });
+        } else {
+          sessionId = currentSession.id;
+          await tx
+            .update(schema.conversationSessions)
+            .set({ lastMessageAt: now })
+            .where(eq(schema.conversationSessions.id, sessionId));
+        }
+      }
+
+      const [message] = await tx
+        .insert(schema.messages)
+        .values({ ...data, sessionId, createdAt: now })
+        .returning();
+
+      await tx
+        .update(schema.conversations)
+        .set({ lastMessageAt: now, updatedAt: now })
+        .where(eq(schema.conversations.id, data.conversationId));
+
+      return message;
+    });
   }
 
   /**
@@ -520,8 +804,11 @@ export class ConversationDatabaseAdapter {
     messageText: string;
   }): Promise<{ status: 'delivered'; inserted: boolean } | { status: 'suppressed' }> {
     return db.transaction(async (tx) => {
-      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
-      const transactionNow = clock.now;
+      const [clock] = await tx.execute<{ now: Date | string }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now instanceof Date ? clock.now : new Date(clock.now);
+      if (Number.isNaN(transactionNow.getTime())) {
+        throw new Error('Database returned an invalid transaction timestamp');
+      }
       const [question] = await tx
         .select()
         .from(schema.questions)
@@ -637,9 +924,43 @@ export class ConversationDatabaseAdapter {
           throw new Error(`Deterministic pool push message ${input.questionId} conflicts with existing data`);
         }
       } else {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`conversation-session:${input.conversationId}`}, 0)
+          )
+        `);
+        const [currentSession] = await tx
+          .select()
+          .from(schema.conversationSessions)
+          .where(and(
+            eq(schema.conversationSessions.conversationId, input.conversationId),
+            isNull(schema.conversationSessions.taskId),
+          ))
+          .orderBy(
+            desc(schema.conversationSessions.lastMessageAt),
+            desc(schema.conversationSessions.startedAt),
+            desc(schema.conversationSessions.id),
+          )
+          .limit(1);
+        const startsNewSession = !currentSession
+          || transactionNow.getTime() - currentSession.lastMessageAt.getTime() > getChatSessionGapMs();
+        const sessionId = startsNewSession ? crypto.randomUUID() : currentSession.id;
+        if (startsNewSession) {
+          await tx.insert(schema.conversationSessions).values({
+            id: sessionId,
+            conversationId: input.conversationId,
+            startedAt: transactionNow,
+            lastMessageAt: transactionNow,
+          });
+        } else {
+          await tx.update(schema.conversationSessions)
+            .set({ lastMessageAt: transactionNow })
+            .where(eq(schema.conversationSessions.id, sessionId));
+        }
         await tx.insert(schema.messages).values({
           id: input.questionId,
           conversationId: input.conversationId,
+          sessionId,
           senderId: SYSTEM_AGENT_ID,
           role: 'agent',
           parts: expectedParts,
@@ -711,7 +1032,7 @@ export class ConversationDatabaseAdapter {
     if (opts?.before) {
       // Cursor-based: get messages created before the given message
       const [ref] = await db
-        .select({ createdAt: schema.messages.createdAt })
+        .select({ createdAt: schema.messages.createdAt, id: schema.messages.id })
         .from(schema.messages)
         .where(and(
           eq(schema.messages.id, opts.before),
@@ -720,7 +1041,14 @@ export class ConversationDatabaseAdapter {
         .limit(1);
 
       if (ref) {
-        conditions.push(lt(schema.messages.createdAt, ref.createdAt));
+        const beforeCondition = or(
+          lt(schema.messages.createdAt, ref.createdAt),
+          and(
+            eq(schema.messages.createdAt, ref.createdAt),
+            lt(schema.messages.id, ref.id),
+          ),
+        );
+        if (beforeCondition) conditions.push(beforeCondition);
       }
     }
 
@@ -730,7 +1058,7 @@ export class ConversationDatabaseAdapter {
       .select()
       .from(schema.messages)
       .where(and(...conditions))
-      .orderBy(desc(schema.messages.createdAt));
+      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id));
 
     if (opts?.limit) {
       query = query.limit(opts.limit) as typeof query;
@@ -738,6 +1066,105 @@ export class ConversationDatabaseAdapter {
 
     const rows = await query;
     return rows.reverse();
+  }
+
+  /**
+   * Load one durable conversation session and its messages. Calling without a
+   * cursor selects the latest session; a `beforeSessionId` cursor selects the
+   * immediately preceding session. The message read stays participant-scoped.
+   *
+   * @param conversationId - Conversation to read.
+   * @param opts - Visibility, A2A task, and prior-session cursor constraints.
+   * @returns Exactly one session (when present), its messages, and whether an earlier session exists.
+   */
+  async getConversationSessionHistory(
+    conversationId: string,
+    opts?: { beforeSessionId?: string; taskId?: string; userId?: string },
+  ): Promise<{
+    session: ConversationSession | null;
+    messages: Message[];
+    hasPreviousSession: boolean;
+  }> {
+    const conditions = [eq(schema.conversationSessions.conversationId, conversationId)];
+    if (opts?.taskId) {
+      conditions.push(eq(schema.conversationSessions.taskId, opts.taskId));
+    } else if (opts?.beforeSessionId) {
+      const [cursor] = await db
+        .select({
+          id: schema.conversationSessions.id,
+          startedAt: schema.conversationSessions.startedAt,
+        })
+        .from(schema.conversationSessions)
+        .where(and(
+          eq(schema.conversationSessions.id, opts.beforeSessionId),
+          eq(schema.conversationSessions.conversationId, conversationId),
+        ))
+        .limit(1);
+      if (!cursor) {
+        return { session: null, messages: [], hasPreviousSession: false };
+      }
+      const beforeSessionCondition = or(
+        lt(schema.conversationSessions.startedAt, cursor.startedAt),
+        and(
+          eq(schema.conversationSessions.startedAt, cursor.startedAt),
+          lt(schema.conversationSessions.id, cursor.id),
+        ),
+      );
+      if (beforeSessionCondition) conditions.push(beforeSessionCondition);
+    }
+
+    const [session] = await db
+      .select()
+      .from(schema.conversationSessions)
+      .where(and(...conditions))
+      .orderBy(
+        desc(schema.conversationSessions.startedAt),
+        desc(schema.conversationSessions.id),
+      )
+      .limit(1);
+    if (!session) return { session: null, messages: [], hasPreviousSession: false };
+
+    const messageConditions = [eq(schema.messages.sessionId, session.id)];
+    if (opts?.userId) {
+      const [participant] = await db
+        .select({ hiddenAt: schema.conversationParticipants.hiddenAt })
+        .from(schema.conversationParticipants)
+        .where(and(
+          eq(schema.conversationParticipants.conversationId, conversationId),
+          eq(schema.conversationParticipants.participantId, opts.userId),
+        ))
+        .limit(1);
+      if (participant?.hiddenAt) {
+        messageConditions.push(gt(schema.messages.createdAt, participant.hiddenAt));
+      }
+    }
+
+    const messages = await db
+      .select()
+      .from(schema.messages)
+      .where(and(...messageConditions))
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+
+    const previousConditions = [eq(schema.conversationSessions.conversationId, conversationId)];
+    if (opts?.taskId) {
+      previousConditions.push(eq(schema.conversationSessions.taskId, opts.taskId));
+    } else {
+      const previousSessionCondition = or(
+        lt(schema.conversationSessions.startedAt, session.startedAt),
+        and(
+          eq(schema.conversationSessions.startedAt, session.startedAt),
+          lt(schema.conversationSessions.id, session.id),
+        ),
+      );
+      if (previousSessionCondition) previousConditions.push(previousSessionCondition);
+    }
+    const [previous] = await db
+      .select({ id: schema.conversationSessions.id })
+      .from(schema.conversationSessions)
+      .where(and(...previousConditions))
+      .limit(1);
+
+    return { session, messages, hasPreviousSession: Boolean(previous) };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -791,9 +1218,26 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Marks a conversation read for a specific participant.
+   * @param userId - The participant marking the conversation read
+   * @param conversationId - Conversation ID
+   */
+  async markConversationRead(userId: string, conversationId: string): Promise<void> {
+    await db
+      .update(schema.conversationParticipants)
+      .set({ lastReadAt: new Date() })
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, conversationId),
+          eq(schema.conversationParticipants.participantId, userId),
+        ),
+      );
+  }
+
+  /**
    * Hides a conversation for a specific user by setting hiddenAt.
    * @param userId - The user hiding the conversation
-   * @param conversationId - Conversation ID
+   * @param conversationId - The conversation to hide
    */
   async hideConversation(userId: string, conversationId: string): Promise<void> {
     await db
@@ -856,6 +1300,25 @@ export class ConversationDatabaseAdapter {
       .limit(1);
 
     return (row?.metadata as Record<string, unknown>) ?? null;
+  }
+
+  /**
+   * Appends match provenance without duplicating an opportunity on DM re-entry.
+   * The metadata sidecar remains the source of truth; no message is written.
+   */
+  async appendMatchProvenance(conversationId: string, provenance: MatchProvenanceEntry): Promise<void> {
+    const existing = await this.getMetadata(conversationId);
+    const existingEntries = Array.isArray(existing?.matchProvenance)
+      ? existing.matchProvenance.filter(isMatchProvenanceEntry)
+      : [];
+    const nextEntries = [
+      ...existingEntries.filter((entry) => entry.opportunityId !== provenance.opportunityId),
+      provenance,
+    ];
+    await this.upsertMetadata(conversationId, {
+      ...(existing ?? {}),
+      matchProvenance: nextEntries,
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -945,6 +1408,77 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Lists old negotiation tasks that may have lost their kickoff or worker job.
+   * The state-specific age thresholds deliberately use createdAt for submitted
+   * tasks and updatedAt for working tasks.
+   */
+  async getStaleNegotiationTasks({
+    submittedOlderThanMs,
+    workingOlderThanMs,
+    limit = 25,
+  }: StaleNegotiationTasksInput): Promise<StaleNegotiationTask[]> {
+    const submittedCutoff = new Date(Date.now() - submittedOlderThanMs);
+    const workingCutoff = new Date(Date.now() - workingOlderThanMs);
+    const rows = await db
+      .select({
+        id: schema.tasks.id,
+        conversationId: schema.tasks.conversationId,
+        state: schema.tasks.state,
+        createdAt: schema.tasks.createdAt,
+        updatedAt: schema.tasks.updatedAt,
+        metadata: schema.tasks.metadata,
+      })
+      .from(schema.tasks)
+      .where(and(
+        sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        or(
+          and(eq(schema.tasks.state, 'submitted'), lt(schema.tasks.createdAt, submittedCutoff)),
+          and(eq(schema.tasks.state, 'working'), lt(schema.tasks.updatedAt, workingCutoff)),
+        ),
+      ))
+      .orderBy(asc(schema.tasks.createdAt))
+      .limit(Math.max(1, Math.floor(limit)));
+
+    return rows.map((row) => ({
+      ...row,
+      state: row.state as 'submitted' | 'working',
+      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+    }));
+  }
+
+  /**
+   * Transitions a stale negotiation task only if its state and timestamp still
+   * match the watchdog's read. This is the duplicate-prevention CAS: the stale
+   * row is canceled before the new run-existing job can create its replacement.
+   */
+  async transitionNegotiationTaskForWatchdog({
+    taskId,
+    expectedState,
+    expectedUpdatedAt,
+    nextState,
+    metadata,
+    statusMessage,
+  }: WatchdogTaskTransitionInput): Promise<Task | null> {
+    const [task] = await db
+      .update(schema.tasks)
+      .set({
+        state: nextState,
+        metadata,
+        statusMessage,
+        statusTimestamp: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(schema.tasks.id, taskId),
+        eq(schema.tasks.state, expectedState),
+        eq(schema.tasks.updatedAt, expectedUpdatedAt),
+      ))
+      .returning();
+
+    return task ?? null;
+  }
+
+  /**
    * Transitions a task to a new state.
    * @param taskId - Task ID
    * @param state - New task state
@@ -966,6 +1500,22 @@ export class ConversationDatabaseAdapter {
 
     if (!task) throw new Error(`Task ${taskId} not found`);
     return task;
+  }
+
+  /**
+   * Atomically claims a timed-out task for fallback processing.
+   *
+   * @param taskId - Claimed task to transition.
+   * @returns The transitioned task, or null when another path already moved it.
+   */
+  async transitionClaimedTaskToWorking(taskId: string): Promise<Task | null> {
+    const [task] = await db
+      .update(schema.tasks)
+      .set({ state: 'working', updatedAt: new Date() })
+      .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.state, 'claimed')))
+      .returning();
+
+    return task ?? null;
   }
 
   /**
@@ -1141,6 +1691,72 @@ export class ConversationDatabaseAdapter {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));
+  }
+
+  /**
+   * Resolves the intent carried by the given user's actor for each opportunity.
+   * Missing opportunities or actor intents remain null for fail-closed callers.
+   *
+   * @param opportunityIds - Opportunity IDs to inspect
+   * @param userId - User whose actor intent should be resolved
+   * @returns One intent ID (or null) per requested opportunity ID
+   */
+  async getIntentIdsForOpportunities(opportunityIds: string[], userId: string): Promise<Record<string, string | null>> {
+    const ids = [...new Set(opportunityIds.map((id) => id.trim()).filter(Boolean))];
+    const resolved = Object.fromEntries(ids.map((id) => [id, null as string | null]));
+    if (ids.length === 0) return resolved;
+
+    const rows = await db
+      .select({ id: schema.opportunities.id, actors: schema.opportunities.actors })
+      .from(schema.opportunities)
+      .where(inArray(schema.opportunities.id, ids));
+
+    for (const row of rows) {
+      const actorIntent = row.actors.find(
+        (actor) => actor.userId === userId && typeof actor.intent === 'string' && actor.intent.trim().length > 0,
+      )?.intent?.trim();
+      if (actorIntent) resolved[row.id] = actorIntent;
+    }
+
+    return resolved;
+  }
+
+  /**
+   * Batch-loads the current opportunity lifecycle needed for truthful
+   * negotiation narration. Opportunities that do not contain the authenticated
+   * owner actor are omitted. The caller receives only whether they are the
+   * persisted human acceptor; no actor or counterparty identity is projected.
+   *
+   * @param opportunityIds - Opportunity IDs referenced by negotiation tasks
+   * @param ownerUserId - Authenticated owner receiving the narration
+   * @returns Lifecycle evidence keyed by opportunity ID
+   */
+  async getOpportunityLifecyclesForNegotiations(
+    opportunityIds: string[],
+    ownerUserId: string,
+  ): Promise<Record<string, {
+    status: typeof schema.opportunityStatusEnum.enumValues[number];
+    acceptedByOwner: boolean;
+  }>> {
+    const ids = [...new Set(opportunityIds.map((id) => id.trim()).filter(Boolean))];
+    if (ids.length === 0) return {};
+
+    const rows = await db
+      .select({
+        id: schema.opportunities.id,
+        status: schema.opportunities.status,
+        acceptedBy: schema.opportunities.acceptedBy,
+        actors: schema.opportunities.actors,
+      })
+      .from(schema.opportunities)
+      .where(inArray(schema.opportunities.id, ids));
+
+    return Object.fromEntries(rows
+      .filter((row) => row.actors.some((actor) => actor.userId === ownerUserId))
+      .map((row) => [row.id, {
+        status: row.status,
+        acceptedByOwner: row.acceptedBy === ownerUserId,
+      }]));
   }
 
   /**
@@ -1580,13 +2196,79 @@ export class ConversationDatabaseAdapter {
         await tx.insert(schema.chatSessionScopes).values({
           conversationId: data.id,
           userId: data.userId,
-          scopeType: normalizedScopeType,
+          scopeType: intentRegistryScopeType(data.persona),
           scopeId: normalizedScopeId,
           createdAt: now,
           updatedAt: now,
         });
       }
     });
+  }
+
+  /**
+   * Atomically reuse the newest fresh reporter briefing or create its successor.
+   *
+   * A transaction-scoped per-user advisory lock serializes browser reloads and
+   * tabs before the freshness read. Expiry is lazy and creation-time based;
+   * old reporter rows are never deleted or hidden.
+   *
+   * @param data - Owner, candidate ID, stable freshness cutoff, and force-new flag
+   * @returns The authoritative reporter session and sole creation claim
+   */
+  async resolveReporterChatSession(data: {
+    id: string;
+    userId: string;
+    freshAfter: Date;
+    forceNew?: boolean;
+  }): Promise<{ session: ChatSession; created: boolean }> {
+    const resolved = await db.transaction(async (tx) => {
+      const lockName = `reporter-briefing:${data.userId}`;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}, 0))`);
+
+      if (!data.forceNew) {
+        const chatSessionIds = tx
+          .select({ conversationId: schema.conversationParticipants.conversationId })
+          .from(schema.conversationParticipants)
+          .where(and(
+            eq(schema.conversationParticipants.participantId, SYSTEM_AGENT_ID),
+            eq(schema.conversationParticipants.participantType, 'agent'),
+          ));
+        const [fresh] = await tx
+          .select({ id: schema.conversations.id })
+          .from(schema.conversationParticipants)
+          .innerJoin(
+            schema.conversations,
+            eq(schema.conversationParticipants.conversationId, schema.conversations.id),
+          )
+          .where(and(
+            eq(schema.conversationParticipants.participantId, data.userId),
+            eq(schema.conversationParticipants.participantType, 'user'),
+            inArray(schema.conversations.id, chatSessionIds),
+            eq(schema.conversations.persona, REPORTER_PERSONA),
+            gte(schema.conversations.createdAt, data.freshAfter),
+          ))
+          .orderBy(desc(schema.conversations.createdAt))
+          .limit(1);
+        if (fresh) return { id: fresh.id, created: false };
+      }
+
+      const now = new Date();
+      await tx.insert(schema.conversations).values({
+        id: data.id,
+        persona: REPORTER_PERSONA,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
+        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
+      ]);
+      return { id: data.id, created: true };
+    });
+
+    const session = await this.getChatSession(resolved.id);
+    if (!session) throw new Error('Reporter session claim could not be loaded');
+    return { session, created: resolved.created };
   }
 
   /**
@@ -1619,15 +2301,22 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Get all chat sessions for a user, ordered by most recent.
+   * Get persona-filtered chat sessions for a user, ordered by most recent.
    * Queries conversation_participants to find conversations with system-agent.
+   *
+   * @param userId - The user whose sessions to list
+   * @param limit - Maximum number of sessions to return
+   * @param persona - Allowed persona or personas; defaults to orchestrator
+   * @returns Matching chat sessions ordered by recency
    */
   async getUserChatSessions(
     userId: string,
     limit: number,
-    persona?: string,
-    excludePersona?: string,
+    persona: string | readonly string[] = ORCHESTRATOR_PERSONA,
   ): Promise<ChatSession[]> {
+    const personas = typeof persona === 'string' ? [persona] : [...persona];
+    if (personas.length === 0) return [];
+
     // Subquery: conversation IDs that include the system agent (i.e. chat sessions, not DMs)
     const chatSessionIds = db
       .select({ conversationId: schema.conversationParticipants.conversationId })
@@ -1657,8 +2346,7 @@ export class ConversationDatabaseAdapter {
           eq(schema.conversationParticipants.participantType, 'user'),
           isNull(schema.conversationParticipants.hiddenAt),
           inArray(schema.conversations.id, chatSessionIds),
-          ...(persona ? [eq(schema.conversations.persona, persona)] : []),
-          ...(excludePersona ? [ne(schema.conversations.persona, excludePersona)] : []),
+          inArray(schema.conversations.persona, personas),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1684,11 +2372,13 @@ export class ConversationDatabaseAdapter {
    *
    * @param userId - The user whose sessions to list
    * @param limit - Maximum number of sessions to return (default 25)
+   * @param persona - Exact persona to expose to the generic reader
    * @returns Array of chat session summaries
    */
   async listChatSessionSummaries(
     userId: string,
     limit = 25,
+    persona = ORCHESTRATOR_PERSONA,
   ): Promise<Array<{ sessionId: string; title: string | null; messageCount: number; lastMessageAt: Date | null; createdAt: Date }>> {
     // Subquery: conversation IDs that include the system agent
     const chatSessionIds = db
@@ -1722,9 +2412,9 @@ export class ConversationDatabaseAdapter {
             gt(schema.conversations.lastMessageAt, schema.conversationParticipants.hiddenAt),
           ),
           inArray(schema.conversations.id, chatSessionIds),
-          // The negotiator DM is a private persona surface — keep it out of
-          // generic chat-history summaries (MCP listSessions, chat summary).
-          ne(schema.conversations.persona, NEGOTIATOR_PERSONA),
+          // Generic history consumers are orchestrator-only. Signal and
+          // negotiator each have dedicated product surfaces.
+          eq(schema.conversations.persona, persona),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1776,6 +2466,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     sessionId: string,
     messageLimit = 50,
+    persona: string = ORCHESTRATOR_PERSONA,
   ): Promise<{
     sessionId: string;
     title: string | null;
@@ -1823,7 +2514,10 @@ export class ConversationDatabaseAdapter {
         updatedAt: schema.conversations.updatedAt,
       })
       .from(schema.conversations)
-      .where(eq(schema.conversations.id, sessionId))
+      .where(and(
+        eq(schema.conversations.id, sessionId),
+        eq(schema.conversations.persona, persona),
+      ))
       .limit(1);
 
     if (!conv) return null;
@@ -2003,6 +2697,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     scopeType: ChatScopeType,
     scopeId: string,
+    persona = ORCHESTRATOR_PERSONA,
   ): Promise<ChatSession | null> {
     const normalizedScopeId = scopeId.trim();
     if (!normalizedScopeId) return null;
@@ -2014,12 +2709,14 @@ export class ConversationDatabaseAdapter {
         .where(
           and(
             eq(schema.chatSessionScopes.userId, userId),
-            eq(schema.chatSessionScopes.scopeType, scopeType),
+            eq(schema.chatSessionScopes.scopeType, intentRegistryScopeType(persona)),
             eq(schema.chatSessionScopes.scopeId, normalizedScopeId),
           ),
         )
         .limit(1);
-      return row ? this.getChatSession(row.conversationId) : null;
+      if (!row) return null;
+      const session = await this.getChatSession(row.conversationId);
+      return session?.userId === userId && session.persona === persona ? session : null;
     }
 
     // Network-scoped sessions predate chat_session_scopes; look them up through metadata.
@@ -2033,7 +2730,7 @@ export class ConversationDatabaseAdapter {
 
     for (const row of rows) {
       const session = await this.getChatSession(row.conversationId);
-      if (session?.userId === userId) return session;
+      if (session?.userId === userId && session.persona === persona) return session;
     }
     return null;
   }
@@ -2047,6 +2744,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     scopeType: ChatScopeType | null,
     scopeId: string | null,
+    persona = ORCHESTRATOR_PERSONA,
   ): Promise<void> {
     const normalizedScopeId = scopeId?.trim() || null;
     const networkId = scopeType === 'network' ? normalizedScopeId : null;
@@ -2058,7 +2756,7 @@ export class ConversationDatabaseAdapter {
       await db.insert(schema.chatSessionScopes).values({
         conversationId: sessionId,
         userId,
-        scopeType,
+        scopeType: intentRegistryScopeType(persona),
         scopeId: normalizedScopeId,
         createdAt: now,
         updatedAt: now,
@@ -2183,34 +2881,102 @@ export class ConversationDatabaseAdapter {
     if (data.tokenCount !== undefined) msgMeta.tokenCount = data.tokenCount;
     if (data.interrupted) msgMeta.interrupted = true;
 
-    await db.insert(schema.messages).values({
+    await this.insertMessageWithConversationSession({
       id: data.id,
       conversationId: data.sessionId,
       senderId,
       role: isAgent ? 'agent' : 'user',
       parts: [{ type: 'text', text: data.content }],
+      taskId: null,
       metadata: Object.keys(msgMeta).length > 0 ? msgMeta : null,
-      createdAt: new Date(),
+      extensions: null,
+      referenceTaskIds: null,
     });
-
-    // Update conversation.lastMessageAt
-    await db
-      .update(schema.conversations)
-      .set({ lastMessageAt: new Date() })
-      .where(eq(schema.conversations.id, data.sessionId));
   }
 
   /**
-   * Get chat messages for a session, reconstructing the backward-compatible ChatMessage shape.
+   * Get chat messages for a conversation in chronological order.
+   *
+   * @param sessionId - Conversation identifier retained for the legacy chat-session API.
+   * @param limit - Maximum number of messages to return from the beginning of the conversation.
+   * @returns Chronologically ordered chat messages.
    */
   async getChatSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> {
     const query = db.select()
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, sessionId))
-      .orderBy(asc(schema.messages.createdAt));
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 
     const rows = limit ? await query.limit(limit) : await query;
 
+    return this.toChatMessages(sessionId, rows);
+  }
+
+  /**
+   * Get the latest chat messages for model context while returning them in
+   * chronological order. This deliberately does not share UI pagination reads:
+   * loading older history must never alter the model's context window.
+   *
+   * @param sessionId - Conversation identifier retained for the legacy chat-session API.
+   * @param limit - Maximum number of most-recent messages to return.
+   * @returns Chronologically ordered latest chat messages.
+   */
+  async getLatestChatSessionMessages(sessionId: string, limit: number): Promise<ChatMessage[]> {
+    const [latestSession] = await db
+      .select({ id: schema.conversationSessions.id })
+      .from(schema.conversationSessions)
+      .where(eq(schema.conversationSessions.conversationId, sessionId))
+      .orderBy(
+        desc(schema.conversationSessions.lastMessageAt),
+        desc(schema.conversationSessions.startedAt),
+        desc(schema.conversationSessions.id),
+      )
+      .limit(1);
+    if (!latestSession) return [];
+
+    const rows = await db.select()
+      .from(schema.messages)
+      .where(eq(schema.messages.sessionId, latestSession.id))
+      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
+      .limit(limit);
+
+    return this.toChatMessages(sessionId, rows.reverse());
+  }
+
+  /**
+   * Load one durable session for a chat conversation in the legacy chat-message shape.
+   *
+   * @param conversationId - Chat conversation identifier.
+   * @param opts - Optional earlier-session cursor.
+   * @returns The selected durable session, mapped messages, and prior-session signal.
+   */
+  async getChatConversationSessionHistory(
+    conversationId: string,
+    opts?: { beforeSessionId?: string },
+  ): Promise<{
+    session: ConversationSession | null;
+    messages: ChatMessage[];
+    hasPreviousSession: boolean;
+  }> {
+    const history = await this.getConversationSessionHistory(conversationId, opts);
+    return {
+      session: history.session,
+      messages: this.toChatMessages(conversationId, history.messages),
+      hasPreviousSession: history.hasPreviousSession,
+    };
+  }
+
+  /**
+   * Reconstruct the backward-compatible ChatMessage shape from message rows.
+   *
+   * @param sessionId - Conversation identifier for the compatibility shape.
+   * @param rows - Persisted message rows in display order.
+   * @returns Compatibility chat messages.
+   */
+  private toChatMessages(
+    sessionId: string,
+    rows: Array<typeof schema.messages.$inferSelect>,
+  ): ChatMessage[] {
     return rows.map((msg) => {
       const parts = msg.parts as Array<{ type?: string; text?: string }>;
       const content =

@@ -3,7 +3,7 @@
  * Used by the opportunity graph persist node and by the manual opportunity service for consistency.
  */
 
-import type { CreateOpportunityData, Opportunity, OpportunityNetworkEligibility, OpportunityStatus } from '../shared/interfaces/database.interface.js';
+import type { CreateOpportunityData, IntentScopedOpportunityPersistenceResult, Opportunity, OpportunityDedupConflict, OpportunityNetworkEligibility, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import type { Embedder } from '../shared/interfaces/embedder.interface.js';
 import type { EnricherDatabase } from './opportunity.enricher.js';
 import { enrichOrCreate } from './opportunity.enricher.js';
@@ -28,6 +28,12 @@ export type PersistOpportunityDatabase = EnricherDatabase & {
     expireIds: string[],
     eligibility: OpportunityNetworkEligibility,
   ): Promise<{ created: Opportunity; expired: Opportunity[] } | null>;
+  persistIntentScopedOpportunityIfNetworkEligible?(
+    data: CreateOpportunityData,
+    expireIds: string[],
+    eligibility: OpportunityNetworkEligibility & { triggerIntentId: string },
+    dedupWindowMs: number,
+  ): Promise<IntentScopedOpportunityPersistenceResult | null>;
   /** Optional: used to populate expired list in non-atomic path. */
   getOpportunity?(id: string): Promise<Opportunity | null>;
 };
@@ -39,6 +45,8 @@ export interface PersistOpportunitiesParams {
   injectChat?: (opportunity: Opportunity) => Promise<unknown>;
   /** Require adapter-level membership/assignment locks for discovery-created rows. */
   networkEligibility?: OpportunityNetworkEligibility;
+  /** Scope dedup/enrichment and the final atomic re-check to one owned intent. */
+  intentDedupScope?: { triggerIntentId: string; dedupWindowMs: number };
 }
 
 export interface PersistOpportunitiesError {
@@ -46,9 +54,15 @@ export interface PersistOpportunitiesError {
   error: unknown;
 }
 
+export interface PersistOpportunitiesConflict extends OpportunityDedupConflict {
+  itemIndex: number;
+  finalAtomic: true;
+}
+
 export interface PersistOpportunitiesResult {
   created: Opportunity[];
   expired: Opportunity[];
+  conflicts: PersistOpportunitiesConflict[];
   errors?: PersistOpportunitiesError[];
 }
 
@@ -58,22 +72,56 @@ export interface PersistOpportunitiesResult {
  * Returns both created and expired so callers can emit events (e.g. manual service).
  */
 export async function persistOpportunities(params: PersistOpportunitiesParams): Promise<PersistOpportunitiesResult> {
-  const { database, embedder, items, injectChat, networkEligibility } = params;
+  const { database, embedder, items, injectChat, networkEligibility, intentDedupScope } = params;
   const created: Opportunity[] = [];
   const expired: Opportunity[] = [];
+  const conflicts: PersistOpportunitiesConflict[] = [];
   const errors: PersistOpportunitiesError[] = [];
 
   for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
     const data = items[itemIndex];
     try {
       const normalizedData = normalizeCreateOpportunityActorIntents(data);
-      const enrichment = await enrichOrCreate(database, embedder, normalizedData);
+      if (
+        intentDedupScope
+        && intentDedupScope.triggerIntentId !== networkEligibility?.triggerIntentId
+      ) {
+        throw new Error('Intent-scoped dedup trigger must match network eligibility');
+      }
+      const enrichment = await enrichOrCreate(database, embedder, normalizedData, intentDedupScope && networkEligibility
+        ? {
+            ownedIntentScope: {
+              triggerIntentId: intentDedupScope.triggerIntentId,
+              ownerUserId: networkEligibility.ownerUserId,
+            },
+          }
+        : undefined);
       const toCreate = normalizeCreateOpportunityActorIntents(enrichment.data);
       if (enrichment.enriched) {
         toCreate.status = enrichment.resolvedStatus;
       }
 
-      if (networkEligibility) {
+      if (intentDedupScope) {
+        if (!networkEligibility?.triggerIntentId) {
+          throw new Error('Intent-scoped dedup requires trigger-intent network eligibility');
+        }
+        if (!database.persistIntentScopedOpportunityIfNetworkEligible) {
+          throw new Error('Intent-scoped atomic persistence is required for owned-intent discovery');
+        }
+        const result = await database.persistIntentScopedOpportunityIfNetworkEligible(
+          toCreate,
+          enrichment.enriched ? enrichment.expiredIds : [],
+          { ...networkEligibility, triggerIntentId: networkEligibility.triggerIntentId },
+          intentDedupScope.dedupWindowMs,
+        );
+        if (!result) continue;
+        if ('conflict' in result) {
+          conflicts.push({ itemIndex, finalAtomic: true, ...result.conflict });
+          continue;
+        }
+        created.push(result.created);
+        expired.push(...result.expired);
+      } else if (networkEligibility) {
         if (enrichment.enriched && enrichment.expiredIds.length > 0) {
           if (!database.createOpportunityAndExpireIdsIfNetworkEligible) {
             throw new Error('Network-eligible create+expire is required for discovery persistence');
@@ -130,5 +178,5 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
     }
   }
 
-  return { created, expired, ...(errors.length > 0 ? { errors } : {}) };
+  return { created, expired, conflicts, ...(errors.length > 0 ? { errors } : {}) };
 }

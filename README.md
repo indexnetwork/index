@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <i align="center">Discovery Protocol</i>
+  <i align="center">Social Discovery Protocol</i>
 </p>
 
 <h4 align="center">
@@ -196,8 +196,6 @@ Detailed documentation lives in the `docs/` directory:
 - **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
 - **[Identity and Context](docs/domain/identity-and-context.md)** -- User identity, synthesized context, enrichment, and HyDE document embeddings
 - **[Networks](docs/domain/networks.md)** -- Community structure, membership, and access control
-- **[HyDE](docs/domain/hyde.md)** -- Hypothetical Document Embedding strategies for semantic search
-- **[Feed and Maintenance](docs/domain/feed-and-maintenance.md)** -- Home feed curation and periodic maintenance
 
 
 
@@ -230,9 +228,8 @@ We welcome contributions! Before submitting a Pull Request:
 git clone https://github.com/YOUR_USERNAME/index.git
 cd index
 
-# Create a worktree for your feature
-git worktree add .worktrees/feat-your-feature dev
-bun run worktree:setup feat-your-feature
+# Create/reuse the worktree and named Pi tmux session
+bun run worktree:session -- feat/your-feature
 
 # Start dev servers from the worktree
 bun run worktree:dev feat-your-feature

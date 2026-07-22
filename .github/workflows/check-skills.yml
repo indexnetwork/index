@@ -30,6 +30,12 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Validate project-local skills
+        run: bun run skills:validate
+
+      - name: Run script foundation tests
+        run: bun run test:scripts
+
       - name: Ignore lockfile workspace metadata from uninitialized submodules
         run: git checkout -- bun.lock
 

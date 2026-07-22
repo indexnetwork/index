@@ -124,8 +124,23 @@ export class ConversationController {
     const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!, 10) : undefined;
     const before = url.searchParams.get('before') ?? undefined;
     const taskId = url.searchParams.get('taskId') ?? undefined;
+    const beforeSessionId = url.searchParams.get('beforeSessionId') ?? undefined;
+    const sessionHistory = url.searchParams.get('sessionHistory') === 'true' || beforeSessionId !== undefined;
 
     try {
+      if (sessionHistory) {
+        const history = await this.conversationService.getSessionHistory(conversationId, {
+          userId: user.id,
+          taskId,
+          beforeSessionId,
+        });
+        return Response.json({
+          messages: history.messages,
+          sessionId: history.session?.id ?? null,
+          hasPreviousSession: history.hasPreviousSession,
+          previousSessionCursor: history.hasPreviousSession ? history.session?.id ?? null : null,
+        });
+      }
       const messages = await this.conversationService.getMessages(conversationId, { limit, before, taskId, userId: user.id });
       return Response.json({ messages });
     } catch (err: unknown) {
@@ -134,6 +149,37 @@ export class ConversationController {
         return Response.json({ error: message }, { status: 403 });
       }
       logger.error('getMessages failed', { userId: user.id, conversationId, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
+   * POST /conversations/:id/read — mark a conversation read for the caller.
+   * Accepts full UUID or short ID prefix.
+   */
+  @Post('/:id/read')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async markConversationRead(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const rawId = params?.id;
+    if (!rawId) {
+      return Response.json({ error: 'Conversation ID required' }, { status: 400 });
+    }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
+
+    try {
+      await this.conversationService.markConversationRead(user.id, conversationId);
+      return Response.json({ success: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith('Forbidden')) {
+        return Response.json({ error: message }, { status: 403 });
+      }
+      logger.error('markConversationRead failed', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }
@@ -210,7 +256,11 @@ export class ConversationController {
 
     try {
       const conversation = await this.conversationService.getOrCreateDM(user.id, body.peerUserId);
-      return Response.json({ conversation });
+      // Return the same viewer-scoped summary shape as GET /conversations so
+      // a thread opened directly can render match provenance immediately.
+      const summary = (await this.conversationService.getConversations(user.id))
+        .find((candidate) => candidate.id === conversation.id);
+      return Response.json({ conversation: summary ?? conversation });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('getOrCreateDM failed', { userId: user.id, error: message });

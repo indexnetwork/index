@@ -29,10 +29,14 @@
     "start:frontend": "bun run start:web",
     "start:backend": "bun run start:api",
     "lint": "eslint .",
+    "skills:validate": "bun .pi/skills/learn-skill/scripts/skillctl.ts validate all",
+    "pr:snapshot": "bun scripts/pr-snapshot.ts",
+    "test:scripts": "bun test scripts/tests",
     "test": "cd services/api && bun test",
     "subtree:setup": "bash scripts/subtree-setup.sh",
     "worktree:setup": "bash scripts/worktree-setup.sh",
     "worktree:list": "bash scripts/worktree-list.sh",
+    "worktree:session": "bun scripts/worktree-session.ts",
     "worktree:dev": "bash scripts/worktree-dev.sh",
     "worktree:build": "bash scripts/worktree-build.sh"
   },
@@ -45,7 +49,8 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "lint-staged": "^16.4.0",
-    "typescript-eslint": "^8.58.0"
+    "typescript-eslint": "^8.58.0",
+    "yaml": "^2.8.1"
   },
   "overrides": {
     "@better-auth/utils": "0.4.0"

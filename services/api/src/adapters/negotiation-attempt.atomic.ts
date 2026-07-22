@@ -8,6 +8,11 @@ export function negotiationAttemptLockName(opportunityId: string): string {
   return `negotiation-attempt:${opportunityId}`;
 }
 
+/** Stable pair-global lock namespace preventing concurrent cross-trigger attempts. */
+export function negotiationPairLockName(actorUserIds: string[]): string {
+  return `negotiation-pair:${[...new Set(actorUserIds)].sort().join('|')}`;
+}
+
 /**
  * Serialize task creation and fallback compensation for one opportunity.
  * The transaction-scoped lock is released automatically on commit/rollback.
@@ -21,6 +26,59 @@ export async function acquireNegotiationAttemptLock(
       hashtextextended(${negotiationAttemptLockName(opportunityId)}, 0)
     )
   `);
+}
+
+/** Serialize negotiation claims for the same normalized participant pair. */
+export async function acquireNegotiationPairLock(
+  tx: NegotiationAttemptTransaction,
+  actorUserIds: string[],
+): Promise<void> {
+  await tx.execute(sql`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${negotiationPairLockName(actorUserIds)}, 0)
+    )
+  `);
+}
+
+const ACTIVE_NEGOTIATION_FRESH_MS = 5 * 60 * 1000;
+const DEFAULT_ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ASK_USER_LOCK_SLACK_MS = 60 * 60 * 1000;
+
+function askUserLockWindowMs(): number {
+  const parsed = Number(process.env.NEGOTIATION_ASK_USER_WINDOW_MS);
+  return (Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_ASK_USER_WINDOW_MS)
+    + ASK_USER_LOCK_SLACK_MS;
+}
+
+/** Pair-global tasks fresh enough to block a concurrent cross-trigger attempt. */
+export function qualifyingPairNegotiationTaskWhere(
+  actorUserIds: string[],
+  excludeOpportunityId?: string,
+) {
+  const actorContainment = actorUserIds.map((userId) => sql`EXISTS (
+    SELECT 1 FROM jsonb_array_elements(${schema.opportunities.actors}) elem
+    WHERE elem->>'userId' = ${userId}
+      AND elem->>'role' IS DISTINCT FROM 'introducer'
+  )`);
+  return sql`
+    ${schema.tasks.metadata}->>'type' = 'negotiation'
+    AND ${schema.tasks.metadata}->>'opportunityId' = ${schema.opportunities.id}
+    ${excludeOpportunityId
+      ? sql`AND ${schema.opportunities.id} <> ${excludeOpportunityId}`
+      : sql``}
+    AND ${schema.opportunities.status} = 'negotiating'
+    AND ${sql.join(actorContainment, sql` AND `)}
+    AND (
+      (
+        ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
+        AND ${schema.tasks.updatedAt} >= NOW() - (${ACTIVE_NEGOTIATION_FRESH_MS} * INTERVAL '1 millisecond')
+      )
+      OR (
+        ${schema.tasks.state} = 'input_required'
+        AND ${schema.tasks.updatedAt} >= NOW() - (${askUserLockWindowMs()} * INTERVAL '1 millisecond')
+      )
+    )
+  `;
 }
 
 /**

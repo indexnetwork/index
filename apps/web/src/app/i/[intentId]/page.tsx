@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Brain, ChevronLeft, LoaderCircle, Pause, Pencil, Play, Trash2 } from "lucide-react";
+import { ArrowUp, Brain, ChevronLeft, Loader2, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { Link } from "react-router";
+import * as Dialog from "@radix-ui/react-dialog";
+import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
+import { FocusScope } from "@radix-ui/react-focus-scope";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
+import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
+import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
-import { QuestionsEmptyState } from "@/components/InjectedQuestions/QuestionsEmptyState";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -18,7 +22,7 @@ import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
-import type { AnswerBody, PendingQuestion } from "@/services/questions";
+import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
@@ -54,6 +58,24 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
     return status;
   }
   return "ACTIVE";
+}
+
+function formatAnswer(selectedOptions: string[], freeText?: string): string {
+  return [...selectedOptions, freeText?.trim() ?? ""].filter(Boolean).join(", ");
+}
+
+function toAnsweredThreadEntry(question: PendingQuestion): AnsweredThreadEntry | null {
+  const answer: QuestionAnswer | null = question.answer;
+  if (!answer) return null;
+  return {
+    id: question.id,
+    prompt: question.payload.prompt,
+    response: formatAnswer(answer.selectedOptions, answer.freeText),
+    messageId: question.detection?.messageId,
+    createdAt: question.createdAt,
+    detectedAt: question.detection?.timestamp,
+    answeredAt: answer.answeredAt,
+  };
 }
 
 /**
@@ -143,6 +165,62 @@ function StatPill({
   );
 }
 
+/**
+ * Standing free-form input pinned at the bottom of the Questions panel. Lets the
+ * user tell the agent anything about this signal at any time — the text is fed
+ * to the intent's refine flow (same effect as the header ✎ input). Independent
+ * of the pending-question cards above it.
+ */
+function AgentMessageInput({
+  onSend,
+}: {
+  onSend: (text: string) => Promise<boolean>;
+}) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const send = useCallback(async () => {
+    const value = text.trim();
+    if (!value || sending) return;
+    setSending(true);
+    const ok = await onSend(value);
+    if (ok) setText("");
+    setSending(false);
+  }, [text, sending, onSend]);
+
+  return (
+    <div className="flex items-center gap-2 pl-5 pr-2 py-1.5 rounded-full border border-[#E9E9E9] bg-[#FCFCFC] focus-within:border-[#041729] transition-colors">
+      <input
+        type="text"
+        placeholder="tell the agent anything about this signal…"
+        value={text}
+        disabled={sending}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+        className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
+      />
+      <button
+        type="button"
+        onClick={send}
+        disabled={!text.trim() || sending}
+        className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        aria-label="Send message to agent"
+      >
+        {sending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <ArrowUp className="h-4 w-4" />
+        )}
+      </button>
+    </div>
+  );
+}
+
 /** Card-style panel used for the Questions and Radar columns. */
 function Panel({
   title,
@@ -183,9 +261,37 @@ function Panel({
 }
 
 /**
+ * Breakpoint query matching Tailwind's `lg`. Used ONLY for accessibility
+ * semantics (role / aria-modal / inert / focus containment) — layout and
+ * visibility stay pure Tailwind CSS. Focus containment and the
+ * dialog-vs-region distinction genuinely cannot be expressed in CSS, which
+ * is the sole reason a matchMedia switch exists here.
+ */
+function useIsDesktop(): boolean {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window.matchMedia !== "function") return () => {};
+      const mql = window.matchMedia("(min-width: 1024px)");
+      mql.addEventListener("change", onStoreChange);
+      return () => mql.removeEventListener("change", onStoreChange);
+    },
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(min-width: 1024px)").matches,
+  );
+}
+
+/**
  * Intent detail view. Mirrors the Hermes dashboard intent-detail layout: a
  * detail header card with a live indicator and Pause/Edit/Archive actions, a
- * primary Questions panel, and a Radar panel with a status filter strip.
+ * Personal Agent (or Questions) column, and a Radar panel with a status
+ * filter strip. At lg+ the two columns are equal width (50/50) and the left
+ * column is a plain labelled region; below lg the Radar is the primary
+ * content and the left column becomes an off-canvas sheet (a modal dialog
+ * with focus containment and an inert background while open). The sheet
+ * stays mounted at all times, so the negotiator chat's live stream/question
+ * state survives open/close and breakpoint changes.
  */
 export default function IntentDetailPage() {
   const navigate = useNavigate();
@@ -198,9 +304,9 @@ export default function IntentDetailPage() {
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
 
-  const [intent, setIntent] = useState<
-    Awaited<ReturnType<typeof intentsService.getIntent>> | null
-  >(null);
+  const [intent, setIntent] = useState<Awaited<
+    ReturnType<typeof intentsService.getIntent>
+  > | null>(null);
   const [intentLoading, setIntentLoading] = useState(true);
   const [intentStatusPending, setIntentStatusPending] = useState<{
     intentId: string;
@@ -236,6 +342,12 @@ export default function IntentDetailPage() {
     },
     [clearReactionTimers],
   );
+  // Conversation thread: answered questions retain server anchors/timestamps so
+  // the Personal Agent can place them within chat history after reloads.
+  const [answered, setAnswered] = useState<AnsweredThreadEntry[]>([]);
+  // Chat-style conversation column: scrolls internally, pinned to the bottom so
+  // the newest question is always in view above the composer.
+  const conversationRef = useRef<HTMLDivElement>(null);
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
@@ -245,6 +357,33 @@ export default function IntentDetailPage() {
   // `chatUnavailable` is the runtime fallback if the bootstrap fails.
   const [chatUnavailable, setChatUnavailable] = useState(false);
   const negotiatorChatEnabled = features?.negotiatorChat === true && !chatUnavailable;
+  const showNegotiatorPanel = negotiatorChatEnabled && !!intentId;
+  // Mobile (< lg): the Personal Agent column becomes an off-canvas sheet over
+  // the Radar; this is its open state. Desktop (lg+) always shows the column.
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const isDesktop = useIsDesktop();
+  /** True only while the column is presented as a mobile overlay sheet. */
+  const sheetOverlayActive = agentPanelOpen && !isDesktop;
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const sheetId = useId();
+  const sheetTitleId = useId();
+  const sheetDescriptionId = useId();
+  // Focus choreography for the mobile sheet. The sheet is never unmounted
+  // (to preserve the chat's live state), so Radix's mount/unmount auto-focus
+  // hooks never fire — move focus into the sheet on open and back to the
+  // trigger on every close path (Escape, outside press, close button).
+  const wasSheetOpenRef = useRef(agentPanelOpen);
+  useEffect(() => {
+    const wasOpen = wasSheetOpenRef.current;
+    wasSheetOpenRef.current = agentPanelOpen;
+    if (isDesktop || wasOpen === agentPanelOpen) return;
+    if (agentPanelOpen) {
+      sheetRef.current?.focus();
+    } else {
+      triggerRef.current?.focus();
+    }
+  }, [agentPanelOpen, isDesktop]);
 
   useLayoutEffect(() => {
     activeIntentIdRef.current = intentId;
@@ -260,7 +399,7 @@ export default function IntentDetailPage() {
   const scope = useMemo(
     () =>
       intentId
-        ? ({ scopeType: "intent" as const, scopeId: intentId })
+        ? { scopeType: "intent" as const, scopeId: intentId }
         : undefined,
     [intentId],
   );
@@ -296,6 +435,44 @@ export default function IntentDetailPage() {
       });
     } catch {
       // Best-effort refresh; keep already-rendered questions on failure.
+    }
+  }, [intentId, questionsService]);
+
+  const loadAnswered = useCallback(async () => {
+    if (!intentId) return;
+    try {
+      const res = await questionsService.getAnswered({
+        scopeType: "intent",
+        scopeId: intentId,
+      });
+      if (activeIntentIdRef.current !== intentId) return;
+      const serverEntries = res
+        .map(toAnsweredThreadEntry)
+        .filter((entry): entry is AnsweredThreadEntry => entry !== null);
+      const serverIds = new Set(serverEntries.map((entry) => entry.id));
+      setAnswered((current) => {
+        const merged = [
+          ...serverEntries,
+          ...current.filter((entry) => !serverIds.has(entry.id)),
+        ];
+        const unchanged =
+          merged.length === current.length &&
+          merged.every((entry, index) => {
+            const previous = current[index];
+            return (
+              previous?.id === entry.id &&
+              previous.prompt === entry.prompt &&
+              previous.response === entry.response &&
+              previous.messageId === entry.messageId &&
+              previous.createdAt === entry.createdAt &&
+              previous.detectedAt === entry.detectedAt &&
+              previous.answeredAt === entry.answeredAt
+            );
+          });
+        return unchanged ? current : merged;
+      });
+    } catch {
+      // Best-effort hydration; keep optimistic entries on failure.
     }
   }, [intentId, questionsService]);
 
@@ -365,11 +542,12 @@ export default function IntentDetailPage() {
         if (active) setIntentLoading(false);
       });
     void loadQuestions();
+    void loadAnswered();
     void loadOpportunities();
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadQuestions, loadOpportunities]);
+  }, [intentId, intentsService, loadQuestions, loadAnswered, loadOpportunities]);
 
   const refreshWorkspaceAfterReaction = useCallback((includeQuestions: boolean) => {
     setNegotiatorRefreshVersion((version) => version + 1);
@@ -388,14 +566,27 @@ export default function IntentDetailPage() {
     [clearReactionTimers, refreshWorkspaceAfterReaction],
   );
 
+  // Keep the conversation pinned to the newest question. Scroll after paint
+  // (double rAF) so the freshly-rendered question card is measured first.
+  useEffect(() => {
+    const el = conversationRef.current;
+    if (!el) return;
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      }),
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [answered, questions]);
+
   const handleArchive = useCallback(async () => {
     if (!intentId) return;
-    if (!window.confirm("Archive this intent? It will stop matching.")) return;
+    if (!window.confirm("Archive this signal? It will stop matching.")) return;
     try {
       await intentsService.archiveIntent(intentId);
       navigate("/");
     } catch {
-      showError("Failed to archive intent");
+      showError("Failed to archive signal");
     }
   }, [intentId, intentsService, navigate, showError]);
 
@@ -426,8 +617,8 @@ export default function IntentDetailPage() {
         if (!isCurrentRequest()) return;
         showError(
           status === "PAUSED"
-            ? "Failed to pause intent"
-            : "Failed to resume intent",
+            ? "Failed to pause signal"
+            : "Failed to resume signal",
         );
       } finally {
         if (isCurrentRequest()) {
@@ -439,28 +630,57 @@ export default function IntentDetailPage() {
     [intentId, intentsService, scheduleBoundedWorkspaceRefresh, showError],
   );
 
+  /** Feed free-form text to the intent's refine flow and reload matches.
+   * Shared by the header ✎ input and the Questions-panel agent message input.
+   * Returns whether the refine succeeded so callers can clear their input. */
+  const submitRefine = useCallback(
+    async (raw: string): Promise<boolean> => {
+      const text = raw.trim();
+      if (!intentId || !text) return false;
+      try {
+        const updated = await intentsService.refineIntent(intentId, text);
+        setIntent(updated);
+        void loadOpportunities();
+        return true;
+      } catch {
+        showError("Failed to refine signal");
+        return false;
+      }
+    },
+    [intentId, intentsService, loadOpportunities, showError],
+  );
+
   const handleRefine = useCallback(async () => {
-    const text = refineText.trim();
-    if (!intentId || !text || refining) return;
+    if (refining) return;
     setRefining(true);
-    try {
-      const updated = await intentsService.refineIntent(intentId, text);
-      setIntent(updated);
+    const ok = await submitRefine(refineText);
+    if (ok) {
       setRefineText("");
       setShowRefine(false);
-      void loadOpportunities();
-    } catch {
-      showError("Failed to refine intent");
-    } finally {
-      setRefining(false);
     }
-  }, [intentId, refineText, refining, intentsService, loadOpportunities, showError]);
+    setRefining(false);
+  }, [refining, refineText, submitRefine]);
 
   const handleAnswer = useCallback(
     async (questionId: string, body: AnswerBody) => {
       const answered = questions.find((q) => q.id === questionId);
       await questionsService.answer(questionId, body);
+      // Keep the answered exchange visible in the conversation thread.
+      if (answered) {
+        setAnswered((prev) => [
+          ...prev.filter((entry) => entry.id !== questionId),
+          {
+            id: questionId,
+            prompt: answered.payload.prompt,
+            response: formatAnswer(body.selectedOptions, body.freeText),
+            messageId: answered.detection?.messageId,
+            createdAt: answered.createdAt,
+            detectedAt: answered.detection?.timestamp,
+          },
+        ]);
+      }
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      void loadAnswered();
       void refreshQuestionCounts();
       // Chain once per answer: a pool_discovery answer may have synchronously
       // produced a follow-up question — refetch shortly and append it.
@@ -497,7 +717,7 @@ export default function IntentDetailPage() {
         }, 1200);
       }
     },
-    [questions, questionsService, intentId, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
+    [questions, questionsService, intentId, loadAnswered, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
   );
 
   const handleDismiss = useCallback(
@@ -530,9 +750,10 @@ export default function IntentDetailPage() {
     [opportunities, bucketOf, selectedBucket],
   );
 
-  const title = (intent?.summary && intent.summary.trim().length > 0
-    ? intent.summary
-    : intent?.payload ?? ""
+  const title = (
+    intent?.summary && intent.summary.trim().length > 0
+      ? intent.summary
+      : (intent?.payload ?? "")
   ).trim();
   const lifecycleStatus = normalizeIntentLifecycleStatus(intent?.status);
   const lifecycleBusy = intentStatusPending?.intentId === intentId;
@@ -540,8 +761,31 @@ export default function IntentDetailPage() {
   return (
     <ClientLayout>
       {inviteModalElement}
-      <div className="flex min-h-0 flex-1 flex-col px-6 py-4 lg:px-10">
-        <ContentContainer size="xwide" className="flex w-full min-h-0 flex-1 flex-col">
+      <div className="flex h-full min-h-0 flex-col px-10 lg:px-16 py-6">
+        <ContentContainer size="xwide" className="flex min-h-0 flex-1 flex-col">
+          {/* Dialog.Root provides the trigger semantics (aria-expanded /
+              aria-controls / open state). The sheet itself is a
+              DismissableLayer + FocusScope composition rather than
+              Dialog.Content: Dialog.Content's baked-in FocusScope
+              (loop=true even when untrapped) would Tab-loop the static
+              desktop column, and a modal Dialog runs hideOthers() on mount
+              even while closed, permanently aria-hiding the page under
+              forceMount. Escape close and outside-press dismiss below are
+              still Radix (DismissableLayer) — nothing hand-rolled.
+
+              Everything except the sheet and its backdrop lives in ONE
+              background wrapper that is inert while the mobile sheet is
+              open. inert is DOM-inherited and cannot be opted out of per
+              descendant, so the sheet — a flex sibling of Radar at lg+ —
+              must sit outside the wrapper; the Radar column carries the
+              same inert flag. `contents` keeps the wrapper boxless so the
+              existing flex layout is unchanged. */}
+          <Dialog.Root open={agentPanelOpen} onOpenChange={setAgentPanelOpen}>
+          <div
+            inert={sheetOverlayActive}
+            data-testid="page-background"
+            className="contents"
+          >
           <button
             type="button"
             onClick={() => navigate("/")}
@@ -554,13 +798,14 @@ export default function IntentDetailPage() {
 
           {!intentLoading && !intent ? (
             <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-              Intent not found
+              Signal not found
             </div>
           ) : (
             <>
+            <div className="contents">
               {/* Header card: skeleton while the intent loads — the workspace
                   below renders (and fetches) immediately, in parallel. */}
-              <div className="mb-4 shrink-0 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="mb-6 shrink-0 rounded-lg border border-gray-200 bg-white p-5">
                 {intentLoading ? (
                   <div className="animate-pulse space-y-3" data-testid="intent-header-skeleton">
                     <div className="h-4 w-2/3 rounded bg-gray-200" />
@@ -614,7 +859,7 @@ export default function IntentDetailPage() {
                     />
                   </div>
                 </div>
-                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
+                <div className="mt-2.5 flex items-center gap-2 text-xs text-gray-500 font-ibm-plex-mono">
                   {lifecycleStatus === "ACTIVE" && (
                     <>
                       <span className="inline-flex items-center gap-1.5 rounded border border-green-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-green-600">
@@ -624,7 +869,7 @@ export default function IntentDetailPage() {
                         </span>
                         live
                       </span>
-                      <span>agent is looking in the background</span>
+                      <span>background matching on — negotiation activity appears in Radar</span>
                     </>
                   )}
                   {lifecycleStatus === "PAUSED" && (
@@ -643,7 +888,7 @@ export default function IntentDetailPage() {
                       <span className="inline-flex items-center rounded border border-gray-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-gray-600">
                         fulfilled
                       </span>
-                      <span>this intent has been fulfilled</span>
+                      <span>this signal has been fulfilled</span>
                     </>
                   )}
                   {lifecycleStatus === "EXPIRED" && (
@@ -651,7 +896,7 @@ export default function IntentDetailPage() {
                       <span className="inline-flex items-center rounded border border-gray-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-gray-600">
                         expired
                       </span>
-                      <span>this intent has expired</span>
+                      <span>this signal has expired</span>
                     </>
                   )}
                 </div>
@@ -684,15 +929,108 @@ export default function IntentDetailPage() {
                 )}
               </div>
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-10 lg:grid-rows-[minmax(0,1fr)]">
-                {negotiatorChatEnabled && intentId ? (
+              {/* Mobile-only trigger: below lg the Radar is the primary
+                  content and the Personal Agent column opens as an off-canvas
+                  sheet. The badge carries the same pending-question count
+                  semantics as the desktop panel header. */}
+              <Dialog.Trigger asChild>
+                <button
+                  type="button"
+                  ref={triggerRef}
+                  aria-controls={sheetId}
+                  data-testid="personal-agent-trigger"
+                  className="mb-4 inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:hidden"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  {showNegotiatorPanel ? "Personal Agent" : "Questions"}
+                  {questions.length > 0 && (
+                    <span
+                      data-testid="intent-question-count"
+                      className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center font-sans normal-case tracking-normal"
+                    >
+                      {questions.length > 99 ? "99+" : questions.length}
+                    </span>
+                  )}
+                </button>
+              </Dialog.Trigger>
+            </div>
+            </>
+          )}
+          </div>
+
+          {!intentLoading && !intent ? null : (
+              <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row">
+                {/* Visual backdrop only (Radix renders no overlay part for
+                    non-modal dialogs); dismissing it is Radix's
+                    pointer-down-outside on the content, not hand-rolled. */}
+                <div
+                  aria-hidden="true"
+                  data-testid="personal-agent-overlay"
+                  className={cn(
+                    "fixed inset-0 z-[100] bg-black/50 transition-opacity duration-300 lg:hidden",
+                    agentPanelOpen
+                      ? "opacity-100"
+                      : "pointer-events-none invisible opacity-0",
+                  )}
+                />
+                {/* One mounted left column: a fixed off-canvas sheet below
+                    lg (slid out when closed), a normal static equal-width
+                    flex column at lg+. It is never unmounted or duplicated,
+                    so the negotiator chat's live stream/question state
+                    survives open/close and breakpoint changes.
+                    Semantics switch at lg (a11y-only; layout is pure
+                    Tailwind): a modal dialog with FocusScope containment and
+                    an inert background while open on mobile, a plain
+                    labelled region on desktop. */}
+                <FocusScope
+                  asChild
+                  loop={sheetOverlayActive}
+                  trapped={sheetOverlayActive}
+                  onMountAutoFocus={(event) => event.preventDefault()}
+                >
+                <DismissableLayer
+                  ref={sheetRef}
+                  id={sheetId}
+                  data-testid="personal-agent-sheet"
+                  data-state={agentPanelOpen ? "open" : "closed"}
+                  role={isDesktop ? "region" : "dialog"}
+                  aria-modal={sheetOverlayActive || undefined}
+                  aria-labelledby={sheetTitleId}
+                  aria-describedby={sheetDescriptionId}
+                  tabIndex={-1}
+                  onDismiss={() => setAgentPanelOpen(false)}
+                  className={cn(
+                    "fixed inset-y-0 right-0 z-[100] flex w-[min(85vw,24rem)] flex-col overflow-y-auto bg-white p-4 shadow-xl outline-none",
+                    "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                    "data-[state=closed]:pointer-events-none data-[state=closed]:invisible data-[state=closed]:translate-x-full",
+                    "lg:static lg:z-auto lg:min-h-0 lg:min-w-0 lg:w-auto lg:flex-1 lg:translate-x-0 lg:visible lg:pointer-events-auto lg:overflow-visible lg:bg-transparent lg:p-0 lg:shadow-none",
+                  )}
+                >
+                  <h2 id={sheetTitleId} className="sr-only">
+                    {showNegotiatorPanel ? "Personal Agent" : "Questions"}
+                  </h2>
+                  <p id={sheetDescriptionId} className="sr-only">
+                    {showNegotiatorPanel
+                      ? "Chat with your Personal Agent and answer its follow-up questions about this signal."
+                      : "Questions from your agent about this signal."}
+                  </p>
+                  <div className="mb-1 flex shrink-0 justify-end lg:hidden">
+                    <button
+                      type="button"
+                      aria-label="Close panel"
+                      onClick={() => setAgentPanelOpen(false)}
+                      className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                {showNegotiatorPanel ? (
                   <Panel
                     title="Personal Agent"
-                    description="Your Personal Agent, scoped to this intent — ask what it's doing, steer it, or answer its follow-ups."
+                    description="Your Personal Agent, scoped to this signal — ask what it's doing, steer it, or answer its follow-ups."
                     media={
                       questions.length > 0 ? (
                         <span
-                          data-testid="intent-question-count"
                           className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center font-sans normal-case tracking-normal"
                         >
                           {questions.length > 99 ? "99+" : questions.length}
@@ -709,7 +1047,7 @@ export default function IntentDetailPage() {
                         Memory
                       </Link>
                     }
-                    className="lg:col-span-6"
+                    className="min-h-0 flex-1"
                   >
                     {user?.id && (
                       <IntentMemoryStrip intentId={intentId} userId={user.id} />
@@ -718,6 +1056,7 @@ export default function IntentDetailPage() {
                       key={intentId}
                       intentId={intentId}
                       questions={questions}
+                      answered={answered}
                       onAnswerQuestion={handleAnswer}
                       onDismissQuestion={handleDismiss}
                       questionChainPending={questionChainPending}
@@ -731,30 +1070,68 @@ export default function IntentDetailPage() {
                     />
                   </Panel>
                 ) : (
-                  <Panel
-                    title="Questions"
-                    count={questions.length}
-                    description="Answer pending follow-ups for this intent."
-                    className="lg:col-span-6"
-                  >
-                    <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
-                      {questions.length === 0 && !questionChainPending ? (
-                        <QuestionsEmptyState />
-                      ) : (
-                        <InjectedQuestions
-                          questions={questions}
-                          onAnswer={handleAnswer}
-                          onDismiss={handleDismiss}
-                          showTypingIndicator={questionChainPending}
-                        />
-                      )}
+                  <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+                    <div className="mb-4 shrink-0">
+                      <h3 className="flex items-center gap-2 text-base font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
+                        <span>
+                          Questions{questions.length > 0 ? ` (${questions.length})` : ""}
+                        </span>
+                      </h3>
                     </div>
-                  </Panel>
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      <div
+                        ref={conversationRef}
+                        className="flex-1 overflow-y-auto pr-1"
+                      >
+                        <div className="flex min-h-full flex-col justify-end gap-5">
+                          {answered.length === 0 && questions.length === 0 && !questionChainPending && (
+                            // Nothing to answer yet — the agent is still working
+                            // the room on this signal.
+                            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                              <video
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                // The clip is matted on opaque white; multiply
+                                // blends it into the page background.
+                                className="w-44 mix-blend-multiply"
+                              >
+                                <source
+                                  src="/loading-tree.m4v"
+                                  type="video/mp4"
+                                />
+                              </video>
+                              <p className="max-w-[19rem] text-[13px] leading-relaxed text-gray-400">
+                                no pending questions right now.
+                              </p>
+                            </div>
+                          )}
+                          {answered.length > 0 && <AnsweredQuestionLog entries={answered} />}
+                          {(questions.length > 0 || questionChainPending) && (
+                            <InjectedQuestions
+                              questions={questions}
+                              onAnswer={handleAnswer}
+                              onDismiss={handleDismiss}
+                              showTypingIndicator={questionChainPending}
+                              showAskedKicker
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <div className="pt-4 shrink-0">
+                        <AgentMessageInput onSend={submitRefine} />
+                      </div>
+                    </div>
+                  </section>
                 )}
+                </DismissableLayer>
+                </FocusScope>
 
+                <div data-testid="radar-column" inert={sheetOverlayActive} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-1">
                 <Panel
                   title="Radar"
-                  description="People the network surfaced for this intent."
+                  description="Opportunities the network surfaced for this signal."
                   media={
                     <img
                       src="/eye.webp"
@@ -764,7 +1141,6 @@ export default function IntentDetailPage() {
                       className="h-6 w-auto object-contain"
                     />
                   }
-                  className="lg:col-span-4"
                 >
                   <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
                     {RADAR_BUCKETS.map((bucket) => (
@@ -793,23 +1169,54 @@ export default function IntentDetailPage() {
                         <OpportunityCard
                           key={item.opportunityId}
                           card={item}
-                          currentStatus={opportunityStatusMap[item.opportunityId]}
-                          onPrimaryAction={(oppId, userId, viewerRole, counterpartName, isGhost) =>
-                            handleOpportunityAction(oppId, "accepted", userId, viewerRole, counterpartName, isGhost)
+                          currentStatus={
+                            opportunityStatusMap[item.opportunityId]
                           }
-                          onSecondaryAction={(oppId, userId, viewerRole, counterpartName, isGhost) =>
-                            handleOpportunityAction(oppId, "rejected", userId, viewerRole, counterpartName, isGhost)
+                          onPrimaryAction={(
+                            oppId,
+                            userId,
+                            viewerRole,
+                            counterpartName,
+                            isGhost,
+                          ) =>
+                            handleOpportunityAction(
+                              oppId,
+                              "accepted",
+                              userId,
+                              viewerRole,
+                              counterpartName,
+                              isGhost,
+                            )
                           }
-                          isLoading={!!opportunityActionLoading[item.opportunityId]}
+                          onSecondaryAction={(
+                            oppId,
+                            userId,
+                            viewerRole,
+                            counterpartName,
+                            isGhost,
+                          ) =>
+                            handleOpportunityAction(
+                              oppId,
+                              "rejected",
+                              userId,
+                              viewerRole,
+                              counterpartName,
+                              isGhost,
+                            )
+                          }
+                          isLoading={
+                            !!opportunityActionLoading[item.opportunityId]
+                          }
                         />
                       ))}
                     </div>
                   )}
                   </div>
                 </Panel>
+                </div>
               </div>
-            </>
           )}
+          </Dialog.Root>
         </ContentContainer>
       </div>
     </ClientLayout>

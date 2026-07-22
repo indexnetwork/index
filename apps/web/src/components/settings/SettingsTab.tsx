@@ -306,8 +306,8 @@ export default function SettingsTab({
         </div>
         <div>
           <label className="block text-sm font-medium font-ibm-plex-mono text-gray-700 mb-1.5">Prompt</label>
-          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={network.isPersonal ? 'Optional — describe what should land in My Network. Leave empty to keep every intent.' : 'What people can share in this network...'} className="min-h-[100px]" rows={4} />
-          <p className="text-xs text-gray-400 mt-1.5">{network.isPersonal ? 'Filters which of your intents auto-assign to My Network. Empty keeps everything.' : 'Guides what kind of intents people can share.'}</p>
+          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={network.isPersonal ? 'Optional — describe what should land in My Network. Leave empty to keep every signal.' : 'What people can share in this network...'} className="min-h-[100px]" rows={4} />
+          <p className="text-xs text-gray-400 mt-1.5">{network.isPersonal ? 'Filters which of your signals auto-assign to My Network. Empty keeps everything.' : 'Guides what kind of signals people can share.'}</p>
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => { setTitle(originalTitle); setPrompt(originalPrompt); setImageUrl(originalImageUrl); setImageFile(null); setImagePreview(null); setRemoveImageRequested(false); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={isSavingSettings || !hasSettingsChanged}>

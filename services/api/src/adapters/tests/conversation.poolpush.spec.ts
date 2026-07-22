@@ -1,17 +1,21 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, beforeEach as bunBeforeEach, describe, expect, test } from 'bun:test';
 import { and, eq, sql } from 'drizzle-orm/sql';
 
 import { conversationDatabaseAdapter, UserDatabaseAdapter } from '../database.adapter';
 import { QuestionerAdapter, type AdapterPersistableQuestion, type PoolPushClaim } from '../questioner.adapter';
 import { chatSessionService } from '../../services/chat.service';
 import db from '../../lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { conversationParticipants, conversations, messages } from '../../schemas/conversation.schema';
 import { intents, questions } from '../../schemas/database.schema';
 
 const EMAIL = 'test-conversation-pool-push@example.com';
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const beforeEach = withMinimumDatabaseHookBudget(bunBeforeEach, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
   const users = new UserDatabaseAdapter();
@@ -64,7 +68,13 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
 
   beforeAll(async () => {
     const existing = await users.findByEmail(EMAIL);
-    if (existing) await users.deleteByEmail(EMAIL);
+    if (existing) {
+      await db.delete(questions).where(
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: existing.id }])}::jsonb`,
+      );
+      await db.delete(intents).where(eq(intents.userId, existing.id));
+      await users.deleteById(existing.id);
+    }
     userId = (await users.create({ email: EMAIL, name: 'Delivery User' })).id;
   });
 

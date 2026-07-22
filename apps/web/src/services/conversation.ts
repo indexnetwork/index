@@ -7,6 +7,10 @@ export interface ConversationSummary {
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
   lastMessage: { parts: unknown[]; senderId: string; createdAt: string } | null;
   metadata: { title?: string; shareToken?: string } | null;
+  /** Viewer-scoped opportunity signal provenance, latest first. */
+  via: Array<{ intentId: string; opportunityId: string; title: string }>;
+  /** Number of counterpart messages newer than this viewer's read cursor. */
+  unreadCount: number;
   lastMessageAt: string | null;
   createdAt: string;
 }
@@ -16,6 +20,8 @@ export interface ConversationMessage {
   conversationId: string;
   senderId: string;
   role: 'user' | 'agent';
+  /** Durable conversation-session binding for sectioned history reads. */
+  sessionId?: string | null;
   parts: unknown[];
   metadata?: Record<string, unknown>;
   createdAt: string;
@@ -60,6 +66,11 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   getOrCreateDM: async (peerUserId: string): Promise<ConversationSummary> => {
     const response = await api.post<{ conversation: ConversationSummary }>('/conversations/dm', { peerUserId });
     return response.conversation;
+  },
+
+  /** Mark a conversation read for the current viewer. */
+  markConversationRead: async (conversationId: string): Promise<void> => {
+    await api.post(`/conversations/${conversationId}/read`);
   },
 
   /** Hide (soft-delete) a conversation. */

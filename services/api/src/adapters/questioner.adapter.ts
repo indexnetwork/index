@@ -11,9 +11,9 @@
  * alignment spec.
  */
 
-import { eq, and, sql, or, isNull, desc, count, gt } from 'drizzle-orm/sql';
+import { eq, and, sql, or, isNull, desc, count, gt, inArray } from 'drizzle-orm/sql';
 
-import { intents, questions, opportunities } from '../schemas/database.schema';
+import { intents, messages, questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
@@ -50,7 +50,9 @@ function poolPushCycleKey(pool: Pick<import('@indexnetwork/protocol').QuestionPo
 }
 
 function poolPushThreshold(consecutiveDismissals: number): number {
-  return POOL_QUESTION_PUSH_BASE_VOI * POOL_QUESTION_PUSH_DISMISSAL_DECAY ** Math.max(0, Math.floor(consecutiveDismissals));
+  const threshold = POOL_QUESTION_PUSH_BASE_VOI
+    * POOL_QUESTION_PUSH_DISMISSAL_DECAY ** Math.max(0, Math.floor(consecutiveDismissals));
+  return Number(threshold.toFixed(12));
 }
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
@@ -382,6 +384,46 @@ export class QuestionerAdapter {
   }
 
   /**
+   * Bind chat questions to the persisted assistant message that emitted them.
+   * Only canonical pending/terminal chat rows for the recipient and
+   * conversation are updated; pool and cross-conversation IDs fail closed.
+   *
+   * @param input - Chat question IDs and their authoritative message context.
+   */
+  async bindChatQuestionsToMessage(input: {
+    questionIds: string[];
+    userId: string;
+    conversationId: string;
+    messageId: string;
+  }): Promise<void> {
+    if (input.questionIds.length === 0) return;
+    const [message] = await this.db
+      .select({ sessionId: messages.sessionId })
+      .from(messages)
+      .where(and(
+        eq(messages.id, input.messageId),
+        eq(messages.conversationId, input.conversationId),
+      ))
+      .limit(1);
+    if (!message?.sessionId) return;
+
+    await this.db.update(questions)
+      .set({
+        detection: sql`jsonb_set(
+          jsonb_set(${questions.detection}, '{messageId}', to_jsonb(${input.messageId}::text), true),
+          '{sessionId}', to_jsonb(${message.sessionId}::text), true
+        )`,
+      })
+      .where(and(
+        inArray(questions.id, input.questionIds),
+        eq(questions.conversationId, input.conversationId),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: input.userId }])}::jsonb`,
+        sql`${questions.detection}->>'mode' = 'chat'`,
+        sql`NOT (${questions.detection} ? 'pool')`,
+      ));
+  }
+
+  /**
    * Final queued-artifact gate. The recipient+intent advisory lock serializes
    * competing inserts and lifecycle reconciliation while the transaction
    * rechecks authoritative intent text and the exact live pool.
@@ -579,17 +621,63 @@ export class QuestionerAdapter {
     userId: string,
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
+    return this.findByStatus(userId, 'pending', filters);
+  }
+
+  /**
+   * Find answered questions for a given user, using the same ownership and
+   * intent-scope filters as the pending-question listing.
+   *
+   * @param userId  - The user to find answered questions for.
+   * @param filters - Optional narrowing filters (mode/modes, source, conversation, intent scope, SQL limit).
+   * @returns Answered questions ordered by answer time (oldest first).
+   */
+  async findAnswered(
+    userId: string,
+    filters?: AdapterQuestionFilters,
+  ): Promise<AdapterPersistedQuestion[]> {
+    return this.findByStatus(userId, 'answered', filters);
+  }
+
+  private async findByStatus(
+    userId: string,
+    status: 'pending' | 'answered',
+    filters?: AdapterQuestionFilters,
+  ): Promise<AdapterPersistedQuestion[]> {
     const actorMatch = filters?.networkId
       ? [{ userId, networkId: filters.networkId }]
       : [{ userId }];
     const conditions = [
-      eq(questions.status, 'pending'),
+      eq(questions.status, status),
       sql`${questions.actors}::jsonb @> ${JSON.stringify(actorMatch)}::jsonb`,
-      or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
     ];
 
+    if (status === 'pending') {
+      conditions.push(or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`)!);
+    }
     if (filters?.mode) {
       conditions.push(sql`${questions.detection}->>'mode' = ${filters.mode}`);
+      if (filters.mode === 'chat') {
+        conditions.push(sql`NOT (${questions.detection} ? 'pool')`);
+        conditions.push(sql`COALESCE(${questions.detection}->>'voidedReason', '') = ''`);
+        // Unanchored rows may render only while their blocking turn is live.
+        // Once anchoring metadata exists, require both bindings and prove that
+        // the assistant message is in exactly the stamped durable session.
+        conditions.push(sql`(
+          (NOT (${questions.detection} ? 'messageId') AND NOT (${questions.detection} ? 'sessionId'))
+          OR (
+            ${questions.detection} ? 'messageId'
+            AND ${questions.detection} ? 'sessionId'
+            AND EXISTS (
+              SELECT 1
+              FROM ${messages}
+              WHERE ${messages.id} = ${questions.detection}->>'messageId'
+                AND ${messages.conversationId} = ${questions.conversationId}
+                AND ${messages.sessionId} = ${questions.detection}->>'sessionId'
+            )
+          )
+        )`);
+      }
     }
     if (filters?.purpose) {
       conditions.push(sql`${questions.detection}->>'purpose' = ${filters.purpose}`);
@@ -649,11 +737,14 @@ export class QuestionerAdapter {
       }
     }
 
+    const orderBy = status === 'answered'
+      ? sql`${questions.answer}->>'answeredAt'`
+      : questions.createdAt;
     const baseQuery = this.db
       .select()
       .from(questions)
       .where(and(...conditions))
-      .orderBy(questions.createdAt);
+      .orderBy(orderBy, questions.createdAt);
 
     const rows = filters?.limit && filters.limit > 0
       ? await baseQuery.limit(filters.limit)
@@ -743,7 +834,11 @@ export class QuestionerAdapter {
    */
   async markPoolQuestionPushRequested(questionId: string, userId: string): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
+      const [clock] = await tx.execute<{ now: Date | string }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now instanceof Date ? clock.now : new Date(clock.now);
+      if (Number.isNaN(transactionNow.getTime())) {
+        throw new Error('Database returned an invalid transaction timestamp');
+      }
       const [question] = await tx.select()
         .from(questions)
         .where(eq(questions.id, questionId))
@@ -756,7 +851,7 @@ export class QuestionerAdapter {
       if (
         question.status !== 'pending'
         || detection.voidedReason
-        || (question.expiresAt !== null && question.expiresAt <= clock.now)
+        || (question.expiresAt !== null && question.expiresAt <= transactionNow)
         || question.conversationId !== null
         || detection.mode !== 'pool_discovery'
         || detection.sourceType !== 'intent'
@@ -775,7 +870,7 @@ export class QuestionerAdapter {
         .set({
           detection: {
             ...detection,
-            pushRequestedAt: detection.pushRequestedAt ?? clock.now.toISOString(),
+            pushRequestedAt: detection.pushRequestedAt ?? transactionNow.toISOString(),
             pushRequestStatus: 'requested',
           } satisfies QuestionDetection,
         })
@@ -861,8 +956,11 @@ export class QuestionerAdapter {
     options: PoolPushClaimOptions = { allowNewClaim: true },
   ): Promise<PoolPushClaimResult> {
     return this.db.transaction(async (tx) => {
-      const [clock] = await tx.execute<{ now: Date }>(sql`SELECT transaction_timestamp() AS now`);
-      const transactionNow = clock.now;
+      const [clock] = await tx.execute<{ now: Date | string }>(sql`SELECT transaction_timestamp() AS now`);
+      const transactionNow = clock.now instanceof Date ? clock.now : new Date(clock.now);
+      if (Number.isNaN(transactionNow.getTime())) {
+        throw new Error('Database returned an invalid transaction timestamp');
+      }
 
       const [question] = await tx
         .select()

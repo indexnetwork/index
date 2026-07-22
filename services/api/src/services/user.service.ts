@@ -69,6 +69,25 @@ export class UserService {
         return this.db.update(userId, data);
     }
 
+    /** Update an owned intent through the normal material-update chokepoint. */
+    async updateIntentDescription(
+        intentId: string,
+        userId: string,
+        description: string,
+        expectedUpdatedAt: Date,
+    ): Promise<'applied' | 'stale' | 'not_found'> {
+        return chatDatabaseAdapter.updateIntentIfCurrent(intentId, userId, description, expectedUpdatedAt);
+    }
+
+    /** Retract an owned premise through the normal lifecycle update chokepoint. */
+    async retractPremise(
+        premiseId: string,
+        userId: string,
+        expectedUpdatedAt: Date,
+    ): Promise<'applied' | 'alreadyDone' | 'stale' | 'not_found'> {
+        return chatDatabaseAdapter.retractPremiseIfCurrent(premiseId, userId, expectedUpdatedAt);
+    }
+
     async getSocials(userId: string) {
         return this.db.getSocials(userId);
     }

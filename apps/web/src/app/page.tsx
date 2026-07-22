@@ -1,6 +1,6 @@
 import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
-import ChatContent from "@/components/ChatContent";
+import DiscoverHome from "@/components/DiscoverHome";
 import LandingPage from "@/app/landing/page";
 
 /**
@@ -17,7 +17,7 @@ function RootPage() {
   if (isAuthenticated) {
     return (
       <ClientLayout>
-        <ChatContent />
+        <DiscoverHome />
       </ClientLayout>
     );
   }

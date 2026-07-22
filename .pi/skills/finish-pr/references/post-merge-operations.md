@@ -24,7 +24,7 @@ Then use the available Railway MCP tool(s) to verify:
 
 If a Railway deployment is still building/deploying, wait only as long as is reasonable, then report it as pending with the deployment URL/status. Do not claim success.
 
-If Railway MCP is not configured or does not expose enough tools to verify status/logs, stop and report that deployment verification could not be completed.
+If Railway MCP is not configured or does not expose enough tools to verify status/logs, report deployment verification as incomplete. Do not claim success or close related issues, but do not treat MCP unavailability alone as a reason to undo or delay an otherwise-safe GitHub merge.
 
 ### 9. Finish related GitHub issues
 
@@ -59,9 +59,9 @@ Use Linear tools rather than guessing API calls:
 
 If the correct done status is ambiguous, ask the user rather than guessing.
 
-### 11. Clean up the worktree (MANDATORY)
+### 11. Clean up the finished PR worktree (MANDATORY)
 
-This repo does implementation work in `.worktrees/<name>` worktrees. **Removing finished worktrees is a required step of finish-pr, not an optional one.** Once a PR is merged and post-merge verification has passed, its worktree is finished — remove it. Then sweep for and remove every other finished worktree too, so `.worktrees/` does not accumulate stale merged copies.
+This repo does implementation work in `.worktrees/<name>` worktrees. **Removing the just-finished PR worktree is a required step of finish-pr, not an optional one.** Once its PR is merged and post-merge verification has passed, remove it. Do not turn one PR closeout into a sweep of unrelated worktrees; report other apparently finished worktrees and clean them only on request.
 
 Inspect worktrees and the current location:
 
@@ -89,24 +89,31 @@ Removal procedure:
    cd /Users/yanek/Projects/index
    ```
 
-2. Before removing the worktree, inspect and restore any external local pointers that target it. Example: a local Hermes plugin install may be a symlink to the PR worktree; repoint it to the canonical package before deletion so local tooling does not reference a removed path:
+2. Close the exact Herdr workspace for the finished worktree **before** removing the Git worktree. A removed worktree leaves its Herdr workspace and idle Pi agent behind as a stale sidebar entry; closing the workspace stops the Pi/terminal and removes that entry. Use the workspace ID recorded when the session was opened and re-verify identity before closing — never guess from the label alone, and never close the canonical root workspace (or any other active workspace):
+
+   ```bash
+   herdr workspace get "$WORKSPACE_ID"   # path/branch must match the finished worktree
+   herdr workspace close "$WORKSPACE_ID"
+   herdr workspace list                   # verify the workspace is gone
+   ```
+
+   If the recorded ID's path/branch does not match the finished worktree, or the close fails, **stop and report** — do not close another workspace or remove the Git worktree until identity is resolved. Verify the workspace disappeared from `herdr workspace list` before proceeding.
+
+3. Before removing the worktree, inspect and restore any external local pointers that target it. Example: a local Hermes plugin install may be a symlink to the PR worktree; repoint it to the canonical package before deletion so local tooling does not reference a removed path:
 
    ```bash
    ls -ld "$HOME/.hermes/plugins/index-network" || true
    ln -sfn "/Users/yanek/Projects/index/packages/hermes-plugin" "$HOME/.hermes/plugins/index-network"
    ```
 
-3. Remove the PR's worktree and then every other finished (merged-branch) worktree. Use `--force` for finished worktrees carrying only disposable leftovers:
+4. Remove the PR's worktree. Use `--force` only when it carries disposable leftovers that are already preserved on the merged PR/base:
 
    ```bash
    git fetch origin <base-branch>
-   # the just-finished PR's worktree:
    git worktree remove --force .worktrees/WORKTREE_NAME
-   # sweep: for each remaining non-root worktree whose branch is merged into the base, remove it too
-   git worktree remove --force .worktrees/OTHER_FINISHED_WORKTREE
    ```
 
-4. Prune stale administrative entries and confirm only the canonical root (plus any intentionally-kept worktree) remains:
+5. Prune stale administrative entries and report the remaining worktrees; leave unrelated worktrees in place:
 
    ```bash
    git worktree prune

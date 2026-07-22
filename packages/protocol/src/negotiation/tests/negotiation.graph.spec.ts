@@ -98,16 +98,19 @@ describe("negotiation graph — task intent snapshots", () => {
     ]);
   });
 
-  it("fails init closed when the exact opportunity attempt cannot claim a task", async () => {
+  it("fails init closed without finalize writes when the exact attempt cannot claim a task", async () => {
     const { database, dispatcher } = mkStubs();
     const persistedBoundary = new Date("2026-07-18T12:00:00.000Z");
     const claims: Array<{
       conversationId: string;
       opportunityId: string;
+      expectedStatus: string;
       expectedUpdatedAt: Date;
       metadata: Record<string, unknown>;
     }> = [];
     let genericTaskCreates = 0;
+    let taskStateUpdates = 0;
+    let artifactCreates = 0;
     let statusUpdates = 0;
 
     database.createNegotiationTaskForAttempt = async (input) => {
@@ -119,7 +122,12 @@ describe("negotiation graph — task intent snapshots", () => {
       return { id: "unexpected-task", conversationId: "conv-1", state: "submitted" };
     };
     database.updateTaskState = async () => {
+      taskStateUpdates += 1;
       throw new Error("task not found");
+    };
+    database.createArtifact = async () => {
+      artifactCreates += 1;
+      return { id: "unexpected-artifact" };
     };
     database.updateOpportunityStatus = async () => {
       statusUpdates += 1;
@@ -140,17 +148,21 @@ describe("negotiation graph — task intent snapshots", () => {
       indexContext: { networkId: "net-1", prompt: "" },
       seedAssessment: { reasoning: "x", valencyRole: "peer" },
       opportunityId: "opp-stale",
+      opportunityStatus: "latent",
       opportunityUpdatedAt: persistedBoundary,
       maxTurns: 1,
     } as Partial<typeof NegotiationGraphState.State>);
 
     expect(result.error).toContain("Negotiation attempt is stale or already claimed");
     expect(genericTaskCreates).toBe(0);
+    expect(taskStateUpdates).toBe(0);
+    expect(artifactCreates).toBe(0);
     expect(statusUpdates).toBe(0);
     expect(claims).toHaveLength(1);
     expect(claims[0]).toMatchObject({
       conversationId: "conv-1",
       opportunityId: "opp-stale",
+      expectedStatus: "latent",
       expectedUpdatedAt: persistedBoundary,
       metadata: {
         type: "negotiation",
@@ -164,6 +176,68 @@ describe("negotiation graph — task intent snapshots", () => {
         ],
       },
     });
+  });
+
+  it("persists a terminal artifact and opportunity status after a latent attempt claim", async () => {
+    const { database, dispatcher } = mkStubs();
+    const persistedBoundary = new Date("2026-07-18T12:00:00.000Z");
+    const claimedStatuses: string[] = [];
+    const taskStates: string[] = [];
+    const artifacts: Array<{ taskId: string; name?: string; parts: unknown[] }> = [];
+    const opportunityStatuses: string[] = [];
+
+    database.createNegotiationTaskForAttempt = async (input) => {
+      claimedStatuses.push(input.expectedStatus);
+      return { id: "task-attempt", conversationId: input.conversationId, state: "submitted" };
+    };
+    database.updateTaskState = async (_taskId, state) => {
+      taskStates.push(state);
+      return { id: "task-attempt", conversationId: "conv-1", state };
+    };
+    database.createArtifact = async (input) => {
+      artifacts.push(input);
+      return { id: "artifact-1" };
+    };
+    database.updateOpportunityStatus = async (_opportunityId, status) => {
+      opportunityStatuses.push(status);
+      return { id: "opp-latent", status };
+    };
+
+    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const originalInvoke = IndexNegotiator.prototype.invoke;
+    let turn = 0;
+    IndexNegotiator.prototype.invoke = async function () {
+      turn += 1;
+      return {
+        action: turn === 1 ? "propose" as const : "reject" as const,
+        assessment: {
+          reasoning: turn === 1 ? "considering" : "not a fit",
+          suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const },
+        },
+        message: turn === 1 ? "Could this work?" : "No match",
+      };
+    };
+
+    try {
+      await new NegotiationGraphFactory(database, dispatcher).createGraph().invoke({
+        sourceUser: { id: "u-src", intents: [], profile: {} },
+        candidateUser: { id: "u-cand", intents: [], profile: {} },
+        indexContext: { networkId: "net-1", prompt: "" },
+        seedAssessment: { reasoning: "x", valencyRole: "peer" },
+        opportunityId: "opp-latent",
+        opportunityStatus: "latent",
+        opportunityUpdatedAt: persistedBoundary,
+        maxTurns: 2,
+      } as Partial<typeof NegotiationGraphState.State>);
+    } finally {
+      IndexNegotiator.prototype.invoke = originalInvoke;
+    }
+
+    expect(claimedStatuses).toEqual(["latent"]);
+    expect(taskStates).toContain("completed");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]).toMatchObject({ taskId: "task-attempt", name: "negotiation-outcome" });
+    expect(opportunityStatuses).toEqual(["rejected"]);
   });
 });
 

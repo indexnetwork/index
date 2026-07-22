@@ -111,6 +111,7 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
           email,
           password,
           name: name || email.split('@')[0],
+          callbackURL: resolvedCallbackURL,
         });
         if (signUpError) {
           setError(signUpError.message || 'Sign up failed');
@@ -120,6 +121,7 @@ export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalPro
         const { error: signInError } = await authClient.signIn.email({
           email,
           password,
+          callbackURL: resolvedCallbackURL,
         });
         if (signInError) {
           setError(signInError.message || 'Sign in failed');

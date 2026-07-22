@@ -185,7 +185,9 @@ export function createAuth(deps: AuthDeps) {
       // Cast needed: @better-auth/core version mismatch between plugins (1.5.6) and
       // root lockfile (1.4.18) causes incompatible Plugin types. Runtime is fine.
       apiKey({
-        enableSessionForAPIKeys: true,
+        // Keep generic API-key management session-bound. API keys continue to
+        // authenticate through the project's AuthGuard and MCP DB fallback,
+        // but Better Auth must never promote them into browser sessions.
         enableMetadata: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,

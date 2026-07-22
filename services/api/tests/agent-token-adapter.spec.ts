@@ -1,12 +1,16 @@
 import '../src/startup.env';
 
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 
 import { agentTokenAdapter } from '../src/adapters/agent-token.adapter';
 import db from '../src/lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../src/lib/testing/database-test-budget';
 import { agents, apikeys, users } from '../src/schemas/database.schema';
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe('agentTokenAdapter.revokeAllForAgent', () => {
   let userId = '';

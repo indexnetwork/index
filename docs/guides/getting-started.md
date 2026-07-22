@@ -23,12 +23,26 @@ Install the following before cloning the repository.
 | **pgvector** extension | 0.5+ | 2000-dimensional vector similarity search |
 | **Redis** | 6+ | Job queues (BullMQ) and caching |
 | **Git** | 2.30+ | Version control, worktrees |
+| **Herdr** | current CLI | Visible worktree workspaces and Pi sessions |
 
 Install Bun (if not already installed):
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
 ```
+
+Install Herdr on macOS or Linux, then install and verify its official Pi integration:
+
+```bash
+curl -fsSL https://herdr.dev/install.sh | sh
+herdr integration install pi
+herdr integration status
+```
+
+Before coordinator socket commands such as `herdr worktree open` are used, launch
+`herdr` once from the repository so its visible client/server session is running (or
+ensure an existing Herdr server/client is active). Verify the server when needed with
+`herdr status server`.
 
 Install the pgvector extension for PostgreSQL. The method varies by platform:
 
@@ -269,18 +283,58 @@ Once both servers are running, open http://localhost:3000 in your browser.
 
 ### Testing
 
+API database tests require a **dedicated disposable PostgreSQL database**. Never
+point `.env.test` at a shared development database or either production branch.
+From the repository root:
+
+```bash
+cp .env.example .env.test
+```
+
+Change the copied file's `NODE_ENV=development` to `NODE_ENV=test` (or remove
+the declaration), set `DATABASE_URL` to the disposable database, and opt in
+explicitly with `TEST_DATABASE_SAFE=1`. Test entry points capture test mode
+before dotenv loads and reject conflicting `NODE_ENV` values, so
+`db:migrate:test` cannot bypass the safety marker. Then provision the schema:
+
+```bash
+cd services/api
+bun run db:migrate:test
+```
+
+Bare/full-suite runs perform a bounded connectivity and schema probe before test
+modules load. The probe redacts credentials and reports missing migrations with
+a direct `db:migrate:test` remediation. Tests that use Bun's process-global
+module mocks or mutate process-wide environment variables have the
+non-discoverable `.isolated.ts` suffix. A discoverable orchestrator validates
+exact manifest/filesystem parity and runs every entry in a fresh Bun subprocess;
+missing, duplicate, malformed, or unregistered entries fail before execution.
+
 ```bash
 cd services/api
 
 # Run a specific test file (preferred)
 bun test tests/e2e.spec.ts
 
+# Run the complete hermetic/disposable-DB baseline, including isolated files
+bun test
+
+# Run only the strict isolated manifest
+bun run test:isolated
+
+# Explicit alias of the complete bare-Bun baseline
+bun run test:all
+
 # Run tests in watch mode
 bun test --watch
-
-# Run the full suite (slow -- avoid unless necessary)
-bun test
 ```
+
+Live integrations are off by default. Use `RUN_PAID_INTEGRATION_TESTS=1` with
+the required provider credentials for paid tests. Redis tests require both
+`RUN_REDIS_INTEGRATION_TESTS=1` and an explicit `REDIS_URL` for a dedicated
+disposable Redis instance; they never probe localhost or a configured Redis
+without the gate. `RUN_LOCAL_API_E2E=1` enables tests that require a separately
+running localhost API server.
 
 Always target specific test files affected by your changes rather than running the full suite.
 
@@ -321,27 +375,73 @@ This shows all BullMQ job queues, their status, and lets you retry failed jobs o
 
 ## Git workflow
 
-### Worktrees
+### Worktrees and visible Pi sessions
 
-All feature and fix work happens in git worktrees, keeping the main working tree (`dev` branch) stable.
+All feature and fix work happens in Git worktrees, keeping the canonical working tree
+on `dev` and read-only for source changes. Worktrees live in `.worktrees/` (gitignored).
+Use a semantic slash branch such as `feat/my-feature`; its only valid folder is the
+dashed form `feat-my-feature`.
 
-Worktrees live in `.worktrees/` (gitignored). Folder names use dashes; branches inside can use slashes.
+From the canonical root, inspect existing registrations before creating anything:
 
 ```bash
-# Create a worktree for a new feature
-git worktree add .worktrees/feat-my-feature dev
+git worktree list --porcelain
+```
 
-# Set up env symlinks and install dependencies
+Reuse an existing checkout only when its absolute path and branch match. Otherwise,
+create the semantic branch/worktree, then run the mandatory setup:
+
+```bash
+git fetch origin dev
+git worktree add -b feat/my-feature .worktrees/feat-my-feature origin/dev
 bun run worktree:setup feat-my-feature
+```
 
+For an existing local branch that is not mounted elsewhere, omit `-b`:
+
+```bash
+git worktree add .worktrees/feat-my-feature feat/my-feature
+bun run worktree:setup feat-my-feature
+```
+
+Setup symlinks root `.env*` files into the worktree and installs workspace
+dependencies. Then open or focus the exact checkout in Herdr:
+
+```bash
+herdr worktree open \
+  --path "$PWD/.worktrees/feat-my-feature" \
+  --label feat-my-feature \
+  --focus \
+  --json
+```
+
+Record `.result.workspace.workspace_id` and `.result.root_pane.pane_id` from the JSON.
+If the returned root pane is an interactive shell with no agent, start the stable Pi
+agent named from the dashed folder:
+
+```bash
+herdr agent start feat-my-feature --kind pi --pane <returned-pane-id>
+```
+
+Before mutation, the visible Pi verifies `pwd`, `git branch --show-current`, and
+`git status --short --branch`. The canonical/root Pi sends one complete handoff and
+polls the same agent directly with `herdr agent get`, `herdr agent read`, and
+`herdr agent wait`; it does not create a background watcher. Routine questions are
+answered with the safe/recommended option. Structured prompts are read and answered
+through targeted `herdr pane` text/keys rather than a new agent prompt.
+
+Use one writer per worktree. Parallel work requires separate branches, worktrees,
+Herdr workspaces, and Pi sessions. Reuse the same visible session for review and PR-fix
+rounds. The legacy `bun run worktree:session` helper remains only a fallback when Herdr
+is unavailable.
+
+```bash
 # Start dev servers from the worktree
 bun run worktree:dev feat-my-feature
 
 # List all worktrees and their setup status
 bun run worktree:list
 ```
-
-The `worktree:setup` script symlinks the root `.env*` files from the main working tree into the worktree root (so you do not need to copy them) and installs `node_modules` in each workspace.
 
 ### Conventional commits
 

@@ -1,18 +1,23 @@
-import { Queue, Worker, QueueEvents, Job, Processor, WorkerOptions, QueueOptions, JobsOptions } from 'bullmq';
+import { Queue, Worker, QueueEvents, Processor, WorkerOptions, QueueOptions, JobsOptions } from 'bullmq';
 import type { RedisOptions } from 'ioredis';
 
 import { traceAppOperation } from '../sentry-performance';
 import { log } from '../log';
 
+import { createHermeticQueue, createHermeticQueueEvents, createHermeticWorker } from './bullmq.hermetic';
+
 const logger = log.lib.from("bullmq");
 
 /**
  * Get BullMQ-compatible Redis connection options.
- * BullMQ requires maxRetriesPerRequest: null (for blocking commands)
- * and lazyConnect: false (workers need active connection to receive jobs).
+ * BullMQ requires maxRetriesPerRequest: null for blocking commands. Tests stay
+ * lazy unless RUN_REDIS_INTEGRATION_TESTS=1 so importing queue singletons does
+ * not implicitly require a localhost Redis server.
  */
 function getBullMQConnection(): RedisOptions {
   const redisUrl = process.env.REDIS_URL;
+  const lazyConnect = process.env.NODE_ENV === 'test'
+    && process.env.RUN_REDIS_INTEGRATION_TESTS !== '1';
 
   if (redisUrl) {
     const url = new URL(redisUrl);
@@ -24,7 +29,7 @@ function getBullMQConnection(): RedisOptions {
       username: url.username || undefined,
       db: url.pathname ? parseInt(url.pathname.slice(1)) || 0 : 0,
       maxRetriesPerRequest: null,
-      lazyConnect: false,
+      lazyConnect,
       enableReadyCheck: false,
       ...(useTls && { tls: {} }),
     };
@@ -37,7 +42,7 @@ function getBullMQConnection(): RedisOptions {
     username: process.env.REDIS_USERNAME || undefined,
     db: parseInt(process.env.REDIS_DB || '0'),
     maxRetriesPerRequest: null,
-    lazyConnect: false,
+    lazyConnect,
     enableReadyCheck: false,
   };
 }
@@ -59,6 +64,11 @@ const DEFAULT_JOB_OPTS: JobsOptions = {
     count: 1000,
   },
 };
+
+function useHermeticRedis(): boolean {
+  return process.env.NODE_ENV === 'test'
+    && process.env.RUN_REDIS_INTEGRATION_TESTS !== '1';
+}
 
 /**
  * QueueFactory
@@ -88,6 +98,9 @@ export class QueueFactory {
    */
   static createQueue<T = any>(name: string, options?: Omit<QueueOptions, 'connection'>): Queue<T> {
     logger.info('Initializing queue', { name });
+    if (useHermeticRedis()) {
+      return createHermeticQueue<T>(name, options?.defaultJobOptions ?? DEFAULT_JOB_OPTS);
+    }
     return new Queue<T>(name, {
       connection: SHARED_REDIS_OPTS,
       defaultJobOptions: DEFAULT_JOB_OPTS,
@@ -124,6 +137,9 @@ export class QueueFactory {
       },
       () => processor(job, token),
     );
+    if (useHermeticRedis()) {
+      return createHermeticWorker(name, tracedProcessor, options?.concurrency ?? 1);
+    }
     return new Worker<T>(name, tracedProcessor, {
       connection: SHARED_REDIS_OPTS,
       concurrency: 1, // Default to sequential processing
@@ -141,6 +157,7 @@ export class QueueFactory {
    * @returns QueueEvents instance.
    */
   static createQueueEvents(name: string): QueueEvents {
+    if (useHermeticRedis()) return createHermeticQueueEvents(name);
     return new QueueEvents(name, {
       connection: SHARED_REDIS_OPTS,
     });

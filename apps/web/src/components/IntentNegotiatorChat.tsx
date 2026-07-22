@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
+import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
+import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import { QuestionsEmptyState } from "@/components/InjectedQuestions/QuestionsEmptyState";
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
+import { buildIntentQuestionTimeline } from "@/components/intent-question.timeline";
 import type { PendingQuestion, AnswerBody } from "@/services/questions";
 import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -13,11 +16,24 @@ import { log } from "@/lib/logger";
 
 const logger = log.ui.from("IntentNegotiatorChat");
 
+function formatRelativeTimestamp(timestamp: Date | undefined): string | null {
+  if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
+  const elapsedMs = Date.now() - timestamp.getTime();
+  const elapsedMinutes = Math.floor(Math.abs(elapsedMs) / 60_000);
+  if (elapsedMinutes < 1) return "just now";
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours}h ago`;
+  return `${Math.floor(elapsedHours / 24)}d ago`;
+}
+
 export interface IntentNegotiatorChatProps {
   /** The intent this chat is pinned to. */
   intentId: string;
-  /** Pending questions for the intent — rendered as the chat's opening turns. */
+  /** Pending questions for the intent, placed at their message anchor or the current end. */
   questions: PendingQuestion[];
+  /** Answered question exchanges interleaved with the conversation timeline. */
+  answered: AnsweredThreadEntry[];
   onAnswerQuestion: (questionId: string, body: AnswerBody) => Promise<void>;
   onDismissQuestion: (questionId: string) => Promise<void>;
   /**
@@ -50,13 +66,15 @@ export interface IntentNegotiatorChatProps {
  *
  * Replaces the static questions block on the intent page with a chat window
  * to the user's personal negotiator, pinned to this intent. Pending intent
- * questions render as the opening turns (cards, answered through the
- * existing questions pipeline); everything conversational streams through
- * the shared AIChatContext against the per-intent negotiator session.
+ * questions render at their triggering assistant-message anchor, or at the
+ * current end when unanchored (cards still use the existing questions
+ * pipeline); everything conversational streams through the shared
+ * AIChatContext against the per-intent negotiator session.
  */
 export default function IntentNegotiatorChat({
   intentId,
   questions,
+  answered,
   onAnswerQuestion,
   onDismissQuestion,
   questionChainPending,
@@ -72,12 +90,16 @@ export default function IntentNegotiatorChat({
     sendMessage,
     stopStream,
     loadSession,
+    loadPreviousMessages,
+    hasPreviousSession,
+    isLoadingPreviousMessages,
     clearChat,
     sessionId,
   } = useAIChat();
 
   const [agentName, setAgentName] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [restoredHistoryLoaded, setRestoredHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const clearChatRef = useRef(clearChat);
@@ -102,11 +124,14 @@ export default function IntentNegotiatorChat({
         created: boolean;
         agent: { id: string; name: string; description: string | null };
       }>("/chat/negotiator/session", { intentId })
-      .then(async ({ session, agent }) => {
+      .then(async ({ session, created, agent }) => {
         if (!active) return;
         setAgentName(agent.name);
-        await loadSession(session.id);
-        if (active) setReady(true);
+        const historyLoaded = await loadSession(session.id);
+        if (active) {
+          if (!created && historyLoaded) setRestoredHistoryLoaded(true);
+          setReady(true);
+        }
       })
       .catch((err) => {
         logger.error("Failed to bootstrap intent negotiator chat", { error: err, intentId });
@@ -134,7 +159,7 @@ export default function IntentNegotiatorChat({
   // Follow the stream.
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, questions.length, questionChainPending, ready]);
+  }, [answered.length, messages, questions.length, questionChainPending, ready]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -168,6 +193,38 @@ export default function IntentNegotiatorChat({
   );
 
   const placeholder = agentName ? `Message ${agentName}…` : "Message your Personal Agent…";
+  const hasRestoredHistory = restoredHistoryLoaded && messages.length > 0;
+  const restoredHistoryLastActive = hasRestoredHistory
+    ? formatRelativeTimestamp(messages[messages.length - 1]?.timestamp)
+    : null;
+  const questionTimeline = useMemo(
+    () => buildIntentQuestionTimeline(messages, questions, answered),
+    [answered, messages, questions],
+  );
+
+  const renderAnswered = (entries: AnsweredThreadEntry[], key: string) => (
+    <div key={key} data-testid="negotiator-answered-exchange">
+      <AnsweredQuestionLog entries={entries} />
+    </div>
+  );
+
+  const renderPending = (
+    pendingQuestions: PendingQuestion[],
+    key: string,
+    showTypingIndicator = false,
+  ) => (
+    <div key={key} data-testid="negotiator-pending-questions">
+      <p className="mb-2 text-xs uppercase tracking-wider text-gray-500 font-ibm-plex-mono">
+        Your Personal Agent needs your input
+      </p>
+      <InjectedQuestions
+        questions={pendingQuestions}
+        onAnswer={onAnswerQuestion}
+        onDismiss={onDismissQuestion}
+        showTypingIndicator={showTypingIndicator}
+      />
+    </div>
+  );
 
   return (
     <div
@@ -196,70 +253,113 @@ export default function IntentNegotiatorChat({
           </div>
         ) : (
           <>
-            {messages.length === 0 && questions.length === 0 && (
+            {hasPreviousSession && (
+              <div className="flex justify-center py-2">
+                <button
+                  type="button"
+                  onClick={() => void loadPreviousMessages()}
+                  disabled={isLoadingPreviousMessages}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+                  aria-label="Load previous messages"
+                >
+                  {isLoadingPreviousMessages ? "Loading previous messages…" : "Load Previous Messages"}
+                </button>
+              </div>
+            )}
+            {messages.length === 0 && (answered.length > 0 || questions.length === 0) && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
                   <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                   <p>
-                    This is your direct line to {agentName ?? "your Personal Agent"} about this intent —
+                    This is your direct line to {agentName ?? "your Personal Agent"} about this signal —
                     ask who it found, why, what it's waiting on, or tell it how to negotiate on your
                     behalf.
                   </p>
                 </div>
-                {!questionChainPending && <QuestionsEmptyState />}
+                {answered.length === 0 && !questionChainPending && <QuestionsEmptyState />}
               </div>
             )}
 
-            {(questions.length > 0 || questionChainPending) && (
-              <div data-testid="negotiator-opening-questions">
-                <p className="mb-2 text-xs uppercase tracking-wider text-gray-500 font-ibm-plex-mono">
-                  Your Personal Agent needs your input
-                </p>
-                <InjectedQuestions
-                  questions={questions}
-                  onAnswer={onAnswerQuestion}
-                  onDismiss={onDismissQuestion}
-                  showTypingIndicator={questionChainPending}
-                />
+            {hasRestoredHistory && (
+              <div
+                className="border-y border-gray-100 py-1 text-center text-[11px] text-gray-400 font-ibm-plex-mono"
+                data-testid="negotiator-restored-history-divider"
+                role="note"
+              >
+                earlier conversation
+                {restoredHistoryLastActive ? ` · last active ${restoredHistoryLastActive}` : ""} — may not reflect current signal state
               </div>
             )}
 
-            {messages.map((msg) =>
-              msg.role === "user" ? (
-                <div key={msg.id} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#041729] px-4 py-2 text-sm text-white whitespace-pre-wrap">
-                    {msg.content}
-                  </div>
-                </div>
-              ) : (
-                <div key={msg.id} className="text-sm text-gray-900">
-                  {msg.traceEvents && msg.traceEvents.length > 0 && (
-                    <ToolCallsDisplay
-                      traceEvents={msg.traceEvents}
-                      isStreaming={msg.isStreaming}
-                      wasStoppedByUser={msg.wasStoppedByUser}
-                      stoppedAt={msg.stoppedAt}
-                    />
+            {questionTimeline.items.map((item) => {
+              if (item.type === "answered") {
+                return renderAnswered([item.entry], `answered-${item.entry.id}`);
+              }
+
+              const msg = item.message;
+              const messageIndex = messages.findIndex((message) => message.id === msg.id);
+              const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined;
+              const startsSession = previousMessage !== undefined
+                && previousMessage.conversationSessionId !== msg.conversationSessionId;
+              const anchoredAnswered = questionTimeline.answeredByMessageId.get(msg.id) ?? [];
+              const anchoredPending = questionTimeline.pendingByMessageId.get(msg.id) ?? [];
+              return (
+                <Fragment key={`message-${msg.id}`}>
+                  {startsSession && (
+                    <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
+                      <span className="h-px flex-1 bg-gray-200" />
+                      <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
+                      <span className="h-px flex-1 bg-gray-200" />
+                    </div>
                   )}
-                  <AssistantMessageContent
-                    content={msg.content}
-                    isStreaming={msg.isStreaming ?? false}
-                    onOpportunityPrimaryAction={(id, userId, role, name) =>
-                      onOpportunityAction(id, "accepted", userId, role, name)
-                    }
-                    onOpportunitySecondaryAction={(id, userId, role, name) =>
-                      onOpportunityAction(id, "rejected", userId, role, name)
-                    }
-                    opportunityLoadingMap={opportunityActionLoading}
-                    currentStatusMap={opportunityStatusMap}
-                    onIntentProposalApprove={handleProposalApprove}
-                    onIntentProposalReject={handleProposalReject}
-                    onIntentProposalUndo={handleProposalUndo}
-                    intentProposalStatusMap={proposalStatusMap}
-                  />
-                </div>
-              ),
-            )}
+                  {msg.role === "user" ? (
+                    <div className="flex justify-end">
+                      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#041729] px-4 py-2 text-sm text-white whitespace-pre-wrap">
+                        {msg.content}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-900">
+                      {msg.traceEvents && msg.traceEvents.length > 0 && (
+                        <ToolCallsDisplay
+                          traceEvents={msg.traceEvents}
+                          isStreaming={msg.isStreaming}
+                          wasStoppedByUser={msg.wasStoppedByUser}
+                          stoppedAt={msg.stoppedAt}
+                        />
+                      )}
+                      <AssistantMessageContent
+                        content={msg.content}
+                        isStreaming={msg.isStreaming ?? false}
+                        onOpportunityPrimaryAction={(id, userId, role, name) =>
+                          onOpportunityAction(id, "accepted", userId, role, name)
+                        }
+                        onOpportunitySecondaryAction={(id, userId, role, name) =>
+                          onOpportunityAction(id, "rejected", userId, role, name)
+                        }
+                        opportunityLoadingMap={opportunityActionLoading}
+                        currentStatusMap={opportunityStatusMap}
+                        onIntentProposalApprove={handleProposalApprove}
+                        onIntentProposalReject={handleProposalReject}
+                        onIntentProposalUndo={handleProposalUndo}
+                        intentProposalStatusMap={proposalStatusMap}
+                      />
+                    </div>
+                  )}
+                  {anchoredAnswered.length > 0 &&
+                    renderAnswered(anchoredAnswered, `answered-for-${msg.id}`)}
+                  {anchoredPending.length > 0 &&
+                    renderPending(anchoredPending, `pending-for-${msg.id}`)}
+                </Fragment>
+              );
+            })}
+
+            {(questionTimeline.trailingPending.length > 0 || questionChainPending) &&
+              renderPending(
+                questionTimeline.trailingPending,
+                "trailing-pending",
+                questionChainPending,
+              )}
           </>
         )}
         <div ref={scrollRef} />

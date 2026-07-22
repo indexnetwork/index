@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, mock, beforeEach } from 'bun:test';
-import { IntentEvents, intentResumeDiscoveryJobId } from '../intent.event';
+import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from '../intent.event';
 
 /**
  * Tests that IntentEvents hooks trigger maintenance for all lifecycle events.
@@ -22,6 +22,15 @@ describe('IntentEvents maintenance hooks', () => {
     IntentEvents.onCreated = handler;
     IntentEvents.onCreated('intent-1', 'user-1');
     expect(handler).toHaveBeenCalledWith('intent-1', 'user-1');
+  });
+
+  it('create-time event wiring performs maintenance only; discovery belongs to post-HyDE', () => {
+    const triggerMaintenance = mock((_userId: string, _reason: string) => {});
+
+    handleIntentCreatedMaintenance('intent-1', 'user-1', triggerMaintenance);
+
+    expect(triggerMaintenance).toHaveBeenCalledTimes(1);
+    expect(triggerMaintenance).toHaveBeenCalledWith('user-1', 'intent-created');
   });
 
   it('onArchived can be assigned a handler', () => {

@@ -1,12 +1,23 @@
 import { log } from '../lib/log';
 import { IntentGraphFactory } from '@indexnetwork/protocol';
-import type { IntentGraphDatabase } from '@indexnetwork/protocol';
+import type { IntentGraphDatabase, QuestionerEnqueueFn } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
+import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { IntentEvents } from '../events/intent.event';
 
 const logger = log.service.from("IntentService");
+
+/** Stable typed failure for proposal assignment to a network the owner no longer belongs to. */
+export class IntentNetworkMembershipError extends Error {
+  readonly code = 'network_membership_required' as const;
+
+  constructor(readonly networkId: string) {
+    super('You are not a current member of this network');
+    this.name = 'IntentNetworkMembershipError';
+  }
+}
 
 /**
  * IntentService
@@ -25,15 +36,27 @@ export class IntentService {
   private factory: IntentGraphFactory;
   private adapter: IntentDatabaseAdapter;
   private embedder: EmbedderAdapter;
+  private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+  private questionerEnqueue?: QuestionerEnqueueFn;
+  private emitProposalCreated: (intentId: string, userId: string) => void;
 
   /**
-   * @param deps - Optional adapter override for focused service tests.
+   * @param deps - Optional dependency overrides for focused service tests.
    */
-  constructor(deps?: { adapter?: IntentDatabaseAdapter }) {
+  constructor(deps?: {
+    adapter?: IntentDatabaseAdapter;
+    embedder?: EmbedderAdapter;
+    proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+    questionerEnqueue?: QuestionerEnqueueFn;
+    emitProposalCreated?: (intentId: string, userId: string) => void;
+  }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.db = this.adapter;
-    this.embedder = new EmbedderAdapter();
-    this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue);
+    this.embedder = deps?.embedder ?? new EmbedderAdapter();
+    this.proposalQueue = deps?.proposalQueue ?? intentQueue;
+    this.questionerEnqueue = deps?.questionerEnqueue ?? questionerEnqueueIfEnabled();
+    this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
+    this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue, this.questionerEnqueue);
   }
 
   /**
@@ -103,7 +126,7 @@ export class IntentService {
 
     logger.verbose('Listing intents', { userId, page, limit, archived });
 
-    const { rows, total } = await this.adapter.listIntents(userId, {
+    const { rows, total, totalWaitingOpportunities } = await this.adapter.listIntents(userId, {
       page,
       limit,
       archived,
@@ -115,6 +138,7 @@ export class IntentService {
         ...intent,
         status: intent.status ?? 'ACTIVE' as const,
       })),
+      totalWaitingOpportunities,
       pagination: {
         current: page,
         total: Math.ceil(total / limit),
@@ -188,6 +212,7 @@ export class IntentService {
     userId: string,
     status: 'ACTIVE' | 'PAUSED',
     networkScopeId?: string | null,
+    expectedUpdatedAtMs?: number,
   ) {
     logger.verbose('Transitioning intent lifecycle', { intentId, userId, status, networkScopeId });
     const result = await this.adapter.transitionIntentLifecycle({
@@ -195,6 +220,7 @@ export class IntentService {
       userId,
       status,
       networkScopeId,
+      expectedUpdatedAtMs,
     });
     if (result.kind !== 'success') return result;
 
@@ -255,8 +281,9 @@ export class IntentService {
   /**
    * Create an intent directly from a confirmed chat proposal.
    * Bypasses the full intent graph (no LLM re-inference/verification).
-   * Idempotent: if an intent already exists for this proposalId + userId, returns it.
-   * Generates embedding, inserts into DB, optionally associates with index, and enqueues HyDE job.
+   * Idempotent under concurrent confirmation: the adapter serializes one exact
+   * user + proposal pair and returns the transaction winner to every caller.
+   * Generates embedding, inserts into DB, optionally associates with index, and enqueues HyDE and intent-refinement jobs.
    * Embedder and queue failures are logged but do not abort creation.
    *
    * @param userId - The user ID
@@ -269,8 +296,13 @@ export class IntentService {
     logger.verbose('Creating intent from proposal', { userId, proposalId });
 
     const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
-    if (existing) {
-      return existing;
+    if (existing) return existing;
+
+    // Cheap advisory preflight avoids embedding/transaction/queue/event work
+    // for clear denials. confirmProposalIntent still re-checks membership under
+    // its advisory lock and remains the final race-safe authority.
+    if (networkId && !await this.adapter.isNetworkMember(networkId, userId)) {
+      throw new IntentNetworkMembershipError(networkId);
     }
 
     const embedding = await this.generateEmbeddingOrZero(
@@ -279,37 +311,57 @@ export class IntentService {
       { userId, proposalId },
     );
 
-    const created = await this.adapter.createIntent({
+    const intentData = {
       userId,
       payload: description,
       embedding,
-      sourceType: 'discovery_form',
+      sourceType: 'discovery_form' as const,
       sourceId: proposalId,
-    });
-
-    if (networkId) {
-      try {
-        await this.adapter.assignIntentToNetwork(created.id, networkId);
-      } catch (err) {
-        logger.warn('Failed to associate intent with index', {
-          intentId: created.id,
-          networkId,
-          error: err,
-        });
-      }
+    };
+    const confirmation = await this.adapter.confirmProposalIntent(intentData, networkId);
+    if (confirmation.kind === 'membership_required') {
+      if (!networkId) throw new Error('Unexpected membership requirement without a network');
+      throw new IntentNetworkMembershipError(networkId);
     }
+    if (confirmation.kind === 'existing') return confirmation.intent;
 
+    const created = confirmation.intent;
+    const scope = networkId ? { scopeType: 'network' as const, scopeId: networkId } : {};
     try {
-      await intentQueue.addGenerateHydeJob({
+      await this.proposalQueue.addGenerateHydeJob({
         intentId: created.id,
         userId,
-        ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
+        ...scope,
       });
     } catch (err) {
       logger.warn('Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
     }
 
-    IntentEvents.onCreated(created.id, userId);
+    if (this.questionerEnqueue) {
+      try {
+        const userContext = (await this.db.getUserContext(userId, null))?.text ?? '';
+        await this.questionerEnqueue({
+          mode: 'intent',
+          userId,
+          sourceType: 'intent',
+          sourceId: created.id,
+          ...scope,
+          context: {
+            intentId: created.id,
+            payload: description,
+            userContext,
+          },
+        });
+      } catch (err) {
+        logger.warn('Failed to enqueue intent question generation', {
+          intentId: created.id,
+          userId,
+          error: err,
+        });
+      }
+    }
+
+    this.emitProposalCreated(created.id, userId);
 
     return created;
   }

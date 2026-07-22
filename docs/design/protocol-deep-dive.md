@@ -110,6 +110,10 @@ The chat graph is architecturally simple: a single node that delegates all compl
 
 The graph supports streaming via `config.writer()` so text tokens and tool-activity events are pushed to the client in real-time rather than batched at the end. Error handling includes one retry for retriable errors (5xx, connection resets).
 
+The runtime is persona-neutral: `ChatGraphFactory.withPersona()` reuses the same graph and injected dependencies while selecting a persona-owned prompt, toolset, and loop behaviors. Persisted `conversations.persona` is authoritative for follow-up turns. The main-web Signal Agent persona (`signal`) uses a positive allowlist limited to intent/signal management, intent-to-existing-community assignment, profile context and premise knowledge, read-only network/membership context, pasted-URL scraping, and chat clarification. Its wrappers live-recheck membership, clamp intent/network-focused reads to owned active intents and current memberships, prohibit other-user membership enumeration, and keep creation proposal-only; confirmed network assignment rechecks and locks membership in the same transaction as intent/assignment insertion. It has no opportunity/discovery-run, negotiation, contact/import, agent-administration, network-administration, or membership-mutation tools. Its discovery-coupled create-intent callback is disabled while proposal hallucination recovery remains enabled. Session-authenticated compatibility chat routes are classified as web from authenticated provenance, while API-key and other non-web consumers retain the default `orchestrator` runtime.
+
+Under the same `WEB_SIGNAL_AGENT_ENABLED` cutover, the session-only incomplete-user route persists a separate `onboarding` persona. Its exact allowlist is consent recording, self context read/preview/confirmation, blocking guided questions, proposal-only intent creation with Signal's live-membership narrowing, and validated onboarding completion. It cannot import Gmail/contacts, discover or mutate opportunities, negotiate, select or join communities, mutate memberships, administer agents/networks, scrape arbitrary URLs, or receive newly registered shared tools automatically. `confirm_user_context` writes the durable `profileConfirmedAt`/`currentStep='first_signal'` marker while preserving privacy JSON. `complete_onboarding({ intentId })` requires a valid marker plus an exact active owned first signal created at or after profile confirmation, then durably records `firstSignalIntentId`, `currentStep='complete'`, and `completedAt`. Flag-off onboarding continues to use the legacy orchestrator prompt/tool flow; API-key and other non-web consumers are unchanged. Compatibility histories remain orchestrator-only, and the session-only web history returns readable legacy orchestrator plus Signal sessions.
+
 **Dependencies:** `ChatGraphCompositeDatabase`, `Embedder`, `Scraper`
 
 ### 3.2 Intent Graph
@@ -153,7 +157,7 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 - Write mode detects what needs generation and only runs necessary steps
 - If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
 - Identity updates merge new information with the user's existing identity (name/bio/location on `users`)
-- Onboarding-safe profile tools split consent/draft/confirmation: `record_onboarding_privacy_consent` writes `users.onboarding.privacy`, `preview_user_profile` generates a non-persisted draft from allowed sources, and `confirm_user_profile` saves only approved content.
+- Onboarding-safe profile tools split consent/draft/confirmation: `record_onboarding_privacy_consent` writes `users.onboarding.privacy`, `preview_user_context` generates a non-persisted draft from allowed sources, and `confirm_user_context` saves only approved content and stamps the durable profile-phase marker.
 - Automatic public enrichment is gated by `networks.permissions.profileEnrichment`: missing/`auto` preserves legacy behavior, `consent_required` requires `privacy.publicProfileLookup.granted === true` and never allows ghosts, and `disabled` blocks public enrichment.
 - `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-reads network policy/user onboarding, skips `enrich.user` when disallowed, and lets `ensure_profile_hyde` proceed under consent-required only when the user already has ACTIVE premises.
 - When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer`. Extracted premises are persisted via the premise graph; premise changes then drive regeneration of the user's `user_contexts` representation. This ensures atomic facts are captured as premises and the synthesized representation is derived from them.
@@ -673,7 +677,7 @@ The key negotiation-facing MCP tools are:
 | Tool | Purpose |
 |------|---------|
 | `get_negotiation` | Returns the full turn history and assessment seed for a negotiation |
-| `list_negotiations` | Lists negotiations awaiting a response from this agent's user |
+| `list_negotiations` | Lists current and concluded agent negotiations with lifecycle-explicit opportunity/owner-action narration; task completion never implies an owner-accepted connection or H2H thread |
 | `respond_to_negotiation` | Submits a turn (propose / counter / accept / reject / question) with reasoning and suggested roles. Wraps `POST /api/agents/:id/negotiations/:negotiationId/respond` |
 
 Agents claim turns via the HTTP pickup endpoint rather than an MCP tool — the turn payload is too large and the CAS semantics are easier to express over HTTP than via the streaming MCP transport. Once a turn is claimed, the response path goes through `respond_to_negotiation` so the subagent can submit from inside its MCP session.
@@ -825,6 +829,8 @@ Intents with high semantic entropy (>0.75) or low clarity (<40) are considered v
 Intent-to-network assignment is handled separately by the Intent Index Graph. When an intent is created and the user is in a network-scoped chat, the `create_intent_index` tool assigns the intent with either:
 - Direct assignment (score 1.0) when `skipEvaluation` is true
 - Evaluated assignment via `IntentIndexer` agent when the index has prompts defining its purpose
+
+Friendly ownership/membership prechecks and LLM evaluation are not write authority. Every direct, no-prompts, and evaluated success path finishes through `IntentDatabaseAdapter.assignIntentToNetworkIfMember`, which locks the exact intent, network, and membership rows in one transaction, rechecks that the intent is owned and unarchived, the network is undeleted, and the membership is current with `owner`, `member`, or `admin` permission, then inserts the scored assignment and `NetworkAssignmentMetadata` before releasing those locks. Concurrent membership revocation therefore wins before a waiting final write and prevents assignment; existing queue/backfill assignment APIs retain their previous behavior.
 
 ## 9. Enrichment Pipeline
 

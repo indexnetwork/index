@@ -22,6 +22,7 @@ import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
 import { AgentController } from './controllers/agent.controller';
+import { AgentActionController } from './controllers/agent-action.controller';
 import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
@@ -52,6 +53,7 @@ import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue'
 import { discoveryRunQueue } from './queues/opportunity/discovery-run.queue';
 import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
+import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
 import { frameDriftQueue } from './queues/frame-drift.queue';
@@ -70,7 +72,7 @@ import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner
 import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
 import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
+import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { OpportunityEvents } from './events/opportunity.event';
@@ -97,7 +99,11 @@ import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
 import { agentService } from './services/agent.service';
+import { intentService } from './services/intent.service';
+import { userService } from './services/user.service';
+import { AgentActionService } from './services/agent-action.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
+import { agentActionProposalDatabaseAdapter } from './adapters/agent-action-proposal.database.adapter';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
 // emoji, LOG_FILTER/LOG_LEVEL, Sentry, embedding redaction + payload truncation).
@@ -122,8 +128,8 @@ setTimingWrapper((name, fn) => traceAppOperation(
   fn,
 ));
 
-// Wire negotiation into the background discovery queue so latent opportunities
-// from the IntentEvents.onCreated path are negotiated, matching the chat/MCP paths.
+// Wire negotiation into background discovery so the post-assignment HyDE path
+// negotiates latent opportunities consistently with chat/MCP discovery.
 // Without this, OpportunityGraph's negotiateNode short-circuits and every evaluated
 // candidate is persisted unfiltered.
 const backgroundAgentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
@@ -431,6 +437,11 @@ fromEnrichmentQueue.startWorker();
 discoveryRunQueue.startWorker();
 enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
+if (isNegotiationWatchdogEnabled()) {
+  void negotiationWatchdogQueue.start().catch((error) => {
+    log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
+  });
+}
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
 void frameDriftQueue.start().catch((error) => {
@@ -459,12 +470,15 @@ userContextQueue.startWorker();
 premiseQueue.startCrons();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
-  log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
-  fromIntentQueue.addJob(
-    { intentId, userId },
-    { priority: 10, jobId: `rediscovery-${userId}-${intentId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
-  ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue discovery on create', { intentId, userId, error: err }));
-  opportunityService.triggerMaintenance(userId, 'intent-created');
+  // IntentQueue owns the authoritative discovery trigger: it assigns networks,
+  // generates HyDE, then awaits one from-intent enqueue. Starting here races the
+  // assignment transaction and produces a misleading successful fail-closed run.
+  log.job.from('IntentEvents').verbose('Intent created, triggering maintenance', { intentId, userId });
+  handleIntentCreatedMaintenance(
+    intentId,
+    userId,
+    (ownerUserId, reason) => opportunityService.triggerMaintenance(ownerUserId, reason),
+  );
 };
 
 IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: number) => {
@@ -565,6 +579,19 @@ const storageAdapter = new S3StorageAdapter({
 // Set storage adapter on fileService for S3 file operations
 fileService.setStorageAdapter(storageAdapter);
 
+const agentActionService = new AgentActionService(agentActionProposalDatabaseAdapter, {
+  getIntent: (intentId, userId) => intentService.getById(intentId, userId),
+  retractPremise: (premiseId, userId, expectedUpdatedAt) => userService.retractPremise(premiseId, userId, expectedUpdatedAt),
+  updateIntentDescription: (intentId, userId, description, expectedUpdatedAt) => userService.updateIntentDescription(intentId, userId, description, expectedUpdatedAt),
+  transitionStatus: async (intentId, userId, status, expectedUpdatedAtMs) => {
+    const result = await intentService.transitionStatus(intentId, userId, status, undefined, expectedUpdatedAtMs);
+    if (result.kind === 'success') return result;
+    if (result.kind === 'conflict') return { kind: 'conflict' as const };
+    if (result.kind === 'stale') return { kind: 'stale' as const };
+    return { kind: 'other' as const };
+  },
+});
+
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(EnrichmentController, new EnrichmentController());
@@ -581,6 +608,7 @@ controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
 controllerInstances.set(AgentController, new AgentController());
+controllerInstances.set(AgentActionController, new AgentActionController(agentActionService));
 const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter, contactService);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
@@ -912,6 +940,7 @@ const shutdown = async () => {
     discoveryRunQueue.close(),
     enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),
+    negotiationWatchdogQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
     negotiationTimeoutQueue.close(),

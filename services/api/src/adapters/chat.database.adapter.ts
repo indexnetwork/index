@@ -1,6 +1,9 @@
-import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
+import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, gt, gte, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
+
+import { tasks } from '../schemas/conversation.schema';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
+import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
 import { IntentEvents } from '../events/intent.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
@@ -12,6 +15,7 @@ import { QuestionerAdapter, type AnsweredNegotiationOwnerAnswer } from './questi
 
 export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
+  private readonly intentAdapter = new IntentDatabaseAdapter();
   private _opportunityAdapter: OpportunityDatabaseAdapter | null = null;
   private get opportunityAdapter(): OpportunityDatabaseAdapter {
     if (!this._opportunityAdapter) this._opportunityAdapter = new OpportunityDatabaseAdapter();
@@ -54,6 +58,113 @@ export class ChatDatabaseAdapter {
       logger.error('ChatDatabaseAdapter.getActiveIntents error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
+  }
+
+  /**
+   * Returns aggregate activity counts for one user's own signals, questions,
+   * opportunities, and opportunity negotiations. Counterparty data is never
+   * selected by these queries.
+   *
+   * @param userId - Authenticated owner whose records are summarized.
+   * @param input - Requested reporting window, clamped to 1-168 hours.
+   * @returns Reproducible owner-scoped activity totals.
+   */
+  async getAgentActivitySummary(
+    userId: string,
+    input: { sinceHours: number },
+  ): Promise<{
+    sinceHours: number;
+    liveSignalsWatched: number;
+    opportunitiesSurfaced: number;
+    opportunitiesBySignal: Array<{ intentId: string; title: string; count: number }>;
+    pendingQuestionCount: number;
+    questionsAnswered: number;
+    negotiationsStarted: number;
+    negotiationsCompleted: number;
+  }> {
+    const sinceHours = Math.max(1, Math.min(168, Math.trunc(input.sinceHours)));
+    const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
+    const ownActor = sql`${schema.opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`;
+    const ownIntentOpportunity = sql`EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(${schema.opportunities.actors}) AS actor
+      JOIN ${schema.intents} AS owned_intent
+        ON owned_intent.id = actor->>'intent'
+       AND owned_intent.user_id = ${userId}
+      WHERE actor->>'userId' = ${userId}
+    )`;
+    const ownQuestion = sql`${schema.questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`;
+
+    const [liveRows, surfacedRows, bySignalRows, pendingRows, answeredRows, negotiationRows] = await Promise.all([
+      db.select({ count: count() })
+        .from(schema.intents)
+        .where(activeOwnIntentsWhere(userId)),
+      db.select({ count: count() })
+        .from(schema.opportunities)
+        .where(and(gte(schema.opportunities.createdAt, since), ownIntentOpportunity)),
+      db.select({
+        intentId: schema.intents.id,
+        title: sql<string>`coalesce(nullif(btrim(${schema.intents.summary}), ''), ${schema.intents.payload})`,
+        count: count(schema.opportunities.id),
+      })
+        .from(schema.intents)
+        .innerJoin(schema.opportunities, and(
+          gte(schema.opportunities.createdAt, since),
+          sql`EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(${schema.opportunities.actors}) AS actor
+            WHERE actor->>'userId' = ${userId}
+              AND actor->>'intent' = ${schema.intents.id}
+          )`,
+        ))
+        .where(eq(schema.intents.userId, userId))
+        .groupBy(schema.intents.id, schema.intents.summary, schema.intents.payload)
+        .orderBy(desc(count(schema.opportunities.id))),
+      db.select({ count: count() })
+        .from(schema.questions)
+        .where(and(
+          eq(schema.questions.status, 'pending'),
+          ownQuestion,
+          or(isNull(schema.questions.expiresAt), gt(schema.questions.expiresAt, new Date())),
+        )),
+      db.select({ count: count() })
+        .from(schema.questions)
+        .where(and(
+          eq(schema.questions.status, 'answered'),
+          ownQuestion,
+          sql`${schema.questions.answer}->>'answeredAt' >= ${since.toISOString()}`,
+        )),
+      db.select({
+        started: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.createdAt} >= ${since.toISOString()})`,
+        completed: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.state} = 'completed' and ${tasks.updatedAt} >= ${since.toISOString()})`,
+      })
+        .from(tasks)
+        .innerJoin(schema.opportunities, sql`${tasks.metadata}->>'opportunityId' = ${schema.opportunities.id}`)
+        .where(and(
+          sql`${tasks.metadata}->>'type' = 'negotiation'`,
+          ownActor,
+          or(
+            gte(tasks.createdAt, since),
+            and(eq(tasks.state, 'completed'), gte(tasks.updatedAt, since)),
+          ),
+        )),
+
+    ]);
+
+    return {
+      sinceHours,
+      liveSignalsWatched: Number(liveRows[0]?.count ?? 0),
+      opportunitiesSurfaced: Number(surfacedRows[0]?.count ?? 0),
+      opportunitiesBySignal: bySignalRows.map((row) => ({
+        intentId: row.intentId,
+        title: row.title,
+        count: Number(row.count),
+      })),
+      pendingQuestionCount: Number(pendingRows[0]?.count ?? 0),
+      questionsAnswered: Number(answeredRows[0]?.count ?? 0),
+      negotiationsStarted: Number(negotiationRows[0]?.started ?? 0),
+      negotiationsCompleted: Number(negotiationRows[0]?.completed ?? 0),
+    };
   }
 
   async searchOwnIntents(
@@ -845,6 +956,20 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
+  /**
+   * Record that the intent's first background discovery run completed
+   * successfully. Idempotent: only stamps when the column is still null, so
+   * later re-discovery (pool answers, lifecycle resumes) never rewrites the
+   * original completion time. Read-side "warming" derivation clears on this
+   * stamp instead of waiting out the 24-hour freshness window (IND-482).
+   */
+  async markIntentFirstDiscoverySucceeded(intentId: string): Promise<void> {
+    await db
+      .update(intents)
+      .set({ firstDiscoverySucceededAt: new Date() })
+      .where(and(eq(intents.id, intentId), isNull(intents.firstDiscoverySucceededAt)));
+  }
+
   async getNetworkMemberContext(networkId: string, userId: string) {
     const rows = await db
       .select({
@@ -944,6 +1069,22 @@ export class ChatDatabaseAdapter {
     assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
   ): Promise<void> {
     return upsertIntentNetworkAssignment(intentId, networkId, relevancyScore, assignmentMetadata);
+  }
+
+  async assignIntentToNetworkIfMember(
+    userId: string,
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+  ): Promise<import('@indexnetwork/protocol').IntentNetworkFinalAssignmentResult> {
+    return this.intentAdapter.assignIntentToNetworkIfMember(
+      userId,
+      intentId,
+      networkId,
+      relevancyScore,
+      assignmentMetadata,
+    );
   }
 
   async getIntentIndexScores(intentId: string): Promise<Array<{
@@ -1292,6 +1433,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(networkMembers.networkId, networkId),
           eq(networkMembers.userId, userId),
+          isNull(networkMembers.deletedAt),
           isNull(networks.deletedAt),
           sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
@@ -1309,6 +1451,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(networkMembers.networkId, networkId),
           eq(networkMembers.userId, userId),
+          isNull(networkMembers.deletedAt),
           isNull(networks.deletedAt),
           sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
@@ -2422,6 +2565,19 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.createOpportunityIfNetworkEligible(data, eligibility);
   }
+  async persistIntentScopedOpportunityIfNetworkEligible(
+    data: CreateOpportunityInput,
+    expireIds: string[],
+    eligibility: Parameters<OpportunityDatabaseAdapter['persistIntentScopedOpportunityIfNetworkEligible']>[2],
+    dedupWindowMs: number,
+  ): ReturnType<OpportunityDatabaseAdapter['persistIntentScopedOpportunityIfNetworkEligible']> {
+    return this.opportunityAdapter.persistIntentScopedOpportunityIfNetworkEligible(
+      data,
+      expireIds,
+      eligibility,
+      dedupWindowMs,
+    );
+  }
   async createOpportunityAndExpireIds(
     data: CreateOpportunityInput,
     expireIds: string[]
@@ -3356,6 +3512,15 @@ export class ChatDatabaseAdapter {
     return conversationAdapter.unhideConversation(userId, conversationId);
   }
 
+  /** Append a deduplicated match provenance entry to a DM metadata sidecar. */
+  async appendMatchProvenance(
+    conversationId: string,
+    provenance: Parameters<ConversationDatabaseAdapter['appendMatchProvenance']>[1],
+  ): Promise<void> {
+    const conversationAdapter = new ConversationDatabaseAdapter();
+    return conversationAdapter.appendMatchProvenance(conversationId, provenance);
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Premises Methods (premise CRUD and network assignment)
   // ─────────────────────────────────────────────────────────────────────────
@@ -3592,6 +3757,86 @@ export class ChatDatabaseAdapter {
       updatedAt: row.updatedAt,
       retractedAt: row.retractedAt ?? null,
     };
+  }
+
+  /** Atomically retract an owned premise if its proposal snapshot is still current. */
+  async retractPremiseIfCurrent(
+    premiseId: string,
+    userId: string,
+    expectedUpdatedAt: Date,
+  ): Promise<'applied' | 'alreadyDone' | 'stale' | 'not_found'> {
+    const result = await db.transaction(async (tx) => {
+      const [current] = await tx.select({
+        id: schema.premises.id,
+        userId: schema.premises.userId,
+        status: schema.premises.status,
+        updatedAt: schema.premises.updatedAt,
+      }).from(schema.premises).where(eq(schema.premises.id, premiseId)).limit(1).for('update');
+      if (!current || current.userId !== userId) return { kind: 'not_found' as const };
+      if (current.status === 'RETRACTED') return { kind: 'alreadyDone' as const };
+      if (current.status !== 'ACTIVE' || current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        return { kind: 'stale' as const };
+      }
+      const [updated] = await tx.update(schema.premises)
+        .set({ status: 'RETRACTED', retractedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(schema.premises.id, premiseId), eq(schema.premises.userId, userId)))
+        .returning({ id: schema.premises.id, userId: schema.premises.userId });
+      return updated ? { kind: 'applied' as const, id: updated.id, userId: updated.userId } : { kind: 'stale' as const };
+    });
+    if (result.kind === 'applied') {
+      try {
+        PremiseEvents.onRetracted(result.id, result.userId);
+      } catch (error) {
+        logger.error('PremiseEvents emit failed after guarded premise retraction', { premiseId, error });
+      }
+    }
+    return result.kind;
+  }
+
+  /** Atomically update an owned intent only when its proposal snapshot is current. */
+  async updateIntentIfCurrent(
+    intentId: string,
+    userId: string,
+    payload: string,
+    expectedUpdatedAt: Date,
+  ): Promise<'applied' | 'stale' | 'not_found'> {
+    const result = await db.transaction(async (tx) => {
+      const [before] = await tx.select({
+        id: schema.intents.id,
+        userId: schema.intents.userId,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        status: schema.intents.status,
+        archivedAt: schema.intents.archivedAt,
+        updatedAt: schema.intents.updatedAt,
+      }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
+      if (!before || before.userId !== userId) return { kind: 'not_found' as const };
+      if (before.archivedAt || before.status === 'FULFILLED' || before.status === 'EXPIRED' || before.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        return { kind: 'stale' as const };
+      }
+      const updatedAt = new Date(Math.max(Date.now(), before.updatedAt.getTime() + 1));
+      const [updated] = await tx.update(schema.intents)
+        .set({ payload, updatedAt })
+        .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+        .returning({ id: schema.intents.id, userId: schema.intents.userId, payload: schema.intents.payload, summary: schema.intents.summary });
+      if (!updated) return { kind: 'stale' as const };
+      return {
+        kind: 'applied' as const,
+        id: updated.id,
+        userId: updated.userId,
+        oldFingerprint: computeIntentFingerprint(before.payload, before.summary),
+        newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
+      };
+    });
+    if (result.kind === 'applied' && result.oldFingerprint !== result.newFingerprint) {
+      await IntentEvents.onMaterialUpdated({
+        intentId: result.id,
+        userId: result.userId,
+        oldFingerprint: result.oldFingerprint,
+        newFingerprint: result.newFingerprint,
+      });
+    }
+    return result.kind;
   }
 
   async assignPremiseToNetwork(

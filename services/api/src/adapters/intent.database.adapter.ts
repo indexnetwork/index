@@ -85,6 +85,99 @@ export class IntentDatabaseAdapter {
     }
   }
 
+  /**
+   * Atomically confirm one proposal with optional network assignment.
+   * A transaction-scoped advisory lock serializes the exact owner + proposal
+   * source pair even though legacy schema rows have no matching unique index.
+   * Existing confirmations win before any current-membership requirement is
+   * evaluated, preserving retry idempotency after membership changes.
+   *
+   * @param data - Intent row values including the proposal source ID.
+   * @param networkId - Optional network requiring current owner membership.
+   * @returns A discriminated created, existing, or membership-required result.
+   */
+  async confirmProposalIntent(
+    data: CreateIntentInput,
+    networkId?: string,
+  ): Promise<
+    | { kind: 'created'; intent: CreatedIntentRow }
+    | { kind: 'existing'; intent: { id: string; archivedAt: Date | null } }
+    | { kind: 'membership_required' }
+  > {
+    const sourceId = data.sourceId;
+    if (!sourceId) throw new Error('Proposal confirmation requires a source ID');
+
+    return db.transaction(async (tx) => {
+      const lockName = `intent-proposal:${JSON.stringify([data.userId, sourceId])}`;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}, 0))`);
+
+      const [existing] = await tx
+        .select({ id: schema.intents.id, archivedAt: schema.intents.archivedAt })
+        .from(schema.intents)
+        .where(and(
+          eq(schema.intents.userId, data.userId),
+          eq(schema.intents.sourceId, sourceId),
+        ))
+        .limit(1);
+      if (existing) return { kind: 'existing', intent: existing } as const;
+
+      if (networkId) {
+        const [membership] = await tx
+          .select({ networkId: schema.networkMembers.networkId })
+          .from(schema.networkMembers)
+          .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+          .where(and(
+            eq(schema.networkMembers.networkId, networkId),
+            eq(schema.networkMembers.userId, data.userId),
+            isNull(schema.networkMembers.deletedAt),
+            isNull(schema.networks.deletedAt),
+            sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
+          ))
+          .limit(1)
+          .for('update');
+        if (!membership) return { kind: 'membership_required' } as const;
+      }
+
+      const [created] = await tx.insert(schema.intents)
+        .values({
+          userId: data.userId,
+          payload: data.payload,
+          summary: data.summary ?? null,
+          embedding: data.embedding,
+          isIncognito: data.isIncognito ?? false,
+          sourceType: data.sourceType,
+          sourceId,
+          semanticEntropy: data.semanticEntropy ?? undefined,
+          referentialAnchor: data.referentialAnchor ?? undefined,
+          felicityAuthority: data.felicityAuthority ?? undefined,
+          felicitySincerity: data.felicitySincerity ?? undefined,
+          felicityClarity: data.felicityClarity ?? undefined,
+          intentMode: data.intentMode ?? undefined,
+          speechActType: data.speechActType ?? undefined,
+        })
+        .returning({
+          id: schema.intents.id,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+          isIncognito: schema.intents.isIncognito,
+          createdAt: schema.intents.createdAt,
+          updatedAt: schema.intents.updatedAt,
+          userId: schema.intents.userId,
+        });
+      if (!created) throw new Error('Insert did not return a row');
+
+      if (networkId) {
+        await tx.insert(schema.intentNetworks).values({
+          intentId: created.id,
+          networkId,
+          relevancyScore: null,
+        });
+      }
+
+      return { kind: 'created', intent: created } as const;
+    });
+  }
+
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {
     try {
       const updateData: Record<string, unknown> = { updatedAt: new Date() };
@@ -157,10 +250,12 @@ export class IntentDatabaseAdapter {
     userId: string;
     status: 'ACTIVE' | 'PAUSED';
     networkScopeId?: string | null;
+    expectedUpdatedAtMs?: number;
   }): Promise<
     | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
     | { kind: 'not_found' }
     | { kind: 'scope_violation' }
+    | { kind: 'stale' }
     | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean }
   > {
     return db.transaction(async (tx) => {
@@ -180,6 +275,10 @@ export class IntentDatabaseAdapter {
         .for('update');
       const current = rows[0];
       if (!current) return { kind: 'not_found' } as const;
+
+      if (input.expectedUpdatedAtMs !== undefined && current.updatedAt.getTime() !== input.expectedUpdatedAtMs) {
+        return { kind: 'stale' } as const;
+      }
 
       if (input.networkScopeId) {
         const scoped = await tx
@@ -425,7 +524,7 @@ export class IntentDatabaseAdapter {
     limit: number;
     archived: boolean;
     sourceType?: string;
-  }): Promise<{ rows: IntentListRow[]; total: number }> {
+  }): Promise<{ rows: IntentListRow[]; total: number; totalWaitingOpportunities: number }> {
     const offset = (options.page - 1) * options.limit;
     const where = ownIntentsListWhere(userId, { archived: options.archived, sourceType: options.sourceType });
 
@@ -441,6 +540,7 @@ export class IntentDatabaseAdapter {
         archivedAt: schema.intents.archivedAt,
         sourceType: schema.intents.sourceType,
         sourceId: schema.intents.sourceId,
+        firstDiscoverySucceededAt: schema.intents.firstDiscoverySucceededAt,
       })
         .from(schema.intents)
         .where(where)
@@ -450,23 +550,85 @@ export class IntentDatabaseAdapter {
       db.select({ count: count() }).from(schema.intents).where(where),
     ]);
 
-    const withNetworks = await this.attachIntentNetworks(rows);
-    return { rows: withNetworks, total: Number(totalResult[0]?.count ?? 0) };
+    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId);
+    return {
+      rows: withExtras,
+      total: Number(totalResult[0]?.count ?? 0),
+      totalWaitingOpportunities,
+    };
   }
 
   /**
-   * Attach each intent's registered networks (excluding soft-deleted networks)
-   * to a page of list rows in a single grouped query. Intents with no
-   * membership get an empty array, which the UI reads as "pending or orphaned".
+   * Enrich a page of intent list rows with their registered networks, the
+   * per-intent counts the UI surfaces (pending questions, waiting
+   * opportunities), and the fresh-intent discovery state. Runs three grouped
+   * queries in parallel and joins in memory, so it stays O(1) round-trips
+   * regardless of page size.
    *
-   * @param rows - The paginated intent rows to enrich (mutated copies returned).
-   * @returns The same rows, each with a populated `networks` array.
+   * @param rows - The paginated base intent rows to enrich.
+   * @param userId - Owner, used to scope the waiting-opportunity actor match.
+   * @returns The rows with `networks`, `pendingQuestionCount`, and
+   *   `waitingOpportunityCount` populated (empty/zero when none), plus a
+   *   deduplicated total of waiting opportunities across the page's signals.
    */
-  private async attachIntentNetworks(
-    rows: Omit<IntentListRow, 'networks'>[],
-  ): Promise<IntentListRow[]> {
-    if (rows.length === 0) return [];
+  private async attachIntentExtras(
+    rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming'> & {
+      /** Stamped by the from-intent queue on first successful discovery (IND-482). */
+      firstDiscoverySucceededAt: Date | null;
+    })[],
+    userId: string,
+  ): Promise<{ rows: IntentListRow[]; totalWaitingOpportunities: number }> {
+    if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
     const intentIds = rows.map(r => r.id);
+    const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Only rows that are fresh AND not already stamped need the legacy
+    // discovery-run lookup (async MCP runs record success there instead).
+    const freshIntentIds = rows
+      .filter(r => r.createdAt > warmingCutoff && r.firstDiscoverySucceededAt == null)
+      .map(r => r.id);
+    const [networks, countResult, succeededDiscoveryIntentIds] = await Promise.all([
+      this.networksByIntent(intentIds),
+      this.countsByIntent(intentIds, userId),
+      this.succeededDiscoveryIntentIds(freshIntentIds),
+    ]);
+    const succeededIds = new Set(succeededDiscoveryIntentIds);
+    return {
+      rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
+        ...r,
+        networks: networks.get(r.id) ?? [],
+        pendingQuestionCount: countResult.byIntent.get(r.id)?.questions ?? 0,
+        waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
+        warming: r.createdAt > warmingCutoff
+          && firstDiscoverySucceededAt == null
+          && !succeededIds.has(r.id),
+      })),
+      totalWaitingOpportunities: countResult.totalWaitingOpportunities,
+    };
+  }
+
+  /**
+   * Return intent IDs with a completed discovery run. The caller only passes
+   * fresh intents because rows older than the warming window are never warm.
+   */
+  private async succeededDiscoveryIntentIds(intentIds: string[]): Promise<string[]> {
+    if (intentIds.length === 0) return [];
+    const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
+    const rows = await db.execute(sql`
+      SELECT ${schema.opportunityDiscoveryRuns.input}->>'intentId' AS intent_id
+      FROM ${schema.opportunityDiscoveryRuns}
+      WHERE ${schema.opportunityDiscoveryRuns.status} = 'succeeded'
+        AND (${schema.opportunityDiscoveryRuns.input}->>'intentId') = ANY(ARRAY[${idList}]::text[])
+    `) as unknown as Array<{ intent_id: string | null }>;
+    return rows.flatMap(row => row.intent_id ? [row.intent_id] : []);
+  }
+
+  /**
+   * Group each intent's registered networks (excluding soft-deleted networks)
+   * into a map, in a single query.
+   */
+  private async networksByIntent(intentIds: string[]): Promise<Map<string, { id: string; title: string }[]>> {
+    const byIntent = new Map<string, { id: string; title: string }[]>();
+    if (intentIds.length === 0) return byIntent;
     const memberships = await db
       .select({
         intentId: schema.intentNetworks.intentId,
@@ -479,14 +641,92 @@ export class IntentDatabaseAdapter {
         inArray(schema.intentNetworks.intentId, intentIds),
         isNull(schema.networks.deletedAt),
       ));
-
-    const byIntent = new Map<string, { id: string; title: string }[]>();
     for (const m of memberships) {
       const list = byIntent.get(m.intentId) ?? [];
       list.push({ id: m.networkId, title: m.title });
       byIntent.set(m.intentId, list);
     }
-    return rows.map(r => ({ ...r, networks: byIntent.get(r.id) ?? [] }));
+    return byIntent;
+  }
+
+  /**
+   * Per-intent counts of pending intent-scoped questions and opportunities
+   * awaiting the viewer. The opportunity query also returns one deduplicated
+   * total across every requested signal. Every requested ID is present in the
+   * returned map (zero when it has none).
+   */
+  private async countsByIntent(
+    intentIds: string[],
+    userId: string,
+  ): Promise<{
+    byIntent: Map<string, { questions: number; opportunities: number }>;
+    totalWaitingOpportunities: number;
+  }> {
+    const byIntent = new Map<string, { questions: number; opportunities: number }>();
+    if (intentIds.length === 0) return { byIntent, totalWaitingOpportunities: 0 };
+    for (const id of intentIds) byIntent.set(id, { questions: 0, opportunities: 0 });
+    const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
+
+    const [questionRows, oppRows] = await Promise.all([
+      // Mirror the intent-scoped pending-questions filter used on the detail
+      // page (questioner.adapter.findPending): pending, not expired, actor-owned
+      // by the user, attributed to the intent via intent-mode sourceId or
+      // triggeredBy. (The opportunity-sourced branch is omitted — rare and
+      // expensive.) Group key is the attributed intent id.
+      db.execute(sql`
+        SELECT key AS intent_id, COUNT(*)::int AS cnt
+        FROM (
+          SELECT CASE
+            WHEN ${schema.questions.detection}->>'mode' = 'intent'
+              AND ${schema.questions.detection}->>'sourceType' = 'intent'
+              THEN ${schema.questions.detection}->>'sourceId'
+            ELSE ${schema.questions.detection}->>'triggeredBy'
+          END AS key
+          FROM ${schema.questions}
+          WHERE ${schema.questions.status} = 'pending'
+            AND (${schema.questions.expiresAt} IS NULL OR ${schema.questions.expiresAt} > NOW())
+            AND ${schema.questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
+        ) sub
+        WHERE key IN (${idList})
+        GROUP BY key
+      `) as unknown as Array<{ intent_id: string; cnt: number }>,
+      db.execute(sql`
+        WITH matching AS (
+          SELECT DISTINCT
+            ${schema.opportunities.id} AS opportunity_id,
+            requested.intent_id
+          FROM ${schema.opportunities}
+          CROSS JOIN LATERAL jsonb_array_elements(${schema.opportunities.actors}) AS actor
+          CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
+          WHERE ${schema.opportunities.status} = 'pending'
+            AND actor->>'userId' = ${userId}
+            AND actor->>'role' IS DISTINCT FROM 'introducer'
+            AND actor->>'actedAt' IS NULL
+            AND (
+              ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
+              OR actor->>'intent' = requested.intent_id
+            )
+        )
+        SELECT intent_id, COUNT(DISTINCT opportunity_id)::int AS cnt
+        FROM matching
+        GROUP BY GROUPING SETS ((intent_id), ())
+      `) as unknown as Array<{ intent_id: string | null; cnt: number }>,
+    ]);
+
+    for (const r of questionRows) {
+      const entry = byIntent.get(r.intent_id);
+      if (entry) entry.questions = Number(r.cnt);
+    }
+    let totalWaitingOpportunities = 0;
+    for (const r of oppRows) {
+      if (r.intent_id == null) {
+        totalWaitingOpportunities = Number(r.cnt);
+        continue;
+      }
+      const entry = byIntent.get(r.intent_id);
+      if (entry) entry.opportunities = Number(r.cnt);
+    }
+    return { byIntent, totalWaitingOpportunities };
   }
 
   async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {
@@ -501,14 +741,15 @@ export class IntentDatabaseAdapter {
       archivedAt: schema.intents.archivedAt,
       sourceType: schema.intents.sourceType,
       sourceId: schema.intents.sourceId,
+      firstDiscoverySucceededAt: schema.intents.firstDiscoverySucceededAt,
     })
       .from(schema.intents)
       .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
       .limit(1);
 
     if (!row[0]) return null;
-    const [withNetworks] = await this.attachIntentNetworks(row);
-    return withNetworks;
+    const { rows: [withExtras] } = await this.attachIntentExtras(row, userId);
+    return withExtras ?? null;
   }
 
   /**
@@ -603,6 +844,81 @@ export class IntentDatabaseAdapter {
   }
 
   /**
+   * Atomically assign an existing owned intent while its network membership is current.
+   *
+   * @param userId - Exact authenticated owner and member.
+   * @param intentId - Existing intent to assign.
+   * @param networkId - Existing active network requiring accepted membership.
+   * @param relevancyScore - Optional assignment score.
+   * @param assignmentMetadata - Optional durable assignment decision metadata.
+   * @returns A discriminated final-authority result.
+   */
+  async assignIntentToNetworkIfMember(
+    userId: string,
+    intentId: string,
+    networkId: string,
+    relevancyScore?: number,
+    assignmentMetadata?: import('@indexnetwork/protocol').NetworkAssignmentMetadata,
+  ): Promise<import('@indexnetwork/protocol').IntentNetworkFinalAssignmentResult> {
+    return db.transaction(async (tx) => {
+      const [intent] = await tx
+        .select({ userId: schema.intents.userId, archivedAt: schema.intents.archivedAt })
+        .from(schema.intents)
+        .where(eq(schema.intents.id, intentId))
+        .limit(1)
+        .for('update');
+      if (!intent || intent.userId !== userId || intent.archivedAt !== null) {
+        return { kind: 'intent_not_owned_or_not_found' } as const;
+      }
+
+      const [network] = await tx
+        .select({ deletedAt: schema.networks.deletedAt })
+        .from(schema.networks)
+        .where(eq(schema.networks.id, networkId))
+        .limit(1)
+        .for('update');
+      if (!network || network.deletedAt !== null) {
+        return { kind: 'membership_required' } as const;
+      }
+
+      const [membership] = await tx
+        .select({ permissions: schema.networkMembers.permissions })
+        .from(schema.networkMembers)
+        .where(and(
+          eq(schema.networkMembers.networkId, networkId),
+          eq(schema.networkMembers.userId, userId),
+          isNull(schema.networkMembers.deletedAt),
+          sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
+        ))
+        .limit(1)
+        .for('update');
+      if (!membership) {
+        return { kind: 'membership_required' } as const;
+      }
+
+      const [existing] = await tx
+        .select({ intentId: schema.intentNetworks.intentId })
+        .from(schema.intentNetworks)
+        .where(and(
+          eq(schema.intentNetworks.intentId, intentId),
+          eq(schema.intentNetworks.networkId, networkId),
+        ))
+        .limit(1);
+      if (existing) {
+        return { kind: 'already_assigned' } as const;
+      }
+
+      await tx.insert(schema.intentNetworks).values({
+        intentId,
+        networkId,
+        relevancyScore: relevancyScore != null ? String(relevancyScore) : null,
+        ...(assignmentMetadata !== undefined ? { assignmentMetadata } : {}),
+      });
+      return { kind: 'assigned' } as const;
+    });
+  }
+
+  /**
    * Returns personal network IDs where the given user is a contact member.
    * @param userId - The user whose contact memberships to look up
    * @returns Array of personal network IDs
@@ -674,6 +990,7 @@ export class IntentDatabaseAdapter {
         and(
           eq(schema.networkMembers.networkId, networkId),
           eq(schema.networkMembers.userId, userId),
+          isNull(schema.networkMembers.deletedAt),
           isNull(schema.networks.deletedAt),
           sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )

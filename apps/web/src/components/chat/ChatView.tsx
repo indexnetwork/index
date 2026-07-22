@@ -38,13 +38,18 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   const opportunitiesService = useOpportunities();
   const {
     messages: allMessages,
+    conversations,
     sendMessage: conversationSend,
-    loadMessages,
+    loadSessionHistory,
+    loadPreviousSessionMessages,
+    sessionHistory,
     getOrCreateDM,
+    markConversationRead,
     hideConversation,
   } = useConversation();
 
   const [conversationId, setConversationId] = useState<string | null>(initialGroupId ?? null);
+  const [conversationSummary, setConversationSummary] = useState<ReturnType<typeof useConversation>['conversations'][number] | null>(null);
   const [messageText, setMessageText] = useState(autoSend ? '' : (initialMessage ?? ''));
   const hasAutoSentRef = useRef(false);
   const hasFiredFirstMessageRef = useRef(false);
@@ -63,6 +68,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     if (prevUserIdRef.current !== userId) {
       prevUserIdRef.current = userId;
       setConversationId(null);
+      setConversationSummary(null);
       setMessagesLoading(true);
       setContextLoading(true);
       setAcceptedOpportunities([]);
@@ -75,6 +81,20 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     () => (conversationId ? allMessages.get(conversationId) ?? [] : []),
     [conversationId, allMessages],
   );
+  const via = conversationSummary?.via ?? [];
+  const latestVia = via[0] ?? null;
+  const history = conversationId ? sessionHistory.get(conversationId) : undefined;
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const summary = conversations.find((conversation) => conversation.id === conversationId);
+    if (summary) setConversationSummary(summary);
+  }, [conversationId, conversations]);
+
+  useEffect(() => {
+    if (!conversationId || (conversationSummary?.unreadCount ?? 0) <= 0) return;
+    void markConversationRead(conversationId);
+  }, [conversationId, conversationSummary?.unreadCount, markConversationRead]);
 
   useEffect(() => {
     if (!userId) return;
@@ -101,13 +121,13 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   useEffect(() => {
     const cid = initialGroupId ?? conversationId;
     if (cid) {
-      loadMessages(cid, { limit: 50 }).finally(() => setMessagesLoading(false));
+      loadSessionHistory(cid).finally(() => setMessagesLoading(false));
     } else {
       // No conversation yet: clear the initial loading state via microtask
       // to satisfy react-hooks/set-state-in-effect.
       queueMicrotask(() => setMessagesLoading(false));
     }
-  }, [initialGroupId, conversationId, loadMessages]);
+  }, [initialGroupId, conversationId, loadSessionHistory]);
 
   // Get or create DM conversation
   useEffect(() => {
@@ -117,6 +137,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
         const conv = await getOrCreateDM(userId);
         if (!mounted) return;
         const cid = initialGroupId ?? conv.id;
+        setConversationSummary(conv);
         if (cid && !conversationId) setConversationId(cid);
       } catch (err) {
         logger.error('DM init error', { error: err });
@@ -157,7 +178,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
           const conv = await getOrCreateDM(userId);
           setConversationId(conv.id);
           await conversationSend(conv.id, [{ text }]);
-          loadMessages(conv.id, { limit: 50 });
+          loadSessionHistory(conv.id);
         }
         if (!hasFiredFirstMessageRef.current) {
           hasFiredFirstMessageRef.current = true;
@@ -170,7 +191,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
         setSending(false);
       }
     })();
-  }, [autoSend, contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadMessages, onFirstMessageSent]);
+  }, [autoSend, contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadSessionHistory, onFirstMessageSent]);
 
   const handleSend = useCallback(async () => {
     if (!messageText.trim() || sending) return;
@@ -184,7 +205,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
         const conv = await getOrCreateDM(userId);
         setConversationId(conv.id);
         await conversationSend(conv.id, [{ text }]);
-        loadMessages(conv.id, { limit: 50 });
+        loadSessionHistory(conv.id);
       }
       if (!hasFiredFirstMessageRef.current) {
         hasFiredFirstMessageRef.current = true;
@@ -197,7 +218,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     } finally {
       setSending(false);
     }
-  }, [conversationId, userId, messageText, sending, conversationSend, getOrCreateDM, loadMessages, onFirstMessageSent]);
+  }, [conversationId, userId, messageText, sending, conversationSend, getOrCreateDM, loadSessionHistory, onFirstMessageSent]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -239,16 +260,26 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center justify-between min-h-[68px]">
         <div className="flex items-center gap-3">
           <button onClick={handleBack} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
-          <Link to={`/u/${userId}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <div className="flex items-center gap-3">
             <UserAvatar avatar={userAvatar} id={userId} name={userName} size={44} blur={isGhost} />
             <div>
               <h2 className="font-ibm-plex-mono font-bold text-lg text-black flex items-center gap-1.5">
-                {userName}
+                <Link to={`/u/${userId}`} className="hover:opacity-80 transition-opacity">{userName}</Link>
                 {isGhost && <GhostBadge />}
               </h2>
               {isGhost && <p className="text-xs text-gray-400 -mt-0.5">Not yet on Index</p>}
+              {latestVia && (
+                <Link
+                  to={`/i/${latestVia.intentId}`}
+                  title={via.map((entry) => entry.title).join(' · ')}
+                  className="font-ibm-plex-mono text-[11px] text-gray-400 hover:text-gray-700 transition-colors"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  via: {latestVia.title}
+                </Link>
+              )}
             </div>
-          </Link>
+          </div>
         </div>
         <div className="relative" ref={menuRef}>
           <button onClick={() => setShowMenu(!showMenu)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
@@ -275,8 +306,25 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
       <div className="px-6 lg:px-8 pb-32 flex-1">
         <ContentContainer>
           <div className="space-y-4">
+            {history?.hasPreviousSession && conversationId && (
+              <div className="flex justify-center py-2">
+                <button
+                  type="button"
+                  onClick={() => void loadPreviousSessionMessages(conversationId)}
+                  disabled={history.loadingPrevious}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+                  aria-label="Load previous messages"
+                >
+                  {history.loadingPrevious ? 'Loading previous messages…' : 'Load Previous Messages'}
+                </button>
+              </div>
+            )}
             {messagesLoading ? (
               <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+            ) : messages.length === 0 && via.length > 0 ? (
+              <div className="text-center py-5 text-[13px] text-gray-400 font-ibm-plex-mono">
+                agents matched you on this signal — say hi.
+              </div>
             ) : messages.length === 0 && !contextLoading && acceptedOpportunities.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
                 {isGhost ? (
@@ -317,6 +365,8 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
                 }
 
                 const message = item.message;
+                const previousMessage = [...timeline.slice(0, index)].reverse().find((candidate) => candidate.type === 'message')?.message;
+                const startsSession = previousMessage !== undefined && previousMessage.sessionId !== message.sessionId;
                 const isOwn = message.senderId === user?.id;
                 const textPart = (message.parts as { text?: string }[] | undefined)?.find((p) => p.text)?.text;
                 const content = textPart ?? '';
@@ -324,6 +374,13 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
 
                 return (
                   <div key={message.id}>
+                    {startsSession && (
+                      <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
+                        <span className="h-px flex-1 bg-gray-200" />
+                        <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
+                        <span className="h-px flex-1 bg-gray-200" />
+                      </div>
+                    )}
                     {showTimestamp && message.createdAt && (
                       <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
                         {`${formatChatDayLabel(message.createdAt)}, ${formatTime(message.createdAt)}`}

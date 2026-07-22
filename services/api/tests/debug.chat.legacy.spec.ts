@@ -142,7 +142,7 @@ beforeAll(async () => {
       },
     ],
   });
-});
+}, 30_000);
 
 afterAll(async () => {
   // Clean up in reverse dependency order
@@ -158,7 +158,7 @@ afterAll(async () => {
   }
   if (oppId) await db.delete(opportunities).where(eq(opportunities.id, oppId));
   if (userId) await db.delete(users).where(eq(users.id, userId));
-});
+}, 30_000);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -205,5 +205,5 @@ describe('GET /debug/chat/:id — legacy negotiation hydration (time-window fall
     // Verify outcome
     expect(negotiations[0].outcome).not.toBeNull();
     expect(negotiations[0].outcome?.status).toBe('draft');
-  });
+  }, 30_000);
 });

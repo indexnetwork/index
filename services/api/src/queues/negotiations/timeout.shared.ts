@@ -1,9 +1,43 @@
-import { IndexNegotiator, isRejectLikeAction, isTerminalAction, readProtocolVersion, resolveSeat } from '@indexnetwork/protocol';
-import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationGraphDatabase, NegotiationProtocolVersion } from '@indexnetwork/protocol';
+import type { NegotiationGraphDatabase, NegotiationOutcome, NegotiationProtocolVersion, NegotiationTurn, SeedAssessment, UserNegotiationContext } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 
 type TimeoutLogger = ReturnType<typeof log.job.from>;
+
+type NegotiationSeat = 'initiator' | 'counterparty';
+
+export type TimeoutNegotiatorInvoke = (input: {
+  ownUser: UserNegotiationContext;
+  otherUser: UserNegotiationContext;
+  indexContext: { networkId: string; prompt: string };
+  seedAssessment: SeedAssessment;
+  history: NegotiationTurn[];
+  isDiscoverer: boolean;
+  seat: NegotiationSeat;
+  protocolVersion: NegotiationProtocolVersion;
+  isFinalTurn?: boolean;
+}) => Promise<NegotiationTurn>;
+
+function isTerminalAction(action: string): boolean {
+  return action === 'accept' || action === 'reject' || action === 'withdraw' || action === 'decline';
+}
+
+function isRejectLikeAction(action: string): boolean {
+  return action === 'reject' || action === 'withdraw' || action === 'decline';
+}
+
+function readProtocolVersion(meta: NegotiationTaskMeta | null): NegotiationProtocolVersion | null {
+  return meta?.protocolVersion === 'v2' ? 'v2' : meta?.protocolVersion === 'v1' ? 'v1' : null;
+}
+
+function resolveSeat(userId: string, meta: NegotiationTaskMeta | null): NegotiationSeat {
+  return (meta?.initiatorUserId || meta?.sourceUserId) === userId ? 'initiator' : 'counterparty';
+}
+
+const defaultInvokeNegotiator: TimeoutNegotiatorInvoke = async (input) => {
+  const { IndexNegotiator } = await import('@indexnetwork/protocol');
+  return new IndexNegotiator().invoke(input);
+};
 
 /** Negotiation task metadata both timeout workers read off `task.metadata`. */
 export interface NegotiationTaskMeta {
@@ -95,10 +129,13 @@ export async function runTimeoutFallback(params: {
   fallbackLogExtra?: Record<string, unknown>;
   /** Re-arm the next park-window timeout when the AI counters under the cap. */
   rearm: (newTurnCount: number) => Promise<void>;
+  /** Injectable negotiator invocation for hermetic queue tests. */
+  invokeNegotiator?: TimeoutNegotiatorInvoke;
 }): Promise<void> {
   const {
     database, logger, labels, negotiationId, taskId, conversationId,
     meta, messages, currentTurnCount, seedReasoning, maxTurns, fallbackLogExtra, rearm,
+    invokeNegotiator = defaultInvokeNegotiator,
   } = params;
 
   // Determine whose turn it is from the last message's sender — not parity,
@@ -134,12 +171,11 @@ export async function runTimeoutFallback(params: {
   }).filter(Boolean);
 
   // Run AI agent for the timed-out turn
-  const agent = new IndexNegotiator();
   const ownUserCtx: UserNegotiationContext = { id: activeUserId, intents: [], profile: {} };
   const otherUserCtx: UserNegotiationContext = { id: otherUserId, intents: [], profile: {} };
   const seedAssessment: SeedAssessment = { reasoning: seedReasoning, valencyRole: 'peer' };
 
-  const aiTurn = await agent.invoke({
+  const aiTurn = await invokeNegotiator({
     ownUser: ownUserCtx,
     otherUser: otherUserCtx,
     indexContext: { networkId: '', prompt: '' },

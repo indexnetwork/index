@@ -12,14 +12,18 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm/sql';
 
 import { QuestionerAdapter, type AdapterPersistableQuestion, type QuestionFunnelStage } from '../questioner.adapter';
 import { UserDatabaseAdapter } from '../database.adapter';
 import { debugService } from '../../services/debug.service';
 import db from '../../lib/drizzle/drizzle';
+import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import { questions } from '../../schemas/database.schema';
+
+const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
+const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 const cellKey = (row: Pick<QuestionFunnelStage, 'mode' | 'status' | 'expired'>): string =>
   `${row.mode}|${row.status}|${row.expired}`;

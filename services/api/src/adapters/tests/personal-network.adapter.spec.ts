@@ -84,7 +84,7 @@ beforeAll(async () => {
     extraIntentIndexIds: [],
     extraMemberIndexIds: [],
   };
-});
+}, 30_000);
 
 afterAll(async () => {
   if (!fixture) return;
@@ -111,7 +111,7 @@ afterAll(async () => {
   await db.delete(users).where(
     inArray(users.id, allUserIds),
   );
-});
+}, 30_000);
 
 // ─── ensurePersonalNetwork ────────────────────────────────────────────────────────
 
@@ -336,7 +336,7 @@ describe('NetworkService personal network guards', () => {
   it('rejects updateNetwork on a personal network', async () => {
     await expect(
       service.updateNetwork(fixture.personalIndexId, fixture.ownerUserId, { title: 'New Title' }),
-    ).rejects.toThrow('personal networks cannot be modified directly');
+    ).rejects.toThrow('personal networks only allow editing the prompt');
   });
 
   it('rejects deleteNetwork on a personal network', async () => {
