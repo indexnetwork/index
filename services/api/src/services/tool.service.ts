@@ -249,7 +249,12 @@ export class ToolService {
 
     logger.verbose('Compiling graphs (first call, will be cached)');
 
-    const intentGraph = new IntentGraphFactory(database, this.embedder, intentQueue).createGraph();
+    const intentGraph = new IntentGraphFactory(
+      database,
+      this.embedder,
+      intentQueue,
+      questionerEnqueueIfEnabled(),
+    ).createGraph();
     const profileGraph = new EnrichmentGraphFactory(database, this.scraper).createGraph();
     const hydeCache = new RedisCacheAdapter();
     const compiledHydeGraph = new HydeGraphFactory(

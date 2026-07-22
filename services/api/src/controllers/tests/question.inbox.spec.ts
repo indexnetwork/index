@@ -218,6 +218,61 @@ describe("Pending question inbox (IND-404)", () => {
     });
   });
 
+  test('intent-scoped pending reads retain canonical and pool questions while excluding wrong intent and recipient rows', async () => {
+    const intentId = crypto.randomUUID();
+    const otherIntentId = crypto.randomUUID();
+    const canonicalIntentId = await persistQuestion({
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: intentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+    const poolQuestionId = await persistQuestion({
+      detection: {
+        mode: 'pool_discovery',
+        sourceType: 'intent',
+        sourceId: intentId,
+        triggeredBy: intentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+    const wrongIntentId = await persistQuestion({
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: otherIntentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+    const foreignRecipientId = await persistQuestion({
+      actors: [{ userId: crypto.randomUUID(), role: 'subject' }],
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: intentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    const response = await controller.list(
+      listReq(`status=pending&scopeType=intent&scopeId=${intentId}`),
+      mockUser(),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json() as { questions: Array<{ id: string; detection: { mode: string } }> };
+    const returned = new Set(body.questions.map((question) => question.id));
+
+    expect(returned).toContain(canonicalIntentId);
+    expect(returned).toContain(poolQuestionId);
+    expect(returned).not.toContain(wrongIntentId);
+    expect(returned).not.toContain(foreignRecipientId);
+    expect(body.questions.map((question) => question.detection.mode)).toEqual(
+      expect.arrayContaining(['intent', 'pool_discovery']),
+    );
+  });
+
   test("status=answered without an intent filter still scopes to the caller", async () => {
     const ownedQuestionId = await persistQuestion();
     const foreignUserId = crypto.randomUUID();
@@ -301,6 +356,38 @@ describe("Pending question inbox (IND-404)", () => {
       { id: crypto.randomUUID(), email: 'foreign@example.com', name: 'Foreign' },
     );
     expect(foreignResponse.status).toBe(404);
+  }, 15_000);
+
+  test('chat-mode reads fail closed for a forged durable message/session binding', async () => {
+    const forgedQuestionId = crypto.randomUUID();
+    createdQuestionIds.push(forgedQuestionId);
+    await db.insert(questions).values({
+      id: forgedQuestionId,
+      detection: {
+        mode: 'chat',
+        sourceType: 'conversation',
+        sourceId: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        messageId: crypto.randomUUID(),
+        sessionId: crypto.randomUUID(),
+      },
+      actors: [{ userId: testUserId, role: 'subject' }],
+      payload: {
+        title: 'Forged question',
+        prompt: 'This row must not render.',
+        options: [],
+        multiSelect: false,
+      },
+      status: 'pending',
+      conversationId: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+    });
+
+    const response = await controller.list(listReq('status=pending&mode=chat'), mockUser());
+    expect(response.status).toBe(200);
+    const body = await response.json() as { questions: Array<{ id: string }> };
+    expect(body.questions.map((question) => question.id)).not.toContain(forgedQuestionId);
   });
 
   test("conversation-bound questions stay out of the DM inbox", async () => {
