@@ -1,5 +1,5 @@
 /**
- * Intent page responsive layout (IND-503, review round 2 — a11y).
+ * Intent page responsive layout (IND-503, IND-505 desktop visibility fix).
  *
  * Desktop (lg+): Personal Agent and Radar columns are equal width (50/50);
  * the left column is a plain labelled region with no dialog semantics.
@@ -190,7 +190,7 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
 
     // Fixed off-canvas below lg, translated out when closed; static column at lg+.
     expect(sheet.className).toContain('fixed');
-    expect(sheet.className).toContain('data-[state=closed]:translate-x-full');
+    expect(sheet.className).toContain('max-lg:data-[state=closed]:translate-x-full');
     expect(sheet.className).toContain('lg:static');
     expect(sheet.getAttribute('data-state')).toBe('closed');
 
@@ -408,7 +408,7 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     renderIntentPage();
 
     const sheet = await screen.findByTestId('personal-agent-sheet');
-    expect(sheet.className).toContain('data-[state=closed]:translate-x-full');
+    expect(sheet.className).toContain('max-lg:data-[state=closed]:translate-x-full');
     expect(sheet.getAttribute('role')).toBe('dialog');
 
     const trigger = await screen.findByTestId('personal-agent-trigger');
