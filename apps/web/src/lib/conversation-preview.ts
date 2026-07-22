@@ -30,21 +30,30 @@ export interface ConversationPreviewInput {
  * - `message`: a real last message, rendered with normal excerpt styling.
  * - `internal`: an internal assessment excerpt, rendered muted + italic.
  * - `empty`: no messages yet, rendered as a muted placeholder.
+ *
+ * `text` is markdown-stripped and trimmed, ready to render as-is.
  */
 export type ConversationPreview =
   | { kind: 'message'; text: string }
   | { kind: 'internal'; text: string }
   | { kind: 'empty'; text: typeof EMPTY_CONVERSATION_PREVIEW };
 
+/** Strips markdown emphasis/structure characters for a one-line plain-text excerpt. */
+export const stripMarkdownMarkers = (text: string): string => text.replace(/[*_~`#>]/g, '');
+
 /**
  * Resolves the preview line for a conversation row.
+ *
+ * Emptiness is evaluated on the markdown-stripped, whitespace-trimmed text, so
+ * markdown-only strings (e.g. `***`, `** **`, `` ` ``) resolve to the `empty`
+ * placeholder instead of rendering blank after stripping.
  *
  * @param input - The row's last-message state
  * @returns The preview descriptor; `empty` rows always get the neutral
  *   placeholder, never fabricated or evaluator-reasoning text
  */
 export function resolveConversationPreview(input: ConversationPreviewInput): ConversationPreview {
-  const text = input.lastMessage.trim();
+  const text = stripMarkdownMarkers(input.lastMessage).trim();
   if (!text) {
     return { kind: 'empty', text: EMPTY_CONVERSATION_PREVIEW };
   }

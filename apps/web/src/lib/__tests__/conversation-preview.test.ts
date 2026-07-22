@@ -22,12 +22,44 @@ describe('resolveConversationPreview', () => {
     expect(preview.kind).toBe('empty');
   });
 
+  it.each([
+    '***',
+    '** **',
+    '___',
+    '`',
+    '```',
+    '  ***  \n ',
+    '~~ ~~',
+    '# >',
+  ])('selects the placeholder for markdown-only last message %j', (lastMessage) => {
+    const preview = resolveConversationPreview({ lastMessage, lastMessageIsInternal: false });
+    expect(preview).toEqual({ kind: 'empty', text: EMPTY_CONVERSATION_PREVIEW });
+  });
+
+  it('keeps a real excerpt that survives markdown stripping as a message, pre-stripped', () => {
+    const preview = resolveConversationPreview({ lastMessage: '**bold** _note_', lastMessageIsInternal: false });
+    expect(preview).toEqual({ kind: 'message', text: 'bold note' });
+  });
+
+  it('strips markdown markers but preserves real content around them', () => {
+    const preview = resolveConversationPreview({
+      lastMessage: '  > I noticed your **interest** in `graphs`  ',
+      lastMessageIsInternal: false,
+    });
+    expect(preview).toEqual({ kind: 'message', text: 'I noticed your interest in graphs' });
+  });
+
   it('marks internal assessment excerpts as internal, not empty', () => {
     const preview = resolveConversationPreview({
       lastMessage: 'Assessment: strong complementary fit',
       lastMessageIsInternal: true,
     });
     expect(preview).toEqual({ kind: 'internal', text: 'Assessment: strong complementary fit' });
+  });
+
+  it('resolves markdown-only internal messages to the placeholder, not a blank internal line', () => {
+    const preview = resolveConversationPreview({ lastMessage: '***', lastMessageIsInternal: true });
+    expect(preview).toEqual({ kind: 'empty', text: EMPTY_CONVERSATION_PREVIEW });
   });
 
   it('never surfaces raw evaluator reasoning fields — only the placeholder', () => {

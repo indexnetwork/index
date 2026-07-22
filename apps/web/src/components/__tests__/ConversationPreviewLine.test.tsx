@@ -53,8 +53,8 @@ describe('ConversationPreviewLine', () => {
     expect(screen.queryByText(/matchReason/i)).not.toBeInTheDocument();
   });
 
-  it('strips markdown emphasis characters from real messages', () => {
-    render(<ConversationPreviewLine preview={{ kind: 'message', text: '**bold** _note_' }} />);
+  it('renders message text verbatim (markdown stripping happens in the resolver)', () => {
+    render(<ConversationPreviewLine preview={{ kind: 'message', text: 'bold note' }} />);
     expect(screen.getByTestId('conversation-preview-message')).toHaveTextContent('bold note');
   });
 });

@@ -7,21 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-### Fixed
-
-- Conversation-list rows with no messages no longer render a visually empty subtitle: they now show a muted, italic one-line `No messages yet` placeholder, truncated like a real excerpt and distinct from real last-message styling. No raw evaluator reasoning, match reasons, or fabricated text is ever rendered (IND-504).
-
 ### Changed
 
 - Complete the interactive web product-language cutover from user-visible “intents” to “signals,” including creation, Discover, signal workspaces, Radar, network, Agent, trace, error, and accessibility copy; preserve internal/API `intent` identifiers and normalize server-authored provenance/subtitle fields at the web presentation boundary (IND-477).
 
 ### Fixed
 
+- Conversation-list rows with no messages no longer render a visually empty subtitle: they now show a muted, italic one-line `No messages yet` placeholder, truncated like a real excerpt and distinct from real last-message styling. No raw evaluator reasoning, match reasons, or fabricated text is ever rendered (IND-504).
 - Place intent-page Personal Agent questions in the conversation timeline: anchored questions follow their triggering assistant message, unanchored pending questions stay at the current end, and answered exchanges use authoritative anchors or timestamps instead of a permanent pre-chat block.
 - Persist Reporter Agent opening briefings across reloads for 24 hours by default, hydrate the server-resolved session without replaying the hidden kickoff, and make **New conversation** atomically create and bind one fresh briefing while aborting and quarantining stale streams (IND-484).
 - Separate guided-signal session reset from kickoff across a committed React render so `/i/new` and flag-on onboarding cannot send through a stale session or scope closure (IND-450).
 - Allow the reporter surface (`/agent`) to send messages after its briefing session is established; the route-mismatch guard now exempts the URL-less reporter session while preserving stale-session protection on `/d/:id` (IND-488).
 - Hide the generic chat session title bar ("Untitled chat", back/rename/share controls) on read-only surfaces like the `/agent` reporter, which renders its own header (IND-476). Test config now resolves the reporter kickoff marker from protocol source so web tests no longer depend on a built `packages/protocol/dist`.
+- Clarified the intent workspace live banner as background matching status rather than negotiation activity, and added a context divider for restored negotiator history that may be stale (IND-483).
+- Preserve messages submitted while the Reporter Agent's opening briefing is creating its first web session, so Enter and Send submissions are queued rather than dropped; add an accessible label to the send control.
+- Keep the answered Q&A log visible in the Personal Agent negotiator chat branch after questions are answered (IND-481).
+- Clear stale browser auth sessions automatically when user lookup fails.
+- Show experiment networks such as Edge City in shared profile networks and link them to their network pages.
+- Limit automatic onboarding redirects to the home page so signed-in users can open app routes like `/networks` before finishing setup.
 
 ### Added
 
@@ -42,11 +45,3 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added proactive high-VoI pool-question delivery surfaces: the Personal Agent badge now combines global pending questions with successfully pushed pool questions, while the Questions page remains global-only; intent-page mounts send a best-effort explicit visit ping and answer/dismiss actions refresh the canonical split counts (IND-421 P5).
 - Added intent pause/resume controls: live intents show Pause, paused intents show Resume, mutations expose loading and error feedback, and the existing questions and Radar workspace remain visible while paused. A successful Resume starts bounded workspace refresh checkpoints through three minutes so new Radar matches, pending questions, and negotiator updates surface without permanent polling.
 
-### Fixed
-
-- Clarified the intent workspace live banner as background matching status rather than negotiation activity, and added a context divider for restored negotiator history that may be stale (IND-483).
-- Preserve messages submitted while the Reporter Agent's opening briefing is creating its first web session, so Enter and Send submissions are queued rather than dropped; add an accessible label to the send control.
-- Keep the answered Q&A log visible in the Personal Agent negotiator chat branch after questions are answered (IND-481).
-- Clear stale browser auth sessions automatically when user lookup fails.
-- Show experiment networks such as Edge City in shared profile networks and link them to their network pages.
-- Limit automatic onboarding redirects to the home page so signed-in users can open app routes like `/networks` before finishing setup.

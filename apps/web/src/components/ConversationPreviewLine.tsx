@@ -24,7 +24,7 @@ export default function ConversationPreviewLine({ preview }: { preview: Conversa
         <span className="mr-1 italic text-gray-400">Internal:</span>
       )}
       <span className={preview.kind === 'internal' ? 'italic text-gray-400' : undefined}>
-        {preview.text.replace(/[*_~`#>]/g, '')}
+        {preview.text}
       </span>
     </p>
   );
