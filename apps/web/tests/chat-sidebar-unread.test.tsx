@@ -1,12 +1,12 @@
-import { screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import ChatSidebar from '@/components/ChatSidebar';
-import { render } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
   conversations: [] as Array<Record<string, unknown>>,
+  negotiations: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -16,7 +16,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({
     conversations: mocks.conversations,
-    negotiations: [],
+    negotiations: mocks.negotiations,
     refreshConversations: vi.fn().mockResolvedValue(undefined),
     refreshNegotiations: vi.fn().mockResolvedValue(undefined),
     hideConversation: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('@/components/UserAvatar', () => ({
   default: ({ name }: { name: string }) => <span>{name}</span>,
 }));
 
-function summary(unreadCount: number) {
+function h2hSummary(unreadCount: number) {
   return {
     id: 'conv-1',
     participants: [
@@ -43,21 +43,57 @@ function summary(unreadCount: number) {
   };
 }
 
+function negotiationSummary(unreadCount: number) {
+  return {
+    id: 'neg-1',
+    participants: [
+      { participantId: 'agent:viewer', participantType: 'agent', name: 'Viewer Agent', avatar: null },
+      { participantId: 'agent:peer', participantType: 'agent', name: 'Peer Agent', avatar: null },
+    ],
+    lastMessage: {
+      parts: [{ kind: 'data', data: { action: 'accept', message: 'Ready to connect' } }],
+      senderId: 'agent:peer',
+      createdAt: new Date().toISOString(),
+    },
+    metadata: { title: 'Agent negotiation' },
+    via: [],
+    unreadCount,
+    lastMessageAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  };
+}
+
 beforeEach(() => {
-  mocks.conversations = [summary(0)];
+  mocks.conversations = [h2hSummary(0)];
+  mocks.negotiations = [];
 });
 
 describe('ChatSidebar unread indicators', () => {
   test('renders the unread count on a conversation row', () => {
-    mocks.conversations = [summary(2)];
+    mocks.conversations = [h2hSummary(2)];
     render(<MemoryRouter><ChatSidebar /></MemoryRouter>);
 
-    expect(screen.getByTestId('chat-unread-conv-1')).toHaveTextContent('2');
+    const unreadBadge = screen.getByTestId('chat-unread-conv-1');
+    expect(unreadBadge).toHaveTextContent('2');
+    expect(unreadBadge).toHaveAccessibleName('2 unread messages');
   });
 
   test('hides the unread indicator when the count is zero', () => {
     render(<MemoryRouter><ChatSidebar /></MemoryRouter>);
 
     expect(screen.queryByTestId('chat-unread-conv-1')).toBeNull();
+  });
+
+  test('suppresses unread counts on negotiation rows while preserving status and preview', () => {
+    mocks.negotiations = [negotiationSummary(4)];
+    render(<MemoryRouter><ChatSidebar /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Negotiations' }));
+
+    expect(screen.getAllByText('Agent negotiation').length).toBeGreaterThan(0);
+    expect(screen.getByText('Ready to connect')).toBeInTheDocument();
+    expect(screen.getByLabelText('Accepted')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-unread-neg-1')).toBeNull();
+    expect(screen.queryByLabelText('4 unread messages')).toBeNull();
   });
 });
