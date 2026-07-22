@@ -173,6 +173,10 @@ Each factory takes its typed dependencies in the constructor and exposes a
 | `HomeGraphFactory` | Categorize and curate home-feed content |
 | `MaintenanceGraphFactory` | Periodic maintenance (feed health, opportunity expiration) |
 
+### Persisted chat personas
+
+`ChatGraphFactory.withPersona()` keeps the runtime neutral while selecting an exported persona configuration. `SIGNAL_PERSONA`, `REPORTER_PERSONA`, and `ONBOARDING_PERSONA` each own an exact positive tool allowlist; shared tools added later remain unavailable until reviewed. `ONBOARDING_PERSONA` reuses Signal's proposal-only, live-membership-narrowed `create_intent` contract and otherwise exposes only privacy consent, approved self-context preview/confirmation, guided questions, and validated completion. Hosts must persist the exported persona ID on session creation and treat it as authoritative on follow-ups.
+
 ## MCP server
 
 The package exports a factory that registers every chat tool over the Model Context Protocol and attaches a canonical `instructions` block (`MCP_INSTRUCTIONS`) that every connecting runtime follows. The factory takes three arguments:

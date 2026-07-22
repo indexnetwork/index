@@ -1,7 +1,7 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
-import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA, REPORTER_PERSONA_ID, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
+import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA, REPORTER_PERSONA_ID, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
@@ -23,7 +23,8 @@ export type ChatPersonaPolicyCode =
   | 'WEB_SIGNAL_AGENT_DISABLED'
   | 'WEB_SIGNAL_PERSONA_FORBIDDEN'
   | 'WEB_AGENT_SURFACE_DISABLED'
-  | 'WEB_AGENT_PERSONA_FORBIDDEN';
+  | 'WEB_AGENT_PERSONA_FORBIDDEN'
+  | 'WEB_ONBOARDING_PERSONA_FORBIDDEN';
 
 export type ChatPersonaPolicyResult =
   | { ok: true; persona: ChatPersonaId }
@@ -40,6 +41,7 @@ const KNOWN_CHAT_PERSONAS: ReadonlySet<string> = new Set([
   SIGNAL_PERSONA_ID,
   NEGOTIATOR_PERSONA_ID,
   REPORTER_PERSONA_ID,
+  ONBOARDING_PERSONA_ID,
 ]);
 
 /**
@@ -143,9 +145,12 @@ export class ChatSessionService {
     }
 
     if (input.surface === 'onboarding') {
+      const onboardingPersona = webSignalEnabled
+        ? ONBOARDING_PERSONA_ID
+        : ORCHESTRATOR_PERSONA_ID;
       if (
-        (storedPersona && storedPersona !== ORCHESTRATOR_PERSONA_ID)
-        || (requestedPersona && requestedPersona !== ORCHESTRATOR_PERSONA_ID)
+        (storedPersona && storedPersona !== onboardingPersona)
+        || (requestedPersona && requestedPersona !== onboardingPersona)
       ) {
         return {
           ok: false,
@@ -154,7 +159,7 @@ export class ChatSessionService {
           error: 'This request does not match the onboarding chat.',
         };
       }
-      return { ok: true, persona: ORCHESTRATOR_PERSONA_ID };
+      return { ok: true, persona: onboardingPersona };
     }
 
     if (storedPersona) {
@@ -164,6 +169,15 @@ export class ChatSessionService {
           status: 409,
           code: 'CHAT_PERSONA_MISMATCH',
           error: 'This request does not match the chat that was opened.',
+        };
+      }
+
+      if (storedPersona === ONBOARDING_PERSONA_ID) {
+        return {
+          ok: false,
+          status: 403,
+          code: 'WEB_ONBOARDING_PERSONA_FORBIDDEN',
+          error: 'This chat can only be continued during incomplete web onboarding.',
         };
       }
 
@@ -222,6 +236,15 @@ export class ChatSessionService {
       }
 
       return { ok: true, persona: storedPersona as ChatPersonaId };
+    }
+
+    if (requestedPersona === ONBOARDING_PERSONA_ID) {
+      return {
+        ok: false,
+        status: 403,
+        code: 'WEB_ONBOARDING_PERSONA_FORBIDDEN',
+        error: 'Onboarding chats can only be started by the onboarding route.',
+      };
     }
 
     if (requestedPersona === REPORTER_PERSONA_ID) {
@@ -810,6 +833,11 @@ export class ChatSessionService {
    */
   getSignalGraphFactory(): ChatGraphFactory {
     return this.factory.withPersona(SIGNAL_PERSONA);
+  }
+
+  /** Derive the restricted onboarding graph factory from the shared runtime. */
+  getOnboardingGraphFactory(): ChatGraphFactory {
+    return this.factory.withPersona(ONBOARDING_PERSONA);
   }
 
   /**

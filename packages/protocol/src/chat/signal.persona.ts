@@ -51,7 +51,7 @@ export const SIGNAL_TOOL_NAMES = [
 
 const SIGNAL_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(SIGNAL_TOOL_NAMES);
 
-interface SignalToolBoundary {
+export interface SignalToolBoundary {
   context: ResolvedToolContext;
   userDb: UserDatabase;
   systemDb: SystemDatabase;

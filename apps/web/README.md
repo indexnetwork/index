@@ -29,6 +29,10 @@ src/
   services/     Typed fetch wrappers for the API service
 ```
 
+## Signal intake and onboarding
+
+`/i/new` and flag-on `/onboarding` share `components/signals/GuidedSignalIntake.tsx`: the same live `ask_user_question` cards, answered summaries, proposal confirmation, exact intent ID, retry, and duplicate-protection behavior. The onboarding route first runs a restricted consent/profile approval phase, derives its phase from durable `users.onboarding` markers, and invokes `complete_onboarding` after `/intents/confirm` succeeds. It awaits durable completion before accepting deferred invitations, refreshing memberships, or navigating to `/i/:intentId`. When the Signal cutover flag is off, the legacy onboarding page remains available unchanged.
+
 ## Scripts
 
 | Command | Description |

@@ -275,6 +275,8 @@ describe("onboarding privacy profile tools", () => {
       forceUpdate: true,
     });
     expect(enricher).not.toHaveBeenCalled();
+    expect(onboarding?.profileConfirmedAt).toBeDefined();
+    expect(onboarding?.currentStep).toBe("first_signal");
   });
 
   it("confirm schedules draft premise decomposition without blocking MCP callers", async () => {
@@ -312,6 +314,33 @@ describe("onboarding privacy profile tools", () => {
     });
   });
 
+  it("keeps the legacy create_user_context(confirm=true) approval path compatible with the durable marker", async () => {
+    onboarding = {
+      privacy: {
+        publicProfileLookup: {
+          granted: false,
+          decidedAt: "2026-05-29T00:00:00.000Z",
+          source: "web_onboarding",
+        },
+      },
+    };
+    profileGraphInvoke.mockResolvedValue({
+      profile: {
+        identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
+        attributes: { skills: ["TypeScript"], interests: ["agents"] },
+      },
+      agentTimings: [],
+    });
+    const tool = tools.find((t) => t.name === "create_user_context")!;
+
+    const result = parseToolResult(await tool.handler({ context: context(), query: { confirm: true } }));
+
+    expect(result.success).toBe(true);
+    expect(onboarding?.profileConfirmedAt).toBeDefined();
+    expect(onboarding?.currentStep).toBe("first_signal");
+    expect(onboarding?.privacy?.publicProfileLookup?.granted).toBe(false);
+  });
+
   it("emits graph_end when background profile generation rejects", async () => {
     const tool = tools.find((t) => t.name === "confirm_user_context")!;
     const events: Array<{ type: string; name: string }> = [];
@@ -332,11 +361,16 @@ describe("onboarding privacy profile tools", () => {
     ]);
   });
 
-  it("refuses to complete onboarding without a confirmed profile", async () => {
+  it("refuses to complete onboarding without the durable approval marker even when getProfile returns a presentation row", async () => {
     const tool = tools.find((t) => t.name === "complete_onboarding")!;
+    currentProfile = {
+      userId: "u1",
+      identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
+      context: "Alice builds tools.",
+    };
     activeIntents = [{ id: "intent-1", payload: "Looking for collaborators", summary: null, createdAt: new Date("2026-05-29T00:00:00.000Z") }];
 
-    const result = parseToolResult(await tool.handler({ context: context(), query: {} }));
+    const result = parseToolResult(await tool.handler({ context: context(), query: { intentId: "intent-1" } }));
 
     expect(result.success).toBe(false);
     expect(String(result.error)).toContain("confirmed profile");
@@ -345,11 +379,9 @@ describe("onboarding privacy profile tools", () => {
 
   it("refuses to complete onboarding without an active intent", async () => {
     const tool = tools.find((t) => t.name === "complete_onboarding")!;
-    currentProfile = {
-      userId: "u1",
-      identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
-      narrative: { context: "Alice builds tools." },
-      attributes: { skills: ["TypeScript"], interests: ["agents"] },
+    onboarding = {
+      profileConfirmedAt: "2026-05-29T00:00:00.000Z",
+      currentStep: "first_signal",
     };
 
     const result = parseToolResult(await tool.handler({ context: context(), query: {} }));
@@ -359,20 +391,46 @@ describe("onboarding privacy profile tools", () => {
     expect(updateUser).not.toHaveBeenCalled();
   });
 
-  it("completes onboarding after profile confirmation and first active intent", async () => {
+  it("completes onboarding for the exact active first signal and preserves privacy state", async () => {
     const tool = tools.find((t) => t.name === "complete_onboarding")!;
-    currentProfile = {
-      userId: "u1",
-      identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
-      narrative: { context: "Alice builds tools." },
-      attributes: { skills: ["TypeScript"], interests: ["agents"] },
+    onboarding = {
+      profileConfirmedAt: "2026-05-29T00:00:00.000Z",
+      currentStep: "first_signal",
+      privacy: {
+        publicProfileLookup: {
+          granted: false,
+          decidedAt: "2026-05-29T00:00:00.000Z",
+          source: "web_onboarding",
+        },
+      },
     };
     activeIntents = [{ id: "intent-1", payload: "Looking for collaborators", summary: null, createdAt: new Date("2026-05-29T00:00:00.000Z") }];
 
-    const result = parseToolResult(await tool.handler({ context: context(), query: {} }));
+    const result = parseToolResult(await tool.handler({ context: context(), query: { intentId: "intent-1" } }));
 
     expect(result.success).toBe(true);
+    expect(result.data?.intentId).toBe("intent-1");
     expect(onboarding?.completedAt).toBeDefined();
+    expect(onboarding?.firstSignalIntentId).toBe("intent-1");
+    expect(onboarding?.currentStep).toBe("complete");
+    expect(onboarding?.privacy?.publicProfileLookup?.granted).toBe(false);
+
+    const retry = parseToolResult(await tool.handler({ context: context(), query: { intentId: "intent-1" } }));
+    expect(retry.success).toBe(true);
+    expect(retry.data?.intentId).toBe("intent-1");
+    expect(retry.data?.completedAt).toBe(onboarding?.completedAt);
     expect(updateUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a different or inactive first-signal ID", async () => {
+    const tool = tools.find((t) => t.name === "complete_onboarding")!;
+    onboarding = { profileConfirmedAt: "2026-05-29T00:00:00.000Z", currentStep: "first_signal" };
+    activeIntents = [{ id: "intent-1", payload: "Looking for collaborators", summary: null, createdAt: new Date("2026-05-29T00:00:00.000Z") }];
+
+    const result = parseToolResult(await tool.handler({ context: context(), query: { intentId: "intent-2" } }));
+
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain("not active for this user");
+    expect(updateUser).not.toHaveBeenCalled();
   });
 });

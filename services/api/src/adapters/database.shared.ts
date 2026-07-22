@@ -355,7 +355,7 @@ export function ownIntentsListWhere(
  * Database adapter for intent CRUD (Intent Graph).
  */
 export type ChatScopeType = 'network' | 'intent';
-export type ChatPersonaId = 'orchestrator' | 'signal' | 'negotiator' | 'reporter';
+export type ChatPersonaId = 'orchestrator' | 'signal' | 'negotiator' | 'reporter' | 'onboarding';
 
 export interface ChatSession {
   id: string;

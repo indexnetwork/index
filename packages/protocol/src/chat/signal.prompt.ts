@@ -29,7 +29,7 @@ export function isSignalNewSignalKickoff(message?: string): boolean {
   ]).has(normalized);
 }
 
-type SignalIntakeStage = "who" | "contribution" | "where" | "proposal" | "complete";
+export type SignalIntakeStage = "who" | "contribution" | "where" | "proposal" | "complete";
 
 /**
  * Determines the next guided-intake stage from the live agent-loop context.
@@ -55,7 +55,7 @@ export function getSignalIntakeStage(iterCtx?: IterationContext): SignalIntakeSt
   return "proposal";
 }
 
-function buildSignalIntakeGuidance(stage: SignalIntakeStage | null): string {
+export function buildSignalIntakeGuidance(stage: SignalIntakeStage | null): string {
   if (!stage) return "";
 
   const common = `
@@ -80,7 +80,7 @@ Call \`ask_user_question\` immediately. Ask what the user would bring to this co
   if (stage === "where") {
     return `${common}
 ### Round 3 of 3: where to look
-Call \`ask_user_question\` immediately. Ask where this connection should be sought, such as a current community, location, online space, event, or no geographic constraint. Only suggest communities already present in the preloaded membership list, using their exact titles plus \"Everywhere\"; never invent a community, expose an ID, or imply that this question changes membership.`;
+Call \`ask_user_question\` immediately. Ask where this connection should be sought, such as a current community, location, online space, event, or no geographic constraint. Only suggest communities already present in the preloaded membership list, using their exact titles plus "Everywhere"; never invent a community, expose an ID, or imply that this question changes membership.`;
   }
 
   if (stage === "proposal") {
