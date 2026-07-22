@@ -96,8 +96,10 @@ describe('Reporter briefing session resolver (IND-484)', () => {
     expect(spoofed.status).toBe(400);
     expect(resolveReporterSession).not.toHaveBeenCalled();
 
-    const guards = RouteRegistry.getGuards(ChatController, 'reporterSession');
-    expect(guards).toContain(SessionOnlyGuard);
-    expect(guards).not.toContain(AuthGuard);
+    const guardNames = RouteRegistry
+      .getGuards(ChatController, 'reporterSession')
+      .map((guard) => guard.name);
+    expect(guardNames).toContain('SessionOnlyGuard');
+    expect(guardNames).not.toContain('AuthGuard');
   });
 });
