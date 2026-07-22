@@ -68,6 +68,9 @@ function toAnsweredThreadEntry(question: PendingQuestion): AnsweredThreadEntry |
     id: question.id,
     prompt: question.payload.prompt,
     response: formatAnswer(answer.selectedOptions, answer.freeText),
+    messageId: question.detection?.messageId,
+    createdAt: question.createdAt,
+    detectedAt: question.detection?.timestamp,
     answeredAt: answer.answeredAt,
   };
 }
@@ -308,7 +311,8 @@ export default function IntentDetailPage() {
     },
     [clearReactionTimers],
   );
-  // Conversation thread: answered questions kept in view (oldest first).
+  // Conversation thread: answered questions retain server anchors/timestamps so
+  // the Personal Agent can place them within chat history after reloads.
   const [answered, setAnswered] = useState<AnsweredThreadEntry[]>([]);
   // Chat-style conversation column: scrolls internally, pinned to the bottom so
   // the newest question is always in view above the composer.
@@ -401,6 +405,9 @@ export default function IntentDetailPage() {
               previous?.id === entry.id &&
               previous.prompt === entry.prompt &&
               previous.response === entry.response &&
+              previous.messageId === entry.messageId &&
+              previous.createdAt === entry.createdAt &&
+              previous.detectedAt === entry.detectedAt &&
               previous.answeredAt === entry.answeredAt
             );
           });
@@ -608,7 +615,9 @@ export default function IntentDetailPage() {
             id: questionId,
             prompt: answered.payload.prompt,
             response: formatAnswer(body.selectedOptions, body.freeText),
-            answeredAt: new Date().toISOString(),
+            messageId: answered.detection?.messageId,
+            createdAt: answered.createdAt,
+            detectedAt: answered.detection?.timestamp,
           },
         ]);
       }

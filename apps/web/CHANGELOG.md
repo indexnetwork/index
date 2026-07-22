@@ -13,6 +13,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Place intent-page Personal Agent questions in the conversation timeline: anchored questions follow their triggering assistant message, unanchored pending questions stay at the current end, and answered exchanges use authoritative anchors or timestamps instead of a permanent pre-chat block.
 - Persist Reporter Agent opening briefings across reloads for 24 hours by default, hydrate the server-resolved session without replaying the hidden kickoff, and make **New conversation** atomically create and bind one fresh briefing while aborting and quarantining stale streams (IND-484).
 - Separate guided-signal session reset from kickoff across a committed React render so `/i/new` and flag-on onboarding cannot send through a stale session or scope closure (IND-450).
 - Allow the reporter surface (`/agent`) to send messages after its briefing session is established; the route-mismatch guard now exempts the URL-less reporter session while preserving stale-session protection on `/d/:id` (IND-488).

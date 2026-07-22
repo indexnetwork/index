@@ -41,10 +41,26 @@ vi.mock('@/contexts/AIChatContext', () => ({
 }));
 
 vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
-  InjectedQuestions: ({ questions }: { questions: PendingQuestion[] }) => (
+  InjectedQuestions: ({
+    questions,
+    onAnswer,
+    onDismiss,
+  }: {
+    questions: PendingQuestion[];
+    onAnswer: (questionId: string, body: { selectedOptions: string[] }) => Promise<void>;
+    onDismiss: (questionId: string) => Promise<void>;
+  }) => (
     <div data-testid="injected-questions">
-      {questions.map((q) => (
-        <div key={q.id}>{q.title}</div>
+      {questions.map((question) => (
+        <div key={question.id}>
+          <span>{question.payload.title}</span>
+          <button type="button" onClick={() => void onAnswer(question.id, { selectedOptions: ['Berlin'] })}>
+            answer-{question.id}
+          </button>
+          <button type="button" onClick={() => void onDismiss(question.id)}>
+            dismiss-{question.id}
+          </button>
+        </div>
       ))}
     </div>
   ),
@@ -66,15 +82,25 @@ const SESSION_RESPONSE = {
 
 const QUESTION: PendingQuestion = {
   id: 'q-1',
-  title: 'Which city should we prioritize?',
-  prompt: 'Which city should we prioritize?',
-  options: [],
-  multiSelect: false,
-  mode: 'intent',
-  sourceType: 'intent',
-  sourceId: 'intent-1',
-  createdAt: new Date().toISOString(),
-} as unknown as PendingQuestion;
+  detection: {
+    mode: 'intent',
+    sourceType: 'intent',
+    sourceId: 'intent-1',
+    timestamp: '2026-07-20T10:02:00Z',
+  },
+  actors: [{ userId: 'user-1', role: 'subject' }],
+  payload: {
+    title: 'Which city should we prioritize?',
+    prompt: 'Which city should we prioritize?',
+    options: [],
+    multiSelect: false,
+  },
+  status: 'pending',
+  answer: null,
+  expiresAt: null,
+  createdAt: '2026-07-20T10:02:00Z',
+  conversationId: null,
+};
 
 function renderChat(overrides: Partial<Parameters<typeof IntentNegotiatorChat>[0]> = {}) {
   const props = {
@@ -130,11 +156,102 @@ describe('IntentNegotiatorChat', () => {
     expect(divider).toHaveTextContent('may not reflect current signal state');
   });
 
-  test('renders pending intent questions as the opening turns (existing pipeline)', async () => {
+  test('renders pending intent questions through the existing answer pipeline', async () => {
     renderChat({ questions: [QUESTION] });
 
-    await screen.findByTestId('negotiator-opening-questions');
+    await screen.findByTestId('negotiator-pending-questions');
     expect(screen.getByTestId('injected-questions').textContent).toContain('Which city should we prioritize?');
+  });
+
+  test('places an unanchored pending question after older chat history', async () => {
+    mocks.chat.messages = [
+      { id: 'old-user', role: 'user', content: 'Earlier request', timestamp: new Date('2026-07-20T10:00:00Z') },
+      { id: 'old-assistant', role: 'assistant', content: 'Earlier response', timestamp: new Date('2026-07-20T10:01:00Z') },
+    ];
+
+    renderChat({ questions: [QUESTION] });
+
+    const chat = await screen.findByTestId('intent-negotiator-chat');
+    await screen.findByText('Earlier response');
+    const content = chat.textContent ?? '';
+    expect(content.indexOf('Earlier response')).toBeLessThan(content.indexOf('Which city should we prioritize?'));
+  });
+
+  test('places anchored answered and pending questions after their assistant message', async () => {
+    mocks.chat.messages = [
+      { id: 'anchor-message', role: 'assistant', content: 'I need one detail.', timestamp: new Date('2026-07-20T10:00:00Z') },
+      { id: 'later-user', role: 'user', content: 'A later reply', timestamp: new Date('2026-07-20T10:05:00Z') },
+    ];
+    const anchoredQuestion = {
+      ...QUESTION,
+      id: 'q-anchored',
+      detection: { ...QUESTION.detection, messageId: 'anchor-message' },
+    };
+    const { props } = renderChat({
+      questions: [anchoredQuestion],
+      answered: [{
+        id: 'answered-anchored',
+        prompt: 'Previously asked detail?',
+        response: 'Previously answered',
+        messageId: 'anchor-message',
+        answeredAt: '2026-07-20T10:10:00Z',
+      }],
+    });
+
+    const chat = await screen.findByTestId('intent-negotiator-chat');
+    await screen.findByText('A later reply');
+    const content = chat.textContent ?? '';
+    expect(content.indexOf('I need one detail.')).toBeLessThan(content.indexOf('Previously asked detail?'));
+    expect(content.indexOf('Previously asked detail?')).toBeLessThan(content.indexOf('Which city should we prioritize?'));
+    expect(content.indexOf('Which city should we prioritize?')).toBeLessThan(content.indexOf('A later reply'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'answer-q-anchored' }));
+    fireEvent.click(screen.getByRole('button', { name: 'dismiss-q-anchored' }));
+    expect(props.onAnswerQuestion).toHaveBeenCalledWith('q-anchored', { selectedOptions: ['Berlin'] });
+    expect(props.onDismissQuestion).toHaveBeenCalledWith('q-anchored');
+  });
+
+  test('interleaves an unanchored answered exchange by timestamp but keeps pending at the end', async () => {
+    mocks.chat.messages = [
+      { id: 'older-assistant', role: 'assistant', content: 'Old agent turn', timestamp: new Date('2026-07-20T10:00:00Z') },
+      { id: 'newer-user', role: 'user', content: 'New user turn', timestamp: new Date('2026-07-20T12:00:00Z') },
+    ];
+    renderChat({
+      questions: [QUESTION],
+      answered: [{
+        id: 'answered-between',
+        prompt: 'Answered between turns?',
+        response: 'Yes',
+        answeredAt: '2026-07-20T11:00:00Z',
+      }],
+    });
+
+    const chat = await screen.findByTestId('intent-negotiator-chat');
+    await screen.findByText('New user turn');
+    const content = chat.textContent ?? '';
+    expect(content.indexOf('Old agent turn')).toBeLessThan(content.indexOf('Answered between turns?'));
+    expect(content.indexOf('Answered between turns?')).toBeLessThan(content.indexOf('New user turn'));
+    expect(content.indexOf('New user turn')).toBeLessThan(content.indexOf('Which city should we prioritize?'));
+  });
+
+  test('uses a deterministic end fallback for an answered exchange without timestamps', async () => {
+    mocks.chat.messages = [
+      { id: 'fallback-message', role: 'assistant', content: 'Last authoritative turn', timestamp: new Date('2026-07-20T12:00:00Z') },
+    ];
+    renderChat({
+      questions: [QUESTION],
+      answered: [{
+        id: 'answered-without-time',
+        prompt: 'Optimistic answer?',
+        response: 'Kept without a fabricated timestamp',
+      }],
+    });
+
+    const chat = await screen.findByTestId('intent-negotiator-chat');
+    await screen.findByText('Last authoritative turn');
+    const content = chat.textContent ?? '';
+    expect(content.indexOf('Last authoritative turn')).toBeLessThan(content.indexOf('Optimistic answer?'));
+    expect(content.indexOf('Optimistic answer?')).toBeLessThan(content.indexOf('Which city should we prioritize?'));
   });
 
   test('keeps answered history visible without the empty state', async () => {
@@ -147,7 +264,7 @@ describe('IntentNegotiatorChat', () => {
       }],
     });
 
-    expect(await screen.findByTestId('negotiator-answered-log')).toBeInTheDocument();
+    expect(await screen.findByTestId('negotiator-answered-exchange')).toBeInTheDocument();
     expect(screen.getByText('What should we prioritize?')).toBeInTheDocument();
     expect(screen.getByText('Berlin')).toBeInTheDocument();
     expect(screen.getByText('noted — updating the search.')).toBeInTheDocument();
