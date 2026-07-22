@@ -1,15 +1,24 @@
 /**
- * Intent page responsive layout (IND-503).
+ * Intent page responsive layout (IND-503, review round 2 — a11y).
  *
- * Desktop (lg+): Personal Agent and Radar columns are equal width (50/50).
- * Mobile (< lg): Radar is the primary content; the Personal Agent column is a
- * Radix-Dialog off-canvas sheet that stays mounted (forceMount) across
- * open/close so the negotiator chat's live stream/question state survives.
+ * Desktop (lg+): Personal Agent and Radar columns are equal width (50/50);
+ * the left column is a plain labelled region with no dialog semantics.
+ * Mobile (< lg): Radar is the primary content; the left column is an
+ * off-canvas sheet that, while open, behaves as a modal dialog — Radix
+ * FocusScope containment, inert background, aria-modal, Escape/outside
+ * dismiss via Radix DismissableLayer — and stays mounted across open/close
+ * so the negotiator chat's live stream/question state survives.
+ *
+ * Interaction tests use @testing-library/user-event and assert against
+ * document.activeElement (not just data-state). jsdom ships matchMedia with
+ * a default 1024px viewport — i.e. DESKTOP semantics by default — so mobile
+ * tests stub matchMedia to a < lg match and the desktop test stubs >= lg.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentDetailPage from '@/app/i/[intentId]/page';
 
@@ -121,23 +130,47 @@ function makeQuestion(id: string) {
   };
 }
 
+/** Stubs window.matchMedia so useIsDesktop() resolves `desktop` (jsdom lacks it). */
+function stubMatchMedia(desktop: boolean) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: desktop,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+function primeServices() {
+  mocks.intentsService.getIntent.mockResolvedValue({
+    id: 'intent-1',
+    payload: 'Looking for a technical co-founder',
+    summary: 'Looking for a technical co-founder',
+    createdAt: new Date().toISOString(),
+  });
+  mocks.intentsService.visitIntent.mockResolvedValue(undefined);
+  mocks.opportunitiesService.getHomeView.mockResolvedValue({ sections: [] });
+  mocks.questionsService.getPending.mockResolvedValue([
+    makeQuestion('q-1'),
+    makeQuestion('q-2'),
+  ]);
+  mocks.questionsService.getAnswered.mockResolvedValue([]);
+}
+
 describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mobile semantics by default; the desktop test re-stubs with `true`.
+    stubMatchMedia(false);
     mocks.authState.features = { negotiatorChat: true };
-    mocks.intentsService.getIntent.mockResolvedValue({
-      id: 'intent-1',
-      payload: 'Looking for a technical co-founder',
-      summary: 'Looking for a technical co-founder',
-      createdAt: new Date().toISOString(),
-    });
-    mocks.intentsService.visitIntent.mockResolvedValue(undefined);
-    mocks.opportunitiesService.getHomeView.mockResolvedValue({ sections: [] });
-    mocks.questionsService.getPending.mockResolvedValue([
-      makeQuestion('q-1'),
-      makeQuestion('q-2'),
-    ]);
-    mocks.questionsService.getAnswered.mockResolvedValue([]);
+    primeServices();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   test('desktop columns are equal width (lg:flex-1 on both, no 40/60 split)', async () => {
@@ -178,83 +211,146 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     expect(trigger.contains(badge)).toBe(true);
   });
 
-  test('sheet opens via trigger and closes via Escape, close button, and overlay', async () => {
+  test('mobile open: focus moves into the sheet and Tab/Shift+Tab stay contained; background is inert', async () => {
+    const user = userEvent.setup();
+    renderIntentPage();
+    const sheet = await screen.findByTestId('personal-agent-sheet');
+    const trigger = await screen.findByTestId('personal-agent-trigger');
+    const radar = await screen.findByTestId('radar-column');
+
+    await user.click(trigger);
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('open'));
+
+    // Focus moved into the sheet.
+    expect(sheet.contains(document.activeElement)).toBe(true);
+
+    // Modal semantics + inert background while open.
+    expect(sheet.getAttribute('role')).toBe('dialog');
+    expect(sheet).toHaveAttribute('aria-modal', 'true');
+    expect(radar).toHaveAttribute('inert');
+    expect(trigger).toHaveAttribute('inert');
+
+    // Tab repeatedly: focus must never leave the sheet.
+    for (let i = 0; i < 4; i += 1) {
+      await user.tab();
+      expect(sheet.contains(document.activeElement)).toBe(true);
+    }
+    // Shift+Tab likewise (reverse cycle).
+    for (let i = 0; i < 2; i += 1) {
+      await user.tab({ shift: true });
+      expect(sheet.contains(document.activeElement)).toBe(true);
+    }
+  });
+
+  test('close via Escape returns focus to the trigger and de-inerts the background', async () => {
+    const user = userEvent.setup();
     renderIntentPage();
     const sheet = await screen.findByTestId('personal-agent-sheet');
     const trigger = await screen.findByTestId('personal-agent-trigger');
 
-    // Open via trigger.
-    fireEvent.click(trigger);
-    await waitFor(() =>
-      expect(sheet.getAttribute('data-state')).toBe('open'),
-    );
+    await user.click(trigger);
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('open'));
 
-    // Close via the in-sheet close button.
-    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
-    await waitFor(() =>
-      expect(sheet.getAttribute('data-state')).toBe('closed'),
-    );
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('closed'));
+    expect(document.activeElement).toBe(trigger);
+    expect(await screen.findByTestId('radar-column')).not.toHaveAttribute('inert');
+    expect(trigger).not.toHaveAttribute('inert');
+  });
 
-    // Open again, close via Escape.
-    fireEvent.click(trigger);
-    await waitFor(() =>
-      expect(sheet.getAttribute('data-state')).toBe('open'),
-    );
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() =>
-      expect(sheet.getAttribute('data-state')).toBe('closed'),
-    );
+  test('close via the in-sheet close button returns focus to the trigger', async () => {
+    const user = userEvent.setup();
+    renderIntentPage();
+    const sheet = await screen.findByTestId('personal-agent-sheet');
+    const trigger = await screen.findByTestId('personal-agent-trigger');
 
-    // Open again, dismiss via overlay pointer-down.
-    fireEvent.click(trigger);
-    await waitFor(() =>
-      expect(sheet.getAttribute('data-state')).toBe('open'),
-    );
-    const overlay = await screen.findByTestId('personal-agent-overlay');
-    fireEvent.pointerDown(overlay);
-    fireEvent.click(overlay);
-    await waitFor(() =>
-      expect(sheet.getAttribute('data-state')).toBe('closed'),
-    );
+    await user.click(trigger);
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('open'));
+
+    await user.click(screen.getByRole('button', { name: 'Close panel' }));
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('closed'));
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test('close via outside pointer-down on the backdrop returns focus to the trigger', async () => {
+    const user = userEvent.setup();
+    renderIntentPage();
+    const sheet = await screen.findByTestId('personal-agent-sheet');
+    const trigger = await screen.findByTestId('personal-agent-trigger');
+
+    await user.click(trigger);
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('open'));
+
+    // This is the path Radix's own close-auto-focus would suppress after an
+    // outside interaction; the page-level focus choreography must still
+    // return focus to the trigger.
+    fireEvent.pointerDown(await screen.findByTestId('personal-agent-overlay'));
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('closed'));
+    expect(document.activeElement).toBe(trigger);
   });
 
   test('negotiator chat is never unmounted by open/close cycles', async () => {
+    const user = userEvent.setup();
     renderIntentPage();
     const chat = await screen.findByTestId('intent-negotiator-chat-stub');
     const trigger = await screen.findByTestId('personal-agent-trigger');
 
-    fireEvent.click(trigger);
+    await user.click(trigger);
     await waitFor(() =>
       expect(
         screen.getByTestId('personal-agent-sheet').getAttribute('data-state'),
       ).toBe('open'),
     );
-    fireEvent.keyDown(document, { key: 'Escape' });
+    await user.keyboard('{Escape}');
     await waitFor(() =>
       expect(
         screen.getByTestId('personal-agent-sheet').getAttribute('data-state'),
       ).toBe('closed'),
     );
 
-    // Same element instance — forceMount kept the subtree alive.
+    // Same element instance — the subtree stayed mounted.
     expect(screen.getByTestId('intent-negotiator-chat-stub')).toBe(chat);
+  });
+
+  test('desktop (matchMedia >= lg): column is a labelled region, never a dialog, never inert', async () => {
+    stubMatchMedia(true);
+    const user = userEvent.setup();
+    renderIntentPage();
+    const sheet = await screen.findByTestId('personal-agent-sheet');
+
+    expect(sheet.getAttribute('role')).toBe('region');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Accessible name comes from the sr-only heading.
+    expect(
+      screen.getByRole('region', { name: 'Personal Agent' }),
+    ).toBe(sheet);
+
+    // Even if the sheet state is opened, desktop must not gain modal
+    // semantics, inert background, or focus choreography.
+    await user.click(await screen.findByTestId('personal-agent-trigger'));
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('open'));
+    expect(sheet.getAttribute('role')).toBe('region');
+    expect(sheet).not.toHaveAttribute('aria-modal');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(await screen.findByTestId('radar-column')).not.toHaveAttribute('inert');
   });
 
   test('questions-fallback branch gets the same drawer treatment', async () => {
     mocks.authState.features = null; // flag off → static questions block
+    const user = userEvent.setup();
     renderIntentPage();
 
     const sheet = await screen.findByTestId('personal-agent-sheet');
     expect(sheet.className).toContain('data-[state=closed]:translate-x-full');
+    expect(sheet.getAttribute('role')).toBe('dialog');
 
     const trigger = await screen.findByTestId('personal-agent-trigger');
     expect(trigger).toHaveTextContent('Questions');
     expect(trigger.contains(await screen.findByTestId('intent-question-count'))).toBe(true);
 
-    fireEvent.click(trigger);
-    await waitFor(() =>
-      expect(sheet.getAttribute('data-state')).toBe('open'),
-    );
+    await user.click(trigger);
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('open'));
+    expect(sheet).toHaveAttribute('aria-modal', 'true');
     expect(await screen.findByTestId('injected-questions')).toBeInTheDocument();
   });
 });

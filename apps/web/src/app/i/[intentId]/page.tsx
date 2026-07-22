@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ArrowUp, Brain, ChevronLeft, Loader2, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { Link } from "react-router";
 import * as Dialog from "@radix-ui/react-dialog";
+import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
+import { FocusScope } from "@radix-ui/react-focus-scope";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
@@ -259,13 +261,37 @@ function Panel({
 }
 
 /**
+ * Breakpoint query matching Tailwind's `lg`. Used ONLY for accessibility
+ * semantics (role / aria-modal / inert / focus containment) — layout and
+ * visibility stay pure Tailwind CSS. Focus containment and the
+ * dialog-vs-region distinction genuinely cannot be expressed in CSS, which
+ * is the sole reason a matchMedia switch exists here.
+ */
+function useIsDesktop(): boolean {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window.matchMedia !== "function") return () => {};
+      const mql = window.matchMedia("(min-width: 1024px)");
+      mql.addEventListener("change", onStoreChange);
+      return () => mql.removeEventListener("change", onStoreChange);
+    },
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(min-width: 1024px)").matches,
+  );
+}
+
+/**
  * Intent detail view. Mirrors the Hermes dashboard intent-detail layout: a
  * detail header card with a live indicator and Pause/Edit/Archive actions, a
  * Personal Agent (or Questions) column, and a Radar panel with a status
- * filter strip. At lg+ the two columns are equal width (50/50); below lg the
- * Radar is the primary content and the left column becomes a Radix-Dialog
- * off-canvas sheet (non-modal, kept mounted via forceMount so the negotiator
- * chat's live state survives open/close and breakpoint changes).
+ * filter strip. At lg+ the two columns are equal width (50/50) and the left
+ * column is a plain labelled region; below lg the Radar is the primary
+ * content and the left column becomes an off-canvas sheet (a modal dialog
+ * with focus containment and an inert background while open). The sheet
+ * stays mounted at all times, so the negotiator chat's live stream/question
+ * state survives open/close and breakpoint changes.
  */
 export default function IntentDetailPage() {
   const navigate = useNavigate();
@@ -335,6 +361,29 @@ export default function IntentDetailPage() {
   // Mobile (< lg): the Personal Agent column becomes an off-canvas sheet over
   // the Radar; this is its open state. Desktop (lg+) always shows the column.
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const isDesktop = useIsDesktop();
+  /** True only while the column is presented as a mobile overlay sheet. */
+  const sheetOverlayActive = agentPanelOpen && !isDesktop;
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const sheetId = useId();
+  const sheetTitleId = useId();
+  const sheetDescriptionId = useId();
+  // Focus choreography for the mobile sheet. The sheet is never unmounted
+  // (to preserve the chat's live state), so Radix's mount/unmount auto-focus
+  // hooks never fire — move focus into the sheet on open and back to the
+  // trigger on every close path (Escape, outside press, close button).
+  const wasSheetOpenRef = useRef(agentPanelOpen);
+  useEffect(() => {
+    const wasOpen = wasSheetOpenRef.current;
+    wasSheetOpenRef.current = agentPanelOpen;
+    if (isDesktop || wasOpen === agentPanelOpen) return;
+    if (agentPanelOpen) {
+      sheetRef.current?.focus();
+    } else {
+      triggerRef.current?.focus();
+    }
+  }, [agentPanelOpen, isDesktop]);
 
   useLayoutEffect(() => {
     activeIntentIdRef.current = intentId;
@@ -729,16 +778,20 @@ export default function IntentDetailPage() {
               Signal not found
             </div>
           ) : (
-            // Non-modal by design: the sheet is forceMounted (never unmounted,
-            // so the negotiator chat keeps its live state) and a modal dialog
-            // would permanently aria-hide the rest of the page on mount.
-            // Radix still provides role/aria wiring, Escape close,
-            // pointer-down-outside dismiss, and focus return to the trigger.
-            <Dialog.Root modal={false} open={agentPanelOpen} onOpenChange={setAgentPanelOpen}>
+            // Dialog.Root provides the trigger semantics (aria-expanded /
+            // aria-controls / open state). The sheet itself is a
+            // DismissableLayer + FocusScope composition rather than
+            // Dialog.Content: Dialog.Content's baked-in FocusScope
+            // (loop=true even when untrapped) would Tab-loop the static
+            // desktop column, and a modal Dialog runs hideOthers() on mount
+            // even while closed, permanently aria-hiding the page under
+            // forceMount. Escape close and outside-press dismiss below are
+            // still Radix (DismissableLayer) — nothing hand-rolled.
+            <Dialog.Root open={agentPanelOpen} onOpenChange={setAgentPanelOpen}>
             <div className="flex min-h-0 flex-1 flex-col">
               {/* Header card: skeleton while the intent loads — the workspace
                   below renders (and fetches) immediately, in parallel. */}
-              <div className="mb-6 shrink-0 rounded-lg border border-gray-200 bg-white p-5">
+              <div inert={sheetOverlayActive} className="mb-6 shrink-0 rounded-lg border border-gray-200 bg-white p-5">
                 {intentLoading ? (
                   <div className="animate-pulse space-y-3" data-testid="intent-header-skeleton">
                     <div className="h-4 w-2/3 rounded bg-gray-200" />
@@ -869,6 +922,9 @@ export default function IntentDetailPage() {
               <Dialog.Trigger asChild>
                 <button
                   type="button"
+                  ref={triggerRef}
+                  inert={sheetOverlayActive}
+                  aria-controls={sheetId}
                   data-testid="personal-agent-trigger"
                   className="mb-4 inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:hidden"
                 >
@@ -899,14 +955,32 @@ export default function IntentDetailPage() {
                       : "pointer-events-none invisible opacity-0",
                   )}
                 />
-                {/* One mounted left column: a fixed off-canvas sheet below lg
-                    (slid out when closed), a normal static equal-width flex
-                    column at lg+. forceMount keeps the negotiator chat's live
-                    stream/question state mounted across open/close and across
-                    breakpoint changes — it is never unmounted or duplicated. */}
-                <Dialog.Content
-                  forceMount
+                {/* One mounted left column: a fixed off-canvas sheet below
+                    lg (slid out when closed), a normal static equal-width
+                    flex column at lg+. It is never unmounted or duplicated,
+                    so the negotiator chat's live stream/question state
+                    survives open/close and breakpoint changes.
+                    Semantics switch at lg (a11y-only; layout is pure
+                    Tailwind): a modal dialog with FocusScope containment and
+                    an inert background while open on mobile, a plain
+                    labelled region on desktop. */}
+                <FocusScope
+                  asChild
+                  loop={sheetOverlayActive}
+                  trapped={sheetOverlayActive}
+                  onMountAutoFocus={(event) => event.preventDefault()}
+                >
+                <DismissableLayer
+                  ref={sheetRef}
+                  id={sheetId}
                   data-testid="personal-agent-sheet"
+                  data-state={agentPanelOpen ? "open" : "closed"}
+                  role={isDesktop ? "region" : "dialog"}
+                  aria-modal={sheetOverlayActive || undefined}
+                  aria-labelledby={sheetTitleId}
+                  aria-describedby={sheetDescriptionId}
+                  tabIndex={-1}
+                  onDismiss={() => setAgentPanelOpen(false)}
                   className={cn(
                     "fixed inset-y-0 right-0 z-[100] flex w-[min(85vw,24rem)] flex-col overflow-y-auto bg-white p-4 shadow-xl outline-none",
                     "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
@@ -914,24 +988,23 @@ export default function IntentDetailPage() {
                     "lg:static lg:z-auto lg:min-h-0 lg:min-w-0 lg:w-auto lg:flex-1 lg:translate-x-0 lg:visible lg:pointer-events-auto lg:overflow-visible lg:bg-transparent lg:p-0 lg:shadow-none",
                   )}
                 >
-                  <Dialog.Title className="sr-only">
+                  <h2 id={sheetTitleId} className="sr-only">
                     {showNegotiatorPanel ? "Personal Agent" : "Questions"}
-                  </Dialog.Title>
-                  <Dialog.Description className="sr-only">
+                  </h2>
+                  <p id={sheetDescriptionId} className="sr-only">
                     {showNegotiatorPanel
                       ? "Chat with your Personal Agent and answer its follow-up questions about this signal."
                       : "Questions from your agent about this signal."}
-                  </Dialog.Description>
+                  </p>
                   <div className="mb-1 flex shrink-0 justify-end lg:hidden">
-                    <Dialog.Close asChild>
-                      <button
-                        type="button"
-                        aria-label="Close panel"
-                        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </Dialog.Close>
+                    <button
+                      type="button"
+                      aria-label="Close panel"
+                      onClick={() => setAgentPanelOpen(false)}
+                      className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 {showNegotiatorPanel ? (
                   <Panel
@@ -1034,9 +1107,10 @@ export default function IntentDetailPage() {
                     </div>
                   </section>
                 )}
-                </Dialog.Content>
+                </DismissableLayer>
+                </FocusScope>
 
-                <div data-testid="radar-column" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-1">
+                <div data-testid="radar-column" inert={sheetOverlayActive} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-1">
                 <Panel
                   title="Radar"
                   description="Opportunities the network surfaced for this signal."
