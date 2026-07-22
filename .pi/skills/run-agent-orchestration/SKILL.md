@@ -103,6 +103,17 @@ to the user. Never infer merge approval. Full flow:
   (GPT-5.6 Sol/Terra/Luna and Claude variants — never GPT-5.5), reading visible footer
   quota first. See `references/model-routing.md`.
 
+## Wave cleanup invariant
+
+A finished PR is not done until its execution plane is gone: `finish-pr` must close
+the child's exact Herdr workspace (verified by ID — this stops the Pi/terminal and
+removes the stale sidebar entry) **and** remove its Git worktree, in that order.
+Removing the worktree without closing the workspace leaves idle agents visible in
+the sidebar. After the wave, the root orchestrator verifies with
+`herdr workspace list` that no finished child workspaces/agents remain — but never
+sweeps unrelated active workspaces, and keeps the root orchestrator workspace (the
+user-facing coordination plane) unless the user explicitly ends the wave.
+
 ## Sub-workflows the root orchestrator runs
 
 The root orchestrator does not re-implement session mechanics; it invokes the existing

@@ -146,7 +146,8 @@ After verification succeeds, the visible Pi:
 
 Opening a PR is not merge approval. The coordinator's `finish-pr` workflow owns
 readiness, explicit merge confirmation, deployment verification, issue updates, and
-cleanup.
+cleanup — including closing this Herdr workspace (by verified ID, never the canonical
+root) before removing the Git worktree, so no stale sidebar entry survives.
 
 ## 6. Reuse for fix rounds
 
