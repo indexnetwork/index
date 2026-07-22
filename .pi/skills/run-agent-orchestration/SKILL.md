@@ -37,7 +37,7 @@ the canonical root as a workspace and start one Pi agent in its root pane:
 
 ```bash
 herdr worktree open --path /Users/yanek/Projects/index --label root --focus --json
-herdr agent start root-orch --kind pi --pane "$PANE_ID" -- --model anthropic/claude-fable-5:high
+herdr agent start root-orch --kind pi --pane "$PANE_ID" -- --model openai-codex/gpt-5.6-terra:high
 ```
 
 The agent name must match Herdr's live-name limit `[a-z][a-z0-9_-]{0,31}` (32 chars
@@ -62,9 +62,10 @@ herdr agent prompt root-orch "$(< /absolute/path/to/wave-handoff.md)" --wait
   within five seconds or Herdr returns `agent_prompt_stalled`.
 - **NEVER use `sleep` to poll Herdr agents.** Waits are server-owned; `sleep` polling
   is banned at every tier.
-- For an already-running agent (follow-up after a timeout checkpoint or a resolved
-  question), use `herdr agent wait NAME --timeout <ms>`. A timeout is a checkpoint,
-  not a failure — read new output and wait again.
+- For an already-running agent (follow-up after a resolved question), use
+  `herdr agent wait NAME` with no `--timeout`. Each wait is one indefinite,
+  server-owned wait; children signal through a structured question (`blocked`) or a
+  final `RESULT` envelope.
 - For parallel children, issue multiple `herdr agent prompt NAME "..." --wait` tool
   calls in one turn so the server-owned waits run concurrently. Do not create a
   background watcher process or watcher pane.
@@ -99,9 +100,10 @@ to the user. Never infer merge approval. Full flow:
 - Role is selected per task by changed paths (`packages/protocol/**`,
   `services/api/**`, `apps/web/**`, release/review) and injected as a handoff
   checklist — no persistent personas. See `references/role-profiles.md`.
-- Model is chosen at child launch time from the balanced routing table
-  (GPT-5.6 Sol/Terra/Luna and Claude variants — never GPT-5.5), reading visible footer
-  quota first. See `references/model-routing.md`.
+- Model is chosen at child launch time from the OpenAI-first routing table: Sol,
+  Terra, and Luna are primary; Claude is quota-aware alternative capacity, while Fable
+  and Kimi are reserve-only. GPT-5.5 is never used. Read the visible footer quota
+  before each launch. See `references/model-routing.md`.
 
 ## Wave cleanup invariant
 
