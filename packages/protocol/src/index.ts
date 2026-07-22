@@ -112,6 +112,15 @@ export {
   filterReporterTools,
   narrowReporterTools,
 } from "./chat/reporter.persona.js";
+export {
+  ONBOARDING_PERSONA_ID,
+  ONBOARDING_PERSONA,
+  ONBOARDING_PROFILE_KICKOFF,
+  ONBOARDING_TOOL_NAMES,
+  createOnboardingTools,
+  filterOnboardingTools,
+  narrowOnboardingTools,
+} from "./chat/onboarding.persona.js";
 export { HomeGraphFactory } from "./opportunity/feed/feed.graph.js";
 export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
 export { NetworkGraphFactory } from "./network/network.graph.js";

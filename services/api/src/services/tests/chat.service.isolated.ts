@@ -303,14 +303,16 @@ describe("ChatSessionService.createSession", () => {
     expect(arg.networkId).toBe("network-42");
   });
 
-  it("persists an explicitly selected Signal persona", async () => {
+  it("persists explicitly selected restricted personas", async () => {
     const db = createMockDb();
     const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
 
     await svc.createSession(USER_ID, undefined, undefined, undefined, "signal");
+    await svc.createSession(USER_ID, undefined, undefined, undefined, "onboarding");
 
-    const [arg] = db.createChatSession.mock.calls[0] as [Record<string, unknown>];
-    expect(arg.persona).toBe("signal");
+    const calls = db.createChatSession.mock.calls as Array<[Record<string, unknown>]>;
+    expect(calls[0][0].persona).toBe("signal");
+    expect(calls[1][0].persona).toBe("onboarding");
   });
 });
 
@@ -328,6 +330,53 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
       surface: "web",
       storedPersona: "orchestrator",
     })).toEqual({ ok: true, persona: "orchestrator" });
+  });
+
+  it("selects onboarding authoritatively from the existing web cutover flag", () => {
+    expect(svc.resolveStreamPersonaPolicy({ surface: "onboarding" })).toEqual({
+      ok: true,
+      persona: "orchestrator",
+    });
+
+    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+    expect(svc.resolveStreamPersonaPolicy({ surface: "onboarding" })).toEqual({
+      ok: true,
+      persona: "onboarding",
+    });
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "onboarding",
+      storedPersona: "onboarding",
+    })).toEqual({ ok: true, persona: "onboarding" });
+    expect(svc.resolveStreamPersonaPolicy({
+      surface: "onboarding",
+      requestedPersona: "signal",
+    })).toMatchObject({
+      ok: false,
+      status: 409,
+      code: "CHAT_PERSONA_MISMATCH",
+    });
+  });
+
+  it("never permits the onboarding persona on web or non-web compatibility routes", () => {
+    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+    for (const surface of ["web", "non_web"] as const) {
+      expect(svc.resolveStreamPersonaPolicy({
+        surface,
+        storedPersona: "onboarding",
+      })).toMatchObject({
+        ok: false,
+        status: 403,
+        code: "WEB_ONBOARDING_PERSONA_FORBIDDEN",
+      });
+      expect(svc.resolveStreamPersonaPolicy({
+        surface,
+        requestedPersona: "onboarding",
+      })).toMatchObject({
+        ok: false,
+        status: 403,
+        code: "WEB_ONBOARDING_PERSONA_FORBIDDEN",
+      });
+    }
   });
 
   it("requires an explicit Signal assertion for a new flag-on web chat", () => {

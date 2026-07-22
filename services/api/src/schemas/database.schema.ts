@@ -45,8 +45,10 @@ export interface OnboardingProfileSeed {
 
 export interface OnboardingState {
   completedAt?: string;
+  profileConfirmedAt?: string;
+  firstSignalIntentId?: string;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
   privacy?: OnboardingPrivacyState;

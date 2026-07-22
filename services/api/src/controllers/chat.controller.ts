@@ -14,7 +14,7 @@ import { userService } from "../services/user.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
+import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
@@ -265,8 +265,9 @@ export class ChatController {
 
   /**
    * Session-only onboarding exception. It is available only while the
-   * authenticated user's authoritative onboarding record is incomplete and
-   * always forces the canonical orchestrator persona.
+   * authenticated user's authoritative onboarding record is incomplete. The
+   * Signal cutover flag selects the restricted persisted onboarding persona;
+   * flag-off keeps the legacy orchestrator flow.
    */
   @Post("/onboarding/stream")
   @UseGuards(RateLimit('write'), SessionOnlyGuard)
@@ -379,6 +380,15 @@ export class ChatController {
     }
 
     const sessionPersona = personaPolicy.persona;
+    if (
+      sessionPersona === ONBOARDING_PERSONA_ID
+      && (requestedScope || sessionScope(loadedSession) || body.prefillMessages?.length)
+    ) {
+      return Response.json(
+        { error: 'Restricted onboarding chats cannot be scoped or client-prefilled.' },
+        { status: 400 },
+      );
+    }
     if (fileIds.length > 0) {
       const fileContent = await fileService.loadAttachedFileContent(
         user.id,
@@ -484,8 +494,10 @@ export class ChatController {
     }
 
     const sessionId = currentSessionId;
-    const factory = sessionPersona === SIGNAL_PERSONA_ID
-      ? chatSessionService.getSignalGraphFactory()
+    const factory = sessionPersona === ONBOARDING_PERSONA_ID
+      ? chatSessionService.getOnboardingGraphFactory()
+      : sessionPersona === SIGNAL_PERSONA_ID
+        ? chatSessionService.getSignalGraphFactory()
       : sessionPersona === REPORTER_PERSONA_ID
         ? chatSessionService.getReporterGraphFactory()
         : sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent

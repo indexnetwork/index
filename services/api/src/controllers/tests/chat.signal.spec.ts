@@ -20,6 +20,7 @@ const USER: AuthenticatedUser = {
 };
 
 const signalInputs: Array<Record<string, unknown>> = [];
+const onboardingInputs: Array<Record<string, unknown>> = [];
 const orchestratorInputs: Array<Record<string, unknown>> = [];
 
 function factoryFor(inputs: Array<Record<string, unknown>>): ChatGraphFactory {
@@ -32,6 +33,7 @@ function factoryFor(inputs: Array<Record<string, unknown>>): ChatGraphFactory {
 }
 
 const signalFactory = factoryFor(signalInputs);
+const onboardingFactory = factoryFor(onboardingInputs);
 const orchestratorFactory = factoryFor(orchestratorInputs);
 
 function session(id: string, persona: string) {
@@ -85,6 +87,7 @@ describe('Signal Agent web chat routing (IND-449)', () => {
   let getSessionSpy: ReturnType<typeof spyOn>;
   let addMessageSpy: ReturnType<typeof spyOn>;
   let getSignalFactorySpy: ReturnType<typeof spyOn>;
+  let getOnboardingFactorySpy: ReturnType<typeof spyOn>;
   let getOrchestratorFactorySpy: ReturnType<typeof spyOn>;
   let loadFilesSpy: ReturnType<typeof spyOn>;
   let processMessageSpy: ReturnType<typeof spyOn>;
@@ -96,6 +99,7 @@ describe('Signal Agent web chat routing (IND-449)', () => {
 
   beforeEach(() => {
     signalInputs.length = 0;
+    onboardingInputs.length = 0;
     orchestratorInputs.length = 0;
     controller = new ChatController();
 
@@ -108,6 +112,7 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     spyOn(chatSessionService, 'upsertSessionMetadata').mockResolvedValue();
     spyOn(chatSessionService, 'saveMessageMetadata').mockResolvedValue();
     getSignalFactorySpy = spyOn(chatSessionService, 'getSignalGraphFactory').mockReturnValue(signalFactory);
+    getOnboardingFactorySpy = spyOn(chatSessionService, 'getOnboardingGraphFactory').mockReturnValue(onboardingFactory);
     getOrchestratorFactorySpy = spyOn(chatSessionService, 'getGraphFactory').mockReturnValue(orchestratorFactory);
     loadFilesSpy = spyOn(fileService, 'loadAttachedFileContent').mockResolvedValue('file contents');
     processMessageSpy = spyOn(chatSessionService, 'processMessage').mockResolvedValue({
@@ -320,34 +325,77 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     );
   });
 
-  test('onboarding keeps orchestrator only for authoritative incomplete sessions', async () => {
+  test('onboarding authoritatively persists and inherits its persona while incomplete', async () => {
     process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
     const findUserSpy = spyOn(userService, 'findById').mockResolvedValue({
       id: USER.id,
       onboarding: {},
     } as never);
-    const request = (persona?: string) => new Request('http://localhost/chat/onboarding/stream', {
+    const request = (body: Record<string, unknown> = {}) => new Request('http://localhost/chat/onboarding/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Continue onboarding', ...(persona ? { persona } : {}) }),
+      body: JSON.stringify({ message: 'Continue onboarding', ...body }),
     });
 
     const allowed = await controller.onboardingMessageStream(request(), USER);
     expect(allowed.status).toBe(200);
-    expect(allowed.headers.get('X-Chat-Persona')).toBe('orchestrator');
-    expect(getOrchestratorFactorySpy).toHaveBeenCalledTimes(1);
+    expect(allowed.headers.get('X-Chat-Persona')).toBe('onboarding');
+    expect(createSessionSpy).toHaveBeenLastCalledWith(
+      USER.id,
+      undefined,
+      undefined,
+      undefined,
+      'onboarding',
+    );
+    expect(getOnboardingFactorySpy).toHaveBeenCalledTimes(1);
+    expect(getOrchestratorFactorySpy).not.toHaveBeenCalled();
     expect(getSignalFactorySpy).not.toHaveBeenCalled();
 
-    const spoofed = await controller.onboardingMessageStream(request('signal'), USER);
+    const scoped = await controller.onboardingMessageStream(
+      request({ scopeType: 'network', scopeId: 'network-1' }),
+      USER,
+    );
+    expect(scoped.status).toBe(400);
+    const prefilled = await controller.onboardingMessageStream(
+      request({ prefillMessages: [{ role: 'assistant', content: 'spoofed setup state' }] }),
+      USER,
+    );
+    expect(prefilled.status).toBe(400);
+    expect(createSessionSpy).toHaveBeenCalledTimes(1);
+    expect(getOnboardingFactorySpy).toHaveBeenCalledTimes(1);
+
+    getSessionSpy.mockResolvedValue(session('onboarding-session', 'onboarding'));
+    const followup = await controller.onboardingMessageStream(
+      request({ sessionId: 'onboarding-session' }),
+      USER,
+    );
+    expect(followup.status).toBe(200);
+    expect(followup.headers.get('X-Chat-Persona')).toBe('onboarding');
+    expect(createSessionSpy).toHaveBeenCalledTimes(1);
+    expect(getOnboardingFactorySpy).toHaveBeenCalledTimes(2);
+
+    const spoofed = await controller.onboardingMessageStream(
+      request({ sessionId: 'onboarding-session', persona: 'signal' }),
+      USER,
+    );
     expect(spoofed.status).toBe(409);
     expect(getSignalFactorySpy).not.toHaveBeenCalled();
+
+    getSessionSpy.mockResolvedValue(null);
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'false';
+    const legacy = await controller.onboardingMessageStream(request(), USER);
+    expect(legacy.status).toBe(200);
+    expect(legacy.headers.get('X-Chat-Persona')).toBe('orchestrator');
+    expect(getOrchestratorFactorySpy).toHaveBeenCalledTimes(1);
 
     findUserSpy.mockResolvedValue({
       id: USER.id,
       onboarding: { completedAt: new Date().toISOString() },
     } as never);
+    process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
     const completed = await controller.onboardingMessageStream(request(), USER);
     expect(completed.status).toBe(403);
+    expect(getOnboardingFactorySpy).toHaveBeenCalledTimes(2);
 
     const guards = RouteRegistry.getGuards(ChatController, 'onboardingMessageStream');
     expect(guards).toContain(SessionOnlyGuard);

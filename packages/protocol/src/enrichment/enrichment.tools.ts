@@ -178,6 +178,20 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
     await mergeUserSocials(seed.socials);
   }
 
+  async function markApprovedProfileConfirmed(context: ResolvedToolContext): Promise<void> {
+    const latestUser = await userDb.getUser();
+    const currentOnboarding = latestUser?.onboarding ?? context.user.onboarding ?? {};
+    await userDb.updateUser({
+      onboarding: {
+        ...currentOnboarding,
+        profileConfirmedAt: currentOnboarding.profileConfirmedAt ?? new Date().toISOString(),
+        currentStep: currentOnboarding.completedAt
+          ? currentOnboarding.currentStep ?? 'complete'
+          : 'first_signal',
+      },
+    });
+  }
+
   function buildProfileInput(parts: {
     name?: string;
     location?: string;
@@ -672,6 +686,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         const profile = { ...query.draft, userId: context.userId };
         await userDb.saveProfile({ userId: context.userId, identity: profile.identity, context: profile.narrative?.context ?? '' });
         await persistApprovedProfileContext(profile, user, focusedNetworkId(context));
+        await markApprovedProfileConfirmed(context);
 
         const decomposeLogLabel = context.isMcp
           ? 'Approved draft premise decomposition failed'
@@ -711,6 +726,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         },
       };
       await persistApprovedProfileContext(rawProfile, user, focusedNetworkId(context));
+      await markApprovedProfileConfirmed(context);
 
       const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
       const _confirmGraphStart = Date.now();
@@ -904,6 +920,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
 
           if (result.error) return error(result.error);
           if (result.profile) {
+            await markApprovedProfileConfirmed(context);
             return success({
               created: true,
               message: "Profile saved.",
@@ -951,6 +968,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
           return error(result.error);
         }
         if (result.profile) {
+          if (isOnboarding && query.confirm) await markApprovedProfileConfirmed(context);
           return success({
             created: true,
             message: "Profile created/updated with the information you provided.",
@@ -964,6 +982,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
             _graphTimings: [{ name: 'enrichment', durationMs: _bioProfileGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
+        if (isOnboarding && query.confirm) await markApprovedProfileConfirmed(context);
         return success({
           created: true,
           message: "Profile created/updated with the information you provided.",
@@ -996,6 +1015,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       if (result.profile) {
+        if (isOnboarding && query.confirm) await markApprovedProfileConfirmed(context);
         return success({
           created: true,
           message: "Profile generated from your account data.",
@@ -1225,34 +1245,58 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
   const completeOnboarding = defineTool({
     name: "complete_onboarding",
     description:
-      "Marks the user's onboarding as complete, unlocking full platform access. This is the final step in the new-user setup flow.\n\n" +
-      "**Prerequisites:** The user must have a confirmed profile AND at least one active intent/signal. The profile must be shown to the user and explicitly approved " +
-      "(said 'yes', 'looks good', 'that's right', or similar). The first signal must be persisted before this tool is called; MCP/onboarding agents should call create_intent(..., autoApprove=true).\n\n" +
-      "**What happens:** Validates that the confirmed profile and first active intent exist, then sets completedAt timestamp on the user's onboarding record.\n\n" +
-      "**Workflow:** create_user_context() -> user confirms preview -> create_user_context(confirm=true) -> create_intent(..., autoApprove=true) -> complete_onboarding()\n\n" +
-      "**Returns:** Confirmation that onboarding is complete. No parameters needed.",
-    querySchema: z.object({}),
-    handler: async ({ context }) => {
-      const currentOnboarding = context.user.onboarding ?? {};
+      "Marks the user's onboarding as complete after validating the durable approved-profile marker and a persisted active first signal created at or after that approval. " +
+      "Web onboarding should pass the exact intentId returned by /intents/confirm; legacy clients may omit it and use any eligible active intent. " +
+      "This preserves privacy fields, records firstSignalIntentId/currentStep, and is idempotent.",
+    querySchema: z.object({
+      intentId: z.string().min(1).optional().describe("Exact first-signal ID returned by the confirmation endpoint."),
+    }).strict(),
+    handler: async ({ context, query }) => {
+      const currentUser = await userDb.getUser();
+      const currentOnboarding = currentUser?.onboarding ?? context.user.onboarding ?? {};
       if (currentOnboarding.completedAt) {
         logger.verbose("Onboarding already completed, skipping", { userId: context.userId });
-        return success({ message: "Onboarding already completed." });
+        return success({
+          message: "Onboarding already completed.",
+          completedAt: currentOnboarding.completedAt,
+          ...(currentOnboarding.firstSignalIntentId
+            ? { intentId: currentOnboarding.firstSignalIntentId }
+            : {}),
+        });
       }
 
-      const confirmedProfile = await userDb.getProfile();
-      if (!confirmedProfile) {
+      if (!currentOnboarding.profileConfirmedAt) {
         return error("Onboarding cannot be completed until the user has a confirmed profile. Show the profile draft, get explicit approval, then save it before finishing onboarding.");
+      }
+      const profileConfirmedAtMs = Date.parse(currentOnboarding.profileConfirmedAt);
+      if (!Number.isFinite(profileConfirmedAtMs)) {
+        return error("Onboarding cannot be completed because the durable profile confirmation timestamp is invalid. Confirm the approved profile again before finishing onboarding.");
       }
 
       const activeIntents = await userDb.getActiveIntents();
-      if (activeIntents.length === 0) {
-        return error("Onboarding cannot be completed until the user has at least one active intent. Ask what they are open to right now and create the first signal before finishing onboarding.");
+      const isEligibleFirstSignal = (intent: (typeof activeIntents)[number]) => {
+        const createdAtMs = intent.createdAt.getTime();
+        return Number.isFinite(createdAtMs) && createdAtMs >= profileConfirmedAtMs;
+      };
+      const firstSignal = query.intentId
+        ? activeIntents.find((intent) => intent.id === query.intentId)
+        : activeIntents.find(isEligibleFirstSignal);
+      if (!firstSignal) {
+        return error(query.intentId
+          ? "Onboarding cannot be completed because the confirmed first signal is not active for this user."
+          : "Onboarding cannot be completed until the user has at least one active intent created after profile confirmation. Ask what they are open to right now and create the first signal before finishing onboarding.");
+      }
+      if (!isEligibleFirstSignal(firstSignal)) {
+        return error("Onboarding cannot be completed because the selected first signal was created before profile confirmation. Create and confirm a new signal before finishing onboarding.");
       }
 
+      const completedAt = new Date().toISOString();
       await userDb.updateUser({
         onboarding: {
           ...currentOnboarding,
-          completedAt: new Date().toISOString(),
+          firstSignalIntentId: firstSignal.id,
+          currentStep: 'complete',
+          completedAt,
         },
       });
 
@@ -1267,8 +1311,8 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
-      logger.info("Onboarding completed", { userId: context.userId });
-      return success({ message: "Onboarding complete." });
+      logger.info("Onboarding completed", { userId: context.userId, intentId: firstSignal.id });
+      return success({ message: "Onboarding complete.", intentId: firstSignal.id, completedAt });
     },
   });
 

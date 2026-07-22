@@ -464,7 +464,7 @@ When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly re
 
 ### POST /api/chat/onboarding/stream
 
-Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. While incomplete, the route forces `orchestrator` and rejects all other persona assertions, preserving the existing onboarding flow without exposing a completed-user session-JWT bypass.
+Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. With `WEB_SIGNAL_AGENT_ENABLED=true`, new sessions are server-selected and persisted as `persona="onboarding"`; follow-ups inherit that stored persona, while spoofed/mismatched/unknown personas fail closed. The restricted persona exposes only privacy consent, approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration. With the flag off, the route preserves the legacy `orchestrator` onboarding flow. API-key, Telegram, MCP, CLI, and other non-web consumers are unchanged.
 
 **Auth**: SessionOnlyGuard
 
@@ -3306,11 +3306,11 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 |------|--------|-------------|
 | `read_user_profiles` | Profile | Read user profiles (own or by query) |
 | `record_onboarding_privacy_consent` | Profile | Record onboarding EdgeOS import and public lookup consent decisions without completing onboarding |
-| `preview_user_profile` | Profile | Generate a non-persisted onboarding profile draft from allowed sources |
-| `confirm_user_profile` | Profile | Save an approved profile draft or explicit correction text |
+| `preview_user_context` | Profile | Generate a non-persisted onboarding profile draft from allowed sources |
+| `confirm_user_context` | Profile | Save an approved profile draft or explicit correction text and stamp `profileConfirmedAt` |
 | `create_user_profile` | Profile | Legacy/generic profile generation from social links or bio |
 | `update_user_profile` | Profile | Update profile details or merge reachable social handles |
-| `complete_onboarding` | Profile | Mark onboarding complete |
+| `complete_onboarding` | Profile | Validate a durable profile-approval timestamp plus an active first signal created at or after it; optional `intentId` pins the exact eligible signal and records the completion handoff |
 | `read_intents` | Intent | List user's intents with optional filters |
 | `create_intent` | Intent | Create a new intent from natural language |
 | `update_intent` | Intent | Update an intent (runs full graph pipeline) |

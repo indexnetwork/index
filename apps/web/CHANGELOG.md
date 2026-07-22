@@ -14,11 +14,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Fixed
 
 - Persist Reporter Agent opening briefings across reloads for 24 hours by default, hydrate the server-resolved session without replaying the hidden kickoff, and make **New conversation** atomically create and bind one fresh briefing while aborting and quarantining stale streams (IND-484).
+- Separate guided-signal session reset from kickoff across a committed React render so `/i/new` and flag-on onboarding cannot send through a stale session or scope closure (IND-450).
 - Allow the reporter surface (`/agent`) to send messages after its briefing session is established; the route-mismatch guard now exempts the URL-less reporter session while preserving stale-session protection on `/d/:id` (IND-488).
 - Hide the generic chat session title bar ("Untitled chat", back/rename/share controls) on read-only surfaces like the `/agent` reporter, which renders its own header (IND-476). Test config now resolves the reporter kickoff marker from protocol source so web tests no longer depend on a built `packages/protocol/dist`.
 
 ### Added
 
+- Replace flag-on web onboarding with a restricted two-phase handoff (IND-450): explicit public-lookup consent and approved profile persistence first, followed by the same extracted live guided-signal renderer used by `/i/new`. Exact intent confirmation is idempotent and retry-safe, onboarding completion is awaited before deferred invitation acceptance/membership refresh/navigation, refresh recovery resumes the exact created signal, and successful handoff opens `/i/:intentId`; flag-off retains the legacy page.
 - Add the reporter cleanup-action proposal card for strict `agent_action_proposal` fences, canonical owner-and-conversation-scoped hydration before rendering or confirmation, exact narrow-signal replacement copy, hydrated reporter-session read-only safety, idempotent replay results, and inert malformed, partial, or failed-hydration retry handling (IND-493).
 - Add the flag-gated read-only Reporter Agent surface on `/agent` (IND-476): opening briefings use the shared reporter kickoff marker, status counts use fetched signals and pending questions, and suggested asks route through the reporter persona.
 - Add unread indicators to conversation rows and a thread-count badge to the Chats navigation entry, with mark-read wiring for open threads (IND-475).
