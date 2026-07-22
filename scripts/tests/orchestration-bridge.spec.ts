@@ -93,7 +93,9 @@ describe("orchestration bridge spool", () => {
 	test("rejects unsafe data, quarantines malformed spool files, and bounds a turn batch", async () => {
 		const root = await temporaryRoot();
 		await expect(publishEvent(root, event("future", { timestamp: new Date(Date.now() + 120_000).toISOString() }))).rejects.toThrow("Unsafe");
+		await expect(publishEvent(root, event("invalid-time", { timestamp: "not-a-timestamp" }))).rejects.toThrow("Unsafe");
 		await expect(publishEvent(root, event("oversize", { summary: "x".repeat(481) }))).rejects.toThrow("Unsafe");
+		await expect(publishEvent(root, event("control", { summary: "unsafe\nsummary" }))).rejects.toThrow("Unsafe");
 
 		const pending = path.join(sessionDirectory(root, "index-session"), "pending");
 		await fs.mkdir(pending, { recursive: true });
