@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Conversation-list rows with no messages no longer render a visually empty subtitle: they now show a muted, italic one-line `No messages yet` placeholder, truncated like a real excerpt and distinct from real last-message styling. No raw evaluator reasoning, match reasons, or fabricated text is ever rendered (IND-504).
+
 ### Changed
 
 - Complete the interactive web product-language cutover from user-visible “intents” to “signals,” including creation, Discover, signal workspaces, Radar, network, Agent, trace, error, and accessibility copy; preserve internal/API `intent` identifiers and normalize server-authored provenance/subtitle fields at the web presentation boundary (IND-477).

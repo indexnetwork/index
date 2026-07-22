@@ -2,9 +2,11 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { MoreHorizontal, Trash2 } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
+import ConversationPreviewLine from '@/components/ConversationPreviewLine';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
+import { resolveConversationPreview } from '@/lib/conversation-preview';
 
 type NegotiationStatus = 'accepted' | 'rejected' | 'in_progress' | null;
 
@@ -209,14 +211,12 @@ export default function ChatSidebar() {
                     {chat.viaTitle && (
                       <p className="truncate text-[11px] font-ibm-plex-mono text-gray-400">via {chat.viaTitle}</p>
                     )}
-                    <p className="truncate text-sm font-normal text-gray-500">
-                      {chat.lastMessageIsInternal && (
-                        <span className="mr-1 italic text-gray-400">Internal:</span>
-                      )}
-                      <span className={chat.lastMessageIsInternal ? 'italic text-gray-400' : undefined}>
-                        {chat.lastMessage.replace(/[*_~`#>]/g, '')}
-                      </span>
-                    </p>
+                    <ConversationPreviewLine
+                      preview={resolveConversationPreview({
+                        lastMessage: chat.lastMessage,
+                        lastMessageIsInternal: chat.lastMessageIsInternal,
+                      })}
+                    />
                   </div>
                 </button>
                 <span className="absolute right-8 top-2 text-[11px] leading-none font-normal text-gray-400">
