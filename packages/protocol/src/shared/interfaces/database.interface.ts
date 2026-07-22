@@ -507,6 +507,16 @@ export interface CreateHydeDocumentData {
 
 export type OpportunityStatus = 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
 
+/**
+ * Minimal opportunity lifecycle evidence used to narrate an agent negotiation.
+ * `acceptedByOwner` is true only when the authenticated owner is the persisted
+ * human acceptor; other terminal states do not imply an owner action.
+ */
+export interface NegotiationOpportunityLifecycle {
+  status: OpportunityStatus;
+  acceptedByOwner: boolean;
+}
+
 export interface Opportunity {
   id: string;
   detection: OpportunityDetection;
@@ -2551,6 +2561,17 @@ export type NegotiationGraphDatabase = Pick<
    * enforce fail-closed scope filtering for legacy task metadata.
    */
   getIntentIdsForOpportunities(opportunityIds: string[], userId: string): Promise<Record<string, string | null>>;
+
+  /**
+   * Batch-loads current opportunity lifecycle evidence for negotiation
+   * narration. Implementations must omit opportunities that do not contain the
+   * authenticated owner actor. Optional for backward-compatible hosts; callers
+   * must treat a missing implementation as unavailable evidence, never as acceptance.
+   */
+  getOpportunityLifecyclesForNegotiations?(
+    opportunityIds: string[],
+    ownerUserId: string,
+  ): Promise<Record<string, NegotiationOpportunityLifecycle>>;
 
   /** Gets a specific task by ID. */
   getTask(taskId: string): Promise<{

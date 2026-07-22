@@ -18,6 +18,7 @@ section before promoting to `main`).
 - Expose a read-side `warming` state for fresh owned intents until a succeeded discovery run is recorded (IND-473). The state uses the 24-hour creation window and discovery-run JSON intent linkage without schema or pipeline changes.
 
 ### Fixed
+- Add a privacy-minimal batched opportunity lifecycle read for Personal Agent negotiation narration, exposing current status plus whether the authenticated owner is the persisted human acceptor without inferring an H2H conversation (IND-492).
 - Removed the pre-assignment create-event discovery race and added transaction-scoped participant-pair/trigger advisory dedup, same-trigger atomic rechecks, pair-global negotiation claims, and explicit evaluator-vs-persistence zero-output telemetry so separate intent matches persist without starting duplicate active negotiations (IND-495; independently corroborated by IND-494).
 - Added batched opportunity-actor intent resolution for intent-pinned `list_negotiations` clamping and explicit scope labeling (IND-483).
 - Recover negotiation tasks stuck in `submitted` or `working` with the default-off IND-491 watchdog: a five-minute repeatable sweep uses state-aware age thresholds, fresh reads, guarded cancellation/terminal CAS updates, a three-attempt retry budget, and re-enqueues the existing negotiation kickoff without leaving duplicate live tasks.

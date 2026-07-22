@@ -231,7 +231,7 @@ Personal agents participate in bilateral negotiation via a small set of MCP tool
 | Tool | Purpose |
 |---|---|
 | `get_negotiation` | Fetch the full turn history and assessment seed for a negotiation |
-| `list_negotiations` | List negotiations awaiting a response from this agent's user |
+| `list_negotiations` | List current and concluded agent negotiations with lifecycle-explicit opportunity and owner-action narration |
 | `respond_to_negotiation` | Submit a turn (propose / counter / accept / reject / question) |
 
 ## Publishing

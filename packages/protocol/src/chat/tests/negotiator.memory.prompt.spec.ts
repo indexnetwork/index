@@ -64,7 +64,23 @@ describe("buildNegotiatorSystemContent — memory section (IND-407)", () => {
     expect(prompt).toContain("for this signal");
     expect(prompt).toContain("across all your signals");
     expect(prompt).toContain("zero current items");
+    expect(prompt).toContain("CONCLUDED AGENT NEGOTIATIONS");
+    expect(prompt).toContain("A concluded agent negotiation is not a completed connection");
     expect(prompt).toContain("same-turn list_negotiations result");
-    expect(prompt).toContain("| **list_negotiations** | status?, scope?, limit? |");
+    expect(prompt).toContain("| **list_negotiations** | status?, scope?, limit?, detail? |");
+  });
+
+  it("forbids owner-acceptance and H2H claims from agent negotiation completion", () => {
+    const prompt = buildNegotiatorSystemContent(makeCtx(), AGENT_OPTS);
+
+    expect(prompt).toContain("status `completed` means only that the agents concluded");
+    expect(prompt).toContain("potential match awaiting the owner's review");
+    expect(prompt).toContain("Agent-turn `accept`");
+    expect(prompt).toContain("only when `lifecycle.ownerAction=accepted`");
+    expect(prompt).toContain("does not prove an owner pass");
+    expect(prompt).toContain("Negotiation completion and every opportunity status");
+    expect(prompt).toContain("`conversationType=agent_negotiation` identifies only the A2A agent transcript");
+    expect(prompt).toContain("`lifecycle.directConversationEvidence=not_provided` means do not mention messages");
+    expect(prompt).toContain("call `update_opportunity` only for the client's explicit current instruction");
   });
 });

@@ -1476,6 +1476,44 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Batch-loads the current opportunity lifecycle needed for truthful
+   * negotiation narration. Opportunities that do not contain the authenticated
+   * owner actor are omitted. The caller receives only whether they are the
+   * persisted human acceptor; no actor or counterparty identity is projected.
+   *
+   * @param opportunityIds - Opportunity IDs referenced by negotiation tasks
+   * @param ownerUserId - Authenticated owner receiving the narration
+   * @returns Lifecycle evidence keyed by opportunity ID
+   */
+  async getOpportunityLifecyclesForNegotiations(
+    opportunityIds: string[],
+    ownerUserId: string,
+  ): Promise<Record<string, {
+    status: typeof schema.opportunityStatusEnum.enumValues[number];
+    acceptedByOwner: boolean;
+  }>> {
+    const ids = [...new Set(opportunityIds.map((id) => id.trim()).filter(Boolean))];
+    if (ids.length === 0) return {};
+
+    const rows = await db
+      .select({
+        id: schema.opportunities.id,
+        status: schema.opportunities.status,
+        acceptedBy: schema.opportunities.acceptedBy,
+        actors: schema.opportunities.actors,
+      })
+      .from(schema.opportunities)
+      .where(inArray(schema.opportunities.id, ids));
+
+    return Object.fromEntries(rows
+      .filter((row) => row.actors.some((actor) => actor.userId === ownerUserId))
+      .map((row) => [row.id, {
+        status: row.status,
+        acceptedByOwner: row.acceptedBy === ownerUserId,
+      }]));
+  }
+
+  /**
    * Looks up the negotiation task attached to an opportunity, preferring the
    * most-recently-created row if multiple exist (shouldn't, but defensive).
    *

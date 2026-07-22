@@ -290,10 +290,21 @@ Called by a personal agent to submit a turn response.
 
 ### `list_negotiations`
 
-Lists negotiations awaiting a response from the agent's user.
+Lists current and historical agent negotiations for the authenticated owner. A task status of `completed` means only that the agent negotiation concluded; it does not mean the owner accepted a connection.
+
+Each row includes an additive `lifecycle` narration contract:
+
+- `agentNegotiation`: whether agents are still working, awaiting an agent, or concluded.
+- `opportunityStatus` and `connectionState`: the current opportunity lifecycle, preserving `pending`, `rejected`, `stalled`, `draft`, `expired`, and accepted states rather than grouping them as completed connections.
+- `ownerAction`: `accepted` only when the authenticated owner is the persisted human acceptor; otherwise `not_recorded`. A rejected opportunity alone does not prove that the owner passed.
+- `lifecycleLabel`: deterministic lifecycle-accurate wording. In particular, a concluded negotiation whose opportunity is `pending` is labeled as agents having found a potential match awaiting owner review.
+- `directConversationEvidence`: currently always `not_provided`. Negotiation completion and opportunity status never establish that an H2H message thread exists.
+
+Turn `action` / `latestAction` values are agent-side negotiation vocabulary, made explicit by `actionActor` / `latestActionActor = agent`. Agent `accept` and `outcome.hasOpportunity` must not be narrated as owner acceptance. `get_negotiation.conversationType = agent_negotiation` also makes clear that its `conversationId` belongs to the A2A transcript, not an H2H message thread. Reporting remains read-only; accepting or passing an opportunity still requires an explicit owner instruction through `update_opportunity`.
 
 **Status filters:**
 - `waiting_for_agent`: Negotiations where it is this agent's turn to respond
+- `completed`: Concluded agent negotiations across all opportunity outcomes; not completed connections
 
 ### `get_negotiation`
 
