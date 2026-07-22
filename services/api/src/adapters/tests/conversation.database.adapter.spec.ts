@@ -155,15 +155,17 @@ describe('ConversationDatabaseAdapter', () => {
   });
 
   describe('getOpportunityLifecyclesForNegotiations', () => {
-    it('returns current status and owner-acceptance evidence without projecting acceptor identity', async () => {
+    it('omits unrelated opportunities and projects only owner-scoped lifecycle evidence', async () => {
       const suffix = `${Date.now()}-${crypto.randomUUID()}`;
       const ownerId = `narration-owner-${suffix}`;
       const otherId = `narration-other-${suffix}`;
+      const unrelatedId = `narration-unrelated-${suffix}`;
       await db.insert(schema.users).values([
         { id: ownerId, email: `${ownerId}@test.local`, name: 'Narration Owner' },
         { id: otherId, email: `${otherId}@test.local`, name: 'Narration Other' },
+        { id: unrelatedId, email: `${unrelatedId}@test.local`, name: 'Narration Unrelated' },
       ]);
-      createdUserIds.push(ownerId, otherId);
+      createdUserIds.push(ownerId, otherId, unrelatedId);
 
       const common = {
         detection: { source: 'manual' as const, timestamp: new Date().toISOString() },
@@ -179,6 +181,14 @@ describe('ConversationDatabaseAdapter', () => {
       const inserted = await db.insert(schema.opportunities).values([
         { ...common, acceptedBy: ownerId },
         { ...common, acceptedBy: otherId },
+        {
+          ...common,
+          actors: [
+            { networkId: 'narration-network', userId: otherId, role: 'peer' },
+            { networkId: 'narration-network', userId: unrelatedId, role: 'peer' },
+          ],
+          acceptedBy: unrelatedId,
+        },
       ]).returning({ id: schema.opportunities.id });
       const opportunityIds = inserted.map((row) => row.id);
       createdOpportunityIds.push(...opportunityIds);
@@ -190,8 +200,10 @@ describe('ConversationDatabaseAdapter', () => {
 
       expect(result[inserted[0].id]).toEqual({ status: 'accepted', acceptedByOwner: true });
       expect(result[inserted[1].id]).toEqual({ status: 'accepted', acceptedByOwner: false });
+      expect(result[inserted[2].id]).toBeUndefined();
       expect(result['missing-opportunity']).toBeUndefined();
       expect(JSON.stringify(result)).not.toContain(otherId);
+      expect(JSON.stringify(result)).not.toContain(unrelatedId);
     }, 10000);
   });
 

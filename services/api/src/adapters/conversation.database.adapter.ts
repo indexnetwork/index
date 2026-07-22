@@ -1477,8 +1477,9 @@ export class ConversationDatabaseAdapter {
 
   /**
    * Batch-loads the current opportunity lifecycle needed for truthful
-   * negotiation narration. The caller receives only whether they are the
-   * persisted human acceptor; no counterparty identity is projected.
+   * negotiation narration. Opportunities that do not contain the authenticated
+   * owner actor are omitted. The caller receives only whether they are the
+   * persisted human acceptor; no actor or counterparty identity is projected.
    *
    * @param opportunityIds - Opportunity IDs referenced by negotiation tasks
    * @param ownerUserId - Authenticated owner receiving the narration
@@ -1499,14 +1500,17 @@ export class ConversationDatabaseAdapter {
         id: schema.opportunities.id,
         status: schema.opportunities.status,
         acceptedBy: schema.opportunities.acceptedBy,
+        actors: schema.opportunities.actors,
       })
       .from(schema.opportunities)
       .where(inArray(schema.opportunities.id, ids));
 
-    return Object.fromEntries(rows.map((row) => [row.id, {
-      status: row.status,
-      acceptedByOwner: row.acceptedBy === ownerUserId,
-    }]));
+    return Object.fromEntries(rows
+      .filter((row) => row.actors.some((actor) => actor.userId === ownerUserId))
+      .map((row) => [row.id, {
+        status: row.status,
+        acceptedByOwner: row.acceptedBy === ownerUserId,
+      }]));
   }
 
   /**

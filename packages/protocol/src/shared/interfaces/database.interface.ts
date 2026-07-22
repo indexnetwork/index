@@ -2564,8 +2564,9 @@ export type NegotiationGraphDatabase = Pick<
 
   /**
    * Batch-loads current opportunity lifecycle evidence for negotiation
-   * narration. Optional for backward-compatible hosts; callers must treat a
-   * missing implementation as unavailable evidence, never as acceptance.
+   * narration. Implementations must omit opportunities that do not contain the
+   * authenticated owner actor. Optional for backward-compatible hosts; callers
+   * must treat a missing implementation as unavailable evidence, never as acceptance.
    */
   getOpportunityLifecyclesForNegotiations?(
     opportunityIds: string[],
