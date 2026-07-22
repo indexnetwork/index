@@ -20,7 +20,7 @@ import {
 	sessionDirectory,
 	summarizeAskUserPrompt,
 	type OrchestratorEvent,
-} from "../../.pi/extensions/orchestration-bridge.core";
+} from "../../.pi/extensions/orchestration-bridge/core";
 
 const temporaryDirectories: string[] = [];
 
