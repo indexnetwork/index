@@ -12,13 +12,36 @@ API becomes available.
 
 **GPT-5.5 is banned.** Use the GPT-5.6 Sol/Terra/Luna variants instead.
 
-## Launch syntax
+## Launch syntax and focus safety
 
-Pass the model as an explicit agent argument after `--`:
+Open worktrees without stealing the user's active `index` workspace, then launch Pi
+through the exact, non-focusing pane ID:
 
 ```bash
-herdr agent start NAME --kind pi --pane ID -- --model provider/model:thinking
+herdr worktree open --path WORKTREE_PATH --label LABEL --no-focus --json
+herdr pane send-text PANE_ID "pi --model provider/model:thinking"
+herdr pane send-keys PANE_ID enter
 ```
+
+All direct pane reads, text, and keys must target the exact pane ID and must not
+focus it. Do not use `--focus`; the `index` workspace remains the user's active
+workspace. `herdr agent start` is not the normal launch path. If it is unavoidable as
+a fallback, capture the current active workspace first and immediately restore
+`index` afterward; never leave the user's focus changed.
+
+## Coordination wait safety
+
+This reference's launch rules do not make the user-facing main session wait. In the
+`index` (`wX`) workspace, main → root submissions use `herdr agent prompt NAME "..."`
+without `--wait` and return immediately; main only inspects root state on a later
+natural user turn or explicit orchestration tick. No polling, sleeps, watcher
+processes, or timeout loops are allowed on that path.
+
+Dedicated root orchestrators and implementation children run outside `index`. For
+root → child coordination, use exactly one server-owned
+`herdr agent prompt NAME "..." --wait` with no timeout. Children signal via a
+structured question (`blocked`) or final `RESULT`; do not sleep-poll, run watchers,
+or use timeout loops.
 
 ## Default OpenAI-first routing
 

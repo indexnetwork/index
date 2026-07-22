@@ -18,14 +18,15 @@ long-lived frontend/backend/protocol personas.
 
 ## Topology
 
-- **Main agent (you)** — stays user-facing. Owns the user conversation, collects
-  decisions, sends one complete wave handoff to the root orchestrator, waits, and
-  reports results. Never orchestrates worktrees or children directly.
-- **Root orchestrator (exactly one)** — a visible Pi agent in the canonical root
-  (`/Users/yanek/Projects/index`, branch `dev`). Sole owner for the wave of: worktree
-  creation, child handoffs, PR finishing, GitHub/Linear/Railway coordination, and
-  cleanup. It never edits source in the canonical root; implementation always happens
-  in child worktrees.
+- **Main agent (you)** — stays user-facing in the workspace named `index` (`wX`),
+  where the user types. It owns the conversation, collects decisions, sends one
+  complete wave handoff to the root orchestrator, and reports results. It never
+  orchestrates worktrees or children directly.
+- **Root orchestrator (exactly one)** — a visible Pi agent outside the user-facing
+  `index` workspace, in the canonical root (`/Users/yanek/Projects/index`, branch
+  `dev`). Sole owner for the wave of: worktree creation, child handoffs, PR finishing,
+  GitHub/Linear/Railway coordination, and cleanup. It never edits source in the
+  canonical root; implementation always happens in child worktrees.
 - **Children** — one writer per Git worktree, each launched with a role profile chosen
   by the paths it will change (see `references/role-profiles.md`) and a model chosen at
   launch time (see `references/model-routing.md`).
@@ -33,11 +34,13 @@ long-lived frontend/backend/protocol personas.
 ## Launching the root orchestrator
 
 Run the Herdr preflight (`herdr status server`, `herdr integration status`), then open
-the canonical root as a workspace and start one Pi agent in its root pane:
+the canonical root without changing the user's focus and launch Pi through its targeted
+root pane:
 
 ```bash
-herdr worktree open --path /Users/yanek/Projects/index --label root --focus --json
-herdr agent start root-orch --kind pi --pane "$PANE_ID" -- --model openai-codex/gpt-5.6-terra:high
+herdr worktree open --path /Users/yanek/Projects/index --label root --no-focus --json
+herdr pane send-text "$PANE_ID" "pi --model openai-codex/gpt-5.6-terra:high"
+herdr pane send-keys "$PANE_ID" enter
 ```
 
 The agent name must match Herdr's live-name limit `[a-z][a-z0-9_-]{0,31}` (32 chars
@@ -45,30 +48,45 @@ max) — keep the alias short (e.g. `root-orch`); the longer dashed workspace la
 stays independent. Reuse an existing root orchestrator only when its cwd is the
 canonical root, its branch is `dev`, and its identity belongs to this wave. Read the
 visible Pi footer quota before choosing the model; never switch models
-mid-implementation.
+mid-implementation. All direct pane reads, text, and keys must target the exact pane
+ID and must not focus it. `herdr agent start` is not the launch path for this skill.
 
-## Handoffs and waits (event-driven, never `sleep`)
+## Asymmetric handoffs and waits (event-driven, never `sleep`)
 
-Both hops — main → root orchestrator and root orchestrator → child — use **one
-complete handoff** followed by **event-driven Herdr waits**:
+The user-facing main session in `index` (`wX`) and the dedicated root/child execution
+plane have deliberately different contracts:
 
-```bash
-herdr agent prompt root-orch "$(< /absolute/path/to/wave-handoff.md)" --wait
-```
+- **Main → root:** the `index` session must never run `herdr agent prompt --wait` or
+  `herdr agent wait`. Submit the complete handoff without `--wait` and return
+  immediately:
 
-- `agent prompt --wait` is atomic (text + encoded Enter, honoring bracketed paste) and
-  waits for the first settled `idle`, `done`, or `blocked` state. Do not repeat those
-  defaults with `--until`. A handoff sent from a non-working state must show activity
-  within five seconds or Herdr returns `agent_prompt_stalled`.
-- **NEVER use `sleep` to poll Herdr agents.** Waits are server-owned; `sleep` polling
-  is banned at every tier.
-- For an already-running agent (follow-up after a resolved question), use
-  `herdr agent wait NAME` with no `--timeout`. Each wait is one indefinite,
-  server-owned wait; children signal through a structured question (`blocked`) or a
-  final `RESULT` envelope.
+  ```bash
+  herdr agent prompt root-orch "$(< /absolute/path/to/wave-handoff.md)"
+  ```
+
+  Resume by inspecting root state only on a later natural user turn or an explicit
+  orchestration tick. This main-path rule permits no polling, sleeps, watchers, or
+  timeout loops.
+- **Root → child:** dedicated root orchestrators and implementation children run
+  outside `index`. The root may and should use exactly one server-owned, indefinite
+  wait for each complete child handoff:
+
+  ```bash
+  herdr agent prompt CHILD_NAME "..." --wait
+  ```
+
+  `agent prompt --wait` is atomic (text + encoded Enter, honoring bracketed paste) and
+  waits for the first settled `idle`, `done`, or `blocked` state. Do not add
+  `--timeout` or `--until`. Children signal through a structured question (`blocked`)
+  or a final `RESULT` envelope.
+- For an already-running root/child execution-plane agent after a resolved question,
+  use `herdr agent wait NAME` with no `--timeout`: one indefinite, server-owned wait.
+  The `index` main session never uses this command.
 - For parallel children, issue multiple `herdr agent prompt NAME "..." --wait` tool
   calls in one turn so the server-owned waits run concurrently. Do not create a
   background watcher process or watcher pane.
+- **NEVER use `sleep` to poll Herdr agents.** Sleep polling, watcher processes, and
+  timeout loops are banned at every tier.
 
 ## Settled states are not success
 
@@ -87,12 +105,13 @@ in a temp directory — never request file output in the initial prompt. Full co
 ## Structured questions propagate, not stall
 
 When a child is `blocked`, the root orchestrator reads its pane and answers routine
-safe/recommended choices through targeted pane UI (`pane read`, `pane send-text`,
-`pane send-keys`) — never a new agent prompt into an active question. Genuine
+safe/recommended choices through non-focusing, pane-ID-targeted UI (`herdr pane read
+PANE_ID`, `herdr pane send-text PANE_ID`, `herdr pane send-keys PANE_ID`) — never a
+new agent prompt into an active question. Genuine
 product/architecture ambiguity, destructive/external mutation, credentials, or merge
 approval is re-raised by the root orchestrator with its **own** `ask_user_question`,
-which makes the root `blocked`, returns the main agent's wait, and safely propagates
-to the user. Never infer merge approval. Full flow:
+which makes the root `blocked` and safely propagates to the user on the main session's
+next natural turn or explicit orchestration tick. Never infer merge approval. Full flow:
 `references/completion-and-questions.md`.
 
 ## Roles and models
