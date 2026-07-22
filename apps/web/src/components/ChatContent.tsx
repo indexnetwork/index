@@ -77,6 +77,9 @@ export default function ChatContent({
     clearChat,
     startSignalSession,
     loadSession,
+    loadPreviousMessages,
+    hasPreviousSession,
+    isLoadingPreviousMessages,
     sessionLoadState,
     isSessionReady,
     sessionId,
@@ -1350,8 +1353,28 @@ export default function ChatContent({
       <div className="px-6 lg:px-8 pb-32 flex-1">
         <ContentContainer>
           <div className="space-y-4">
-            {messages.map((msg) => (
+            {hasPreviousSession && (
+              <div className="flex justify-center py-2">
+                <button
+                  type="button"
+                  onClick={() => void loadPreviousMessages()}
+                  disabled={isLoadingPreviousMessages}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+                  aria-label="Load previous messages"
+                >
+                  {isLoadingPreviousMessages ? "Loading previous messages…" : "Load Previous Messages"}
+                </button>
+              </div>
+            )}
+            {messages.map((msg, index) => (
               <div key={msg.id}>
+                {index > 0 && msg.conversationSessionId !== messages[index - 1]?.conversationSessionId && (
+                  <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
+                    <span className="h-px flex-1 bg-gray-200" />
+                    <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
+                    <span className="h-px flex-1 bg-gray-200" />
+                  </div>
+                )}
                 <div
                   className={cn(
                     "flex",
