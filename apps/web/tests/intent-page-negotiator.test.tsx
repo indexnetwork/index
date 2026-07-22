@@ -204,7 +204,9 @@ describe('Intent page — negotiator chat gating', () => {
     await screen.findByText('Looking for a technical co-founder');
     await screen.findByTestId('intent-negotiator-chat-stub');
     expect(screen.queryByTestId('injected-questions')).toBeNull();
-    expect(screen.getByText(/^Personal Agent$/)).toBeInTheDocument();
+    // The label now also appears on the mobile sheet trigger and the sr-only
+    // dialog title, so assert presence rather than uniqueness.
+    expect(screen.getAllByText(/^Personal Agent$/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/^Questions \(/)).toBeNull();
   });
 

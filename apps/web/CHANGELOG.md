@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Make the intent workspace Personal Agent and Radar columns equal width (50/50) on desktop (lg+), replacing the previous 40/60 split (IND-503).
+- On viewports below lg, keep Radar as the primary content and move the Personal Agent (or questions-fallback) column into an off-canvas sheet that slides in from the right (IND-503). A mobile-only trigger button carries the same pending-question count badge (`intent-question-count`); the sheet stays mounted across open/close and breakpoint changes so the negotiator chat's live stream and question state are never remounted. While open on mobile the sheet is a true modal dialog (`role="dialog"` + `aria-modal`, Radix `FocusScope` focus containment, inert background, Escape/outside-press dismiss via Radix `DismissableLayer`, focus return to the trigger on every close path); at lg+ it exposes no dialog semantics — just a labelled `region`. Breakpoint-driven semantics use a small `matchMedia` switch (`useSyncExternalStore`) for accessibility only; layout remains pure Tailwind.
 - Complete the interactive web product-language cutover from user-visible “intents” to “signals,” including creation, Discover, signal workspaces, Radar, network, Agent, trace, error, and accessibility copy; preserve internal/API `intent` identifiers and normalize server-authored provenance/subtitle fields at the web presentation boundary (IND-477).
 
 ### Fixed
