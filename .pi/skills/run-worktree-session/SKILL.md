@@ -83,9 +83,10 @@ durable root state only on a later natural turn or explicit orchestration tick.
 A dedicated root outside `index` receives a child result through its one
 `agent prompt --wait` handoff. After it returns, inspect the structured `RESULT` and
 factual git/PR/test state; `working`, `idle`, `done`, and `blocked` alone are never
-proof of success. It publishes final `RESULT` and genuine blocked-question events via
-the project-local durable orchestration bridge, not by injecting an agent prompt or
-relying on a toast. The trusted `index` extension attaches those events only on the
+proof of success. Its workspace label must end in `-root` before it can publish a
+final `RESULT` via the project-local durable orchestration bridge; implementation
+children cannot publish. Validated rpiv lifecycle alone publishes a genuine blocked
+question event. Neither path injects an agent prompt or relies on a toast. The trusted `index` extension attaches those events only on the
 user's next natural turn; Herdr notifications are optional visibility only and cannot
 resume Pi. For parallel children, the dedicated root may issue multiple complete
 `herdr agent prompt NAME "..." --wait` calls in one turn so the server owns the waits

@@ -4,7 +4,7 @@ import { Type } from "typebox";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { BlockedQuestionBridge, claimOutstanding, outstandingCount, parseHerdrResult, publishEvent, resolveIndexTarget, sessionKey, spoolRoot, startWakeListener, wakeOnce, type IndexTarget, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance } from "./orchestration-bridge.core";
+import { BlockedQuestionBridge, canonicalizeEvent, claimOutstanding, discardEvent, formatAttachment, isDedicatedRootLabel, outstandingCount, parseHerdrResult, publishEvent, resolveLiveTopology, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, type IndexTarget, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance } from "./orchestration-bridge.core";
 
 const INBOX_WIDGET = "orchestration-inbox";
 const CUSTOM_TYPE = "orchestrator-event";
@@ -24,23 +24,25 @@ interface DeliveryRecord {
 	durableResult?: OrchestratorEvent["durableResult"];
 }
 
-interface LiveTopology {
-	index: IndexTarget;
-	source: OrchestratorProvenance;
-}
-
 interface WakeListener {
 	close: () => Promise<void>;
 }
 
-function concise(value: string, limit = 360): string {
-	return value.replace(/\s+/g, " ").trim().slice(0, limit);
+interface Publication {
+	root: string;
+	target: IndexTarget;
+	eventId: string;
+	status: "published" | "duplicate";
 }
 
-function eventMessage(event: OrchestratorEvent): string {
-	const provenance = `${event.source.workspaceId}/${event.source.paneId}`;
-	const durable = event.durableResult?.location ? ` location=${event.durableResult.location}` : "";
-	return `ORCHESTRATOR_EVENT id=${event.id} kind=${event.kind} source=${provenance} timestamp=${event.timestamp}${durable}\n${event.summary}`;
+interface PendingQuestion {
+	toolCallId: string;
+	sessionId: string;
+	ctx: ExtensionContext;
+	activated: boolean;
+	ended: boolean;
+	eventId?: string;
+	publication?: Promise<Publication | undefined>;
 }
 
 function messageEvents(ctx: ExtensionContext): Map<string, OrchestratorEvent> {
@@ -51,8 +53,9 @@ function messageEvents(ctx: ExtensionContext): Map<string, OrchestratorEvent> {
 		if (custom.customType !== CUSTOM_TYPE || typeof custom.details !== "object" || custom.details === null) continue;
 		const values = (custom.details as Partial<OrchestratorMessageDetails>).events;
 		if (!Array.isArray(values)) continue;
-		for (const event of values) {
-			if (event && typeof event.id === "string" && typeof event.targetSessionId === "string") events.set(event.id, event);
+		for (const raw of values) {
+			const event = canonicalizeEvent(raw);
+			if (event) events.set(event.id, event);
 		}
 	}
 	return events;
@@ -89,15 +92,6 @@ function acknowledgeMessageEvents(pi: ExtensionAPI, ctx: ExtensionContext): Set<
 	return new Set([...events.keys(), ...recorded]);
 }
 
-function questionSummary(args: unknown): string {
-	if (typeof args !== "object" || args === null) return "The root needs a structured answer.";
-	const values = args as Record<string, unknown>;
-	for (const key of ["question", "prompt", "purpose", "message", "title"]) {
-		if (typeof values[key] === "string" && values[key].trim()) return concise(values[key]);
-	}
-	return "The root needs a structured answer.";
-}
-
 async function canonicalRoot(pi: ExtensionAPI, ctx: ExtensionContext): Promise<string | undefined> {
 	const worktrees = await pi.exec("git", ["-C", ctx.cwd, "worktree", "list", "--porcelain"]);
 	if (worktrees.code !== 0) return undefined;
@@ -111,21 +105,7 @@ async function liveTopology(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Li
 	const [workspaces, panes] = await Promise.all([pi.exec("herdr", ["workspace", "list"]), pi.exec("herdr", ["pane", "list"])]);
 	if (workspaces.code !== 0 || panes.code !== 0) return undefined;
 	try {
-		const index = resolveIndexTarget(parseHerdrResult(workspaces.stdout), parseHerdrResult(panes.stdout));
-		if (!index) return undefined;
-		const paneResult = parseHerdrResult(panes.stdout) as {
-			panes?: Array<{ workspace_id?: string; pane_id?: string; agent_session?: { value?: string } }>;
-		};
-		const sourcePane = paneResult.panes?.find((pane) => pane.agent_session?.value === currentSession);
-		if (!sourcePane?.workspace_id || !sourcePane.pane_id) return undefined;
-		return {
-			index,
-			source: {
-				workspaceId: sourcePane.workspace_id,
-				paneId: sourcePane.pane_id,
-				sessionId: currentSession,
-			},
-		};
+		return resolveLiveTopology(parseHerdrResult(workspaces.stdout), parseHerdrResult(panes.stdout), currentSession);
 	} catch {
 		return undefined;
 	}
@@ -143,6 +123,7 @@ async function updateInboxWidget(pi: ExtensionAPI, ctx: ExtensionContext, sessio
 	ctx.ui.setStatus(INBOX_WIDGET, count === 0 ? undefined : `${count} orchestration event${count === 1 ? "" : "s"}`);
 }
 
+/** Fail closed unless the source is an observable Herdr workspace labeled `*-root`. */
 async function publish(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
@@ -152,32 +133,62 @@ async function publish(
 		summary: string;
 		durableResult?: OrchestratorEvent["durableResult"];
 	},
-): Promise<{ status: "published" | "duplicate"; target: IndexTarget } | undefined> {
+): Promise<Publication | undefined> {
 	const [root, topology] = await Promise.all([canonicalRoot(pi, ctx), liveTopology(pi, ctx)]);
-	if (!root || !topology || topology.source.workspaceId === topology.index.workspaceId) return undefined;
-	const event: OrchestratorEvent = {
+	if (!root || !topology || !isDedicatedRootLabel(topology.source.workspaceLabel)) return undefined;
+	const event = canonicalizeEvent({
 		id: input.eventId,
 		kind: input.kind,
 		source: topology.source,
 		targetSessionId: topology.index.sessionId,
-		summary: concise(input.summary),
+		summary: input.summary,
 		timestamp: new Date().toISOString(),
 		...(input.durableResult ? { durableResult: input.durableResult } : {}),
-	};
+	});
+	if (!event) return undefined;
 	const status = await publishEvent(spoolRoot(root), event);
 	wakeOnce(topology.index.sessionId);
-	return { status, target: topology.index };
+	return { root, target: topology.index, eventId: event.id, status };
 }
 
 /** Project-local durable inbox, attach-next-turn delivery, and question blocked bridge. */
 export default function (pi: ExtensionAPI) {
 	let listener: WakeListener | undefined;
 	let indexSessionId: string | undefined;
+	let activation: Promise<boolean> | undefined;
+	const pendingQuestions = new Map<string, PendingQuestion>();
 	const blocked = new BlockedQuestionBridge((state) => {
-		// Like pi-subagents RPC/events, pi.events is same-process only. This reaches
+		// pi.events (and pi-subagents' RPC/events) are same-process only. This reaches
 		// Herdr's managed integration in this Pi process, never another visible pane.
 		pi.events.emit("herdr:blocked", state);
 	});
+
+	const ensureIndexActivation = async (ctx: ExtensionContext): Promise<boolean> => {
+		const sessionId = ctx.sessionManager.getSessionFile();
+		if (!sessionId) return false;
+		if (indexSessionId === sessionId && listener) return true;
+		if (activation) return activation;
+		activation = (async () => {
+			const topology = await liveTopology(pi, ctx);
+			if (!topology || topology.index.sessionId !== sessionId) return false;
+			indexSessionId = sessionId;
+			listener = await startWakeListener(sessionId, () => {
+				void updateInboxWidget(pi, ctx, sessionId);
+			});
+			await updateInboxWidget(pi, ctx, sessionId);
+			return true;
+		})();
+		try {
+			return await activation;
+		} finally {
+			activation = undefined;
+		}
+	};
+
+	const discardQuestionPublication = async (question: PendingQuestion): Promise<void> => {
+		const publication = await question.publication;
+		if (publication && question.ended) await discardEvent(spoolRoot(publication.root), publication.target.sessionId, publication.eventId);
+	};
 
 	pi.registerMessageRenderer<OrchestratorMessageDetails>(CUSTOM_TYPE, (message, _options, theme) => {
 		const events = Array.isArray(message.details?.events) ? message.details.events : [];
@@ -185,7 +196,7 @@ export default function (pi: ExtensionAPI) {
 			render: () => {
 				const lines = [theme.bold(theme.fg("accent", "ORCHESTRATOR_EVENT"))];
 				for (const event of events) {
-					const source = `${event.source.workspaceId}/${event.source.paneId}`;
+					const source = `${event.source.workspaceLabel}/${event.source.paneId}`;
 					lines.push(theme.fg("dim", `${event.kind} · ${event.id} · ${source}`));
 					lines.push(event.summary);
 				}
@@ -196,28 +207,26 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
-		const topology = await liveTopology(pi, ctx);
-		const sessionId = ctx.sessionManager.getSessionFile();
-		if (!topology || !sessionId || topology.index.sessionId !== sessionId) return;
-		indexSessionId = sessionId;
-		listener = await startWakeListener(sessionId, () => {
-			void updateInboxWidget(pi, ctx, sessionId);
-		});
-		await updateInboxWidget(pi, ctx, sessionId);
+		// One startup attempt only. A failed metadata lookup may retry at the next natural turn.
+		await ensureIndexActivation(ctx);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		blocked.shutdown();
 		await listener?.close();
 		listener = undefined;
+		activation = undefined;
+		pendingQuestions.clear();
 		if (indexSessionId && ctx.hasUI) {
-			ctx.ui.setWidget(INBOX_WIDGET, []);
+			ctx.ui.setWidget(INBOX_WIDGET, undefined);
 			ctx.ui.setStatus(INBOX_WIDGET, undefined);
 		}
 		indexSessionId = undefined;
 	});
 
-	pi.on("before_agent_start", async (event, ctx) => {
+	pi.on("before_agent_start", async (_event, ctx) => {
+		// This is the sole natural-turn retry path after transient Herdr metadata failure.
+		if (!(await ensureIndexActivation(ctx))) return undefined;
 		const sessionId = ctx.sessionManager.getSessionFile();
 		if (!sessionId || sessionId !== indexSessionId) return undefined;
 		const root = await canonicalRoot(pi, ctx);
@@ -228,43 +237,54 @@ export default function (pi: ExtensionAPI) {
 		return {
 			message: {
 				customType: CUSTOM_TYPE,
-				content: claims.map(({ event: claimed }) => eventMessage(claimed)).join("\n\n"),
+				content: claims.map(({ event }) => formatAttachment(event)).join("\n\n"),
 				display: true,
-				details: { events: claims.map(({ event: claimed }) => claimed) } satisfies OrchestratorMessageDetails,
+				details: { events: claims.map(({ event }) => event) } satisfies OrchestratorMessageDetails,
 			},
 		};
 	});
 
 	pi.on("tool_execution_start", async (event, ctx) => {
 		if (event.toolName !== QUESTION_TOOL) return;
-		const label = questionSummary(event.args);
-		blocked.start(event.toolCallId, label);
 		const sessionId = ctx.sessionManager.getSessionFile();
 		if (!sessionId) return;
-		await publish(pi, ctx, {
-			eventId: `question:${sessionKey(sessionId).slice(0, 24)}:${event.toolCallId}`,
-			kind: "blocked",
-			summary: label,
-		});
+		// RPIV emits its validated prompt event immediately before waiting. Do nothing yet.
+		pendingQuestions.set(event.toolCallId, { toolCallId: event.toolCallId, sessionId, ctx, activated: false, ended: false });
+	});
+
+	pi.events.on("rpiv:ask-user:prompt", (payload: unknown) => {
+		const summary = summarizeAskUserPrompt(payload);
+		if (!summary) return;
+		const question = [...pendingQuestions.values()].find((candidate) => !candidate.activated && !candidate.ended);
+		if (!question) return;
+		question.activated = true;
+		question.eventId = `question:${sessionKey(question.sessionId).slice(0, 24)}:${question.toolCallId}`;
+		blocked.start(question.toolCallId, summary);
+		question.publication = publish(pi, question.ctx, { eventId: question.eventId, kind: "blocked", summary }).catch(() => undefined);
 	});
 
 	pi.on("tool_execution_end", async (event) => {
-		if (event.toolName === QUESTION_TOOL) blocked.end(event.toolCallId);
+		if (event.toolName !== QUESTION_TOOL) return;
+		const question = pendingQuestions.get(event.toolCallId);
+		if (!question) return;
+		question.ended = true;
+		blocked.end(event.toolCallId);
+		pendingQuestions.delete(event.toolCallId);
+		await discardQuestionPublication(question);
 	});
 
 	pi.registerTool({
 		name: "publish_orchestrator_event",
-		label: "Publish Orchestrator Event",
+		label: "Publish Orchestrator Result",
 		description:
-			"Persist a root RESULT or genuine blocked-question event for the live index session. Use a stable eventId; delivery is attach-next-turn and never edits the user's editor.",
-		promptSnippet: "persist a root RESULT or blocked question for the index session",
+			"Persist a verified dedicated-root RESULT for the live index session. Use a stable eventId; delivery is attach-next-turn and never edits the user's editor.",
+		promptSnippet: "persist a dedicated-root RESULT for the index session",
 		promptGuidelines: [
-			"When operating as a dedicated root, publish every final RESULT with a stable eventId after factual verification.",
-			"Never use this tool from the interactive index workspace; it cannot edit or wake the user's editor.",
+			"Only a Herdr workspace labeled *-root may publish through this tool.",
+			"Publish every verified final RESULT with a stable eventId; blocked questions are published only by the validated RPIV lifecycle.",
 		],
 		parameters: Type.Object({
-			eventId: Type.String({ description: "Stable id for this logical event; retries must reuse it." }),
-			kind: Type.Union([Type.Literal("result"), Type.Literal("blocked")]),
+			eventId: Type.String({ description: "Stable id for this logical RESULT; retries must reuse it." }),
 			summary: Type.String({ description: "Concise factual summary for the next natural main turn." }),
 			resultLocation: Type.Optional(Type.String({ description: "Durable RESULT file or PR/commit location, if applicable." })),
 			resultPayload: Type.Optional(Type.String({ description: "Small durable RESULT payload, if applicable." })),
@@ -272,7 +292,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const published = await publish(pi, ctx, {
 				eventId: params.eventId,
-				kind: params.kind,
+				kind: "result",
 				summary: params.summary,
 				durableResult:
 					params.resultLocation || params.resultPayload
@@ -281,17 +301,12 @@ export default function (pi: ExtensionAPI) {
 			});
 			if (!published) {
 				return {
-					content: [{ type: "text", text: "No live non-index root → index route was available; event was not published." }],
+					content: [{ type: "text", text: "No verified *-root → index route was available; RESULT was not published." }],
 					details: { published: false },
 				};
 			}
 			return {
-				content: [
-					{
-						type: "text",
-						text: `Orchestrator event ${published.status} for ${published.target.workspaceId}/${published.target.paneId}; wake was best-effort only.`,
-					},
-				],
+				content: [{ type: "text", text: `Orchestrator RESULT ${published.status}; wake was best-effort only.` }],
 				details: { published: true, status: published.status, targetSessionId: published.target.sessionId },
 			};
 		},

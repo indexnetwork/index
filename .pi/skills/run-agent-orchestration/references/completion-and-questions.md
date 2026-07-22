@@ -24,12 +24,19 @@ git/PR/test state before reporting it.
 ## Durable attach-next-turn callback to `index`
 
 After a root reaches a structured `RESULT` or a genuine block needing user input, the
-project-local orchestration bridge resolves the unique workspace labeled `index` and
-its reported Pi session identity through Herdr metadata. It persists a structured,
-idempotent event before one best-effort Unix-socket wake: stable id, `result` or
-`blocked` kind, source workspace/pane/session provenance, concise summary, timestamp,
-and optional durable result payload/location. It never hardcodes a main-agent name or
-uses screen scraping.
+project-local orchestration bridge authorizes publication only from a Herdr workspace
+whose observable label ends in `-root`. It resolves the unique workspace labeled
+`index` and its reported Pi session identity through Herdr metadata; `index` and
+implementation children fail closed. Manual publishing is RESULT-only. A blocked event
+is created only after rpiv emits validated `rpiv:ask-user:prompt` immediately before
+its questionnaire wait.
+
+It persists a strictly validated, bounded, idempotent event before one best-effort
+Unix-socket wake: stable id, `result` or `blocked` kind, source workspace
+label/pane/session provenance, concise summary, non-future timestamp, and optional
+durable result payload/location. Unsafe/malformed spool data is quarantined, events
+are timestamp/id ordered, and per-turn delivery is bounded. It never hardcodes a
+main-agent name or uses screen scraping.
 
 The private per-session spool is the source of truth. The `index` session starts its
 event-driven socket listener only at `session_start` and closes/unlinks it at
@@ -40,18 +47,25 @@ sleep, watcher, or timeout loop.
 
 On `before_agent_start` of the user's next natural turn, the `index` extension
 atomically claims outstanding events and appends persistent custom
-`ORCHESTRATOR_EVENT` context. It acknowledges an event only after its custom message
-is observable in session history; crash recovery reclaims unacknowledged events, for
-at-least-once idempotent delivery. Never clear, overwrite, or infer the safety of a
-user draft; never focus or wait from `index`.
+`ORCHESTRATOR_EVENT` context. Its JSON serialization is explicitly untrusted data,
+containing bounded id/kind/provenance/timestamp/location/payload/summary values so
+child text cannot alter bridge instructions. It acknowledges an event only after its
+custom message is observable in session history; crash recovery reclaims
+unacknowledged events, for at-least-once idempotent delivery. A transient metadata
+failure retries only from this later natural `before_agent_start`, never a timer or
+poll. Never clear, overwrite, or infer the safety of a user draft; never focus or wait
+from `index`.
 
 Herdr 0.7.5 `notification.show` is only an optional visibility alert. It has no
 persistent inbox, and a disabled toast cannot resume Pi. It is not the bridge.
 Herdr's installed Pi integration reports `blocked` only from same-process
 `herdr:blocked` events. rpiv `ask_user_question` v2.0.0 emits only
 `rpiv:ask-user:prompt` before awaiting its overlay, so it does not supply that
-lifecycle itself. The project-local bridge listens to Pi tool execution start/end and
-emits the balanced lifecycle independently.
+lifecycle itself. The project-local bridge records an outstanding tool call at Pi tool-execution start,
+then listens for rpiv's validated prompt event to activate the balanced lifecycle. On
+tool end it always balances `herdr:blocked` and removes the matching pending/claim
+block event; a block already attached during a real wait remains truthful history but
+is not replayed.
 
 `pi-subagents` is the concrete presentation/persistence precedent: reuse its
 structured custom-message details/renderer, persistent above-editor widget, and

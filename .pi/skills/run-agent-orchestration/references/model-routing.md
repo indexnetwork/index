@@ -46,9 +46,10 @@ or use timeout loops.
 ## Durable callback to `index`
 
 Model routing does not change the delivery path. The project-local orchestration bridge
-resolves the unique workspace labeled `index` and its reported Pi session identity,
-then persists root `RESULT` and blocked-question events before one best-effort
-Unix-socket wake. It never uses a fixed main agent name, screen scraping, editor
+authorizes publication only from an observable Herdr workspace label ending in `-root`;
+`index` and implementation children fail closed. It resolves the unique workspace
+labeled `index` and its reported Pi session identity, then persists root `RESULT` and
+validated-rpiv blocked-question events before one best-effort Unix-socket wake. It never uses a fixed main agent name, screen scraping, editor
 injection, workspace focus, `herdr agent prompt`, or `herdr agent wait` from `index`.
 
 The `index` extension only updates a non-focusing inbox count when awake. On the next

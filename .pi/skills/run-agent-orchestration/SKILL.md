@@ -91,27 +91,36 @@ plane have deliberately different contracts:
 ## Durable attach-next-turn bridge
 
 The project-local `.pi/extensions/orchestration-bridge.ts` is the only root → main
-callback path. A dedicated root publishes both a final `RESULT` (through
-`publish_orchestrator_event` with a stable event id) and genuine blocked-question
-events (automatically when `ask_user_question` starts). The publisher resolves the
-unique live workspace labeled `index` and its reported Pi session identity through
-Herdr metadata; it never hardcodes a main agent name or reads terminal pixels.
+callback path. A dedicated root's Herdr workspace label **must end in `-root`**;
+this observable metadata is the fail-closed authorization to publish a final `RESULT`
+through `publish_orchestrator_event` with a stable event id. `index`, implementation
+children, and every other non-root label cannot publish. Genuine blocked-question
+events originate only after rpiv emits its validated `rpiv:ask-user:prompt` lifecycle
+event immediately before the questionnaire waits — never merely when the tool starts.
+The publisher resolves the unique live workspace labeled `index` and its reported Pi
+session identity through Herdr metadata; it never hardcodes a main agent name or reads
+terminal pixels.
 
-It atomically persists each structured event — id, `result`/`blocked` kind, root
-workspace/pane/session provenance, concise summary, timestamp, and optional durable
-result location/payload — into the private project-local per-session spool before one
-best-effort Unix-socket wake attempt. Publication is idempotent by event id. A missing
-listener leaves the event durable for the next natural turn; there are no retries,
-polls, sleeps, watcher processes, or waits.
+It atomically persists each strictly validated, bounded structured event — id,
+`result`/`blocked` kind, root workspace label/pane/session provenance, concise summary,
+non-future timestamp, and optional durable result location/payload — into the private
+project-local per-session spool before one best-effort Unix-socket wake attempt.
+Publication is idempotent by event id, timestamp/id ordered, bounded per turn, and
+fail-closed for unsafe data. A missing listener leaves the event durable for the next
+natural turn; there are no retries, polls, sleeps, watcher processes, or waits.
 
 The trusted `index` session starts that socket listener only at `session_start`, closes
 and unlinks it at `session_shutdown`, and may update only a non-focusing inbox
 widget/status on receipt. It never edits the editor, starts a turn, focuses a workspace,
 or calls `herdr agent prompt`/`wait`. On `before_agent_start` for the user's next
 natural submission, it atomically claims outstanding events and adds a persistent
-custom `ORCHESTRATOR_EVENT` message to that turn. Claims replay at least once after a
-crash and are acknowledged by event id once their custom message is present, so events
-are neither silently lost nor duplicated.
+custom `ORCHESTRATOR_EVENT` message to that turn. The LLM-visible attachment is an
+explicit untrusted JSON data boundary containing every bounded value, including durable
+payload/location; child text can never alter bridge framing. Claims replay at least
+once after a crash and are acknowledged by event id once their structured custom
+message is present, so events are neither silently lost nor duplicated. A transient
+metadata failure gets one idempotent retry only from that later `before_agent_start`,
+never from a timer or poll.
 
 Herdr 0.7.5 notifications are optional visibility alerts only: `notification.show`
 has no persistent inbox and a disabled toast cannot resume Pi. The bridge is not a
@@ -155,8 +164,10 @@ new agent prompt into an active question. Genuine product/architecture ambiguity
 destructive/external mutation, credentials, or merge approval is re-raised by the root
 with its **own** `ask_user_question`. The project-local bridge reference-counts that
 tool's awaited lifetime and emits the same-process `herdr:blocked` lifecycle event, so
-Herdr reports `blocked` until the question resolves; it also durably publishes the
-blocked event for attach-next-turn delivery to `index`. Never infer merge approval.
+Herdr reports `blocked` until the question resolves. The bridge reference-counts nested
+questions and removes its pending/claimed durable block event on tool end; an event
+already attached during a truthful wait stays in history but is never replayed. Never
+infer merge approval.
 Full flow: `references/completion-and-questions.md`.
 
 ## Roles and models

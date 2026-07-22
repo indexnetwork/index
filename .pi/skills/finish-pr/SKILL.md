@@ -58,9 +58,10 @@ git status --short --branch
 Do not poll, sleep, run watcher processes/panes, use timeout loops, or prescribe
 `herdr agent wait`. The interactive `index` coordinator returns after the fire-and-
 return prompt and reconciles durable root state only on a later natural turn or
-explicit orchestration tick. Dedicated roots publish `RESULT` or genuine blocked input
-through the project-local durable orchestration bridge; the trusted `index` extension
-attaches it only to that later natural turn. Do not inject an agent prompt or rely on
+explicit orchestration tick. Only dedicated roots whose Herdr workspace label ends in `-root` publish RESULT
+through the project-local durable orchestration bridge; validated rpiv lifecycle alone
+publishes genuine blocked input. The trusted `index` extension attaches it only to that
+later natural turn. Do not inject an agent prompt or rely on
 Herdr notifications, which are optional visibility only and cannot resume Pi. A
 dedicated root outside `index` may use one server-owned, indefinite root → child
 `herdr agent prompt NAME "..." --wait` when it needs to coordinate implementation;
