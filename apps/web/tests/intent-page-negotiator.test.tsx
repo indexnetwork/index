@@ -71,6 +71,14 @@ vi.mock('@/components/IntentNegotiatorChat', () => ({
       <div data-testid="intent-negotiator-chat-stub">
         {answered.length > 0 && (
           <div data-testid="negotiator-answered-log">
+            {answered.map((entry) => (
+              <span
+                key={entry.id}
+                data-testid={`answered-entry-${entry.id}`}
+                data-message-id={entry.messageId ?? ''}
+                data-answered-at={entry.answeredAt ?? ''}
+              />
+            ))}
             <AnsweredQuestionLog entries={answered} />
           </div>
         )}
@@ -204,6 +212,14 @@ describe('Intent page — negotiator chat gating', () => {
     mocks.authState.features = { negotiatorChat: true };
     mocks.questionsService.getAnswered.mockResolvedValue([{
       id: 'answered-1',
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: 'intent-1',
+        timestamp: '2026-07-20T10:01:00Z',
+        messageId: 'assistant-anchor-1',
+      },
+      createdAt: '2026-07-20T10:01:00Z',
       payload: {
         title: 'What kind of collaborator?',
         prompt: 'What kind of collaborator?',
@@ -214,7 +230,7 @@ describe('Intent page — negotiator chat gating', () => {
         selectedOptions: ['Technical founder'],
         freeText: 'in Europe',
         answeredBy: 'user-1',
-        answeredAt: new Date().toISOString(),
+        answeredAt: '2026-07-20T10:02:00Z',
       },
       status: 'answered',
     }]);
@@ -222,6 +238,7 @@ describe('Intent page — negotiator chat gating', () => {
 
     await waitFor(() => expect(mocks.questionsService.getAnswered).toHaveBeenCalled());
     expect(await screen.findByTestId('negotiator-answered-log')).toBeInTheDocument();
+    expect(screen.getByTestId('answered-entry-answered-1')).toHaveAttribute('data-message-id', 'assistant-anchor-1');
     expect(screen.getByText('What kind of collaborator?')).toBeInTheDocument();
     expect(screen.getByText('Technical founder, in Europe')).toBeInTheDocument();
   });
@@ -250,6 +267,7 @@ describe('Intent page — negotiator chat gating', () => {
 
     await waitFor(() => expect(screen.getByText('Berlin')).toBeInTheDocument());
     expect(screen.getByText('Technical founder')).toBeInTheDocument();
+    expect(screen.getByTestId('answered-entry-q-1')).toHaveAttribute('data-answered-at', '');
     expect(mocks.questionsService.answer).toHaveBeenCalledWith('q-1', { selectedOptions: ['Berlin'] });
   });
 

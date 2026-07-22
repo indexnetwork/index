@@ -2,6 +2,13 @@ export interface AnsweredThreadEntry {
   id: string;
   prompt: string;
   response: string;
+  /** Authoritative assistant message anchor, when the question came from chat. */
+  messageId?: string;
+  /** Authoritative question creation timestamp used only when no message anchor is available. */
+  createdAt?: string;
+  /** Authoritative detection timestamp used only when no message anchor is available. */
+  detectedAt?: string;
+  /** Authoritative answer timestamp returned by the server after hydration. */
   answeredAt?: string;
 }
 

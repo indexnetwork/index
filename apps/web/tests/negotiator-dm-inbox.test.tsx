@@ -376,6 +376,37 @@ describe('Negotiator DM question inbox (IND-404)', () => {
     expect(screen.queryByTestId('negotiator-question-inbox')).toBeNull();
   });
 
+  test('ordinary chat keeps a conversation-linked question at its assistant message anchor', async () => {
+    mocks.chat.sessionPersona = 'orchestrator';
+    mocks.chat.messages = [
+      { id: 'ordinary-anchor', role: 'assistant', content: 'Ordinary anchor turn', timestamp: new Date('2026-07-20T10:00:00Z') },
+      { id: 'ordinary-later', role: 'user', content: 'Ordinary later turn', timestamp: new Date('2026-07-20T10:01:00Z') },
+    ];
+    mocks.questionsService.getByConversation.mockResolvedValue([{
+      ...INBOX_QUESTION,
+      id: 'ordinary-anchored-question',
+      conversationId: 'dm-session-1',
+      detection: {
+        ...INBOX_QUESTION.detection,
+        mode: 'chat',
+        timestamp: '2026-07-20T10:00:30Z',
+        messageId: 'ordinary-anchor',
+      },
+      payload: {
+        ...INBOX_QUESTION.payload,
+        title: 'Ordinary anchored question',
+      },
+    }]);
+
+    renderWithRouter(<ChatContent sessionIdParam="dm-session-1" />);
+
+    const anchor = await screen.findByText('Ordinary anchor turn');
+    const question = await screen.findByText('Ordinary anchored question');
+    const later = await screen.findByText('Ordinary later turn');
+    expect(anchor.compareDocumentPosition(question) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(question.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
   test('intent-pinned negotiator sessions keep the intent-scope query (no global inbox)', async () => {
     mocks.chat.sessionPersona = 'negotiator';
     mocks.chat.chatScope = { type: 'intent', id: 'intent-42' };
