@@ -171,7 +171,7 @@ export default function PublicJoinPage() {
           You're about to join this network
         </h1>
         <p className="text-black text-[14px] font-ibm-plex-mono">
-          Connect with others who share your intent — discover relevant matches inside this public network.
+          Connect with others who share your signal — discover relevant opportunities inside this public network.
         </p>
       </div>
 

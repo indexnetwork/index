@@ -483,7 +483,7 @@ export default function ChatContent({
       try {
         await apiClient.patch(`/intents/${intent.id}/archive`);
       } catch {
-        showError("Failed to archive intent");
+        showError("Failed to archive signal");
       }
     },
     [showError],
@@ -656,7 +656,7 @@ export default function ChatContent({
     async (proposalId: string) => {
       if (mutationsBlockedRef.current) return;
       const intentId = proposalIntentMap[proposalId];
-      if (!intentId) throw new Error("Intent ID not found for proposal");
+      if (!intentId) throw new Error("Signal ID not found for proposal");
       await archiveProposalIntent(proposalId, intentId);
     },
     [proposalIntentMap, archiveProposalIntent],
@@ -979,14 +979,14 @@ export default function ChatContent({
             <MessageSquare className="w-4 h-4" />
             {!isInputMultiline && (
               <span className="max-w-48 truncate">
-                {chatScope.label || "Selected intent"}
+                {chatScope.label || "Selected signal"}
               </span>
             )}
             <button
               type="button"
               onClick={() => setChatScope(null)}
               className="p-0.5 rounded-full text-gray-500 hover:text-black hover:bg-gray-200"
-              aria-label="Clear intent scope"
+              aria-label="Clear signal scope"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -1324,7 +1324,7 @@ export default function ChatContent({
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 ml-2">
                 <MessageSquare className="w-3 h-3" />
                 <span className="truncate max-w-40">
-                  {chatScope.label || "Selected intent"}
+                  {chatScope.label || "Selected signal"}
                 </span>
               </span>
             )}

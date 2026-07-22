@@ -67,7 +67,7 @@ export default function DiscoveryCard({
             </button>
             <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
               {intents.length > 0 ? (
-                <span>{intents.length} mutual intent{intents.length !== 1 ? 's' : ''}</span>
+                <span>{intents.length} mutual signal{intents.length !== 1 ? 's' : ''}</span>
               ) : (
                 <span>Potential connection</span>
               )}

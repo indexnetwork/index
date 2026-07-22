@@ -5,6 +5,7 @@ import GhostBadge from "@/components/GhostBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import UserAvatar from "@/components/UserAvatar";
+import { toSignalProductLanguage } from "@/lib/product-language";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,7 +28,7 @@ export interface OpportunityCardData {
   primaryActionLabel?: string;
   /** Label for secondary action button (e.g. "Skip"). */
   secondaryActionLabel?: string;
-  /** Subtitle under the other party name (e.g. "1 mutual intent"). */
+  /** Subtitle under the other party name (e.g. "1 mutual signal"). */
   mutualIntentsLabel?: string;
   /** Narrator chip (Index or introducer). */
   narratorChip?: {
@@ -391,7 +392,7 @@ export default function OpportunityCard({
                 {card.isGhost && <GhostBadge />}
               </h4>
               <p className="text-[11px] text-[#3D3D3D]">
-                {card.mutualIntentsLabel || "Potential connection"}
+                {toSignalProductLanguage(card.mutualIntentsLabel || "Potential connection")}
               </p>
             </div>
           </div>

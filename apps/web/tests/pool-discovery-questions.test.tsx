@@ -169,7 +169,7 @@ describe('pool_discovery questions — evidence chip', () => {
     render(<InjectedQuestions questions={[question]} onAnswer={noop} onDismiss={noop} />);
 
     const chip = screen.getByTestId('question-evidence-chip');
-    expect(chip).toHaveTextContent('◎ based on 18 people matching this intent');
+    expect(chip).toHaveTextContent('◎ based on 18 people matching this signal');
     // Muted styling — never the red/amber reserved for rejected/expired.
     expect(chip.className).toContain('text-gray-500');
     expect(chip.className).toContain('bg-gray-100');

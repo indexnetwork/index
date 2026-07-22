@@ -28,7 +28,7 @@ type TabValue = "overview" | "api-keys" | "permissions";
 
 const PERMISSION_LABELS: Record<string, string> = {
   "manage:profile": "Profile",
-  "manage:intents": "Intents",
+  "manage:intents": "Signals",
   "manage:networks": "Networks",
   "manage:contacts": "Contacts",
   "manage:opportunities": "Opportunities",

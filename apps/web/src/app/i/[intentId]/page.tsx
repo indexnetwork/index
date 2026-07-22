@@ -516,12 +516,12 @@ export default function IntentDetailPage() {
 
   const handleArchive = useCallback(async () => {
     if (!intentId) return;
-    if (!window.confirm("Archive this intent? It will stop matching.")) return;
+    if (!window.confirm("Archive this signal? It will stop matching.")) return;
     try {
       await intentsService.archiveIntent(intentId);
       navigate("/");
     } catch {
-      showError("Failed to archive intent");
+      showError("Failed to archive signal");
     }
   }, [intentId, intentsService, navigate, showError]);
 
@@ -552,8 +552,8 @@ export default function IntentDetailPage() {
         if (!isCurrentRequest()) return;
         showError(
           status === "PAUSED"
-            ? "Failed to pause intent"
-            : "Failed to resume intent",
+            ? "Failed to pause signal"
+            : "Failed to resume signal",
         );
       } finally {
         if (isCurrentRequest()) {
@@ -578,7 +578,7 @@ export default function IntentDetailPage() {
         void loadOpportunities();
         return true;
       } catch {
-        showError("Failed to refine intent");
+        showError("Failed to refine signal");
         return false;
       }
     },
@@ -708,7 +708,7 @@ export default function IntentDetailPage() {
 
           {!intentLoading && !intent ? (
             <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-              Intent not found
+              Signal not found
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
@@ -797,7 +797,7 @@ export default function IntentDetailPage() {
                       <span className="inline-flex items-center rounded border border-gray-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-gray-600">
                         fulfilled
                       </span>
-                      <span>this intent has been fulfilled</span>
+                      <span>this signal has been fulfilled</span>
                     </>
                   )}
                   {lifecycleStatus === "EXPIRED" && (
@@ -805,7 +805,7 @@ export default function IntentDetailPage() {
                       <span className="inline-flex items-center rounded border border-gray-300 px-1.5 py-0.5 font-medium lowercase tracking-wide text-gray-600">
                         expired
                       </span>
-                      <span>this intent has expired</span>
+                      <span>this signal has expired</span>
                     </>
                   )}
                 </div>
@@ -842,7 +842,7 @@ export default function IntentDetailPage() {
                 {negotiatorChatEnabled && intentId ? (
                   <Panel
                     title="Personal Agent"
-                    description="Your Personal Agent, scoped to this intent — ask what it's doing, steer it, or answer its follow-ups."
+                    description="Your Personal Agent, scoped to this signal — ask what it's doing, steer it, or answer its follow-ups."
                     media={
                       questions.length > 0 ? (
                         <span
@@ -945,7 +945,7 @@ export default function IntentDetailPage() {
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-[3]">
                 <Panel
                   title="Radar"
-                  description="People the network surfaced for this intent."
+                  description="Opportunities the network surfaced for this signal."
                   media={
                     <img
                       src="/eye.webp"

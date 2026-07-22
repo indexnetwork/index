@@ -243,8 +243,8 @@ describe('Intent detail lifecycle', () => {
   });
 
   test.each([
-    ['FULFILLED', 'fulfilled', 'this intent has been fulfilled'],
-    ['EXPIRED', 'expired', 'this intent has expired'],
+    ['FULFILLED', 'fulfilled', 'this signal has been fulfilled'],
+    ['EXPIRED', 'expired', 'this signal has expired'],
   ])('%s renders neutral lifecycle copy without pause or resume', async (status, badge, copy) => {
     mocks.intent.status = status;
     renderIntentPage();
@@ -409,8 +409,8 @@ describe('Intent detail lifecycle', () => {
   });
 
   test.each([
-    ['ACTIVE', 'Pause', 'PAUSED', 'Failed to pause intent', 'live'],
-    ['PAUSED', 'Resume', 'ACTIVE', 'Failed to resume intent', 'paused'],
+    ['ACTIVE', 'Pause', 'PAUSED', 'Failed to pause signal', 'live'],
+    ['PAUSED', 'Resume', 'ACTIVE', 'Failed to resume signal', 'paused'],
   ])('failed %s transition retains prior state and content', async (
     initialStatus,
     actionName,
@@ -470,6 +470,6 @@ describe('intent lifecycle service', () => {
     });
     const service = createIntentsService({ patch } as never);
 
-    await expect(service.setIntentStatus('intent-1', 'PAUSED')).rejects.toThrow('Invalid intent status response');
+    await expect(service.setIntentStatus('intent-1', 'PAUSED')).rejects.toThrow('Invalid signal status response');
   });
 });

@@ -66,7 +66,7 @@ interface IntentListProps<T extends BaseIntent> {
 export default function IntentList<T extends BaseIntent>({
   intents,
   isLoading = false,
-  emptyMessage = 'No intents yet',
+  emptyMessage = 'No signals yet',
   onOpenIntentSource,
   onIntentClick,
   newIntentIds = new Set(),
