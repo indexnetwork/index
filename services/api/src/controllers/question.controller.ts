@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { questionService } from '../services/question.service';
+import { chatSessionService } from '../services/chat.service';
 import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
@@ -155,7 +156,19 @@ export class QuestionController {
       filters.scopeType = 'intent';
       filters.scopeId = scope.scopeId;
     }
-    if (conversationId) filters.conversationId = conversationId;
+    if (conversationId) {
+      if (!uuidQuerySchema.safeParse(conversationId).success) {
+        return Response.json({ error: 'Question not found' }, { status: 404 });
+      }
+      const session = await chatSessionService.getSession(conversationId, user.id);
+      if (!session || (rawMode && rawMode !== 'chat')) {
+        return Response.json({ error: 'Question not found' }, { status: 404 });
+      }
+      // Conversation-anchored rendering is exclusively for canonical chat rows.
+      // This keeps pool and non-chat questions out of injected chat surfaces.
+      filters.mode = 'chat';
+      filters.conversationId = conversationId;
+    }
     if (noConversation === 'true') filters.noConversation = true;
 
     // Pool questions are intent-page-only rows. Even delivered pushes affect

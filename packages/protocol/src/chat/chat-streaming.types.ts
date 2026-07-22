@@ -570,11 +570,8 @@ export interface DecisionQuestionsEvent extends ChatStreamEventBase {
  * questions REST endpoints while the turn is still blocked.
  */
 export interface UserQuestionPayload {
+  /** Canonical question identity. The client must resolve all display fields from the server. */
   id: string;
-  title: string;
-  prompt: string;
-  options: Array<{ label: string; description: string }>;
-  multiSelect: boolean;
 }
 
 /**

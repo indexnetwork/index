@@ -97,6 +97,21 @@ export class QuestionService {
   }
 
   /**
+   * Stamp canonical chat questions with their persisted assistant-message and
+   * durable-session provenance once a streaming turn has completed.
+   *
+   * @param input - Exact question IDs and authoritative message context.
+   */
+  async bindChatQuestionsToMessage(input: {
+    questionIds: string[];
+    userId: string;
+    conversationId: string;
+    messageId: string;
+  }): Promise<void> {
+    await this.adapter.bindChatQuestionsToMessage(input);
+  }
+
+  /**
    * Return canonical split counts for global and Personal Agent surfaces.
    *
    * @param userId - Authenticated recipient.

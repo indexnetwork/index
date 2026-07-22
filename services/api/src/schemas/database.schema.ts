@@ -521,6 +521,8 @@ export interface QuestionDetection {
   underspecificationType?: import('@indexnetwork/protocol').UnderspecificationType | null;
   /** ID of the assistant message that triggered this question. */
   messageId?: string;
+  /** Durable conversation-session binding for verified in-chat rendering. */
+  sessionId?: string;
   /**
    * pool_discovery only: mined pool snapshot (assignments + chain alternates).
    * INTERNAL — stripped from every client-facing read (web + MCP).

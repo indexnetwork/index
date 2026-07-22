@@ -1102,44 +1102,33 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     break;
                   }
                   case "user_question": {
-                    // The orchestrator persisted chat-mode questions and is now
-                    // blocking the turn on them. Shape them like the REST
-                    // PendingQuestion so ChatContent can reuse InjectedQuestions.
+                    // `user_question` carries opaque IDs only. Resolve cards
+                    // through the conversation-scoped canonical read so model
+                    // output can never forge question content or provenance.
                     const eventSessionId =
                       (typeof event.sessionId === "string" && event.sessionId) ||
                       newSessionId ||
                       sessionId ||
                       "";
-                    const incoming: PendingQuestion[] = (event.questions ?? []).map(
-                      (q: { id: string; title: string; prompt: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }) => ({
-                        id: q.id,
-                        detection: {
-                          mode: "chat" as const,
-                          sourceType: "conversation",
-                          sourceId: eventSessionId,
-                          timestamp: new Date().toISOString(),
-                        },
-                        actors: [],
-                        payload: {
-                          title: q.title,
-                          prompt: q.prompt,
-                          options: q.options,
-                          multiSelect: q.multiSelect,
-                        },
-                        status: "pending" as const,
-                        answer: null,
-                        expiresAt: null,
-                        createdAt: new Date().toISOString(),
-                        conversationId: eventSessionId || null,
-                      }),
+                    const requestedIds = new Set(
+                      (event.questions ?? [])
+                        .map((question: { id?: unknown }) => question.id)
+                        .filter((id): id is string => typeof id === "string"),
                     );
-                    if (incoming.length > 0) {
-                      setLiveQuestions((prev) => {
-                        const byId = new Map(prev.map((q) => [q.id, q]));
-                        for (const q of incoming) byId.set(q.id, q);
+                    if (!eventSessionId || requestedIds.size === 0) break;
+                    void apiClient.get<{ questions: PendingQuestion[] }>(
+                      `/questions?conversationId=${encodeURIComponent(eventSessionId)}&mode=chat`,
+                    ).then(({ questions }) => {
+                      const incoming = questions.filter((question) => requestedIds.has(question.id));
+                      if (incoming.length === 0) return;
+                      setLiveQuestions((previous) => {
+                        const byId = new Map(previous.map((question) => [question.id, question]));
+                        for (const question of incoming) byId.set(question.id, question);
                         return [...byId.values()];
                       });
-                    }
+                    }).catch((error: unknown) => {
+                      logger.error("Failed to resolve streamed chat question", { error, eventSessionId });
+                    });
                     break;
                   }
                   case "decision_questions": {

@@ -563,11 +563,8 @@ export interface DecisionQuestionsEvent extends ChatStreamEventBase {
  * while the turn is still blocked.
  */
 export interface UserQuestionPayload {
+  /** Opaque canonical question reference; resolve display content server-side. */
   id: string;
-  title: string;
-  prompt: string;
-  options: Array<{ label: string; description: string }>;
-  multiSelect: boolean;
 }
 
 /**

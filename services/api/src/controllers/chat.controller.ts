@@ -11,6 +11,7 @@ import { chatSessionService, type ChatStreamSurface } from "../services/chat.ser
 import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
+import { questionService } from "../services/question.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
@@ -585,6 +586,7 @@ export class ChatController {
           let subgraphResults: Record<string, unknown> | undefined;
           let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown; discoveryQuestions?: DebugMetaDiscoveryQuestions } | undefined;
           let decisionQuestions: import("@indexnetwork/protocol").Question[] | undefined;
+          const streamedChatQuestionIds: string[] = [];
 
           // Use context-aware streaming to load previous messages
 
@@ -640,6 +642,10 @@ export class ChatController {
                 // Event was already forwarded by the default enqueue above; just
                 // capture so the final `done` event can include `decisionQuestions`.
                 decisionQuestions = (event as { questions: import("@indexnetwork/protocol").Question[] }).questions;
+              } else if (event.type === "user_question") {
+                for (const question of event.questions) {
+                  if (typeof question.id === 'string') streamedChatQuestionIds.push(question.id);
+                }
               }
             }
           }
@@ -690,6 +696,15 @@ export class ChatController {
               content: fullResponse,
               routingDecision,
               subgraphResults,
+            });
+          }
+
+          if (assistantMessageId && streamedChatQuestionIds.length > 0) {
+            await questionService.bindChatQuestionsToMessage({
+              questionIds: streamedChatQuestionIds,
+              userId: user.id,
+              conversationId: sessionId,
+              messageId: assistantMessageId,
             });
           }
 
