@@ -2654,16 +2654,53 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Get chat messages for a session, reconstructing the backward-compatible ChatMessage shape.
+   * Get chat messages for a conversation in chronological order.
+   *
+   * @param sessionId - Conversation identifier retained for the legacy chat-session API.
+   * @param limit - Maximum number of messages to return from the beginning of the conversation.
+   * @returns Chronologically ordered chat messages.
    */
   async getChatSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> {
     const query = db.select()
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, sessionId))
-      .orderBy(asc(schema.messages.createdAt));
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 
     const rows = limit ? await query.limit(limit) : await query;
 
+    return this.toChatMessages(sessionId, rows);
+  }
+
+  /**
+   * Get the latest chat messages for model context while returning them in
+   * chronological order. This deliberately does not share UI pagination reads:
+   * loading older history must never alter the model's context window.
+   *
+   * @param sessionId - Conversation identifier retained for the legacy chat-session API.
+   * @param limit - Maximum number of most-recent messages to return.
+   * @returns Chronologically ordered latest chat messages.
+   */
+  async getLatestChatSessionMessages(sessionId: string, limit: number): Promise<ChatMessage[]> {
+    const rows = await db.select()
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, sessionId))
+      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
+      .limit(limit);
+
+    return this.toChatMessages(sessionId, rows.reverse());
+  }
+
+  /**
+   * Reconstruct the backward-compatible ChatMessage shape from message rows.
+   *
+   * @param sessionId - Conversation identifier for the compatibility shape.
+   * @param rows - Persisted message rows in display order.
+   * @returns Compatibility chat messages.
+   */
+  private toChatMessages(
+    sessionId: string,
+    rows: Array<typeof schema.messages.$inferSelect>,
+  ): ChatMessage[] {
     return rows.map((msg) => {
       const parts = msg.parts as Array<{ type?: string; text?: string }>;
       const content =

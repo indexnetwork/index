@@ -73,6 +73,30 @@ describe('ConversationDatabaseAdapter', () => {
     }, 10000);
   });
 
+  describe('getLatestChatSessionMessages', () => {
+    it('returns the latest messages chronologically with a same-millisecond id tiebreaker', async () => {
+      const conversation = await adapter.createConversation([
+        { participantId: 'latest-context-user', participantType: 'user' },
+        { participantId: 'system-agent', participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+
+      const createdAt = new Date('2026-07-22T00:00:00.000Z');
+      await db.insert(schema.messages).values([
+        { id: 'latest-context-a', conversationId: conversation.id, senderId: 'latest-context-user', role: 'user', parts: [{ text: 'oldest' }], createdAt },
+        { id: 'latest-context-b', conversationId: conversation.id, senderId: 'system-agent', role: 'agent', parts: [{ text: 'newer' }], createdAt },
+        { id: 'latest-context-c', conversationId: conversation.id, senderId: 'latest-context-user', role: 'user', parts: [{ text: 'latest' }], createdAt },
+      ]);
+
+      const messages = await adapter.getLatestChatSessionMessages(conversation.id, 2);
+
+      expect(messages.map((message) => message.id)).toEqual([
+        'latest-context-b',
+        'latest-context-c',
+      ]);
+    }, 10000);
+  });
+
   describe('getOrCreateDM', () => {
     it('finds existing DM between two users', async () => {
       const userA = 'dm-user-a-' + Date.now();
