@@ -382,7 +382,7 @@ describe('opportunity graph — newborn stamping seam', () => {
 });
 
 describe('opportunity graph — continuation negotiation lifecycle', () => {
-  test('continuation negotiates a newly persisted orchestrator candidate and observes its task boundary', async () => {
+  test('continuation negotiates a newly persisted latent candidate with its exact task boundary', async () => {
     const persistedBoundary = new Date('2026-06-01T12:00:00.000Z');
     const negotiationInputs: Array<Parameters<NegotiationGraphLike['invoke']>[0]> = [];
     const observedTaskBoundaries: string[] = [];
@@ -391,7 +391,7 @@ describe('opportunity graph — continuation negotiation lifecycle', () => {
       createOpportunity: async (data) => ({
         ...data,
         id: 'opp-continuation-new',
-        status: 'negotiating',
+        status: 'latent',
         createdAt: new Date(),
         updatedAt: persistedBoundary,
         expiresAt: null,
@@ -411,11 +411,10 @@ describe('opportunity graph — continuation negotiation lifecycle', () => {
 
     expect(negotiationInputs).toHaveLength(1);
     expect(negotiationInputs[0].opportunityId).toBe('opp-continuation-new');
+    expect(negotiationInputs[0].opportunityStatus).toBe('latent');
     expect(negotiationInputs[0].opportunityUpdatedAt).toEqual(persistedBoundary);
     expect(observedTaskBoundaries).toEqual(['opp-continuation-new']);
-    expect(compensationCalls).toEqual([
-      ['opp-continuation-new', persistedBoundary, 'draft'],
-    ]);
+    expect(compensationCalls).toEqual([]);
   });
 
   test('continuation leaves an active input-required task out of negotiation and compensation beyond five minutes', async () => {

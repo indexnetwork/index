@@ -54,9 +54,20 @@ function isMatchProvenanceEntry(value: unknown): value is MatchProvenanceEntry {
     });
 }
 
+type PersistedOpportunity = typeof opportunities.$inferSelect;
+type PersistedOpportunityStatus = PersistedOpportunity['status'];
+
+const NEGOTIATION_START_STATUSES = new Set<PersistedOpportunityStatus>([
+  'latent',
+  'draft',
+  'pending',
+  'negotiating',
+]);
+
 export interface CreateNegotiationTaskForAttemptInput {
   conversationId: string;
   opportunityId: string;
+  expectedStatus: PersistedOpportunityStatus;
   expectedUpdatedAt: Date;
   metadata: Record<string, unknown>;
 }
@@ -86,8 +97,8 @@ export interface WatchdogTaskTransitionInput {
 }
 
 /**
- * Claim an exact negotiating opportunity version and insert its task while the
- * shared attempt lock and opportunity row lock are held.
+ * Claim an exact eligible opportunity state, promote it to negotiating, and
+ * insert its task while the shared attempt, row, and pair locks are held.
  */
 export async function createNegotiationTaskForAttemptInTransaction(
   tx: NegotiationAttemptTransaction,
@@ -108,18 +119,24 @@ export async function createNegotiationTaskForAttemptInTransaction(
     .from(opportunities)
     .where(eq(opportunities.id, input.opportunityId))
     .for('update');
-  if (
-    opportunity?.status !== 'negotiating'
-    || opportunity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
-  ) {
-    return null;
-  }
+  if (!opportunity) return null;
 
   const actorUserIds = [...new Set(opportunity.actors
     .filter((actor) => actor.role !== 'introducer')
     .map((actor) => actor.userId))].sort();
   if (actorUserIds.length >= 2) {
     await acquireNegotiationPairLock(tx, actorUserIds);
+  }
+
+  if (
+    opportunity.status !== input.expectedStatus
+    || !NEGOTIATION_START_STATUSES.has(opportunity.status)
+    || opportunity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+  ) {
+    return null;
+  }
+
+  if (actorUserIds.length >= 2) {
     const [pairTask] = await tx
       .select({ id: schema.tasks.id })
       .from(schema.tasks)
@@ -135,6 +152,19 @@ export async function createNegotiationTaskForAttemptInTransaction(
     .where(qualifyingNegotiationAttemptTaskWhere(input.opportunityId, input.expectedUpdatedAt))
     .limit(1);
   if (qualifyingTask) return null;
+
+  if (opportunity.status !== 'negotiating') {
+    const [promoted] = await tx
+      .update(opportunities)
+      .set({ status: 'negotiating', updatedAt: new Date() })
+      .where(and(
+        eq(opportunities.id, input.opportunityId),
+        eq(opportunities.status, input.expectedStatus),
+        eq(opportunities.updatedAt, input.expectedUpdatedAt),
+      ))
+      .returning({ id: opportunities.id });
+    if (!promoted) return null;
+  }
 
   const [task] = await tx
     .insert(schema.tasks)

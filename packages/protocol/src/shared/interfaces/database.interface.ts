@@ -2514,13 +2514,14 @@ export type NegotiationGraphDatabase = Pick<
   }): Promise<{ id: string; senderId: string; role: 'user' | 'agent'; parts: unknown; createdAt: Date }>;
 
   /**
-   * Atomically claims an exact persisted opportunity attempt and creates its
-   * negotiation task. Returns null when the status/version is stale or another
-   * qualifying task already owns the attempt.
+   * Atomically claims an exact persisted opportunity attempt, promotes it to
+   * negotiating, and creates its task. Returns null when the status/version is
+   * stale or another qualifying task already owns the attempt.
    */
   createNegotiationTaskForAttempt(input: {
     conversationId: string;
     opportunityId: string;
+    expectedStatus: OpportunityStatus;
     expectedUpdatedAt: Date;
     metadata: Record<string, unknown>;
   }): Promise<{ id: string; conversationId: string; state: string } | null>;
