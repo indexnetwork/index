@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -69,6 +70,38 @@ describe("GuidedSignalIntake shared renderer", () => {
     mocks.chat.messages = [];
     mocks.chat.liveQuestions = [];
     mocks.chat.isLoading = false;
+  });
+
+  test("waits for a committed reset before kicking off with the fresh unscoped session", async () => {
+    const kickoff = vi.fn(async (_sessionId: string | null, _scopeId: string | null) => undefined);
+
+    function StaleSessionHarness() {
+      const [sessionId, setSessionId] = useState<string | null>("stale-signal-session");
+      const [scopeId, setScopeId] = useState<string | null>("stale-network-scope");
+      const prepareSession = useCallback(() => {
+        setSessionId(null);
+        setScopeId(null);
+      }, []);
+      const sendKickoff = useCallback(
+        () => kickoff(sessionId, scopeId),
+        [scopeId, sessionId],
+      );
+
+      return (
+        <GuidedSignalIntake
+          prepareSession={prepareSession}
+          sendKickoff={sendKickoff}
+          sendFollowup={async () => undefined}
+          onConfirmed={async () => undefined}
+        />
+      );
+    }
+
+    renderWithRouter(<StaleSessionHarness />);
+
+    await waitFor(() => expect(kickoff).toHaveBeenCalledWith(null, null));
+    expect(kickoff).toHaveBeenCalledTimes(1);
+    expect(kickoff).not.toHaveBeenCalledWith("stale-signal-session", "stale-network-scope");
   });
 
   test("runs the shared kickoff and renders the live question round", async () => {

@@ -391,7 +391,34 @@ describe("onboarding privacy profile tools", () => {
     expect(updateUser).not.toHaveBeenCalled();
   });
 
-  it("completes onboarding for the exact active first signal and preserves privacy state", async () => {
+  it("rejects an old active intent supplied as the browser recovery ID", async () => {
+    const tool = tools.find((t) => t.name === "complete_onboarding")!;
+    onboarding = {
+      profileConfirmedAt: "2026-05-29T00:05:00.000Z",
+      currentStep: "first_signal",
+    };
+    activeIntents = [{ id: "intent-old", payload: "An older signal", summary: null, createdAt: new Date("2026-05-29T00:00:00.000Z") }];
+
+    const result = parseToolResult(await tool.handler({ context: context(), query: { intentId: "intent-old" } }));
+
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain("created before profile confirmation");
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the durable profile confirmation timestamp is invalid", async () => {
+    const tool = tools.find((t) => t.name === "complete_onboarding")!;
+    onboarding = { profileConfirmedAt: "not-a-timestamp", currentStep: "first_signal" };
+    activeIntents = [{ id: "intent-1", payload: "Looking for collaborators", summary: null, createdAt: new Date("2026-05-29T00:10:00.000Z") }];
+
+    const result = parseToolResult(await tool.handler({ context: context(), query: { intentId: "intent-1" } }));
+
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain("timestamp is invalid");
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it("completes onboarding for the exact post-confirmation first signal and preserves privacy state", async () => {
     const tool = tools.find((t) => t.name === "complete_onboarding")!;
     onboarding = {
       profileConfirmedAt: "2026-05-29T00:00:00.000Z",
@@ -404,7 +431,7 @@ describe("onboarding privacy profile tools", () => {
         },
       },
     };
-    activeIntents = [{ id: "intent-1", payload: "Looking for collaborators", summary: null, createdAt: new Date("2026-05-29T00:00:00.000Z") }];
+    activeIntents = [{ id: "intent-1", payload: "Looking for collaborators", summary: null, createdAt: new Date("2026-05-29T00:01:00.000Z") }];
 
     const result = parseToolResult(await tool.handler({ context: context(), query: { intentId: "intent-1" } }));
 
@@ -420,6 +447,21 @@ describe("onboarding privacy profile tools", () => {
     expect(retry.data?.intentId).toBe("intent-1");
     expect(retry.data?.completedAt).toBe(onboarding?.completedAt);
     expect(updateUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("legacy completion without an ID selects an eligible post-confirmation active intent", async () => {
+    const tool = tools.find((t) => t.name === "complete_onboarding")!;
+    onboarding = { profileConfirmedAt: "2026-05-29T00:05:00.000Z", currentStep: "first_signal" };
+    activeIntents = [
+      { id: "intent-old", payload: "An older signal", summary: null, createdAt: new Date("2026-05-29T00:00:00.000Z") },
+      { id: "intent-new", payload: "A new signal", summary: null, createdAt: new Date("2026-05-29T00:06:00.000Z") },
+    ];
+
+    const result = parseToolResult(await tool.handler({ context: context(), query: {} }));
+
+    expect(result.success).toBe(true);
+    expect(result.data?.intentId).toBe("intent-new");
+    expect(onboarding?.firstSignalIntentId).toBe("intent-new");
   });
 
   it("refuses a different or inactive first-signal ID", async () => {

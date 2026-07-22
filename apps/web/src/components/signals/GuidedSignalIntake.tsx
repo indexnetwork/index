@@ -271,6 +271,8 @@ export function GuidedSignalIntake({
   const [confirmedIntentId, setConfirmedIntentId] = useState<string | null>(resumeIntentId ?? null);
   const [skipped, setSkipped] = useState(false);
   const startedRef = useRef(false);
+  const preparedKickoffRef = useRef(0);
+  const [kickoffGeneration, setKickoffGeneration] = useState(0);
   const resumeAttemptedRef = useRef(false);
 
   const startKickoff = useCallback(() => {
@@ -278,6 +280,19 @@ export function GuidedSignalIntake({
     startedRef.current = true;
     setKickoffError(null);
     prepareSession();
+    // Deliberately schedule the send for the next committed render. The chat
+    // reset above changes session/scope state, so invoking this render's
+    // sendKickoff closure immediately could still carry the previous session.
+    setKickoffGeneration((current) => current + 1);
+  }, [prepareSession, resumeIntentId]);
+
+  useEffect(() => {
+    startKickoff();
+  }, [startKickoff]);
+
+  useEffect(() => {
+    if (kickoffGeneration === 0 || preparedKickoffRef.current === kickoffGeneration) return;
+    preparedKickoffRef.current = kickoffGeneration;
     void sendKickoff().catch((error) => {
       startedRef.current = false;
       setKickoffError(isAuthSessionError(error)
@@ -285,11 +300,7 @@ export function GuidedSignalIntake({
         : "We couldn't start your signal. Please try again.");
       onKickoffError?.(error);
     });
-  }, [onKickoffError, prepareSession, resumeIntentId, sendKickoff]);
-
-  useEffect(() => {
-    startKickoff();
-  }, [startKickoff]);
+  }, [kickoffGeneration, onKickoffError, sendKickoff]);
 
   const answeredIds = useMemo(() => new Set(answered.map((step) => step.question.id)), [answered]);
   const currentQuestion = liveQuestions.find((question) => !answeredIds.has(question.id)) ?? null;

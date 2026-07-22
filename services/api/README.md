@@ -39,7 +39,7 @@ tests are opt-in via `RUN_PAID_INTEGRATION_TESTS=1`,
 
 ## Web onboarding chat boundary
 
-`POST /api/chat/onboarding/stream` is session-only and reloads the authoritative user before every turn. With `WEB_SIGNAL_AGENT_ENABLED=true`, it persists the restricted `onboarding` persona and rejects spoofed, mismatched, unknown, or completed-user access; flag off retains the legacy orchestrator flow. `POST /api/tools/complete_onboarding` accepts an optional exact first-signal `intentId`, validates the durable profile-approval marker and active owned signal, and awaits the `users.onboarding` completion write.
+`POST /api/chat/onboarding/stream` is session-only and reloads the authoritative user before every turn. With `WEB_SIGNAL_AGENT_ENABLED=true`, it persists the restricted `onboarding` persona and rejects spoofed, mismatched, unknown, or completed-user access; flag off retains the legacy orchestrator flow. `POST /api/tools/complete_onboarding` accepts an optional exact first-signal `intentId`, validates a durable profile-approval timestamp and an active owned signal created at or after it, and awaits the `users.onboarding` completion write.
 
 ## More
 

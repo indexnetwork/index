@@ -3310,7 +3310,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `confirm_user_context` | Profile | Save an approved profile draft or explicit correction text and stamp `profileConfirmedAt` |
 | `create_user_profile` | Profile | Legacy/generic profile generation from social links or bio |
 | `update_user_profile` | Profile | Update profile details or merge reachable social handles |
-| `complete_onboarding` | Profile | Validate durable profile approval plus an active first signal; optional `intentId` pins the exact signal and records the completion handoff |
+| `complete_onboarding` | Profile | Validate a durable profile-approval timestamp plus an active first signal created at or after it; optional `intentId` pins the exact eligible signal and records the completion handoff |
 | `read_intents` | Intent | List user's intents with optional filters |
 | `create_intent` | Intent | Create a new intent from natural language |
 | `update_intent` | Intent | Update an intent (runs full graph pipeline) |

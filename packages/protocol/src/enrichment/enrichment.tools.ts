@@ -1245,8 +1245,8 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
   const completeOnboarding = defineTool({
     name: "complete_onboarding",
     description:
-      "Marks the user's onboarding as complete after validating the durable approved-profile marker and a persisted active first signal. " +
-      "Web onboarding should pass the exact intentId returned by /intents/confirm; legacy clients may omit it and use any active intent. " +
+      "Marks the user's onboarding as complete after validating the durable approved-profile marker and a persisted active first signal created at or after that approval. " +
+      "Web onboarding should pass the exact intentId returned by /intents/confirm; legacy clients may omit it and use any eligible active intent. " +
       "This preserves privacy fields, records firstSignalIntentId/currentStep, and is idempotent.",
     querySchema: z.object({
       intentId: z.string().min(1).optional().describe("Exact first-signal ID returned by the confirmation endpoint."),
@@ -1268,15 +1268,26 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (!currentOnboarding.profileConfirmedAt) {
         return error("Onboarding cannot be completed until the user has a confirmed profile. Show the profile draft, get explicit approval, then save it before finishing onboarding.");
       }
+      const profileConfirmedAtMs = Date.parse(currentOnboarding.profileConfirmedAt);
+      if (!Number.isFinite(profileConfirmedAtMs)) {
+        return error("Onboarding cannot be completed because the durable profile confirmation timestamp is invalid. Confirm the approved profile again before finishing onboarding.");
+      }
 
       const activeIntents = await userDb.getActiveIntents();
+      const isEligibleFirstSignal = (intent: (typeof activeIntents)[number]) => {
+        const createdAtMs = intent.createdAt.getTime();
+        return Number.isFinite(createdAtMs) && createdAtMs >= profileConfirmedAtMs;
+      };
       const firstSignal = query.intentId
         ? activeIntents.find((intent) => intent.id === query.intentId)
-        : activeIntents[0];
+        : activeIntents.find(isEligibleFirstSignal);
       if (!firstSignal) {
         return error(query.intentId
           ? "Onboarding cannot be completed because the confirmed first signal is not active for this user."
-          : "Onboarding cannot be completed until the user has at least one active intent. Ask what they are open to right now and create the first signal before finishing onboarding.");
+          : "Onboarding cannot be completed until the user has at least one active intent created after profile confirmation. Ask what they are open to right now and create the first signal before finishing onboarding.");
+      }
+      if (!isEligibleFirstSignal(firstSignal)) {
+        return error("Onboarding cannot be completed because the selected first signal was created before profile confirmation. Create and confirm a new signal before finishing onboarding.");
       }
 
       const completedAt = new Date().toISOString();
