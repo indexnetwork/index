@@ -19,6 +19,8 @@
 .ovw section{margin-top:34px;}
 .ovw p.t{font-size:15px;line-height:1.62;}
 .ovw p.t + p.t{margin-top:9px;}
+.ovw p.t a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--muted);text-decoration-thickness:1px;text-underline-offset:2px;transition:text-decoration-color .15s;}
+.ovw p.t a:hover{text-decoration-color:var(--ink);}
 
 .ovw ul.b{list-style:none;margin-top:9px;}
 .ovw ul.b li{font-size:15px;line-height:1.62;padding-left:18px;position:relative;margin-bottom:11px;}
