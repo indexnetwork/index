@@ -99,6 +99,12 @@ All error responses follow a consistent JSON format:
 
 ---
 
+## Agent reporter opening briefings
+
+`POST /api/chat/reporter/session` is session-authenticated and available only while `WEB_AGENT_SURFACE_ENABLED=true`. It accepts the strict body `{ "forceNew"?: boolean }` and returns `{ session, created }`. The server serializes each user's claim, reuses the newest reporter session whose creation time is within `REPORTER_BRIEFING_TTL_MS` (24 hours by default), and creates a successor otherwise. Only `created: true` authorizes the client to send the hidden opening-briefing marker. `forceNew: true` is used by the explicit Reporter **New conversation** action; callers cannot select another persona through this route.
+
+Expiry is lazy: stale reporter sessions and their user follow-ups remain readable in ordinary session-only web history, but follow-up activity does not extend freshness because the resolver uses `createdAt`, not `updatedAt`.
+
 ## Agent reporter cleanup actions
 
 The dark-shipped reporter action path is gated by `WEB_AGENT_ACTIONS_ENABLED=true` and the reporter surface flag. The proposal tool persists owner-scoped, full-UUID action plans; chat never mutates domain rows. The endpoint below is session-only and returns `404` while the action flag is off.

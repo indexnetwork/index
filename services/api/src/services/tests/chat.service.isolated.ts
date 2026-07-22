@@ -141,6 +141,10 @@ function createMockDb(overrides: Partial<MockDb> = {}): MockDb {
     updateChatSessionScope: mock(() => Promise.resolve()),
     updateChatSessionTitle: mock(() => Promise.resolve()),
     getChatSessionByScope: mock(() => Promise.resolve(null)),
+    resolveReporterChatSession: mock(() => Promise.resolve({
+      session: makeSession({ persona: 'reporter' }),
+      created: false,
+    })),
     deleteChatSession: mock(() => Promise.resolve()),
     setChatShareToken: mock(() => Promise.resolve()),
     getChatSessionByShareToken: mock(() => Promise.resolve(null)),
@@ -155,6 +159,34 @@ function createMockDb(overrides: Partial<MockDb> = {}): MockDb {
 }
 
 // ─── createSession ────────────────────────────────────────────────────────────
+
+describe("ChatSessionService.resolveReporterSession", () => {
+  it("passes a creation-time cutoff and explicit force claim to the atomic adapter", async () => {
+    const now = new Date("2026-07-22T12:00:00.000Z");
+    const reporter = makeSession({ persona: "reporter", createdAt: now });
+    const resolveReporterChatSession = mock(() => Promise.resolve({
+      session: reporter,
+      created: true,
+    }));
+    const db = createMockDb({ resolveReporterChatSession });
+    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter, {
+      graphDatabase: graphDatabase as never,
+      now: () => now,
+      reporterBriefingTtlMs: () => 60_000,
+    });
+
+    const result = await svc.resolveReporterSession(USER_ID, true);
+
+    expect(result).toEqual({ session: reporter, created: true });
+    expect(resolveReporterChatSession).toHaveBeenCalledTimes(1);
+    expect(resolveReporterChatSession).toHaveBeenCalledWith({
+      id: expect.any(String),
+      userId: USER_ID,
+      freshAfter: new Date("2026-07-22T11:59:00.000Z"),
+      forceNew: true,
+    });
+  });
+});
 
 describe("ChatSessionService.resolveSessionForScope", () => {
   it("recovers the winning Signal session after a Drizzle-wrapped 23505", async () => {

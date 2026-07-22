@@ -12,6 +12,7 @@ import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
+import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
@@ -100,6 +101,10 @@ function getSuggestionGenerator(): SuggestionGenerator {
 const negotiatorSessionBodySchema = z.object({
   intentId: z.string().min(1).nullish(),
 });
+
+const reporterSessionBodySchema = z.object({
+  forceNew: z.boolean().optional(),
+}).strict();
 
 const resolveSessionBodySchema = z.object({
   scopeType: z.enum(['intent']),
@@ -872,6 +877,48 @@ export class ChatController {
       created: result.created,
       agent: { id: agent.id, name: agent.name, description: agent.description },
     });
+  }
+
+  /**
+   * Resolve the current Reporter opening briefing for the authenticated web session.
+   *
+   * The route never accepts a persona. It returns the adapter's atomic creation
+   * claim so only one tab sends the hidden opening marker. `forceNew` is reserved
+   * for the explicit New conversation action and bypasses normal TTL reuse.
+   *
+   * @param req - Body `{ forceNew?: boolean }`
+   * @param user - Session-authenticated user
+   * @returns The authoritative reporter session and creation claim
+   */
+  @Post("/reporter/session")
+  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  async reporterSession(req: Request, user: AuthenticatedUser) {
+    if (!isAgentSurfaceEnabled()) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+
+    let body: z.infer<typeof reporterSessionBodySchema>;
+    try {
+      const parsed = reporterSessionBodySchema.safeParse(await req.json());
+      if (!parsed.success) {
+        return Response.json(
+          { error: "Invalid request body. Expected { forceNew?: boolean }" },
+          { status: 400 },
+        );
+      }
+      body = parsed.data;
+    } catch {
+      return Response.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 },
+      );
+    }
+
+    const result = await chatSessionService.resolveReporterSession(
+      user.id,
+      body.forceNew ?? false,
+    );
+    return Response.json(result);
   }
 
   /**

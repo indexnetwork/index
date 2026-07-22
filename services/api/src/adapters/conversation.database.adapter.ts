@@ -1,4 +1,4 @@
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
@@ -6,6 +6,7 @@ import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNe
 const ORCHESTRATOR_PERSONA = 'orchestrator';
 const SIGNAL_PERSONA = 'signal';
 const NEGOTIATOR_PERSONA = 'negotiator';
+const REPORTER_PERSONA = 'reporter';
 
 /** Persona-specific registry key for Signal Agent's canonical intent scope. */
 const SIGNAL_INTENT_SCOPE_TYPE = 'signal-intent';
@@ -1957,6 +1958,72 @@ export class ConversationDatabaseAdapter {
         });
       }
     });
+  }
+
+  /**
+   * Atomically reuse the newest fresh reporter briefing or create its successor.
+   *
+   * A transaction-scoped per-user advisory lock serializes browser reloads and
+   * tabs before the freshness read. Expiry is lazy and creation-time based;
+   * old reporter rows are never deleted or hidden.
+   *
+   * @param data - Owner, candidate ID, stable freshness cutoff, and force-new flag
+   * @returns The authoritative reporter session and sole creation claim
+   */
+  async resolveReporterChatSession(data: {
+    id: string;
+    userId: string;
+    freshAfter: Date;
+    forceNew?: boolean;
+  }): Promise<{ session: ChatSession; created: boolean }> {
+    const resolved = await db.transaction(async (tx) => {
+      const lockName = `reporter-briefing:${data.userId}`;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}, 0))`);
+
+      if (!data.forceNew) {
+        const chatSessionIds = tx
+          .select({ conversationId: schema.conversationParticipants.conversationId })
+          .from(schema.conversationParticipants)
+          .where(and(
+            eq(schema.conversationParticipants.participantId, SYSTEM_AGENT_ID),
+            eq(schema.conversationParticipants.participantType, 'agent'),
+          ));
+        const [fresh] = await tx
+          .select({ id: schema.conversations.id })
+          .from(schema.conversationParticipants)
+          .innerJoin(
+            schema.conversations,
+            eq(schema.conversationParticipants.conversationId, schema.conversations.id),
+          )
+          .where(and(
+            eq(schema.conversationParticipants.participantId, data.userId),
+            eq(schema.conversationParticipants.participantType, 'user'),
+            inArray(schema.conversations.id, chatSessionIds),
+            eq(schema.conversations.persona, REPORTER_PERSONA),
+            gte(schema.conversations.createdAt, data.freshAfter),
+          ))
+          .orderBy(desc(schema.conversations.createdAt))
+          .limit(1);
+        if (fresh) return { id: fresh.id, created: false };
+      }
+
+      const now = new Date();
+      await tx.insert(schema.conversations).values({
+        id: data.id,
+        persona: REPORTER_PERSONA,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
+        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
+      ]);
+      return { id: data.id, created: true };
+    });
+
+    const session = await this.getChatSession(resolved.id);
+    if (!session) throw new Error('Reporter session claim could not be loaded');
+    return { session, created: resolved.created };
   }
 
   /**

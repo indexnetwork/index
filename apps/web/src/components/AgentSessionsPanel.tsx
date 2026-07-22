@@ -4,6 +4,7 @@ import { Plus, BotMessageSquare } from 'lucide-react';
 
 import { apiClient } from '@/lib/api';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useAIChat } from '@/contexts/AIChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -31,6 +32,7 @@ export default function AgentSessionsPanel() {
   const { pathname } = useLocation();
   const { user, features } = useAuthContext();
   const { sessionsVersion } = useAIChatSessions();
+  const { startReporterSession } = useAIChat();
   const { indexes } = useNetworksState();
   const { error } = useNotifications();
 
@@ -38,6 +40,8 @@ export default function AgentSessionsPanel() {
   const [loadingSessions, setLoadingSessions] = useState(false);
 
   const negotiatorEnabled = features?.negotiatorChat === true;
+  const reporterEnabled = features?.agentSurface === true;
+  const [openingReporter, setOpeningReporter] = useState(false);
   const [negotiatorSession, setNegotiatorSession] = useState<{ id: string; title: string | null } | null>(null);
   const [openingNegotiator, setOpeningNegotiator] = useState(false);
 
@@ -96,7 +100,9 @@ export default function AgentSessionsPanel() {
     const fetchSessions = async () => {
       try {
         if (isInitialLoad) setLoadingSessions(true);
-        const data = await apiClient.get<{ sessions: ChatSession[] }>('/chat/sessions');
+        // Session-authenticated web history keeps legacy, Signal, and Reporter
+        // conversations readable even when a persona flag is rolled back.
+        const data = await apiClient.get<{ sessions: ChatSession[] }>('/chat/web/sessions');
         setChatSessions(data.sessions.slice(0, 20));
       } catch (err) {
         logger.error('Failed to fetch chat sessions', { error: err });
@@ -107,12 +113,37 @@ export default function AgentSessionsPanel() {
     fetchSessions();
   }, [sessionsVersion, user?.id]);
 
+  const handleNewConversation = async () => {
+    if (!reporterEnabled) {
+      navigate('/agent');
+      return;
+    }
+    if (openingReporter) return;
+
+    setOpeningReporter(true);
+    const started = startReporterSession({ forceNew: true });
+    // Navigation is immediate; AgentReporterSurface coalesces its mount call
+    // with this in-flight reporter start instead of claiming a second session.
+    navigate('/agent');
+    try {
+      if (!(await started)) error('Failed to start a fresh Agent briefing');
+    } catch (err) {
+      logger.error('Failed to start reporter conversation', { error: err });
+      error('Failed to start a fresh Agent briefing');
+    } finally {
+      setOpeningReporter(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 px-4 py-4 border-b border-gray-100">
         <button
-          onClick={() => navigate('/agent')}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-black hover:bg-gray-50 transition-colors border border-gray-200"
+          onClick={() => void handleNewConversation()}
+          disabled={openingReporter}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-black hover:bg-gray-50 transition-colors border border-gray-200 ${
+            openingReporter ? 'opacity-50 cursor-wait' : ''
+          }`}
         >
           <Plus className="w-4 h-4" />
           New conversation

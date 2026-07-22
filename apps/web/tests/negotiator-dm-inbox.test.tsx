@@ -1112,6 +1112,7 @@ describe('Read-only surface header (IND-476)', () => {
     mocks.chat.sessionPersona = 'reporter';
 
     renderWithRouter(<ChatContent persona="reporter" readOnlySurface />, { route: '/agent' });
+    expect(mocks.chat.clearChat).not.toHaveBeenCalled();
     const input = screen.getByTestId('chat-input');
     fireEvent.change(input, { target: { value: "What's waiting on me?" } });
     fireEvent.submit(input.closest('form')!);

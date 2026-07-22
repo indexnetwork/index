@@ -28,6 +28,7 @@ const requiredUnlessTest = isTest ? z.string().optional() : z.string().trim().mi
 const requiredInProduction = isTest || runtimeEnvironment !== 'production' ? z.string().optional() : z.string().trim().min(1);
 const optionalUrl = z.union([z.literal(''), z.string().url()]).optional();
 const optionalInt = z.union([z.literal(''), z.string().regex(/^\d+$/)]).optional();
+const optionalPositiveInt = z.union([z.literal(''), z.string().regex(/^[1-9]\d*$/)]).optional();
 const optionalBoolean = z.union([z.literal(''), z.enum(['true', 'false'])]).optional();
 const optionalOne = z.union([z.literal(''), z.literal('1')]).optional();
 
@@ -108,6 +109,7 @@ const envSchema = z.object({
   NEGOTIATOR_CHAT_ENABLED: optionalBoolean,
   WEB_SIGNAL_AGENT_ENABLED: optionalBoolean,
   WEB_AGENT_SURFACE_ENABLED: optionalBoolean,
+  REPORTER_BRIEFING_TTL_MS: optionalPositiveInt,
   WEB_AGENT_ACTIONS_ENABLED: optionalBoolean,
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),

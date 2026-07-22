@@ -110,7 +110,8 @@ function Probe() {
       <button onClick={() => chat.clearChat()}>clear</button>
       <button onClick={() => chat.clearChat({ abortStream: false })}>clear detached</button>
       <button onClick={() => chat.startSignalSession()}>start signal</button>
-      <button onClick={() => chat.startReporterSession()}>start reporter</button>
+      <button onClick={() => void chat.startReporterSession()}>start reporter</button>
+      <button onClick={() => void chat.startReporterSession({ forceNew: true })}>new reporter</button>
       <button onClick={() => void chat.sendWebMessage('reporter message')}>reporter message</button>
       <button onClick={() => void chat.loadSession('session-a')}>load a</button>
       <button onClick={() => void chat.loadSession('session-b')}>load b</button>
@@ -188,22 +189,92 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(mocks.apiClient.stream.mock.calls[2]?.[0]).toBe('/chat/stream');
   });
 
-  test('reporter sessions resolve on the web route and forced sends use web transport', async () => {
-    mocks.apiClient.post.mockResolvedValueOnce({ session: { id: 'reporter-scope' } });
-    mocks.apiClient.stream.mockResolvedValueOnce(streamResponse({ sessionId: 'reporter-session', persona: 'reporter' }));
+  test('a newly claimed reporter session loads first and sends exactly one bound kickoff', async () => {
+    mocks.apiClient.post
+      .mockResolvedValueOnce({ session: { id: 'reporter-session' }, created: true })
+      .mockResolvedValueOnce(sessionResponse('reporter-session', 'persisted', 'reporter'));
+    mocks.apiClient.stream.mockResolvedValueOnce(streamResponse({
+      sessionId: 'reporter-session',
+      persona: 'reporter',
+      response: 'fresh briefing',
+    }));
 
     renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'resolve reporter' }));
-    await waitFor(() => expect(mocks.apiClient.post).toHaveBeenCalledWith(
-      '/chat/web/session/resolve',
-      expect.objectContaining({ persona: 'reporter' }),
-    ));
-
     fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
-    fireEvent.click(screen.getByRole('button', { name: 'reporter message' }));
-    await waitFor(() => expect(text('session')).toBe('reporter-session'));
+
+    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1));
+    expect(mocks.apiClient.post.mock.calls[0]).toEqual([
+      '/chat/reporter/session',
+      { forceNew: false },
+    ]);
+    expect(mocks.apiClient.post.mock.calls[1]).toEqual([
+      '/chat/web/session',
+      { sessionId: 'reporter-session' },
+    ]);
     expect(mocks.apiClient.stream.mock.calls[0]?.[0]).toBe('/chat/web/stream');
-    expect(mocks.apiClient.stream.mock.calls[0]?.[1]).toMatchObject({ persona: 'reporter' });
+    expect(mocks.apiClient.stream.mock.calls[0]?.[1]).toMatchObject({
+      message: 'reporter-briefing-kickoff',
+      sessionId: 'reporter-session',
+      persona: 'reporter',
+    });
+    await waitFor(() => expect(text('session')).toBe('reporter-session'));
+  });
+
+  test('a within-TTL reporter session hydrates persisted messages without a kickoff', async () => {
+    mocks.apiClient.post
+      .mockResolvedValueOnce({ session: { id: 'reporter-existing' }, created: false })
+      .mockResolvedValueOnce(sessionResponse('reporter-existing', 'saved follow-up', 'reporter'));
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
+
+    await waitFor(() => expect(text('session')).toBe('reporter-existing'));
+    expect(text('messages')).toBe('saved follow-up');
+    expect(mocks.apiClient.stream).not.toHaveBeenCalled();
+  });
+
+  test('force-new aborts the old briefing and quarantines its late response', async () => {
+    const oldBriefing = deferred<Response>();
+    mocks.apiClient.post
+      .mockResolvedValueOnce({ session: { id: 'reporter-old' }, created: true })
+      .mockResolvedValueOnce(sessionResponse('reporter-old', 'old persisted', 'reporter'))
+      .mockResolvedValueOnce({ session: { id: 'reporter-fresh' }, created: true })
+      .mockResolvedValueOnce(sessionResponse('reporter-fresh', 'fresh persisted', 'reporter'));
+    mocks.apiClient.stream
+      .mockReturnValueOnce(oldBriefing.promise)
+      .mockResolvedValueOnce(streamResponse({
+        sessionId: 'reporter-fresh',
+        persona: 'reporter',
+        response: 'fresh briefing',
+      }));
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
+    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1));
+    const oldSignal = (mocks.apiClient.stream.mock.calls[0]?.[2] as { signal: AbortSignal }).signal;
+
+    fireEvent.click(screen.getByRole('button', { name: 'new reporter' }));
+    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(2));
+    expect(oldSignal.aborted).toBe(true);
+    expect(mocks.apiClient.post.mock.calls[2]).toEqual([
+      '/chat/reporter/session',
+      { forceNew: true },
+    ]);
+    await waitFor(() => expect(text('session')).toBe('reporter-fresh'));
+
+    await act(async () => {
+      oldBriefing.resolve(streamResponse({
+        sessionId: 'reporter-old',
+        persona: 'reporter',
+        response: 'late old briefing',
+      }));
+      await oldBriefing.promise;
+    });
+
+    expect(text('session')).toBe('reporter-fresh');
+    expect(text('messages')).toContain('fresh briefing');
+    expect(text('messages')).not.toContain('late old briefing');
+    expect(text('loading')).toBe('no');
   });
 
   test('preserves a message submitted before the first web session id arrives', async () => {

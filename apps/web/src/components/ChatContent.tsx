@@ -518,14 +518,15 @@ export default function ChatContent({
   }, [sessionIdFromUrl, routedSessionReady, sessionLoadState, loadSession]);
 
   useLayoutEffect(() => {
-    if (sessionIdFromUrl) return;
+    if (sessionIdFromUrl || persona === "reporter") return;
     navigatingToHomeRef.current = true;
     // Don't abort in-flight stream so the new session can finish and appear in the sidebar.
+    // The reporter surface owns a stronger abort-and-resolve boundary in AIChatContext.
     // Preserve a continuation's one-shot forced Signal persona across route cleanup.
     clearChat({ abortStream: false, preserveForcedPersona: true });
     setChatScope(null);
     setSelectedNetworkIds([]);
-  }, [sessionIdFromUrl, clearChat, setChatScope, setSelectedNetworkIds]);
+  }, [sessionIdFromUrl, persona, clearChat, setChatScope, setSelectedNetworkIds]);
 
 
   useEffect(() => {
