@@ -4,7 +4,7 @@ import { Type } from "typebox";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { BlockedQuestionBridge, canonicalizeEvent, claimOutstanding, discardEvent, formatAttachment, isDedicatedRootLabel, outstandingCount, parseHerdrResult, prepareAttachment, publishEvent, resolveLiveTopology, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, type IndexTarget, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance, type PublishStatus } from "./orchestration-bridge.core";
+import { BlockedQuestionBridge, canonicalizeEvent, claimOutstanding, discardEvent, formatAttachment, isDedicatedRootLabel, outstandingCount, parseHerdrResult, prepareAttachment, publishEvent, resolveLiveTopology, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, type IndexTarget, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance, type PublishStatus } from "./core";
 
 const INBOX_WIDGET = "orchestration-inbox";
 const CUSTOM_TYPE = "orchestrator-event";
