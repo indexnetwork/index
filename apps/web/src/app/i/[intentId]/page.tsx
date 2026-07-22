@@ -1002,7 +1002,7 @@ export default function IntentDetailPage() {
                   className={cn(
                     "fixed inset-y-0 right-0 z-[100] flex w-[min(85vw,24rem)] flex-col overflow-y-auto bg-white p-4 shadow-xl outline-none",
                     "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-                    "data-[state=closed]:pointer-events-none data-[state=closed]:invisible data-[state=closed]:translate-x-full",
+                    "max-lg:data-[state=closed]:pointer-events-none max-lg:data-[state=closed]:invisible max-lg:data-[state=closed]:translate-x-full",
                     "lg:static lg:z-auto lg:min-h-0 lg:min-w-0 lg:w-auto lg:flex-1 lg:translate-x-0 lg:visible lg:pointer-events-auto lg:overflow-visible lg:bg-transparent lg:p-0 lg:shadow-none",
                   )}
                 >
