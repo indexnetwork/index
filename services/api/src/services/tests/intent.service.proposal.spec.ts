@@ -27,6 +27,7 @@ function makeHarness(
   result: 'created' | 'existing' | 'membership_required' = 'created',
   committedReplay = false,
   isMember = true,
+  questionerThrows = false,
 ) {
   const getIntentBySourceId = mock(async () => committedReplay
     ? { id: INTENT_ID, archivedAt: null }
@@ -42,7 +43,11 @@ function makeHarness(
     return { kind: 'created' as const, intent: createdIntent() };
   });
   const generate = mock(async () => [0.5, 0.5]);
+  const getUserContext = mock(async () => ({ text: 'Climate founder operator' }));
   const addGenerateHydeJob = mock(async () => 'job-id');
+  const questionerEnqueue = mock(async () => {
+    if (questionerThrows) throw new Error('questioner unavailable');
+  });
   const emitProposalCreated = mock(() => {});
 
   const service = new IntentService({
@@ -50,9 +55,11 @@ function makeHarness(
       getIntentBySourceId,
       isNetworkMember,
       confirmProposalIntent,
+      getUserContext,
     } as unknown as IntentDatabaseAdapter,
     embedder: { generate } as unknown as EmbedderAdapter,
     proposalQueue: { addGenerateHydeJob } as never,
+    questionerEnqueue,
     emitProposalCreated,
   });
 
@@ -63,7 +70,9 @@ function makeHarness(
       isNetworkMember,
       confirmProposalIntent,
       generate,
+      getUserContext,
       addGenerateHydeJob,
+      questionerEnqueue,
       emitProposalCreated,
     },
   };
@@ -93,6 +102,19 @@ describe('IntentService.createFromProposal atomic confirmation', () => {
       scopeType: 'network',
       scopeId: NETWORK_ID,
     });
+    expect(harness.calls.questionerEnqueue).toHaveBeenCalledWith({
+      mode: 'intent',
+      userId: USER_ID,
+      sourceType: 'intent',
+      sourceId: INTENT_ID,
+      scopeType: 'network',
+      scopeId: NETWORK_ID,
+      context: {
+        intentId: INTENT_ID,
+        payload: 'Find climate founders',
+        userContext: 'Climate founder operator',
+      },
+    });
     expect(harness.calls.emitProposalCreated).toHaveBeenCalledWith(INTENT_ID, USER_ID);
   });
 
@@ -110,6 +132,7 @@ describe('IntentService.createFromProposal atomic confirmation', () => {
     expect(harness.calls.generate).not.toHaveBeenCalled();
     expect(harness.calls.confirmProposalIntent).not.toHaveBeenCalled();
     expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
+    expect(harness.calls.questionerEnqueue).not.toHaveBeenCalled();
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
   });
 
@@ -127,6 +150,7 @@ describe('IntentService.createFromProposal atomic confirmation', () => {
     expect(harness.calls.generate).toHaveBeenCalledTimes(1);
     expect(harness.calls.confirmProposalIntent).toHaveBeenCalledTimes(1);
     expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
+    expect(harness.calls.questionerEnqueue).not.toHaveBeenCalled();
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
   });
 
@@ -145,6 +169,17 @@ describe('IntentService.createFromProposal atomic confirmation', () => {
       undefined,
     );
     expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledWith({ intentId: INTENT_ID, userId: USER_ID });
+    expect(harness.calls.questionerEnqueue).toHaveBeenCalledWith({
+      mode: 'intent',
+      userId: USER_ID,
+      sourceType: 'intent',
+      sourceId: INTENT_ID,
+      context: {
+        intentId: INTENT_ID,
+        payload: 'Find climate founders',
+        userContext: 'Climate founder operator',
+      },
+    });
     expect(harness.calls.emitProposalCreated).toHaveBeenCalledWith(INTENT_ID, USER_ID);
   });
 
@@ -164,6 +199,7 @@ describe('IntentService.createFromProposal atomic confirmation', () => {
     expect(harness.calls.generate).not.toHaveBeenCalled();
     expect(harness.calls.confirmProposalIntent).not.toHaveBeenCalled();
     expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
+    expect(harness.calls.questionerEnqueue).not.toHaveBeenCalled();
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
   });
 
@@ -180,7 +216,22 @@ describe('IntentService.createFromProposal atomic confirmation', () => {
     expect(result.id).toBe(INTENT_ID);
     expect(harness.calls.confirmProposalIntent).toHaveBeenCalledTimes(1);
     expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
+    expect(harness.calls.questionerEnqueue).not.toHaveBeenCalled();
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
+  });
+
+  it('logs a refinement enqueue failure without rolling back the confirmed intent', async () => {
+    const harness = makeHarness('created', false, true, true);
+
+    const result = await harness.service.createFromProposal(
+      USER_ID,
+      'Find climate founders',
+      'proposal-questioner-failure',
+    );
+
+    expect(result.id).toBe(INTENT_ID);
+    expect(harness.calls.questionerEnqueue).toHaveBeenCalledTimes(1);
+    expect(harness.calls.emitProposalCreated).toHaveBeenCalledWith(INTENT_ID, USER_ID);
   });
 
   it('lets one concurrent winner enqueue and emit while both calls return the same ID', async () => {

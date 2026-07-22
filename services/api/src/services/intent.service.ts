@@ -1,9 +1,10 @@
 import { log } from '../lib/log';
 import { IntentGraphFactory } from '@indexnetwork/protocol';
-import type { IntentGraphDatabase } from '@indexnetwork/protocol';
+import type { IntentGraphDatabase, QuestionerEnqueueFn } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
+import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { IntentEvents } from '../events/intent.event';
 
 const logger = log.service.from("IntentService");
@@ -36,6 +37,7 @@ export class IntentService {
   private adapter: IntentDatabaseAdapter;
   private embedder: EmbedderAdapter;
   private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+  private questionerEnqueue?: QuestionerEnqueueFn;
   private emitProposalCreated: (intentId: string, userId: string) => void;
 
   /**
@@ -45,14 +47,16 @@ export class IntentService {
     adapter?: IntentDatabaseAdapter;
     embedder?: EmbedderAdapter;
     proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+    questionerEnqueue?: QuestionerEnqueueFn;
     emitProposalCreated?: (intentId: string, userId: string) => void;
   }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.db = this.adapter;
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
     this.proposalQueue = deps?.proposalQueue ?? intentQueue;
+    this.questionerEnqueue = deps?.questionerEnqueue ?? questionerEnqueueIfEnabled();
     this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
-    this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue);
+    this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue, this.questionerEnqueue);
   }
 
   /**
@@ -279,7 +283,7 @@ export class IntentService {
    * Bypasses the full intent graph (no LLM re-inference/verification).
    * Idempotent under concurrent confirmation: the adapter serializes one exact
    * user + proposal pair and returns the transaction winner to every caller.
-   * Generates embedding, inserts into DB, optionally associates with index, and enqueues HyDE job.
+   * Generates embedding, inserts into DB, optionally associates with index, and enqueues HyDE and intent-refinement jobs.
    * Embedder and queue failures are logged but do not abort creation.
    *
    * @param userId - The user ID
@@ -322,14 +326,39 @@ export class IntentService {
     if (confirmation.kind === 'existing') return confirmation.intent;
 
     const created = confirmation.intent;
+    const scope = networkId ? { scopeType: 'network' as const, scopeId: networkId } : {};
     try {
       await this.proposalQueue.addGenerateHydeJob({
         intentId: created.id,
         userId,
-        ...(networkId ? { scopeType: 'network' as const, scopeId: networkId } : {}),
+        ...scope,
       });
     } catch (err) {
       logger.warn('Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
+    }
+
+    if (this.questionerEnqueue) {
+      try {
+        const userContext = (await this.db.getUserContext(userId, null))?.text ?? '';
+        await this.questionerEnqueue({
+          mode: 'intent',
+          userId,
+          sourceType: 'intent',
+          sourceId: created.id,
+          ...scope,
+          context: {
+            intentId: created.id,
+            payload: description,
+            userContext,
+          },
+        });
+      } catch (err) {
+        logger.warn('Failed to enqueue intent question generation', {
+          intentId: created.id,
+          userId,
+          error: err,
+        });
+      }
     }
 
     this.emitProposalCreated(created.id, userId);
