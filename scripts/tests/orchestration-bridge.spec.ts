@@ -43,13 +43,16 @@ afterEach(async () => {
 });
 
 describe("orchestration bridge spool", () => {
-	test("persists a private event once for a stable id", async () => {
+	test("persists structured provenance and durable payload once for a stable id", async () => {
 		const root = await temporaryRoot();
-		const first = await publishEvent(root, event("result-1207"));
-		const second = await publishEvent(root, event("result-1207"));
+		const published = event("result-1207");
+		const first = await publishEvent(root, published);
+		const second = await publishEvent(root, published);
 
 		expect(first).toBe("published");
 		expect(second).toBe("duplicate");
+		const claims = await claimOutstanding(root, "index-session", new Set());
+		expect(claims.map(({ event: claimed }) => claimed)).toEqual([published]);
 		expect(await outstandingCount(root, "index-session")).toBe(1);
 		const mode = (await fs.stat(sessionDirectory(root, "index-session"))).mode & 0o777;
 		expect(mode).toBe(0o700);
@@ -104,7 +107,7 @@ describe("live index target resolution", () => {
 	});
 });
 
-describe("question blocked bridge", () => {
+describe("same-process question blocked bridge", () => {
 	test("balances nested question lifecycles and cleans up abnormal shutdown", () => {
 		const states: Array<{ active: boolean; label?: string }> = [];
 		const bridge = new BlockedQuestionBridge((state) => states.push(state));

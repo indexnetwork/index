@@ -269,7 +269,11 @@ export async function startWakeListener(sessionId: string, onWake: () => void): 
 	};
 }
 
-/** Make one non-blocking, best-effort wake attempt; persistence never depends on it. */
+/**
+ * Cross-process transport is the private spool plus this one local socket wake.
+ * Pi extension events/RPC (including pi-subagents') are same-process only and cannot
+ * cross Herdr panes, so persistence never depends on the wake succeeding.
+ */
 export function wakeOnce(sessionId: string): void {
 	try {
 		const socket = net.createConnection(wakeSocketPath(sessionId));

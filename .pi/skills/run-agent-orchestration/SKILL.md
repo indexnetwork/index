@@ -115,11 +115,22 @@ are neither silently lost nor duplicated.
 
 Herdr 0.7.5 notifications are optional visibility alerts only: `notification.show`
 has no persistent inbox and a disabled toast cannot resume Pi. The bridge is not a
-toast and does not use screen scraping. Project-local extensions load only after the
-project is trusted; after this code is installed or updated, reload both the root and
-`index` Pi sessions so the matching runtime extension is active. Never clear,
-overwrite, or infer safety of a user draft; never focus `index`; and never wait from
-`index`.
+toast and does not use screen scraping. Its structured custom messages carry event
+details, while append-only `orchestration:record` entries reconstruct and dedupe
+acknowledged delivery without parsing rendered text. The inbox is a persistent
+above-editor widget, not an auto-turn.
+
+The `pi-subagents` precedent is intentionally partial: its structured custom renderer,
+widget, and append-only records are reused, but its
+`pi.sendMessage({ deliverAs:"followUp", triggerTurn:true })` is not — that would
+start the parent automatically. Its cross-extension RPC/events, like `pi.events`, are
+same-process only; Herdr roots and `index` are distinct visible Pi processes. The
+private spool plus one local socket wake remains the only cross-process transport, and
+visible Herdr writers are never replaced with hidden subagents. Project-local
+extensions load only after the project is trusted; after this code is installed or
+updated, reload both the root and `index` Pi sessions so the matching runtime extension
+is active. Never clear, overwrite, or infer safety of a user draft; never focus
+`index`; and never wait from `index`.
 
 ## Settled states are not success
 

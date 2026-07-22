@@ -51,8 +51,17 @@ Herdr's installed Pi integration reports `blocked` only from same-process
 `herdr:blocked` events. rpiv `ask_user_question` v2.0.0 emits only
 `rpiv:ask-user:prompt` before awaiting its overlay, so it does not supply that
 lifecycle itself. The project-local bridge listens to Pi tool execution start/end and
-emits the balanced lifecycle independently. Project-local extensions require project
-trust and a reload of both the root and `index` sessions after installation.
+emits the balanced lifecycle independently.
+
+`pi-subagents` is the concrete presentation/persistence precedent: reuse its
+structured custom-message details/renderer, persistent above-editor widget, and
+append-only delivery records. Do **not** reuse its
+`pi.sendMessage({ deliverAs:"followUp", triggerTurn:true })` completion nudge: it
+auto-starts the parent and violates attach-next-turn. Its cross-extension RPC/events
+(and `pi.events`) are same-process only, while Herdr root and `index` are distinct
+visible Pi processes. Cross-process delivery remains the private durable spool plus
+one best-effort local socket wake. Project-local extensions require project trust and
+a reload of both the root and `index` sessions after installation.
 
 ## Settled states and truth
 

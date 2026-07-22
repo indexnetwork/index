@@ -8,7 +8,21 @@ import { BlockedQuestionBridge, claimOutstanding, outstandingCount, parseHerdrRe
 
 const INBOX_WIDGET = "orchestration-inbox";
 const CUSTOM_TYPE = "orchestrator-event";
+const DELIVERY_RECORD_TYPE = "orchestration:record";
 const QUESTION_TOOL = "ask_user_question";
+
+interface OrchestratorMessageDetails {
+	events: OrchestratorEvent[];
+}
+
+interface DeliveryRecord {
+	eventId: string;
+	kind: OrchestratorEventKind;
+	source: OrchestratorProvenance;
+	targetSessionId: string;
+	acknowledgedAt: string;
+	durableResult?: OrchestratorEvent["durableResult"];
+}
 
 interface LiveTopology {
 	index: IndexTarget;
@@ -29,15 +43,50 @@ function eventMessage(event: OrchestratorEvent): string {
 	return `ORCHESTRATOR_EVENT id=${event.id} kind=${event.kind} source=${provenance} timestamp=${event.timestamp}${durable}\n${event.summary}`;
 }
 
-function deliveredEventIds(ctx: ExtensionContext): Set<string> {
-	const ids = new Set<string>();
+function messageEvents(ctx: ExtensionContext): Map<string, OrchestratorEvent> {
+	const events = new Map<string, OrchestratorEvent>();
 	for (const entry of ctx.sessionManager.getEntries()) {
 		if (entry.type !== "custom_message") continue;
-		const custom = entry as unknown as { customType?: unknown; content?: unknown };
-		if (custom.customType !== CUSTOM_TYPE || typeof custom.content !== "string") continue;
-		for (const match of custom.content.matchAll(/\bORCHESTRATOR_EVENT id=([A-Za-z0-9._:-]+)/g)) ids.add(match[1]);
+		const custom = entry as unknown as { customType?: unknown; details?: unknown };
+		if (custom.customType !== CUSTOM_TYPE || typeof custom.details !== "object" || custom.details === null) continue;
+		const values = (custom.details as Partial<OrchestratorMessageDetails>).events;
+		if (!Array.isArray(values)) continue;
+		for (const event of values) {
+			if (event && typeof event.id === "string" && typeof event.targetSessionId === "string") events.set(event.id, event);
+		}
+	}
+	return events;
+}
+
+function recordedEventIds(ctx: ExtensionContext): Set<string> {
+	const ids = new Set<string>();
+	for (const entry of ctx.sessionManager.getEntries()) {
+		if (entry.type !== "custom") continue;
+		const record = entry as unknown as { customType?: unknown; data?: unknown };
+		if (record.customType !== DELIVERY_RECORD_TYPE || typeof record.data !== "object" || record.data === null) continue;
+		const eventId = (record.data as Partial<DeliveryRecord>).eventId;
+		if (typeof eventId === "string") ids.add(eventId);
 	}
 	return ids;
+}
+
+/** Persist append-only acknowledgements only after structured custom messages exist. */
+function acknowledgeMessageEvents(pi: ExtensionAPI, ctx: ExtensionContext): Set<string> {
+	const events = messageEvents(ctx);
+	const recorded = recordedEventIds(ctx);
+	for (const event of events.values()) {
+		if (recorded.has(event.id)) continue;
+		const record: DeliveryRecord = {
+			eventId: event.id,
+			kind: event.kind,
+			source: event.source,
+			targetSessionId: event.targetSessionId,
+			acknowledgedAt: new Date().toISOString(),
+			...(event.durableResult ? { durableResult: event.durableResult } : {}),
+		};
+		pi.appendEntry(DELIVERY_RECORD_TYPE, record);
+	}
+	return new Set([...events.keys(), ...recorded]);
 }
 
 function questionSummary(args: unknown): string {
@@ -86,7 +135,11 @@ async function updateInboxWidget(pi: ExtensionAPI, ctx: ExtensionContext, sessio
 	const root = await canonicalRoot(pi, ctx);
 	if (!root || !ctx.hasUI) return;
 	const count = await outstandingCount(spoolRoot(root), sessionId);
-	ctx.ui.setWidget(INBOX_WIDGET, count === 0 ? [] : [`📬 Orchestrator inbox: ${count} event${count === 1 ? "" : "s"} pending next turn`]);
+	ctx.ui.setWidget(
+		INBOX_WIDGET,
+		count === 0 ? ["📬 Orchestrator inbox: clear"] : [`📬 Orchestrator inbox: ${count} event${count === 1 ? "" : "s"} pending next turn`],
+		{ placement: "aboveEditor" },
+	);
 	ctx.ui.setStatus(INBOX_WIDGET, count === 0 ? undefined : `${count} orchestration event${count === 1 ? "" : "s"}`);
 }
 
@@ -121,8 +174,25 @@ export default function (pi: ExtensionAPI) {
 	let listener: WakeListener | undefined;
 	let indexSessionId: string | undefined;
 	const blocked = new BlockedQuestionBridge((state) => {
-		// Herdr's managed integration subscribes to this shared, same-process Pi bus.
+		// Like pi-subagents RPC/events, pi.events is same-process only. This reaches
+		// Herdr's managed integration in this Pi process, never another visible pane.
 		pi.events.emit("herdr:blocked", state);
+	});
+
+	pi.registerMessageRenderer<OrchestratorMessageDetails>(CUSTOM_TYPE, (message, _options, theme) => {
+		const events = Array.isArray(message.details?.events) ? message.details.events : [];
+		return {
+			render: () => {
+				const lines = [theme.bold(theme.fg("accent", "ORCHESTRATOR_EVENT"))];
+				for (const event of events) {
+					const source = `${event.source.workspaceId}/${event.source.paneId}`;
+					lines.push(theme.fg("dim", `${event.kind} · ${event.id} · ${source}`));
+					lines.push(event.summary);
+				}
+				return lines;
+			},
+			invalidate() {},
+		};
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -152,7 +222,7 @@ export default function (pi: ExtensionAPI) {
 		if (!sessionId || sessionId !== indexSessionId) return undefined;
 		const root = await canonicalRoot(pi, ctx);
 		if (!root) return undefined;
-		const claims = await claimOutstanding(spoolRoot(root), sessionId, deliveredEventIds(ctx));
+		const claims = await claimOutstanding(spoolRoot(root), sessionId, acknowledgeMessageEvents(pi, ctx));
 		await updateInboxWidget(pi, ctx, sessionId);
 		if (claims.length === 0) return undefined;
 		return {
@@ -160,6 +230,7 @@ export default function (pi: ExtensionAPI) {
 				customType: CUSTOM_TYPE,
 				content: claims.map(({ event: claimed }) => eventMessage(claimed)).join("\n\n"),
 				display: true,
+				details: { events: claims.map(({ event: claimed }) => claimed) } satisfies OrchestratorMessageDetails,
 			},
 		};
 	});
