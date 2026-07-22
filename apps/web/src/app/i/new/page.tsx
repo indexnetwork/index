@@ -9,6 +9,7 @@ import { useQuestionsService } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import type { AnswerBody, PendingQuestion } from "@/services/questions";
 import { apiClient } from "@/lib/api";
+import { isAuthSessionError } from "@/lib/auth-client";
 import { parseAllBlocks, type MessageSegment } from "@/components/chat/AssistantMessageContent";
 
 interface AnsweredStep {
@@ -234,7 +235,7 @@ function Summary({ label, value }: { label: string; value: string }) {
 
 export default function NewSignalPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, features } = useAuthContext();
+  const { isAuthenticated, features, openLoginModal, signOut } = useAuthContext();
   const { indexes } = useNetworksState();
   const questionsService = useQuestionsService();
   const { addNotification, error: showError } = useNotifications();
@@ -248,15 +249,17 @@ export default function NewSignalPage() {
   } = useAIChat();
   const [answered, setAnswered] = useState<AnsweredStep[]>([]);
   const [proposalError, setProposalError] = useState<string | null>(null);
+  const [kickoffError, setKickoffError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const startedRef = useRef(false);
 
   const signalAgentEnabled = features?.signalAgent === true;
 
-  useEffect(() => {
+  const startKickoff = useCallback(() => {
     if (!isAuthenticated || !signalAgentEnabled || startedRef.current) return;
     startedRef.current = true;
+    setKickoffError(null);
     startSignalSession();
     // Keep this marker stable: the Signal prompt builder uses it to enter the
     // live, three-round intake rather than treating this as ordinary chat.
@@ -264,9 +267,34 @@ export default function NewSignalPage() {
       "new-signal-kickoff",
       undefined,
       undefined,
-      { hidden: true, persona: "signal" },
+      {
+        hidden: true,
+        persona: "signal",
+        onError: (error) => {
+          startedRef.current = false;
+          if (isAuthSessionError(error)) {
+            const callbackURL = typeof window === "undefined"
+              ? "/i/new"
+              : new URL("/i/new", window.location.origin).href;
+            setKickoffError("Your session expired. Please sign in again.");
+            showError("Session expired", "Please sign in again to start your signal.");
+            void signOut()
+              .catch(() => undefined)
+              .finally(() => {
+                navigate("/");
+                openLoginModal(callbackURL);
+              });
+            return;
+          }
+          setKickoffError("We couldn't start your signal. Please try again.");
+        },
+      },
     );
-  }, [isAuthenticated, sendWebMessage, signalAgentEnabled, startSignalSession]);
+  }, [isAuthenticated, navigate, openLoginModal, sendWebMessage, showError, signalAgentEnabled, signOut, startSignalSession]);
+
+  useEffect(() => {
+    startKickoff();
+  }, [startKickoff]);
 
   const answeredIds = useMemo(() => new Set(answered.map((step) => step.question.id)), [answered]);
   const currentQuestion = liveQuestions.find((question) => !answeredIds.has(question.id)) ?? null;
@@ -348,6 +376,7 @@ export default function NewSignalPage() {
     clearChat();
     setAnswered([]);
     setProposalError(null);
+    setKickoffError(null);
     setSkipped(false);
     startedRef.current = false;
   }, [clearChat]);
@@ -403,6 +432,17 @@ export default function NewSignalPage() {
           />
         ) : currentQuestion ? (
           <GuidedQuestion question={currentQuestion} onAnswer={handleAnswer} disabled={isLoading && !currentQuestion} />
+        ) : kickoffError ? (
+          <section role="alert" className="mt-14 rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-800">
+            <p>{kickoffError}</p>
+            <button
+              type="button"
+              onClick={startKickoff}
+              className="mt-4 rounded-full bg-[#041729] px-4 py-2 text-sm font-medium text-white"
+            >
+              Try again
+            </button>
+          </section>
         ) : isLoading ? (
           <div role="status" aria-label="Your agent is thinking" className="mt-14 flex items-center gap-3 text-sm text-gray-500">
             <Loader2 className="h-4 w-4 animate-spin" /> Your agent is thinking…
