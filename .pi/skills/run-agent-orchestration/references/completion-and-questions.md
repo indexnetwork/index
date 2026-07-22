@@ -51,7 +51,11 @@ atomically claims outstanding events and appends persistent custom
 containing bounded id/kind/provenance/timestamp/location/payload/summary values so
 child text cannot alter bridge instructions. It acknowledges an event only after its
 custom message is observable in session history; crash recovery reclaims
-unacknowledged events, for at-least-once idempotent delivery. A transient metadata
+unacknowledged events, for at-least-once idempotent delivery. Immediately before a
+hook returns an attachment, the bridge records one durable dispatch decision under the
+same spool state as cancellation: the first decision linearizes delivery. A cancellation
+that wins first returns no attachment; one that follows an attachment decision cannot
+retract that truthful attachment but leaves its tombstone so it can never replay. A transient metadata
 failure retries only from this later natural `before_agent_start`, never a timer or
 poll. Never clear, overwrite, or infer the safety of a user draft; never focus or wait
 from `index`.

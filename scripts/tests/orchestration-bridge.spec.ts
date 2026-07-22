@@ -13,6 +13,7 @@ import {
 	formatAttachment,
 	isDedicatedRootLabel,
 	outstandingCount,
+	prepareAttachment,
 	publishEvent,
 	resolveIndexTarget,
 	resolveLiveTopology,
@@ -132,6 +133,32 @@ describe("orchestration bridge spool", () => {
 		expect(await claimOutstanding(root, "index-session", new Set())).toEqual([]);
 		const cancelled = await fs.readdir(path.join(sessionDirectory(root, "index-session"), "cancelled"));
 		expect(cancelled).toEqual(["question-cancelled-before-publish.json.cancelled"]);
+	});
+
+	test("linearizes cancellation before a stale claimed attachment reservation", async () => {
+		const root = await temporaryRoot();
+		await publishEvent(root, event("cancel-at-attachment-boundary", { kind: "blocked" }));
+		const claims = await claimOutstanding(root, "index-session", new Set());
+		await discardEvent(root, "index-session", "cancel-at-attachment-boundary");
+		expect(await prepareAttachment(root, "index-session", claims)).toEqual([]);
+		expect(JSON.parse(await fs.readFile(path.join(sessionDirectory(root, "index-session"), "dispatch", "cancel-at-attachment-boundary.json"), "utf8"))).toEqual({
+			eventId: "cancel-at-attachment-boundary",
+			decision: "cancelled",
+		});
+	});
+
+	test("linearizes an attachment once before cancellation and prevents every future replay", async () => {
+		const root = await temporaryRoot();
+		await publishEvent(root, event("attachment-wins-once", { kind: "blocked" }));
+		const claims = await claimOutstanding(root, "index-session", new Set());
+		expect((await prepareAttachment(root, "index-session", claims)).map(({ event: claimed }) => claimed.id)).toEqual(["attachment-wins-once"]);
+		expect(JSON.parse(await fs.readFile(path.join(sessionDirectory(root, "index-session"), "dispatch", "attachment-wins-once.json"), "utf8"))).toEqual({
+			eventId: "attachment-wins-once",
+			decision: "attachment",
+		});
+		await discardEvent(root, "index-session", "attachment-wins-once");
+		expect(await claimOutstanding(root, "index-session", new Set())).toEqual([]);
+		expect(await publishEvent(root, event("attachment-wins-once", { kind: "blocked" }))).toBe("cancelled");
 	});
 
 	test("discards a completed RPIV block from pending or claims without erasing history", async () => {

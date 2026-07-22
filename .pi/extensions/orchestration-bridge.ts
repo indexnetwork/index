@@ -4,7 +4,7 @@ import { Type } from "typebox";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { BlockedQuestionBridge, canonicalizeEvent, claimOutstanding, discardEvent, filterUncancelledClaims, formatAttachment, isDedicatedRootLabel, outstandingCount, parseHerdrResult, publishEvent, resolveLiveTopology, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, type IndexTarget, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance, type PublishStatus } from "./orchestration-bridge.core";
+import { BlockedQuestionBridge, canonicalizeEvent, claimOutstanding, discardEvent, formatAttachment, isDedicatedRootLabel, outstandingCount, parseHerdrResult, prepareAttachment, publishEvent, resolveLiveTopology, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, type IndexTarget, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance, type PublishStatus } from "./orchestration-bridge.core";
 
 const INBOX_WIDGET = "orchestration-inbox";
 const CUSTOM_TYPE = "orchestrator-event";
@@ -240,9 +240,13 @@ export default function (pi: ExtensionAPI) {
 		const root = await canonicalRoot(pi, ctx);
 		if (!root) return undefined;
 		const claims = await claimOutstanding(spoolRoot(root), sessionId, acknowledgeMessageEvents(pi, ctx, sessionId));
-		const deliverable = await filterUncancelledClaims(spoolRoot(root), sessionId, claims);
 		await updateInboxWidget(pi, ctx, sessionId);
-		if (deliverable.length === 0) return undefined;
+		// This final durable dispatch reservation is the attachment linearization point.
+		const deliverable = await prepareAttachment(spoolRoot(root), sessionId, claims);
+		if (deliverable.length === 0) {
+			await updateInboxWidget(pi, ctx, sessionId);
+			return undefined;
+		}
 		return {
 			message: {
 				customType: CUSTOM_TYPE,

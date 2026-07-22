@@ -125,6 +125,15 @@ function tombstonePath(root: string, sessionId: string, eventId: string): string
 	return path.join(tombstonesDirectory(root, sessionId), `${eventFilename(eventId)}.cancelled`);
 }
 
+/** Shared compare-and-create namespace that linearizes cancellation versus attachment. */
+function dispatchDirectory(root: string, sessionId: string): string {
+	return path.join(sessionDirectory(root, sessionId), "dispatch");
+}
+
+function dispatchPath(root: string, sessionId: string, eventId: string): string {
+	return path.join(dispatchDirectory(root, sessionId), eventFilename(eventId));
+}
+
 function lockPath(root: string, sessionId: string): string {
 	return path.join(sessionDirectory(root, sessionId), ".lock");
 }
@@ -254,6 +263,39 @@ async function createTombstone(root: string, sessionId: string, eventId: string)
 	}
 }
 
+type DispatchDecision = "attachment" | "cancelled";
+
+async function readDispatchDecision(root: string, sessionId: string, eventId: string): Promise<DispatchDecision | undefined> {
+	try {
+		const value: unknown = JSON.parse(await fs.readFile(dispatchPath(root, sessionId, eventId), "utf8"));
+		if (typeof value === "object" && value !== null && (value as { decision?: unknown }).decision === "attachment") return "attachment";
+		if (typeof value === "object" && value !== null && (value as { decision?: unknown }).decision === "cancelled") return "cancelled";
+		return "cancelled";
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+		return "cancelled";
+	}
+}
+
+/** Atomically choose one terminal decision for a logical event. */
+async function chooseDispatchDecision(root: string, sessionId: string, eventId: string, decision: DispatchDecision): Promise<DispatchDecision> {
+	const directory = dispatchDirectory(root, sessionId);
+	await privateDirectory(directory);
+	try {
+		await privateFile(dispatchPath(root, sessionId, eventId), `${JSON.stringify({ eventId, decision })}\n`);
+		return decision;
+	} catch (error) {
+		if (!isBusy(error)) throw error;
+		return (await readDispatchDecision(root, sessionId, eventId)) ?? "cancelled";
+	}
+}
+
+async function removeDispatchDecision(root: string, sessionId: string, eventId: string): Promise<void> {
+	await fs.unlink(dispatchPath(root, sessionId, eventId)).catch((error: NodeJS.ErrnoException) => {
+		if (error.code !== "ENOENT") throw error;
+	});
+}
+
 async function listEvents(root: string, sessionId: string, directory: string): Promise<Array<{ file: string; event: OrchestratorEvent }>> {
 	try {
 		const names = (await fs.readdir(directory)).filter((name) => name.endsWith(".json"));
@@ -294,6 +336,9 @@ export async function publishEvent(root: string, raw: OrchestratorEvent): Promis
 			await privateDirectory(pending);
 			await privateDirectory(claimsDirectory(root, event.targetSessionId));
 			if (await isTombstoned(root, event.targetSessionId, event.id)) return "cancelled";
+			const dispatch = await readDispatchDecision(root, event.targetSessionId, event.id);
+			if (dispatch === "attachment") return "duplicate";
+			if (dispatch === "cancelled") return "cancelled";
 			if (await queuedCount(root, event.targetSessionId) >= MAX_QUEUED_EVENTS) throw new Error("Orchestration spool capacity reached");
 
 			const filename = eventFilename(event.id);
@@ -318,6 +363,7 @@ export async function publishEvent(root: string, raw: OrchestratorEvent): Promis
 
 async function acknowledgeDeliveredUnlocked(root: string, sessionId: string, deliveredIds: ReadonlySet<string>): Promise<void> {
 	if (deliveredIds.size === 0) return;
+	for (const eventId of deliveredIds) await removeDispatchDecision(root, sessionId, eventId);
 	for (const directory of [pendingDirectory(root, sessionId), claimsDirectory(root, sessionId)]) {
 		for (const { file, event } of await listEvents(root, sessionId, directory)) {
 			if (deliveredIds.has(event.id)) await fs.unlink(file).catch(() => undefined);
@@ -391,11 +437,15 @@ export async function claimOutstanding(root: string, sessionId: string, delivere
 	}
 }
 
-/** Remove an ended RPIV block from pending/claims; already-attached history remains truthful. */
+/**
+ * Tombstone an ended RPIV block and atomically choose cancellation unless attachment
+ * had already reserved delivery. The tombstone always prevents any later replay.
+ */
 export async function discardEvent(root: string, sessionId: string, eventId: string): Promise<void> {
 	if (!EVENT_ID.test(eventId)) return;
-	// Cancellation has its own atomic namespace, so lock contention can never lose it.
+	// Cancellation's durable intent never depends on acquiring the session lock.
 	await createTombstone(root, sessionId, eventId);
+	await chooseDispatchDecision(root, sessionId, eventId, "cancelled");
 	for (const directory of [pendingDirectory(root, sessionId), claimsDirectory(root, sessionId)]) {
 		for (const { file, event } of await listEvents(root, sessionId, directory)) {
 			if (event.id === eventId) await fs.unlink(file).catch(() => undefined);
@@ -403,17 +453,38 @@ export async function discardEvent(root: string, sessionId: string, eventId: str
 	}
 }
 
-/** Drop claimed files that were cancelled after they were claimed but before attachment. */
-export async function filterUncancelledClaims(root: string, sessionId: string, claims: ClaimedEvent[]): Promise<ClaimedEvent[]> {
-	const deliverable: ClaimedEvent[] = [];
-	for (const claim of claims) {
-		if (await isTombstoned(root, sessionId, claim.event.id)) {
-			await fs.unlink(claim.claimPath).catch(() => undefined);
-			continue;
-		}
-		deliverable.push(claim);
+/**
+ * Finalize a claim batch immediately before hook return. The first durable dispatch
+ * decision is the attachment linearization point: cancellation that chooses its
+ * decision first returns no claim; cancellation afterwards cannot retract this one
+ * returned attachment, but its tombstone still prevents every later replay.
+ */
+export async function prepareAttachment(root: string, sessionId: string, claims: ClaimedEvent[]): Promise<ClaimedEvent[]> {
+	try {
+		return await withSessionLock(root, sessionId, async () => {
+			const deliverable: ClaimedEvent[] = [];
+			for (const claim of claims) {
+				try {
+					await fs.access(claim.claimPath);
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+					throw error;
+				}
+				if (await isTombstoned(root, sessionId, claim.event.id)) {
+					await chooseDispatchDecision(root, sessionId, claim.event.id, "cancelled");
+					await fs.unlink(claim.claimPath).catch(() => undefined);
+					continue;
+				}
+				const decision = await chooseDispatchDecision(root, sessionId, claim.event.id, "attachment");
+				if (decision === "attachment") deliverable.push(claim);
+				else await fs.unlink(claim.claimPath).catch(() => undefined);
+			}
+			return deliverable;
+		});
+	} catch (error) {
+		if (isBusy(error)) return [];
+		throw error;
 	}
-	return deliverable;
 }
 
 export async function outstandingCount(root: string, sessionId: string): Promise<number> {
