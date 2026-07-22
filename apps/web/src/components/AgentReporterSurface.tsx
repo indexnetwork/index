@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { REPORTER_BRIEFING_KICKOFF } from "@indexnetwork/protocol";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useQuestions } from "@/contexts/QuestionsContext";
@@ -18,7 +17,7 @@ const REPORTER_SUGGESTIONS: Suggestion[] = [
 /** Read-only, web-only reporter chat surface for /agent. */
 export default function AgentReporterSurface() {
   const { isAuthenticated, features } = useAuthContext();
-  const { messages, startReporterSession, sendWebMessage } = useAIChat();
+  const { messages, startReporterSession } = useAIChat();
   const intentsService = useIntents();
   const { globalPending, loading: questionsLoading } = useQuestions();
   const [activeSignalCount, setActiveSignalCount] = useState<number | null>(null);
@@ -30,15 +29,10 @@ export default function AgentReporterSurface() {
   useEffect(() => {
     if (!isAuthenticated || !agentSurfaceEnabled || startedRef.current) return;
     startedRef.current = true;
-    startReporterSession();
-    // The reporter prompt builder matches this marker to produce the opening briefing.
-    void sendWebMessage(
-      REPORTER_BRIEFING_KICKOFF,
-      undefined,
-      undefined,
-      { hidden: true, persona: "reporter" },
-    );
-  }, [agentSurfaceEnabled, isAuthenticated, sendWebMessage, startReporterSession]);
+    // The server returns the sole creation claim; the context sends the hidden
+    // kickoff only for that claimant and otherwise hydrates persisted messages.
+    void startReporterSession();
+  }, [agentSurfaceEnabled, isAuthenticated, startReporterSession]);
 
   useEffect(() => {
     let active = true;

@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
 import { useLocation } from "react-router";
+import { REPORTER_BRIEFING_KICKOFF } from "@indexnetwork/protocol";
+
 import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
 import { apiClient } from "@/lib/api";
 import { AuthSessionError, clearJwtToken } from "@/lib/auth-client";
@@ -228,8 +230,8 @@ interface AIChatContextType {
   clearChat: (options?: { abortStream?: boolean; preserveForcedPersona?: boolean }) => void;
   /** Clear the current chat and force the next new web session to request Signal. */
   startSignalSession: () => void;
-  /** Start a fresh main-web reporter session. */
-  startReporterSession: () => void;
+  /** Resolve the current reporter briefing, optionally forcing an explicit fresh conversation. */
+  startReporterSession: (options?: { forceNew?: boolean }) => Promise<boolean>;
   /** Load a session, returning false for failed or superseded requests. */
   loadSession: (sessionId: string) => Promise<boolean>;
   /** Observable target-specific load state for disabling route interactions until ready. */
@@ -423,6 +425,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   /** Independent latest-owner token for intent-session resolution requests. */
   const intentResolutionOwnerRef = useRef<symbol | null>(null);
   const activeSendRef = useRef<SendOperation | null>(null);
+  /** Coalesce route-mount resolution with an already-started reporter action. */
+  const reporterStartRef = useRef<Promise<boolean> | null>(null);
 
   const ownsOperation = useCallback((token: symbol) => operationOwnerRef.current === token, []);
 
@@ -597,13 +601,15 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       fileIds?: string[],
       attachmentNames?: string[],
       options?: ChatSendOptions,
+      targetSessionId?: string,
     ) => {
       const displayContent =
         message.trim() || (fileIds?.length ? "Attached file(s)." : "");
       if (!displayContent) return;
 
+      const operationSessionId = targetSessionId ?? sessionId;
       const requestedPersona = options?.persona
-        ?? (!sessionId ? forcePersonaNextSessionRef.current ?? undefined : undefined);
+        ?? (!operationSessionId ? forcePersonaNextSessionRef.current ?? undefined : undefined);
       const effectiveTransport: ChatTransport = transport === "onboarding"
         ? "onboarding"
         : transport === "web"
@@ -689,7 +695,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         const bodyPayload: Record<string, unknown> = {
           message:
             message.trim() || (fileIds?.length ? "Attached file(s)." : ""),
-          sessionId,
+          sessionId: operationSessionId,
           ...(fileIds?.length ? { fileIds } : {}),
           ...(chatScope ? { scopeType: chatScope.type, scopeId: chatScope.id } : {}),
           ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
@@ -739,7 +745,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         const newSessionId = responseSessionId;
         const responsePersona = response.headers.get("X-Chat-Persona");
         if (responsePersona) setSessionPersona(responsePersona);
-        if (newSessionId && !sessionId) {
+        if (newSessionId && !operationSessionId) {
           setSessionId(newSessionId);
           // The newly-created session is already the current in-memory target;
           // mark it route-ready so the ensuing /d/:id navigation never reloads
@@ -1387,6 +1393,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     const active = activeSendRef.current;
     operationOwnerRef.current = null;
     intentResolutionOwnerRef.current = null;
+    reporterStartRef.current = null;
     if (active && !abortStream) {
       active.refreshSidebarWhenStale = true;
     } else {
@@ -1419,11 +1426,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const startSignalSession = useCallback(() => {
     clearChat();
     forcePersonaNextSessionRef.current = "signal";
-  }, [clearChat]);
-
-  const startReporterSession = useCallback(() => {
-    clearChat();
-    forcePersonaNextSessionRef.current = "reporter";
   }, [clearChat]);
 
   const loadSession = useCallback(async (id: string): Promise<boolean> => {
@@ -1537,6 +1539,58 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
   }, [invalidateActiveSend, ownsOperation]);
+
+  const startReporterSession = useCallback((options?: {
+    forceNew?: boolean;
+  }): Promise<boolean> => {
+    const forceNew = options?.forceNew === true;
+    if (!forceNew && reporterStartRef.current) return reporterStartRef.current;
+
+    const start = (async (): Promise<boolean> => {
+      // Route cleanup deliberately detaches ordinary streams. Reporter entry and
+      // explicit New conversation are stronger ownership boundaries: abort and
+      // invalidate everything before claiming the server-authoritative briefing.
+      clearChat();
+      const resolutionToken = Symbol("resolve-reporter-session");
+      operationOwnerRef.current = resolutionToken;
+
+      try {
+        const resolved = await apiClient.post<{
+          session: { id: string };
+          created: boolean;
+        }>("/chat/reporter/session", { forceNew });
+        if (!ownsOperation(resolutionToken)) return false;
+
+        const loaded = await loadSession(resolved.session.id);
+        if (!loaded) return false;
+        if (!resolved.created) return true;
+
+        // Bind the hidden marker to the already-created claim explicitly. The
+        // load state update has not necessarily produced a new React closure yet.
+        await sendMessageWithTransport(
+          "web",
+          REPORTER_BRIEFING_KICKOFF,
+          undefined,
+          undefined,
+          { hidden: true, persona: "reporter" },
+          resolved.session.id,
+        );
+        return true;
+      } catch (error) {
+        if (ownsOperation(resolutionToken)) {
+          operationOwnerRef.current = null;
+          logger.error("Reporter session resolution failed", { error });
+        }
+        return false;
+      }
+    })();
+
+    const tracked = start.finally(() => {
+      if (reporterStartRef.current === tracked) reporterStartRef.current = null;
+    });
+    reporterStartRef.current = tracked;
+    return tracked;
+  }, [clearChat, loadSession, ownsOperation, sendMessageWithTransport]);
 
   const isSessionReady = useCallback((id: string) => (
     sessionLoadState.status === "ready"

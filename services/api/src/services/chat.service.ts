@@ -7,7 +7,7 @@ import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { isWebSignalAgentEnabled } from '../lib/signal-feature';
-import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
+import { getReporterBriefingTtlMs, isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { HumanMessage } from '@langchain/core/messages';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -68,12 +68,16 @@ function generateSnowflakeId(): string {
 interface ChatSessionServiceDeps {
   graphDatabase?: ChatGraphCompositeDatabase;
   createTitleGenerator?: () => Pick<ChatTitleGenerator, 'invoke'>;
+  now?: () => Date;
+  reporterBriefingTtlMs?: () => number;
 }
 
 export class ChatSessionService {
   private graphDb: ChatGraphCompositeDatabase;
   private _factory: ChatGraphFactory | null = null;
   private readonly createTitleGenerator: () => Pick<ChatTitleGenerator, 'invoke'>;
+  private readonly now: () => Date;
+  private readonly reporterBriefingTtlMs: () => number;
 
   constructor(
     private db: ConversationDatabaseAdapter = conversationDatabaseAdapter,
@@ -81,6 +85,8 @@ export class ChatSessionService {
   ) {
     this.graphDb = deps.graphDatabase ?? new ChatDatabaseAdapter();
     this.createTitleGenerator = deps.createTitleGenerator ?? (() => new ChatTitleGenerator());
+    this.now = deps.now ?? (() => new Date());
+    this.reporterBriefingTtlMs = deps.reporterBriefingTtlMs ?? getReporterBriefingTtlMs;
   }
 
   /**
@@ -312,6 +318,28 @@ export class ChatSessionService {
     });
 
     return id;
+  }
+
+  /**
+   * Resolve the current opening briefing for the main-web reporter surface.
+   *
+   * Freshness is anchored to immutable session creation time. The adapter owns
+   * the advisory-lock transaction so concurrent browser tabs receive one
+   * creation claim, while forceNew intentionally bypasses TTL reuse.
+   *
+   * @param userId - Authenticated session user
+   * @param forceNew - Whether an explicit New conversation action must create a successor
+   * @returns The authoritative reporter session and whether this caller claimed creation
+   */
+  async resolveReporterSession(userId: string, forceNew = false) {
+    const ttlMs = this.reporterBriefingTtlMs();
+    const freshAfter = new Date(this.now().getTime() - ttlMs);
+    return this.db.resolveReporterChatSession({
+      id: crypto.randomUUID(),
+      userId,
+      freshAfter,
+      forceNew,
+    });
   }
 
   /**

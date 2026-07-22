@@ -51,6 +51,7 @@ src/services/tests/connect-link.service.isolated.ts
 src/controllers/tests/route-deprecation.controller.isolated.ts
 tests/contacts-disabled.e2e.isolated.ts
 src/controllers/tests/chat.negotiator.isolated.ts
+src/controllers/tests/chat.reporter.isolated.ts
 src/controllers/tests/negotiator-memory.controller.isolated.ts
 tests/negotiation.e2e.isolated.ts
 src/guards/tests/contacts.guard.isolated.ts
@@ -101,3 +102,4 @@ src/controllers/tests/question.visitmining.isolated.ts
 src/controllers/tests/agent-action.controller.isolated.ts
 src/services/tests/agent-action.service.isolated.ts
 src/adapters/tests/agent-action-proposal.database.adapter.isolated.ts
+src/adapters/tests/conversation.reporter.isolated.ts
