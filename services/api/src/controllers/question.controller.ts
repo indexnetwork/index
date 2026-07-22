@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { questionService } from '../services/question.service';
+import { chatSessionService } from '../services/chat.service';
 import type { AdapterQuestionFilters } from '../services/question.service';
 
 import { hasChatQuestionWaiter } from '../lib/chat-question.events';
@@ -155,7 +156,24 @@ export class QuestionController {
       filters.scopeType = 'intent';
       filters.scopeId = scope.scopeId;
     }
-    if (conversationId) filters.conversationId = conversationId;
+    if (conversationId) {
+      if (!uuidQuerySchema.safeParse(conversationId).success) {
+        return Response.json({ error: 'Question not found' }, { status: 404 });
+      }
+      const session = await chatSessionService.getSession(conversationId, user.id);
+      if (!session) {
+        return Response.json({ error: 'Question not found' }, { status: 404 });
+      }
+      // Preserve the caller's explicit mode filter: chat-triggered intent,
+      // enrichment, discovery, and negotiation questions are still anchored to
+      // this conversation and must remain answerable. Pool-discovery rows never
+      // render in generic conversation injection.
+      filters.conversationId = conversationId;
+      filters.excludeModes = [...new Set([
+        ...(filters.excludeModes ?? []),
+        'pool_discovery' as const,
+      ])];
+    }
     if (noConversation === 'true') filters.noConversation = true;
 
     // Pool questions are intent-page-only rows. Even delivered pushes affect

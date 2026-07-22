@@ -703,6 +703,18 @@ export class ChatSessionService {
   }
 
   /**
+   * Loads the active or one immediately previous durable timeline session for an
+   * authorized H2A conversation.
+   *
+   * @param conversationId - Chat conversation identifier.
+   * @param beforeSessionId - Cursor of the currently oldest loaded session.
+   * @returns One session section, its messages, and whether another section precedes it.
+   */
+  async getConversationSessionHistory(conversationId: string, beforeSessionId?: string) {
+    return this.db.getChatConversationSessionHistory(conversationId, { beforeSessionId });
+  }
+
+  /**
    * Delete a session and all its messages (cascade).
    *
    * @param sessionId - The session ID to delete

@@ -1,4 +1,4 @@
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
+import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
@@ -35,6 +35,15 @@ const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } a
  * is identical to any intent-scoped session.
  */
 const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
+
+const DEFAULT_CHAT_SESSION_GAP_MS = 24 * 60 * 60 * 1000;
+
+function getChatSessionGapMs(): number {
+  const configured = Number.parseInt(process.env.CHAT_SESSION_GAP_MS ?? '', 10);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_CHAT_SESSION_GAP_MS;
+}
 
 interface MatchProvenanceEntry {
   opportunityId: string;
@@ -635,9 +644,13 @@ export class ConversationDatabaseAdapter {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Creates a message and updates the conversation's lastMessageAt.
-   * @param data - Message payload
-   * @returns The inserted message row
+   * Creates a message, stamps its durable conversation session, and updates the
+   * conversation timestamp. A transaction-scoped advisory lock serializes
+   * writers for a conversation so concurrent writes cannot open duplicate
+   * sessions.
+   *
+   * @param data - Message payload.
+   * @returns The inserted and session-stamped message row.
    */
   async createMessage(data: {
     conversationId: string;
@@ -649,26 +662,19 @@ export class ConversationDatabaseAdapter {
     extensions?: string[];
     referenceTaskIds?: string[];
   }): Promise<Message> {
-    const id = crypto.randomUUID();
+    const msg = await this.insertMessageWithConversationSession({
+      id: crypto.randomUUID(),
+      conversationId: data.conversationId,
+      senderId: data.senderId,
+      role: data.role,
+      parts: data.parts,
+      taskId: data.taskId ?? null,
+      metadata: data.metadata ?? null,
+      extensions: data.extensions ?? null,
+      referenceTaskIds: data.referenceTaskIds ?? null,
+    });
 
-    const [msg] = await db
-      .insert(schema.messages)
-      .values({
-        id,
-        conversationId: data.conversationId,
-        senderId: data.senderId,
-        role: data.role,
-        parts: data.parts,
-        taskId: data.taskId ?? null,
-        metadata: data.metadata ?? null,
-        extensions: data.extensions ?? null,
-        referenceTaskIds: data.referenceTaskIds ?? null,
-      })
-      .returning();
-
-    await this.updateLastMessageAt(data.conversationId);
-
-    // Clear hiddenAt for the sender so conversation reappears in their list
+    // Clear hiddenAt for the sender so conversation reappears in their list.
     await db
       .update(schema.conversationParticipants)
       .set({ hiddenAt: null })
@@ -678,6 +684,105 @@ export class ConversationDatabaseAdapter {
       ));
 
     return msg;
+  }
+
+  /**
+   * Persist a message under the durable session selected for its task or
+   * conversation activity window.
+   *
+   * @param data - Fully normalized message fields.
+   * @returns The newly persisted message.
+   */
+  private async insertMessageWithConversationSession(data: {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    taskId: string | null;
+    metadata: Record<string, unknown> | null;
+    extensions: string[] | null;
+    referenceTaskIds: string[] | null;
+  }): Promise<Message> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`conversation-session:${data.conversationId}`}, 0)
+        )
+      `);
+
+      const now = new Date();
+      let sessionId: string;
+
+      if (data.taskId) {
+        const [existingTaskSession] = await tx
+          .select({ id: schema.conversationSessions.id })
+          .from(schema.conversationSessions)
+          .where(eq(schema.conversationSessions.taskId, data.taskId))
+          .limit(1);
+
+        if (existingTaskSession) {
+          sessionId = existingTaskSession.id;
+          await tx
+            .update(schema.conversationSessions)
+            .set({ lastMessageAt: now })
+            .where(eq(schema.conversationSessions.id, sessionId));
+        } else {
+          sessionId = crypto.randomUUID();
+          await tx.insert(schema.conversationSessions).values({
+            id: sessionId,
+            conversationId: data.conversationId,
+            taskId: data.taskId,
+            startedAt: now,
+            lastMessageAt: now,
+          });
+        }
+      } else {
+        const [currentSession] = await tx
+          .select()
+          .from(schema.conversationSessions)
+          .where(and(
+            eq(schema.conversationSessions.conversationId, data.conversationId),
+            isNull(schema.conversationSessions.taskId),
+          ))
+          .orderBy(
+            desc(schema.conversationSessions.lastMessageAt),
+            desc(schema.conversationSessions.startedAt),
+            desc(schema.conversationSessions.id),
+          )
+          .limit(1);
+
+        const startsNewSession = !currentSession
+          || now.getTime() - currentSession.lastMessageAt.getTime() > getChatSessionGapMs();
+        if (startsNewSession) {
+          sessionId = crypto.randomUUID();
+          await tx.insert(schema.conversationSessions).values({
+            id: sessionId,
+            conversationId: data.conversationId,
+            startedAt: now,
+            lastMessageAt: now,
+          });
+        } else {
+          sessionId = currentSession.id;
+          await tx
+            .update(schema.conversationSessions)
+            .set({ lastMessageAt: now })
+            .where(eq(schema.conversationSessions.id, sessionId));
+        }
+      }
+
+      const [message] = await tx
+        .insert(schema.messages)
+        .values({ ...data, sessionId, createdAt: now })
+        .returning();
+
+      await tx
+        .update(schema.conversations)
+        .set({ lastMessageAt: now, updatedAt: now })
+        .where(eq(schema.conversations.id, data.conversationId));
+
+      return message;
+    });
   }
 
   /**
@@ -819,9 +924,43 @@ export class ConversationDatabaseAdapter {
           throw new Error(`Deterministic pool push message ${input.questionId} conflicts with existing data`);
         }
       } else {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`conversation-session:${input.conversationId}`}, 0)
+          )
+        `);
+        const [currentSession] = await tx
+          .select()
+          .from(schema.conversationSessions)
+          .where(and(
+            eq(schema.conversationSessions.conversationId, input.conversationId),
+            isNull(schema.conversationSessions.taskId),
+          ))
+          .orderBy(
+            desc(schema.conversationSessions.lastMessageAt),
+            desc(schema.conversationSessions.startedAt),
+            desc(schema.conversationSessions.id),
+          )
+          .limit(1);
+        const startsNewSession = !currentSession
+          || transactionNow.getTime() - currentSession.lastMessageAt.getTime() > getChatSessionGapMs();
+        const sessionId = startsNewSession ? crypto.randomUUID() : currentSession.id;
+        if (startsNewSession) {
+          await tx.insert(schema.conversationSessions).values({
+            id: sessionId,
+            conversationId: input.conversationId,
+            startedAt: transactionNow,
+            lastMessageAt: transactionNow,
+          });
+        } else {
+          await tx.update(schema.conversationSessions)
+            .set({ lastMessageAt: transactionNow })
+            .where(eq(schema.conversationSessions.id, sessionId));
+        }
         await tx.insert(schema.messages).values({
           id: input.questionId,
           conversationId: input.conversationId,
+          sessionId,
           senderId: SYSTEM_AGENT_ID,
           role: 'agent',
           parts: expectedParts,
@@ -893,7 +1032,7 @@ export class ConversationDatabaseAdapter {
     if (opts?.before) {
       // Cursor-based: get messages created before the given message
       const [ref] = await db
-        .select({ createdAt: schema.messages.createdAt })
+        .select({ createdAt: schema.messages.createdAt, id: schema.messages.id })
         .from(schema.messages)
         .where(and(
           eq(schema.messages.id, opts.before),
@@ -902,7 +1041,14 @@ export class ConversationDatabaseAdapter {
         .limit(1);
 
       if (ref) {
-        conditions.push(lt(schema.messages.createdAt, ref.createdAt));
+        const beforeCondition = or(
+          lt(schema.messages.createdAt, ref.createdAt),
+          and(
+            eq(schema.messages.createdAt, ref.createdAt),
+            lt(schema.messages.id, ref.id),
+          ),
+        );
+        if (beforeCondition) conditions.push(beforeCondition);
       }
     }
 
@@ -912,7 +1058,7 @@ export class ConversationDatabaseAdapter {
       .select()
       .from(schema.messages)
       .where(and(...conditions))
-      .orderBy(desc(schema.messages.createdAt));
+      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id));
 
     if (opts?.limit) {
       query = query.limit(opts.limit) as typeof query;
@@ -920,6 +1066,105 @@ export class ConversationDatabaseAdapter {
 
     const rows = await query;
     return rows.reverse();
+  }
+
+  /**
+   * Load one durable conversation session and its messages. Calling without a
+   * cursor selects the latest session; a `beforeSessionId` cursor selects the
+   * immediately preceding session. The message read stays participant-scoped.
+   *
+   * @param conversationId - Conversation to read.
+   * @param opts - Visibility, A2A task, and prior-session cursor constraints.
+   * @returns Exactly one session (when present), its messages, and whether an earlier session exists.
+   */
+  async getConversationSessionHistory(
+    conversationId: string,
+    opts?: { beforeSessionId?: string; taskId?: string; userId?: string },
+  ): Promise<{
+    session: ConversationSession | null;
+    messages: Message[];
+    hasPreviousSession: boolean;
+  }> {
+    const conditions = [eq(schema.conversationSessions.conversationId, conversationId)];
+    if (opts?.taskId) {
+      conditions.push(eq(schema.conversationSessions.taskId, opts.taskId));
+    } else if (opts?.beforeSessionId) {
+      const [cursor] = await db
+        .select({
+          id: schema.conversationSessions.id,
+          startedAt: schema.conversationSessions.startedAt,
+        })
+        .from(schema.conversationSessions)
+        .where(and(
+          eq(schema.conversationSessions.id, opts.beforeSessionId),
+          eq(schema.conversationSessions.conversationId, conversationId),
+        ))
+        .limit(1);
+      if (!cursor) {
+        return { session: null, messages: [], hasPreviousSession: false };
+      }
+      const beforeSessionCondition = or(
+        lt(schema.conversationSessions.startedAt, cursor.startedAt),
+        and(
+          eq(schema.conversationSessions.startedAt, cursor.startedAt),
+          lt(schema.conversationSessions.id, cursor.id),
+        ),
+      );
+      if (beforeSessionCondition) conditions.push(beforeSessionCondition);
+    }
+
+    const [session] = await db
+      .select()
+      .from(schema.conversationSessions)
+      .where(and(...conditions))
+      .orderBy(
+        desc(schema.conversationSessions.startedAt),
+        desc(schema.conversationSessions.id),
+      )
+      .limit(1);
+    if (!session) return { session: null, messages: [], hasPreviousSession: false };
+
+    const messageConditions = [eq(schema.messages.sessionId, session.id)];
+    if (opts?.userId) {
+      const [participant] = await db
+        .select({ hiddenAt: schema.conversationParticipants.hiddenAt })
+        .from(schema.conversationParticipants)
+        .where(and(
+          eq(schema.conversationParticipants.conversationId, conversationId),
+          eq(schema.conversationParticipants.participantId, opts.userId),
+        ))
+        .limit(1);
+      if (participant?.hiddenAt) {
+        messageConditions.push(gt(schema.messages.createdAt, participant.hiddenAt));
+      }
+    }
+
+    const messages = await db
+      .select()
+      .from(schema.messages)
+      .where(and(...messageConditions))
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+
+    const previousConditions = [eq(schema.conversationSessions.conversationId, conversationId)];
+    if (opts?.taskId) {
+      previousConditions.push(eq(schema.conversationSessions.taskId, opts.taskId));
+    } else {
+      const previousSessionCondition = or(
+        lt(schema.conversationSessions.startedAt, session.startedAt),
+        and(
+          eq(schema.conversationSessions.startedAt, session.startedAt),
+          lt(schema.conversationSessions.id, session.id),
+        ),
+      );
+      if (previousSessionCondition) previousConditions.push(previousSessionCondition);
+    }
+    const [previous] = await db
+      .select({ id: schema.conversationSessions.id })
+      .from(schema.conversationSessions)
+      .where(and(...previousConditions))
+      .limit(1);
+
+    return { session, messages, hasPreviousSession: Boolean(previous) };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -2636,34 +2881,102 @@ export class ConversationDatabaseAdapter {
     if (data.tokenCount !== undefined) msgMeta.tokenCount = data.tokenCount;
     if (data.interrupted) msgMeta.interrupted = true;
 
-    await db.insert(schema.messages).values({
+    await this.insertMessageWithConversationSession({
       id: data.id,
       conversationId: data.sessionId,
       senderId,
       role: isAgent ? 'agent' : 'user',
       parts: [{ type: 'text', text: data.content }],
+      taskId: null,
       metadata: Object.keys(msgMeta).length > 0 ? msgMeta : null,
-      createdAt: new Date(),
+      extensions: null,
+      referenceTaskIds: null,
     });
-
-    // Update conversation.lastMessageAt
-    await db
-      .update(schema.conversations)
-      .set({ lastMessageAt: new Date() })
-      .where(eq(schema.conversations.id, data.sessionId));
   }
 
   /**
-   * Get chat messages for a session, reconstructing the backward-compatible ChatMessage shape.
+   * Get chat messages for a conversation in chronological order.
+   *
+   * @param sessionId - Conversation identifier retained for the legacy chat-session API.
+   * @param limit - Maximum number of messages to return from the beginning of the conversation.
+   * @returns Chronologically ordered chat messages.
    */
   async getChatSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> {
     const query = db.select()
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, sessionId))
-      .orderBy(asc(schema.messages.createdAt));
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 
     const rows = limit ? await query.limit(limit) : await query;
 
+    return this.toChatMessages(sessionId, rows);
+  }
+
+  /**
+   * Get the latest chat messages for model context while returning them in
+   * chronological order. This deliberately does not share UI pagination reads:
+   * loading older history must never alter the model's context window.
+   *
+   * @param sessionId - Conversation identifier retained for the legacy chat-session API.
+   * @param limit - Maximum number of most-recent messages to return.
+   * @returns Chronologically ordered latest chat messages.
+   */
+  async getLatestChatSessionMessages(sessionId: string, limit: number): Promise<ChatMessage[]> {
+    const [latestSession] = await db
+      .select({ id: schema.conversationSessions.id })
+      .from(schema.conversationSessions)
+      .where(eq(schema.conversationSessions.conversationId, sessionId))
+      .orderBy(
+        desc(schema.conversationSessions.lastMessageAt),
+        desc(schema.conversationSessions.startedAt),
+        desc(schema.conversationSessions.id),
+      )
+      .limit(1);
+    if (!latestSession) return [];
+
+    const rows = await db.select()
+      .from(schema.messages)
+      .where(eq(schema.messages.sessionId, latestSession.id))
+      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
+      .limit(limit);
+
+    return this.toChatMessages(sessionId, rows.reverse());
+  }
+
+  /**
+   * Load one durable session for a chat conversation in the legacy chat-message shape.
+   *
+   * @param conversationId - Chat conversation identifier.
+   * @param opts - Optional earlier-session cursor.
+   * @returns The selected durable session, mapped messages, and prior-session signal.
+   */
+  async getChatConversationSessionHistory(
+    conversationId: string,
+    opts?: { beforeSessionId?: string },
+  ): Promise<{
+    session: ConversationSession | null;
+    messages: ChatMessage[];
+    hasPreviousSession: boolean;
+  }> {
+    const history = await this.getConversationSessionHistory(conversationId, opts);
+    return {
+      session: history.session,
+      messages: this.toChatMessages(conversationId, history.messages),
+      hasPreviousSession: history.hasPreviousSession,
+    };
+  }
+
+  /**
+   * Reconstruct the backward-compatible ChatMessage shape from message rows.
+   *
+   * @param sessionId - Conversation identifier for the compatibility shape.
+   * @param rows - Persisted message rows in display order.
+   * @returns Compatibility chat messages.
+   */
+  private toChatMessages(
+    sessionId: string,
+    rows: Array<typeof schema.messages.$inferSelect>,
+  ): ChatMessage[] {
     return rows.map((msg) => {
       const parts = msg.parts as Array<{ type?: string; text?: string }>;
       const content =

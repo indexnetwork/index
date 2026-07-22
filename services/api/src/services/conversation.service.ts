@@ -172,6 +172,21 @@ export class ConversationService {
   }
 
   /**
+   * Loads one durable timeline session for an authorized conversation.
+   *
+   * @param conversationId - Conversation identifier.
+   * @param opts - Caller visibility plus optional task or prior-session cursor.
+   * @returns The selected session, messages, and previous-session signal.
+   */
+  async getSessionHistory(
+    conversationId: string,
+    opts: { userId: string; taskId?: string; beforeSessionId?: string },
+  ) {
+    await this.verifyParticipant(opts.userId, conversationId);
+    return this.db.getConversationSessionHistory(conversationId, opts);
+  }
+
+  /**
    * Marks a conversation read for a specific participant.
    * @param userId - The participant marking the conversation read (must be a participant)
    * @param conversationId - Conversation ID

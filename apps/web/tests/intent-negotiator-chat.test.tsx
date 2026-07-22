@@ -27,6 +27,9 @@ const mocks = vi.hoisted(() => ({
     sendOnboardingMessage: vi.fn(),
     stopStream: vi.fn(),
     loadSession: vi.fn().mockResolvedValue(undefined),
+    loadPreviousMessages: vi.fn(),
+    hasPreviousSession: false,
+    isLoadingPreviousMessages: false,
     clearChat: vi.fn(),
   },
 }));
@@ -124,6 +127,8 @@ describe('IntentNegotiatorChat', () => {
     mocks.chat.messages = [];
     mocks.chat.isLoading = false;
     mocks.chat.sessionId = null;
+    mocks.chat.hasPreviousSession = false;
+    mocks.chat.isLoadingPreviousMessages = false;
     mocks.chat.loadSession.mockResolvedValue(undefined);
     mocks.apiClient.post.mockResolvedValue(SESSION_RESPONSE);
   });
@@ -154,6 +159,15 @@ describe('IntentNegotiatorChat', () => {
     const divider = await screen.findByTestId('negotiator-restored-history-divider');
     expect(divider).toHaveTextContent('earlier conversation');
     expect(divider).toHaveTextContent('may not reflect current signal state');
+  });
+
+  test('loads the previous durable session from the negotiator timeline', async () => {
+    mocks.chat.hasPreviousSession = true;
+    renderChat();
+
+    const button = await screen.findByRole('button', { name: 'Load previous messages' });
+    fireEvent.click(button);
+    expect(mocks.chat.loadPreviousMessages).toHaveBeenCalledTimes(1);
   });
 
   test('renders pending intent questions through the existing answer pipeline', async () => {

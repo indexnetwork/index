@@ -13,21 +13,22 @@ export default function NegotiationDetailPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { negotiations, messages, loadMessages } = useConversation();
+  const { negotiations, messages, loadSessionHistory, loadPreviousSessionMessages, sessionHistory } = useConversation();
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const conversation = negotiations.find((c) => c.id === conversationId);
   const conversationMessages = useMemo(() => messages.get(conversationId!) ?? [], [messages, conversationId]);
+  const history = conversationId ? sessionHistory.get(conversationId) : undefined;
 
   useEffect(() => {
     if (!conversationId) return;
     let cancelled = false;
-    loadMessages(conversationId, { limit: 100 }).finally(() => {
+    loadSessionHistory(conversationId).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [conversationId, loadMessages]);
+  }, [conversationId, loadSessionHistory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -76,6 +77,19 @@ export default function NegotiationDetailPage() {
       <div className="px-6 lg:px-8 pb-32 flex-1">
         <ContentContainer>
           <div className="space-y-4">
+            {history?.hasPreviousSession && conversationId && (
+              <div className="flex justify-center py-2">
+                <button
+                  type="button"
+                  onClick={() => void loadPreviousSessionMessages(conversationId)}
+                  disabled={history.loadingPrevious}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+                  aria-label="Load previous messages"
+                >
+                  {history.loadingPrevious ? 'Loading previous messages…' : 'Load Previous Messages'}
+                </button>
+              </div>
+            )}
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -89,6 +103,8 @@ export default function NegotiationDetailPage() {
             {conversationMessages.map((message, index) => {
               const isOwn = message.senderId === ownAgentId;
               const info = participantInfo.get(message.senderId);
+              const previousMessage = conversationMessages[index - 1];
+              const startsSession = previousMessage !== undefined && previousMessage.sessionId !== message.sessionId;
 
               // Extract text content from message parts — use `message` field from data part, or text part
               const parts = message.parts as { kind?: string; text?: string; data?: { message?: string; assessment?: { reasoning?: string } } }[];
@@ -100,11 +116,17 @@ export default function NegotiationDetailPage() {
               const isInternal = !messageText && !!reasoningText;
               if (!content.trim()) return null;
 
-              const prevMessage = conversationMessages[index - 1];
-              const showTimestamp = index === 0 || (prevMessage && new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() > 300_000);
+              const showTimestamp = index === 0 || (previousMessage && new Date(message.createdAt).getTime() - new Date(previousMessage.createdAt).getTime() > 300_000);
 
               return (
                 <div key={message.id}>
+                  {startsSession && (
+                    <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
+                      <span className="h-px flex-1 bg-gray-200" />
+                      <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
+                      <span className="h-px flex-1 bg-gray-200" />
+                    </div>
+                  )}
                   {showTimestamp && message.createdAt && (
                     <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
                       {(() => {

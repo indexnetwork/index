@@ -156,6 +156,8 @@ interface ChatMessage {
   isPending?: boolean;
   isQueued?: boolean;
   wasInterrupted?: boolean;
+  /** Durable timeline session that supplied this persisted message. */
+  conversationSessionId?: string | null;
 }
 
 export type ChatScope =
@@ -234,6 +236,12 @@ interface AIChatContextType {
   startReporterSession: (options?: { forceNew?: boolean }) => Promise<boolean>;
   /** Load a session, returning false for failed or superseded requests. */
   loadSession: (sessionId: string) => Promise<boolean>;
+  /** Load exactly one earlier durable timeline session into display history. */
+  loadPreviousMessages: () => Promise<void>;
+  /** Whether a durable session exists before the oldest loaded section. */
+  hasPreviousSession: boolean;
+  /** True while an earlier section is being fetched. */
+  isLoadingPreviousMessages: boolean;
   /** Observable target-specific load state for disabling route interactions until ready. */
   sessionLoadState: ChatSessionLoadState;
   isSessionReady: (sessionId: string) => boolean;
@@ -383,6 +391,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasPreviousSession, setHasPreviousSession] = useState(false);
+  const [previousSessionCursor, setPreviousSessionCursor] = useState<string | null>(null);
+  const [isLoadingPreviousMessages, setIsLoadingPreviousMessages] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [sessionPersona, setSessionPersona] = useState<string | null>(null);
@@ -1091,44 +1102,33 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     break;
                   }
                   case "user_question": {
-                    // The orchestrator persisted chat-mode questions and is now
-                    // blocking the turn on them. Shape them like the REST
-                    // PendingQuestion so ChatContent can reuse InjectedQuestions.
+                    // `user_question` carries opaque IDs only. Resolve cards
+                    // through the conversation-scoped canonical read so model
+                    // output can never forge question content or provenance.
                     const eventSessionId =
                       (typeof event.sessionId === "string" && event.sessionId) ||
                       newSessionId ||
                       sessionId ||
                       "";
-                    const incoming: PendingQuestion[] = (event.questions ?? []).map(
-                      (q: { id: string; title: string; prompt: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }) => ({
-                        id: q.id,
-                        detection: {
-                          mode: "chat" as const,
-                          sourceType: "conversation",
-                          sourceId: eventSessionId,
-                          timestamp: new Date().toISOString(),
-                        },
-                        actors: [],
-                        payload: {
-                          title: q.title,
-                          prompt: q.prompt,
-                          options: q.options,
-                          multiSelect: q.multiSelect,
-                        },
-                        status: "pending" as const,
-                        answer: null,
-                        expiresAt: null,
-                        createdAt: new Date().toISOString(),
-                        conversationId: eventSessionId || null,
-                      }),
+                    const requestedIds = new Set(
+                      (event.questions ?? [])
+                        .map((question: { id?: unknown }) => question.id)
+                        .filter((id): id is string => typeof id === "string"),
                     );
-                    if (incoming.length > 0) {
-                      setLiveQuestions((prev) => {
-                        const byId = new Map(prev.map((q) => [q.id, q]));
-                        for (const q of incoming) byId.set(q.id, q);
+                    if (!eventSessionId || requestedIds.size === 0) break;
+                    void apiClient.get<{ questions: PendingQuestion[] }>(
+                      `/questions?conversationId=${encodeURIComponent(eventSessionId)}&mode=chat`,
+                    ).then(({ questions }) => {
+                      const incoming = questions.filter((question) => requestedIds.has(question.id));
+                      if (incoming.length === 0) return;
+                      setLiveQuestions((previous) => {
+                        const byId = new Map(previous.map((question) => [question.id, question]));
+                        for (const question of incoming) byId.set(question.id, question);
                         return [...byId.values()];
                       });
-                    }
+                    }).catch((error: unknown) => {
+                      logger.error("Failed to resolve streamed chat question", { error, eventSessionId });
+                    });
                     break;
                   }
                   case "decision_questions": {
@@ -1410,6 +1410,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
     setSessionLoadState({ status: "idle", targetSessionId: null, error: null });
     setMessages([]);
+    setHasPreviousSession(false);
+    setPreviousSessionCursor(null);
+    setIsLoadingPreviousMessages(false);
     setSuggestions([]);
     setLiveQuestions([]);
     setSessionId(null);
@@ -1444,6 +1447,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setSessionScope(null);
     setSessionNetworkId(null);
     setMessages([]);
+    setHasPreviousSession(false);
+    setPreviousSessionCursor(null);
+    setIsLoadingPreviousMessages(false);
     setSuggestions([]);
     forcePersonaNextSessionRef.current = null;
 
@@ -1466,6 +1472,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           scopeType?: "network" | "intent" | null;
           scopeId?: string | null;
         };
+        sessionId: string | null;
+        hasPreviousSession: boolean;
+        previousSessionCursor: string | null;
         messages: Array<{
           id: string;
           role: string;
@@ -1518,6 +1527,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(m.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(m.interrupted ? { wasInterrupted: true } : {}),
+        conversationSessionId: data.sessionId,
       }));
 
       if (!ownsOperation(loadToken)) return false;
@@ -1527,6 +1537,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       setSessionScope(loadedScope);
       setSessionNetworkId(loadedScope?.type === "network" ? loadedScope.id : null);
       setMessages(loadedMessages);
+      setHasPreviousSession(data.hasPreviousSession);
+      setPreviousSessionCursor(data.previousSessionCursor);
       setSessionLoadState({ status: "ready", targetSessionId: id, error: null });
       operationOwnerRef.current = null;
       return true;
@@ -1539,6 +1551,72 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
   }, [invalidateActiveSend, ownsOperation]);
+
+  const loadPreviousMessages = useCallback(async (): Promise<void> => {
+    if (!sessionId || !previousSessionCursor || !hasPreviousSession || isLoadingPreviousMessages) return;
+    setIsLoadingPreviousMessages(true);
+    try {
+      const data = await apiClient.post<{
+        sessionId: string | null;
+        hasPreviousSession: boolean;
+        previousSessionCursor: string | null;
+        messages: Array<{
+          id: string;
+          role: string;
+          content: string;
+          createdAt: string;
+          traceEvents?: TraceEvent[];
+          streamingDrafts?: StreamingDraft[] | null;
+          decisionQuestions?: Question[] | null;
+          decisionQuestionsSubmitted?: boolean | null;
+          interrupted?: boolean | null;
+          debugMeta?: {
+            tools?: Array<{
+              name: string;
+              steps?: ToolCallStep[];
+              graphs?: Array<{
+                name: string;
+                durationMs?: number;
+                agents?: Array<{ name: string; durationMs?: number }>;
+              }>;
+            }>;
+          } | null;
+        }>;
+      }>("/chat/web/session", { sessionId, beforeSessionId: previousSessionCursor });
+      if (!data.sessionId) return;
+      const loadedMessages: ChatMessage[] = data.messages.map((message) => ({
+        id: message.id,
+        role: message.role as "user" | "assistant",
+        content: message.content,
+        timestamp: new Date(message.createdAt),
+        isStreaming: false,
+        traceEvents: mergeDebugMetaIntoTraceEvents(message.traceEvents, message.debugMeta) ?? undefined,
+        ...(Array.isArray(message.streamingDrafts) && message.streamingDrafts.length > 0
+          ? { streamingDrafts: message.streamingDrafts }
+          : {}),
+        ...(Array.isArray(message.decisionQuestions) && message.decisionQuestions.length > 0
+          ? { decisionQuestions: message.decisionQuestions }
+          : {}),
+        ...(message.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
+        ...(message.interrupted ? { wasInterrupted: true } : {}),
+        conversationSessionId: data.sessionId,
+      }));
+      setMessages((current) => {
+        const knownIds = new Set(current.map((message) => message.id));
+        const combined = [...loadedMessages.filter((message) => !knownIds.has(message.id)), ...current];
+        return combined.sort((left, right) => (
+          left.timestamp.getTime() - right.timestamp.getTime()
+          || left.id.localeCompare(right.id)
+        ));
+      });
+      setHasPreviousSession(data.hasPreviousSession);
+      setPreviousSessionCursor(data.previousSessionCursor);
+    } catch (error) {
+      logger.error("Load previous chat messages error", { error, sessionId });
+    } finally {
+      setIsLoadingPreviousMessages(false);
+    }
+  }, [hasPreviousSession, isLoadingPreviousMessages, previousSessionCursor, sessionId]);
 
   const startReporterSession = useCallback((options?: {
     forceNew?: boolean;
@@ -1645,6 +1723,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         startSignalSession,
         startReporterSession,
         loadSession,
+        loadPreviousMessages,
+        hasPreviousSession,
+        isLoadingPreviousMessages,
         sessionLoadState,
         isSessionReady,
         updateSessionTitle,

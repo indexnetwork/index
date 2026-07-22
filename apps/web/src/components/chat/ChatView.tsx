@@ -40,7 +40,9 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     messages: allMessages,
     conversations,
     sendMessage: conversationSend,
-    loadMessages,
+    loadSessionHistory,
+    loadPreviousSessionMessages,
+    sessionHistory,
     getOrCreateDM,
     markConversationRead,
     hideConversation,
@@ -81,6 +83,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   );
   const via = conversationSummary?.via ?? [];
   const latestVia = via[0] ?? null;
+  const history = conversationId ? sessionHistory.get(conversationId) : undefined;
 
   useEffect(() => {
     if (!conversationId) return;
@@ -118,13 +121,13 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   useEffect(() => {
     const cid = initialGroupId ?? conversationId;
     if (cid) {
-      loadMessages(cid, { limit: 50 }).finally(() => setMessagesLoading(false));
+      loadSessionHistory(cid).finally(() => setMessagesLoading(false));
     } else {
       // No conversation yet: clear the initial loading state via microtask
       // to satisfy react-hooks/set-state-in-effect.
       queueMicrotask(() => setMessagesLoading(false));
     }
-  }, [initialGroupId, conversationId, loadMessages]);
+  }, [initialGroupId, conversationId, loadSessionHistory]);
 
   // Get or create DM conversation
   useEffect(() => {
@@ -175,7 +178,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
           const conv = await getOrCreateDM(userId);
           setConversationId(conv.id);
           await conversationSend(conv.id, [{ text }]);
-          loadMessages(conv.id, { limit: 50 });
+          loadSessionHistory(conv.id);
         }
         if (!hasFiredFirstMessageRef.current) {
           hasFiredFirstMessageRef.current = true;
@@ -188,7 +191,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
         setSending(false);
       }
     })();
-  }, [autoSend, contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadMessages, onFirstMessageSent]);
+  }, [autoSend, contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadSessionHistory, onFirstMessageSent]);
 
   const handleSend = useCallback(async () => {
     if (!messageText.trim() || sending) return;
@@ -202,7 +205,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
         const conv = await getOrCreateDM(userId);
         setConversationId(conv.id);
         await conversationSend(conv.id, [{ text }]);
-        loadMessages(conv.id, { limit: 50 });
+        loadSessionHistory(conv.id);
       }
       if (!hasFiredFirstMessageRef.current) {
         hasFiredFirstMessageRef.current = true;
@@ -215,7 +218,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     } finally {
       setSending(false);
     }
-  }, [conversationId, userId, messageText, sending, conversationSend, getOrCreateDM, loadMessages, onFirstMessageSent]);
+  }, [conversationId, userId, messageText, sending, conversationSend, getOrCreateDM, loadSessionHistory, onFirstMessageSent]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -303,6 +306,19 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
       <div className="px-6 lg:px-8 pb-32 flex-1">
         <ContentContainer>
           <div className="space-y-4">
+            {history?.hasPreviousSession && conversationId && (
+              <div className="flex justify-center py-2">
+                <button
+                  type="button"
+                  onClick={() => void loadPreviousSessionMessages(conversationId)}
+                  disabled={history.loadingPrevious}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+                  aria-label="Load previous messages"
+                >
+                  {history.loadingPrevious ? 'Loading previous messages…' : 'Load Previous Messages'}
+                </button>
+              </div>
+            )}
             {messagesLoading ? (
               <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
             ) : messages.length === 0 && via.length > 0 ? (
@@ -349,6 +365,8 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
                 }
 
                 const message = item.message;
+                const previousMessage = [...timeline.slice(0, index)].reverse().find((candidate) => candidate.type === 'message')?.message;
+                const startsSession = previousMessage !== undefined && previousMessage.sessionId !== message.sessionId;
                 const isOwn = message.senderId === user?.id;
                 const textPart = (message.parts as { text?: string }[] | undefined)?.find((p) => p.text)?.text;
                 const content = textPart ?? '';
@@ -356,6 +374,13 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
 
                 return (
                   <div key={message.id}>
+                    {startsSession && (
+                      <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
+                        <span className="h-px flex-1 bg-gray-200" />
+                        <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
+                        <span className="h-px flex-1 bg-gray-200" />
+                      </div>
+                    )}
                     {showTimestamp && message.createdAt && (
                       <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
                         {`${formatChatDayLabel(message.createdAt)}, ${formatTime(message.createdAt)}`}

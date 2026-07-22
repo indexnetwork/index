@@ -20,7 +20,7 @@ import { describe, test, expect, beforeAll as bunBeforeAll, afterAll as bunAfter
 import { eq, inArray } from "drizzle-orm/sql";
 import { QuestionController } from "../question.controller";
 import { QuestionerAdapter, type AdapterPersistableQuestion } from "../../adapters/questioner.adapter";
-import { UserDatabaseAdapter } from "../../adapters/database.adapter";
+import { ConversationDatabaseAdapter, UserDatabaseAdapter } from "../../adapters/database.adapter";
 import { questionService } from "../../services/question.service";
 import { QuestionEvents } from "../../events/question.event";
 import db from "../../lib/drizzle/drizzle";
@@ -35,9 +35,11 @@ const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 describe("Pending question inbox (IND-404)", () => {
   const userAdapter = new UserDatabaseAdapter();
   const questionerAdapter = new QuestionerAdapter(db);
+  const conversationAdapter = new ConversationDatabaseAdapter();
   const controller = new QuestionController();
   let testUserId: string;
   const createdQuestionIds: string[] = [];
+  const createdConversationIds: string[] = [];
   let answeredEvents: Array<{ questionId: string; mode: string; sourceId: string }> = [];
   const prevOnAnswered = QuestionEvents.onAnswered;
 
@@ -114,6 +116,9 @@ describe("Pending question inbox (IND-404)", () => {
     QuestionEvents.onAnswered = prevOnAnswered;
     if (createdQuestionIds.length > 0) {
       await db.delete(questions).where(inArray(questions.id, createdQuestionIds)).catch(() => {});
+    }
+    for (const conversationId of createdConversationIds) {
+      await conversationAdapter.deleteConversation(conversationId).catch(() => {});
     }
     if (testUserId) await userAdapter.deleteById(testUserId);
   });
@@ -261,6 +266,41 @@ describe("Pending question inbox (IND-404)", () => {
     // Without the exclusion the pool question is still reachable (intent page path).
     const all = await questionService.findPending(testUserId, { noConversation: true });
     expect(all.map((q) => q.id)).toContain(poolQuestionId);
+  });
+
+  test("conversation reads retain non-pool modes and reject foreign participants", async () => {
+    const conversationId = crypto.randomUUID();
+    createdConversationIds.push(conversationId);
+    await conversationAdapter.createChatSession({ id: conversationId, userId: testUserId });
+    const intentQuestionId = await persistQuestion({
+      detection: {
+        mode: 'intent',
+        sourceType: 'intent',
+        sourceId: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+      conversationId,
+    });
+    const poolQuestionId = await persistQuestion({
+      detection: {
+        mode: 'pool_discovery',
+        sourceType: 'intent',
+        sourceId: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+      conversationId,
+    });
+    const response = await controller.list(listReq(`conversationId=${conversationId}`), mockUser());
+    expect(response.status).toBe(200);
+    const body = await response.json() as { questions: Array<{ id: string }> };
+    expect(body.questions.map((question) => question.id)).toContain(intentQuestionId);
+    expect(body.questions.map((question) => question.id)).not.toContain(poolQuestionId);
+
+    const foreignResponse = await controller.list(
+      listReq(`conversationId=${conversationId}`),
+      { id: crypto.randomUUID(), email: 'foreign@example.com', name: 'Foreign' },
+    );
+    expect(foreignResponse.status).toBe(404);
   });
 
   test("conversation-bound questions stay out of the DM inbox", async () => {

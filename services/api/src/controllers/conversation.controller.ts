@@ -124,8 +124,23 @@ export class ConversationController {
     const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!, 10) : undefined;
     const before = url.searchParams.get('before') ?? undefined;
     const taskId = url.searchParams.get('taskId') ?? undefined;
+    const beforeSessionId = url.searchParams.get('beforeSessionId') ?? undefined;
+    const sessionHistory = url.searchParams.get('sessionHistory') === 'true' || beforeSessionId !== undefined;
 
     try {
+      if (sessionHistory) {
+        const history = await this.conversationService.getSessionHistory(conversationId, {
+          userId: user.id,
+          taskId,
+          beforeSessionId,
+        });
+        return Response.json({
+          messages: history.messages,
+          sessionId: history.session?.id ?? null,
+          hasPreviousSession: history.hasPreviousSession,
+          previousSessionCursor: history.hasPreviousSession ? history.session?.id ?? null : null,
+        });
+      }
       const messages = await this.conversationService.getMessages(conversationId, { limit, before, taskId, userId: user.id });
       return Response.json({ messages });
     } catch (err: unknown) {

@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, afterAll as bunAfterAll } from 'bun:test';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 
@@ -70,6 +70,142 @@ describe('ConversationDatabaseAdapter', () => {
       const msgs = await adapter.getMessages(createdIds[0]);
       expect(msgs.length).toBeGreaterThanOrEqual(1);
       expect(msgs[0].parts).toEqual([{ text: 'hello' }]);
+    }, 10000);
+  });
+
+  describe('getLatestChatSessionMessages', () => {
+    it('returns the latest messages chronologically with a same-millisecond id tiebreaker', async () => {
+      const conversation = await adapter.createConversation([
+        { participantId: 'latest-context-user', participantType: 'user' },
+        { participantId: 'system-agent', participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+
+      const createdAt = new Date('2026-07-22T00:00:00.000Z');
+      const durableSessionId = `latest-context-session-${conversation.id}`;
+      await db.insert(schema.conversationSessions).values({
+        id: durableSessionId,
+        conversationId: conversation.id,
+        startedAt: createdAt,
+        lastMessageAt: createdAt,
+      });
+      await db.insert(schema.messages).values([
+        { id: 'latest-context-a', conversationId: conversation.id, sessionId: durableSessionId, senderId: 'latest-context-user', role: 'user', parts: [{ text: 'oldest' }], createdAt },
+        { id: 'latest-context-b', conversationId: conversation.id, sessionId: durableSessionId, senderId: 'system-agent', role: 'agent', parts: [{ text: 'newer' }], createdAt },
+        { id: 'latest-context-c', conversationId: conversation.id, sessionId: durableSessionId, senderId: 'latest-context-user', role: 'user', parts: [{ text: 'latest' }], createdAt },
+      ]);
+
+      const messages = await adapter.getLatestChatSessionMessages(conversation.id, 2);
+
+      expect(messages.map((message) => message.id)).toEqual([
+        'latest-context-b',
+        'latest-context-c',
+      ]);
+    }, 10000);
+  });
+
+  describe('durable conversation sessions', () => {
+    it('stamps concurrent H2H writes into one session', async () => {
+      const conversation = await adapter.createConversation([
+        { participantId: 'session-concurrent-user', participantType: 'user' },
+        { participantId: 'session-concurrent-peer', participantType: 'user' },
+      ]);
+      createdIds.push(conversation.id);
+
+      await Promise.all([
+        adapter.createMessage({
+          conversationId: conversation.id,
+          senderId: 'session-concurrent-user',
+          role: 'user',
+          parts: [{ text: 'one' }],
+        }),
+        adapter.createMessage({
+          conversationId: conversation.id,
+          senderId: 'session-concurrent-peer',
+          role: 'user',
+          parts: [{ text: 'two' }],
+        }),
+      ]);
+
+      const sessions = await db.select()
+        .from(schema.conversationSessions)
+        .where(eq(schema.conversationSessions.conversationId, conversation.id));
+      const messages = await adapter.getMessages(conversation.id);
+
+      expect(sessions).toHaveLength(1);
+      expect(new Set(messages.map((message) => message.sessionId)).size).toBe(1);
+      expect(messages.every((message) => message.sessionId === sessions[0]?.id)).toBe(true);
+    }, 10000);
+
+    it('maps all A2A task messages to one task session', async () => {
+      const conversation = await adapter.createConversation([
+        { participantId: 'session-task-agent', participantType: 'agent' },
+        { participantId: 'session-task-peer', participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+      const task = await adapter.createTask(conversation.id);
+
+      await adapter.createMessage({
+        conversationId: conversation.id,
+        senderId: 'session-task-agent',
+        role: 'agent',
+        taskId: task.id,
+        parts: [{ text: 'first turn' }],
+      });
+      await adapter.createMessage({
+        conversationId: conversation.id,
+        senderId: 'session-task-peer',
+        role: 'agent',
+        taskId: task.id,
+        parts: [{ text: 'second turn' }],
+      });
+
+      const history = await adapter.getConversationSessionHistory(conversation.id, { taskId: task.id });
+
+      expect(history.session?.taskId).toBe(task.id);
+      expect(history.messages).toHaveLength(2);
+      expect(history.messages.every((message) => message.sessionId === history.session?.id)).toBe(true);
+      expect(history.hasPreviousSession).toBe(false);
+    }, 10000);
+
+    it('loads exactly one preceding session without reordering same-millisecond messages', async () => {
+      const conversation = await adapter.createConversation([
+        { participantId: 'session-history-user', participantType: 'user' },
+        { participantId: 'session-history-peer', participantType: 'user' },
+      ]);
+      createdIds.push(conversation.id);
+      const firstAt = new Date('2026-07-20T00:00:00.000Z');
+      const secondAt = new Date('2026-07-21T00:00:00.000Z');
+      const olderSessionId = `history-older-${conversation.id}`;
+      const newerSessionId = `history-newer-${conversation.id}`;
+      await db.insert(schema.conversationSessions).values([
+        { id: olderSessionId, conversationId: conversation.id, startedAt: firstAt, lastMessageAt: firstAt },
+        { id: newerSessionId, conversationId: conversation.id, startedAt: secondAt, lastMessageAt: secondAt },
+      ]);
+      await db.insert(schema.messages).values([
+        { id: `history-a-${conversation.id}`, conversationId: conversation.id, sessionId: olderSessionId, senderId: 'session-history-user', role: 'user', parts: [{ text: 'old a' }], createdAt: firstAt },
+        { id: `history-b-${conversation.id}`, conversationId: conversation.id, sessionId: olderSessionId, senderId: 'session-history-peer', role: 'user', parts: [{ text: 'old b' }], createdAt: firstAt },
+        { id: `history-c-${conversation.id}`, conversationId: conversation.id, sessionId: newerSessionId, senderId: 'session-history-user', role: 'user', parts: [{ text: 'new' }], createdAt: secondAt },
+      ]);
+
+      const newest = await adapter.getConversationSessionHistory(conversation.id);
+      const previous = await adapter.getConversationSessionHistory(conversation.id, {
+        beforeSessionId: newest.session?.id,
+      });
+      const noMore = await adapter.getConversationSessionHistory(conversation.id, {
+        beforeSessionId: previous.session?.id,
+      });
+
+      expect(newest.session?.id).toBe(newerSessionId);
+      expect(newest.messages.map((message) => message.id)).toEqual([`history-c-${conversation.id}`]);
+      expect(newest.hasPreviousSession).toBe(true);
+      expect(previous.session?.id).toBe(olderSessionId);
+      expect(previous.messages.map((message) => message.id)).toEqual([
+        `history-a-${conversation.id}`,
+        `history-b-${conversation.id}`,
+      ]);
+      expect(previous.hasPreviousSession).toBe(false);
+      expect(noMore.session).toBeNull();
     }, 10000);
   });
 

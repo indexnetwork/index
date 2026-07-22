@@ -20,6 +20,8 @@ export interface ConversationMessage {
   conversationId: string;
   senderId: string;
   role: 'user' | 'agent';
+  /** Durable conversation-session binding for sectioned history reads. */
+  sessionId?: string | null;
   parts: unknown[];
   metadata?: Record<string, unknown>;
   createdAt: string;

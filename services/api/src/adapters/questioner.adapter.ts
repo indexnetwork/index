@@ -11,9 +11,9 @@
  * alignment spec.
  */
 
-import { eq, and, sql, or, isNull, desc, count, gt } from 'drizzle-orm/sql';
+import { eq, and, sql, or, isNull, desc, count, gt, inArray } from 'drizzle-orm/sql';
 
-import { intents, questions, opportunities } from '../schemas/database.schema';
+import { intents, messages, questions, opportunities } from '../schemas/database.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
@@ -384,6 +384,46 @@ export class QuestionerAdapter {
   }
 
   /**
+   * Bind chat questions to the persisted assistant message that emitted them.
+   * Only canonical pending/terminal chat rows for the recipient and
+   * conversation are updated; pool and cross-conversation IDs fail closed.
+   *
+   * @param input - Chat question IDs and their authoritative message context.
+   */
+  async bindChatQuestionsToMessage(input: {
+    questionIds: string[];
+    userId: string;
+    conversationId: string;
+    messageId: string;
+  }): Promise<void> {
+    if (input.questionIds.length === 0) return;
+    const [message] = await this.db
+      .select({ sessionId: messages.sessionId })
+      .from(messages)
+      .where(and(
+        eq(messages.id, input.messageId),
+        eq(messages.conversationId, input.conversationId),
+      ))
+      .limit(1);
+    if (!message?.sessionId) return;
+
+    await this.db.update(questions)
+      .set({
+        detection: sql`jsonb_set(
+          jsonb_set(${questions.detection}, '{messageId}', to_jsonb(${input.messageId}::text), true),
+          '{sessionId}', to_jsonb(${message.sessionId}::text), true
+        )`,
+      })
+      .where(and(
+        inArray(questions.id, input.questionIds),
+        eq(questions.conversationId, input.conversationId),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId: input.userId }])}::jsonb`,
+        sql`${questions.detection}->>'mode' = 'chat'`,
+        sql`NOT (${questions.detection} ? 'pool')`,
+      ));
+  }
+
+  /**
    * Final queued-artifact gate. The recipient+intent advisory lock serializes
    * competing inserts and lifecycle reconciliation while the transaction
    * rechecks authoritative intent text and the exact live pool.
@@ -617,6 +657,27 @@ export class QuestionerAdapter {
     }
     if (filters?.mode) {
       conditions.push(sql`${questions.detection}->>'mode' = ${filters.mode}`);
+      if (filters.mode === 'chat') {
+        conditions.push(sql`NOT (${questions.detection} ? 'pool')`);
+        conditions.push(sql`COALESCE(${questions.detection}->>'voidedReason', '') = ''`);
+        // Unanchored rows may render only while their blocking turn is live.
+        // Once anchoring metadata exists, require both bindings and prove that
+        // the assistant message is in exactly the stamped durable session.
+        conditions.push(sql`(
+          (NOT (${questions.detection} ? 'messageId') AND NOT (${questions.detection} ? 'sessionId'))
+          OR (
+            ${questions.detection} ? 'messageId'
+            AND ${questions.detection} ? 'sessionId'
+            AND EXISTS (
+              SELECT 1
+              FROM ${messages}
+              WHERE ${messages.id} = ${questions.detection}->>'messageId'
+                AND ${messages.conversationId} = ${questions.conversationId}
+                AND ${messages.sessionId} = ${questions.detection}->>'sessionId'
+            )
+          )
+        )`);
+      }
     }
     if (filters?.purpose) {
       conditions.push(sql`${questions.detection}->>'purpose' = ${filters.purpose}`);

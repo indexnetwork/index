@@ -177,13 +177,7 @@ export type AgentStreamEvent =
       // Emitted by the ask_user_question tool after persisting chat-mode
       // questions: the turn is blocked awaiting the user's inline answer.
       type: "user_question";
-      questions: Array<{
-        id: string;
-        title: string;
-        prompt: string;
-        options: Array<{ label: string; description: string }>;
-        multiSelect: boolean;
-      }>;
+      questions: Array<{ id: string }>;
     }
   | { type: "status"; message: string }
   | { type: "decision_questions"; questions: Question[] }
