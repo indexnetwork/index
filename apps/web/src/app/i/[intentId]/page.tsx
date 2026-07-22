@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowUp, Brain, ChevronLeft, Loader2, LoaderCircle, Pause, Pencil, Play, Trash2 } from "lucide-react";
+import { ArrowUp, Brain, ChevronLeft, Loader2, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { Link } from "react-router";
+import * as Dialog from "@radix-ui/react-dialog";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
@@ -260,7 +261,11 @@ function Panel({
 /**
  * Intent detail view. Mirrors the Hermes dashboard intent-detail layout: a
  * detail header card with a live indicator and Pause/Edit/Archive actions, a
- * primary Questions panel, and a Radar panel with a status filter strip.
+ * Personal Agent (or Questions) column, and a Radar panel with a status
+ * filter strip. At lg+ the two columns are equal width (50/50); below lg the
+ * Radar is the primary content and the left column becomes a Radix-Dialog
+ * off-canvas sheet (non-modal, kept mounted via forceMount so the negotiator
+ * chat's live state survives open/close and breakpoint changes).
  */
 export default function IntentDetailPage() {
   const navigate = useNavigate();
@@ -326,6 +331,10 @@ export default function IntentDetailPage() {
   // `chatUnavailable` is the runtime fallback if the bootstrap fails.
   const [chatUnavailable, setChatUnavailable] = useState(false);
   const negotiatorChatEnabled = features?.negotiatorChat === true && !chatUnavailable;
+  const showNegotiatorPanel = negotiatorChatEnabled && !!intentId;
+  // Mobile (< lg): the Personal Agent column becomes an off-canvas sheet over
+  // the Radar; this is its open state. Desktop (lg+) always shows the column.
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
 
   useLayoutEffect(() => {
     activeIntentIdRef.current = intentId;
@@ -720,6 +729,12 @@ export default function IntentDetailPage() {
               Signal not found
             </div>
           ) : (
+            // Non-modal by design: the sheet is forceMounted (never unmounted,
+            // so the negotiator chat keeps its live state) and a modal dialog
+            // would permanently aria-hide the rest of the page on mount.
+            // Radix still provides role/aria wiring, Escape close,
+            // pointer-down-outside dismiss, and focus return to the trigger.
+            <Dialog.Root modal={false} open={agentPanelOpen} onOpenChange={setAgentPanelOpen}>
             <div className="flex min-h-0 flex-1 flex-col">
               {/* Header card: skeleton while the intent loads — the workspace
                   below renders (and fetches) immediately, in parallel. */}
@@ -847,15 +862,84 @@ export default function IntentDetailPage() {
                 )}
               </div>
 
+              {/* Mobile-only trigger: below lg the Radar is the primary
+                  content and the Personal Agent column opens as an off-canvas
+                  sheet. The badge carries the same pending-question count
+                  semantics as the desktop panel header. */}
+              <Dialog.Trigger asChild>
+                <button
+                  type="button"
+                  data-testid="personal-agent-trigger"
+                  className="mb-4 inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:hidden"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  {showNegotiatorPanel ? "Personal Agent" : "Questions"}
+                  {questions.length > 0 && (
+                    <span
+                      data-testid="intent-question-count"
+                      className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center font-sans normal-case tracking-normal"
+                    >
+                      {questions.length > 99 ? "99+" : questions.length}
+                    </span>
+                  )}
+                </button>
+              </Dialog.Trigger>
+
               <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row">
-                {negotiatorChatEnabled && intentId ? (
+                {/* Visual backdrop only (Radix renders no overlay part for
+                    non-modal dialogs); dismissing it is Radix's
+                    pointer-down-outside on the content, not hand-rolled. */}
+                <div
+                  aria-hidden="true"
+                  data-testid="personal-agent-overlay"
+                  className={cn(
+                    "fixed inset-0 z-[100] bg-black/50 transition-opacity duration-300 lg:hidden",
+                    agentPanelOpen
+                      ? "opacity-100"
+                      : "pointer-events-none invisible opacity-0",
+                  )}
+                />
+                {/* One mounted left column: a fixed off-canvas sheet below lg
+                    (slid out when closed), a normal static equal-width flex
+                    column at lg+. forceMount keeps the negotiator chat's live
+                    stream/question state mounted across open/close and across
+                    breakpoint changes — it is never unmounted or duplicated. */}
+                <Dialog.Content
+                  forceMount
+                  data-testid="personal-agent-sheet"
+                  className={cn(
+                    "fixed inset-y-0 right-0 z-[100] flex w-[min(85vw,24rem)] flex-col overflow-y-auto bg-white p-4 shadow-xl outline-none",
+                    "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                    "data-[state=closed]:pointer-events-none data-[state=closed]:invisible data-[state=closed]:translate-x-full",
+                    "lg:static lg:z-auto lg:min-h-0 lg:min-w-0 lg:w-auto lg:flex-1 lg:translate-x-0 lg:visible lg:pointer-events-auto lg:overflow-visible lg:bg-transparent lg:p-0 lg:shadow-none",
+                  )}
+                >
+                  <Dialog.Title className="sr-only">
+                    {showNegotiatorPanel ? "Personal Agent" : "Questions"}
+                  </Dialog.Title>
+                  <Dialog.Description className="sr-only">
+                    {showNegotiatorPanel
+                      ? "Chat with your Personal Agent and answer its follow-up questions about this signal."
+                      : "Questions from your agent about this signal."}
+                  </Dialog.Description>
+                  <div className="mb-1 flex shrink-0 justify-end lg:hidden">
+                    <Dialog.Close asChild>
+                      <button
+                        type="button"
+                        aria-label="Close panel"
+                        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </Dialog.Close>
+                  </div>
+                {showNegotiatorPanel ? (
                   <Panel
                     title="Personal Agent"
                     description="Your Personal Agent, scoped to this signal — ask what it's doing, steer it, or answer its follow-ups."
                     media={
                       questions.length > 0 ? (
                         <span
-                          data-testid="intent-question-count"
                           className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center font-sans normal-case tracking-normal"
                         >
                           {questions.length > 99 ? "99+" : questions.length}
@@ -872,7 +956,7 @@ export default function IntentDetailPage() {
                         Memory
                       </Link>
                     }
-                    className="lg:flex-[2]"
+                    className="min-h-0 flex-1"
                   >
                     {user?.id && (
                       <IntentMemoryStrip intentId={intentId} userId={user.id} />
@@ -895,7 +979,7 @@ export default function IntentDetailPage() {
                     />
                   </Panel>
                 ) : (
-                  <section className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[2]">
+                  <section className="flex min-h-0 min-w-0 flex-1 flex-col">
                     <div className="mb-4 shrink-0">
                       <h3 className="flex items-center gap-2 text-base font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
                         <span>
@@ -950,8 +1034,9 @@ export default function IntentDetailPage() {
                     </div>
                   </section>
                 )}
+                </Dialog.Content>
 
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-[3]">
+                <div data-testid="radar-column" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-1">
                 <Panel
                   title="Radar"
                   description="Opportunities the network surfaced for this signal."
@@ -1039,6 +1124,7 @@ export default function IntentDetailPage() {
                 </div>
               </div>
             </div>
+            </Dialog.Root>
           )}
         </ContentContainer>
       </div>
