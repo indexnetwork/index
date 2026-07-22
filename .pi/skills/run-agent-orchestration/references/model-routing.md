@@ -43,6 +43,28 @@ root → child coordination, use exactly one server-owned
 structured question (`blocked`) or final `RESULT`; do not sleep-poll, run watchers,
 or use timeout loops.
 
+## Safe callback to `index`
+
+When a root reaches a structured `RESULT` or a genuine block requiring user input,
+it must dynamically locate the interactive workspace by label `index` (`wX`) and
+derive its current prompt target from workspace metadata. Do not hardcode the main
+agent name.
+
+Send `herdr agent prompt MAIN_TARGET "ORCHESTRATOR_EVENT ..."` without `--wait` only
+when the derived main target is `idle` or `done`, the `index` workspace is unfocused,
+and its editor is provably empty with no draft. This fire-and-return event wakes main
+without focusing it. If any condition is false or editor emptiness cannot be proven,
+do not inject text: retain the durable root done/blocked state for main's next natural
+turn or explicit orchestration tick and issue a non-focusing notification instead:
+
+```bash
+herdr notification show "Orchestration complete" --body "RESULT available" --sound done
+herdr notification show "Orchestration needs input" --body "Blocked input available" --sound request
+```
+
+Never clear, overwrite, or infer the safety of a user draft; never focus `index`; and
+never wait from the main workspace.
+
 ## Default OpenAI-first routing
 
 | Agent / role | Model | Fallback / escalation |

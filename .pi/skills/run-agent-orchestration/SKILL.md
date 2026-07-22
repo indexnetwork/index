@@ -61,7 +61,7 @@ plane have deliberately different contracts:
   immediately:
 
   ```bash
-  herdr agent prompt root-orch "$(< /absolute/path/to/wave-handoff.md)"
+  herdr agent prompt ROOT_AGENT_NAME "$(< /absolute/path/to/wave-handoff.md)"
   ```
 
   Resume by inspecting root state only on a later natural user turn or an explicit
@@ -87,6 +87,33 @@ plane have deliberately different contracts:
   background watcher process or watcher pane.
 - **NEVER use `sleep` to poll Herdr agents.** Sleep polling, watcher processes, and
   timeout loops are banned at every tier.
+
+## Safe callback to the interactive main workspace
+
+When the root reaches a structured `RESULT` or a genuine block requiring user input,
+it may notify the interactive main session, but must first locate the current workspace
+by label `index` (`wX`) and derive its current prompt target from that workspace's
+current metadata. Never assume or hardcode a main-agent name.
+
+A fire-and-return callback is permitted only when all of the following are provable:
+
+1. The derived main target is `idle` or `done`.
+2. The `index` workspace is unfocused.
+3. Its editor is provably empty and has no user draft.
+
+Only then send a concise structured `ORCHESTRATOR_EVENT` with `herdr agent prompt
+MAIN_TARGET "..."` **without** `--wait`. This wakes main without focusing it. If the
+main is focused or working, has a draft, or editor emptiness cannot be proven, do not
+inject anything. Instead, retain the durable done/blocked root state for main's next
+natural turn or explicit orchestration tick and notify without focus:
+
+```bash
+herdr notification show "Orchestration complete" --body "RESULT available" --sound done
+herdr notification show "Orchestration needs input" --body "Blocked input available" --sound request
+```
+
+Never clear, overwrite, or infer safety of a user draft; never focus `index`; and
+never wait from `index`.
 
 ## Settled states are not success
 
