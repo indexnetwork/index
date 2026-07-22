@@ -88,32 +88,38 @@ plane have deliberately different contracts:
 - **NEVER use `sleep` to poll Herdr agents.** Sleep polling, watcher processes, and
   timeout loops are banned at every tier.
 
-## Safe callback to the interactive main workspace
+## Durable attach-next-turn bridge
 
-When the root reaches a structured `RESULT` or a genuine block requiring user input,
-it may notify the interactive main session, but must first locate the current workspace
-by label `index` (`wX`) and derive its current prompt target from that workspace's
-current metadata. Never assume or hardcode a main-agent name.
+The project-local `.pi/extensions/orchestration-bridge.ts` is the only root → main
+callback path. A dedicated root publishes both a final `RESULT` (through
+`publish_orchestrator_event` with a stable event id) and genuine blocked-question
+events (automatically when `ask_user_question` starts). The publisher resolves the
+unique live workspace labeled `index` and its reported Pi session identity through
+Herdr metadata; it never hardcodes a main agent name or reads terminal pixels.
 
-A fire-and-return callback is permitted only when all of the following are provable:
+It atomically persists each structured event — id, `result`/`blocked` kind, root
+workspace/pane/session provenance, concise summary, timestamp, and optional durable
+result location/payload — into the private project-local per-session spool before one
+best-effort Unix-socket wake attempt. Publication is idempotent by event id. A missing
+listener leaves the event durable for the next natural turn; there are no retries,
+polls, sleeps, watcher processes, or waits.
 
-1. The derived main target is `idle` or `done`.
-2. The `index` workspace is unfocused.
-3. Its editor is provably empty and has no user draft.
+The trusted `index` session starts that socket listener only at `session_start`, closes
+and unlinks it at `session_shutdown`, and may update only a non-focusing inbox
+widget/status on receipt. It never edits the editor, starts a turn, focuses a workspace,
+or calls `herdr agent prompt`/`wait`. On `before_agent_start` for the user's next
+natural submission, it atomically claims outstanding events and adds a persistent
+custom `ORCHESTRATOR_EVENT` message to that turn. Claims replay at least once after a
+crash and are acknowledged by event id once their custom message is present, so events
+are neither silently lost nor duplicated.
 
-Only then send a concise structured `ORCHESTRATOR_EVENT` with `herdr agent prompt
-MAIN_TARGET "..."` **without** `--wait`. This wakes main without focusing it. If the
-main is focused or working, has a draft, or editor emptiness cannot be proven, do not
-inject anything. Instead, retain the durable done/blocked root state for main's next
-natural turn or explicit orchestration tick and notify without focus:
-
-```bash
-herdr notification show "Orchestration complete" --body "RESULT available" --sound done
-herdr notification show "Orchestration needs input" --body "Blocked input available" --sound request
-```
-
-Never clear, overwrite, or infer safety of a user draft; never focus `index`; and
-never wait from `index`.
+Herdr 0.7.5 notifications are optional visibility alerts only: `notification.show`
+has no persistent inbox and a disabled toast cannot resume Pi. The bridge is not a
+toast and does not use screen scraping. Project-local extensions load only after the
+project is trusted; after this code is installed or updated, reload both the root and
+`index` Pi sessions so the matching runtime extension is active. Never clear,
+overwrite, or infer safety of a user draft; never focus `index`; and never wait from
+`index`.
 
 ## Settled states are not success
 
@@ -134,12 +140,13 @@ in a temp directory — never request file output in the initial prompt. Full co
 When a child is `blocked`, the root orchestrator reads its pane and answers routine
 safe/recommended choices through non-focusing, pane-ID-targeted UI (`herdr pane read
 PANE_ID`, `herdr pane send-text PANE_ID`, `herdr pane send-keys PANE_ID`) — never a
-new agent prompt into an active question. Genuine
-product/architecture ambiguity, destructive/external mutation, credentials, or merge
-approval is re-raised by the root orchestrator with its **own** `ask_user_question`,
-which makes the root `blocked` and safely propagates to the user on the main session's
-next natural turn or explicit orchestration tick. Never infer merge approval. Full flow:
-`references/completion-and-questions.md`.
+new agent prompt into an active question. Genuine product/architecture ambiguity,
+destructive/external mutation, credentials, or merge approval is re-raised by the root
+with its **own** `ask_user_question`. The project-local bridge reference-counts that
+tool's awaited lifetime and emits the same-process `herdr:blocked` lifecycle event, so
+Herdr reports `blocked` until the question resolves; it also durably publishes the
+blocked event for attach-next-turn delivery to `index`. Never infer merge approval.
+Full flow: `references/completion-and-questions.md`.
 
 ## Roles and models
 

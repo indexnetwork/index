@@ -21,29 +21,38 @@ git/PR/test state before reporting it.
   `herdr agent prompt NAME "..." --wait` calls in one turn; the server owns those
   waits concurrently.
 
-## Safe root callback to `index`
+## Durable attach-next-turn callback to `index`
 
-After a root reaches a structured `RESULT` or a genuine block needing user input, it
-first locates the current main workspace by label `index` (`wX`) and derives its
-current prompt target dynamically from that workspace's metadata. Never hardcode a
-main-agent name or focus `index`.
+After a root reaches a structured `RESULT` or a genuine block needing user input, the
+project-local orchestration bridge resolves the unique workspace labeled `index` and
+its reported Pi session identity through Herdr metadata. It persists a structured,
+idempotent event before one best-effort Unix-socket wake: stable id, `result` or
+`blocked` kind, source workspace/pane/session provenance, concise summary, timestamp,
+and optional durable result payload/location. It never hardcodes a main-agent name or
+uses screen scraping.
 
-Inject a concise structured `ORCHESTRATOR_EVENT` with
-`herdr agent prompt MAIN_TARGET "..."` **without** `--wait` only if all conditions are
-provable: the derived main target is `idle` or `done`, `index` is unfocused, and its
-editor is empty with no draft. This wakes main without focusing it.
+The private per-session spool is the source of truth. The `index` session starts its
+event-driven socket listener only at `session_start` and closes/unlinks it at
+`session_shutdown`. Receipt can only refresh a non-focusing inbox widget/status; it
+must not edit the editor, start a user message, focus a workspace, or invoke Herdr
+prompt/wait APIs. A missed one-shot wake leaves the spool intact with no retry, poll,
+sleep, watcher, or timeout loop.
 
-If the main is focused or working, has a draft, or editor emptiness cannot be proven,
-do not touch the editor. Retain the durable done/blocked root state for the main's next
-natural turn or explicit orchestration tick, and issue the appropriate non-focusing
-notification:
+On `before_agent_start` of the user's next natural turn, the `index` extension
+atomically claims outstanding events and appends persistent custom
+`ORCHESTRATOR_EVENT` context. It acknowledges an event only after its custom message
+is observable in session history; crash recovery reclaims unacknowledged events, for
+at-least-once idempotent delivery. Never clear, overwrite, or infer the safety of a
+user draft; never focus or wait from `index`.
 
-```bash
-herdr notification show "Orchestration complete" --body "RESULT available" --sound done
-herdr notification show "Orchestration needs input" --body "Blocked input available" --sound request
-```
-
-Never clear, overwrite, or infer the safety of a user draft; never wait from `index`.
+Herdr 0.7.5 `notification.show` is only an optional visibility alert. It has no
+persistent inbox, and a disabled toast cannot resume Pi. It is not the bridge.
+Herdr's installed Pi integration reports `blocked` only from same-process
+`herdr:blocked` events. rpiv `ask_user_question` v2.0.0 emits only
+`rpiv:ask-user:prompt` before awaiting its overlay, so it does not supply that
+lifecycle itself. The project-local bridge listens to Pi tool execution start/end and
+emits the balanced lifecycle independently. Project-local extensions require project
+trust and a reload of both the root and `index` sessions after installation.
 
 ## Settled states and truth
 
@@ -105,8 +114,11 @@ UI appears. Handle it at the tier that owns the agent:
    credentials or secrets; merge approval. **Never infer merge approval.**
    - Child → root: the child surfaces its question; the root decides routine vs.
      genuine as above.
-   - Root → main → user: when the root judges a question genuine, it persists its own
-     blocked state and follows the safe callback rule above. The main either receives
-     a safe fire-and-return `ORCHESTRATOR_EVENT` or discovers the durable state on a
-     later natural turn/tick, then relays the question to the user. The user's answer
-     travels back down as a targeted pane answer — never as a fresh agent prompt.
+   - Root → main → user: when the root judges a question genuine, its
+     `ask_user_question` execution is reference-counted by the project-local bridge.
+     The bridge emits same-process `herdr:blocked { active:true, label }` for the full
+     awaited duration and exactly balances it with `active:false`, including shutdown
+     cleanup, so Herdr's existing integration reports the real blocked state. It also
+     durably publishes the blocked event for attach-next-turn delivery. The main
+     relays it only on a later natural turn/tick. The user's answer travels back down
+     as a targeted pane answer — never as a fresh agent prompt.

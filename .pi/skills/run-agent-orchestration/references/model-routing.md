@@ -43,27 +43,25 @@ root → child coordination, use exactly one server-owned
 structured question (`blocked`) or final `RESULT`; do not sleep-poll, run watchers,
 or use timeout loops.
 
-## Safe callback to `index`
+## Durable callback to `index`
 
-When a root reaches a structured `RESULT` or a genuine block requiring user input,
-it must dynamically locate the interactive workspace by label `index` (`wX`) and
-derive its current prompt target from workspace metadata. Do not hardcode the main
-agent name.
+Model routing does not change the delivery path. The project-local orchestration bridge
+resolves the unique workspace labeled `index` and its reported Pi session identity,
+then persists root `RESULT` and blocked-question events before one best-effort
+Unix-socket wake. It never uses a fixed main agent name, screen scraping, editor
+injection, workspace focus, `herdr agent prompt`, or `herdr agent wait` from `index`.
 
-Send `herdr agent prompt MAIN_TARGET "ORCHESTRATOR_EVENT ..."` without `--wait` only
-when the derived main target is `idle` or `done`, the `index` workspace is unfocused,
-and its editor is provably empty with no draft. This fire-and-return event wakes main
-without focusing it. If any condition is false or editor emptiness cannot be proven,
-do not inject text: retain the durable root done/blocked state for main's next natural
-turn or explicit orchestration tick and issue a non-focusing notification instead:
+The `index` extension only updates a non-focusing inbox count when awake. On the next
+user-submitted natural turn, `before_agent_start` atomically claims the durable events
+and attaches persistent `ORCHESTRATOR_EVENT` context. Missing listeners, focused
+editors, and disabled Herdr toasts do not alter that safety guarantee: the spool waits
+for the later natural turn. `notification.show` is optional visibility only, has no
+persistent inbox in Herdr 0.7.5, and cannot resume Pi.
 
-```bash
-herdr notification show "Orchestration complete" --body "RESULT available" --sound done
-herdr notification show "Orchestration needs input" --body "Blocked input available" --sound request
-```
-
-Never clear, overwrite, or infer the safety of a user draft; never focus `index`; and
-never wait from the main workspace.
+The bridge remains project-local and requires trusted project extensions plus a reload
+of the root and `index` sessions after installation. Never clear, overwrite, or infer
+the safety of a user draft; never focus `index`; and never wait from the main
+workspace.
 
 ## Default OpenAI-first routing
 
