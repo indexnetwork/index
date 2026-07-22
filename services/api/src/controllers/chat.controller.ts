@@ -1032,9 +1032,9 @@ export class ChatController {
     user: AuthenticatedUser,
     allowedPersonas: ReadonlySet<string>,
   ) {
-    let body: { sessionId?: string };
+    let body: { sessionId?: string; beforeSessionId?: string };
     try {
-      body = (await req.json()) as { sessionId?: string };
+      body = (await req.json()) as { sessionId?: string; beforeSessionId?: string };
     } catch {
       return Response.json(
         { error: "Invalid request body. Expected { sessionId: string }" },
@@ -1054,9 +1054,11 @@ export class ChatController {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const messages = await chatSessionService.getSessionMessages(
+    const history = await chatSessionService.getConversationSessionHistory(
       body.sessionId,
+      body.beforeSessionId,
     );
+    const messages = history.messages;
 
     // Fetch metadata for assistant messages (traceEvents, debugMeta)
     const assistantIds = messages
@@ -1080,7 +1082,13 @@ export class ChatController {
       };
     });
 
-    return Response.json({ session, messages: enrichedMessages });
+    return Response.json({
+      session,
+      messages: enrichedMessages,
+      sessionId: history.session?.id ?? null,
+      hasPreviousSession: history.hasPreviousSession,
+      previousSessionCursor: history.hasPreviousSession ? history.session?.id ?? null : null,
+    });
   }
 
   /**
