@@ -79,12 +79,12 @@ plane have deliberately different contracts:
   waits for the first settled `idle`, `done`, or `blocked` state. Do not add
   `--timeout` or `--until`. Children signal through a structured question (`blocked`)
   or a final `RESULT` envelope.
-- For an already-running root/child execution-plane agent after a resolved question,
-  use `herdr agent wait NAME` with no `--timeout`: one indefinite, server-owned wait.
-  The `index` main session never uses this command.
-- For parallel children, issue multiple `herdr agent prompt NAME "..." --wait` tool
-  calls in one turn so the server-owned waits run concurrently. Do not create a
-  background watcher process or watcher pane.
+- After a targeted pane answer resolves a question, let the child continue to its
+  structured `RESULT`; do not add `herdr agent wait`, timeout checkpoints, or retry
+  loops to this flow.
+- For parallel children, issue multiple complete `herdr agent prompt NAME "..."
+  --wait` tool calls in one turn so the server-owned waits run concurrently. Do not
+  create a background watcher process or watcher pane.
 - **NEVER use `sleep` to poll Herdr agents.** Sleep polling, watcher processes, and
   timeout loops are banned at every tier.
 

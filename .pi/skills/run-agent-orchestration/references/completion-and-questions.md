@@ -1,20 +1,49 @@
 # Completion, verification, and structured questions
 
-## Waits are event-driven — never `sleep`
+## Coordination waits are asymmetric — never `sleep`
 
-Herdr waits are server-owned: `agent prompt --wait` and `agent wait` block until the
-first requested settled state (`idle`, `done`, `blocked` by default) and return the
-current agent at `.result.agent`. There is no default timeout — pass an explicit
-`--timeout <ms>` as a checkpoint rhythm; a timeout exit is a polling checkpoint, not
-a failure. Read new output, then wait again.
+The interactive user-facing main workspace is found dynamically by label `index`
+(`wX`); its agent name is never hardcoded. The `index` path must never run
+`herdr agent prompt --wait` or `herdr agent wait`: it submits main → root handoffs as
+`herdr agent prompt NAME "..."` without `--wait`, returns idle, and reconciles durable
+root state only on a later natural user turn or explicit orchestration tick.
 
-- **`sleep` polling is banned at every tier** (main, root orchestrator, child). It
-  wastes wall-clock, desynchronizes from agent state, and hides `blocked` states.
-- **Parallel children:** issue multiple `herdr agent prompt NAME "..." --wait` tool
-  calls in one turn — the waits run concurrently on the server. Never spawn a
-  background watcher process or watcher pane to observe agents.
-- `agent wait` returns immediately if the current status already matches; add
-  `--until unknown` explicitly only when you also need to catch unclassifiable states.
+Dedicated root orchestrators and implementation children run outside `index`. For a
+root → child handoff, the root may and should use exactly one server-owned, indefinite
+`herdr agent prompt NAME "..." --wait`, with no timeout. Do not prescribe
+`herdr agent wait` for this flow. A returned `idle`, `done`, or `blocked` state is not
+success by itself: inspect the child's `RESULT` and independently verify factual
+git/PR/test state before reporting it.
+
+- **`sleep` polling is banned at every tier.** Do not add polling or timeout retry
+  loops, watcher processes, or watcher panes.
+- **Parallel children:** dedicated roots may issue multiple complete
+  `herdr agent prompt NAME "..." --wait` calls in one turn; the server owns those
+  waits concurrently.
+
+## Safe root callback to `index`
+
+After a root reaches a structured `RESULT` or a genuine block needing user input, it
+first locates the current main workspace by label `index` (`wX`) and derives its
+current prompt target dynamically from that workspace's metadata. Never hardcode a
+main-agent name or focus `index`.
+
+Inject a concise structured `ORCHESTRATOR_EVENT` with
+`herdr agent prompt MAIN_TARGET "..."` **without** `--wait` only if all conditions are
+provable: the derived main target is `idle` or `done`, `index` is unfocused, and its
+editor is empty with no draft. This wakes main without focusing it.
+
+If the main is focused or working, has a draft, or editor emptiness cannot be proven,
+do not touch the editor. Retain the durable done/blocked root state for the main's next
+natural turn or explicit orchestration tick, and issue the appropriate non-focusing
+notification:
+
+```bash
+herdr notification show "Orchestration complete" --body "RESULT available" --sound done
+herdr notification show "Orchestration needs input" --body "Blocked input available" --sound request
+```
+
+Never clear, overwrite, or infer the safety of a user draft; never wait from `index`.
 
 ## Settled states and truth
 
@@ -26,8 +55,8 @@ a failure. Read new output, then wait again.
 
 A settled state is **not** proof of success. After every settle, the orchestrator
 reads the transcript and independently verifies facts: `git log`/`git status` for
-commits, `gh pr view` for PR state and checks, and the targeted test/lint/build
-output the child claims to have run.
+commits, `gh pr view` for PR state and checks, and the targeted test/lint/build output
+the child claims to have run.
 
 ## Child result envelope
 
@@ -51,11 +80,12 @@ read the file directly. Never request file output in the initial prompt.
 
 ## Structured questions: the escalation ladder
 
-`agent prompt --wait` can return `blocked` when a question or approval UI appears.
-Handle it at the tier that owns the agent:
+A root → child `agent prompt --wait` can return `blocked` when a question or approval
+UI appears. Handle it at the tier that owns the agent:
 
-1. **Read first.** `herdr pane read "$PANE_ID" --source visible --lines 120` (or
-   `agent read`) to see the actual question and its options.
+1. **Read first.** `herdr pane read "$PANE_ID" --source visible --lines 120` to see
+   the actual question and its options. Pane reads, text, and keys are always
+   ID-targeted and non-focusing.
 2. **Routine choices are answered in place.** Ordinary implementation questions —
    file edits, targeted tests, commits, pushes, PR creation — are decided by the
    supervising agent choosing the safe/recommended project-compliant option, then
@@ -75,13 +105,8 @@ Handle it at the tier that owns the agent:
    credentials or secrets; merge approval. **Never infer merge approval.**
    - Child → root: the child surfaces its question; the root decides routine vs.
      genuine as above.
-   - Root → main → user: when the root orchestrator judges a question genuine, it
-     asks its **own** `ask_user_question` with the full context. That makes the root
-     `blocked`, which returns the main agent's `agent wait`/`prompt --wait`, and the
-     main agent relays the question to the user verbatim (via its own
-     `ask_user_question`). The user's answer travels back down the same path as a
-     targeted pane answer — never as a fresh agent prompt.
-
-This propagation is why the chain stays synchronous and safe: every tier's wait is
-event-driven, so a blocked child surfaces through the root to the user without
-polling, timeouts-as-errors, or lost context.
+   - Root → main → user: when the root judges a question genuine, it persists its own
+     blocked state and follows the safe callback rule above. The main either receives
+     a safe fire-and-return `ORCHESTRATOR_EVENT` or discovers the durable state on a
+     later natural turn/tick, then relays the question to the user. The user's answer
+     travels back down as a targeted pane answer — never as a fresh agent prompt.
