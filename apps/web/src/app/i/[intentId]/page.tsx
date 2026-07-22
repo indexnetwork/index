@@ -763,6 +763,29 @@ export default function IntentDetailPage() {
       {inviteModalElement}
       <div className="flex h-full min-h-0 flex-col px-10 lg:px-16 py-6">
         <ContentContainer size="xwide" className="flex min-h-0 flex-1 flex-col">
+          {/* Dialog.Root provides the trigger semantics (aria-expanded /
+              aria-controls / open state). The sheet itself is a
+              DismissableLayer + FocusScope composition rather than
+              Dialog.Content: Dialog.Content's baked-in FocusScope
+              (loop=true even when untrapped) would Tab-loop the static
+              desktop column, and a modal Dialog runs hideOthers() on mount
+              even while closed, permanently aria-hiding the page under
+              forceMount. Escape close and outside-press dismiss below are
+              still Radix (DismissableLayer) — nothing hand-rolled.
+
+              Everything except the sheet and its backdrop lives in ONE
+              background wrapper that is inert while the mobile sheet is
+              open. inert is DOM-inherited and cannot be opted out of per
+              descendant, so the sheet — a flex sibling of Radar at lg+ —
+              must sit outside the wrapper; the Radar column carries the
+              same inert flag. `contents` keeps the wrapper boxless so the
+              existing flex layout is unchanged. */}
+          <Dialog.Root open={agentPanelOpen} onOpenChange={setAgentPanelOpen}>
+          <div
+            inert={sheetOverlayActive}
+            data-testid="page-background"
+            className="contents"
+          >
           <button
             type="button"
             onClick={() => navigate("/")}
@@ -778,20 +801,11 @@ export default function IntentDetailPage() {
               Signal not found
             </div>
           ) : (
-            // Dialog.Root provides the trigger semantics (aria-expanded /
-            // aria-controls / open state). The sheet itself is a
-            // DismissableLayer + FocusScope composition rather than
-            // Dialog.Content: Dialog.Content's baked-in FocusScope
-            // (loop=true even when untrapped) would Tab-loop the static
-            // desktop column, and a modal Dialog runs hideOthers() on mount
-            // even while closed, permanently aria-hiding the page under
-            // forceMount. Escape close and outside-press dismiss below are
-            // still Radix (DismissableLayer) — nothing hand-rolled.
-            <Dialog.Root open={agentPanelOpen} onOpenChange={setAgentPanelOpen}>
-            <div className="flex min-h-0 flex-1 flex-col">
+            <>
+            <div className="contents">
               {/* Header card: skeleton while the intent loads — the workspace
                   below renders (and fetches) immediately, in parallel. */}
-              <div inert={sheetOverlayActive} className="mb-6 shrink-0 rounded-lg border border-gray-200 bg-white p-5">
+              <div className="mb-6 shrink-0 rounded-lg border border-gray-200 bg-white p-5">
                 {intentLoading ? (
                   <div className="animate-pulse space-y-3" data-testid="intent-header-skeleton">
                     <div className="h-4 w-2/3 rounded bg-gray-200" />
@@ -923,7 +937,6 @@ export default function IntentDetailPage() {
                 <button
                   type="button"
                   ref={triggerRef}
-                  inert={sheetOverlayActive}
                   aria-controls={sheetId}
                   data-testid="personal-agent-trigger"
                   className="mb-4 inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:hidden"
@@ -940,7 +953,12 @@ export default function IntentDetailPage() {
                   )}
                 </button>
               </Dialog.Trigger>
+            </div>
+            </>
+          )}
+          </div>
 
+          {!intentLoading && !intent ? null : (
               <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row">
                 {/* Visual backdrop only (Radix renders no overlay part for
                     non-modal dialogs); dismissing it is Radix's
@@ -1197,9 +1215,8 @@ export default function IntentDetailPage() {
                 </Panel>
                 </div>
               </div>
-            </div>
-            </Dialog.Root>
           )}
+          </Dialog.Root>
         </ContentContainer>
       </div>
     </ClientLayout>

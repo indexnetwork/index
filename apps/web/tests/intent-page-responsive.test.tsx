@@ -228,7 +228,7 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     expect(sheet.getAttribute('role')).toBe('dialog');
     expect(sheet).toHaveAttribute('aria-modal', 'true');
     expect(radar).toHaveAttribute('inert');
-    expect(trigger).toHaveAttribute('inert');
+    expect(screen.getByTestId('page-background')).toHaveAttribute('inert');
 
     // Tab repeatedly: focus must never leave the sheet.
     for (let i = 0; i < 4; i += 1) {
@@ -240,6 +240,72 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
       await user.tab({ shift: true });
       expect(sheet.contains(document.activeElement)).toBe(true);
     }
+  });
+
+  test('mobile open: the ENTIRE page background — including the Back button — is inert; only the sheet is interactive', async () => {
+    const user = userEvent.setup();
+    renderIntentPage();
+    const sheet = await screen.findByTestId('personal-agent-sheet');
+
+    await user.click(await screen.findByTestId('personal-agent-trigger'));
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('open'));
+
+    // One wrapper owns the background; the Back control lives inside it.
+    const background = screen.getByTestId('page-background');
+    expect(background).toHaveAttribute('inert');
+    const backButton = screen.getByRole('button', { name: 'Back to home' });
+    expect(background.contains(backButton)).toBe(true);
+    expect(backButton.closest('[inert]')).toBe(background);
+
+    // The sheet (and its backdrop) must NOT be inert.
+    expect(sheet.closest('[inert]')).toBeNull();
+    expect(screen.getByTestId('personal-agent-overlay').closest('[inert]')).toBeNull();
+
+    // Walk every focusable element in the document: anything outside the
+    // sheet must sit inside an inert subtree (i.e. be unfocusable).
+    const focusables = document.body.querySelectorAll(
+      'a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    );
+    expect(focusables.length).toBeGreaterThan(0);
+    for (const el of Array.from(focusables)) {
+      if (sheet.contains(el)) continue;
+      const label = `${el.tagName} ${el.getAttribute('aria-label') ?? el.textContent?.slice(0, 30)}`;
+      expect(el.closest('[inert]', ), `${label} must be inert while the sheet is open`).not.toBeNull();
+    }
+  });
+
+  test('background inertness is fully removed on every close path', async () => {
+    const user = userEvent.setup();
+    renderIntentPage();
+    const sheet = await screen.findByTestId('personal-agent-sheet');
+    const trigger = await screen.findByTestId('personal-agent-trigger');
+    const background = screen.getByTestId('page-background');
+    const radar = screen.getByTestId('radar-column');
+    const assertNotInert = () => {
+      expect(background).not.toHaveAttribute('inert');
+      expect(radar).not.toHaveAttribute('inert');
+    };
+
+    // Path 1: Escape.
+    await user.click(trigger);
+    await waitFor(() => expect(background).toHaveAttribute('inert'));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('closed'));
+    assertNotInert();
+
+    // Path 2: in-sheet close button.
+    await user.click(trigger);
+    await waitFor(() => expect(background).toHaveAttribute('inert'));
+    await user.click(screen.getByRole('button', { name: 'Close panel' }));
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('closed'));
+    assertNotInert();
+
+    // Path 3: outside pointer-down on the backdrop.
+    await user.click(trigger);
+    await waitFor(() => expect(background).toHaveAttribute('inert'));
+    fireEvent.pointerDown(screen.getByTestId('personal-agent-overlay'));
+    await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('closed'));
+    assertNotInert();
   });
 
   test('close via Escape returns focus to the trigger and de-inerts the background', async () => {
@@ -255,7 +321,7 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('closed'));
     expect(document.activeElement).toBe(trigger);
     expect(await screen.findByTestId('radar-column')).not.toHaveAttribute('inert');
-    expect(trigger).not.toHaveAttribute('inert');
+    expect(screen.getByTestId('page-background')).not.toHaveAttribute('inert');
   });
 
   test('close via the in-sheet close button returns focus to the trigger', async () => {
@@ -333,6 +399,7 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     expect(sheet).not.toHaveAttribute('aria-modal');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(await screen.findByTestId('radar-column')).not.toHaveAttribute('inert');
+    expect(screen.getByTestId('page-background')).not.toHaveAttribute('inert');
   });
 
   test('questions-fallback branch gets the same drawer treatment', async () => {
