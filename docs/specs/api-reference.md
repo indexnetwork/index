@@ -566,7 +566,9 @@ Compatibility detail for a specific orchestrator session with its messages (incl
 
 ### POST /api/chat/web/session
 
-Session-only main-web detail endpoint using the same request/response shape. It permits the readable web personas (`orchestrator`, `signal`) plus the pinned negotiator conversation and fails closed for unknown personas.
+Session-only main-web detail endpoint. It permits the readable web personas (`orchestrator`, `signal`) plus the pinned negotiator conversation and fails closed for unknown personas.
+
+Both chat detail endpoints now hydrate one durable timeline session only. The first request sends `{ "sessionId": "..." }`; to reveal exactly one older section, send `{ "sessionId": "...", "beforeSessionId": "<oldest loaded durable session id>" }`. Responses retain `{ session, messages }` and add `sessionId` (the loaded durable session), `hasPreviousSession`, and `previousSessionCursor`. The cursor is opaque; callers must not infer ordering from IDs.
 
 **Auth**: SessionOnlyGuard
 
@@ -1277,7 +1279,9 @@ The authenticated user must be included in the participants array.
 
 ### GET /api/conversations/:id/messages
 
-Get messages for a conversation.
+Get messages for a conversation. Existing `limit`, `before`, and `taskId` behavior remains compatible; message cursors use the stable `(createdAt, id)` key.
+
+Set `sessionHistory=true` to receive only the latest durable timeline session and `{ messages, sessionId, hasPreviousSession, previousSessionCursor }`. Add `beforeSessionId=<cursor>` to retrieve exactly one earlier session. A `taskId` session-history read remains constrained to that A2A task segment.
 
 **Auth**: AuthGuard
 
