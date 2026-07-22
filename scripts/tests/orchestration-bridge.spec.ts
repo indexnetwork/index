@@ -6,6 +6,7 @@ import path from "node:path";
 import {
 	BlockedQuestionBridge,
 	MAX_EVENTS_PER_TURN,
+	canonicalizeEvent,
 	acknowledgeDelivered,
 	claimOutstanding,
 	discardEvent,
@@ -90,7 +91,16 @@ describe("orchestration bridge spool", () => {
 		expect(claims.flat().map(({ event: claimed }) => claimed.id)).toEqual(["concurrent-claim"]);
 	});
 
-	test("rejects unsafe data, quarantines malformed spool files, and bounds a turn batch", async () => {
+	test("makes duplicate publication contention an explicit retry or duplicate, never EEXIST", async () => {
+		const root = await temporaryRoot();
+		const outcomes = await Promise.all([publishEvent(root, event("concurrent-publish")), publishEvent(root, event("concurrent-publish"))]);
+		expect(outcomes).toContain("published");
+		expect(outcomes.every((outcome) => outcome === "published" || outcome === "duplicate" || outcome === "retry")).toBeTrue();
+		if (outcomes.includes("retry")) expect(await publishEvent(root, event("concurrent-publish"))).toBe("duplicate");
+		expect((await claimOutstanding(root, "index-session", new Set())).map(({ event: claimed }) => claimed.id)).toEqual(["concurrent-publish"]);
+	});
+
+	test("rejects unsafe data, quarantines malformed and non-root spool files, and bounds a turn batch", async () => {
 		const root = await temporaryRoot();
 		await expect(publishEvent(root, event("future", { timestamp: new Date(Date.now() + 120_000).toISOString() }))).rejects.toThrow("Unsafe");
 		await expect(publishEvent(root, event("invalid-time", { timestamp: "not-a-timestamp" }))).rejects.toThrow("Unsafe");
@@ -100,11 +110,28 @@ describe("orchestration bridge spool", () => {
 		const pending = path.join(sessionDirectory(root, "index-session"), "pending");
 		await fs.mkdir(pending, { recursive: true });
 		await fs.writeFile(path.join(pending, "malformed.json"), "{not json}");
+		await fs.writeFile(
+			path.join(pending, "non-root.json"),
+			JSON.stringify(event("non-root", { source: { workspaceId: "wX", workspaceLabel: "implementation", paneId: "wX:p1", sessionId: "not-root" } })),
+		);
 		for (let index = 0; index < MAX_EVENTS_PER_TURN + 1; index += 1) {
 			await publishEvent(root, event(`batch-${index}`, { timestamp: new Date(Date.now() - 10_000 + index).toISOString() }));
 		}
 		expect((await claimOutstanding(root, "index-session", new Set())).length).toBe(MAX_EVENTS_PER_TURN);
 		expect(await outstandingCount(root, "index-session")).toBe(MAX_EVENTS_PER_TURN + 1);
+		const rejected = await fs.readdir(path.join(sessionDirectory(root, "index-session"), "rejected"));
+		expect(rejected).toHaveLength(2);
+		expect(rejected.every((name) => name.endsWith(".rejected"))).toBeTrue();
+	});
+
+	test("leaves a durable cancellation tombstone so late publication cannot be claimed", async () => {
+		const root = await temporaryRoot();
+		await discardEvent(root, "index-session", "question-cancelled-before-publish");
+		expect(await publishEvent(root, event("question-cancelled-before-publish", { kind: "blocked" }))).toBe("cancelled");
+		expect(await outstandingCount(root, "index-session")).toBe(0);
+		expect(await claimOutstanding(root, "index-session", new Set())).toEqual([]);
+		const cancelled = await fs.readdir(path.join(sessionDirectory(root, "index-session"), "cancelled"));
+		expect(cancelled).toEqual(["question-cancelled-before-publish.json.cancelled"]);
 	});
 
 	test("discards a completed RPIV block from pending or claims without erasing history", async () => {
@@ -136,6 +163,12 @@ describe("RPIV lifecycle and root authorization", () => {
 		expect(isDedicatedRootLabel("docs-root")).toBeTrue();
 		expect(isDedicatedRootLabel("index")).toBeFalse();
 		expect(isDedicatedRootLabel("implementation")).toBeFalse();
+	});
+
+	test("binds canonical events to the expected index session and rejects non-root provenance", () => {
+		expect(canonicalizeEvent(event("target-bound"), "index-session")?.id).toBe("target-bound");
+		expect(canonicalizeEvent(event("wrong-target"), "another-index-session")).toBeUndefined();
+		expect(canonicalizeEvent(event("non-root-canonical", { source: { workspaceId: "wX", workspaceLabel: "implementation", paneId: "wX:p1", sessionId: "not-root" } }))).toBeUndefined();
 	});
 });
 

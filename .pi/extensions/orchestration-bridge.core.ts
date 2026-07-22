@@ -31,6 +31,9 @@ export interface ClaimedEvent {
 	claimPath: string;
 }
 
+/** Publication outcomes are explicit: callers must retry only `retry`. */
+export type PublishStatus = "published" | "duplicate" | "cancelled" | "retry";
+
 export interface HerdrWorkspace {
 	workspace_id: string;
 	label: string;
@@ -114,6 +117,14 @@ function rejectedDirectory(root: string, sessionId: string): string {
 	return path.join(sessionDirectory(root, sessionId), "rejected");
 }
 
+function tombstonesDirectory(root: string, sessionId: string): string {
+	return path.join(sessionDirectory(root, sessionId), "cancelled");
+}
+
+function tombstonePath(root: string, sessionId: string, eventId: string): string {
+	return path.join(tombstonesDirectory(root, sessionId), `${eventFilename(eventId)}.cancelled`);
+}
+
 function lockPath(root: string, sessionId: string): string {
 	return path.join(sessionDirectory(root, sessionId), ".lock");
 }
@@ -180,7 +191,7 @@ export function canonicalizeEvent(raw: unknown, expectedSessionId?: string, now 
 	const workspaceLabel = safeString(source.workspaceLabel, MAX_SOURCE_FIELD);
 	const paneId = safeString(source.paneId, MAX_SOURCE_FIELD);
 	const sessionId = safeString(source.sessionId, MAX_SESSION_ID);
-	if (!workspaceId || !workspaceLabel || !paneId || !sessionId) return undefined;
+	if (!workspaceId || !workspaceLabel || !isDedicatedRootLabel(workspaceLabel) || !paneId || !sessionId) return undefined;
 
 	let durableResult: OrchestratorEvent["durableResult"] | undefined;
 	if (value.durableResult !== undefined) {
@@ -222,6 +233,27 @@ async function quarantine(file: string, root: string, sessionId: string): Promis
 	await fs.rename(file, destination).catch(() => undefined);
 }
 
+async function isTombstoned(root: string, sessionId: string, eventId: string): Promise<boolean> {
+	try {
+		await fs.access(tombstonePath(root, sessionId, eventId));
+		return true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw error;
+	}
+}
+
+/** Atomically preserve cancellation even while a session operation owns its lock. */
+async function createTombstone(root: string, sessionId: string, eventId: string): Promise<void> {
+	const directory = tombstonesDirectory(root, sessionId);
+	await privateDirectory(directory);
+	try {
+		await privateFile(tombstonePath(root, sessionId, eventId), `${eventId}\n`);
+	} catch (error) {
+		if (!isBusy(error)) throw error;
+	}
+}
+
 async function listEvents(root: string, sessionId: string, directory: string): Promise<Array<{ file: string; event: OrchestratorEvent }>> {
 	try {
 		const names = (await fs.readdir(directory)).filter((name) => name.endsWith(".json"));
@@ -230,7 +262,8 @@ async function listEvents(root: string, sessionId: string, directory: string): P
 				const file = path.join(directory, name);
 				try {
 					const event = canonicalizeEvent(JSON.parse(await fs.readFile(file, "utf8")), sessionId);
-					if (event) return { file, event };
+					if (event && !(await isTombstoned(root, sessionId, event.id))) return { file, event };
+					if (event) await fs.unlink(file).catch(() => undefined);
 				} catch {
 					// Quarantine malformed JSON and unsafe values; never deliver them.
 				}
@@ -251,30 +284,36 @@ async function queuedCount(root: string, sessionId: string): Promise<number> {
 	return (await listEvents(root, sessionId, pendingDirectory(root, sessionId))).length + (await listEvents(root, sessionId, claimsDirectory(root, sessionId))).length;
 }
 
-/** Persist an event atomically before any wake; duplicate stable ids are a no-op. */
-export async function publishEvent(root: string, raw: OrchestratorEvent): Promise<"published" | "duplicate"> {
+/** Persist an event atomically before any wake; duplicate ids and lock contention are explicit outcomes. */
+export async function publishEvent(root: string, raw: OrchestratorEvent): Promise<PublishStatus> {
 	const event = canonicalizeEvent(raw);
 	if (!event) throw new Error("Unsafe orchestration event");
-	return withSessionLock(root, event.targetSessionId, async () => {
-		const pending = pendingDirectory(root, event.targetSessionId);
-		await privateDirectory(pending);
-		await privateDirectory(claimsDirectory(root, event.targetSessionId));
-		if (await queuedCount(root, event.targetSessionId) >= MAX_QUEUED_EVENTS) throw new Error("Orchestration spool capacity reached");
+	try {
+		return await withSessionLock(root, event.targetSessionId, async () => {
+			const pending = pendingDirectory(root, event.targetSessionId);
+			await privateDirectory(pending);
+			await privateDirectory(claimsDirectory(root, event.targetSessionId));
+			if (await isTombstoned(root, event.targetSessionId, event.id)) return "cancelled";
+			if (await queuedCount(root, event.targetSessionId) >= MAX_QUEUED_EVENTS) throw new Error("Orchestration spool capacity reached");
 
-		const filename = eventFilename(event.id);
-		const target = path.join(pending, filename);
-		const temporary = path.join(pending, `.${filename}.${randomUUID()}.tmp`);
-		await privateFile(temporary, `${JSON.stringify(event)}\n`);
-		try {
-			await fs.link(temporary, target);
-			return "published";
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "EEXIST") return "duplicate";
-			throw error;
-		} finally {
-			await fs.unlink(temporary).catch(() => undefined);
-		}
-	});
+			const filename = eventFilename(event.id);
+			const target = path.join(pending, filename);
+			const temporary = path.join(pending, `.${filename}.${randomUUID()}.tmp`);
+			await privateFile(temporary, `${JSON.stringify(event)}\n`);
+			try {
+				await fs.link(temporary, target);
+				return "published";
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "EEXIST") return "duplicate";
+				throw error;
+			} finally {
+				await fs.unlink(temporary).catch(() => undefined);
+			}
+		});
+	} catch (error) {
+		if (isBusy(error)) return "retry";
+		throw error;
+	}
 }
 
 async function acknowledgeDeliveredUnlocked(root: string, sessionId: string, deliveredIds: ReadonlySet<string>): Promise<void> {
@@ -301,6 +340,10 @@ async function reclaimClaimsUnlocked(root: string, sessionId: string): Promise<v
 	await privateDirectory(pending);
 	await privateDirectory(claims);
 	for (const { file, event } of await listEvents(root, sessionId, claims)) {
+		if (await isTombstoned(root, sessionId, event.id)) {
+			await fs.unlink(file).catch(() => undefined);
+			continue;
+		}
 		const target = path.join(pending, eventFilename(event.id));
 		try {
 			// `rename` can replace on POSIX; link first so concurrent recovery cannot overwrite.
@@ -351,17 +394,26 @@ export async function claimOutstanding(root: string, sessionId: string, delivere
 /** Remove an ended RPIV block from pending/claims; already-attached history remains truthful. */
 export async function discardEvent(root: string, sessionId: string, eventId: string): Promise<void> {
 	if (!EVENT_ID.test(eventId)) return;
-	try {
-		await withSessionLock(root, sessionId, async () => {
-			for (const directory of [pendingDirectory(root, sessionId), claimsDirectory(root, sessionId)]) {
-				for (const { file, event } of await listEvents(root, sessionId, directory)) {
-					if (event.id === eventId) await fs.unlink(file).catch(() => undefined);
-				}
-			}
-		});
-	} catch (error) {
-		if (!isBusy(error)) throw error;
+	// Cancellation has its own atomic namespace, so lock contention can never lose it.
+	await createTombstone(root, sessionId, eventId);
+	for (const directory of [pendingDirectory(root, sessionId), claimsDirectory(root, sessionId)]) {
+		for (const { file, event } of await listEvents(root, sessionId, directory)) {
+			if (event.id === eventId) await fs.unlink(file).catch(() => undefined);
+		}
 	}
+}
+
+/** Drop claimed files that were cancelled after they were claimed but before attachment. */
+export async function filterUncancelledClaims(root: string, sessionId: string, claims: ClaimedEvent[]): Promise<ClaimedEvent[]> {
+	const deliverable: ClaimedEvent[] = [];
+	for (const claim of claims) {
+		if (await isTombstoned(root, sessionId, claim.event.id)) {
+			await fs.unlink(claim.claimPath).catch(() => undefined);
+			continue;
+		}
+		deliverable.push(claim);
+	}
+	return deliverable;
 }
 
 export async function outstandingCount(root: string, sessionId: string): Promise<number> {

@@ -4,7 +4,7 @@ import { Type } from "typebox";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { BlockedQuestionBridge, canonicalizeEvent, claimOutstanding, discardEvent, formatAttachment, isDedicatedRootLabel, outstandingCount, parseHerdrResult, publishEvent, resolveLiveTopology, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, type IndexTarget, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance } from "./orchestration-bridge.core";
+import { BlockedQuestionBridge, canonicalizeEvent, claimOutstanding, discardEvent, filterUncancelledClaims, formatAttachment, isDedicatedRootLabel, outstandingCount, parseHerdrResult, publishEvent, resolveLiveTopology, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, type IndexTarget, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance, type PublishStatus } from "./orchestration-bridge.core";
 
 const INBOX_WIDGET = "orchestration-inbox";
 const CUSTOM_TYPE = "orchestrator-event";
@@ -32,7 +32,7 @@ interface Publication {
 	root: string;
 	target: IndexTarget;
 	eventId: string;
-	status: "published" | "duplicate";
+	status: PublishStatus;
 }
 
 interface PendingQuestion {
@@ -45,7 +45,7 @@ interface PendingQuestion {
 	publication?: Promise<Publication | undefined>;
 }
 
-function messageEvents(ctx: ExtensionContext): Map<string, OrchestratorEvent> {
+function messageEvents(ctx: ExtensionContext, targetSessionId: string): Map<string, OrchestratorEvent> {
 	const events = new Map<string, OrchestratorEvent>();
 	for (const entry of ctx.sessionManager.getEntries()) {
 		if (entry.type !== "custom_message") continue;
@@ -54,29 +54,31 @@ function messageEvents(ctx: ExtensionContext): Map<string, OrchestratorEvent> {
 		const values = (custom.details as Partial<OrchestratorMessageDetails>).events;
 		if (!Array.isArray(values)) continue;
 		for (const raw of values) {
-			const event = canonicalizeEvent(raw);
+			const event = canonicalizeEvent(raw, targetSessionId);
 			if (event) events.set(event.id, event);
 		}
 	}
 	return events;
 }
 
-function recordedEventIds(ctx: ExtensionContext): Set<string> {
+function recordedEventIds(ctx: ExtensionContext, targetSessionId: string): Set<string> {
 	const ids = new Set<string>();
 	for (const entry of ctx.sessionManager.getEntries()) {
 		if (entry.type !== "custom") continue;
 		const record = entry as unknown as { customType?: unknown; data?: unknown };
 		if (record.customType !== DELIVERY_RECORD_TYPE || typeof record.data !== "object" || record.data === null) continue;
-		const eventId = (record.data as Partial<DeliveryRecord>).eventId;
+		const value = record.data as Partial<DeliveryRecord>;
+		if (value.targetSessionId !== targetSessionId) continue;
+		const eventId = value.eventId;
 		if (typeof eventId === "string") ids.add(eventId);
 	}
 	return ids;
 }
 
 /** Persist append-only acknowledgements only after structured custom messages exist. */
-function acknowledgeMessageEvents(pi: ExtensionAPI, ctx: ExtensionContext): Set<string> {
-	const events = messageEvents(ctx);
-	const recorded = recordedEventIds(ctx);
+function acknowledgeMessageEvents(pi: ExtensionAPI, ctx: ExtensionContext, targetSessionId: string): Set<string> {
+	const events = messageEvents(ctx, targetSessionId);
+	const recorded = recordedEventIds(ctx, targetSessionId);
 	for (const event of events.values()) {
 		if (recorded.has(event.id)) continue;
 		const record: DeliveryRecord = {
@@ -212,6 +214,12 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		const activeQuestions = [...pendingQuestions.values()];
+		for (const question of activeQuestions) {
+			question.ended = true;
+			blocked.end(question.toolCallId);
+		}
+		await Promise.all(activeQuestions.filter((question) => question.activated).map((question) => discardQuestionPublication(question)));
 		blocked.shutdown();
 		await listener?.close();
 		listener = undefined;
@@ -231,15 +239,16 @@ export default function (pi: ExtensionAPI) {
 		if (!sessionId || sessionId !== indexSessionId) return undefined;
 		const root = await canonicalRoot(pi, ctx);
 		if (!root) return undefined;
-		const claims = await claimOutstanding(spoolRoot(root), sessionId, acknowledgeMessageEvents(pi, ctx));
+		const claims = await claimOutstanding(spoolRoot(root), sessionId, acknowledgeMessageEvents(pi, ctx, sessionId));
+		const deliverable = await filterUncancelledClaims(spoolRoot(root), sessionId, claims);
 		await updateInboxWidget(pi, ctx, sessionId);
-		if (claims.length === 0) return undefined;
+		if (deliverable.length === 0) return undefined;
 		return {
 			message: {
 				customType: CUSTOM_TYPE,
-				content: claims.map(({ event }) => formatAttachment(event)).join("\n\n"),
+				content: deliverable.map(({ event }) => formatAttachment(event)).join("\n\n"),
 				display: true,
-				details: { events: claims.map(({ event }) => event) } satisfies OrchestratorMessageDetails,
+				details: { events: deliverable.map(({ event }) => event) } satisfies OrchestratorMessageDetails,
 			},
 		};
 	});
@@ -299,10 +308,10 @@ export default function (pi: ExtensionAPI) {
 						? { location: params.resultLocation, payload: params.resultPayload }
 						: undefined,
 			});
-			if (!published) {
+			if (!published || published.status === "cancelled" || published.status === "retry") {
 				return {
-					content: [{ type: "text", text: "No verified *-root → index route was available; RESULT was not published." }],
-					details: { published: false },
+					content: [{ type: "text", text: !published ? "No verified *-root → index route was available; RESULT was not published." : `Orchestrator RESULT ${published.status}; retry this stable eventId later.` }],
+					details: { published: false, ...(published ? { status: published.status, targetSessionId: published.target.sessionId } : {}) },
 				};
 			}
 			return {
