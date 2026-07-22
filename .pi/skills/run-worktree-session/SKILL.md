@@ -27,8 +27,14 @@ The installed CLI contract is:
 
 ```bash
 herdr worktree open --path "$WORKTREE" --label "$FOLDER" --focus --json
-herdr agent start "$FOLDER" --kind pi --pane "$PANE_ID"
+herdr agent start "$AGENT_ALIAS" --kind pi --pane "$PANE_ID"
+# optional preselected model/thinking at launch:
+herdr agent start "$AGENT_ALIAS" --kind pi --pane "$PANE_ID" -- --model provider/model:thinking
 ```
+
+`AGENT_ALIAS` defaults to the dashed folder but must fit Herdr's live-name limit
+`[a-z][a-z0-9_-]{0,31}`; shorten it when the folder is longer (the workspace label
+stays the full dashed folder).
 
 Capture the returned workspace and pane IDs. Reuse the existing workspace/Pi when
 Herdr reports the worktree is already open. Reject a cwd, branch, workspace, pane, or
@@ -52,32 +58,40 @@ herdr agent get "$AGENT_NAME"
 herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
 ```
 
-Send the full handoff as one prompt only when the agent is ready and no structured
-question or editor draft is active:
+Send the full handoff as one atomic prompt only when the agent is ready and no
+structured question or editor draft is active. `--wait` submits and waits in one call
+for the first settled `idle`, `done`, or `blocked` state:
 
 ```bash
-herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)"
+herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)" --wait
 ```
 
 Do not commit task-specific handoff files under `.pi`.
 
-## 3. Poll directly from the coordinator
+## 3. Wait event-driven from the coordinator
 
-The coordinator stays active while implementation runs. Poll the same visible agent;
-do not delegate observation to a background watcher:
+The coordinator stays active while implementation runs and waits on the same visible
+agent. **`sleep` polling is banned** — Herdr waits are server-owned and event-driven,
+and `sleep` both wastes wall-clock and hides `blocked` states. Do not delegate
+observation to a background watcher process or watcher pane.
+
+`agent prompt --wait` usually carries the whole turn. When a follow-up wait is needed
+(after a timeout checkpoint or a resolved question), poll directly:
 
 ```bash
 herdr agent get "$AGENT_NAME"
 herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
-herdr agent wait "$AGENT_NAME" \
-  --until blocked --until idle --until done \
-  --timeout 30000
+herdr agent wait "$AGENT_NAME" --timeout 30000
 ```
 
 A wait timeout is a polling checkpoint, not a failure. Read new output, handle any
-question, and continue polling until the agent reports completion or a real blocker.
+question, and wait again until the agent reports completion or a real blocker.
 Ground decisions in the visible output rather than assuming that `working`, `idle`, or
-`done` alone proves success.
+`done` alone proves success — `idle` and `done` are both settled states, and a settled
+state still requires transcript and git/PR/test verification.
+
+For parallel agents, issue multiple `herdr agent prompt NAME "..." --wait` (or
+`agent wait`) tool calls in one turn so the server-owned waits run concurrently.
 
 ## 4. Answer questions safely
 
@@ -95,9 +109,10 @@ Escalate to the user only for:
 
 Never infer merge approval.
 
-If a structured question, selector, or editor draft is active, do **not** use
-`herdr agent prompt`: it can append text to stale input. Read the pane, then answer the
-active UI through its pane ID with targeted text/keys:
+`agent prompt --wait` and `agent wait` return `blocked` when Herdr recognizes an
+approval or question UI. If a structured question, selector, or editor draft is
+active, do **not** use `herdr agent prompt`: it can append text to stale input. Read
+the pane, then answer the active UI through its pane ID with targeted text/keys:
 
 ```bash
 herdr pane read "$PANE_ID" --source visible --lines 120
@@ -147,5 +162,7 @@ agents mutate one checkout.
 ## See also
 
 - `create-worktree` — branch, setup, Herdr-open, and collision contracts.
+- `run-agent-orchestration` — multi-task waves, role profiles, model routing, and the
+  full blocked-question escalation ladder across agents.
 - `address-code-review` — factual thread inspection and visible fix-loop workflow.
 - `finish-pr` — merge approval and post-merge operations.

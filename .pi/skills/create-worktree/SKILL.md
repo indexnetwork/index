@@ -108,11 +108,22 @@ herdr pane get "$PANE_ID"
 herdr agent get "$PANE_ID"
 ```
 
-If the root pane is an interactive shell with no Pi agent, start one. The stable agent
-name is the same dashed folder:
+If the root pane is an interactive shell with no Pi agent, start one. The default
+stable agent name is the dashed folder, but Herdr live agent names must match
+`[a-z][a-z0-9_-]{0,31}` (32 chars max) — when the folder exceeds the limit, use a
+shorter unique alias (e.g. `agent-orchestration`) and keep the longer dashed
+workspace label unchanged; the label and the agent alias are independent:
 
 ```bash
-herdr agent start "$FOLDER" --kind pi --pane "$PANE_ID"
+herdr agent start "$AGENT_ALIAS" --kind pi --pane "$PANE_ID"
+```
+
+To preselect a model and thinking level at launch (chosen per
+`run-agent-orchestration`'s model routing — never switched mid-implementation), pass
+an explicit agent argument after `--`:
+
+```bash
+herdr agent start "$AGENT_ALIAS" --kind pi --pane "$PANE_ID" -- --model provider/model:thinking
 ```
 
 If Pi already exists in that pane, reuse it only when its cwd is `WORKTREE` and its
@@ -151,5 +162,6 @@ Never use plain `git config commit.gpgsign false`, which affects every worktree.
 
 ## See also
 
-- `run-worktree-session` — visible handoff, polling, question handling, and fix loops.
+- `run-worktree-session` — visible handoff, event-driven waits, question handling, and fix loops.
+- `run-agent-orchestration` — multi-task waves: one root orchestrator, role profiles, model routing.
 - `finish-pr` — explicit merge approval and post-merge verification.
