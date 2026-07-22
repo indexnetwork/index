@@ -172,7 +172,11 @@ export interface IntentListRow {
   networks: { id: string; title: string }[];
   /** Count of pending intent-scoped questions awaiting the user for this intent. */
   pendingQuestionCount: number;
-  /** Count of `pending` opportunities anchored on this intent, awaiting the user. */
+  /**
+   * Count of distinct `pending` opportunities awaiting this owner that are
+   * attributed to this signal by `detection.triggeredBy` or the owner's
+   * non-introducer actor intent. Rows the owner already acted on are excluded.
+   */
   waitingOpportunityCount: number;
   /** True while a fresh intent has not completed its first discovery run. */
   warming: boolean;

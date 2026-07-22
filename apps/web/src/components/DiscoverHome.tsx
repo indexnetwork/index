@@ -33,16 +33,26 @@ export default function DiscoverHome() {
   const navigate = useNavigate();
   const { error: showError } = useNotifications();
   const [intents, setIntents] = useState<HomeIntent[]>([]);
+  const [totalWaitingOpportunities, setTotalWaitingOpportunities] = useState(0);
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
 
   const fetchIntents = useCallback(async () => {
     try {
-      const res = await apiClient.post<{ intents?: HomeIntent[] }>("/intents/list", { page: 1, limit: 100 });
-      if (mountedRef.current) setIntents(res.intents ?? []);
+      const res = await apiClient.post<{
+        intents?: HomeIntent[];
+        totalWaitingOpportunities?: number;
+      }>("/intents/list", { page: 1, limit: 100 });
+      if (mountedRef.current) {
+        setIntents(res.intents ?? []);
+        setTotalWaitingOpportunities(res.totalWaitingOpportunities ?? 0);
+      }
     } catch (err) {
       logger.error("Failed to load signals", { error: err });
-      if (mountedRef.current) setIntents([]);
+      if (mountedRef.current) {
+        setIntents([]);
+        setTotalWaitingOpportunities(0);
+      }
     }
   }, []);
 
@@ -85,7 +95,7 @@ export default function DiscoverHome() {
           <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
         </div>
         <p className="mb-6 text-center text-xs text-gray-400 font-ibm-plex-mono">
-          {intents.length} signals · {intents.reduce((total, intent) => total + (intent.waitingOpportunityCount ?? 0), 0)} opportunities
+          {intents.length} signals · {totalWaitingOpportunities} opportunities
         </p>
 
         {/* New signal entry — styled to match IntentList rows */}

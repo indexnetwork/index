@@ -18,8 +18,8 @@ interface BaseIntent {
   /** Networks this intent is currently registered to. */
   networks?: { id: string; title: string }[];
   /**
-   * Count of `pending` opportunities anchored on this intent, awaiting the user.
-   * Shown next to the date. Undefined/0 renders nothing.
+   * Count of distinct `pending` opportunities awaiting the user and attributed
+   * to this signal. Shown next to the date. Undefined/0 renders nothing.
    */
   waitingOpportunityCount?: number;
   /**

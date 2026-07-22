@@ -524,7 +524,7 @@ export class IntentDatabaseAdapter {
     limit: number;
     archived: boolean;
     sourceType?: string;
-  }): Promise<{ rows: IntentListRow[]; total: number }> {
+  }): Promise<{ rows: IntentListRow[]; total: number; totalWaitingOpportunities: number }> {
     const offset = (options.page - 1) * options.limit;
     const where = ownIntentsListWhere(userId, { archived: options.archived, sourceType: options.sourceType });
 
@@ -550,8 +550,12 @@ export class IntentDatabaseAdapter {
       db.select({ count: count() }).from(schema.intents).where(where),
     ]);
 
-    const withExtras = await this.attachIntentExtras(rows, userId);
-    return { rows: withExtras, total: Number(totalResult[0]?.count ?? 0) };
+    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId);
+    return {
+      rows: withExtras,
+      total: Number(totalResult[0]?.count ?? 0),
+      totalWaitingOpportunities,
+    };
   }
 
   /**
@@ -563,8 +567,9 @@ export class IntentDatabaseAdapter {
    *
    * @param rows - The paginated base intent rows to enrich.
    * @param userId - Owner, used to scope the waiting-opportunity actor match.
-   * @returns The same rows, each with `networks`, `pendingQuestionCount`, and
-   *   `waitingOpportunityCount` populated (empty/zero when none).
+   * @returns The rows with `networks`, `pendingQuestionCount`, and
+   *   `waitingOpportunityCount` populated (empty/zero when none), plus a
+   *   deduplicated total of waiting opportunities across the page's signals.
    */
   private async attachIntentExtras(
     rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming'> & {
@@ -572,8 +577,8 @@ export class IntentDatabaseAdapter {
       firstDiscoverySucceededAt: Date | null;
     })[],
     userId: string,
-  ): Promise<IntentListRow[]> {
-    if (rows.length === 0) return [];
+  ): Promise<{ rows: IntentListRow[]; totalWaitingOpportunities: number }> {
+    if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
     // Only rows that are fresh AND not already stamped need the legacy
@@ -581,21 +586,24 @@ export class IntentDatabaseAdapter {
     const freshIntentIds = rows
       .filter(r => r.createdAt > warmingCutoff && r.firstDiscoverySucceededAt == null)
       .map(r => r.id);
-    const [networks, counts, succeededDiscoveryIntentIds] = await Promise.all([
+    const [networks, countResult, succeededDiscoveryIntentIds] = await Promise.all([
       this.networksByIntent(intentIds),
       this.countsByIntent(intentIds, userId),
       this.succeededDiscoveryIntentIds(freshIntentIds),
     ]);
     const succeededIds = new Set(succeededDiscoveryIntentIds);
-    return rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
-      ...r,
-      networks: networks.get(r.id) ?? [],
-      pendingQuestionCount: counts.get(r.id)?.questions ?? 0,
-      waitingOpportunityCount: counts.get(r.id)?.opportunities ?? 0,
-      warming: r.createdAt > warmingCutoff
-        && firstDiscoverySucceededAt == null
-        && !succeededIds.has(r.id),
-    }));
+    return {
+      rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
+        ...r,
+        networks: networks.get(r.id) ?? [],
+        pendingQuestionCount: countResult.byIntent.get(r.id)?.questions ?? 0,
+        waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
+        warming: r.createdAt > warmingCutoff
+          && firstDiscoverySucceededAt == null
+          && !succeededIds.has(r.id),
+      })),
+      totalWaitingOpportunities: countResult.totalWaitingOpportunities,
+    };
   }
 
   /**
@@ -642,17 +650,21 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Per-intent counts of pending intent-scoped questions and `pending`
-   * opportunities awaiting the user. Two grouped jsonb queries; every requested
-   * intent id is present in the returned map (zero when it has none).
+   * Per-intent counts of pending intent-scoped questions and opportunities
+   * awaiting the viewer. The opportunity query also returns one deduplicated
+   * total across every requested signal. Every requested ID is present in the
+   * returned map (zero when it has none).
    */
   private async countsByIntent(
     intentIds: string[],
     userId: string,
-  ): Promise<Map<string, { questions: number; opportunities: number }>> {
-    const map = new Map<string, { questions: number; opportunities: number }>();
-    if (intentIds.length === 0) return map;
-    for (const id of intentIds) map.set(id, { questions: 0, opportunities: 0 });
+  ): Promise<{
+    byIntent: Map<string, { questions: number; opportunities: number }>;
+    totalWaitingOpportunities: number;
+  }> {
+    const byIntent = new Map<string, { questions: number; opportunities: number }>();
+    if (intentIds.length === 0) return { byIntent, totalWaitingOpportunities: 0 };
+    for (const id of intentIds) byIntent.set(id, { questions: 0, opportunities: 0 });
     const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
 
     const [questionRows, oppRows] = await Promise.all([
@@ -679,24 +691,42 @@ export class IntentDatabaseAdapter {
         GROUP BY key
       `) as unknown as Array<{ intent_id: string; cnt: number }>,
       db.execute(sql`
-        SELECT actor->>'intent' AS intent_id, COUNT(DISTINCT ${schema.opportunities.id})::int AS cnt
-        FROM ${schema.opportunities}, jsonb_array_elements(${schema.opportunities.actors}) AS actor
-        WHERE actor->>'userId' = ${userId}
-          AND actor->>'intent' IN (${idList})
-          AND ${schema.opportunities.status} = 'pending'
-        GROUP BY actor->>'intent'
-      `) as unknown as Array<{ intent_id: string; cnt: number }>,
+        WITH matching AS (
+          SELECT DISTINCT
+            ${schema.opportunities.id} AS opportunity_id,
+            requested.intent_id
+          FROM ${schema.opportunities}
+          CROSS JOIN LATERAL jsonb_array_elements(${schema.opportunities.actors}) AS actor
+          CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
+          WHERE ${schema.opportunities.status} = 'pending'
+            AND actor->>'userId' = ${userId}
+            AND actor->>'role' IS DISTINCT FROM 'introducer'
+            AND actor->>'actedAt' IS NULL
+            AND (
+              ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id
+              OR actor->>'intent' = requested.intent_id
+            )
+        )
+        SELECT intent_id, COUNT(DISTINCT opportunity_id)::int AS cnt
+        FROM matching
+        GROUP BY GROUPING SETS ((intent_id), ())
+      `) as unknown as Array<{ intent_id: string | null; cnt: number }>,
     ]);
 
     for (const r of questionRows) {
-      const entry = map.get(r.intent_id);
+      const entry = byIntent.get(r.intent_id);
       if (entry) entry.questions = Number(r.cnt);
     }
+    let totalWaitingOpportunities = 0;
     for (const r of oppRows) {
-      const entry = map.get(r.intent_id);
+      if (r.intent_id == null) {
+        totalWaitingOpportunities = Number(r.cnt);
+        continue;
+      }
+      const entry = byIntent.get(r.intent_id);
       if (entry) entry.opportunities = Number(r.cnt);
     }
-    return map;
+    return { byIntent, totalWaitingOpportunities };
   }
 
   async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {
@@ -718,8 +748,8 @@ export class IntentDatabaseAdapter {
       .limit(1);
 
     if (!row[0]) return null;
-    const [withExtras] = await this.attachIntentExtras(row, userId);
-    return withExtras;
+    const { rows: [withExtras] } = await this.attachIntentExtras(row, userId);
+    return withExtras ?? null;
   }
 
   /**
