@@ -34,7 +34,7 @@ index/
 
 **API service** is a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
 
-**Web app** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the API service. In production, a reverse proxy handles routing.
+**Web app** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the API service. In production, `apps/web/server.ts` serves the Vite output and falls back to `index.html` only for document navigations. HTML is `no-store`, generated `/assets/*` files are immutable, and missing assets return a non-HTML 404 so stale lazy imports can be detected and recovered safely. React Router lazy imports make one bounded, URL-preserving reload attempt per stale route load before the application error boundary presents an explicit refresh action.
 
 **Mac app** is a subtree-synced native Apple prototype under `apps/mac/`, with Swift WKWebView shells wrapping self-contained React/HTML bundles.
 
