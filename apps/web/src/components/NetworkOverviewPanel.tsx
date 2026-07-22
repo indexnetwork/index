@@ -82,7 +82,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
       if (!sessionId) return;
       navigate(`/d/${sessionId}`);
     } catch {
-      error('Failed to open intent chat');
+      error('Failed to open signal chat');
     }
   }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error, signalAgentEnabled]);
 

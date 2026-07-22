@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { OptionRow } from '@/components/DecisionQuestions/OptionRow';
+import { toSignalProductLanguage } from '@/lib/product-language';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
 
 const OTHER_VALUE = '__other__';
@@ -74,7 +75,7 @@ function InjectedQuestionCard({
             data-testid="question-evidence-chip"
             className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
           >
-            {`\u25CE ${payload.evidence}`}
+            {`\u25CE ${toSignalProductLanguage(payload.evidence)}`}
           </span>
         </div>
       )}

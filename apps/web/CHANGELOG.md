@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Complete the interactive web product-language cutover from user-visible “intents” to “signals,” including creation, Discover, signal workspaces, Radar, network, Agent, trace, error, and accessibility copy; preserve internal/API `intent` identifiers and normalize server-authored provenance/subtitle fields at the web presentation boundary (IND-477).
+
 ### Fixed
 
 - Allow the reporter surface (`/agent`) to send messages after its briefing session is established; the route-mismatch guard now exempts the URL-less reporter session while preserving stale-session protection on `/d/:id` (IND-488).

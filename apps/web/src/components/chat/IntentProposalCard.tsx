@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, X } from "lucide-react";
 
+import { toSignalProductLanguage } from "@/lib/product-language";
 import { cn } from "@/lib/utils";
 
 /** Data shape for an intent proposal returned by the create_intent chat tool. */
@@ -87,7 +88,7 @@ export default function IntentProposalCard({
   // the default if the backend sent a broad breadth without a specific message, so
   // the disabled countdown is explained rather than looking stuck.
   const displayWarning = requiresManualApproval
-    ? specificityWarning || DEFAULT_SPECIFICITY_WARNING
+    ? toSignalProductLanguage(specificityWarning || DEFAULT_SPECIFICITY_WARNING)
     : undefined;
 
   // Start countdown on mount when pending. Broad attributive signals require
@@ -187,9 +188,9 @@ export default function IntentProposalCard({
 
   if (actionError) {
     const errorLabel =
-      failedAction === "reject" ? "Failed: Skip intent" :
-      failedAction === "undo" ? "Failed: Undo intent" :
-      "Failed: Create intent";
+      failedAction === "reject" ? "Failed: Skip signal" :
+      failedAction === "undo" ? "Failed: Undo signal" :
+      "Failed: Create signal";
     const retryHandler =
       failedAction === "reject" ? handleSkip :
       failedAction === "undo" ? handleUndo :
@@ -269,7 +270,7 @@ export default function IntentProposalCard({
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-            Proposed Intent
+            Proposed Signal
           </div>
           <p className={cn(
             "text-[14px] leading-relaxed mt-0.5",

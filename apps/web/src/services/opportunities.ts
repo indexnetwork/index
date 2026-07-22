@@ -62,7 +62,7 @@ export interface HomeViewCardItem {
   /** Presenter-generated; primary (accept) and secondary (dismiss) button labels. */
   primaryActionLabel: string;
   secondaryActionLabel: string;
-  /** Presenter-generated subtitle under the other party name (e.g. "1 mutual intent"). */
+  /** Presenter-generated subtitle under the other party name (e.g. "1 mutual signal"). */
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */

@@ -163,7 +163,7 @@ export default function InvitationPage() {
           You're invited to join
         </h1>
         <p className="text-black text-[14px] font-ibm-plex-mono">
-          Connect with others who share your intent — discover relevant matches inside this private network.
+          Connect with others who share your signal — discover relevant opportunities inside this private network.
         </p>
       </div>
 

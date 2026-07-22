@@ -14,7 +14,7 @@ export interface QuestionPayload {
   multiSelect: boolean;
   /**
    * Optional provenance line rendered as a muted chip above the prompt
-   * (e.g. "based on 18 people matching this intent"). Aggregate counts only.
+   * (e.g. "based on 18 people matching this signal"). Aggregate counts only.
    */
   evidence?: string;
 }

@@ -250,7 +250,7 @@ export default function OnboardingPage() {
           delete next[proposalId];
           return next;
         });
-        showError("Failed to create intent");
+        showError("Failed to create signal");
       }
     },
     [opportunitiesService, showError],
