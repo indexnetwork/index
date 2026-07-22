@@ -660,6 +660,23 @@ export class QuestionerAdapter {
       if (filters.mode === 'chat') {
         conditions.push(sql`NOT (${questions.detection} ? 'pool')`);
         conditions.push(sql`COALESCE(${questions.detection}->>'voidedReason', '') = ''`);
+        // Unanchored rows may render only while their blocking turn is live.
+        // Once anchoring metadata exists, require both bindings and prove that
+        // the assistant message is in exactly the stamped durable session.
+        conditions.push(sql`(
+          (NOT (${questions.detection} ? 'messageId') AND NOT (${questions.detection} ? 'sessionId'))
+          OR (
+            ${questions.detection} ? 'messageId'
+            AND ${questions.detection} ? 'sessionId'
+            AND EXISTS (
+              SELECT 1
+              FROM ${messages}
+              WHERE ${messages.id} = ${questions.detection}->>'messageId'
+                AND ${messages.conversationId} = ${questions.conversationId}
+                AND ${messages.sessionId} = ${questions.detection}->>'sessionId'
+            )
+          )
+        )`);
       }
     }
     if (filters?.purpose) {

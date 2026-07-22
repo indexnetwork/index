@@ -161,13 +161,18 @@ export class QuestionController {
         return Response.json({ error: 'Question not found' }, { status: 404 });
       }
       const session = await chatSessionService.getSession(conversationId, user.id);
-      if (!session || (rawMode && rawMode !== 'chat')) {
+      if (!session) {
         return Response.json({ error: 'Question not found' }, { status: 404 });
       }
-      // Conversation-anchored rendering is exclusively for canonical chat rows.
-      // This keeps pool and non-chat questions out of injected chat surfaces.
-      filters.mode = 'chat';
+      // Preserve the caller's explicit mode filter: chat-triggered intent,
+      // enrichment, discovery, and negotiation questions are still anchored to
+      // this conversation and must remain answerable. Pool-discovery rows never
+      // render in generic conversation injection.
       filters.conversationId = conversationId;
+      filters.excludeModes = [...new Set([
+        ...(filters.excludeModes ?? []),
+        'pool_discovery' as const,
+      ])];
     }
     if (noConversation === 'true') filters.noConversation = true;
 

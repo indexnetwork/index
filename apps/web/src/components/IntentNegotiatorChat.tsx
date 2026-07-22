@@ -90,6 +90,9 @@ export default function IntentNegotiatorChat({
     sendMessage,
     stopStream,
     loadSession,
+    loadPreviousMessages,
+    hasPreviousSession,
+    isLoadingPreviousMessages,
     clearChat,
     sessionId,
   } = useAIChat();
@@ -250,6 +253,19 @@ export default function IntentNegotiatorChat({
           </div>
         ) : (
           <>
+            {hasPreviousSession && (
+              <div className="flex justify-center py-2">
+                <button
+                  type="button"
+                  onClick={() => void loadPreviousMessages()}
+                  disabled={isLoadingPreviousMessages}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+                  aria-label="Load previous messages"
+                >
+                  {isLoadingPreviousMessages ? "Loading previous messages…" : "Load Previous Messages"}
+                </button>
+              </div>
+            )}
             {messages.length === 0 && (answered.length > 0 || questions.length === 0) && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
@@ -281,10 +297,21 @@ export default function IntentNegotiatorChat({
               }
 
               const msg = item.message;
+              const messageIndex = messages.findIndex((message) => message.id === msg.id);
+              const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined;
+              const startsSession = previousMessage !== undefined
+                && previousMessage.conversationSessionId !== msg.conversationSessionId;
               const anchoredAnswered = questionTimeline.answeredByMessageId.get(msg.id) ?? [];
               const anchoredPending = questionTimeline.pendingByMessageId.get(msg.id) ?? [];
               return (
                 <Fragment key={`message-${msg.id}`}>
+                  {startsSession && (
+                    <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
+                      <span className="h-px flex-1 bg-gray-200" />
+                      <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
+                      <span className="h-px flex-1 bg-gray-200" />
+                    </div>
+                  )}
                   {msg.role === "user" ? (
                     <div className="flex justify-end">
                       <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#041729] px-4 py-2 text-sm text-white whitespace-pre-wrap">
