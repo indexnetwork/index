@@ -135,6 +135,7 @@ describe('negotiation question routing static invariants', () => {
     expect(uptakeGuard).toContain("purpose: 'uptake'");
     expect(source).toContain('candidate.counterpartyUserId');
     expect(source).toContain('counterparty_intent.id');
+    expect(source).toContain('counterparty_intent.felicity_authority');
     expect(source).toContain('counterparty_assignment');
     expect(uptakeService).toContain('counterpartyUserId');
     expect(uptakeService).toContain('counterpartyIntentId');

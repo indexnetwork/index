@@ -78,6 +78,7 @@ export interface AdapterNegotiationQuestionCandidate {
   /** Uptake only: exact counterparty whose low-authority state triggered the advisory. */
   counterpartyUserId?: string;
   counterpartyIntentId?: string;
+  counterpartyFelicityAuthority?: number;
 }
 
 export interface AdapterNegotiationQuestionProvenance extends AdapterNegotiationQuestionCandidate {
@@ -573,8 +574,8 @@ export class QuestionerAdapter {
       || !isNonEmptyString(candidate.opportunityId)
       || !isNonEmptyString(candidate.networkId)
       || (taskBacked !== isNonEmptyString(candidate.taskId))
-      || (candidate.purpose === 'uptake' && (!isNonEmptyString(candidate.counterpartyUserId) || !isNonEmptyString(candidate.counterpartyIntentId)))
-      || (candidate.purpose !== 'uptake' && (candidate.counterpartyUserId !== undefined || candidate.counterpartyIntentId !== undefined))
+      || (candidate.purpose === 'uptake' && (!isNonEmptyString(candidate.counterpartyUserId) || !isNonEmptyString(candidate.counterpartyIntentId) || !Number.isFinite(candidate.counterpartyFelicityAuthority)))
+      || (candidate.purpose !== 'uptake' && (candidate.counterpartyUserId !== undefined || candidate.counterpartyIntentId !== undefined || candidate.counterpartyFelicityAuthority !== undefined))
     ) return null;
 
     const expectedOpportunityStatus = candidate.purpose === 'uptake'
@@ -656,6 +657,7 @@ export class QuestionerAdapter {
              AND counterparty_intent.user_id = ${candidate.counterpartyUserId!}
              AND counterparty_intent.archived_at IS NULL
              AND (counterparty_intent.status IS NULL OR counterparty_intent.status = 'ACTIVE')
+             AND counterparty_intent.felicity_authority = ${candidate.counterpartyFelicityAuthority!}
             JOIN intent_networks counterparty_assignment
               ON counterparty_assignment.intent_id = counterparty_intent.id
              AND counterparty_assignment.network_id = ${candidate.networkId}
@@ -681,7 +683,8 @@ export class QuestionerAdapter {
         || expected.opportunityStatus !== row.opportunityStatus
         || expected.opportunityUpdatedAt !== opportunityUpdatedAt
         || expected.counterpartyUserId !== candidate.counterpartyUserId
-        || expected.counterpartyIntentId !== candidate.counterpartyIntentId)
+        || expected.counterpartyIntentId !== candidate.counterpartyIntentId
+        || expected.counterpartyFelicityAuthority !== candidate.counterpartyFelicityAuthority)
     ) return null;
 
     let taskState: AdapterNegotiationQuestionProvenance['taskState'];

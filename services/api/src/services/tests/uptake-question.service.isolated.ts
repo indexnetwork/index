@@ -109,6 +109,7 @@ describe('UptakeQuestionService', () => {
         networkId: NETWORK,
         counterpartyUserId: COUNTERPARTY,
         counterpartyIntentId: INTENT,
+        counterpartyFelicityAuthority: 45,
       },
       context: {
         purpose: 'uptake',
@@ -118,7 +119,9 @@ describe('UptakeQuestionService', () => {
         proposedActivity: 'a potential collaboration that may require clarification before you decide',
       },
     });
-    expect(JSON.stringify(input)).not.toContain('45');
+    // The authority score is sealed routing provenance, never generator context.
+    expect(input.negotiation.counterpartyFelicityAuthority).toBe(45);
+    expect(JSON.stringify(input.context)).not.toContain('45');
     expect(JSON.stringify(input)).not.toContain('private reasoning');
     expect(JSON.stringify(input)).not.toContain('Open-source maintainer');
     expect(JSON.stringify(input)).not.toContain('Berlin');

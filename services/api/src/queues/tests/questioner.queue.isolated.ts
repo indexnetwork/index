@@ -14,6 +14,9 @@ describe('QuestionerQueue', () => {
     recipientIntentId: 'intent-1',
     opportunityId: 'opp-1',
     networkId: 'network-1',
+    counterpartyUserId: 'user-2',
+    counterpartyIntentId: 'intent-2',
+    counterpartyFelicityAuthority: 45,
   };
   const uptakeAdmission = {
     version: 1 as const,

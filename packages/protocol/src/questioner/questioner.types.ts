@@ -284,6 +284,8 @@ export function isValidQuestionerInputContract(input: QuestionerInput): boolean 
       && input.negotiation.counterpartyUserId.length > 0
       && typeof input.negotiation.counterpartyIntentId === 'string'
       && input.negotiation.counterpartyIntentId.length > 0
+      && typeof input.negotiation.counterpartyFelicityAuthority === 'number'
+      && Number.isFinite(input.negotiation.counterpartyFelicityAuthority)
       && context.negotiationId === input.sourceId
       && context.purpose === 'uptake'
       && context.proposedActivity === NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY;

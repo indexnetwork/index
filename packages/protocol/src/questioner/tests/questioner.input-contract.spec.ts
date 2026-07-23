@@ -76,6 +76,7 @@ const uptake: QuestionerInput = {
     networkId: 'network-1',
     counterpartyUserId: 'counterparty-1',
     counterpartyIntentId: 'counterparty-intent-1',
+    counterpartyFelicityAuthority: 45,
   },
   context: {
     purpose: 'uptake',
@@ -108,6 +109,7 @@ describe('QuestionerInput runtime negotiation discriminant', () => {
     { ...stalled, mode: 'negotiation_inflight' },
     { ...uptake, mode: 'negotiation_inflight' },
     { ...uptake, negotiation: { ...uptake.negotiation, counterpartyIntentId: undefined } },
+    { ...uptake, negotiation: { ...uptake.negotiation, counterpartyFelicityAuthority: undefined } },
     { ...uptake, context: { ...uptake.context, proposedActivity: 'Alice profile from private transcript' } },
   ] as unknown as QuestionerInput[])('rejects crossed or unsafe contracts', (input) => {
     expect(isValidQuestionerInputContract(input)).toBe(false);

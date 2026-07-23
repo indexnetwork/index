@@ -173,6 +173,7 @@ export class UptakeQuestionService {
             // identities before the advisory can block acceptance.
             counterpartyUserId,
             counterpartyIntentId,
+            counterpartyFelicityAuthority: counterpartyIntent.felicityAuthority,
           },
           context: {
             purpose: 'uptake',
