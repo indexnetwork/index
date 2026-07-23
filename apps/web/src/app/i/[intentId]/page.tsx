@@ -16,6 +16,7 @@ import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useQuestions } from "@/contexts/QuestionsContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
@@ -24,6 +25,7 @@ import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/op
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
+import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
 const STATUS_BUCKET: Record<string, string> = {
@@ -303,6 +305,7 @@ export default function IntentDetailPage() {
   const { refresh: refreshQuestionCounts, pendingRevision } = useQuestions();
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
+  const { negotiations } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -536,6 +539,30 @@ export default function IntentDetailPage() {
       if (seq === loadSeqRef.current && !preserveExisting) setOpportunitiesLoading(false);
     }
   }, [intentId, opportunitiesService]);
+
+  const negotiationActivityRevision = useMemo(
+    () => intentNegotiationActivityRevision(negotiations, intentId),
+    [intentId, negotiations],
+  );
+  const seenNegotiationActivityRef = useRef<string | null>(null);
+
+  // ConversationProvider receives persisted A2A turns over SSE and refreshes
+  // owner-filtered negotiation provenance. A scoped revision means only this
+  // intent's own negotiations invalidate Radar; unrelated conversations never
+  // trigger a fetch or become visible here.
+  useEffect(() => {
+    if (!negotiationActivityRevision) {
+      seenNegotiationActivityRef.current = null;
+      return;
+    }
+    if (seenNegotiationActivityRef.current === null) {
+      seenNegotiationActivityRef.current = negotiationActivityRevision;
+      return;
+    }
+    if (seenNegotiationActivityRef.current === negotiationActivityRevision) return;
+    seenNegotiationActivityRef.current = negotiationActivityRevision;
+    void loadOpportunities(true);
+  }, [loadOpportunities, negotiationActivityRevision]);
 
   useEffect(() => {
     if (!intentId) return;
