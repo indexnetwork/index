@@ -9,7 +9,6 @@ import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
 import db from '../../lib/drizzle/drizzle';
 import { intents, opportunities, questions } from '../../schemas/database.schema';
-import { isRecoverySuppressingOpportunity } from '../../services/intent-recovery-refinement.service';
 import { UserDatabaseAdapter } from '../database.adapter';
 import { QuestionerAdapter, type AdapterPersistableQuestion } from '../questioner.adapter';
 
@@ -104,8 +103,8 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     const fingerprint = computeIntentFingerprint(payload, summary);
     const question = recoveryQuestion(userId, intentId, fingerprint);
     const concurrent = await Promise.all([
-      adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, isRecoverySuppressingOpportunity),
-      adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, isRecoverySuppressingOpportunity),
+      adapter.persistFreshRecoveryQuestion(question, userId, fingerprint),
+      adapter.persistFreshRecoveryQuestion(question, userId, fingerprint),
     ]);
     const winner = concurrent.find((id): id is string => typeof id === 'string');
     expect(winner).toBeDefined();
@@ -121,7 +120,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
       await db.update(questions).set(state).where(eq(questions.id, winner!));
       expect((await adapter.prepareRecoveryRefinement(userId, intentId))?.hasCadenceAnchor).toBe(true);
       expect(await adapter.persistFreshRecoveryQuestion(
-        question, userId, fingerprint, isRecoverySuppressingOpportunity,
+        question, userId, fingerprint,
       )).toBeNull();
     }
 
@@ -132,22 +131,21 @@ describe('QuestionerAdapter recovery lifecycle', () => {
       recoveryQuestion(userId, intentId, changedFingerprint),
       userId,
       changedFingerprint,
-      isRecoverySuppressingOpportunity,
     );
     expect(changedId).toBeString();
     questionIds.push(changedId!);
   }, 30_000);
 
-  test('fails the final gate on lifecycle, fingerprint, or exact-trigger actionable-opportunity drift', async () => {
+  test('fails the final gate on lifecycle or fingerprint drift but not on actionable opportunities', async () => {
     payload = 'Find a carbon accounting advisor';
     await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
     const fingerprint = computeIntentFingerprint(payload, summary);
     const question = recoveryQuestion(userId, intentId, fingerprint);
 
     await db.update(intents).set({ status: 'PAUSED' }).where(eq(intents.id, intentId));
-    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, isRecoverySuppressingOpportunity)).toBeNull();
+    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint)).toBeNull();
     await db.update(intents).set({ status: 'ACTIVE', payload: `${payload} in Europe` }).where(eq(intents.id, intentId));
-    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, isRecoverySuppressingOpportunity)).toBeNull();
+    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint)).toBeNull();
 
     await db.update(intents).set({ payload }).where(eq(intents.id, intentId));
     const opportunityId = crypto.randomUUID();
@@ -163,12 +161,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
       interpretation: { category: 'test', reasoning: 'unsafe raw reasoning', confidence: 0.8 },
       context: {}, confidence: '0.8', status: 'latent',
     });
-    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, isRecoverySuppressingOpportunity)).toBeNull();
-
-    await db.update(opportunities).set({
-      detection: { source: 'opportunity_graph', triggeredBy: crypto.randomUUID(), timestamp: new Date().toISOString() },
-    }).where(eq(opportunities.id, opportunityId));
-    const inserted = await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, isRecoverySuppressingOpportunity);
+    const inserted = await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint);
     expect(inserted).toBeString();
     questionIds.push(inserted!);
   }, 30_000);
@@ -178,7 +171,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
     const oldFingerprint = computeIntentFingerprint(payload, summary);
     const staleId = await adapter.persistFreshRecoveryQuestion(
-      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint, isRecoverySuppressingOpportunity,
+      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint,
     );
     expect(staleId).toBeString();
     questionIds.push(staleId!);
@@ -202,7 +195,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
     const oldFingerprint = computeIntentFingerprint(payload, summary);
     const questionId = await adapter.persistFreshRecoveryQuestion(
-      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint, isRecoverySuppressingOpportunity,
+      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint,
     );
     expect(questionId).toBeString();
     questionIds.push(questionId!);
@@ -233,7 +226,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
     const oldFingerprint = computeIntentFingerprint(payload, summary);
     const oldId = await adapter.persistFreshRecoveryQuestion(
-      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint, isRecoverySuppressingOpportunity,
+      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint,
     );
     expect(oldId).toBeString();
     questionIds.push(oldId!);
@@ -253,7 +246,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
 
     const currentFingerprint = computeIntentFingerprint(payload, summary);
     const currentId = await adapter.persistFreshRecoveryQuestion(
-      recoveryQuestion(userId, intentId, currentFingerprint), userId, currentFingerprint, isRecoverySuppressingOpportunity,
+      recoveryQuestion(userId, intentId, currentFingerprint), userId, currentFingerprint,
     );
     expect(currentId).toBeString();
     questionIds.push(currentId!);

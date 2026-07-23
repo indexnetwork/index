@@ -202,6 +202,51 @@ describe('QuestionerQueue', () => {
     expect(persisted).toBe(false);
   });
 
+  it('routes creation-time intent questions through the shared fingerprint-deduplicated surfacing service', async () => {
+    const recoveries: Array<{
+      source: string;
+      recipientUserId: string;
+      intentId: string;
+    }> = [];
+    let invoked = false;
+    const queue = new QuestionerQueue({
+      adapter: {
+        persist: async () => [],
+      },
+      agent: {
+        invoke: async () => {
+          invoked = true;
+          return null;
+        },
+      },
+      recoveryService: {
+        recover: async (input) => {
+          recoveries.push(input);
+          return 'question-1';
+        },
+      },
+    });
+    queues.push(queue);
+
+    await queue.processJob('generate_questions', {
+      mode: 'intent',
+      userId: 'user-1',
+      sourceType: 'intent',
+      sourceId: 'intent-1',
+      context: {
+        intentId: 'intent-1',
+        payload: 'Find a climate analytics collaborator',
+      },
+    });
+
+    expect(recoveries).toEqual([{
+      source: 'intent_creation',
+      recipientUserId: 'user-1',
+      intentId: 'intent-1',
+    }]);
+    expect(invoked).toBe(false);
+  });
+
   it('copies uptake purpose, scopes the actor, and caps generator output to one', async () => {
     let captured: PersistableQuestion[] = [];
     let invoked = 0;
@@ -506,6 +551,8 @@ describe('QuestionerQueue', () => {
   });
 
   it('does not let recovery questions consume the independent pool pending budget', async () => {
+    const previousPoolMode = process.env.POOL_QUESTIONS_MODE;
+    process.env.POOL_QUESTIONS_MODE = 'on';
     let persisted = false;
     const recoveryRows = Array.from({ length: 5 }, (_, index) => ({
       id: `recovery-${index}`,
@@ -522,20 +569,25 @@ describe('QuestionerQueue', () => {
     queues.push(queue);
 
     const opportunityId = '00000000-0000-4000-8000-000000000001';
-    await queue.processJob('generate_questions', {
-      mode: 'pool_discovery', userId: 'user-1', sourceType: 'intent', sourceId: 'intent-1',
-      triggeredByIntentId: 'intent-1',
-      context: {
-        intentId: 'intent-1', intentText: 'Find climate builders', poolSize: 8,
-        opportunityIds: [opportunityId], minedAt: new Date().toISOString(),
-        discriminators: [{
-          label: 'Stage', questionSeed: 'Which stage matters?', sides: ['Early', 'Growth'],
-          sideCounts: { Early: 1, Growth: 0 }, voi: 0.8, evidenceRate: 1,
-          assignments: [{ opportunityId, side: 'Early' }],
-        }],
-      },
-    });
-    expect(persisted).toBe(true);
+    try {
+      await queue.processJob('generate_questions', {
+        mode: 'pool_discovery', userId: 'user-1', sourceType: 'intent', sourceId: 'intent-1',
+        triggeredByIntentId: 'intent-1',
+        context: {
+          intentId: 'intent-1', intentText: 'Find climate builders', poolSize: 8,
+          opportunityIds: [opportunityId], minedAt: new Date().toISOString(),
+          discriminators: [{
+            label: 'Stage', questionSeed: 'Which stage matters?', sides: ['Early', 'Growth'],
+            sideCounts: { Early: 1, Growth: 0 }, voi: 0.8, evidenceRate: 1,
+            assignments: [{ opportunityId, side: 'Early' }],
+          }],
+        },
+      });
+      expect(persisted).toBe(true);
+    } finally {
+      if (previousPoolMode === undefined) delete process.env.POOL_QUESTIONS_MODE;
+      else process.env.POOL_QUESTIONS_MODE = previousPoolMode;
+    }
   });
 
   it('persists no inflight row when the generator returns zero questions', async () => {

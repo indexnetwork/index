@@ -104,7 +104,7 @@ function buildIntentPrompt(ctx: IntentContext): string {
   ].join("\n");
 }
 
-const RECOVERY_INTENT_SYSTEM_PROMPT = `You help a user materially refine one of their own discovery signals after an authoritative discovery run completed without leaving a currently actionable opportunity. Ask directly about the user's goal, desired counterpart attributes, or constraints. Never describe the run or imply that any specific person was reviewed.
+const RECOVERY_INTENT_SYSTEM_PROMPT = `You help a user materially refine one of their own discovery signals. Ask directly about the user's goal, desired counterpart attributes, or constraints. Never describe internal processing or imply that any specific person was reviewed.
 
 Choose exactly one of these strategies:
 - refine_intent: sharpen or pivot the core signal in a way that changes who should surface.

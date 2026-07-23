@@ -302,6 +302,10 @@ describe("QuestionDetection", () => {
       ...base,
       recovery: { ...base.recovery, rejectedNegotiationCount: 51 },
     }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      recovery: { ...base.recovery, completionSource: "intent_creation" },
+    }).success).toBe(true);
   });
 
   it("accepts the complete internal proactive push ledger", () => {

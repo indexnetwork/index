@@ -238,6 +238,25 @@ export class QuestionerQueue {
       }
     }
 
+    // Ordinary intent questions from intent creation and post-discovery
+    // refinement share one fingerprint-deduplicated persistence path. This
+    // makes the intent-page Personal Agent symmetric with pool questions:
+    // creation can surface the clarification immediately, while completion
+    // hooks safely retry the same material intent version without duplicates.
+    if (
+      data.mode === 'intent'
+      && data.purpose === undefined
+      && data.sourceType === 'intent'
+      && data.sourceId.trim()
+    ) {
+      await this.recoveryService.recover({
+        source: 'intent_creation',
+        recipientUserId: data.userId,
+        intentId: data.sourceId,
+      });
+      return;
+    }
+
     let negotiationAdmission: Omit<NegotiationQuestionProvenance, 'questionOrdinal'> | null = null;
     if (data.mode === 'negotiation' || data.mode === 'negotiation_inflight') {
       const parsed = NegotiationQuestionCandidateSchema.safeParse(data.negotiation);

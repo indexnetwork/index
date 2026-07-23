@@ -12,8 +12,9 @@ export interface RecoveryCompletionDeps {
 }
 
 /**
- * Failure-isolated completion hook shared by both authoritative discovery paths.
- * It carries only exact recipient/intent provenance and optional run identity.
+ * Failure-isolated surfacing hook shared by both authoritative discovery paths.
+ * Creation-time intent questions use the same service through QuestionerQueue;
+ * the material-fingerprint cadence makes all producers retry-safe.
  */
 export async function maybeEnqueueIntentRecovery(
   completion: RecoveryQuestionerJobData,
