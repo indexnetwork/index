@@ -3,8 +3,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import orchestrationBridge from "../../.pi/extensions/orchestration-bridge/index";
-
 import {
 	BlockedQuestionBridge,
 	RootWakeGate,
@@ -296,6 +294,14 @@ describe("extension wake delivery", () => {
 				resolveSend?.();
 			},
 		};
+		const isolatedExtension = await temporaryRoot();
+		await fs.copyFile(path.join(process.cwd(), ".pi/extensions/orchestration-bridge/core.ts"), path.join(isolatedExtension, "core.ts"));
+		await fs.copyFile(path.join(process.cwd(), ".pi/extensions/orchestration-bridge/index.ts"), path.join(isolatedExtension, "index.ts"));
+		const stubPath = path.join(isolatedExtension, "node_modules/typebox");
+		await fs.mkdir(stubPath, { recursive: true });
+		await fs.writeFile(path.join(stubPath, "package.json"), JSON.stringify({ name: "typebox", type: "module", exports: "./index.js" }));
+		await fs.writeFile(path.join(stubPath, "index.js"), "export const Type = { Object: (shape) => shape, String: () => ({}), Optional: (schema) => schema };\n");
+		const { default: orchestrationBridge } = await import(path.join(isolatedExtension, "index.ts"));
 		orchestrationBridge(api as never);
 		await Promise.resolve(handlers.get("session_start")?.({}, ctx));
 		const published = event("wake-delivers-event", {
