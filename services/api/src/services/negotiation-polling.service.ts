@@ -175,6 +175,16 @@ interface NegotiationTaskMetadata {
 /** Default maximum turns before a negotiation is force-finalized. */
 const DEFAULT_MAX_TURNS = 6;
 
+/** Durable successor markers require a current continuation fence; never downgrade to generic CAS. */
+function hasContinuationIdentity(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  const record = metadata as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, 'continuationExecution')
+    || record.isContinuation === true
+    || (typeof record.resumeFromTaskId === 'string' && record.resumeFromTaskId.length > 0)
+    || (typeof record.continuationSettlementId === 'string' && record.continuationSettlementId.length > 0);
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Service
@@ -354,9 +364,7 @@ export class NegotiationPollingService {
     // 2. Atomically transition out of 'claimed' to 'working' with CAS on
     //    claimedByAgentId. This prevents the claim-timeout worker and respond
     //    from both observing 'claimed' and both appending a turn.
-    const continuationRecord = (preflight.metadata as { continuationExecution?: unknown } | null)
-      ?.continuationExecution;
-    const hasContinuation = continuationRecord !== undefined;
+    const hasContinuation = hasContinuationIdentity(preflight.metadata);
     const continuationExecution = hasContinuation
       ? await readClaimedContinuationExecution(db, negotiationId)
       : null;

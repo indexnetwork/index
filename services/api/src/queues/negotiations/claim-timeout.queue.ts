@@ -21,6 +21,30 @@ export interface NegotiationClaimTimeoutJobData {
 export type NegotiationClaimTimeoutDatabase = NegotiationGraphDatabase &
   Pick<ConversationDatabaseAdapter, 'transitionClaimedTaskToWorking'>;
 
+/** A durable successor marker is continuation identity even if its fence JSON is missing or malformed. */
+function hasContinuationIdentity(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  const record = metadata as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, 'continuationExecution')
+    || record.isContinuation === true
+    || (typeof record.resumeFromTaskId === 'string' && record.resumeFromTaskId.length > 0)
+    || (typeof record.continuationSettlementId === 'string' && record.continuationSettlementId.length > 0);
+}
+
+/** Cheap pre-import shape gate; the atomic reader performs authoritative DB validation. */
+function isClaimedExecutionShape(value: unknown): value is { status: 'claimed' } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return record.status === 'claimed'
+    && record.version === 1
+    && typeof record.priorTaskId === 'string'
+    && typeof record.settlementId === 'string'
+    && typeof record.successorTaskId === 'string'
+    && typeof record.token === 'string'
+    && typeof record.fence === 'number'
+    && typeof record.leaseExpiresAt === 'string';
+}
+
 /** Optional deps for testing. */
 export interface NegotiationClaimTimeoutQueueDeps {
   database?: NegotiationClaimTimeoutDatabase;
@@ -195,14 +219,14 @@ export class NegotiationClaimTimeoutQueue {
     // side will flip the state — the other no-ops. This prevents both paths
     // from appending a turn for the same claimed state.
     const preflight = await database.getTask(negotiationId);
-    const continuationRecord = (preflight?.metadata as { continuationExecution?: { status?: unknown } } | null)
+    const continuationMetadata = preflight?.metadata;
+    const continuationRecord = (continuationMetadata as { continuationExecution?: { status?: unknown } } | null)
       ?.continuationExecution;
-    const hasContinuation = continuationRecord !== undefined;
-    const executionState = continuationRecord?.status;
+    const hasContinuation = hasContinuationIdentity(continuationMetadata);
     // A continuation is never allowed to downgrade into the generic timeout
     // path: malformed, parked, expired, or stale ownership must perform zero
     // task/message/artifact/opportunity writes.
-    if (hasContinuation && executionState !== 'claimed') {
+    if (hasContinuation && !isClaimedExecutionShape(continuationRecord)) {
       this.logger.info('Continuation claim timeout lost its fence, skipping', { negotiationId });
       return;
     }
