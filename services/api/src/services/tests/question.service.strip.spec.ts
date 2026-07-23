@@ -107,6 +107,43 @@ describe('stripInternalDetection', () => {
     }
   });
 
+  it('strips the complete negotiation routing envelope and server bindings', () => {
+    const q = poolQuestion();
+    q.detection = {
+      mode: 'negotiation_inflight',
+      purpose: 'inflight_consultation',
+      sourceType: 'opportunity',
+      sourceId: 'opp-secret',
+      timestamp: '2026-07-23T00:00:00.000Z',
+      sessionId: 'session-secret',
+      voidedReason: 'negotiation_stale',
+      negotiation: {
+        version: 1,
+        purpose: 'inflight_consultation',
+        recipientUserId: 'recipient-secret',
+        recipientIntentId: 'intent-secret',
+        opportunityId: 'opp-secret',
+        taskId: 'task-secret',
+        networkId: 'network-secret',
+        intentFingerprint: 'fingerprint-secret',
+        opportunityStatus: 'negotiating',
+        opportunityUpdatedAt: '2026-07-23T00:00:00.000Z',
+        taskState: 'input_required',
+        taskUpdatedAt: '2026-07-23T00:00:01.000Z',
+        questionOrdinal: 0,
+      },
+    };
+    const stripped = stripInternalDetection(q);
+    expect(stripped.detection.purpose).toBeUndefined();
+    expect(stripped.detection.negotiation).toBeUndefined();
+    expect(stripped.detection.sessionId).toBeUndefined();
+    expect(stripped.detection.voidedReason).toBeUndefined();
+    expect(JSON.stringify(stripped)).not.toContain('task-secret');
+    expect(JSON.stringify(stripped)).not.toContain('fingerprint-secret');
+    expect(JSON.stringify(stripped)).not.toContain('network-secret');
+    expect(JSON.stringify(stripped)).not.toContain('recipient-secret');
+  });
+
   it('strips generation metadata even without a pool snapshot', () => {
     const q = poolQuestion();
     delete (q.detection as { pool?: unknown }).pool;

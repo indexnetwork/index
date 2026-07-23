@@ -511,6 +511,8 @@ export interface QuestionDetection {
   mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
   /** Internal generation purpose; stripped from public API responses. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
+  /** Exact negotiation recipient/intent/task routing provenance. Internal only. */
+  negotiation?: import('@indexnetwork/protocol').NegotiationQuestionProvenance;
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -574,17 +576,18 @@ export const questions = pgTable('questions', {
 }, (table) => ({
   statusIdx: index('questions_status_idx').on(table.status),
   conversationIdx: index('questions_conversation_id_idx').on(table.conversationId),
-  // One uptake question per recipient and opportunity across every status.
-  // actors is a single subject for generated questions; the expression keeps
-  // dedup race-free without adding public columns for internal metadata.
-  uptakeRecipientSourceUnique: uniqueIndex('questions_uptake_recipient_source_uniq')
+  // Durable negotiation-family idempotency across every lifecycle status.
+  // Ordinal preserves the existing up-to-two-card generator cardinality.
+  negotiationProvenanceUnique: uniqueIndex('questions_negotiation_provenance_uniq')
     .on(
-      sql`(${table.actors}->0->>'userId')`,
-      sql`(${table.detection}->>'sourceType')`,
-      sql`(${table.detection}->>'sourceId')`,
-      sql`(${table.detection}->>'purpose')`,
+      sql`(${table.detection}->'negotiation'->>'recipientUserId')`,
+      sql`(${table.detection}->'negotiation'->>'recipientIntentId')`,
+      sql`(${table.detection}->'negotiation'->>'opportunityId')`,
+      sql`COALESCE(${table.detection}->'negotiation'->>'taskId', '')`,
+      sql`(${table.detection}->'negotiation'->>'purpose')`,
+      sql`(${table.detection}->'negotiation'->>'questionOrdinal')`,
     )
-    .where(sql`${table.detection}->>'purpose' = 'uptake'`),
+    .where(sql`${table.detection}->'negotiation'->>'version' = '1'`),
   // One recovery refinement per recipient + intent + material fingerprint
   // across every status and expiry state. Advisory locking is the application
   // gate; this expression index is the final cross-worker race guard.

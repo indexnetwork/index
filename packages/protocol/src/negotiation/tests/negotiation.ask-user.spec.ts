@@ -13,16 +13,22 @@ import type { QuestionerEnqueuePayload } from "../../questioner/questioner.types
  * Pins:
  * - vocabulary: ask_user is opt-in per surface ({ askUser: true }), v2
  *   non-final only; base schemas stay byte-identical,
- * - graph pause loop: ask_user turn → message persisted → turn context parked
- *   → answer-window timer armed → negotiation_inflight question enqueued →
- *   task input_required → graph exits without an outcome,
+ * - graph pause loop: ask_user turn → message persisted → material binding
+ *   captured (fenced when resuming) → answer-window timer armed with the
+ *   captured provenance → negotiation_inflight question enqueued → task
+ *   input_required → graph exits without an outcome,
  * - availability gating: flag, wiring (questioner + timer + opportunityId),
  *   opening turn, final turn, and per-side rationing,
  * - coercion: an unavailable ask_user never enters the turn history,
  * - lock-gate extension: input_required tasks hold the conversation lock for
  *   the full answer window, not the 5-min turn freshness,
  * - resume floor: an ask_user last turn does not pass the floor — the asker
- *   speaks again on the continuation.
+ *   speaks again on the continuation,
+ * - fenced exact-successor resume: a durable continuation only proceeds when
+ *   both the caller-supplied settlement AND the caller-supplied
+ *   continuationExecution (claimed lease/fence) agree with the stored prior
+ *   task and stored successor task; it never falls back to the latest
+ *   opportunity task.
  */
 
 // ─── Vocabulary + schema (pure) ──────────────────────────────────────────────
@@ -124,13 +130,38 @@ const V2_PRIOR_TASK = {
   updatedAt: new Date(Date.now() - 3_600_000),
 };
 
+/** Deterministic ask-user material binding, keyed by which side is asking. */
+function bindingFor(recipientUserId: string, input: Record<string, unknown>) {
+  const isSrc = recipientUserId === 'u-src';
+  return {
+    version: 2 as const,
+    settlementId: input.settlementId as string,
+    recipientUserId,
+    recipientIntentId: input.recipientIntentId as string,
+    opportunityId: input.opportunityId as string,
+    networkId: input.networkId as string,
+    intentFingerprint: isSrc ? 'fp-src' : 'fp-cand',
+    opportunityStatus: 'pending',
+    opportunityUpdatedAt: '2026-01-01T00:00:00.000Z',
+    counterpartyUserId: isSrc ? 'u-cand' : 'u-src',
+    counterpartyIntentId: isSrc ? 'intent-cand' : 'intent-src',
+  };
+}
+
 function mkStubs(opts?: {
   priorMessages?: FakeMessage[];
   priorTask?: Record<string, unknown> | null;
+  exactTask?: Record<string, unknown> | null;
+  successorTask?: Record<string, unknown> | null;
 }) {
   const createdMessages: Array<{ senderId: string; parts: Array<{ kind: string; data: NegotiationTurn }> }> = [];
   const stateWrites: Array<{ taskId: string; state: string }> = [];
-  const turnContextWrites: Array<{ taskId: string }> = [];
+  const turnContextWrites: Array<{ taskId: string; context: Record<string, unknown> }> = [];
+  const askUserBindingCaptures: Array<Record<string, unknown>> = [];
+  let opportunityTaskReads = 0;
+  const tasksById = new Map<string, Record<string, unknown>>();
+  if (opts?.exactTask) tasksById.set(opts.exactTask.id as string, opts.exactTask);
+  if (opts?.successorTask) tasksById.set(opts.successorTask.id as string, opts.successorTask);
   const database = {
     getOrCreateDM: async () => ({ id: "conv-1" }),
     createTask: async (conversationId: string) => ({ id: "task-new", conversationId, state: "submitted" }),
@@ -143,12 +174,20 @@ function mkStubs(opts?: {
       stateWrites.push({ taskId, state });
     },
     createArtifact: async () => {},
-    setTaskTurnContext: async (taskId: string) => {
-      turnContextWrites.push({ taskId });
+    setTaskTurnContext: async (taskId: string, context: Record<string, unknown>) => {
+      turnContextWrites.push({ taskId, context });
+    },
+    captureNegotiationAskUserBinding: async (input: Record<string, unknown>) => {
+      askUserBindingCaptures.push(input);
+      return bindingFor(input.recipientUserId as string, input);
     },
     getMessagesForConversation: async () => opts?.priorMessages ?? [],
     getOpportunityUserAnswers: async () => [],
-    getNegotiationTaskForOpportunity: async () => (opts?.priorTask === undefined ? V2_PRIOR_TASK : opts.priorTask),
+    getNegotiationTaskForOpportunity: async () => {
+      opportunityTaskReads += 1;
+      return opts?.priorTask === undefined ? V2_PRIOR_TASK : opts.priorTask;
+    },
+    getTask: async (id: string) => tasksById.get(id) ?? null,
     getLatestNegotiationTaskForConversation: async () => null,
     getUserContext: async () => ({ text: "Alice builds AI startups" }),
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0];
@@ -174,7 +213,11 @@ function mkStubs(opts?: {
     questionerEnqueues.push(input);
   };
 
-  return { database, dispatcher, timeoutQueue, questionerEnqueue, createdMessages, stateWrites, turnContextWrites, expiryArms, questionerEnqueues };
+  return {
+    database, dispatcher, timeoutQueue, questionerEnqueue, createdMessages, stateWrites,
+    turnContextWrites, expiryArms, questionerEnqueues, askUserBindingCaptures,
+    get opportunityTaskReads() { return opportunityTaskReads; },
+  };
 }
 
 async function runGraph(
@@ -189,8 +232,10 @@ async function runGraph(
     opts?.omitQuestioner ? undefined : stubs.questionerEnqueue,
   ).createGraph();
   return graph.invoke({
-    sourceUser: { id: "u-src", intents: [], profile: { name: "Alice", bio: "PM", skills: ["product"] } },
-    candidateUser: { id: "u-cand", intents: [], profile: { name: "Bob", bio: "ML engineer", location: "Berlin", skills: ["ml"] } },
+    sourceUser: { id: "u-src", intents: [{ id: "intent-src", title: "Build AI", description: "Find an AI collaborator", confidence: 1 }], profile: { name: "Alice", bio: "PM", skills: ["product"] } },
+    candidateUser: { id: "u-cand", intents: [{ id: "intent-cand", title: "Apply ML", description: "Join an AI product", confidence: 1 }], profile: { name: "Bob", bio: "ML engineer", location: "Berlin", skills: ["ml"] } },
+    sourceIntentId: "intent-src",
+    candidateIntentId: "intent-cand",
     indexContext: { networkId: "net-1", prompt: "AI startup network" },
     seedAssessment: { reasoning: "complementary", valencyRole: "peer" },
     opportunityId: "opp-1",
@@ -213,6 +258,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
   const origWindow = process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
+  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -232,18 +278,51 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     agentInputs = [];
     agentScript = [];
     process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
+    process.env.NEGOTIATION_SCREEN_MODE = "off";
     delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
   });
 
   afterEach(() => {
     if (origFlag === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED; else process.env.NEGOTIATION_ASK_USER_ENABLED = origFlag;
     if (origWindow === undefined) delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS; else process.env.NEGOTIATION_ASK_USER_WINDOW_MS = origWindow;
+    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
   });
 
   /** Continuation where the source (u-src, initiator) speaks next. */
   const continuationMessages = [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "counter", 1)];
 
-  it("pauses the full loop: message + turn context + timer + question + input_required, no outcome", async () => {
+  it('delivers private consultation only to the exact recipient across immediate dispatch and system fallback', async () => {
+    const privateConsultation = {
+      recipientUserId: 'u-src', recipientIntentId: 'intent-src', kind: 'answer' as const,
+      selectedOptions: ['do not share budget'], freeText: 'Keep the range private.',
+    };
+    const dispatched: Array<Record<string, unknown>> = [];
+    const externalRecipient = mkStubs();
+    externalRecipient.dispatcher.dispatch = async (_userId: string, _scope: unknown, payload: Record<string, unknown>) => {
+      dispatched.push(payload);
+      return { handled: true, turn: declineTurn };
+    };
+    await runGraph(externalRecipient, { privateConsultation });
+    expect(dispatched[0].privateConsultation).toEqual(privateConsultation);
+
+    const externalCounterparty = mkStubs({ priorMessages: [priorMsg('u-src', 'counter', 0)] });
+    externalCounterparty.dispatcher.dispatch = async (_userId: string, _scope: unknown, payload: Record<string, unknown>) => {
+      dispatched.push(payload);
+      return { handled: true, turn: declineTurn };
+    };
+    await runGraph(externalCounterparty, { privateConsultation });
+    expect(dispatched[1].privateConsultation).toBeUndefined();
+
+    agentScript = [declineTurn];
+    await runGraph(mkStubs(), { privateConsultation });
+    expect(agentInputs[0].privateConsultation).toEqual(privateConsultation);
+
+    agentScript = [declineTurn];
+    await runGraph(mkStubs({ priorMessages: [priorMsg('u-src', 'counter', 0)] }), { privateConsultation });
+    expect(agentInputs[1].privateConsultation).toBeUndefined();
+  });
+
+  it("pauses the full loop: message + material binding + timer + question + input_required, no outcome", async () => {
     const stubs = mkStubs({ priorMessages: continuationMessages });
     agentScript = [askUserTurn];
 
@@ -254,40 +333,257 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(stubs.createdMessages[0].parts[0].data.action).toBe("ask_user");
     expect(stubs.createdMessages[0].senderId).toBe("agent:u-src");
 
-    // Turn context parked for pickup/resume.
-    expect(stubs.turnContextWrites).toEqual([{ taskId: "task-new" }]);
+    // Material binding captured for pickup/resume (recipient-scoped; the
+    // opaque provenance never touches the shared turnContext write path).
+    expect(stubs.askUserBindingCaptures).toHaveLength(1);
+    const capture = stubs.askUserBindingCaptures[0];
+    expect(capture.taskId).toBe('task-new');
+    expect(capture.settlementId).toBe('negotiation-question-settlement-v1-task-new');
+    expect(capture.recipientUserId).toBe('u-src');
+    expect(capture.recipientIntentId).toBe('intent-src');
+    expect(capture.opportunityId).toBe('opp-1');
+    expect(capture.networkId).toBe('net-1');
 
-    // Answer-window timer armed with resume coordinates + default window.
+    // Answer-window timer armed with the captured material provenance + default window.
     expect(stubs.expiryArms).toHaveLength(1);
     expect(stubs.expiryArms[0].negotiationId).toBe("task-new");
     expect(stubs.expiryArms[0].payload).toEqual({
+      settlementId: 'negotiation-question-settlement-v1-task-new',
       opportunityId: "opp-1",
       userId: "u-src",
-      disclosureSubject: "budget range",
+      recipientIntentId: 'intent-src',
+      networkId: 'net-1',
+      intentFingerprint: 'fp-src',
+      opportunityStatus: 'pending',
+      opportunityUpdatedAt: '2026-01-01T00:00:00.000Z',
+      counterpartyUserId: 'u-cand',
+      counterpartyIntentId: 'intent-cand',
     });
     expect(stubs.expiryArms[0].delayMs).toBe(DEFAULT_ASK_USER_WINDOW_MS);
 
     // Question enqueued through the negotiation_inflight preset for the
-    // asker's OWN client, counterparty referenced by attributes.
+    // asker's OWN exact opportunity-bound signal.
     expect(stubs.questionerEnqueues).toHaveLength(1);
     const q = stubs.questionerEnqueues[0];
     expect(q.mode).toBe("negotiation_inflight");
     expect(q.userId).toBe("u-src");
     expect(q.sourceType).toBe("opportunity");
     expect(q.sourceId).toBe("opp-1");
+    expect(q.purpose).toBe("inflight_consultation");
+    expect(q.negotiation).toEqual({
+      purpose: "inflight_consultation",
+      recipientUserId: "u-src",
+      recipientIntentId: "intent-src",
+      opportunityId: "opp-1",
+      taskId: "task-new",
+      networkId: "net-1",
+    });
     const ctx = q.context as Record<string, unknown>;
     expect(ctx.negotiationId).toBe("task-new");
     expect(ctx.disclosureSubject).toBe("budget range");
     expect(ctx.draftQuestion).toBe("Can I tell them your budget range?");
-    expect(ctx.counterpartyHint).toContain("ML engineer");
+    expect(ctx.counterpartyHint).toBe("the other participant");
     expect(ctx.counterpartyHint).not.toContain("Bob");
-    expect(ctx.indexContext).toBe("AI startup network");
+    expect(ctx.counterpartyHint).not.toContain("ML engineer");
+    expect(ctx.indexContext).toBe("the selected network");
     expect(ctx.userContext).toBe("Alice builds AI startups");
 
     // Task suspended as input_required; no completed transition, no outcome.
     expect(stubs.stateWrites).toContainEqual({ taskId: "task-new", state: "input_required" });
     expect(stubs.stateWrites.map((w) => w.state)).not.toContain("completed");
     expect(result.outcome).toBeNull();
+  });
+
+  it('keeps the exact task paused when question enqueue fails', async () => {
+    const stubs = mkStubs({ priorMessages: continuationMessages });
+    stubs.questionerEnqueue = async () => { throw new Error('redis unavailable'); };
+    agentScript = [askUserTurn];
+
+    const result = await runGraph(stubs);
+
+    expect(stubs.expiryArms).toHaveLength(1);
+    expect(stubs.stateWrites).toContainEqual({ taskId: 'task-new', state: 'input_required' });
+    expect(stubs.stateWrites.map((write) => write.state)).not.toContain('completed');
+    expect(result.outcome).toBeNull();
+  });
+
+  it('keeps timeout recovery armed but emits no card when structured safe fields are absent', async () => {
+    const stubs = mkStubs({ priorMessages: continuationMessages });
+    agentScript = [{
+      action: 'ask_user',
+      assessment: {
+        reasoning: 'PRIVATE TRANSCRIPT: Alice profile and matchReason 123e4567-e89b-12d3-a456-426614174000',
+        suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+      },
+      message: 'Raw private transcript must never become a question.',
+      askUser: null,
+    }];
+
+    await runGraph(stubs);
+
+    expect(stubs.expiryArms).toHaveLength(1);
+    expect(stubs.stateWrites).toContainEqual({ taskId: 'task-new', state: 'input_required' });
+    expect(stubs.questionerEnqueues).toHaveLength(0);
+    expect(JSON.stringify(stubs.expiryArms)).not.toContain('PRIVATE TRANSCRIPT');
+    expect(JSON.stringify(stubs.expiryArms)).not.toContain('matchReason');
+  });
+
+  it("routes candidate-side consultation to the candidate's own exact intent", async () => {
+    const stubs = mkStubs({
+      priorMessages: [priorMsg("u-src", "outreach", 0), priorMsg("u-src", "counter", 1)],
+    });
+    agentScript = [askUserTurn];
+    await runGraph(stubs);
+
+    expect(stubs.questionerEnqueues).toHaveLength(1);
+    expect(stubs.questionerEnqueues[0].userId).toBe("u-cand");
+    expect(stubs.questionerEnqueues[0].negotiation).toEqual({
+      purpose: "inflight_consultation",
+      recipientUserId: "u-cand",
+      recipientIntentId: "intent-cand",
+      opportunityId: "opp-1",
+      taskId: "task-new",
+      networkId: "net-1",
+    });
+    expect(stubs.questionerEnqueues[0].negotiation?.recipientIntentId).not.toBe("intent-src");
+  });
+
+  it('resumes only the exact settled task and never asks for a newer opportunity task', async () => {
+    const settlementId = 'negotiation-question-settlement-v1-task-paused';
+    const successorTask = {
+      id: 'task-successor',
+      conversationId: 'conv-1',
+      state: 'submitted',
+      metadata: {
+        continuationExecution: {
+          version: 1,
+          priorTaskId: 'task-paused',
+          settlementId,
+          successorTaskId: 'task-successor',
+          token: 'tok-1',
+          fence: 1,
+          status: 'claimed',
+          leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+          claimedAt: new Date().toISOString(),
+          heartbeatAt: new Date().toISOString(),
+        },
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const stubs = mkStubs({
+      priorMessages: [...continuationMessages, priorMsg('u-src', 'ask_user', 2)],
+      exactTask: {
+        id: 'task-paused',
+        conversationId: 'conv-1',
+        state: 'canceled',
+        metadata: {
+          type: 'negotiation',
+          protocolVersion: 'v2',
+          initiatorUserId: 'u-src',
+          sourceUserId: 'u-src',
+          candidateUserId: 'u-cand',
+          opportunityId: 'opp-1',
+          networkId: 'net-1',
+          questionSettlement: {
+            version: 1,
+            settlementId,
+            taskId: 'task-paused',
+            recipientUserId: 'u-src',
+            recipientIntentId: 'intent-src',
+            opportunityId: 'opp-1',
+            networkId: 'net-1',
+            kind: 'answer',
+            questionId: 'q-1',
+            continuationStatus: 'requested',
+            settledAt: '2026-07-23T00:00:00.000Z',
+          },
+        },
+        createdAt: new Date(Date.now() - 60_000),
+        updatedAt: new Date(),
+      },
+      successorTask,
+    });
+    agentScript = [{
+      action: 'withdraw',
+      assessment: { reasoning: 'stop', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } },
+      message: null,
+    }];
+
+    const continuationExecution = {
+      taskId: 'task-paused',
+      settlementId,
+      opportunityId: 'opp-1',
+      userId: 'u-src',
+      recipientIntentId: 'intent-src',
+      networkId: 'net-1',
+      intentFingerprint: 'fp-src',
+      opportunityStatus: 'pending',
+      opportunityUpdatedAt: '2026-01-01T00:00:00.000Z',
+      counterpartyUserId: 'u-cand',
+      counterpartyIntentId: 'intent-cand',
+      successorTaskId: 'task-successor',
+      conversationId: 'conv-1',
+      token: 'tok-1',
+      fence: 1,
+      leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+      consultation: {
+        recipientUserId: 'u-src',
+        recipientIntentId: 'intent-src',
+        kind: 'answer' as const,
+        selectedOptions: ['sure'],
+      },
+    };
+
+    const result = await runGraph(stubs, {
+      resumeFromTaskId: 'task-paused',
+      continuationSettlementId: settlementId,
+      continuationExecution,
+    });
+
+    // Never falls back to a "latest opportunity task" lookup — only the exact
+    // stamped prior task and its exact fenced successor are consulted.
+    expect(stubs.opportunityTaskReads).toBe(0);
+    // The graph operated on the claimed successor task, not a freshly minted one.
+    expect(result.taskId).toBe('task-successor');
+    // A rejected/withdraw outcome on the exact fenced successor produces a
+    // positive terminal receipt proving this exact claim settled.
+    expect(result.continuationReceipt).toEqual({
+      priorTaskId: 'task-paused',
+      settlementId,
+      successorTaskId: 'task-successor',
+      fence: 1,
+      outcome: 'rejected',
+    });
+  });
+
+  it('fails closed when the caller supplies a settlement without a matching claimed continuationExecution', async () => {
+    const settlementId = 'negotiation-question-settlement-v1-task-paused';
+    const stubs = mkStubs({
+      priorMessages: [...continuationMessages, priorMsg('u-src', 'ask_user', 2)],
+      exactTask: {
+        id: 'task-paused',
+        conversationId: 'conv-1',
+        state: 'canceled',
+        metadata: {
+          type: 'negotiation',
+          opportunityId: 'opp-1',
+          questionSettlement: { settlementId, taskId: 'task-paused' },
+        },
+        createdAt: new Date(Date.now() - 60_000),
+        updatedAt: new Date(),
+      },
+    });
+    agentScript = [];
+
+    const result = await runGraph(stubs, {
+      resumeFromTaskId: 'task-paused',
+      continuationSettlementId: settlementId,
+      // continuationExecution omitted — resumeFromTaskId alone must not admit.
+    });
+
+    expect(result.error).toBe('invalid continuation correlation');
+    expect(stubs.createdMessages).toHaveLength(0);
   });
 
   it("respects the env window override when arming the timer", async () => {

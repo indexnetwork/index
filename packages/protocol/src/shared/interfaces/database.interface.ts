@@ -2421,7 +2421,7 @@ export type OpportunityGraphDatabase = Pick<
  * Negotiation-specific query operations not covered by generic
  * conversation/task primitives.
  */
-/** A user's answer to a questioner-generated question, stored on opportunity metadata. */
+/** A user's ordinary follow-up answer stored on established shared opportunity metadata. */
 export interface NegotiationUserAnswer {
   questionId: string;
   selectedOptions: string[];
@@ -2429,7 +2429,67 @@ export interface NegotiationUserAnswer {
   answeredAt: string;
 }
 
+export interface NegotiationPrivateConsultation {
+  recipientUserId: string;
+  recipientIntentId: string;
+  kind: 'answer' | 'dismiss' | 'timeout';
+  selectedOptions: string[];
+  freeText?: string;
+}
+
+export interface NegotiationContinuationExecution {
+  taskId: string;
+  settlementId: string;
+  opportunityId: string;
+  userId: string;
+  recipientIntentId: string;
+  networkId: string;
+  intentFingerprint: string;
+  opportunityStatus: string;
+  opportunityUpdatedAt: string;
+  counterpartyUserId: string;
+  counterpartyIntentId: string;
+  successorTaskId: string;
+  conversationId: string;
+  token: string;
+  fence: number;
+  leaseExpiresAt: string;
+  consultation: NegotiationPrivateConsultation;
+}
+
+export interface NegotiationContinuationReceipt {
+  priorTaskId: string;
+  settlementId: string;
+  successorTaskId: string;
+  fence: number;
+  outcome: 'accepted' | 'rejected' | 'stalled' | 'waiting_for_agent' | 'input_required';
+}
+
 export interface NegotiationQueries {
+  /** Capture canonical material binding before arming an ask-user timeout. */
+  captureNegotiationAskUserBinding(input: {
+    taskId: string;
+    turnContext: Record<string, unknown>;
+    settlementId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    continuationExecution?: NegotiationContinuationExecution;
+  }): Promise<{
+    version: 2;
+    settlementId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    intentFingerprint: string;
+    opportunityStatus: string;
+    opportunityUpdatedAt: string;
+    counterpartyUserId: string;
+    counterpartyIntentId: string;
+  }>;
+
   /**
    * Persists the full negotiation turn context (source/candidate user contexts,
    * seed assessment, index context, discovery query) onto the task metadata so
@@ -2438,7 +2498,7 @@ export interface NegotiationQueries {
    * @param taskId - Task whose metadata to enrich
    * @param turnContext - Absolute (source/candidate) view of the negotiation context
    */
-  setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void>;
+  setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>, continuationExecution?: NegotiationContinuationExecution): Promise<void>;
 
   /**
    * Merges a screen-gate decision (P2.1 shadow mode) into
@@ -2448,7 +2508,7 @@ export interface NegotiationQueries {
    * @param taskId - Task whose metadata to enrich
    * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
    */
-  setTaskScreenDecision?(taskId: string, screenDecision: Record<string, unknown>): Promise<void>;
+  setTaskScreenDecision?(taskId: string, screenDecision: Record<string, unknown>, continuationExecution?: NegotiationContinuationExecution): Promise<void>;
 
   /**
    * Merges an applied deadlock→bargaining shift record (IND-428) into
@@ -2459,7 +2519,7 @@ export interface NegotiationQueries {
    * @param taskId - Task whose metadata to enrich
    * @param deadlockShift - DeadlockShiftRecord (run length, threshold, turn, seat, timing)
    */
-  setTaskDeadlockShift?(taskId: string, deadlockShift: Record<string, unknown>): Promise<void>;
+  setTaskDeadlockShift?(taskId: string, deadlockShift: Record<string, unknown>, continuationExecution?: NegotiationContinuationExecution): Promise<void>;
 
   /**
    * Returns the most-recently-created task whose metadata carries
@@ -2522,6 +2582,8 @@ export type NegotiationGraphDatabase = Pick<
   updateOpportunityStatus(
     id: string,
     status: OpportunityStatus,
+    acceptedBy?: string,
+    continuationExecution?: NegotiationContinuationExecution,
   ): Promise<{ id: string; status: OpportunityStatus } | null>;
   /** Persists a negotiation turn message within a conversation. */
   createMessage(data: {
@@ -2531,6 +2593,7 @@ export type NegotiationGraphDatabase = Pick<
     parts: unknown[];
     taskId?: string;
     metadata?: Record<string, unknown> | null;
+    continuationExecution?: NegotiationContinuationExecution;
   }): Promise<{ id: string; senderId: string; role: 'user' | 'agent'; parts: unknown; createdAt: Date }>;
 
   /**
@@ -2549,11 +2612,24 @@ export type NegotiationGraphDatabase = Pick<
   /** Creates a generic task to track a non-attempt-bound lifecycle. */
   createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
 
+  /**
+   * Under a deterministic settlement lock, validate the exact canceled ask_user
+   * task and return its existing successor or create one. Never consults a
+   * latest-task lookup.
+   */
+  getOrCreateNegotiationContinuationTask(input: {
+    priorTaskId: string;
+    settlementId: string;
+    conversationId: string;
+    opportunityId: string;
+    metadata: Record<string, unknown>;
+  }): Promise<{ id: string; conversationId: string; state: string; created: boolean } | null>;
+
   /** Transitions a task to a new state (e.g. working, completed, failed). */
-  updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<{ id: string; conversationId: string; state: string }>;
+  updateTaskState(taskId: string, state: string, statusMessage?: unknown, continuationExecution?: NegotiationContinuationExecution): Promise<{ id: string; conversationId: string; state: string }>;
 
   /** Persists a negotiation outcome artifact attached to a task. */
-  createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null }): Promise<{ id: string }>;
+  createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null; continuationExecution?: NegotiationContinuationExecution }): Promise<{ id: string }>;
 
   /** Lists negotiation tasks where the given user is source or candidate. */
   getTasksForUser(userId: string, options?: { state?: string }): Promise<Array<{

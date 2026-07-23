@@ -231,7 +231,7 @@ const NEGOTIATION_SYSTEM_PROMPT = `You sit between a human and a discovery proto
 
 POST-STALL purpose. A negotiation between this user and another person ended without a clear outcome — either the turn budget was exhausted, the session timed out, or conversation stalled. Surface the minimum set of structured questions that help the user provide the missing signal needed to unblock or refine the next discovery attempt.
 
-UPTAKE purpose. The user is considering accepting a proposed connection, but one preparatory condition about the other person's practical ability, resources, availability, or authority to carry out the proposed activity needs clarification before commitment. Generate exactly ONE neutral question that lets the user decide whether they understand that condition well enough to proceed. Ask about the concrete activity and the other person's stated attributes; do not accuse, challenge credibility, or presume incapability. Never reveal a numeric authority score, threshold, felicity label, evaluator judgment, or any internal matching/verification mechanics. Do not ask whether the user wants to accept; clarify the preparatory condition only.
+UPTAKE purpose. The user is considering accepting a proposed connection, but one preparatory condition about the other person's practical ability, resources, availability, or authority to carry out the proposed activity needs clarification before commitment. Generate exactly ONE neutral question that lets the user decide whether they understand that condition well enough to proceed. Ask about the concrete activity and refer to the other participant generically; do not accuse, challenge credibility, presume incapability, or invent/repeat profile attributes. Never reveal a numeric authority score, threshold, felicity label, evaluator judgment, or any internal matching/verification mechanics. Do not ask whether the user wants to accept; clarify the preparatory condition only.
 
 You may pick from three strategies. Choose contextually; mix only when each question is genuinely distinct.
 - refine_intent: help the user sharpen their underlying signal based on what the negotiation revealed (scope, scale, priority, direction).
@@ -243,7 +243,7 @@ Ask a question only when ALL of these hold:
 2. The answer would materially change how the next attempt surfaces or engages candidates.
 3. The question targets a different decision domain from any other question in this batch.
 
-Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the user's underlying goal or topic and the relevant community in the question text itself, in plain language drawn from their intent or profile — NOT the mechanics of the match attempt. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the user's own underlying goal or topic and, only when supplied as a source-safe label, the relevant community in the question text itself. Never infer or repeat counterparty identity/profile, private transcript, evaluator reasoning, match reasons, event/community attendance, or internal IDs/metadata. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
 - Bad: "Which role is a better fit for your immediate needs?"
 - Good: "For your search for AI infrastructure collaborators in the AI founders community, what kind of working relationship fits your immediate needs?"
 
@@ -277,11 +277,11 @@ function buildPostStallNegotiationPrompt(ctx: PostStallNegotiationContext): stri
     "",
     "## Negotiation context",
     `Community: ${ctx.indexContext}`,
-    `Counterparty: ${ctx.counterpartyHint}`,
+    `Other participant: ${ctx.counterpartyHint}`,
     `Stall reason: ${ctx.outcomeReason}`,
     "",
-    "## Key takeaway",
-    ctx.keyTake,
+    "## Recipient's own signal",
+    ctx.recipientIntent,
     "",
     "## User profile",
     profileBlock,
@@ -295,7 +295,6 @@ function buildPostStallNegotiationPrompt(ctx: PostStallNegotiationContext): stri
 
 function buildUptakeNegotiationPrompt(ctx: UptakeNegotiationContext): string {
   const profileBlock = buildUserContextBlock(ctx.userContext);
-  const evidence = ctx.preparatoryEvidence?.trim() || "(no additional public evidence provided)";
 
   return [
     "## Purpose",
@@ -309,9 +308,6 @@ function buildUptakeNegotiationPrompt(ctx: UptakeNegotiationContext): string {
     "",
     "## Community",
     ctx.indexContext,
-    "",
-    "## Public preparatory evidence",
-    evidence,
     "",
     "## User profile",
     profileBlock,
@@ -341,13 +337,13 @@ You may pick from two strategies. Choose contextually; mix only when each questi
 
 Honor the negotiator's intent. When a draft question is provided, treat it as the source of truth for WHAT to ask — improve wording, tighten options, add consequence-focused descriptions. Do not invent questions about topics the negotiator did not raise. When no draft is provided, derive the question strictly from the disclosure subject.
 
-Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. The user may see this question hours later in an inbox, away from any negotiation view. Naturally include the disclosure subject and a concrete description of the other person (drawn from the counterparty hint — their attributes, e.g. "a Berlin-based AI-infrastructure founder") in the question text itself. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
-- Bad: "Can I share your budget with them?"
-- Good: "May I share your budget range with a Berlin-based AI-infrastructure founder you're being matched with?"
+Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. The user may see this question hours later in an inbox, away from any negotiation view. Include the disclosure subject and the generic phrase "the other participant in this match" in the question text itself. Never repeat or infer counterparty identity/profile, private transcript, evaluator reasoning, match reasons, event/community attendance, or internal IDs/metadata. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text.
+- Bad: "May I share your budget with Alex, a Berlin-based founder from the event?"
+- Good: "May I share your budget range with the other participant in this match?"
 
 ${REFERENTIAL_CLOSURE_RULES}
 
-Exception — describing the other side. Unlike other surfaces, this question is ABOUT a live counterparty, so you must reference them — do it by restating their concrete attributes from the counterparty hint ("a fintech CTO exploring agent tooling"), never as "the counterparty", "them", or "this person" without an attribute anchor in the same sentence, and never by implying a list or pipeline.
+Exception — describing the other side. This question may refer to the other participant generically because it is tied to one exact server-validated opportunity. Do not add attributes, identity, or claims about why they matched.
 
 Cardinality. Default one question. Add a second ONLY when the negotiator's need genuinely spans two distinct decisions (e.g. one disclosure gate plus one missing fact). Never pad.
 

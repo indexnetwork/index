@@ -13,12 +13,16 @@
 
 import { eq, and, sql, or, isNull, desc, count, gt, inArray } from 'drizzle-orm/sql';
 
-import { intents, messages, questions, opportunities } from '../schemas/database.schema';
+import { intentNetworks, intents, messages, networkMembers, networks, questions, opportunities } from '../schemas/database.schema';
+import { chatSessionScopes, tasks } from '../schemas/conversation.schema';
 import type { QuestionDetection, QuestionActor } from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
 import { computeIntentFingerprint, normalizeIntentText } from '../lib/intent/intent.fingerprint';
+import { derivePendingQuestionCounts, isExpectedHistoricalNegotiationSettlement, isSafeNegotiationQuestionPayload, isValidNegotiationDetectionContract } from '../lib/question/negotiation-question.contract';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
+import { claimContinuationExecution, completeContinuationExecution, heartbeatContinuationExecution, parkContinuationExecution, releaseContinuationExecution } from './negotiation-continuation.atomic';
+import type { ContinuationClaimResult, ContinuationExecutionFence, ContinuationReceipt } from './negotiation-continuation.atomic';
 import { exactLivePoolWhere } from './poolquery.shared';
 
 /** Default question TTL in milliseconds (7 days). */
@@ -29,6 +33,14 @@ const POOL_QUESTION_PUSH_BASE_VOI = 0.6;
 const POOL_QUESTION_PUSH_DISMISSAL_DECAY = 1.15;
 const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
 const POOL_QUESTION_PUSH_DAILY_CAP = 2;
+const UPTAKE_AUTHORITY_THRESHOLD_DEFAULT = 70;
+
+/** Runtime mirror of protocol's bounded uptake threshold; adapters remain protocol-independent. */
+function currentUptakeAuthorityThreshold(): number {
+  const raw = process.env.QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD;
+  if (!raw?.trim() || !/^-?\d+$/.test(raw.trim())) return UPTAKE_AUTHORITY_THRESHOLD_DEFAULT;
+  return Math.min(100, Math.max(0, Number.parseInt(raw, 10)));
+}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -62,10 +74,74 @@ function poolPushThreshold(consecutiveDismissals: number): number {
 export type AdapterQuestionMode = 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
 
 /** Detection context describing how/where a question was generated. */
+export type AdapterNegotiationQuestionPurpose = 'uptake' | 'stalled_followup' | 'inflight_consultation';
+
+export interface AdapterNegotiationQuestionCandidate {
+  purpose: AdapterNegotiationQuestionPurpose;
+  recipientUserId: string;
+  recipientIntentId: string;
+  opportunityId: string;
+  taskId?: string;
+  networkId: string;
+  /** Uptake only: exact counterparty whose low-authority state triggered the advisory. */
+  counterpartyUserId?: string;
+  counterpartyIntentId?: string;
+  counterpartyFelicityAuthority?: number;
+}
+
+export interface AdapterNegotiationQuestionProvenance extends AdapterNegotiationQuestionCandidate {
+  version: 1;
+  intentFingerprint: string;
+  opportunityStatus: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  opportunityUpdatedAt: string;
+  taskState?: 'submitted' | 'working' | 'input_required' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed';
+  taskUpdatedAt?: string;
+  questionOrdinal: number;
+}
+
+export interface AdapterNegotiationContinuationKey {
+  taskId: string;
+  settlementId: string;
+  opportunityId: string;
+  userId: string;
+  recipientIntentId: string;
+  networkId: string;
+}
+
+export interface AdapterNegotiationContinuationCoordinates extends AdapterNegotiationContinuationKey {
+  intentFingerprint: string;
+  opportunityStatus: string;
+  opportunityUpdatedAt: string;
+  counterpartyUserId: string;
+  counterpartyIntentId: string;
+}
+
+interface AdapterNegotiationQuestionSettlement {
+  version: 1;
+  settlementId: string;
+  taskId: string;
+  recipientUserId: string;
+  recipientIntentId: string;
+  opportunityId: string;
+  networkId: string;
+  intentFingerprint: string;
+  opportunityStatus: string;
+  opportunityUpdatedAt: string;
+  counterpartyUserId: string;
+  counterpartyIntentId: string;
+  kind: 'answer' | 'dismiss' | 'timeout';
+  questionId?: string;
+  continuationStatus: 'requested' | 'completed';
+  settledAt: string;
+  completedAt?: string;
+}
+
 export interface AdapterQuestionDetection {
   mode: AdapterQuestionMode;
   /** Internal generation purpose, orthogonal to mode and QUD metadata. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
+  /** Exact negotiation recipient/intent/task routing provenance. */
+  negotiation?: AdapterNegotiationQuestionProvenance;
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -76,6 +152,8 @@ export interface AdapterQuestionDetection {
   underspecificationType?: import('@indexnetwork/protocol').UnderspecificationType | null;
   /** ID of the assistant message that triggered this question. */
   messageId?: string;
+  /** Durable server-only session binding used to validate messageId. */
+  sessionId?: string;
   /**
    * pool_discovery only: mined pool snapshot (assignments + chain alternates).
    * INTERNAL — the service/controller read paths strip this before any
@@ -327,6 +405,107 @@ export function poolPushCycleClaimPredicate(recipientId: string, intentId: strin
   )!;
 }
 
+export function isNegotiationQuestionMode(mode: AdapterQuestionMode): boolean {
+  return mode === 'negotiation' || mode === 'negotiation_inflight';
+}
+
+/** Runtime validation mirrored from the protocol schema for DB-originated JSON. */
+export function parseAdapterNegotiationProvenance(value: unknown): AdapterNegotiationQuestionProvenance | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Record<string, unknown>;
+  const purpose = candidate.purpose;
+  const taskBacked = purpose === 'stalled_followup' || purpose === 'inflight_consultation';
+  if (
+    candidate.version !== 1
+    || (purpose !== 'uptake' && !taskBacked)
+    || !isNonEmptyString(candidate.recipientUserId)
+    || !isNonEmptyString(candidate.recipientIntentId)
+    || !isNonEmptyString(candidate.opportunityId)
+    || !isNonEmptyString(candidate.networkId)
+    || !isNonEmptyString(candidate.intentFingerprint)
+    || !isNonEmptyString(candidate.opportunityStatus)
+    || !isNonEmptyString(candidate.opportunityUpdatedAt)
+    || !Number.isInteger(candidate.questionOrdinal)
+    || Number(candidate.questionOrdinal) < 0
+    || Number(candidate.questionOrdinal) > 2
+  ) return null;
+  if (taskBacked && (
+    !isNonEmptyString(candidate.taskId)
+    || !isNonEmptyString(candidate.taskState)
+    || !isNonEmptyString(candidate.taskUpdatedAt)
+  )) return null;
+  if (!taskBacked && (candidate.taskId !== undefined || candidate.taskState !== undefined || candidate.taskUpdatedAt !== undefined)) return null;
+  if (purpose === 'stalled_followup' && candidate.taskState !== 'completed') return null;
+  if (purpose === 'inflight_consultation' && candidate.taskState !== 'input_required') return null;
+  if (Number.isNaN(Date.parse(String(candidate.opportunityUpdatedAt)))) return null;
+  if (candidate.taskUpdatedAt !== undefined && Number.isNaN(Date.parse(String(candidate.taskUpdatedAt)))) return null;
+  return candidate as unknown as AdapterNegotiationQuestionProvenance;
+}
+
+function settlementIdForTask(taskId: string): string {
+  return `negotiation-question-settlement-v1-${taskId}`;
+}
+
+function parseAskUserBinding(value: unknown): {
+  version: 2;
+  settlementId: string;
+  recipientUserId: string;
+  recipientIntentId: string;
+  opportunityId: string;
+  networkId: string;
+  intentFingerprint: string;
+  opportunityStatus: string;
+  opportunityUpdatedAt: string;
+  counterpartyUserId: string;
+  counterpartyIntentId: string;
+} | null {
+  if (!value || typeof value !== 'object') return null;
+  const binding = value as Record<string, unknown>;
+  if (
+    binding.version !== 2
+    || !isNonEmptyString(binding.settlementId)
+    || !isNonEmptyString(binding.recipientUserId)
+    || !isNonEmptyString(binding.recipientIntentId)
+    || !isNonEmptyString(binding.opportunityId)
+    || !isNonEmptyString(binding.networkId)
+    || !isNonEmptyString(binding.intentFingerprint)
+    || !isNonEmptyString(binding.opportunityStatus)
+    || !isNonEmptyString(binding.opportunityUpdatedAt)
+    || Number.isNaN(Date.parse(binding.opportunityUpdatedAt))
+    || !isNonEmptyString(binding.counterpartyUserId)
+    || !isNonEmptyString(binding.counterpartyIntentId)
+  ) return null;
+  return binding as ReturnType<typeof parseAskUserBinding>;
+}
+
+function parseNegotiationQuestionSettlement(value: unknown): AdapterNegotiationQuestionSettlement | null {
+  if (!value || typeof value !== 'object') return null;
+  const settlement = value as Record<string, unknown>;
+  if (
+    settlement.version !== 1
+    || !isNonEmptyString(settlement.settlementId)
+    || !isNonEmptyString(settlement.taskId)
+    || settlement.settlementId !== settlementIdForTask(settlement.taskId)
+    || !isNonEmptyString(settlement.recipientUserId)
+    || !isNonEmptyString(settlement.recipientIntentId)
+    || !isNonEmptyString(settlement.opportunityId)
+    || !isNonEmptyString(settlement.networkId)
+    || !isNonEmptyString(settlement.intentFingerprint)
+    || !isNonEmptyString(settlement.opportunityStatus)
+    || !isNonEmptyString(settlement.opportunityUpdatedAt)
+    || Number.isNaN(Date.parse(settlement.opportunityUpdatedAt))
+    || !isNonEmptyString(settlement.counterpartyUserId)
+    || !isNonEmptyString(settlement.counterpartyIntentId)
+    || (settlement.kind !== 'answer' && settlement.kind !== 'dismiss' && settlement.kind !== 'timeout')
+    || (settlement.continuationStatus !== 'requested' && settlement.continuationStatus !== 'completed')
+    || !isNonEmptyString(settlement.settledAt)
+    || Number.isNaN(Date.parse(settlement.settledAt))
+    || (settlement.questionId !== undefined && !isNonEmptyString(settlement.questionId))
+    || (settlement.kind === 'answer' && !isNonEmptyString(settlement.questionId))
+  ) return null;
+  return settlement as unknown as AdapterNegotiationQuestionSettlement;
+}
+
 export interface AdapterQuestionFilters {
   mode?: AdapterQuestionMode;
   /** Exact internal generation purpose. */
@@ -335,9 +514,8 @@ export interface AdapterQuestionFilters {
   sourceId?: string;
   /**
    * Optional selected-intent scope. When `scopeType === 'intent'`, `scopeId` is the selected
-   * intent id. Matches questions triggered by the intent, intent-mode questions about it, and
-   * any question sourced from an opportunity linked to the intent (including negotiation
-   * questions, since those persist with `sourceType: 'opportunity'`).
+   * intent id. Non-negotiation modes retain their established trigger/source matching;
+   * negotiation-family rows use only exact versioned recipient provenance plus live validation.
    */
   scopeType?: 'intent';
   scopeId?: string;
@@ -385,6 +563,339 @@ export class QuestionerAdapter {
       .where(and(eq(intents.id, intentId), eq(intents.userId, userId)))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  /**
+   * Resolve a producer-supplied negotiation candidate against authoritative
+   * intent, assignment, membership, opportunity actor, and task rows.
+   */
+  private async resolveNegotiationAdmission(
+    candidate: AdapterNegotiationQuestionCandidate,
+    database: DrizzleDB,
+    expected?: AdapterNegotiationQuestionProvenance,
+    settled?: 'answered',
+  ): Promise<Omit<AdapterNegotiationQuestionProvenance, 'questionOrdinal'> | null> {
+    const taskBacked = candidate.purpose !== 'uptake';
+    if (
+      !isNonEmptyString(candidate.recipientUserId)
+      || !isNonEmptyString(candidate.recipientIntentId)
+      || !isNonEmptyString(candidate.opportunityId)
+      || !isNonEmptyString(candidate.networkId)
+      || (taskBacked !== isNonEmptyString(candidate.taskId))
+      || (candidate.purpose === 'uptake' && (!isNonEmptyString(candidate.counterpartyUserId) || !isNonEmptyString(candidate.counterpartyIntentId) || !Number.isFinite(candidate.counterpartyFelicityAuthority)))
+      || (candidate.purpose !== 'uptake' && (candidate.counterpartyUserId !== undefined || candidate.counterpartyIntentId !== undefined || candidate.counterpartyFelicityAuthority !== undefined))
+    ) return null;
+
+    const expectedOpportunityStatus = candidate.purpose === 'uptake'
+      ? 'pending'
+      : candidate.purpose === 'stalled_followup'
+        ? 'stalled'
+        : 'negotiating';
+    const rows = await database.select({
+      payload: intents.payload,
+      summary: intents.summary,
+      opportunityStatus: opportunities.status,
+      opportunityUpdatedAt: opportunities.updatedAt,
+    })
+      .from(intents)
+      .innerJoin(intentNetworks, and(
+        eq(intentNetworks.intentId, intents.id),
+        eq(intentNetworks.networkId, candidate.networkId),
+      ))
+      .innerJoin(networkMembers, and(
+        eq(networkMembers.userId, candidate.recipientUserId),
+        eq(networkMembers.networkId, candidate.networkId),
+        isNull(networkMembers.deletedAt),
+      ))
+      .innerJoin(networks, and(
+        eq(networks.id, candidate.networkId),
+        eq(networks.isPersonal, false),
+        isNull(networks.deletedAt),
+      ))
+      .innerJoin(opportunities, eq(opportunities.id, candidate.opportunityId))
+      .where(and(
+        eq(intents.id, candidate.recipientIntentId),
+        eq(intents.userId, candidate.recipientUserId),
+        isNull(intents.archivedAt),
+        or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
+        eq(opportunities.status, expectedOpportunityStatus),
+        sql`(
+          SELECT count(*)
+          FROM jsonb_array_elements(${opportunities.actors}) recipient_actor
+          WHERE recipient_actor->>'userId' = ${candidate.recipientUserId}
+            AND COALESCE(recipient_actor->>'role', '') <> 'introducer'
+        ) = 1`,
+        sql`EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(${opportunities.actors}) exact_actor
+          WHERE exact_actor->>'userId' = ${candidate.recipientUserId}
+            AND exact_actor->>'intent' = ${candidate.recipientIntentId}
+            AND exact_actor->>'networkId' = ${candidate.networkId}
+            AND COALESCE(exact_actor->>'role', '') <> 'introducer'
+        )`,
+        sql`(
+          SELECT count(DISTINCT participant_actor->>'userId')
+          FROM jsonb_array_elements(${opportunities.actors}) participant_actor
+          WHERE participant_actor->>'networkId' = ${candidate.networkId}
+            AND COALESCE(participant_actor->>'role', '') <> 'introducer'
+        ) = 2`,
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(${opportunities.actors}) foreign_network_actor
+          WHERE COALESCE(foreign_network_actor->>'role', '') <> 'introducer'
+            AND foreign_network_actor->>'networkId' IS DISTINCT FROM ${candidate.networkId}
+        )`,
+        sql`EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(${opportunities.actors}) other_actor
+          JOIN network_members visible_member
+            ON visible_member.user_id = other_actor->>'userId'
+           AND visible_member.network_id = ${candidate.networkId}
+           AND visible_member.deleted_at IS NULL
+          WHERE other_actor->>'userId' <> ${candidate.recipientUserId}
+            AND other_actor->>'networkId' = ${candidate.networkId}
+            AND COALESCE(other_actor->>'role', '') <> 'introducer'
+        )`,
+        ...(candidate.purpose === 'uptake' ? [
+          sql`EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(${opportunities.actors}) counterparty_actor
+            JOIN intents counterparty_intent
+              ON counterparty_intent.id = ${candidate.counterpartyIntentId!}
+             AND counterparty_intent.user_id = ${candidate.counterpartyUserId!}
+             AND counterparty_intent.archived_at IS NULL
+             AND (counterparty_intent.status IS NULL OR counterparty_intent.status = 'ACTIVE')
+             AND counterparty_intent.felicity_authority = ${candidate.counterpartyFelicityAuthority!}
+             AND counterparty_intent.felicity_authority < ${currentUptakeAuthorityThreshold()}
+            JOIN intent_networks counterparty_assignment
+              ON counterparty_assignment.intent_id = counterparty_intent.id
+             AND counterparty_assignment.network_id = ${candidate.networkId}
+            JOIN network_members counterparty_member
+              ON counterparty_member.user_id = counterparty_intent.user_id
+             AND counterparty_member.network_id = ${candidate.networkId}
+             AND counterparty_member.deleted_at IS NULL
+            WHERE counterparty_actor->>'userId' = ${candidate.counterpartyUserId!}
+              AND counterparty_actor->>'intent' = ${candidate.counterpartyIntentId!}
+              AND counterparty_actor->>'networkId' = ${candidate.networkId}
+              AND COALESCE(counterparty_actor->>'role', '') <> 'introducer'
+          )`,
+        ] : []),
+      ))
+      .limit(2);
+    if (rows.length !== 1) return null;
+    const row = rows[0];
+    const intentFingerprint = computeIntentFingerprint(row.payload, row.summary);
+    const opportunityUpdatedAt = row.opportunityUpdatedAt.toISOString();
+    if (
+      expected
+      && (expected.intentFingerprint !== intentFingerprint
+        || expected.opportunityStatus !== row.opportunityStatus
+        || expected.opportunityUpdatedAt !== opportunityUpdatedAt
+        || expected.counterpartyUserId !== candidate.counterpartyUserId
+        || expected.counterpartyIntentId !== candidate.counterpartyIntentId
+        || expected.counterpartyFelicityAuthority !== candidate.counterpartyFelicityAuthority)
+    ) return null;
+
+    let taskState: AdapterNegotiationQuestionProvenance['taskState'];
+    let taskUpdatedAt: string | undefined;
+    if (taskBacked) {
+      const expectedTaskState = candidate.purpose === 'stalled_followup'
+        ? 'completed'
+        : settled === 'answered'
+          ? 'canceled'
+          : 'input_required';
+      const taskRows = await database.select({ state: tasks.state, updatedAt: tasks.updatedAt })
+        .from(tasks)
+        .where(and(
+          eq(tasks.id, candidate.taskId!),
+          eq(tasks.state, expectedTaskState),
+          sql`${tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${tasks.metadata}->>'opportunityId' = ${candidate.opportunityId}`,
+          sql`${tasks.metadata}->>'networkId' = ${candidate.networkId}`,
+          sql`${tasks.metadata}->'participantBindings' @> ${JSON.stringify([{
+            userId: candidate.recipientUserId,
+            intentId: candidate.recipientIntentId,
+            networkId: candidate.networkId,
+          }])}::jsonb`,
+          ...(candidate.purpose === 'stalled_followup'
+            ? [
+                sql`${tasks.metadata}->>'sourceUserId' = ${candidate.recipientUserId}`,
+                sql`${tasks.metadata}->>'sourceIntentId' = ${candidate.recipientIntentId}`,
+              ]
+            : [sql`${tasks.metadata}->'turnContext'->'askUserBinding' @> ${JSON.stringify({
+                recipientUserId: candidate.recipientUserId,
+                recipientIntentId: candidate.recipientIntentId,
+                opportunityId: candidate.opportunityId,
+                networkId: candidate.networkId,
+              })}::jsonb`]),
+          ...(settled === 'answered'
+            ? [sql`${tasks.statusMessage}->>'reason' = 'ask_user_answered'`]
+            : []),
+        ))
+        .limit(2);
+      if (taskRows.length !== 1) return null;
+      taskState = taskRows[0].state;
+      taskUpdatedAt = taskRows[0].updatedAt.toISOString();
+      if (expected && !settled && (expected.taskState !== taskState || expected.taskUpdatedAt !== taskUpdatedAt)) return null;
+    }
+
+    return {
+      version: 1,
+      ...candidate,
+      intentFingerprint,
+      opportunityStatus: row.opportunityStatus,
+      opportunityUpdatedAt,
+      ...(taskState ? { taskState } : {}),
+      ...(taskUpdatedAt ? { taskUpdatedAt } : {}),
+    };
+  }
+
+  /** Authoritative pre-generation negotiation admission. */
+  async prepareNegotiationQuestion(
+    candidate: AdapterNegotiationQuestionCandidate,
+  ): Promise<Omit<AdapterNegotiationQuestionProvenance, 'questionOrdinal'> | null> {
+    return this.resolveNegotiationAdmission(candidate, this.db);
+  }
+
+  /**
+   * Historical inflight rows retain exact identity/scope/fingerprint binding,
+   * but tolerate only the terminal task/opportunity transition caused by their
+   * own stamped settlement.
+   */
+  private async validateHistoricalNegotiationQuestion(
+    question: AdapterPersistedQuestion,
+    userId: string,
+  ): Promise<boolean> {
+    const provenance = parseAdapterNegotiationProvenance(question.detection.negotiation);
+    if (
+      !provenance
+      || provenance.recipientUserId !== userId
+      || question.detection.sourceType !== 'opportunity'
+      || question.detection.sourceId !== provenance.opportunityId
+      || question.detection.purpose !== provenance.purpose
+    ) return false;
+    if (provenance.purpose !== 'inflight_consultation') {
+      return Boolean(await this.resolveNegotiationAdmission(provenance, this.db, provenance));
+    }
+
+    const rows = await this.db.select({
+      payload: intents.payload,
+      summary: intents.summary,
+      state: tasks.state,
+      metadata: tasks.metadata,
+    })
+      .from(intents)
+      .innerJoin(intentNetworks, and(
+        eq(intentNetworks.intentId, intents.id),
+        eq(intentNetworks.networkId, provenance.networkId),
+      ))
+      .innerJoin(networkMembers, and(
+        eq(networkMembers.userId, provenance.recipientUserId),
+        eq(networkMembers.networkId, provenance.networkId),
+        isNull(networkMembers.deletedAt),
+      ))
+      .innerJoin(networks, and(
+        eq(networks.id, provenance.networkId),
+        eq(networks.isPersonal, false),
+        isNull(networks.deletedAt),
+      ))
+      .innerJoin(opportunities, eq(opportunities.id, provenance.opportunityId))
+      .innerJoin(tasks, eq(tasks.id, provenance.taskId!))
+      .where(and(
+        eq(intents.id, provenance.recipientIntentId),
+        eq(intents.userId, provenance.recipientUserId),
+        isNull(intents.archivedAt),
+        or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
+        eq(tasks.state, 'canceled'),
+        sql`${tasks.metadata}->>'type' = 'negotiation'`,
+        sql`${tasks.metadata}->>'opportunityId' = ${provenance.opportunityId}`,
+        sql`${tasks.metadata}->>'networkId' = ${provenance.networkId}`,
+        sql`${tasks.metadata}->'participantBindings' @> ${JSON.stringify([{
+          userId: provenance.recipientUserId,
+          intentId: provenance.recipientIntentId,
+          networkId: provenance.networkId,
+        }])}::jsonb`,
+        sql`${tasks.metadata}->'turnContext'->'askUserBinding' @> ${JSON.stringify({
+          recipientUserId: provenance.recipientUserId,
+          recipientIntentId: provenance.recipientIntentId,
+          opportunityId: provenance.opportunityId,
+          networkId: provenance.networkId,
+        })}::jsonb`,
+        sql`EXISTS (
+          SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) actor
+          WHERE actor->>'userId' = ${provenance.recipientUserId}
+            AND actor->>'intent' = ${provenance.recipientIntentId}
+            AND actor->>'networkId' = ${provenance.networkId}
+            AND COALESCE(actor->>'role', '') <> 'introducer'
+        )`,
+      ))
+      .limit(2);
+    if (rows.length !== 1 || computeIntentFingerprint(rows[0].payload, rows[0].summary) !== provenance.intentFingerprint) {
+      return false;
+    }
+    const metadata = rows[0].metadata as Record<string, unknown> | null;
+    const settlement = parseNegotiationQuestionSettlement(metadata?.questionSettlement);
+    if (
+      !settlement
+      || settlement.taskId !== provenance.taskId
+      || settlement.recipientUserId !== provenance.recipientUserId
+      || settlement.recipientIntentId !== provenance.recipientIntentId
+      || settlement.opportunityId !== provenance.opportunityId
+      || settlement.networkId !== provenance.networkId
+    ) return false;
+    return isExpectedHistoricalNegotiationSettlement(question.status, question.id, settlement);
+  }
+
+  /**
+   * Revalidate immediately before insertion and persist one retry-idempotent
+   * negotiation-family batch under a stable provenance lock.
+   */
+  async persistFreshNegotiationQuestions(batch: AdapterPersistableQuestion[]): Promise<string[]> {
+    if (batch.length === 0) return [];
+    const first = parseAdapterNegotiationProvenance(batch[0].detection.negotiation);
+    const cardinality = first?.purpose === 'uptake' ? 1 : 2;
+    if (
+      !first
+      || batch.length > cardinality
+      || !isValidNegotiationDetectionContract(batch[0].detection, first)
+      || !isSafeNegotiationQuestionPayload(batch[0].payload)
+    ) return [];
+    return this.db.transaction(async (tx) => {
+      await this.lockNegotiationQuestionAdvisory(tx as unknown as DrizzleDB, first);
+      await this.lockNegotiationQuestionCohort(tx as unknown as DrizzleDB, first);
+      await this.lockNegotiationSettlementRows(tx as unknown as DrizzleDB, first);
+      const current = await this.resolveNegotiationAdmission(first, tx as unknown as DrizzleDB, first);
+      if (!current) return [];
+      const ordinals = new Set<number>();
+      for (const question of batch) {
+        const provenance = parseAdapterNegotiationProvenance(question.detection.negotiation);
+        if (
+          !provenance
+          || ordinals.has(provenance.questionOrdinal)
+          || !isValidNegotiationDetectionContract(question.detection, provenance)
+          || !isSafeNegotiationQuestionPayload(question.payload)
+          || question.actors.length !== 1
+          || question.actors[0]?.userId !== provenance.recipientUserId
+          || question.actors[0]?.networkId !== provenance.networkId
+          || JSON.stringify({ ...provenance, questionOrdinal: 0 }) !== JSON.stringify({ ...first, questionOrdinal: 0 })
+        ) return [];
+        ordinals.add(provenance.questionOrdinal);
+      }
+      const rows = batch.map((question) => ({
+        detection: {
+          ...question.detection,
+          strategy: question.strategy,
+          underspecificationType: question.underspecificationType ?? null,
+        } satisfies QuestionDetection,
+        actors: question.actors as QuestionActor[],
+        payload: question.payload,
+        status: 'pending' as const,
+        expiresAt: new Date(Date.now() + DEFAULT_QUESTION_TTL_MS),
+        conversationId: question.conversationId ?? null,
+      }));
+      const inserted = await tx.insert(questions).values(rows).returning({ id: questions.id });
+      return inserted.map((row) => row.id);
+    });
   }
 
   /**
@@ -863,31 +1374,66 @@ export class QuestionerAdapter {
     }
     if (filters?.scopeType === 'intent' && filters.scopeId) {
       conditions.push(sql`(
-        ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
-        OR (
-          ${questions.detection}->>'mode' = 'intent'
-          AND ${questions.detection}->>'sourceType' = 'intent'
-          AND ${questions.detection}->>'sourceId' = ${filters.scopeId}
+        (
+          COALESCE(${questions.detection}->>'mode', '') NOT IN ('negotiation', 'negotiation_inflight')
+          AND (
+            ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
+            OR (
+              ${questions.detection}->>'mode' = 'intent'
+              AND ${questions.detection}->>'sourceType' = 'intent'
+              AND ${questions.detection}->>'sourceId' = ${filters.scopeId}
+            )
+            OR (
+              ${questions.detection}->>'mode' = 'discovery'
+              AND ${questions.detection}->>'sourceType' = 'discovery'
+              AND ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
+            )
+            OR (
+              ${questions.detection}->>'sourceType' = 'opportunity'
+              AND EXISTS (
+                SELECT 1
+                FROM ${opportunities} scoped_opp
+                WHERE scoped_opp.id::text = ${questions.detection}->>'sourceId'
+                  AND (
+                    scoped_opp.detection->>'triggeredBy' = ${filters.scopeId}
+                    OR EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements(scoped_opp.actors) AS actor
+                      WHERE actor->>'intent' = ${filters.scopeId}
+                    )
+                  )
+              )
+            )
+          )
         )
         OR (
-          ${questions.detection}->>'mode' = 'discovery'
-          AND ${questions.detection}->>'sourceType' = 'discovery'
-          AND ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
+          ${questions.detection}->>'mode' IN ('negotiation', 'negotiation_inflight')
+          AND ${questions.detection}->'negotiation'->>'version' = '1'
+          AND ${questions.detection}->'negotiation'->>'recipientUserId' = ${userId}
+          AND ${questions.detection}->'negotiation'->>'recipientIntentId' = ${filters.scopeId}
+          AND ${questions.detection}->>'sourceType' = 'opportunity'
+          AND ${questions.detection}->>'sourceId' = ${questions.detection}->'negotiation'->>'opportunityId'
         )
+      )`);
+      // A message anchor may enter the exact signal-scoped Personal Agent
+      // timeline only when the durable message/session/conversation binding is
+      // proven against that recipient's negotiator-intent scope.
+      conditions.push(sql`(
+        NOT (${questions.detection} ? 'messageId')
         OR (
-          ${questions.detection}->>'sourceType' = 'opportunity'
+          ${questions.detection} ? 'sessionId'
+          AND ${questions.conversationId} IS NOT NULL
           AND EXISTS (
             SELECT 1
-            FROM ${opportunities} scoped_opp
-            WHERE scoped_opp.id::text = ${questions.detection}->>'sourceId'
-              AND (
-                scoped_opp.detection->>'triggeredBy' = ${filters.scopeId}
-                OR EXISTS (
-                  SELECT 1
-                  FROM jsonb_array_elements(scoped_opp.actors) AS actor
-                  WHERE actor->>'intent' = ${filters.scopeId}
-                )
-              )
+            FROM ${messages} anchored_message
+            JOIN ${chatSessionScopes} anchored_scope
+              ON anchored_scope.conversation_id = anchored_message.conversation_id
+             AND anchored_scope.user_id = ${userId}
+             AND anchored_scope.scope_type = 'negotiator-intent'
+             AND anchored_scope.scope_id = ${filters.scopeId}
+            WHERE anchored_message.id = ${questions.detection}->>'messageId'
+              AND anchored_message.session_id = ${questions.detection}->>'sessionId'
+              AND anchored_message.conversation_id = ${questions.conversationId}
           )
         )
       )`);
@@ -919,11 +1465,28 @@ export class QuestionerAdapter {
       .where(and(...conditions))
       .orderBy(orderBy, questions.createdAt);
 
-    const rows = filters?.limit && filters.limit > 0
-      ? await baseQuery.limit(filters.limit)
-      : await baseQuery;
-
-    return rows.map(toPersistedQuestion);
+    const rows = await baseQuery;
+    const mapped = rows.map(toPersistedQuestion);
+    const validated = await Promise.all(mapped.map(async (question) => {
+      if (!isNegotiationQuestionMode(question.detection.mode)) return question;
+      const provenance = parseAdapterNegotiationProvenance(question.detection.negotiation);
+      if (
+        !provenance
+        || !isValidNegotiationDetectionContract(question.detection, provenance)
+        || !isSafeNegotiationQuestionPayload(question.payload)
+        || provenance.recipientUserId !== userId
+        || (filters?.scopeType === 'intent' && filters.scopeId && provenance.recipientIntentId !== filters.scopeId)
+        || question.detection.sourceType !== 'opportunity'
+        || question.detection.sourceId !== provenance.opportunityId
+        || question.detection.purpose !== provenance.purpose
+      ) return null;
+      const current = status === 'pending'
+        ? await this.resolveNegotiationAdmission(provenance, this.db, provenance)
+        : await this.validateHistoricalNegotiationQuestion(question, userId);
+      return current ? question : null;
+    }));
+    const fresh = validated.filter((question): question is AdapterPersistedQuestion => question !== null);
+    return filters?.limit && filters.limit > 0 ? fresh.slice(0, filters.limit) : fresh;
   }
 
   /**
@@ -935,25 +1498,11 @@ export class QuestionerAdapter {
    * @returns Split global, pushed-pool, and Personal Agent counts.
    */
   async countPending(userId: string): Promise<PendingQuestionCounts> {
-    const [row] = await this.db
-      .select({
-        globalPending: sql<number>`count(*) FILTER (WHERE ${questions.detection}->>'mode' <> 'pool_discovery')`,
-        pushedPoolPending: sql<number>`count(*) FILTER (WHERE ${questions.detection}->>'mode' = 'pool_discovery' AND ${questions.detection}->>'pushedAt' IS NOT NULL)`,
-      })
-      .from(questions)
-      .where(and(
-        eq(questions.status, 'pending'),
-        isNull(questions.conversationId),
-        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
-        or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
-      ));
-    const globalPending = Number(row?.globalPending ?? 0);
-    const pushedPoolPending = Number(row?.pushedPoolPending ?? 0);
-    return {
-      globalPending,
-      pushedPoolPending,
-      personalAgentPending: globalPending + pushedPoolPending,
-    };
+    // Derive counts from the same freshness-validated rows returned by the
+    // global inbox. This makes lifecycle drift remove the ID and badge count
+    // together while preserving non-negotiation and delivered-pool semantics.
+    const rows = await this.findPending(userId, { noConversation: true });
+    return derivePendingQuestionCounts(rows);
   }
 
   /**
@@ -1757,9 +2306,9 @@ export class QuestionerAdapter {
    *   (pool_discovery and intent/message-scoped modes are excluded);
    * - detection.sourceType = 'opportunity' and detection.sourceId = opportunityId;
    * - recipient is a subject actor on the question row;
-   * - a capture-time intent fingerprint, when present on the detection, must
-   *   equal `currentIntentFingerprint`; absence is tolerated (the Lens C
-   *   segment-level task fingerprint guard already covers intent drift).
+   * - versioned exact recipient provenance is mandatory and its capture-time
+   *   intent fingerprint must equal `currentIntentFingerprint`; legacy rows
+   *   without provenance fail closed.
    *
    * @param recipientUserId - Segment recipient; must be actor AND answerer.
    * @param opportunityId - Opportunity the questions must be bound to.
@@ -1789,10 +2338,10 @@ export class QuestionerAdapter {
         sql`${questions.detection}->>'sourceType' = 'opportunity'`,
         sql`${questions.detection}->>'sourceId' = ${opportunityId}`,
         sql`${questions.answer}->>'answeredBy' = ${recipientUserId}`,
-        or(
-          sql`${questions.detection}->>'intentFingerprint' IS NULL`,
-          sql`${questions.detection}->>'intentFingerprint' = ${currentIntentFingerprint}`,
-        ),
+        sql`${questions.detection}->'negotiation'->>'version' = '1'`,
+        sql`${questions.detection}->'negotiation'->>'recipientUserId' = ${recipientUserId}`,
+        sql`${questions.detection}->'negotiation'->>'opportunityId' = ${opportunityId}`,
+        sql`${questions.detection}->'negotiation'->>'intentFingerprint' = ${currentIntentFingerprint}`,
       ))
       .orderBy(desc(questions.createdAt));
 
@@ -1810,11 +2359,15 @@ export class QuestionerAdapter {
         || detection.sourceId !== opportunityId) {
         return [];
       }
-      const capturedIntentFingerprint = (detection as unknown as Record<string, unknown>).intentFingerprint;
-      if (capturedIntentFingerprint !== undefined
-        && capturedIntentFingerprint !== currentIntentFingerprint) {
-        return [];
-      }
+      const provenance = parseAdapterNegotiationProvenance(detection.negotiation);
+      const capturedIntentFingerprint = provenance?.intentFingerprint;
+      if (
+        !provenance
+        || !isValidNegotiationDetectionContract(detection, provenance)
+        || provenance.recipientUserId !== recipientUserId
+        || provenance.opportunityId !== opportunityId
+        || capturedIntentFingerprint !== currentIntentFingerprint
+      ) return [];
       if (!Array.isArray(answer.selectedOptions)
         || !answer.selectedOptions.every((option) => typeof option === 'string')) {
         return [];
@@ -1850,171 +2403,648 @@ export class QuestionerAdapter {
     return row ? toPersistedQuestion(row) : null;
   }
 
+  /** Serialize generation and every settlement path for one exact cohort. */
+  private async lockNegotiationQuestionAdvisory(
+    database: DrizzleDB,
+    provenance: AdapterNegotiationQuestionCandidate,
+  ): Promise<void> {
+    await database.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${[
+      'negotiation-question', provenance.recipientUserId, provenance.recipientIntentId,
+      provenance.opportunityId, provenance.taskId ?? '', provenance.purpose,
+    ].join(':')}, 0))`);
+  }
+
+  /** Lock the complete exact cohort in stable ID order before provenance rows. */
+  private async lockNegotiationQuestionCohort(
+    database: DrizzleDB,
+    provenance: AdapterNegotiationQuestionCandidate,
+  ): Promise<Array<typeof questions.$inferSelect>> {
+    const exactCohort = provenance.taskId
+      ? sql`${questions.detection}->'negotiation'->>'taskId' = ${provenance.taskId}`
+      : and(
+          sql`${questions.detection}->'negotiation'->>'recipientUserId' = ${provenance.recipientUserId}`,
+          sql`${questions.detection}->'negotiation'->>'recipientIntentId' = ${provenance.recipientIntentId}`,
+          sql`${questions.detection}->'negotiation'->>'opportunityId' = ${provenance.opportunityId}`,
+          sql`${questions.detection}->'negotiation'->>'purpose' = ${provenance.purpose}`,
+        );
+    return database.select().from(questions)
+      .where(exactCohort)
+      .orderBy(questions.id)
+      .for('update');
+  }
+
   /**
-   * Record an answer for a question, setting its status to `answered`.
-   * Emits `QuestionEvents.onAnswered` after persisting the answer.
-   * Only updates the question if the user is listed as an actor.
-   *
-   * @param questionId - ID of the question to answer.
-   * @param userId     - Authenticated user; must be an actor on the question.
-   * @param answer     - The user's response data.
-   * @returns `true` if a row was updated, `false` if no matching question found.
+   * Lock every mutable provenance row in the one ordering shared by generation,
+   * answer, dismiss, and timeout: advisory → full question cohort → intent →
+   * assignment → membership → network → opportunity → task.
+   */
+  private async lockNegotiationSettlementRows(
+    database: DrizzleDB,
+    provenance: AdapterNegotiationQuestionCandidate,
+  ): Promise<void> {
+    await database.select({ id: intents.id }).from(intents)
+      .where(eq(intents.id, provenance.recipientIntentId)).limit(1).for('update');
+    await database.select({ intentId: intentNetworks.intentId }).from(intentNetworks)
+      .where(and(eq(intentNetworks.intentId, provenance.recipientIntentId), eq(intentNetworks.networkId, provenance.networkId)))
+      .limit(1).for('update');
+    await database.select({ userId: networkMembers.userId }).from(networkMembers)
+      .where(and(eq(networkMembers.userId, provenance.recipientUserId), eq(networkMembers.networkId, provenance.networkId)))
+      .limit(1).for('update');
+    await database.select({ id: networks.id }).from(networks)
+      .where(eq(networks.id, provenance.networkId)).limit(1).for('update');
+    await database.select({ id: opportunities.id }).from(opportunities)
+      .where(eq(opportunities.id, provenance.opportunityId)).limit(1).for('update');
+    if (provenance.taskId) {
+      await database.select({ id: tasks.id }).from(tasks)
+        .where(eq(tasks.id, provenance.taskId)).limit(1).for('update');
+    }
+  }
+
+  /** Append one established shared negotiation-context entry without exposing uptake answers. */
+  private async appendOpportunityAnswer(
+    database: DrizzleDB,
+    opportunityId: string,
+    entry: { questionId: string; selectedOptions: string[]; freeText?: string; answeredAt: string },
+  ): Promise<void> {
+    await database.update(opportunities)
+      .set({
+        metadata: sql`jsonb_set(
+          COALESCE(${opportunities.metadata}, '{}'::jsonb),
+          '{userAnswers}',
+          COALESCE(${opportunities.metadata}->'userAnswers', '[]'::jsonb) || ${JSON.stringify([entry])}::jsonb,
+          true
+        )`,
+      })
+      .where(eq(opportunities.id, opportunityId));
+  }
+
+  /** System-void a stale negotiation row without emitting user lifecycle events. */
+  private async voidStaleNegotiation(database: DrizzleDB, questionId: string): Promise<void> {
+    await database.update(questions)
+      .set({
+        status: 'dismissed',
+        detection: sql`jsonb_set(${questions.detection}, '{voidedReason}', '"negotiation_stale"'::jsonb, true)`,
+      })
+      .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')));
+  }
+
+  /**
+   * Record an answer at the authoritative DB boundary. Negotiation-family
+   * rows are locked, revalidated, and settle exact shared/task state in the
+   * same transaction before any post-commit event is emitted.
    */
   async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
-    // Recovery provenance is discovered without a row lock so the transaction
-    // can take the canonical recipient+intent advisory lock first. This read is
-    // only a routing hint; the locked row is re-read and fully revalidated.
-    const [initial] = await this.db.select({
-      detection: questions.detection,
-      actors: questions.actors,
-    })
-      .from(questions)
-      .where(eq(questions.id, questionId))
+    const [initial] = await this.db.select().from(questions)
+      .where(and(
+        eq(questions.id, questionId),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+      ))
       .limit(1);
     if (!initial) return false;
     const initialDetection = initial.detection as AdapterQuestionDetection;
-    const initialActors = initial.actors as AdapterQuestionActor[];
-    if (
-      initialDetection.purpose === 'recovery'
-      && (initialActors[0]?.userId !== userId || initialActors[0]?.role !== 'subject')
-    ) return false;
+    const initialProvenance = isNegotiationQuestionMode(initialDetection.mode)
+      ? parseAdapterNegotiationProvenance(initialDetection.negotiation)
+      : null;
 
-    const outcome = initialDetection.purpose === 'recovery'
-      ? await this.db.transaction(async (tx) => {
-          const intentId = initialDetection.sourceId;
-          if (!isNonEmptyString(intentId)) return null;
+    const result = await this.db.transaction(async (tx) => {
+      if (initialDetection.purpose === 'recovery') {
+        const intentId = initialDetection.sourceId;
+        if (!isNonEmptyString(intentId)) return null;
 
-          // Shared order with material intent updates: advisory scope → intent
-          // row → question row. Never trust the unlocked routing read above.
-          await acquireIntentScopeAdvisoryLock(tx, userId, intentId);
-          const [intent] = await tx.select({
-            userId: intents.userId,
-            payload: intents.payload,
-            summary: intents.summary,
-            status: intents.status,
-            archivedAt: intents.archivedAt,
-          }).from(intents)
-            .where(eq(intents.id, intentId))
-            .limit(1)
-            .for('update');
-          const [row] = await tx.select()
-            .from(questions)
-            .where(eq(questions.id, questionId))
-            .limit(1)
-            .for('update');
-          if (!row || row.status !== 'pending') return null;
+        // Shared order with material intent updates: advisory scope → intent
+        // row → question row. The unlocked read above is only a routing hint.
+        await acquireIntentScopeAdvisoryLock(tx, userId, intentId);
+        const [intent] = await tx.select({
+          userId: intents.userId,
+          payload: intents.payload,
+          summary: intents.summary,
+          status: intents.status,
+          archivedAt: intents.archivedAt,
+        }).from(intents)
+          .where(eq(intents.id, intentId))
+          .limit(1)
+          .for('update');
+        const [row] = await tx.select().from(questions)
+          .where(eq(questions.id, questionId))
+          .limit(1)
+          .for('update');
+        if (!row || row.status !== 'pending') return null;
 
-          const detection = row.detection as AdapterQuestionDetection;
-          if (detection.purpose !== 'recovery' || detection.sourceId !== intentId) return null;
-          const actors = row.actors as AdapterQuestionActor[];
-          const recovery = detection.recovery;
-          const valid = answer.answeredBy === userId
-            && actors[0]?.userId === userId
-            && actors[0]?.role === 'subject'
-            && detection.mode === 'intent'
-            && detection.sourceType === 'intent'
-            && detection.triggeredBy === intentId
-            && recovery?.version === 1
-            && row.expiresAt !== null
-            && row.expiresAt > new Date()
-            && intent?.userId === userId
-            && intent.archivedAt === null
-            && (intent.status === null || intent.status === 'ACTIVE')
-            && computeIntentFingerprint(intent.payload, intent.summary) === recovery.intentFingerprint;
-          if (!valid) {
-            await tx.update(questions)
-              .set({
-                status: 'dismissed',
-                detection: { ...detection, voidedReason: 'recovery_drift' } satisfies QuestionDetection,
-              })
-              .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')));
-            return { kind: 'voided' as const };
-          }
+        const detection = row.detection as AdapterQuestionDetection;
+        const actors = row.actors as AdapterQuestionActor[];
+        const recovery = detection.recovery;
+        const valid = answer.answeredBy === userId
+          && actors[0]?.userId === userId
+          && actors[0]?.role === 'subject'
+          && detection.purpose === 'recovery'
+          && detection.mode === 'intent'
+          && detection.sourceType === 'intent'
+          && detection.sourceId === intentId
+          && detection.triggeredBy === intentId
+          && recovery?.version === 1
+          && row.expiresAt !== null
+          && row.expiresAt > new Date()
+          && intent?.userId === userId
+          && intent.archivedAt === null
+          && (intent.status === null || intent.status === 'ACTIVE')
+          && computeIntentFingerprint(intent.payload, intent.summary) === recovery.intentFingerprint;
+        if (!valid) {
+          await tx.update(questions).set({
+            status: 'dismissed',
+            detection: { ...detection, voidedReason: 'recovery_drift' } satisfies QuestionDetection,
+          }).where(and(eq(questions.id, questionId), eq(questions.status, 'pending')));
+          return null;
+        }
 
-          const [updated] = await tx.update(questions)
-            .set({ status: 'answered', answer })
-            .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
-            .returning({ detection: questions.detection });
-          return updated
-            ? { kind: 'answered' as const, detection: updated.detection as AdapterQuestionDetection }
-            : null;
-        })
-      : await this.db.transaction(async (tx) => {
-          const [row] = await tx.select()
-            .from(questions)
-            .where(eq(questions.id, questionId))
-            .limit(1)
-            .for('update');
-          if (!row || row.status !== 'pending') return null;
-          const actors = row.actors as AdapterQuestionActor[];
-          if (!actors.some((actor) => actor.userId === userId)) return null;
+        const [updated] = await tx.update(questions)
+          .set({ status: 'answered', answer })
+          .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
+          .returning({ detection: questions.detection });
+        return updated ? {
+          detection: updated.detection as AdapterQuestionDetection,
+          provenance: null,
+          durableSettlement: null,
+          recoveryIntentFingerprint: recovery.intentFingerprint,
+        } : null;
+      }
+      if (!isNegotiationQuestionMode(initialDetection.mode)) {
+        const [updated] = await tx.update(questions)
+          .set({ status: 'answered', answer })
+          .where(and(
+            eq(questions.id, questionId),
+            eq(questions.status, 'pending'),
+            sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+          ))
+          .returning({ detection: questions.detection });
+        return updated ? {
+          detection: updated.detection as AdapterQuestionDetection,
+          provenance: null,
+          durableSettlement: null,
+          recoveryIntentFingerprint: null,
+        } : null;
+      }
+      if (!initialProvenance) {
+        await this.voidStaleNegotiation(tx as unknown as DrizzleDB, questionId);
+        return null;
+      }
 
-          const detection = row.detection as AdapterQuestionDetection;
-          // Detection is not expected to change, but never answer a recovery
-          // row through the ordinary question-first lock path if it does.
-          if (detection.purpose === 'recovery') return null;
-          const [updated] = await tx.update(questions)
-            .set({ status: 'answered', answer })
-            .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
-            .returning({ detection: questions.detection });
-          return updated
-            ? { kind: 'answered' as const, detection: updated.detection as AdapterQuestionDetection }
-            : null;
+      await this.lockNegotiationQuestionAdvisory(tx as unknown as DrizzleDB, initialProvenance);
+      const cohort = await this.lockNegotiationQuestionCohort(tx as unknown as DrizzleDB, initialProvenance);
+      const row = cohort.find((candidate) => candidate.id === questionId
+        && (candidate.actors as AdapterQuestionActor[]).some((actor) => actor.userId === userId));
+      if (!row) return null;
+      const detection = row.detection as AdapterQuestionDetection;
+      const provenance = parseAdapterNegotiationProvenance(detection.negotiation);
+      if (!provenance) return null;
+      await this.lockNegotiationSettlementRows(tx as unknown as DrizzleDB, provenance);
+
+      const [taskRow] = provenance.taskId
+        ? await tx.select({ state: tasks.state, metadata: tasks.metadata }).from(tasks)
+            .where(eq(tasks.id, provenance.taskId)).limit(1)
+        : [];
+      const taskMetadata = taskRow?.metadata as Record<string, unknown> | null;
+      const existingSettlement = parseNegotiationQuestionSettlement(taskMetadata?.questionSettlement);
+      const askUserBinding = parseAskUserBinding(
+        (taskMetadata?.turnContext as Record<string, unknown> | undefined)?.askUserBinding,
+      );
+      if (row.status === 'answered' && provenance.purpose === 'inflight_consultation') {
+        const storedAnswer = row.answer as AdapterQuestionAnswer | null;
+        if (
+          storedAnswer?.answeredBy === userId
+          && JSON.stringify(storedAnswer.selectedOptions) === JSON.stringify(answer.selectedOptions)
+          && (storedAnswer.freeText ?? '') === (answer.freeText ?? '')
+          && existingSettlement?.kind === 'answer'
+          && existingSettlement.questionId === questionId
+        ) return { detection, provenance, durableSettlement: existingSettlement, recoveryIntentFingerprint: null };
+        return null;
+      }
+      if (row.status !== 'pending') return null;
+      if (
+        provenance.recipientUserId !== userId
+        || answer.answeredBy !== userId
+        || !isValidNegotiationDetectionContract(detection, provenance)
+        || !await this.resolveNegotiationAdmission(provenance, tx as unknown as DrizzleDB, provenance)
+      ) {
+        await this.voidStaleNegotiation(tx as unknown as DrizzleDB, questionId);
+        return null;
+      }
+
+      let durableSettlement: AdapterNegotiationQuestionSettlement | null = null;
+      if (provenance.purpose === 'inflight_consultation') {
+        if (
+          !askUserBinding
+          || askUserBinding.settlementId !== settlementIdForTask(provenance.taskId!)
+          || askUserBinding.recipientUserId !== provenance.recipientUserId
+          || askUserBinding.recipientIntentId !== provenance.recipientIntentId
+          || askUserBinding.opportunityId !== provenance.opportunityId
+          || askUserBinding.networkId !== provenance.networkId
+          || askUserBinding.intentFingerprint !== provenance.intentFingerprint
+          || askUserBinding.opportunityStatus !== provenance.opportunityStatus
+          || askUserBinding.opportunityUpdatedAt !== provenance.opportunityUpdatedAt
+        ) return null;
+        durableSettlement = {
+          version: 1,
+          settlementId: askUserBinding.settlementId,
+          taskId: provenance.taskId!,
+          recipientUserId: provenance.recipientUserId,
+          recipientIntentId: provenance.recipientIntentId,
+          opportunityId: provenance.opportunityId,
+          networkId: provenance.networkId,
+          intentFingerprint: provenance.intentFingerprint,
+          opportunityStatus: provenance.opportunityStatus,
+          opportunityUpdatedAt: provenance.opportunityUpdatedAt,
+          counterpartyUserId: askUserBinding.counterpartyUserId,
+          counterpartyIntentId: askUserBinding.counterpartyIntentId,
+          kind: 'answer',
+          questionId,
+          continuationStatus: 'requested',
+          settledAt: answer.answeredAt,
+        };
+        const [claimed] = await tx.update(tasks)
+          .set({
+            state: 'canceled',
+            statusMessage: { reason: 'ask_user_answered', questionId, settlementId: durableSettlement.settlementId },
+            metadata: sql`jsonb_set(COALESCE(${tasks.metadata}, '{}'::jsonb), '{questionSettlement}', ${JSON.stringify(durableSettlement)}::jsonb, true)`,
+            statusTimestamp: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(tasks.id, provenance.taskId!),
+            eq(tasks.state, 'input_required'),
+            eq(tasks.updatedAt, new Date(provenance.taskUpdatedAt!)),
+          ))
+          .returning({ id: tasks.id });
+        if (!claimed) return null;
+        await tx.update(questions).set({ status: 'dismissed' }).where(and(
+          eq(questions.status, 'pending'),
+          sql`${questions.detection}->'negotiation'->>'taskId' = ${provenance.taskId}`,
+          sql`${questions.id} <> ${questionId}`,
+        ));
+      } else if (provenance.purpose === 'stalled_followup') {
+        await this.appendOpportunityAnswer(tx as unknown as DrizzleDB, provenance.opportunityId, {
+          questionId,
+          selectedOptions: answer.selectedOptions,
+          ...(answer.freeText !== undefined ? { freeText: answer.freeText } : {}),
+          answeredAt: answer.answeredAt,
         });
-
-    if (!outcome || outcome.kind === 'voided') return false;
-    const detection = outcome.detection;
-    QuestionEvents.onAnswered({
-      questionId,
-      userId,
-      mode: detection.mode,
-      ...(detection.purpose ? { purpose: detection.purpose } : {}),
-      ...(detection.purpose === 'recovery' && detection.recovery
-        ? { recoveryIntentFingerprint: detection.recovery.intentFingerprint }
-        : {}),
-      sourceType: detection.sourceType,
-      sourceId: detection.sourceId,
-      answer,
+      }
+      const [updated] = await tx.update(questions)
+        .set({ status: 'answered', answer })
+        .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
+        .returning({ id: questions.id });
+      return updated ? { detection, provenance, durableSettlement, recoveryIntentFingerprint: null } : null;
     });
 
+    if (!result) return false;
+    const answerEvent = QuestionEvents.onAnswered({
+      questionId,
+      userId,
+      mode: result.detection.mode,
+      ...(result.detection.purpose ? { purpose: result.detection.purpose } : {}),
+      ...(result.recoveryIntentFingerprint
+        ? { recoveryIntentFingerprint: result.recoveryIntentFingerprint }
+        : {}),
+      sourceType: result.detection.sourceType,
+      sourceId: result.detection.sourceId,
+      answer,
+      ...(result.provenance ? {
+        settlement: {
+          authoritative: true as const,
+          purpose: result.provenance.purpose,
+          ...(result.provenance.taskId ? { taskId: result.provenance.taskId } : {}),
+          ...(result.durableSettlement ? {
+            settlementId: result.durableSettlement.settlementId,
+            continuationStatus: result.durableSettlement.continuationStatus,
+          } : {}),
+          recipientIntentId: result.provenance.recipientIntentId,
+          opportunityId: result.provenance.opportunityId,
+          networkId: result.provenance.networkId,
+          resumeClaimed: Boolean(result.durableSettlement),
+        },
+      } : {}),
+    });
+    if (result.detection.mode === 'negotiation_inflight') await answerEvent;
     return true;
   }
 
   /**
-   * Dismiss a question, setting its status to `dismissed`.
-   * Emits `QuestionEvents.onDismissed` after persisting (used to unblock chat
-   * turns awaiting an ask_user_question answer).
-   * Only updates the question if the user is listed as an actor.
-   *
-   * @param questionId - ID of the question to dismiss.
-   * @param userId     - Authenticated user; must be an actor on the question.
-   * @returns `true` if a row was updated, `false` if no matching question found.
+   * Dismiss a question. Inflight dismissal conservatively settles only the
+   * exact stamped task/cohort and emits one post-commit resume claim.
    */
   async dismiss(questionId: string, userId: string): Promise<boolean> {
-    const [updated] = await this.db
-      .update(questions)
-      .set({ status: 'dismissed' })
-      .where(
-        and(
+    const [initial] = await this.db.select().from(questions)
+      .where(and(
+        eq(questions.id, questionId),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+      ))
+      .limit(1);
+    if (!initial) return false;
+    const initialDetection = initial.detection as AdapterQuestionDetection;
+    const initialProvenance = isNegotiationQuestionMode(initialDetection.mode)
+      ? parseAdapterNegotiationProvenance(initialDetection.negotiation)
+      : null;
+
+    const result = await this.db.transaction(async (tx) => {
+      if (!isNegotiationQuestionMode(initialDetection.mode)) {
+        const [updated] = await tx.update(questions).set({ status: 'dismissed' }).where(and(
           eq(questions.id, questionId),
           eq(questions.status, 'pending'),
           sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
-        ),
-      )
-      .returning({ id: questions.id, detection: questions.detection });
+        )).returning({ detection: questions.detection });
+        return updated ? { detection: updated.detection as AdapterQuestionDetection, provenance: null, durableSettlement: null } : null;
+      }
+      if (!initialProvenance) {
+        await this.voidStaleNegotiation(tx as unknown as DrizzleDB, questionId);
+        return null;
+      }
 
-    if (!updated) return false;
+      await this.lockNegotiationQuestionAdvisory(tx as unknown as DrizzleDB, initialProvenance);
+      const cohort = await this.lockNegotiationQuestionCohort(tx as unknown as DrizzleDB, initialProvenance);
+      const row = cohort.find((candidate) => candidate.id === questionId
+        && (candidate.actors as AdapterQuestionActor[]).some((actor) => actor.userId === userId));
+      if (!row) return null;
+      const detection = row.detection as AdapterQuestionDetection;
+      const provenance = parseAdapterNegotiationProvenance(detection.negotiation);
+      if (!provenance) return null;
+      await this.lockNegotiationSettlementRows(tx as unknown as DrizzleDB, provenance);
 
-    const detection = updated.detection as AdapterQuestionDetection;
-    QuestionEvents.onDismissed({
-      questionId,
-      userId,
-      mode: detection.mode,
-      sourceType: detection.sourceType,
-      sourceId: detection.sourceId,
+      const [taskRow] = provenance.taskId
+        ? await tx.select({ metadata: tasks.metadata }).from(tasks).where(eq(tasks.id, provenance.taskId)).limit(1)
+        : [];
+      const taskMetadata = taskRow?.metadata as Record<string, unknown> | null;
+      const existingSettlement = parseNegotiationQuestionSettlement(taskMetadata?.questionSettlement);
+      const askUserBinding = parseAskUserBinding(
+        (taskMetadata?.turnContext as Record<string, unknown> | undefined)?.askUserBinding,
+      );
+      if (row.status === 'dismissed' && provenance.purpose === 'inflight_consultation') {
+        if (existingSettlement?.kind === 'dismiss' && existingSettlement.questionId === questionId) {
+          return { detection, provenance, durableSettlement: existingSettlement };
+        }
+        return null;
+      }
+      if (row.status !== 'pending') return null;
+      if (
+        provenance.recipientUserId !== userId
+        || !isValidNegotiationDetectionContract(detection, provenance)
+        || !await this.resolveNegotiationAdmission(provenance, tx as unknown as DrizzleDB, provenance)
+      ) {
+        await this.voidStaleNegotiation(tx as unknown as DrizzleDB, questionId);
+        return null;
+      }
+
+      let durableSettlement: AdapterNegotiationQuestionSettlement | null = null;
+      if (provenance.purpose === 'inflight_consultation') {
+        if (
+          !askUserBinding
+          || askUserBinding.settlementId !== settlementIdForTask(provenance.taskId!)
+          || askUserBinding.recipientUserId !== provenance.recipientUserId
+          || askUserBinding.recipientIntentId !== provenance.recipientIntentId
+          || askUserBinding.opportunityId !== provenance.opportunityId
+          || askUserBinding.networkId !== provenance.networkId
+          || askUserBinding.intentFingerprint !== provenance.intentFingerprint
+          || askUserBinding.opportunityStatus !== provenance.opportunityStatus
+          || askUserBinding.opportunityUpdatedAt !== provenance.opportunityUpdatedAt
+        ) return null;
+        const settledAt = new Date().toISOString();
+        durableSettlement = {
+          version: 1,
+          settlementId: askUserBinding.settlementId,
+          taskId: provenance.taskId!,
+          recipientUserId: provenance.recipientUserId,
+          recipientIntentId: provenance.recipientIntentId,
+          opportunityId: provenance.opportunityId,
+          networkId: provenance.networkId,
+          intentFingerprint: provenance.intentFingerprint,
+          opportunityStatus: provenance.opportunityStatus,
+          opportunityUpdatedAt: provenance.opportunityUpdatedAt,
+          counterpartyUserId: askUserBinding.counterpartyUserId,
+          counterpartyIntentId: askUserBinding.counterpartyIntentId,
+          kind: 'dismiss',
+          questionId,
+          continuationStatus: 'requested',
+          settledAt,
+        };
+        const [claimed] = await tx.update(tasks).set({
+          state: 'canceled',
+          statusMessage: { reason: 'ask_user_dismissed', questionId, settlementId: durableSettlement.settlementId },
+          metadata: sql`jsonb_set(COALESCE(${tasks.metadata}, '{}'::jsonb), '{questionSettlement}', ${JSON.stringify(durableSettlement)}::jsonb, true)`,
+          statusTimestamp: new Date(),
+          updatedAt: new Date(),
+        }).where(and(
+          eq(tasks.id, provenance.taskId!),
+          eq(tasks.state, 'input_required'),
+          eq(tasks.updatedAt, new Date(provenance.taskUpdatedAt!)),
+        )).returning({ id: tasks.id });
+        if (!claimed) return null;
+        await tx.update(questions).set({ status: 'dismissed' }).where(and(
+          eq(questions.status, 'pending'),
+          sql`${questions.detection}->'negotiation'->>'taskId' = ${provenance.taskId}`,
+        ));
+      } else {
+        await tx.update(questions).set({ status: 'dismissed' })
+          .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')));
+      }
+      return { detection, provenance, durableSettlement };
     });
 
+    if (!result) return false;
+    const dismissEvent = QuestionEvents.onDismissed({
+      questionId,
+      userId,
+      mode: result.detection.mode,
+      sourceType: result.detection.sourceType,
+      sourceId: result.detection.sourceId,
+      ...(result.provenance ? {
+        settlement: {
+          authoritative: true as const,
+          purpose: result.provenance.purpose,
+          ...(result.provenance.taskId ? { taskId: result.provenance.taskId } : {}),
+          ...(result.durableSettlement ? {
+            settlementId: result.durableSettlement.settlementId,
+            continuationStatus: result.durableSettlement.continuationStatus,
+          } : {}),
+          recipientIntentId: result.provenance.recipientIntentId,
+          opportunityId: result.provenance.opportunityId,
+          networkId: result.provenance.networkId,
+          resumeClaimed: Boolean(result.durableSettlement),
+        },
+      } : {}),
+    });
+    if (result.detection.mode === 'negotiation_inflight') await dismissEvent;
     return true;
+  }
+
+  /**
+   * Atomically settle an exact inflight task/question cohort on answer-window
+   * expiry. Returns one resume claim; duplicate/stale deliveries return null.
+   */
+  async expireInflightQuestion(input: AdapterNegotiationContinuationCoordinates): Promise<AdapterNegotiationContinuationCoordinates | null> {
+    const candidate: AdapterNegotiationQuestionCandidate = {
+      purpose: 'inflight_consultation',
+      recipientUserId: input.userId,
+      recipientIntentId: input.recipientIntentId,
+      opportunityId: input.opportunityId,
+      taskId: input.taskId,
+      networkId: input.networkId,
+    };
+    if (input.settlementId !== settlementIdForTask(input.taskId)) return null;
+    return this.db.transaction(async (tx) => {
+      await this.lockNegotiationQuestionAdvisory(tx as unknown as DrizzleDB, candidate);
+      const cohort = await this.lockNegotiationQuestionCohort(tx as unknown as DrizzleDB, candidate);
+      await this.lockNegotiationSettlementRows(tx as unknown as DrizzleDB, candidate);
+      const [task] = await tx.select({ state: tasks.state, metadata: tasks.metadata })
+        .from(tasks)
+        .where(eq(tasks.id, input.taskId))
+        .limit(1);
+      if (!task) return null;
+      const metadata = task.metadata as Record<string, unknown> | null;
+      const existingSettlement = parseNegotiationQuestionSettlement(metadata?.questionSettlement);
+      if (existingSettlement) {
+        return this.settlementMatchesCoordinates(existingSettlement, input) ? input : null;
+      }
+      const binding = parseAskUserBinding(
+        (metadata?.turnContext as Record<string, unknown> | undefined)?.askUserBinding,
+      );
+      const current = await this.resolveNegotiationAdmission(candidate, tx as unknown as DrizzleDB);
+      if (
+        task.state !== 'input_required'
+        || metadata?.type !== 'negotiation'
+        || metadata.opportunityId !== input.opportunityId
+        || metadata.networkId !== input.networkId
+        || !binding
+        || binding.settlementId !== input.settlementId
+        || binding.recipientUserId !== input.userId
+        || binding.recipientIntentId !== input.recipientIntentId
+        || binding.opportunityId !== input.opportunityId
+        || binding.networkId !== input.networkId
+        || binding.intentFingerprint !== input.intentFingerprint
+        || binding.opportunityStatus !== input.opportunityStatus
+        || binding.opportunityUpdatedAt !== input.opportunityUpdatedAt
+        || binding.counterpartyUserId !== input.counterpartyUserId
+        || binding.counterpartyIntentId !== input.counterpartyIntentId
+        || current?.intentFingerprint !== input.intentFingerprint
+        || current.opportunityStatus !== input.opportunityStatus
+        || current.opportunityUpdatedAt !== input.opportunityUpdatedAt
+      ) return null;
+
+      for (const row of cohort) {
+        const detection = row.detection as AdapterQuestionDetection;
+        const provenance = parseAdapterNegotiationProvenance(detection.negotiation);
+        if (
+          !provenance
+          || provenance.purpose !== 'inflight_consultation'
+          || provenance.taskId !== input.taskId
+          || provenance.recipientUserId !== input.userId
+          || provenance.recipientIntentId !== input.recipientIntentId
+          || provenance.opportunityId !== input.opportunityId
+          || provenance.networkId !== input.networkId
+        ) await this.voidStaleNegotiation(tx as unknown as DrizzleDB, row.id);
+      }
+
+      const settledAt = new Date().toISOString();
+      const durableSettlement: AdapterNegotiationQuestionSettlement = {
+        version: 1,
+        settlementId: input.settlementId,
+        taskId: input.taskId,
+        recipientUserId: input.userId,
+        recipientIntentId: input.recipientIntentId,
+        opportunityId: input.opportunityId,
+        networkId: input.networkId,
+        intentFingerprint: input.intentFingerprint,
+        opportunityStatus: input.opportunityStatus,
+        opportunityUpdatedAt: input.opportunityUpdatedAt,
+        counterpartyUserId: input.counterpartyUserId,
+        counterpartyIntentId: input.counterpartyIntentId,
+        kind: 'timeout',
+        continuationStatus: 'requested',
+        settledAt,
+      };
+      const [claimed] = await tx.update(tasks).set({
+        state: 'canceled',
+        statusMessage: { reason: 'ask_user_window_expired', settlementId: input.settlementId },
+        metadata: sql`jsonb_set(COALESCE(${tasks.metadata}, '{}'::jsonb), '{questionSettlement}', ${JSON.stringify(durableSettlement)}::jsonb, true)`,
+        statusTimestamp: new Date(),
+        updatedAt: new Date(),
+      }).where(and(eq(tasks.id, input.taskId), eq(tasks.state, 'input_required')))
+        .returning({ id: tasks.id });
+      if (!claimed) return null;
+      await tx.update(questions).set({ status: 'dismissed' }).where(and(
+        eq(questions.status, 'pending'),
+        sql`${questions.detection}->'negotiation'->>'taskId' = ${input.taskId}`,
+      ));
+      return input;
+    });
+  }
+
+  /** Atomically validate material binding, create/reuse the exact successor, and acquire its fenced lease. */
+  async claimNegotiationContinuationExecution(
+    input: AdapterNegotiationContinuationKey,
+  ): Promise<ContinuationClaimResult> {
+    if (input.settlementId !== settlementIdForTask(input.taskId)) return { status: 'invalid' };
+    const [row] = await this.db.select({ metadata: tasks.metadata })
+      .from(tasks)
+      .where(eq(tasks.id, input.taskId))
+      .limit(1);
+    const settlement = parseNegotiationQuestionSettlement((row?.metadata as Record<string, unknown> | null)?.questionSettlement);
+    if (
+      !settlement
+      || settlement.taskId !== input.taskId
+      || settlement.settlementId !== input.settlementId
+      || settlement.opportunityId !== input.opportunityId
+      || settlement.recipientUserId !== input.userId
+      || settlement.recipientIntentId !== input.recipientIntentId
+      || settlement.networkId !== input.networkId
+    ) return { status: 'invalid' };
+    return claimContinuationExecution(this.db, {
+      ...input,
+      intentFingerprint: settlement.intentFingerprint,
+      opportunityStatus: settlement.opportunityStatus,
+      opportunityUpdatedAt: settlement.opportunityUpdatedAt,
+      counterpartyUserId: settlement.counterpartyUserId,
+      counterpartyIntentId: settlement.counterpartyIntentId,
+    });
+  }
+
+  /** Extend only the current token/fence lease. */
+  heartbeatNegotiationContinuationExecution(
+    execution: ContinuationExecutionFence,
+  ): Promise<ContinuationExecutionFence> {
+    return heartbeatContinuationExecution(this.db, execution);
+  }
+
+  /** Release only the current owner after an operational failure; settlement remains requested. */
+  releaseNegotiationContinuationExecution(execution: ContinuationExecutionFence): Promise<void> {
+    return releaseContinuationExecution(this.db, execution);
+  }
+
+  /** Preserve the exact fence while an external recipient agent owns the next turn. */
+  parkNegotiationContinuationExecution(execution: ContinuationExecutionFence): Promise<void> {
+    return parkContinuationExecution(this.db, execution);
+  }
+
+  /** Complete only a positively receipted exact successor under the current token/fence. */
+  completeNegotiationContinuationExecution(
+    execution: ContinuationExecutionFence,
+    receipt: ContinuationReceipt,
+  ): Promise<void> {
+    return completeContinuationExecution(this.db, execution, receipt);
+  }
+
+  private settlementMatchesCoordinates(
+    settlement: AdapterNegotiationQuestionSettlement,
+    input: AdapterNegotiationContinuationCoordinates,
+  ): boolean {
+    return settlement.taskId === input.taskId
+      && settlement.settlementId === input.settlementId
+      && settlement.opportunityId === input.opportunityId
+      && settlement.recipientUserId === input.userId
+      && settlement.recipientIntentId === input.recipientIntentId
+      && settlement.networkId === input.networkId
+      && settlement.intentFingerprint === input.intentFingerprint
+      && settlement.opportunityStatus === input.opportunityStatus
+      && settlement.opportunityUpdatedAt === input.opportunityUpdatedAt
+      && settlement.counterpartyUserId === input.counterpartyUserId
+      && settlement.counterpartyIntentId === input.counterpartyIntentId;
   }
 }
 

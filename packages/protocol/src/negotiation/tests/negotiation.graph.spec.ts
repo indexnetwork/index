@@ -48,7 +48,7 @@ describe("negotiation graph — task intent snapshots", () => {
     const candidateUser = {
       id: "u-cand",
       intents: [
-        { id: "intent-source", title: "Candidate title", description: "Candidate description", confidence: 0.9 },
+        { id: "intent-candidate", title: "Candidate title", description: "Candidate description", confidence: 0.9 },
       ],
       profile: {},
     };
@@ -70,6 +70,8 @@ describe("negotiation graph — task intent snapshots", () => {
       await new NegotiationGraphFactory(database, dispatcher).createGraph().invoke({
         sourceUser,
         candidateUser,
+        sourceIntentId: "intent-source",
+        candidateIntentId: "intent-candidate",
         indexContext: { networkId: "net-1", prompt: "" },
         seedAssessment: { reasoning: "x", valencyRole: "peer" },
         opportunityId: "opp-1",
@@ -91,11 +93,17 @@ describe("negotiation graph — task intent snapshots", () => {
       },
       {
         userId: "u-cand",
-        intentId: "intent-source",
+        intentId: "intent-candidate",
         title: "Candidate title",
         description: "Candidate description",
       },
     ]);
+    expect(createdTaskMetadata[0].participantBindings).toEqual([
+      { userId: "u-src", intentId: "intent-source", networkId: "net-1" },
+      { userId: "u-cand", intentId: "intent-candidate", networkId: "net-1" },
+    ]);
+    expect(createdTaskMetadata[0].sourceIntentId).toBe("intent-source");
+    expect(createdTaskMetadata[0].candidateIntentId).toBe("intent-candidate");
   });
 
   it("fails init closed without finalize writes when the exact attempt cannot claim a task", async () => {
@@ -423,9 +431,11 @@ describe("negotiation graph — questioner enqueue on stall", () => {
         questionerEnqueue as never,
       ).createGraph();
       await graph.invoke({
-        sourceUser: { id: "u-src", profile: { name: "Alice", bio: "builder" } },
-        candidateUser: { id: "u-cand", profile: { name: "Bob", bio: "designer" } },
-        indexContext: { networkId: "net-1", prompt: "net prompt" },
+        sourceUser: { id: "u-src", intents: [{ id: "intent-src", title: "Build", description: "Find a product collaborator", confidence: 1 }], profile: { name: "Alice", bio: "builder" } },
+        candidateUser: { id: "u-cand", intents: [{ id: "intent-cand", title: "Design", description: "Join a product", confidence: 1 }], profile: { name: "Bob", bio: "designer" } },
+        sourceIntentId: "intent-src",
+        candidateIntentId: "intent-cand",
+        indexContext: { networkId: "net-1", prompt: "private network prompt" },
         seedAssessment: { reasoning: "x", valencyRole: "peer" },
         opportunityId: "opp-stall", maxTurns: 2,
       } as Partial<typeof NegotiationGraphState.State>);
@@ -436,10 +446,24 @@ describe("negotiation graph — questioner enqueue on stall", () => {
       expect(job.userId).toBe("u-src");
       expect(job.sourceType).toBe("opportunity");
       expect(job.sourceId).toBe("opp-stall");
+      expect(job.purpose).toBe("stalled_followup");
+      expect(job.negotiation).toEqual({
+        purpose: "stalled_followup",
+        recipientUserId: "u-src",
+        recipientIntentId: "intent-src",
+        opportunityId: "opp-stall",
+        taskId: "task-1",
+        networkId: "net-1",
+      });
       const context = job.context as Record<string, unknown>;
       expect(context.outcomeReason).toBe("turn_cap");
-      expect(context.counterpartyHint).toContain("Bob");
+      expect(context.counterpartyHint).toBe("the other participant");
+      expect(context.recipientIntent).toContain("Find a product collaborator");
+      expect(context.indexContext).toBe("the selected network");
       expect(context.userContext).toBe("user ctx");
+      expect(JSON.stringify(job)).not.toContain("Bob");
+      expect(JSON.stringify(job)).not.toContain("designer");
+      expect(JSON.stringify(job)).not.toContain("private network prompt");
     } finally {
       IndexNegotiator.prototype.invoke = orig;
     }

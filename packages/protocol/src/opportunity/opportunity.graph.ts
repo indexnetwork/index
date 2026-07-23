@@ -13,7 +13,7 @@
  */
 
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
-import type { Id } from '../shared/interfaces/database.interface.js';
+import type { Id, NegotiationContinuationReceipt } from '../shared/interfaces/database.interface.js';
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
 import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type TargetNetwork, type CandidateMatch, type EvaluatedCandidate, type EvaluatedOpportunity, type EvaluatedOpportunityActor } from './opportunity.state.js';
 import { resolveInitialStatus } from './opportunity.state.js';
@@ -2159,14 +2159,16 @@ export class OpportunityGraphFactory {
               return null;
             }
 
-            const candidateActor = (opp.actors as Array<{
+            const opportunityActors = opp.actors as Array<{
               userId: string;
               role?: string;
               networkId?: string;
               intent?: string;
               intentId?: string;
-            }>).find(a => a.userId !== discoveryUserId);
-            if (!candidateActor) {
+            }>;
+            const sourceActor = opportunityActors.find(a => a.userId === discoveryUserId && a.role !== 'introducer');
+            const candidateActor = opportunityActors.find(a => a.userId !== discoveryUserId && a.role !== 'introducer');
+            if (!sourceActor || !candidateActor) {
               negotiateLog.verbose('Skipping opportunity: no candidateActor found', {
                 opportunityId: opp.id,
                 discoveryUserId,
@@ -2175,7 +2177,7 @@ export class OpportunityGraphFactory {
               filteredBeforeInvocation.push(opp.id);
               return null;
             }
-            return { opp, candidateActor };
+            return { opp, sourceActor, candidateActor };
           })
           .filter((e): e is NonNullable<typeof e> => e !== null);
 
@@ -2187,8 +2189,9 @@ export class OpportunityGraphFactory {
         });
 
         const candidates: NegotiationCandidate[] = await Promise.all(
-          candidateEntries.map(async ({ opp, candidateActor }) => {
+          candidateEntries.map(async ({ opp, sourceActor, candidateActor }) => {
             const userId = candidateActor.userId as string;
+            const sourceIntentId = resolveOpportunityActorIntent(sourceActor);
             const candidateIntentId = resolveOpportunityActorIntent(candidateActor);
             const [profile, user, activeIntents, intent] = await Promise.all([
               this.database.getProfile(userId).catch(() => null),
@@ -2208,6 +2211,8 @@ export class OpportunityGraphFactory {
 
             return {
               userId,
+              ...(sourceIntentId ? { sourceIntentId } : {}),
+              ...(candidateIntentId ? { candidateIntentId } : {}),
               opportunityId: opp.id as string,
               opportunityStatus: opp.status,
               opportunityUpdatedAt: opp.updatedAt,
@@ -4082,6 +4087,25 @@ export class OpportunityGraphFactory {
 
         const actors = opp.actors as Array<OpportunityActor & { intentId?: string }>;
         const nonIntroducerActors = actors.filter(a => a.role !== 'introducer');
+        const continuation = state.options.negotiationContinuation;
+        if (continuation) {
+          const recipientActor = nonIntroducerActors.find((actor) => actor.userId === state.userId);
+          const counterpartyActor = nonIntroducerActors.find((actor) => actor.userId === continuation.counterpartyUserId);
+          if (
+            !recipientActor
+            || resolveOpportunityActorIntent(recipientActor) !== continuation.recipientIntentId
+            || recipientActor.networkId !== continuation.networkId
+            || !counterpartyActor
+            || resolveOpportunityActorIntent(counterpartyActor) !== continuation.counterpartyIntentId
+            || counterpartyActor.networkId !== continuation.networkId
+          ) {
+            negotiateExistingLog.warn('Exact continuation actor binding is stale', {
+              opportunityId: state.opportunityId,
+              taskId: continuation.taskId,
+            });
+            return {};
+          }
+        }
 
         // Find the sourceActor: non-introducer with role patient or party, fallback to first non-introducer
         const sourceActor = nonIntroducerActors.find(a => a.role === 'patient' || a.role === 'party')
@@ -4145,7 +4169,11 @@ export class OpportunityGraphFactory {
 
         const candidate: NegotiationCandidate = {
           userId: candidateActor.userId,
+          ...(sourceIntentId ? { sourceIntentId } : {}),
+          ...(candidateIntentId ? { candidateIntentId } : {}),
           opportunityId: opp.id as string,
+          opportunityStatus: opp.status,
+          opportunityUpdatedAt: opp.updatedAt,
           reasoning: (opp.interpretation as { reasoning?: string } | null)?.reasoning ?? '',
           valencyRole: candidateActor.role ?? 'peer',
           networkId: (candidateActor as { networkId?: string }).networkId as string,
@@ -4174,6 +4202,7 @@ export class OpportunityGraphFactory {
         // from the prior task's metadata inside the negotiation init node
         // (continuations never re-derive the seat). The role heuristic above
         // remains only as the fallback for pre-stamp tasks.
+        let continuationReceipt: NegotiationContinuationReceipt | undefined;
         const acceptedResults = await negotiateCandidates(
           this.negotiationGraph, sourceUser, [candidate],
           { networkId: '', prompt: '' },
@@ -4182,11 +4211,19 @@ export class OpportunityGraphFactory {
             indexContextOverrides: indexContextMap,
             timeoutMs: AMBIENT_PARK_WINDOW_MS,
             trigger: 'ambient',
+            ...(continuation ? {
+              resumeFromTaskId: continuation.taskId,
+              continuationSettlementId: continuation.settlementId,
+              continuationExecution: continuation,
+              onCandidateResolved: async ({ continuationReceipt: receipt }) => {
+                if (receipt?.successorTaskId === continuation.successorTaskId) continuationReceipt = receipt;
+              },
+            } : {}),
           },
         );
 
         // Send notifications to non-introducer actors if negotiation was accepted
-        if (acceptedResults.length > 0 && this.queueNotification) {
+        if (acceptedResults.length > 0 && this.queueNotification && !continuation) {
           for (const actor of nonIntroducerActors) {
             await this.queueNotification(opp.id, actor.userId, 'high').catch((err) => {
               negotiateExistingLog.warn('Failed to queue notification', { actorId: actor.userId, error: err });
@@ -4197,7 +4234,9 @@ export class OpportunityGraphFactory {
         negotiateExistingLog.info('Negotiation complete', {
           opportunityId: opp.id,
           accepted: acceptedResults.length > 0,
+          continuationFence: continuation?.fence,
         });
+        return continuationReceipt ? { negotiationContinuationReceipt: continuationReceipt } : {};
       } catch (err) {
         negotiateExistingLog.error('Failed', { opportunityId: state.opportunityId, error: err });
         return { error: `Failed to load opportunity: ${err instanceof Error ? err.message : String(err)}` };

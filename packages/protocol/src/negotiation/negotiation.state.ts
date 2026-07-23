@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
-import type { NegotiationUserAnswer, OpportunityStatus } from "../shared/interfaces/database.interface.js";
+import type { NegotiationContinuationExecution, NegotiationContinuationReceipt, NegotiationPrivateConsultation, NegotiationUserAnswer, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { ScreenDecisionRecord } from "./negotiation.screen.js";
 import type { DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
@@ -86,6 +86,9 @@ export interface NegotiationGraphLike {
   invoke(input: {
     sourceUser: UserNegotiationContext;
     candidateUser: UserNegotiationContext;
+    /** Exact opportunity-actor intent bindings; never inferred from intent array order. */
+    sourceIntentId?: string;
+    candidateIntentId?: string;
     indexContext: { networkId: string; prompt: string };
     seedAssessment: Omit<SeedAssessment, "actors">;
     discoveryQuery?: string;
@@ -102,12 +105,20 @@ export interface NegotiationGraphLike {
      * opportunity → conversation-scoped tie-break → fall back to sourceUser.id.
      */
     initiatorUserId?: string;
+    /** Exact settled task for a durable ask_user continuation. */
+    resumeFromTaskId?: string;
+    /** Deterministic durable settlement/outbox identifier. */
+    continuationSettlementId?: string;
+    /** Current durable lease/fence for the exact successor execution. */
+    continuationExecution?: NegotiationContinuationExecution;
   }): Promise<{
     outcome: NegotiationOutcome | null;
     messages?: NegotiationMessage[];
     conversationId?: string;
     isContinuation?: boolean;
     priorTurnCount?: number;
+    error?: string | null;
+    continuationReceipt?: NegotiationContinuationReceipt;
   }>;
 }
 
@@ -129,6 +140,14 @@ export const NegotiationGraphState = Annotation.Root({
   candidateUser: Annotation<UserNegotiationContext>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({ id: "", intents: [], profile: {} }),
+  }),
+  sourceIntentId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+  candidateIntentId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
   indexContext: Annotation<{ networkId: string; prompt: string }>({
     reducer: (curr, next) => next ?? curr,
@@ -214,6 +233,31 @@ export const NegotiationGraphState = Annotation.Root({
     default: () => undefined,
   }),
   opportunityUpdatedAt: Annotation<Date | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+  /** Exact prior task selected by a durable continuation; bypasses latest-task lookup. */
+  resumeFromTaskId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+  /** Deterministic settlement key used to idempotently reuse a successor task. */
+  continuationSettlementId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  continuationExecution: Annotation<NegotiationContinuationExecution | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  continuationReceipt: Annotation<NegotiationContinuationReceipt | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  privateConsultation: Annotation<NegotiationPrivateConsultation | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

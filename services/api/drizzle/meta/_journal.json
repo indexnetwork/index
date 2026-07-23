@@ -743,6 +743,20 @@
       "when": 1784791677727,
       "tag": "0105_add_recovery_question_uniqueness",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1784807704500,
+      "tag": "0106_add_negotiation_question_provenance_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1784817284724,
+      "tag": "0107_add_negotiation_continuation_successor_uniqueness",
+      "breakpoints": true
     }
   ]
 }

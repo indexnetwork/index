@@ -15,6 +15,7 @@ export interface IntentQuestionTimeline<TMessage extends IntentTimelineMessage> 
   items: Array<IntentQuestionTimelineItem<TMessage>>;
   answeredByMessageId: Map<string, AnsweredThreadEntry[]>;
   pendingByMessageId: Map<string, PendingQuestion[]>;
+  trailingAnswered: AnsweredThreadEntry[];
   trailingPending: PendingQuestion[];
 }
 
@@ -52,8 +53,8 @@ function compareTimestamped<T>(
 
 /**
  * Builds the intent-page Personal Agent timeline without mutating question data.
- * Exact assistant-message anchors win. Unanchored answered exchanges use their
- * authoritative timestamps, while pending questions stay at the current end.
+ * Exact assistant-message anchors win. Every unanchored question stays at the
+ * current end; authoritative timestamps plus id make trailing order stable.
  */
 export function buildIntentQuestionTimeline<TMessage extends IntentTimelineMessage>(
   messages: TMessage[],
@@ -99,20 +100,15 @@ export function buildIntentQuestionTimeline<TMessage extends IntentTimelineMessa
   }
   trailingPending.sort((left, right) => compareTimestamped(left, right, pendingTimestamp, (question) => question.id));
 
-  const items: Array<IntentQuestionTimelineItem<TMessage> & { timestamp: number | null; sequence: number }> = [
-    ...messages.map((message, sequence) => ({
-      type: "message" as const,
-      message,
-      timestamp: timestampMs(message.timestamp),
-      sequence,
-    })),
-    ...unanchoredAnswered.map((entry, sequence) => ({
-      type: "answered" as const,
-      entry,
-      timestamp: answeredTimestamp(entry),
-      sequence: messages.length + sequence,
-    })),
-  ];
+  unanchoredAnswered.sort((left, right) =>
+    compareTimestamped(left, right, answeredTimestamp, (entry) => entry.id));
+
+  const items: Array<IntentQuestionTimelineItem<TMessage> & { timestamp: number | null; sequence: number }> = messages.map((message, sequence) => ({
+    type: "message" as const,
+    message,
+    timestamp: timestampMs(message.timestamp),
+    sequence,
+  }));
 
   items.sort((left, right) => {
     if (left.timestamp !== null && right.timestamp !== null && left.timestamp !== right.timestamp) {
@@ -131,6 +127,7 @@ export function buildIntentQuestionTimeline<TMessage extends IntentTimelineMessa
     items: items.map(({ timestamp: _timestamp, sequence: _sequence, ...item }) => item),
     answeredByMessageId,
     pendingByMessageId,
+    trailingAnswered: unanchoredAnswered,
     trailingPending,
   };
 }

@@ -3362,17 +3362,18 @@ List pending questions for the authenticated user.
 **Query params:**
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `status` | `pending` \| `answered` \| `dismissed` | `pending` | Only `pending` is currently supported |
+| `status` | `pending` \| `answered` \| `dismissed` | `pending` | `pending` and `answered` are supported; `dismissed` is rejected. |
 | `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `negotiation_inflight` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
 | `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
-| `scopeId` | UUID | — | Required when `scopeType=intent`; returns direct intent questions plus negotiation questions whose source opportunity matches the selected-intent predicate. |
+| `scopeId` | UUID | — | Required when `scopeType=intent`. Non-negotiation modes retain their established scope rules. Negotiation-family rows require valid versioned exact-recipient provenance whose stamped intent equals this ID and whose current intent/network/opportunity/task state still validates; legacy or drifted rows fail closed. |
 | `intentId` | UUID | — | Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`. |
 | `conversationId` | string | — | Filter to questions linked to a specific chat session |
 | `noConversation` | `true` | — | Exclude questions that have a `conversationId` (sidebar badge use) |
+| `passive` | `true` | — | Exact-intent refetch only. Requires `scopeType=intent`; suppresses visit-time pool-mining enqueue. Used by mounted-workspace invalidation, not initial active visitation. |
 
-Unscoped/global reads always exclude `pool_discovery`; those rows are available only with an explicit intent scope. Public rows strip internal pool snapshots, assignments, embeddings, push claims/status, cycle keys, and the authoritative `pushedAt` ledger.
+Unscoped/global reads always exclude `pool_discovery`; those rows are available only with an explicit intent scope. Negotiation-family pending rows are freshness-validated even without an explicit intent scope by using their stamped recipient intent; missing-provenance, crossed mode/purpose, drifted, or unsafe legacy rows fail closed. Answered inflight history retains the exact exchange after its own continuation changes task/opportunity state, but still requires current recipient ownership/fingerprint/network/opportunity actor binding plus the exact terminal settlement. Public rows strip internal pool snapshots, assignments, embeddings, push claims/status, cycle keys, the authoritative `pushedAt` ledger, negotiation provenance/purpose/task/network/fingerprint/lifecycle metadata, server session bindings, and actor network IDs. A `messageId` anchor survives an intent-scoped read only when its exact assistant message/session/conversation belongs to the authenticated user's exact `negotiator-intent` scope.
 
 **Response:** `{ questions: PersistedQuestion[] }`
 
@@ -3390,13 +3391,13 @@ Returns the canonical count split used by the two allowed surfaces. Counts requi
 }
 ```
 
-`globalPending` excludes every `pool_discovery` row and remains the Questions-page count. `pushedPoolPending` includes only `pool_discovery` rows with a successful internal `pushedAt` stamp. `personalAgentPending` is their sum and drives the Personal Agent badge.
+`globalPending` excludes every `pool_discovery` row and remains the Questions-page count. `pushedPoolPending` includes only `pool_discovery` rows with a successful internal `pushedAt` stamp. `personalAgentPending` is their sum and drives the Personal Agent badge. All three values are derived from the same freshness-validated rows as the global inbox, so stale negotiation provenance cannot remain in a badge after disappearing from a scoped read.
 
 ### POST /api/questions/:id/answer
 
 **Auth**: Required (session or API key)
 
-Submit an answer for a pending question. Only succeeds if the user is an actor on the question and the question is still pending.
+Submit an answer for a pending question. For non-negotiation modes, existing actor/pending semantics apply. Negotiation-family answers additionally take the exact cohort lock, revalidate actor/provenance, owned ACTIVE fingerprint-equal intent, assignment/membership, opportunity actor visibility/state, and exact task state before any effect. Stale rows fail closed/system-void without shared mutation or user-answer events. Uptake remains private; ordinary follow-up uses established shared metadata; inflight atomically closes only its stamped `input_required` task and writes a deterministic durable continuation request. If post-commit Redis delivery fails, the endpoint may fail after recording the answer; retrying the same answer is idempotent and reconciles the same settlement, while the armed expiry job is the process-boundary fallback.
 
 **Body:**
 ```json
@@ -3414,7 +3415,7 @@ Submit an answer for a pending question. Only succeeds if the user is an actor o
 
 **Auth**: Required (session or API key)
 
-Dismiss a pending question. Only succeeds if the user is an actor on the question and the question is still pending.
+Dismiss a pending question. Negotiation-family rows use the same exact cohort-first locked revalidation and durable exact-task continuation protocol as answers. Inflight dismissal applies the conservative no-disclosure default and dismisses only the exact stamped task cohort. Timeout uses that protocol even when no question row exists. All delivery/recovery attempts carry the deterministic settlement ID and never select a newer/latest opportunity task.
 
 **Response:** `{ success: true }` (200) or `{ error: "Question not found" }` (404)
 

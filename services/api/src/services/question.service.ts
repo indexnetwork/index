@@ -1,8 +1,10 @@
 import { log } from '../lib/log';
 
-import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import type { QuestionerAdapter } from '../adapters/questioner.adapter';
 import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion, PendingQuestionCounts } from '../adapters/questioner.adapter';
-import db from '../lib/drizzle/drizzle';
+import { stripInternalDetection } from '../lib/question/question.public';
+
+export { stripInternalDetection } from '../lib/question/question.public';
 
 // Re-export adapter types so the controller layer can reference them without
 // importing from the adapters directory directly (enforced by layer boundaries).
@@ -17,57 +19,24 @@ const logger = log.service.from('QuestionService');
  * mutations through a service boundary, keeping controllers free of adapter
  * dependencies.
  */
-/**
- * Removes server-only detection fields before a question leaves the API.
- * `detection.pool` carries pool_discovery candidate assignments + chain
- * alternates (IND-418); strategy and QUD type are generation/debug metadata
- * rather than client rendering contracts (IND-425).
- */
-export function stripInternalDetection(question: AdapterPersistedQuestion): AdapterPersistedQuestion {
-  const {
-    pool: _pool,
-    recovery: _recovery,
-    purpose: _purpose,
-    strategy: _strategy,
-    underspecificationType: _underspecificationType,
-    pushRequestedAt: _pushRequestedAt,
-    pushRecoveryAttemptedAt: _pushRecoveryAttemptedAt,
-    pushRequestStatus: _pushRequestStatus,
-    pushRequestReason: _pushRequestReason,
-    pushRequestSuppressedAt: _pushRequestSuppressedAt,
-    push: _push,
-    pushedAt: _pushedAt,
-    ...detection
-  } = question.detection;
-  if (
-    !_pool
-    && !_recovery
-    && !_purpose
-    && !_strategy
-    && _underspecificationType === undefined
-    && !_pushRequestedAt
-    && !_pushRecoveryAttemptedAt
-    && !_pushRequestStatus
-    && !_pushRequestReason
-    && !_pushRequestSuppressedAt
-    && !_push
-    && !_pushedAt
-  ) return question;
-  return { ...question, detection };
-}
 
 export class QuestionService {
-  private readonly adapter: QuestionerAdapter;
+  private adapter: QuestionerAdapter | null;
 
   constructor(adapter?: QuestionerAdapter) {
-    this.adapter = adapter ?? new QuestionerAdapter(db);
+    this.adapter = adapter ?? null;
+  }
+
+  private async getAdapter(): Promise<QuestionerAdapter> {
+    this.adapter ??= (await import('../adapters/questioner.adapter.instance')).questionerAdapter;
+    return this.adapter;
   }
 
   /**
    * Find pending questions for a given user, optionally filtered by detection
    * mode, source type, source id, or selected-intent scope. Intent scope returns
-   * direct intent questions plus negotiation questions whose source opportunity
-   * belongs to that intent for the same viewer.
+   * direct intent questions plus only negotiation-family rows whose versioned
+   * exact recipient provenance currently validates for that owned intent.
    *
    * @param userId  - The user to find pending questions for.
    * @param filters - Optional narrowing filters.
@@ -78,7 +47,7 @@ export class QuestionService {
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
     logger.verbose('Finding pending questions', { userId, filters });
-    const rows = await this.adapter.findPending(userId, filters);
+    const rows = await (await this.getAdapter()).findPending(userId, filters);
     return rows.map(stripInternalDetection);
   }
 
@@ -94,7 +63,7 @@ export class QuestionService {
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
     logger.verbose('Finding answered questions', { userId, filters });
-    const rows = await this.adapter.findAnswered(userId, filters);
+    const rows = await (await this.getAdapter()).findAnswered(userId, filters);
     return rows.map(stripInternalDetection);
   }
 
@@ -110,7 +79,7 @@ export class QuestionService {
     conversationId: string;
     messageId: string;
   }): Promise<void> {
-    await this.adapter.bindChatQuestionsToMessage(input);
+    await (await this.getAdapter()).bindChatQuestionsToMessage(input);
   }
 
   /**
@@ -120,7 +89,7 @@ export class QuestionService {
    * @returns Global, delivered-pool, and summed Personal Agent counts.
    */
   async countPending(userId: string): Promise<PendingQuestionCounts> {
-    return this.adapter.countPending(userId);
+    return (await this.getAdapter()).countPending(userId);
   }
 
   /**
@@ -134,7 +103,7 @@ export class QuestionService {
    */
   async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
     logger.verbose('Answering question', { questionId, answeredBy: answer.answeredBy });
-    return this.adapter.answer(questionId, userId, answer);
+    return (await this.getAdapter()).answer(questionId, userId, answer);
   }
 
   /**
@@ -147,7 +116,7 @@ export class QuestionService {
    */
   async dismiss(questionId: string, userId: string): Promise<boolean> {
     logger.verbose('Dismissing question', { questionId, userId });
-    return this.adapter.dismiss(questionId, userId);
+    return (await this.getAdapter()).dismiss(questionId, userId);
   }
 }
 

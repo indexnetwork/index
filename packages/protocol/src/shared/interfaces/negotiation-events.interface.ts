@@ -55,10 +55,22 @@ export interface NegotiationTimeoutQueue {
 
 /** Payload carried by an ask_user answer-window expiry job. */
 export interface AskUserExpiryPayload {
+  /** Deterministic durable settlement/outbox key for this exact paused task. */
+  settlementId: string;
   /** Opportunity to resume via the run-existing continuation path. */
   opportunityId: string;
   /** The asking side's client (the user who was asked and did not answer). */
   userId: string;
-  /** What the negotiator wanted permission to share / needed to know. */
-  disclosureSubject: string;
+  /** Exact owned signal consulted by the paused negotiator. */
+  recipientIntentId: string;
+  /** Exact non-personal network shared by the opportunity actors. */
+  networkId: string;
+  /** Admission-time canonical hash of the recipient intent payload/summary. */
+  intentFingerprint: string;
+  /** Admission-time opportunity lifecycle marker. */
+  opportunityStatus: string;
+  opportunityUpdatedAt: string;
+  /** Exact counterparty provenance for settlement-time eligibility checks. */
+  counterpartyUserId: string;
+  counterpartyIntentId: string;
 }

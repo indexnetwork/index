@@ -221,6 +221,7 @@ export async function createChatTools(
     ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
     ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
     ...(deps.findPendingQuestions && { findPendingQuestions: deps.findPendingQuestions }),
+    ...(deps.answerPendingQuestion && { answerPendingQuestion: deps.answerPendingQuestion }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     ...(deps.chatQuestions && { chatQuestions: deps.chatQuestions }),
     ...(deps.chatSession && { chatSession: deps.chatSession }),

@@ -5,13 +5,24 @@ function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswe
   return {
     createPremiseFromAnswer: mock(async () => {}),
     enqueueIntentRefinement: mock(async () => ({ applied: true })),
-    storeNegotiationContext: mock(async () => {}),
     resumeInflightNegotiation: mock(async () => {}),
     resolveChatQuestionWait: mock(() => {}),
     handlePoolAnswer: mock(async () => {}),
     ...overrides,
   };
 }
+
+const exactSettlement = {
+  authoritative: true as const,
+  purpose: 'inflight_consultation' as const,
+  taskId: 'task-exact',
+  settlementId: 'negotiation-question-settlement-v1-task-exact',
+  recipientIntentId: 'intent-1',
+  opportunityId: 'opp-1',
+  networkId: 'network-1',
+  continuationStatus: 'requested' as const,
+  resumeClaimed: true,
+};
 
 const basePayload = {
   questionId: "q-1",
@@ -37,7 +48,6 @@ describe("handleQuestionAnswered", () => {
     await handleQuestionAnswered({ ...basePayload, mode: "discovery" }, deps);
     expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
     expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
-    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
   });
 
   it("calls createPremiseFromAnswer for enrichment mode", async () => {
@@ -100,23 +110,33 @@ describe("handleQuestionAnswered", () => {
     });
     expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
     expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
-    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
   });
 
-  it("calls storeNegotiationContext for negotiation mode", async () => {
+  it("does not perform negotiation mutation outside the authoritative adapter boundary", async () => {
     await handleQuestionAnswered(
       { ...basePayload, mode: "negotiation", sourceType: "opportunity", sourceId: "opp-1" },
       deps,
     );
-    expect(deps.storeNegotiationContext).toHaveBeenCalledTimes(1);
-    const call = (deps.storeNegotiationContext as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toEqual({
-      userId: "u-1",
-      opportunityId: "opp-1",
-      questionId: "q-1",
-      selectedOptions: ["Option A"],
-      freeText: undefined,
-    });
+    expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat shared mutation after authoritative ordinary settlement", async () => {
+    await handleQuestionAnswered({
+      ...basePayload,
+      mode: "negotiation",
+      purpose: "stalled_followup",
+      sourceType: "opportunity",
+      sourceId: "opp-1",
+      settlement: {
+        ...exactSettlement,
+        purpose: 'stalled_followup',
+        taskId: 'task-old',
+        settlementId: undefined,
+        continuationStatus: undefined,
+        resumeClaimed: false,
+      },
+    }, deps);
+    expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
   });
 
   it("keeps uptake answers private to the question row", async () => {
@@ -124,7 +144,6 @@ describe("handleQuestionAnswered", () => {
       { ...basePayload, mode: "negotiation", purpose: "uptake", sourceType: "opportunity", sourceId: "opp-1" },
       deps,
     );
-    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
   });
 
   it("swallows errors from handlers without rethrowing", async () => {
@@ -139,32 +158,55 @@ describe("handleQuestionAnswered", () => {
     expect(failDeps.createPremiseFromAnswer).toHaveBeenCalledTimes(1);
   });
 
-  it("routes negotiation_inflight to resumeInflightNegotiation (P3.2 resume path)", async () => {
-    // P3.1 shipped the mode with a default-branch tolerance; P3.2 (IND-401)
-    // owns consumption: the answer resumes the paused negotiation.
-    await handleQuestionAnswered(
-      { ...basePayload, mode: "negotiation_inflight", sourceType: "opportunity", sourceId: "opp-1", answer: { ...basePayload.answer, freeText: "yes, share it" } },
-      deps,
-    );
-    expect(deps.resumeInflightNegotiation).toHaveBeenCalledTimes(1);
-    const call = (deps.resumeInflightNegotiation as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toEqual({
-      userId: "u-1",
-      opportunityId: "opp-1",
-      questionId: "q-1",
-      selectedOptions: ["Option A"],
-      freeText: "yes, share it",
-    });
-    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
-    expect(deps.resolveChatQuestionWait).not.toHaveBeenCalled();
-  });
-
-  it("resumeInflightNegotiation failure is caught, not thrown", async () => {
-    deps = makeDeps({ resumeInflightNegotiation: mock(async () => { throw new Error("boom"); }) });
+  it("fails closed for inflight events without an authoritative exact-task claim", async () => {
     await handleQuestionAnswered(
       { ...basePayload, mode: "negotiation_inflight", sourceType: "opportunity", sourceId: "opp-1" },
       deps,
     );
+    expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
+    expect(deps.resolveChatQuestionWait).not.toHaveBeenCalled();
+  });
+
+  it("resumes only the exact DB-claimed inflight task", async () => {
+    await handleQuestionAnswered({
+      ...basePayload,
+      mode: "negotiation_inflight",
+      purpose: "inflight_consultation",
+      sourceType: "opportunity",
+      sourceId: "opp-1",
+      settlement: exactSettlement,
+    }, deps);
+    expect(deps.resumeInflightNegotiation).toHaveBeenCalledWith(expect.objectContaining({
+      taskId: "task-exact",
+      opportunityId: "opp-1",
+    }));
+  });
+
+  it("does not resume when answer lost the answer-vs-timeout claim", async () => {
+    await handleQuestionAnswered({
+      ...basePayload,
+      mode: "negotiation_inflight",
+      purpose: "inflight_consultation",
+      sourceType: "opportunity",
+      sourceId: "opp-1",
+      settlement: { ...exactSettlement, taskId: 'task-stale', settlementId: 'negotiation-question-settlement-v1-task-stale', resumeClaimed: false },
+    }, deps);
+    expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
+  });
+
+  it("resumeInflightNegotiation failure is rethrown for durable caller retry", async () => {
+    deps = makeDeps({ resumeInflightNegotiation: mock(async () => { throw new Error("boom"); }) });
+    await expect(handleQuestionAnswered(
+      {
+        ...basePayload,
+        mode: "negotiation_inflight",
+        purpose: "inflight_consultation",
+        sourceType: "opportunity",
+        sourceId: "opp-1",
+        settlement: exactSettlement,
+      },
+      deps,
+    )).rejects.toThrow('boom');
     expect(deps.resumeInflightNegotiation).toHaveBeenCalledTimes(1);
   });
 
@@ -196,6 +238,5 @@ describe("handleQuestionAnswered", () => {
     );
     expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
     expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
-    expect(deps.storeNegotiationContext).not.toHaveBeenCalled();
   });
 });

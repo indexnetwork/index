@@ -123,6 +123,15 @@ describe('GET /questions visit-mining wiring (IND-439)', () => {
     ]);
   });
 
+  test('passive exact-intent refetch never reaches the visit-mining gate', async () => {
+    const res = await controller.list(
+      listRequest(`?scopeType=intent&scopeId=${intentId}&passive=true`),
+      mockUser(),
+    );
+    expect(res.status).toBe(200);
+    expect(enqueueCalls).toEqual([]);
+  });
+
   test('unscoped fetch never reaches the gate', async () => {
     const res = await controller.list(listRequest(''), mockUser());
     expect(res.status).toBe(200);

@@ -207,7 +207,7 @@ describe("QuestionDetection", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts optional purpose independently from QUD metadata", () => {
+  it("accepts versioned exact negotiation provenance independently from QUD metadata", () => {
     const result = QuestionDetectionSchema.safeParse({
       mode: "negotiation",
       purpose: "uptake",
@@ -215,8 +215,53 @@ describe("QuestionDetection", () => {
       sourceId: "opp-1",
       timestamp: new Date().toISOString(),
       underspecificationType: null,
+      negotiation: {
+        version: 1,
+        purpose: "uptake",
+        recipientUserId: "user-1",
+        recipientIntentId: "intent-1",
+        opportunityId: "opp-1",
+        networkId: "network-1",
+        counterpartyUserId: "user-2",
+        counterpartyIntentId: "intent-2",
+        counterpartyFelicityAuthority: 45,
+        intentFingerprint: "fingerprint",
+        opportunityStatus: "pending",
+        opportunityUpdatedAt: new Date().toISOString(),
+        questionOrdinal: 0,
+      },
     });
     expect(result.success).toBe(true);
+  });
+
+  it("fails closed for legacy or mismatched negotiation detection", () => {
+    const base = {
+      mode: "negotiation_inflight" as const,
+      purpose: "inflight_consultation" as const,
+      sourceType: "opportunity",
+      sourceId: "opp-1",
+      timestamp: new Date().toISOString(),
+    };
+    expect(QuestionDetectionSchema.safeParse(base).success).toBe(false);
+    const negotiation = {
+      version: 1 as const,
+      purpose: "inflight_consultation" as const,
+      recipientUserId: "user-1",
+      recipientIntentId: "intent-1",
+      opportunityId: "opp-1",
+      taskId: "task-1",
+      networkId: "network-1",
+      intentFingerprint: "fingerprint",
+      opportunityStatus: "negotiating" as const,
+      opportunityUpdatedAt: new Date().toISOString(),
+      taskState: "input_required" as const,
+      taskUpdatedAt: new Date().toISOString(),
+      questionOrdinal: 0,
+    };
+    expect(QuestionDetectionSchema.safeParse({ ...base, negotiation }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({ ...base, sourceId: "other-opp", negotiation }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, negotiation: { ...negotiation, taskId: undefined } }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, negotiation: { ...negotiation, taskState: "completed" } }).success).toBe(false);
   });
 
   it("accepts optional triggeredBy", () => {

@@ -23,15 +23,15 @@ const standaloneModeExpectations = [
   },
   {
     mode: "negotiation" as const,
-    anchors: ["underlying goal or topic", "relevant community", "intent or profile"],
+    anchors: ["underlying goal or topic", "relevant community", "source-safe label"],
     positiveExample: "For your search for AI infrastructure collaborators in the AI founders community",
     negativeExample: "Which role is a better fit for your immediate needs?",
   },
   {
     mode: "negotiation_inflight" as const,
-    anchors: ["disclosure subject", "counterparty hint"],
-    positiveExample: "May I share your budget range with a Berlin-based AI-infrastructure founder",
-    negativeExample: "Can I share your budget with them?",
+    anchors: ["disclosure subject", "the other participant in this match"],
+    positiveExample: "May I share your budget range with the other participant in this match?",
+    negativeExample: "May I share your budget with Alex, a Berlin-based founder from the event?",
   },
 ];
 
@@ -245,15 +245,15 @@ describe("negotiation preset", () => {
     const preset = getPreset("negotiation");
     const result = preset.buildPrompt({
       negotiationId: "neg-1",
-      counterpartyHint: "AI infra founder, Berlin",
-      indexContext: "AI founders community",
+      counterpartyHint: "the other participant",
+      indexContext: "the selected network",
       outcomeReason: "turn_cap",
-      keyTake: "Both interested but scope unclear",
+      recipientIntent: "Find an AI infrastructure collaborator",
       userContext: "Alice is a builder.",
     });
     expect(typeof result).toBe("string");
     expect(result).toContain("turn_cap");
-    expect(result).toContain("AI infra founder");
+    expect(result).toContain("the other participant");
     expect(result).toContain("Alice");
   });
 
@@ -262,17 +262,17 @@ describe("negotiation preset", () => {
     const result = preset.buildPrompt({
       purpose: "uptake",
       negotiationId: "neg-uptake",
-      counterpartyHint: "a climate founder with manufacturing partnerships",
-      indexContext: "climate builders",
-      proposedActivity: "manufacture a pilot run of low-carbon panels",
-      preparatoryEvidence: "They have described supplier relationships but not production capacity.",
+      counterpartyHint: "the other participant",
+      indexContext: "the selected network",
+      proposedActivity: "a potential collaboration that may require clarification before you decide",
       userContext: "Mina develops low-carbon construction projects.",
     });
 
     expect(result).toContain("UPTAKE");
-    expect(result).toContain("manufacture a pilot run");
-    expect(result).toContain("manufacturing partnerships");
-    expect(result).toContain("production capacity");
+    expect(result).toContain("potential collaboration");
+    expect(result).toContain("the other participant");
+    expect(result).not.toContain("manufacturing partnerships");
+    expect(result).not.toContain("production capacity");
     expect(result).not.toContain("authority score");
   });
 
@@ -299,9 +299,9 @@ describe("negotiation preset", () => {
 describe("negotiation_inflight preset", () => {
   const baseContext = {
     negotiationId: "neg-42",
-    counterpartyHint: "a fintech CTO exploring agent tooling in Berlin",
+    counterpartyHint: "the other participant",
     disclosureSubject: "permission to share the client's budget range",
-    indexContext: "AI founders community",
+    indexContext: "the selected network",
     userContext: "Alice is a protocol engineer.",
   };
 
@@ -313,13 +313,18 @@ describe("negotiation_inflight preset", () => {
     expect(typeof preset.buildPrompt).toBe("function");
   });
 
-  it("buildPrompt contains the counterparty hint, disclosure subject, and community", () => {
+  it("buildPrompt contains only the supplied source-safe negotiation context", () => {
     const preset = getPreset("negotiation_inflight");
-    const result = preset.buildPrompt(baseContext);
-    expect(result).toContain("a fintech CTO exploring agent tooling in Berlin");
+    const result = preset.buildPrompt({
+      ...baseContext,
+      counterpartyHint: "the other participant",
+    });
+    expect(result).toContain("the other participant");
     expect(result).toContain("permission to share the client's budget range");
-    expect(result).toContain("AI founders community");
+    expect(result).toContain("the selected network");
     expect(result).toContain("Alice is a protocol engineer.");
+    expect(result).not.toContain("fintech CTO");
+    expect(result).not.toContain("Berlin");
   });
 
   it("buildPrompt passes the negotiator's draft question through for refinement", () => {
@@ -365,7 +370,7 @@ describe("negotiation_inflight preset", () => {
     // structurally valid per QuestionSchema (same schema the agent parses with).
     const disclosureQuestion = {
       title: "Disclosure",
-      prompt: "May I share your budget range with a Berlin-based fintech CTO you're being matched with?",
+      prompt: "May I share your budget range with the other participant in this match?",
       options: [
         { label: "Yes, share the range (Recommended)", description: "Your negotiator discloses the budget range and continues negotiating with it on the table." },
         { label: "No, keep it private", description: "Your negotiator continues without revealing any budget figure." },

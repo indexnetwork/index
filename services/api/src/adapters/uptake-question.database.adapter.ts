@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm/sql';
 
 import { db, type OpportunityRow, toOpportunityRow } from './database.shared';
-import { intentNetworks, intents, networkMembers, networks, opportunities, questions, users } from '../schemas/database.schema';
+import { intentNetworks, intents, networkMembers, networks, opportunities, questions } from '../schemas/database.schema';
 
 export interface UptakeIntentRow {
   id: string;
@@ -11,11 +11,6 @@ export interface UptakeIntentRow {
   status: string | null;
   archivedAt: Date | null;
   felicityAuthority: number | null;
-}
-
-export interface UptakePublicUserHint {
-  bio: string | null;
-  location: string | null;
 }
 
 /** Narrow data-access adapter for pending-opportunity uptake eligibility. */
@@ -41,14 +36,6 @@ export class UptakeQuestionDatabaseAdapter {
         eq(intentNetworks.networkId, networkId),
       ))
       .where(eq(intents.id, id))
-      .limit(1);
-    return rows[0] ?? null;
-  }
-
-  async getPublicUserHint(userId: string): Promise<UptakePublicUserHint | null> {
-    const rows = await db.select({ bio: users.intro, location: users.location })
-      .from(users)
-      .where(and(eq(users.id, userId), isNull(users.deletedAt)))
       .limit(1);
     return rows[0] ?? null;
   }

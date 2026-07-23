@@ -1,0 +1,2 @@
+DROP INDEX "questions_uptake_recipient_source_uniq";--> statement-breakpoint
+CREATE UNIQUE INDEX "questions_negotiation_provenance_uniq" ON "questions" USING btree (("detection"->'negotiation'->>'recipientUserId'),("detection"->'negotiation'->>'recipientIntentId'),("detection"->'negotiation'->>'opportunityId'),COALESCE("detection"->'negotiation'->>'taskId', ''),("detection"->'negotiation'->>'purpose'),("detection"->'negotiation'->>'questionOrdinal')) WHERE "questions"."detection"->'negotiation'->>'version' = '1';

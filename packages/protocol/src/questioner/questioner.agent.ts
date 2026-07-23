@@ -15,7 +15,7 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { Timed } from "../shared/observability/performance.js";
 import { getPreset } from "./questioner.presets.js";
-import type { QuestionerInput } from "./questioner.types.js";
+import { isValidQuestionerInputContract, type QuestionerInput } from "./questioner.types.js";
 
 const logger = protocolLogger("QuestionerAgent");
 
@@ -55,6 +55,10 @@ export class QuestionerAgent {
     input: QuestionerInput,
     options?: { signal?: AbortSignal },
   ): Promise<QuestionGenerationResult | null> {
+    if (!isValidQuestionerInputContract(input)) {
+      logger.warn('QuestionerAgent rejected invalid mode/purpose/context contract', { mode: input.mode });
+      return null;
+    }
     const preset = getPreset(input.mode, input.purpose);
     const userMessage = preset.buildPrompt(input.context);
 

@@ -1,8 +1,6 @@
-import { and, eq, or, sql } from 'drizzle-orm/sql';
-
+import { QuestionerAdapter, type AdapterPersistedQuestion } from '../../adapters/questioner.adapter';
 import db from '../drizzle/drizzle';
 import { log } from '../log';
-import { questions } from '../../schemas/database.schema';
 
 const logger = log.service.from('UptakeAcceptanceGuard');
 
@@ -39,24 +37,14 @@ export interface UptakeAcceptanceGuardLike {
   check(input: UptakeAcceptanceCheck): Promise<UptakeAcceptanceAdvisoryResult | null>;
 }
 
-interface PendingUptakeQuestionRow {
-  id: string;
-  detection: { mode?: string; purpose?: string; sourceType?: string; sourceId?: string };
-  actors: Array<{ userId?: string; networkId?: string }>;
-  payload: {
-    title?: string;
-    prompt?: string;
-    options?: Array<{ label?: string; description?: string }>;
-    multiSelect?: boolean;
-  };
-}
 
 /**
  * Advisory preflight for opportunity acceptance REST paths.
  *
- * The database query is deliberately exact (recipient + opportunity + mode +
- * purpose + actor network) and is repeated on every retry. Lookup failures fail
- * open so a question-store outage cannot block acceptance.
+ * Uses the QuestionerAdapter's canonical pending read, which rejects malformed,
+ * legacy, and lifecycle-drifted negotiation provenance before an advisory can
+ * block acceptance. Lookup failures fail open so a question-store outage cannot
+ * block acceptance.
  */
 export class UptakeAcceptanceGuard implements UptakeAcceptanceGuardLike {
   /** Check whether every currently pending uptake question was acknowledged. */
@@ -64,29 +52,13 @@ export class UptakeAcceptanceGuard implements UptakeAcceptanceGuardLike {
     if (!isEnabled()) return null;
 
     try {
-      const actor = input.networkId
-        ? [{ userId: input.userId, networkId: input.networkId }]
-        : [{ userId: input.userId }];
-      const conditions = [
-        eq(questions.status, 'pending'),
-        sql`${questions.actors}::jsonb @> ${JSON.stringify(actor)}::jsonb`,
-        sql`${questions.detection}->>'mode' = 'negotiation'`,
-        sql`${questions.detection}->>'purpose' = 'uptake'`,
-        sql`${questions.detection}->>'sourceType' = 'opportunity'`,
-        sql`${questions.detection}->>'sourceId' = ${input.opportunityId}`,
-        or(sql`${questions.expiresAt} IS NULL`, sql`${questions.expiresAt} > NOW()`),
-      ];
-      const rows = await db
-        .select({
-          id: questions.id,
-          detection: questions.detection,
-          actors: questions.actors,
-          payload: questions.payload,
-        })
-        .from(questions)
-        .where(and(...conditions))
-        .orderBy(questions.createdAt) as PendingUptakeQuestionRow[];
-
+      const rows = await new QuestionerAdapter(db).findPending(input.userId, {
+        mode: 'negotiation',
+        purpose: 'uptake',
+        sourceType: 'opportunity',
+        sourceId: input.opportunityId,
+        ...(input.networkId ? { networkId: input.networkId } : {}),
+      });
       const exactRows = rows.filter((row) => isExactMatch(row, input));
       const acknowledged = new Set(input.acknowledgedUptakeQuestionIds ?? []);
       if (exactRows.every((row) => acknowledged.has(row.id))) return null;
@@ -118,7 +90,7 @@ function isEnabled(): boolean {
     && process.env.QUESTIONER_UPTAKE_ENABLED === 'true';
 }
 
-function isExactMatch(row: PendingUptakeQuestionRow, input: UptakeAcceptanceCheck): boolean {
+function isExactMatch(row: AdapterPersistedQuestion, input: UptakeAcceptanceCheck): boolean {
   const detection = row.detection ?? {};
   if (
     detection.mode !== 'negotiation'
@@ -132,7 +104,7 @@ function isExactMatch(row: PendingUptakeQuestionRow, input: UptakeAcceptanceChec
     && (!input.networkId || actor.networkId === input.networkId));
 }
 
-function toPublicQuestion(row: PendingUptakeQuestionRow): PublicUptakeQuestion {
+function toPublicQuestion(row: AdapterPersistedQuestion): PublicUptakeQuestion {
   const payload = row.payload ?? {};
   return {
     id: row.id,

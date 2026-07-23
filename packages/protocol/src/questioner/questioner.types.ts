@@ -7,7 +7,8 @@
  */
 import type { DiscoveryQuestionInput } from "../shared/schemas/discovery-question.schema.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
-import type { QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/question.schema.js";
+import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/question.schema.js";
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../negotiation/negotiation.question-safety.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
 
@@ -45,7 +46,9 @@ export interface ProfileContext {
 /** Shared context fields for negotiation-mode questions. */
 interface NegotiationContextBase {
   negotiationId: string;
+  /** Privacy-reviewed generic description; never raw counterparty identity/profile. */
   counterpartyHint: string;
+  /** Source-safe network label, never an internal prompt or identifier. */
   indexContext: string;
   /** The user's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
@@ -55,7 +58,8 @@ interface NegotiationContextBase {
 export interface PostStallNegotiationContext extends NegotiationContextBase {
   purpose?: undefined;
   outcomeReason: "turn_cap" | "timeout" | "stalled";
-  keyTake: string;
+  /** The recipient's own exact opportunity-bound signal, never evaluator reasoning. */
+  recipientIntent: string;
 }
 
 /** Pre-accept uptake context targeting a counterparty's preparatory conditions. */
@@ -63,8 +67,6 @@ export interface UptakeNegotiationContext extends NegotiationContextBase {
   purpose: "uptake";
   /** Plain-language activity or commitment whose feasibility needs clarification. */
   proposedActivity: string;
-  /** Public evidence already available about capability, resources, or authority. */
-  preparatoryEvidence?: string;
 }
 
 /** Negotiation context discriminated by internal question purpose. */
@@ -181,19 +183,42 @@ interface QuestionerInputBase {
   conversationId?: string;
   /** Assistant message ID — set when we know which message triggered the question. Stored in detection.messageId for inline anchoring. */
   messageId?: string;
+  /**
+   * Candidate exact binding for negotiation-family jobs. The API/DB must
+   * authoritatively re-resolve it before generation and again before insert.
+   */
+  negotiation?: NegotiationQuestionCandidate;
 }
 
-/** Existing question inputs, including post-stall negotiation source compatibility. */
+/** Non-negotiation modes cannot smuggle negotiation purpose/provenance. */
 interface StandardQuestionerInput extends QuestionerInputBase {
-  purpose?: undefined;
-  /** Mode-specific context. Must align with the selected mode. */
-  context: Exclude<QuestionerContext, UptakeNegotiationContext | RecoveryIntentContext>;
+  mode: Exclude<QuestionMode, "negotiation" | "negotiation_inflight">;
+  purpose?: never;
+  negotiation?: never;
+  context: Exclude<QuestionerContext, NegotiationContext | NegotiationInflightContext | RecoveryIntentContext>;
+}
+
+/** Ordinary post-stall generation is task-backed and uses only the ordinary preset. */
+export interface PostStallQuestionerInput extends QuestionerInputBase {
+  mode: "negotiation";
+  purpose: "stalled_followup";
+  negotiation: NegotiationQuestionCandidate & { purpose: "stalled_followup"; taskId: string };
+  context: PostStallNegotiationContext;
+}
+
+/** Mid-negotiation consultation is task-backed and uses only structured ask_user fields. */
+export interface InflightQuestionerInput extends QuestionerInputBase {
+  mode: "negotiation_inflight";
+  purpose: "inflight_consultation";
+  negotiation: NegotiationQuestionCandidate & { purpose: "inflight_consultation"; taskId: string };
+  context: NegotiationInflightContext;
 }
 
 /** Negotiation-mode uptake generation input. */
 export interface UptakeQuestionerInput extends QuestionerInputBase {
   mode: "negotiation";
   purpose: "uptake";
+  negotiation: NegotiationQuestionCandidate & { purpose: "uptake"; taskId?: undefined };
   context: UptakeNegotiationContext;
 }
 
@@ -203,8 +228,74 @@ export interface RecoveryQuestionerInput extends QuestionerInputBase {
   purpose: "recovery";
   sourceType: "intent";
   triggeredByIntentId: string;
+  negotiation?: never;
   context: RecoveryIntentContext;
 }
 
-/** Top-level input discriminated by the internal purpose. */
-export type QuestionerInput = StandardQuestionerInput | UptakeQuestionerInput | RecoveryQuestionerInput;
+/** Top-level input discriminated by both mode and internal purpose. */
+export type QuestionerInput =
+  | StandardQuestionerInput
+  | PostStallQuestionerInput
+  | InflightQuestionerInput
+  | UptakeQuestionerInput
+  | RecoveryQuestionerInput;
+
+/** Runtime mirror of the mode/purpose/context discriminant used at queue boundaries. */
+export function isValidQuestionerInputContract(input: QuestionerInput): boolean {
+  if (input.purpose === 'recovery') {
+    const context = input.context as RecoveryIntentContext;
+    return input.mode === 'intent'
+      && input.sourceType === 'intent'
+      && input.triggeredByIntentId === input.sourceId
+      && input.negotiation === undefined
+      && context.purpose === 'recovery'
+      && context.intentId === input.sourceId;
+  }
+  if (input.mode !== 'negotiation' && input.mode !== 'negotiation_inflight') {
+    return input.purpose === undefined && input.negotiation === undefined;
+  }
+  if (
+    input.sourceType !== 'opportunity'
+    || !input.negotiation
+    || input.negotiation.opportunityId !== input.sourceId
+    || input.negotiation.recipientUserId !== input.userId
+    || input.negotiation.purpose !== input.purpose
+  ) return false;
+
+  const context = input.context as unknown as Record<string, unknown>;
+  if (
+    context.counterpartyHint !== NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY
+    || context.indexContext !== NEGOTIATION_QUESTION_GENERIC_NETWORK
+  ) return false;
+
+  if (input.mode === 'negotiation_inflight') {
+    return input.purpose === 'inflight_consultation'
+      && typeof input.negotiation.taskId === 'string'
+      && input.negotiation.taskId.length > 0
+      && context.negotiationId === input.negotiation.taskId
+      && typeof context.disclosureSubject === 'string'
+      && isSafeNegotiationQuestionText(context.disclosureSubject)
+      && (context.draftQuestion === undefined
+        || (typeof context.draftQuestion === 'string' && isSafeNegotiationQuestionText(context.draftQuestion)));
+  }
+  if (input.purpose === 'uptake') {
+    return input.negotiation.taskId === undefined
+      && typeof input.negotiation.counterpartyUserId === 'string'
+      && input.negotiation.counterpartyUserId.length > 0
+      && typeof input.negotiation.counterpartyIntentId === 'string'
+      && input.negotiation.counterpartyIntentId.length > 0
+      && typeof input.negotiation.counterpartyFelicityAuthority === 'number'
+      && Number.isFinite(input.negotiation.counterpartyFelicityAuthority)
+      && context.negotiationId === input.sourceId
+      && context.purpose === 'uptake'
+      && context.proposedActivity === NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY;
+  }
+  return input.purpose === 'stalled_followup'
+    && typeof input.negotiation.taskId === 'string'
+    && input.negotiation.taskId.length > 0
+    && context.negotiationId === input.negotiation.taskId
+    && context.purpose === undefined
+    && (context.outcomeReason === 'turn_cap' || context.outcomeReason === 'timeout' || context.outcomeReason === 'stalled')
+    && typeof context.recipientIntent === 'string'
+    && context.recipientIntent.trim().length > 0;
+}
