@@ -65,4 +65,12 @@ export interface AskUserExpiryPayload {
   recipientIntentId: string;
   /** Exact non-personal network shared by the opportunity actors. */
   networkId: string;
+  /** Admission-time canonical hash of the recipient intent payload/summary. */
+  intentFingerprint: string;
+  /** Admission-time opportunity lifecycle marker. */
+  opportunityStatus: string;
+  opportunityUpdatedAt: string;
+  /** Exact counterparty provenance for settlement-time eligibility checks. */
+  counterpartyUserId: string;
+  counterpartyIntentId: string;
 }

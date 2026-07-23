@@ -1,6 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
-import type { Id } from '../shared/interfaces/database.interface.js';
-import type { OpportunityStatus, Opportunity } from '../shared/interfaces/database.interface.js';
+import type { Id, NegotiationContinuationExecution, NegotiationContinuationReceipt, OpportunityStatus, Opportunity } from '../shared/interfaces/database.interface.js';
 import type { Lens } from '../shared/interfaces/embedder.interface.js';
 import type { EvaluatorEntity } from './opportunity.evaluator.js';
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
@@ -163,12 +162,7 @@ export function resolveInitialStatus(
  */
 export interface OpportunityGraphOptions {
   /** Exact durable ask_user settlement being resumed; internal queue path only. */
-  negotiationContinuation?: {
-    taskId: string;
-    settlementId: string;
-    recipientIntentId: string;
-    networkId: string;
-  };
+  negotiationContinuation?: NegotiationContinuationExecution;
   /** Initial status for created opportunities (default: 'pending') */
   initialStatus?: OpportunityStatus;
   /** Minimum score threshold (default: 50) */
@@ -472,6 +466,12 @@ export const OpportunityGraphState = Annotation.Root({
 
   /** Typed persist-node counts used by queue telemetry. */
   persistenceOutcome: Annotation<OpportunityPersistenceOutcome | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Positive exact-successor receipt for a fenced continuation. */
+  negotiationContinuationReceipt: Annotation<NegotiationContinuationReceipt | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

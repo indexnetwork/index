@@ -10,6 +10,14 @@ const mockAdd = mock(async () => ({ id: 'job-1', name: 'negotiate_existing', dat
 const mockGetJob = mock(async () => null as null | { id: string; getState: () => Promise<string>; retry: () => Promise<void> });
 const mockCreateWorker = mock(() => ({}));
 
+mock.module('../../adapters/database.adapter', () => ({
+  ChatDatabaseAdapter: class {},
+}));
+
+mock.module('../../adapters/embedder.adapter', () => ({
+  EmbedderAdapter: class {},
+}));
+
 mock.module('../../lib/bullmq/bullmq', () => ({
   QueueFactory: {
     createQueue: () => ({ add: mockAdd, getJob: mockGetJob }),
@@ -110,71 +118,114 @@ describe('NegotiationRunExistingQueue', () => {
     });
   });
 
-  it('validates and completes the exact settled task without selecting a newer task', async () => {
-    const invokeOpportunityGraph = mock(async (_opts: RunExistingGraphInvokeOptions) => {});
-    const getNegotiationContinuationRequest = mock(async () => 'requested' as const);
-    const markNegotiationContinuationCompleted = mock(async () => {});
+  const exactData = {
+    opportunityId: 'opp-42', userId: 'u1', taskId: 'task-exact',
+    settlementId: 'settlement-exact', recipientIntentId: 'intent-1', networkId: 'network-1',
+  };
+  const claimedExecution = {
+    taskId: exactData.taskId,
+    settlementId: exactData.settlementId,
+    opportunityId: exactData.opportunityId,
+    userId: exactData.userId,
+    recipientIntentId: exactData.recipientIntentId,
+    networkId: exactData.networkId,
+    intentFingerprint: 'fp-1',
+    opportunityStatus: 'pending',
+    opportunityUpdatedAt: '2026-07-23T12:00:00.000Z',
+    counterpartyUserId: 'u2',
+    counterpartyIntentId: 'intent-2',
+    successorTaskId: 'task-successor',
+    conversationId: 'conversation-1',
+    token: 'lease-token',
+    fence: 2,
+    leaseExpiresAt: '2026-07-23T12:01:00.000Z',
+    consultation: { recipientUserId: 'u1', recipientIntentId: 'intent-1', kind: 'answer' as const, selectedOptions: ['yes'] },
+  };
+  const receipt = {
+    priorTaskId: exactData.taskId,
+    settlementId: exactData.settlementId,
+    successorTaskId: claimedExecution.successorTaskId,
+    fence: claimedExecution.fence,
+    outcome: 'accepted' as const,
+  };
+
+  it('passes only a current fenced claim to the graph and completes only its positive receipt', async () => {
+    const invokeOpportunityGraph = mock(async (_opts: RunExistingGraphInvokeOptions) => ({ negotiationContinuationReceipt: receipt }));
+    const claimNegotiationContinuationExecution = mock(async () => ({ status: 'claimed' as const, execution: claimedExecution }));
+    const completeNegotiationContinuationExecution = mock(async () => {});
     const queue = new NegotiationRunExistingQueue({
       invokeOpportunityGraph,
-      continuationAdapter: { getNegotiationContinuationRequest, markNegotiationContinuationCompleted },
+      continuationAdapter: {
+        claimNegotiationContinuationExecution,
+        heartbeatNegotiationContinuationExecution: async (execution) => execution,
+        releaseNegotiationContinuationExecution: async () => {},
+        completeNegotiationContinuationExecution,
+      },
     });
-    const data = {
-      opportunityId: 'opp-42', userId: 'u1', taskId: 'task-exact',
-      settlementId: 'settlement-exact', recipientIntentId: 'intent-1', networkId: 'network-1',
-    };
-    await queue.processJob('negotiate_existing', data);
-    expect(getNegotiationContinuationRequest).toHaveBeenCalledWith(data);
+
+    await queue.processJob('negotiate_existing', exactData);
+    expect(claimNegotiationContinuationExecution).toHaveBeenCalledWith(exactData);
     expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({
-      opportunityId: 'opp-42',
-      options: { negotiationContinuation: {
-        taskId: 'task-exact', settlementId: 'settlement-exact',
-        recipientIntentId: 'intent-1', networkId: 'network-1',
-      } },
+      opportunityId: exactData.opportunityId,
+      options: { negotiationContinuation: claimedExecution },
     }));
     expect(JSON.stringify(invokeOpportunityGraph.mock.calls)).not.toContain('latest');
-    expect(markNegotiationContinuationCompleted).toHaveBeenCalledWith(data);
+    expect(completeNegotiationContinuationExecution).toHaveBeenCalledWith(claimedExecution, receipt);
   });
 
-  it('retries after a process-boundary graph failure and completes once', async () => {
+  it('releases the lease and retries after a process-boundary graph failure', async () => {
     let attempts = 0;
     const invokeOpportunityGraph = mock(async () => {
       attempts += 1;
       if (attempts === 1) throw new Error('worker crashed');
+      return { negotiationContinuationReceipt: receipt };
     });
-    const markNegotiationContinuationCompleted = mock(async () => {});
+    const releaseNegotiationContinuationExecution = mock(async () => {});
+    const completeNegotiationContinuationExecution = mock(async () => {});
     const queue = new NegotiationRunExistingQueue({
       invokeOpportunityGraph,
       continuationAdapter: {
-        getNegotiationContinuationRequest: async () => 'requested',
-        markNegotiationContinuationCompleted,
+        claimNegotiationContinuationExecution: async () => ({ status: 'claimed', execution: claimedExecution }),
+        heartbeatNegotiationContinuationExecution: async (execution) => execution,
+        releaseNegotiationContinuationExecution,
+        completeNegotiationContinuationExecution,
       },
     });
-    const data = {
-      opportunityId: 'opp-1', userId: 'u1', taskId: 'task-1',
-      settlementId: 'settlement-1', recipientIntentId: 'intent-1', networkId: 'network-1',
-    };
-    await expect(queue.processJob('negotiate_existing', data)).rejects.toThrow('worker crashed');
-    expect(markNegotiationContinuationCompleted).not.toHaveBeenCalled();
-    await expect(queue.processJob('negotiate_existing', data)).resolves.toBeUndefined();
-    expect(markNegotiationContinuationCompleted).toHaveBeenCalledTimes(1);
+    await expect(queue.processJob('negotiate_existing', exactData)).rejects.toThrow('worker crashed');
+    expect(releaseNegotiationContinuationExecution).toHaveBeenCalledWith(claimedExecution);
+    expect(completeNegotiationContinuationExecution).not.toHaveBeenCalled();
+    await expect(queue.processJob('negotiate_existing', exactData)).resolves.toBeUndefined();
+    expect(completeNegotiationContinuationExecution).toHaveBeenCalledWith(claimedExecution, receipt);
   });
 
-  it('duplicate completed settlement jobs and invalid principals no-op', async () => {
-    const invokeOpportunityGraph = mock(async () => {});
-    for (const admission of ['completed', 'invalid'] as const) {
+  it('never invokes a graph without a claim and rejects an unreceipted graph result', async () => {
+    const invokeOpportunityGraph = mock(async () => ({}));
+    for (const status of ['busy', 'completed', 'invalid'] as const) {
       const queue = new NegotiationRunExistingQueue({
         invokeOpportunityGraph,
         continuationAdapter: {
-          getNegotiationContinuationRequest: async () => admission,
-          markNegotiationContinuationCompleted: async () => {},
+          claimNegotiationContinuationExecution: async () => ({ status }),
+          heartbeatNegotiationContinuationExecution: async (execution) => execution,
+          releaseNegotiationContinuationExecution: async () => {},
+          completeNegotiationContinuationExecution: async () => {},
         },
       });
-      await queue.processJob('negotiate_existing', {
-        opportunityId: 'opp-1', userId: 'u1', taskId: 'task-1',
-        settlementId: 'settlement-1', recipientIntentId: 'intent-1', networkId: 'network-1',
-      });
+      await queue.processJob('negotiate_existing', exactData);
     }
     expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+
+    const releaseNegotiationContinuationExecution = mock(async () => {});
+    const queue = new NegotiationRunExistingQueue({
+      invokeOpportunityGraph,
+      continuationAdapter: {
+        claimNegotiationContinuationExecution: async () => ({ status: 'claimed', execution: claimedExecution }),
+        heartbeatNegotiationContinuationExecution: async (execution) => execution,
+        releaseNegotiationContinuationExecution,
+        completeNegotiationContinuationExecution: async () => {},
+      },
+    });
+    await expect(queue.processJob('negotiate_existing', exactData)).rejects.toThrow('no positive successor receipt');
+    expect(releaseNegotiationContinuationExecution).toHaveBeenCalledWith(claimedExecution);
   });
 
   describe('setRuntimeDeps', () => {

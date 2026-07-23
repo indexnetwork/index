@@ -30,14 +30,7 @@ export interface NegotiationTimeoutQueueDeps {
   invokeNegotiator?: TimeoutNegotiatorInvoke;
   parkWindowMs?: number;
   /** Authoritatively settle the exact stamped question/task cohort. */
-  settleInflightExpiry?: (input: {
-    taskId: string;
-    settlementId: string;
-    opportunityId: string;
-    userId: string;
-    recipientIntentId: string;
-    networkId: string;
-  }) => Promise<{
+  settleInflightExpiry?: (input: AskUserExpiryPayload & { taskId: string }) => Promise<{
     taskId: string;
     settlementId: string;
     opportunityId: string;
@@ -318,24 +311,12 @@ export class NegotiationTimeoutQueue {
    * the negotiation terminated another way).
    */
   private async handleAskUserExpiry(data: AskUserExpiryJobData): Promise<void> {
-    const { negotiationId, settlementId, opportunityId, userId, recipientIntentId, networkId } = data;
+    const { negotiationId, ...coordinates } = data;
+    const { opportunityId } = coordinates;
     const settle = this.deps?.settleInflightExpiry
-      ?? (async (input: {
-        taskId: string;
-        settlementId: string;
-        opportunityId: string;
-        userId: string;
-        recipientIntentId: string;
-        networkId: string;
-      }) => (await import('../../adapters/questioner.adapter.instance')).questionerAdapter.expireInflightQuestion(input));
-    const claim = await settle({
-      taskId: negotiationId,
-      settlementId,
-      opportunityId,
-      userId,
-      recipientIntentId,
-      networkId,
-    });
+      ?? (async (input: AskUserExpiryPayload & { taskId: string }) =>
+        (await import('../../adapters/questioner.adapter.instance')).questionerAdapter.expireInflightQuestion(input));
+    const claim = await settle({ taskId: negotiationId, ...coordinates });
     if (!claim) {
       this.logger.info('Ask-user expiry lost or stale; no continuation enqueued', {
         negotiationId,

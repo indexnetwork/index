@@ -8,6 +8,7 @@
 
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';
 import type { NegotiatorMemoryEntry } from '../../negotiation/negotiation.memory.js';
+import type { NegotiationPrivateConsultation } from './database.interface.js';
 
 /** Payload sent to the dispatcher for each negotiation turn. */
 export interface NegotiationTurnPayload {
@@ -35,6 +36,8 @@ export interface NegotiationTurnPayload {
    * retrieved.
    */
   negotiatorMemory?: NegotiatorMemoryEntry[];
+  /** Recipient-private ask-user consultation, present only for that recipient's turn. */
+  privateConsultation?: NegotiationPrivateConsultation;
 }
 
 /** Result of a dispatch attempt. */

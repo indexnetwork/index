@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "tasks_negotiation_continuation_settlement_uniq" ON "tasks" USING btree (("metadata"->>'resumeFromTaskId'),("metadata"->>'continuationSettlementId')) WHERE "tasks"."metadata"->>'isContinuation' = 'true';

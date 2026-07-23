@@ -51,6 +51,8 @@ export type {
   PremiseGraphDatabase,
   NegotiationGraphDatabase,
   NegotiationOpportunityLifecycle,
+  NegotiationContinuationExecution,
+  NegotiationContinuationReceipt,
   Opportunity,
   OpportunityActor,
   OpportunityStatus,

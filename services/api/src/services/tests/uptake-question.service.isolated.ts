@@ -107,6 +107,8 @@ describe('UptakeQuestionService', () => {
         recipientIntentId: RECIPIENT_INTENT,
         opportunityId: OPPORTUNITY,
         networkId: NETWORK,
+        counterpartyUserId: COUNTERPARTY,
+        counterpartyIntentId: INTENT,
       },
       context: {
         purpose: 'uptake',

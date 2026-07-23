@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../questioner.adapter.ts', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../../drizzle/0106_add_negotiation_question_provenance_index.sql', import.meta.url), 'utf8');
 const recoveryMigration = readFileSync(new URL('../../../drizzle/0105_add_recovery_question_uniqueness.sql', import.meta.url), 'utf8');
+const continuationMigration = readFileSync(new URL('../../../drizzle/0107_add_negotiation_continuation_successor_uniqueness.sql', import.meta.url), 'utf8');
+const continuationAtomic = readFileSync(new URL('../negotiation-continuation.atomic.ts', import.meta.url), 'utf8');
+const uptakeGuard = readFileSync(new URL('../../lib/opportunity/uptake-acceptance.guard.ts', import.meta.url), 'utf8');
 const readiness = readFileSync(new URL('../../lib/drizzle/test-database-readiness.ts', import.meta.url), 'utf8');
 const publicProjection = readFileSync(new URL('../../lib/question/question.public.ts', import.meta.url), 'utf8');
 const controller = readFileSync(new URL('../../controllers/question.controller.ts', import.meta.url), 'utf8');
@@ -93,7 +96,7 @@ describe('negotiation question routing static invariants', () => {
   });
 
   it('settles zero-row/final-reject/expiry-before-persist paths through the task binding', () => {
-    const expiry = source.slice(source.indexOf('async expireInflightQuestion'), source.indexOf('async getNegotiationContinuationRequest'));
+    const expiry = source.slice(source.indexOf('async expireInflightQuestion'), source.indexOf('async claimNegotiationContinuationExecution'));
     expect(expiry).toContain("metadata?.turnContext");
     expect(expiry).toContain("task.state !== 'input_required'");
     expect(expiry).not.toContain('if (rows.length === 0) return null');
@@ -101,16 +104,40 @@ describe('negotiation question routing static invariants', () => {
     expect(source).toContain('resolveNegotiationAdmission(first');
   });
 
-  it('uses durable exact-task settlement jobs and keeps the timeout recovery trigger armed', () => {
+  it('uses fenced exact-successor settlements and keeps timeout recovery armed', () => {
     expect(source).toContain("'{questionSettlement}'");
-    expect(source).toContain('getNegotiationContinuationRequest');
-    expect(source).toContain('markNegotiationContinuationCompleted');
+    expect(source).toContain('claimNegotiationContinuationExecution');
+    expect(source).toContain('completeNegotiationContinuationExecution');
     expect(runExisting).toContain('negotiation-resume-${data.settlementId}');
-    expect(runExisting).toContain('taskId: data.taskId');
-    expect(runExisting).toContain('negotiationContinuation: exact');
-    expect(negotiationGraph).toContain('state.resumeFromTaskId');
-    expect(negotiationGraph).toContain('getOrCreateNegotiationContinuationTask');
+    expect(runExisting).toContain('negotiationContinuation: execution');
+    expect(runExisting).toContain('no positive successor receipt');
+    expect(negotiationGraph).toContain('state.continuationExecution');
+    expect(negotiationGraph).toContain('continuationReceipt');
     expect(inflightHandler).not.toContain('cancelAskUserExpiry');
+  });
+
+  it('uses a database-enforced successor identity plus a token/fence guard for every continuation effect', () => {
+    expect(continuationMigration).toContain('CREATE UNIQUE INDEX "tasks_negotiation_continuation_settlement_uniq"');
+    expect(readiness).toContain("'public.tasks_negotiation_continuation_settlement_uniq'");
+    expect(continuationMigration).toContain('"metadata"->>\'resumeFromTaskId\'');
+    expect(continuationMigration).toContain('"metadata"->>\'continuationSettlementId\'');
+    expect(continuationAtomic).toContain('CONTINUATION_EXECUTION_LEASE_MS');
+    expect(continuationAtomic).toContain('const fence = (existingExecution?.fence ?? 0) + 1');
+    expect(continuationAtomic).toContain('assertContinuationExecutionEffect');
+    expect(continuationAtomic).toContain('loadPrivateConsultation');
+    expect(continuationAtomic.indexOf('const consultation = await loadPrivateConsultation')).toBeLessThan(
+      continuationAtomic.indexOf('const successors = await tx.select()'),
+    );
+  });
+
+  it('uses canonical filtered reads for uptake acceptance and persists exact counterparty provenance', () => {
+    expect(uptakeGuard).toContain('new QuestionerAdapter(db).findPending');
+    expect(uptakeGuard).toContain("purpose: 'uptake'");
+    expect(source).toContain('candidate.counterpartyUserId');
+    expect(source).toContain('counterparty_intent.id');
+    expect(source).toContain('counterparty_assignment');
+    expect(uptakeService).toContain('counterpartyUserId');
+    expect(uptakeService).toContain('counterpartyIntentId');
   });
 
   it('locks the whole stable cohort before provenance rows for sibling-answer and answer-timeout races', () => {
@@ -118,7 +145,7 @@ describe('negotiation question routing static invariants', () => {
     for (const section of [
       body('async answer(', 'async dismiss('),
       body('async dismiss(', 'async expireInflightQuestion('),
-      body('async expireInflightQuestion(', 'async getNegotiationContinuationRequest('),
+      body('async expireInflightQuestion(', 'async claimNegotiationContinuationExecution'),
     ]) {
       const advisory = section.indexOf('lockNegotiationQuestionAdvisory');
       const cohort = section.indexOf('lockNegotiationQuestionCohort', advisory);

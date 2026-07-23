@@ -168,6 +168,11 @@ export class UptakeQuestionService {
             recipientIntentId,
             opportunityId: opportunity.id,
             networkId: network.id,
+            // This is durable, minimal provenance—not user-facing context.
+            // Persistence/read/admission revalidate both exact counterparty
+            // identities before the advisory can block acceptance.
+            counterpartyUserId,
+            counterpartyIntentId,
           },
           context: {
             purpose: 'uptake',

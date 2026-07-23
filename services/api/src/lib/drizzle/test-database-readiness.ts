@@ -51,6 +51,7 @@ export const REQUIRED_TEST_DATABASE_OBJECTS = [
   'public.opportunity_outcome_events',
   'public.questions_recovery_recipient_intent_fingerprint_uniq',
   'public.questions_negotiation_provenance_uniq',
+  'public.tasks_negotiation_continuation_settlement_uniq',
   'public.questions_pool_push_recipient_intent_cycle_uniq',
 ] as const;
 

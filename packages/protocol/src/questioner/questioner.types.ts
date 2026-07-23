@@ -280,6 +280,10 @@ export function isValidQuestionerInputContract(input: QuestionerInput): boolean 
   }
   if (input.purpose === 'uptake') {
     return input.negotiation.taskId === undefined
+      && typeof input.negotiation.counterpartyUserId === 'string'
+      && input.negotiation.counterpartyUserId.length > 0
+      && typeof input.negotiation.counterpartyIntentId === 'string'
+      && input.negotiation.counterpartyIntentId.length > 0
       && context.negotiationId === input.sourceId
       && context.purpose === 'uptake'
       && context.proposedActivity === NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY;

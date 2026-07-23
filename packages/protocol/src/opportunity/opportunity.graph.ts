@@ -13,7 +13,7 @@
  */
 
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
-import type { Id } from '../shared/interfaces/database.interface.js';
+import type { Id, NegotiationContinuationReceipt } from '../shared/interfaces/database.interface.js';
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
 import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type TargetNetwork, type CandidateMatch, type EvaluatedCandidate, type EvaluatedOpportunity, type EvaluatedOpportunityActor } from './opportunity.state.js';
 import { resolveInitialStatus } from './opportunity.state.js';
@@ -4090,10 +4090,14 @@ export class OpportunityGraphFactory {
         const continuation = state.options.negotiationContinuation;
         if (continuation) {
           const recipientActor = nonIntroducerActors.find((actor) => actor.userId === state.userId);
+          const counterpartyActor = nonIntroducerActors.find((actor) => actor.userId === continuation.counterpartyUserId);
           if (
             !recipientActor
             || resolveOpportunityActorIntent(recipientActor) !== continuation.recipientIntentId
             || recipientActor.networkId !== continuation.networkId
+            || !counterpartyActor
+            || resolveOpportunityActorIntent(counterpartyActor) !== continuation.counterpartyIntentId
+            || counterpartyActor.networkId !== continuation.networkId
           ) {
             negotiateExistingLog.warn('Exact continuation actor binding is stale', {
               opportunityId: state.opportunityId,
@@ -4168,6 +4172,8 @@ export class OpportunityGraphFactory {
           ...(sourceIntentId ? { sourceIntentId } : {}),
           ...(candidateIntentId ? { candidateIntentId } : {}),
           opportunityId: opp.id as string,
+          opportunityStatus: opp.status,
+          opportunityUpdatedAt: opp.updatedAt,
           reasoning: (opp.interpretation as { reasoning?: string } | null)?.reasoning ?? '',
           valencyRole: candidateActor.role ?? 'peer',
           networkId: (candidateActor as { networkId?: string }).networkId as string,
@@ -4196,6 +4202,7 @@ export class OpportunityGraphFactory {
         // from the prior task's metadata inside the negotiation init node
         // (continuations never re-derive the seat). The role heuristic above
         // remains only as the fallback for pre-stamp tasks.
+        let continuationReceipt: NegotiationContinuationReceipt | undefined;
         const acceptedResults = await negotiateCandidates(
           this.negotiationGraph, sourceUser, [candidate],
           { networkId: '', prompt: '' },
@@ -4207,12 +4214,16 @@ export class OpportunityGraphFactory {
             ...(continuation ? {
               resumeFromTaskId: continuation.taskId,
               continuationSettlementId: continuation.settlementId,
+              continuationExecution: continuation,
+              onCandidateResolved: async ({ continuationReceipt: receipt }) => {
+                if (receipt?.successorTaskId === continuation.successorTaskId) continuationReceipt = receipt;
+              },
             } : {}),
           },
         );
 
         // Send notifications to non-introducer actors if negotiation was accepted
-        if (acceptedResults.length > 0 && this.queueNotification) {
+        if (acceptedResults.length > 0 && this.queueNotification && !continuation) {
           for (const actor of nonIntroducerActors) {
             await this.queueNotification(opp.id, actor.userId, 'high').catch((err) => {
               negotiateExistingLog.warn('Failed to queue notification', { actorId: actor.userId, error: err });
@@ -4223,7 +4234,9 @@ export class OpportunityGraphFactory {
         negotiateExistingLog.info('Negotiation complete', {
           opportunityId: opp.id,
           accepted: acceptedResults.length > 0,
+          continuationFence: continuation?.fence,
         });
+        return continuationReceipt ? { negotiationContinuationReceipt: continuationReceipt } : {};
       } catch (err) {
         negotiateExistingLog.error('Failed', { opportunityId: state.opportunityId, error: err });
         return { error: `Failed to load opportunity: ${err instanceof Error ? err.message : String(err)}` };

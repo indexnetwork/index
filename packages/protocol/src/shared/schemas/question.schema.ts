@@ -103,6 +103,9 @@ export const NegotiationQuestionCandidateSchema = z.object({
   opportunityId: z.string().min(1),
   taskId: z.string().min(1).optional(),
   networkId: z.string().min(1),
+  /** Uptake only: exact low-authority counterparty eligibility binding. */
+  counterpartyUserId: z.string().min(1).optional(),
+  counterpartyIntentId: z.string().min(1).optional(),
 }).superRefine((candidate, ctx) => {
   const taskRequired = candidate.purpose !== "uptake";
   if (taskRequired !== Boolean(candidate.taskId)) {
@@ -113,6 +116,13 @@ export const NegotiationQuestionCandidateSchema = z.object({
         ? "task-backed negotiation questions require taskId"
         : "uptake questions must not carry a synthetic taskId",
     });
+  }
+  const hasCounterparty = Boolean(candidate.counterpartyUserId) || Boolean(candidate.counterpartyIntentId);
+  if (candidate.purpose === "uptake" && (!candidate.counterpartyUserId || !candidate.counterpartyIntentId)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["counterpartyUserId"], message: "uptake questions require exact counterparty provenance" });
+  }
+  if (candidate.purpose !== "uptake" && hasCounterparty) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["counterpartyUserId"], message: "only uptake questions carry counterparty provenance" });
   }
 });
 
@@ -133,6 +143,9 @@ export const NegotiationQuestionProvenanceSchema = z.object({
   opportunityUpdatedAt: z.string().datetime(),
   taskState: z.enum(["submitted", "working", "input_required", "completed", "canceled", "failed", "rejected", "auth_required", "waiting_for_agent", "claimed"]).optional(),
   taskUpdatedAt: z.string().datetime().optional(),
+  /** Uptake only: exact low-authority counterparty eligibility binding. */
+  counterpartyUserId: z.string().min(1).optional(),
+  counterpartyIntentId: z.string().min(1).optional(),
   /** Stable per-generation position so retries dedupe without reducing cardinality. */
   questionOrdinal: z.number().int().min(0).max(2),
 }).superRefine((provenance, ctx) => {
@@ -156,6 +169,13 @@ export const NegotiationQuestionProvenanceSchema = z.object({
   }
   if (provenance.purpose === "inflight_consultation" && provenance.taskState !== "input_required") {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["taskState"], message: "inflight task must be input_required" });
+  }
+  const hasCounterparty = Boolean(provenance.counterpartyUserId) || Boolean(provenance.counterpartyIntentId);
+  if (provenance.purpose === "uptake" && (!provenance.counterpartyUserId || !provenance.counterpartyIntentId)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["counterpartyUserId"], message: "uptake provenance requires exact counterparty eligibility" });
+  }
+  if (provenance.purpose !== "uptake" && hasCounterparty) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["counterpartyUserId"], message: "only uptake provenance carries counterparty eligibility" });
   }
 });
 

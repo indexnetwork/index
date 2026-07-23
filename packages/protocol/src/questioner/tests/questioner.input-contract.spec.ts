@@ -74,6 +74,8 @@ const uptake: QuestionerInput = {
     recipientIntentId: 'intent-1',
     opportunityId: 'opp-1',
     networkId: 'network-1',
+    counterpartyUserId: 'counterparty-1',
+    counterpartyIntentId: 'counterparty-intent-1',
   },
   context: {
     purpose: 'uptake',
@@ -105,6 +107,7 @@ describe('QuestionerInput runtime negotiation discriminant', () => {
     { ...inflight, mode: 'negotiation' },
     { ...stalled, mode: 'negotiation_inflight' },
     { ...uptake, mode: 'negotiation_inflight' },
+    { ...uptake, negotiation: { ...uptake.negotiation, counterpartyIntentId: undefined } },
     { ...uptake, context: { ...uptake.context, proposedActivity: 'Alice profile from private transcript' } },
   ] as unknown as QuestionerInput[])('rejects crossed or unsafe contracts', (input) => {
     expect(isValidQuestionerInputContract(input)).toBe(false);
