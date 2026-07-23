@@ -228,7 +228,7 @@ We welcome contributions! Before submitting a Pull Request:
 git clone https://github.com/YOUR_USERNAME/index.git
 cd index
 
-# Create/reuse the worktree and named Pi tmux session
+# Create/reuse the worktree and named Herdr agent session (Pi or Codex)
 bun run worktree:session -- feat/your-feature
 
 # Start dev servers from the worktree

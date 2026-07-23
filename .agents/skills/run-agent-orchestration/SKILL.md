@@ -12,7 +12,7 @@ description: >-
 # run-agent-orchestration
 
 One user-facing main agent delegates repository orchestration to **exactly one**
-visible Herdr root orchestrator. The root orchestrator fans work out to child Pi
+visible Herdr root orchestrator. The root orchestrator fans work out to child Pi or Codex
 sessions in isolated worktrees selected by path and task-type role profiles — not
 long-lived frontend/backend/protocol personas.
 
@@ -22,7 +22,7 @@ long-lived frontend/backend/protocol personas.
   where the user types. It owns the conversation, collects decisions, sends one
   complete wave handoff to the root orchestrator, and reports results. It never
   orchestrates worktrees or children directly.
-- **Root orchestrator (exactly one)** — a visible Pi agent outside the user-facing
+- **Root orchestrator (exactly one)** — a visible Pi or Codex agent outside the user-facing
   `index` workspace, in the canonical root (`/Users/yanek/Projects/index`, branch
   `dev`). Sole owner for the wave of: worktree creation, child handoffs, PR finishing,
   GitHub/Linear/Railway coordination, and cleanup. It never edits source in the
@@ -34,12 +34,12 @@ long-lived frontend/backend/protocol personas.
 ## Launching the root orchestrator
 
 Run the Herdr preflight (`herdr status server`, `herdr integration status`), then open
-the canonical root without changing the user's focus and launch Pi through its targeted
+the canonical root without changing the user's focus and launch Codex (or Pi) through its targeted
 root pane:
 
 ```bash
 herdr worktree open --path /Users/yanek/Projects/index --label orchestration-root --no-focus --json
-herdr pane send-text "$PANE_ID" "pi --model openai-codex/gpt-5.6-terra:high"
+herdr pane send-text "$PANE_ID" "codex" # Pi is also supported
 herdr pane send-keys "$PANE_ID" enter
 ```
 
@@ -47,7 +47,7 @@ The agent name must match Herdr's live-name limit `[a-z][a-z0-9_-]{0,31}` (32 ch
 max) — keep the alias short (e.g. `root-orch`); the longer dashed workspace label
 stays independent. Reuse an existing root orchestrator only when its cwd is the
 canonical root, its branch is `dev`, and its identity belongs to this wave. Read the
-visible Pi footer quota before choosing the model; never switch models
+visible agent's quota/status before choosing the model; never switch models
 mid-implementation. All direct pane reads, text, and keys must target the exact pane
 ID and must not focus it. `herdr agent start` is not the launch path for this skill.
 
@@ -105,7 +105,7 @@ temporary limitation plainly and never fabricate an answer.
 ## Wave cleanup invariant
 
 A finished PR is not done until its execution plane is gone: `finish-pr` must close
-the child's exact Herdr workspace (verified by ID — this stops the Pi/terminal and
+the child's exact Herdr workspace (verified by ID — this stops the agent/terminal and
 removes the stale sidebar entry) **and** remove its Git worktree, in that order.
 Removing the worktree without closing the workspace leaves idle agents visible in
 the sidebar. After the wave, the root orchestrator verifies with

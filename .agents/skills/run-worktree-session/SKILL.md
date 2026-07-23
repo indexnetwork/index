@@ -1,7 +1,7 @@
 ---
 name: run-worktree-session
 description: >-
-  Run feature and fix implementation in a visible Herdr-managed Pi worktree session,
+  Run feature and fix implementation in a visible Herdr-managed Pi or Codex worktree session,
   with fire-and-return handoffs, explicit manual reconciliation, and a
   verify-commit-push-PR loop. Use when Index work moves from root investigation into
   implementation or returns for review and finish-pr fixes.
@@ -9,7 +9,7 @@ description: >-
 
 # run-worktree-session
 
-The canonical/root Pi coordinates and remains active. The visible Pi in the exact Herdr
+The canonical/root agent coordinates and remains active. The visible agent in the exact Herdr
 worktree workspace owns code mutations. Do not use hidden `Agent` subagents for
 implementation or fix rounds, and do not create a watcher process or watcher pane.
 
@@ -21,14 +21,14 @@ Follow `create-worktree` from the canonical root:
 2. create or reuse the exact Git worktree after collision checks;
 3. run `bun run worktree:setup <folder>`;
 4. open it with Herdr without changing the active `index` workspace;
-5. launch Pi only if the returned root pane has no existing agent.
+5. launch Codex or Pi only if the returned root pane has no existing agent.
 
 The installed CLI contract is:
 
 ```bash
 herdr worktree open --path "$WORKTREE" --label "$FOLDER" --no-focus --json
-# optional preselected model/thinking at launch:
-herdr pane send-text "$PANE_ID" "pi --model provider/model:thinking"
+# launch Codex, or Pi with a preselected model/thinking level:
+herdr pane send-text "$PANE_ID" "codex" # or: pi --model provider/model:thinking
 herdr pane send-keys "$PANE_ID" enter
 ```
 
@@ -37,7 +37,7 @@ pane launch path. Do not use `herdr agent start` normally; if an environment for
 that fallback, capture the active workspace first and immediately restore `index` so
 focus is never left changed.
 
-Capture the returned workspace and pane IDs. Reuse the existing workspace/Pi when
+Capture the returned workspace and pane IDs. Reuse the existing workspace/agent when
 Herdr reports the worktree is already open. Reject a cwd, branch, workspace, pane, or
 agent-name collision rather than sending work to the wrong checkout.
 
@@ -97,7 +97,7 @@ Re-read the pane afterward to verify that the answer landed in the intended cont
 
 ## 5. Verify session identity and implementation
 
-The visible Pi must run before mutation:
+The visible agent must run before mutation:
 
 ```bash
 pwd
@@ -110,7 +110,7 @@ tests, lint, typechecks, and manual checks appropriate to the diff. Update requi
 docs, package versions, and generated artifacts before committing. Report failures
 honestly.
 
-After verification succeeds, the visible Pi:
+After verification succeeds, the visible agent:
 
 1. commits with a conventional commit message;
 2. pushes the semantic branch;
@@ -123,7 +123,7 @@ root) before removing the Git worktree, so no stale sidebar entry survives.
 
 ## 6. Reuse for fix rounds
 
-For review or finish-pr findings, return to the same Herdr workspace, pane, and Pi
+For review or finish-pr findings, return to the same Herdr workspace, pane, and
 agent. Send one consolidated fix prompt under the same asymmetric handoff rule,
 answer routine questions through the targeted pane, and reconcile the durable
 checks/commit/push result without polling. Do not create a fresh worktree, agent, or
@@ -138,7 +138,7 @@ agents mutate one checkout.
 At a safe idle boundary, write a concise continuation checkpoint containing the exact
 session, worktree/branch/head, dirty state, validation completed, and next action.
 Then issue `/compact` and queue one explicit continuation prompt referencing that
-checkpoint. Verify the same session resumes; if Pi stops, relaunch that exact session
+checkpoint. Verify the same session resumes; if the agent stops, relaunch that exact session
 file/model/worktree rather than creating a duplicate writer. Never compact during a
 tool, write, test, rebase, migration, merge, deployment, or structured question.
 

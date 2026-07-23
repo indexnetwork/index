@@ -23,7 +23,7 @@ Install the following before cloning the repository.
 | **pgvector** extension | 0.5+ | 2000-dimensional vector similarity search |
 | **Redis** | 6+ | Job queues (BullMQ) and caching |
 | **Git** | 2.30+ | Version control, worktrees |
-| **Herdr** | current CLI | Visible worktree workspaces and Pi sessions |
+| **Herdr** | current CLI | Visible worktree workspaces and Pi or Codex sessions |
 
 Install Bun (if not already installed):
 
@@ -31,11 +31,14 @@ Install Bun (if not already installed):
 curl -fsSL https://bun.sh/install | bash
 ```
 
-Install Herdr on macOS or Linux, then install and verify its official Pi integration:
+Install Herdr on macOS or Linux, then install and verify an agent integration. Pi and
+Codex are both supported; install the one you plan to launch:
 
 ```bash
 curl -fsSL https://herdr.dev/install.sh | sh
-herdr integration install pi
+# Choose one:
+herdr integration install codex
+# herdr integration install pi
 herdr integration status
 ```
 
@@ -375,7 +378,7 @@ This shows all BullMQ job queues, their status, and lets you retry failed jobs o
 
 ## Git workflow
 
-### Worktrees and visible Pi sessions
+### Worktrees and visible Herdr agent sessions
 
 All feature and fix work happens in Git worktrees, keeping the canonical working tree
 on `dev` and read-only for source changes. Worktrees live in `.worktrees/` (gitignored).
@@ -416,22 +419,22 @@ herdr worktree open \
 ```
 
 Record `.result.workspace.workspace_id` and `.result.root_pane.pane_id` from the JSON.
-If the returned root pane is an interactive shell with no agent, launch Pi in that
-exact non-focusing pane:
+If the returned root pane is an interactive shell with no agent, launch Codex (or Pi)
+in that exact non-focusing pane:
 
 ```bash
-herdr pane send-text <returned-pane-id> "pi"
+herdr pane send-text <returned-pane-id> "codex" # Pi is also supported
 herdr pane send-keys <returned-pane-id> enter
 ```
 
-Before mutation, the visible Pi verifies `pwd`, `git branch --show-current`, and
-`git status --short --branch`. The canonical/root Pi sends one complete fire-and-return handoff. While the orchestration bridge is removed pending refactor, it reconciles the child once on a later natural turn or explicit tick; it never polls, waits, or creates a background watcher.
+Before mutation, the visible agent verifies `pwd`, `git branch --show-current`, and
+`git status --short --branch`. The canonical/root agent sends one complete fire-and-return handoff. While the orchestration bridge is removed pending refactor, it reconciles the child once on a later natural turn or explicit tick; it never polls, waits, or creates a background watcher.
 Routine questions are
 answered with the safe/recommended option. Structured prompts are read and answered
 through targeted `herdr pane` text/keys rather than a new agent prompt.
 
 Use one writer per worktree. Parallel work requires separate branches, worktrees,
-Herdr workspaces, and Pi sessions. Reuse the same visible session for review and PR-fix
+Herdr workspaces, and agent sessions. Reuse the same visible session for review and PR-fix
 rounds. The legacy `bun run worktree:session` helper remains only a fallback when Herdr
 is unavailable.
 

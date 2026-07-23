@@ -1,8 +1,8 @@
 ---
 name: create-worktree
 description: >-
-  Create or reuse an isolated Index worktree and open its visible Herdr-managed Pi
-  session. Use before implementation from the canonical root, when resuming a branch
+  Create or reuse an isolated Index worktree and open its visible Herdr-managed Pi or
+  Codex session. Use before implementation from the canonical root, when resuming a branch
   session, or when validating branch/worktree/workspace identity before mutation.
 ---
 
@@ -15,8 +15,8 @@ subagent.
 
 ## Herdr preflight
 
-Before worktree orchestration, verify the installed CLI, running server, and Pi
-integration:
+Before worktree orchestration, verify the installed CLI, running server, and chosen
+agent integration (Pi or Codex):
 
 ```bash
 command -v herdr
@@ -25,7 +25,7 @@ herdr integration status
 ```
 
 If the server/client is not running, have the user launch `herdr` from the repository
-so the workspace remains visible. If the Pi integration is missing or outdated, follow
+so the workspace remains visible. If the selected agent integration is missing or outdated, follow
 `docs/guides/getting-started.md` and install it before starting the agent. Do not silently
 fall back to hidden execution; use the legacy helper only when the user explicitly
 chooses that fallback because Herdr is unavailable.
@@ -108,17 +108,16 @@ herdr pane get "$PANE_ID"
 herdr agent get "$PANE_ID"
 ```
 
-If the root pane is an interactive shell with no Pi agent, launch Pi through the
-exact non-focusing pane ID. To preselect a model and thinking level (chosen per
-`run-agent-orchestration`'s model routing — never switched mid-implementation), send
-it as part of the targeted launch command:
+If the root pane is an interactive shell with no agent, launch Codex or Pi through the
+exact non-focusing pane ID. Choose the command and any supported model options before
+launch; never switch models mid-implementation:
 
 ```bash
-herdr pane send-text "$PANE_ID" "pi --model provider/model:thinking"
+herdr pane send-text "$PANE_ID" "codex" # or: pi --model provider/model:thinking
 herdr pane send-keys "$PANE_ID" enter
 ```
 
-All pane reads, text, and keys are explicit-ID-targeted and non-focusing. If Pi
+All pane reads, text, and keys are explicit-ID-targeted and non-focusing. If an agent
 already exists in that pane, reuse it only when its cwd is `WORKTREE` and its identity
 belongs to this workspace. Never start a second writer in the same worktree. Do not
 use `herdr agent start` as the normal launch path; if an environment forces that
@@ -127,7 +126,7 @@ is never left changed.
 
 ## Verify before mutation
 
-The first handoff must require the visible Pi to run:
+The first handoff must require the visible agent to run:
 
 ```bash
 pwd
@@ -141,7 +140,7 @@ escalate only genuine product/architecture ambiguity, destructive actions, exter
 infrastructure mutation, credentials/secrets, or merge approval.
 
 Parallel implementation is allowed only when it is genuinely useful: give each writer
-a separate semantic branch, Git worktree, Herdr workspace, and Pi session. One writer
+a separate semantic branch, Git worktree, Herdr workspace, and agent session. One writer
 per worktree remains mandatory.
 
 The repository's `bun run worktree:session` launcher remains a legacy fallback when

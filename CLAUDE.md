@@ -487,7 +487,8 @@ use semantic `<type>/<description>` names and the only valid folder is the dashe
 `<type>-<description>`; never accept a separate folder name.
 
 Before socket orchestration, follow the Herdr setup in
-`docs/guides/getting-started.md`; its server and Pi integration must be available. From
+`docs/guides/getting-started.md`; its server and a supported agent integration (Pi or
+Codex) must be available. From
 the canonical root, create or reuse the exact Git worktree after checking
 `git worktree list --porcelain`, then always run setup:
 
@@ -498,16 +499,16 @@ herdr worktree open \
   --label feat-user-authentication \
   --no-focus \
   --json
-herdr pane send-text <returned-pane-id> "pi"
+herdr pane send-text <returned-pane-id> "codex" # Pi is also supported
 herdr pane send-keys <returned-pane-id> enter
 ```
 
 Herdr is the default visible execution plane. Record the workspace and pane IDs returned
-by `herdr worktree open`; reuse an existing workspace/Pi only when its worktree path,
-branch, and cwd match. The canonical/root Pi remains the coordinator and sends one
+by `herdr worktree open`; reuse an existing workspace/agent only when its worktree path,
+branch, and cwd match. The canonical/root agent remains the coordinator and sends one
 complete fire-and-return handoff—never `--wait`, `herdr agent wait`, polling, a hidden
 implementation subagent, background watcher process, or watcher pane. A `*-root`
-whose checkout and Pi cwd equal the canonical root registers each exact child
+whose checkout and agent cwd equal the canonical root registers each exact child
 session/workspace/pane/worktree callback route; direct `index` delegates child work
 through that root. Durable custom auto-resume wakes root/index without user-message or
 editor injection. External nonterminal Railway/CI gates still require an event adapter.
@@ -519,7 +520,7 @@ answered through targeted `herdr pane read/send-text/send-keys`, not a new agent
 Never infer merge approval.
 
 Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
-workspaces, and Pi sessions, with one writer per worktree. Reuse the same visible session
+workspaces, and agent sessions, with one writer per worktree. Reuse the same visible session
 for review and finish-pr fix loops. The legacy `bun run worktree:session` helper remains
 a fallback when Herdr is unavailable, not the default workflow.
 
@@ -556,8 +557,8 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 
 ### Implementation in Visible Herdr Worktrees
 
-Execute implementation and fix plans in visible Herdr-managed Pi sessions for isolated
-Git worktrees. The canonical/root Pi coordinates through fire-and-return handoffs and explicit manual ticks while the orchestration bridge is removed, and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
+Execute implementation and fix plans in visible Herdr-managed Pi or Codex sessions for isolated
+Git worktrees. The canonical/root agent coordinates through fire-and-return handoffs and explicit manual ticks while the orchestration bridge is removed, and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
 parallel work is genuinely useful, use separate worktrees/workspaces with one writer per
 checkout. Follow the `create-worktree` and `run-worktree-session` skills.
 

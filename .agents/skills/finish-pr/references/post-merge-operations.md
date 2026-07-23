@@ -89,7 +89,7 @@ Removal procedure:
    cd /Users/yanek/Projects/index
    ```
 
-2. Close the exact Herdr workspace for the finished worktree **before** removing the Git worktree. A removed worktree leaves its Herdr workspace and idle Pi agent behind as a stale sidebar entry; closing the workspace stops the Pi/terminal and removes that entry. Use the workspace ID recorded when the session was opened and re-verify identity before closing — never guess from the label alone, and never close the canonical root workspace (or any other active workspace):
+2. Close the exact Herdr workspace for the finished worktree **before** removing the Git worktree. A removed worktree leaves its Herdr workspace and idle agent behind as a stale sidebar entry; closing the workspace stops the agent/terminal and removes that entry. Use the workspace ID recorded when the session was opened and re-verify identity before closing — never guess from the label alone, and never close the canonical root workspace (or any other active workspace):
 
    ```bash
    herdr workspace get "$WORKSPACE_ID"   # path/branch must match the finished worktree

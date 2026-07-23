@@ -4,7 +4,7 @@ Models are chosen **at child launch time** and never switched mid-implementation
 A child that needs a stronger model is stopped and relaunched with a fresh handoff,
 not hot-swapped.
 
-Before **every** child launch, the root orchestrator re-reads the visible Pi footer
+Before **every** child launch, the root orchestrator re-reads the visible agent status
 quota state and routes by the table and quota bands below. Routing is deterministic
 skill logic based on that visible footer; do not parse quota UI with a brittle
 extension. A preset/model-routing extension is a later option only if a stable quota
@@ -14,12 +14,13 @@ API becomes available.
 
 ## Launch syntax and focus safety
 
-Open worktrees without stealing the user's active `index` workspace, then launch Pi
+Open worktrees without stealing the user's active `index` workspace, then launch Codex
+(or Pi)
 through the exact, non-focusing pane ID:
 
 ```bash
 herdr worktree open --path WORKTREE_PATH --label LABEL --no-focus --json
-herdr pane send-text PANE_ID "pi --model provider/model:thinking"
+herdr pane send-text PANE_ID "codex" # or: pi --model provider/model:thinking
 herdr pane send-keys PANE_ID enter
 ```
 
@@ -59,7 +60,7 @@ work, never protocol, auth, or data-mutation code.
 
 ## Quota bands
 
-Measure the bands as the **consumed percentage shown in the visible Pi footer**:
+Measure the bands as the **consumed percentage shown in the visible agent status UI**:
 
 | Consumed | Band | Routing rule |
 |---|---|---|
