@@ -17,7 +17,24 @@ mock.module('../../lib/bullmq/bullmq', () => ({
   },
 }));
 
-const { createDiscoveryRunScopeGraphs, DiscoveryRunQueue } = await import('../opportunity/discovery-run.queue');
+let currentRun: unknown = null;
+const completionOrder: string[] = [];
+mock.module('../../adapters/discovery-run.adapter', () => ({
+  discoveryRunAdapter: {
+    markRunning: async () => currentRun,
+    isCancelRequested: async () => false,
+    markCancelled: async () => undefined,
+    updateProgress: async () => undefined,
+    markSucceeded: async () => { completionOrder.push('succeeded'); },
+    markFailed: async () => undefined,
+  },
+}));
+
+const {
+  createDiscoveryRunScopeGraphs,
+  DiscoveryRunQueue,
+  resolveDiscoveryRunRecoveryIntentId,
+} = await import('../opportunity/discovery-run.queue');
 
 afterAll(() => {
   mock.restore();
@@ -33,6 +50,63 @@ describe('DiscoveryRunQueue runtime deps', () => {
       deps?: { stampNewbornOpportunities?: StampNewbornOpportunitiesFn };
     }).deps;
     expect(deps?.stampNewbornOpportunities).toBe(stampNewbornOpportunities);
+  });
+
+  it('resolves exact intent provenance and fails closed for ad-hoc or introducer-only runs', () => {
+    const base = { context: { scopeType: 'network', scopeId: 'network-1' }, input: {} } as never;
+    expect(resolveDiscoveryRunRecoveryIntentId(base)).toBeNull();
+    expect(resolveDiscoveryRunRecoveryIntentId({
+      context: { scopeType: 'network', scopeId: 'network-1' }, input: { intentId: 'input-intent' },
+    } as never)).toBe('input-intent');
+    expect(resolveDiscoveryRunRecoveryIntentId({
+      context: { scopeType: 'intent', scopeId: 'scope-intent' }, input: { intentId: 'input-intent' },
+    } as never)).toBe('scope-intent');
+    expect(resolveDiscoveryRunRecoveryIntentId({
+      context: { scopeType: 'intent' }, input: { intentId: 'input-intent' },
+    } as never)).toBeNull();
+    expect(resolveDiscoveryRunRecoveryIntentId({
+      context: { scopeType: 'intent', scopeId: 'scope-intent' },
+      input: { intentId: 'input-intent', introTargetUserId: 'target' },
+    } as never)).toBeNull();
+  });
+
+  it('calls recovery only after success is durably marked and carries authoritative scope intent', async () => {
+    completionOrder.length = 0;
+    currentRun = {
+      id: 'run-1', userId: 'user-1', agentId: null,
+      context: { scopeType: 'intent', scopeId: 'scope-intent' },
+      input: { intentId: 'input-intent' },
+    };
+    const recoverAfterCompletion = mock(async () => { completionOrder.push('recovery'); });
+    const queue = new DiscoveryRunQueue();
+    queue.setRuntimeDeps({ recoverAfterCompletion });
+    (queue as unknown as { executeRun: () => Promise<unknown> }).executeRun = async () => {
+      completionOrder.push('execute');
+      return { ok: true };
+    };
+
+    await queue.processJob('run_discovery', { runId: 'run-1' });
+    expect(recoverAfterCompletion).toHaveBeenCalledWith({
+      source: 'discovery_run', recipientUserId: 'user-1', intentId: 'scope-intent', runId: 'run-1',
+    });
+    expect(completionOrder).toEqual(['execute', 'succeeded', 'recovery']);
+  });
+
+  it('does not call recovery when execution fails before durable success', async () => {
+    completionOrder.length = 0;
+    currentRun = {
+      id: 'run-failed', userId: 'user-1', agentId: null,
+      context: { scopeType: 'intent', scopeId: 'scope-intent' }, input: { intentId: 'scope-intent' },
+    };
+    const recoverAfterCompletion = mock(async () => {});
+    const queue = new DiscoveryRunQueue();
+    queue.setRuntimeDeps({ recoverAfterCompletion });
+    (queue as unknown as { executeRun: () => Promise<unknown> }).executeRun = async () => {
+      throw new Error('discovery failed');
+    };
+    await expect(queue.processJob('run_discovery', { runId: 'run-failed' })).rejects.toThrow('discovery failed');
+    expect(recoverAfterCompletion).not.toHaveBeenCalled();
+    expect(completionOrder).not.toContain('succeeded');
   });
 
   it('builds real scope graphs for background discovery membership resolution', async () => {

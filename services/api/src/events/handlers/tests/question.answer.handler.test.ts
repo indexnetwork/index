@@ -72,6 +72,21 @@ describe("handleQuestionAnswered", () => {
     });
   });
 
+  it("carries the expected recovery fingerprint into the intent refinement guard", async () => {
+    await handleQuestionAnswered(
+      {
+        ...basePayload, mode: "intent", purpose: "recovery", sourceType: "intent", sourceId: "int-1",
+        recoveryIntentFingerprint: "fingerprint-1",
+      },
+      deps,
+    );
+    expect(deps.enqueueIntentRefinement).toHaveBeenCalledWith({
+      userId: "u-1", intentId: "int-1", questionId: "q-1",
+      selectedOptions: ["Option A"], freeText: undefined,
+      expectedIntentFingerprint: "fingerprint-1",
+    });
+  });
+
   it("resolves the chat wait bus for chat mode", async () => {
     await handleQuestionAnswered(
       { ...basePayload, mode: "chat", sourceType: "conversation", sourceId: "sess-1" },

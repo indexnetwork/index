@@ -80,7 +80,7 @@ export interface QuestionGenerationResult {
 // ─── Persistence types (opportunity-style composable jsonb) ──────────────────
 
 /** Internal reason a question was generated, orthogonal to mode and QUD metadata. */
-export const QuestionPurposeSchema = z.enum(["uptake"]);
+export const QuestionPurposeSchema = z.enum(["uptake", "recovery"]);
 
 export const QuestionModeSchema = z.enum([
   "discovery",
@@ -167,8 +167,19 @@ export const QuestionPoolPushSchema = z.object({
 /** Durable request state for proactive pool-question delivery. */
 export const QuestionPoolPushRequestStatusSchema = z.enum(["requested", "suppressed"]);
 
-/** Internal reason a pending pool question was voided. */
-export const QuestionVoidedReasonSchema = z.enum(["pool_drift", "intent_edit"]);
+/** Private snapshot for a post-discovery recovery refinement question. */
+export const QuestionRecoverySnapshotSchema = z.object({
+  version: z.literal(1),
+  intentFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+  completionSource: z.enum(["from_intent", "discovery_run"]),
+  /** Privacy-safe aggregate only; raw negotiation evidence is never persisted. */
+  rejectedNegotiationCount: z.number().int().min(1).max(50).optional(),
+  /** Bounded internal correlation id for an asynchronous discovery run. */
+  runId: z.string().min(1).max(128).optional(),
+});
+
+/** Internal reason a pending question was voided. */
+export const QuestionVoidedReasonSchema = z.enum(["pool_drift", "intent_edit", "recovery_drift"]);
 
 /** Permanent reasons that terminalize an unclaimed proactive push request. */
 export const QuestionPoolPushRequestReasonSchema = z.enum([
@@ -208,6 +219,8 @@ export const QuestionDetectionSchema = z.object({
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool: QuestionPoolSnapshotSchema.optional(),
+  /** Post-discovery intent recovery snapshot. Internal only. */
+  recovery: QuestionRecoverySnapshotSchema.optional(),
   /** Durable request marker written before enqueueing proactive delivery. Internal only. */
   pushRequestedAt: z.string().min(1).optional(),
   /** Last bounded recovery sweep that selected this request. Internal only. */
@@ -233,6 +246,27 @@ export const QuestionDetectionSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["triggeredBy"],
       message: "pool_discovery triggeredBy must be non-empty and equal sourceId",
+    });
+  }
+  if (detection.purpose === "recovery") {
+    if (
+      detection.mode !== "intent"
+      || detection.sourceType !== "intent"
+      || !detection.triggeredBy?.trim()
+      || detection.triggeredBy !== detection.sourceId
+      || !detection.recovery
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recovery"],
+        message: "recovery purpose requires intent mode/source, equal trigger provenance, and a recovery snapshot",
+      });
+    }
+  } else if (detection.recovery) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["purpose"],
+      message: "recovery snapshot requires recovery purpose",
     });
   }
   if (detection.pushRequestStatus && !detection.pushRequestedAt) {
@@ -295,6 +329,7 @@ export type QuestionAnswer = z.infer<typeof QuestionAnswerSchema>;
 export type QuestionPoolAssignment = z.infer<typeof QuestionPoolAssignmentSchema>;
 export type QuestionPoolDiscriminator = z.infer<typeof QuestionPoolDiscriminatorSchema>;
 export type QuestionPoolSnapshot = z.infer<typeof QuestionPoolSnapshotSchema>;
+export type QuestionRecoverySnapshot = z.infer<typeof QuestionRecoverySnapshotSchema>;
 export type QuestionPoolPush = z.infer<typeof QuestionPoolPushSchema>;
 export type QuestionVoidedReason = z.infer<typeof QuestionVoidedReasonSchema>;
 export type QuestionPoolPushRequestStatus = z.infer<typeof QuestionPoolPushRequestStatusSchema>;

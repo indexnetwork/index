@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "questions_recovery_recipient_intent_fingerprint_uniq" ON "questions" USING btree (("actors"->0->>'userId'),("detection"->>'sourceId'),("detection"->'recovery'->>'intentFingerprint')) WHERE "questions"."detection"->>'purpose' = 'recovery' AND "questions"."detection"->>'mode' = 'intent' AND "questions"."detection"->>'sourceType' = 'intent';

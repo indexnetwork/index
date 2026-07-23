@@ -8,6 +8,7 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import db from '../lib/drizzle/drizzle';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { QuestionEvents } from '../events/question.event';
+import { IntentRecoveryRefinementService, type IntentRecoveryCompletion } from '../services/intent-recovery-refinement.service';
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool/question.shared';
 import type { PoolQuestionPostPersist } from './pool/question.shared';
 import { enqueuePoolQuestionPush } from './pool/questionpush.queue';
@@ -16,8 +17,11 @@ import { isPoolArtifactFresh } from './pool/poolquestions.constants';
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
 
-/** Job data for question generation. Identical to QuestionerInput from protocol. */
-export type QuestionerJobData = QuestionerInput;
+/** Privacy-minimal post-discovery recovery job. */
+export type RecoveryQuestionerJobData = IntentRecoveryCompletion;
+
+/** All payloads processed by the shared Questioner worker. */
+export type QuestionerJobData = QuestionerInput | RecoveryQuestionerJobData;
 
 function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
@@ -44,6 +48,8 @@ export interface QuestionerQueueDeps {
   getIntentLifecycle?: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
   /** Post-persist delivery enqueue; injected so tests never touch Redis. */
   poolQuestionPostPersist?: PoolQuestionPostPersist;
+  /** Recovery policy/generation service; injected so queue tests remain hermetic. */
+  recoveryService?: Pick<IntentRecoveryRefinementService, 'recover'>;
 }
 
 /**
@@ -66,6 +72,7 @@ export class QuestionerQueue {
   private readonly adapter: QuestionerQueueAdapter;
   private readonly getIntentLifecycle: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
   private readonly poolQuestionPostPersist?: PoolQuestionPostPersist;
+  private readonly recoveryService: Pick<IntentRecoveryRefinementService, 'recover'>;
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
 
@@ -82,6 +89,7 @@ export class QuestionerQueue {
     this.poolQuestionPostPersist = deps
       ? deps.poolQuestionPostPersist
       : enqueuePoolQuestionPush;
+    this.recoveryService = deps?.recoveryService ?? new IntentRecoveryRefinementService();
     this.agent = deps?.agent ?? null; // lazy — created on first job
   }
 
@@ -99,10 +107,18 @@ export class QuestionerQueue {
    * @returns The BullMQ job.
    */
   addGenerateJob(
-    data: QuestionerJobData,
+    data: QuestionerInput,
     options?: { jobId?: string; priority?: number },
   ): Promise<Job<QuestionerJobData>> {
     return this.addJob('generate_questions', data, options);
+  }
+
+  /** Enqueue one privacy-minimal post-discovery recovery attempt. */
+  addRecoveryJob(
+    data: RecoveryQuestionerJobData,
+    options?: { jobId?: string; priority?: number },
+  ): Promise<Job<QuestionerJobData>> {
+    return this.addJob('generate_recovery_refinement', data, options);
   }
 
   /**
@@ -114,7 +130,7 @@ export class QuestionerQueue {
    * @returns The BullMQ job.
    */
   async addJob(
-    name: 'generate_questions',
+    name: 'generate_questions' | 'generate_recovery_refinement',
     data: QuestionerJobData,
     options?: { jobId?: string; priority?: number },
   ): Promise<Job<QuestionerJobData>> {
@@ -134,7 +150,10 @@ export class QuestionerQueue {
   async processJob(name: string, data: QuestionerJobData): Promise<void> {
     switch (name) {
       case 'generate_questions':
-        await this.handleGenerateQuestions(data);
+        await this.handleGenerateQuestions(data as QuestionerInput);
+        break;
+      case 'generate_recovery_refinement':
+        await this.recoveryService.recover(data as RecoveryQuestionerJobData);
         break;
       default:
         this.queueLogger.warn('Unknown job name', { name });
@@ -165,7 +184,16 @@ export class QuestionerQueue {
     await this.queue.close();
   }
 
-  private async handleGenerateQuestions(data: QuestionerJobData): Promise<void> {
+  private async handleGenerateQuestions(data: QuestionerInput): Promise<void> {
+    // Recovery must use the dedicated service so generic generation cannot
+    // bypass authoritative cadence/actionability/fingerprint gates.
+    if (data.purpose === 'recovery') {
+      this.logger.warn('Recovery input rejected on generic generation job', {
+        userId: data.userId,
+        sourceId: data.sourceId,
+      });
+      return;
+    }
     const intentId = data.triggeredByIntentId?.trim()
       || (data.scopeType === 'intent' ? data.scopeId?.trim() : undefined)
       || (data.mode === 'intent' ? data.sourceId?.trim() : undefined)
@@ -299,7 +327,7 @@ export class QuestionerQueue {
    * pending total per intent), dedup against already-asked axes, then
    * synthesize + persist the top discriminator.
    */
-  private async handlePoolDiscovery(data: QuestionerJobData): Promise<void> {
+  private async handlePoolDiscovery(data: QuestionerInput): Promise<void> {
     const context = data.context as PoolDiscoveryContext & { opportunityIds?: string[] };
     const intentId = context.intentId;
 
@@ -333,10 +361,11 @@ export class QuestionerQueue {
       }
       return;
     }
-    if (pending.length >= POOL_QUESTION_MAX_PENDING_PER_INTENT) {
+    const budgetPending = pending.filter((question) => question.detection.purpose !== 'recovery');
+    if (budgetPending.length >= POOL_QUESTION_MAX_PENDING_PER_INTENT) {
       this.logger.info('Pool question skipped: intent question budget exhausted', {
         intentId,
-        pending: pending.length,
+        pending: budgetPending.length,
       });
       return;
     }

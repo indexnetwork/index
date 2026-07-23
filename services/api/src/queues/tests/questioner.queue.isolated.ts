@@ -250,6 +250,60 @@ describe('QuestionerQueue', () => {
     expect(invoked).toBe(0);
   });
 
+  it('delegates privacy-minimal recovery jobs to the dedicated service', async () => {
+    let captured: unknown;
+    const queue = new QuestionerQueue({
+      adapter: { persist: async () => [] },
+      recoveryService: {
+        recover: async (input) => { captured = input; return null; },
+      },
+    });
+    queues.push(queue);
+
+    await queue.processJob('generate_recovery_refinement', {
+      source: 'discovery_run',
+      recipientUserId: 'user-1',
+      intentId: 'intent-1',
+      runId: 'run-1',
+    });
+    expect(captured).toEqual({
+      source: 'discovery_run', recipientUserId: 'user-1', intentId: 'intent-1', runId: 'run-1',
+    });
+  });
+
+  it('does not let recovery questions consume the independent pool pending budget', async () => {
+    let persisted = false;
+    const recoveryRows = Array.from({ length: 5 }, (_, index) => ({
+      id: `recovery-${index}`,
+      detection: { purpose: 'recovery', mode: 'intent' },
+    })) as never[];
+    const queue = new QuestionerQueue({
+      adapter: {
+        persist: async () => [],
+        findPending: async () => recoveryRows,
+        listPoolQuestionLabels: async () => [],
+        persistFreshPoolQuestion: async () => { persisted = true; return 'pool-question'; },
+      },
+    });
+    queues.push(queue);
+
+    const opportunityId = '00000000-0000-4000-8000-000000000001';
+    await queue.processJob('generate_questions', {
+      mode: 'pool_discovery', userId: 'user-1', sourceType: 'intent', sourceId: 'intent-1',
+      triggeredByIntentId: 'intent-1',
+      context: {
+        intentId: 'intent-1', intentText: 'Find climate builders', poolSize: 8,
+        opportunityIds: [opportunityId], minedAt: new Date().toISOString(),
+        discriminators: [{
+          label: 'Stage', questionSeed: 'Which stage matters?', sides: ['Early', 'Growth'],
+          sideCounts: { Early: 1, Growth: 0 }, voi: 0.8, evidenceRate: 1,
+          assignments: [{ opportunityId, side: 'Early' }],
+        }],
+      },
+    });
+    expect(persisted).toBe(true);
+  });
+
   it('omits actor networkId for unscoped question jobs', async () => {
     let captured: PersistableQuestion[] = [];
     const queue = new QuestionerQueue({

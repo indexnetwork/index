@@ -88,6 +88,25 @@ describe('stripInternalDetection', () => {
     expect(JSON.stringify(stripped)).not.toContain('opp-1');
   });
 
+  it('strips every recovery snapshot field from ordinary intent question payloads', () => {
+    const q = poolQuestion();
+    q.detection = {
+      mode: 'intent', purpose: 'recovery', sourceType: 'intent', sourceId: 'intent-1',
+      triggeredBy: 'intent-1', timestamp: 'now',
+      recovery: {
+        version: 1, intentFingerprint: 'a'.repeat(64), completionSource: 'discovery_run',
+        rejectedNegotiationCount: 4, runId: 'private-run',
+      },
+    };
+    const stripped = stripInternalDetection(q);
+    expect(stripped.detection.purpose).toBeUndefined();
+    expect(stripped.detection.recovery).toBeUndefined();
+    const json = JSON.stringify(stripped);
+    for (const internal of ['intentFingerprint', 'rejectedNegotiationCount', 'private-run', 'completionSource']) {
+      expect(json).not.toContain(internal);
+    }
+  });
+
   it('strips generation metadata even without a pool snapshot', () => {
     const q = poolQuestion();
     delete (q.detection as { pool?: unknown }).pool;
@@ -101,6 +120,7 @@ describe('stripInternalDetection', () => {
     const q = poolQuestion();
     delete (q.detection as { pool?: unknown }).pool;
     delete (q.detection as { purpose?: unknown }).purpose;
+    delete (q.detection as { recovery?: unknown }).recovery;
     delete (q.detection as { strategy?: unknown }).strategy;
     delete (q.detection as { underspecificationType?: unknown }).underspecificationType;
     delete (q.detection as { pushRequestedAt?: unknown }).pushRequestedAt;

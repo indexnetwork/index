@@ -135,6 +135,36 @@ describe("intent preset", () => {
   });
 });
 
+describe("recovery intent preset", () => {
+  it("uses a distinct one-question privacy-safe preset without changing creation-time intent prompts", () => {
+    const creation = getPreset("intent");
+    const recovery = getPreset("intent", "recovery");
+    expect(recovery.systemPrompt).not.toBe(creation.systemPrompt);
+    expect(creation.systemPrompt).toContain("Return at most 2 entries");
+    expect(recovery.systemPrompt).toContain("Return at most ONE question");
+    expect(recovery.systemPrompt).toContain("Never mention or imply counts, matches, no matches, rejections, negotiations, candidates, counterparties, searches, retries, pipeline state, evidence");
+    expect(recovery.systemPrompt).toContain("refine_intent");
+    expect(recovery.systemPrompt).toContain("surface_missing_detail");
+  });
+
+  it("builds generation context from intent, owner context, and aggregate count only", () => {
+    const prompt = getPreset("intent", "recovery").buildPrompt({
+      purpose: "recovery",
+      intentId: "intent-1",
+      payload: "Find a climate analytics cofounder",
+      summary: "Climate cofounder",
+      userContext: "Owner builds climate-data products.",
+      rejectedNegotiationCount: 2,
+    });
+    expect(prompt).toContain("Find a climate analytics cofounder");
+    expect(prompt).toContain("Owner builds climate-data products.");
+    expect(prompt).toContain("Validated prior outcomes without an actionable connection: 2");
+    for (const unsafe of ["counterpartyHint", "matchReason", "reasoning", "transcript", "networkId", "opportunityId"]) {
+      expect(prompt).not.toContain(unsafe);
+    }
+  });
+});
+
 describe("profile preset", () => {
   it("returns the profile preset with systemPrompt and buildPrompt", () => {
     const preset = getPreset("enrichment");

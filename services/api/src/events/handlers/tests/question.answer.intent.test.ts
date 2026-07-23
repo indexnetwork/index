@@ -1,5 +1,6 @@
 import { describe, it, expect, mock } from "bun:test";
 import { enqueueIntentRefinementFactory, type IntentRefinementDeps } from "../question.answer.intent";
+import { computeIntentFingerprint } from "../../../lib/intent/intent.fingerprint";
 
 function makeDeps(overrides?: Partial<IntentRefinementDeps>): IntentRefinementDeps {
   return {
@@ -135,6 +136,36 @@ describe("enqueueIntentRefinementFactory", () => {
     });
 
     expect(deps.runIntentUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rechecks a recovery fingerprint before invoking the canonical update graph", async () => {
+    const deps = makeDeps();
+    const fn = enqueueIntentRefinementFactory(deps);
+
+    const result = await fn({
+      userId: "u-1",
+      intentId: "int-1",
+      questionId: "q-recovery",
+      selectedOptions: ["Remote only"],
+      expectedIntentFingerprint: "drifted-fingerprint",
+    });
+
+    expect(result).toEqual({ applied: false });
+    expect(deps.getQuestionPrompt).not.toHaveBeenCalled();
+    expect(deps.runIntentUpdate).not.toHaveBeenCalled();
+  });
+
+  it("runs the unchanged refinement path when a recovery fingerprint is current", async () => {
+    const deps = makeDeps();
+    const fn = enqueueIntentRefinementFactory(deps);
+
+    const result = await fn({
+      userId: "u-1", intentId: "int-1", questionId: "q-recovery",
+      selectedOptions: ["Remote only"],
+      expectedIntentFingerprint: computeIntentFingerprint("Looking for a React developer", "React hiring"),
+    });
+    expect(result.applied).toBe(true);
+    expect(deps.runIntentUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("handles free-text-only answers (empty selectedOptions)", async () => {

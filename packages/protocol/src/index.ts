@@ -78,6 +78,7 @@ export {
   type QuestionGenerationResult,
   type QuestionPurpose,
   type QuestionPoolPush,
+  type QuestionRecoverySnapshot,
   type QuestionVoidedReason,
   type QuestionPoolPushRequestStatus,
   type QuestionPoolPushRequestReason,
@@ -156,7 +157,7 @@ export { NegotiationReflector } from "./negotiation/negotiation.reflect.js";
 export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiation/negotiation.reflect.js";
 export type { NegotiatorMemoryEntry } from "./negotiation/negotiation.memory.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
-export type { QuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questioner/questioner.types.js";
+export type { QuestionerInput, RecoveryQuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questioner/questioner.types.js";
 export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold } from "./questioner/questioner.env.js";
 export { PoolDiscriminatorMiner } from "./opportunity/discriminator/discriminator.miner.js";
 export { PoolDiscriminatorAssigner } from "./opportunity/discriminator/discriminator.assigner.js";

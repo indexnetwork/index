@@ -26,6 +26,13 @@ export interface IntentContext {
   userContext?: string;
 }
 
+/** Recovery-only intent context after a successful discovery completion. */
+export interface RecoveryIntentContext extends IntentContext {
+  purpose: "recovery";
+  /** Privacy-safe aggregate signal; raw negotiation evidence is never provided. */
+  rejectedNegotiationCount?: number;
+}
+
 /** Profile context — data needed to generate questions to fill profile gaps. */
 export interface ProfileContext {
   /** The user's global user_context paragraph (profile-replacing identity text). */
@@ -132,6 +139,7 @@ export interface PoolDiscoveryContext {
 export type QuestionerContext =
   | DiscoveryContext
   | IntentContext
+  | RecoveryIntentContext
   | ProfileContext
   | NegotiationContext
   | NegotiationInflightContext
@@ -179,7 +187,7 @@ interface QuestionerInputBase {
 interface StandardQuestionerInput extends QuestionerInputBase {
   purpose?: undefined;
   /** Mode-specific context. Must align with the selected mode. */
-  context: Exclude<QuestionerContext, UptakeNegotiationContext>;
+  context: Exclude<QuestionerContext, UptakeNegotiationContext | RecoveryIntentContext>;
 }
 
 /** Negotiation-mode uptake generation input. */
@@ -189,5 +197,14 @@ export interface UptakeQuestionerInput extends QuestionerInputBase {
   context: UptakeNegotiationContext;
 }
 
+/** Intent-mode post-discovery recovery generation input. */
+export interface RecoveryQuestionerInput extends QuestionerInputBase {
+  mode: "intent";
+  purpose: "recovery";
+  sourceType: "intent";
+  triggeredByIntentId: string;
+  context: RecoveryIntentContext;
+}
+
 /** Top-level input discriminated by the internal purpose. */
-export type QuestionerInput = StandardQuestionerInput | UptakeQuestionerInput;
+export type QuestionerInput = StandardQuestionerInput | UptakeQuestionerInput | RecoveryQuestionerInput;

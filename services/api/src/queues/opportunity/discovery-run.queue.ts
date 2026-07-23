@@ -17,6 +17,8 @@ import type { ConnectLinkKind } from '../../services/connect-link.service';
 import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
 import { questionerEnqueueIfEnabled } from '../questioner.queue';
 import { maybeMinePoolDiscriminators } from '../pool/mining.shared';
+import { maybeEnqueueIntentRecovery } from '../questioner/recovery.shared';
+import type { RecoveryQuestionerJobData } from '../questioner.queue';
 
 export const QUEUE_NAME = 'opportunity-discovery-run';
 
@@ -28,6 +30,8 @@ export interface DiscoveryRunQueueDeps {
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
+  /** Post-success no-opportunity recovery hook; failure-isolated by this queue. */
+  recoverAfterCompletion?: (input: RecoveryQuestionerJobData) => Promise<unknown>;
 }
 
 const apiBaseUrl = resolveProtocolBaseUrl();
@@ -42,6 +46,18 @@ const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferre
   const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting, preferredSurface });
   return { url: buildConnectShortUrl(apiBaseUrl, code) };
 };
+
+/** Resolve exact intent provenance for post-success recovery; ad-hoc and introducer flows fail closed. */
+export function resolveDiscoveryRunRecoveryIntentId(
+  run: Pick<DiscoveryRunRecord, 'context' | 'input'>,
+): string | null {
+  if (run.input.introTargetUserId) return null;
+  const rawIntentId = run.context.scopeType === 'intent'
+    ? run.context.scopeId
+    : run.input.intentId;
+  const intentId = rawIntentId?.trim();
+  return intentId || null;
+}
 
 function assertDiscoveryRunOutputFits(raw: string): void {
   const policy = getToolTimeoutPolicy('discover_opportunities');
@@ -156,6 +172,25 @@ export class DiscoveryRunQueue {
       await discoveryRunAdapter.markSucceeded(runId, result);
       this.logger.info('Completed', { runId, userId: run.userId });
       this.maybeMinePoolDiscriminators(run);
+      const recoveryIntentId = resolveDiscoveryRunRecoveryIntentId(run);
+      if (recoveryIntentId) {
+        try {
+          await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
+            source: 'discovery_run',
+            recipientUserId: run.userId,
+            intentId: recoveryIntentId,
+            runId,
+          });
+        } catch (error) {
+          // Success is already durable. Recovery cannot change run outcome.
+          this.logger.warn('Recovery completion hook failed after successful discovery run', {
+            runId,
+            intentId: recoveryIntentId,
+            userId: run.userId,
+            errorClass: error instanceof Error ? error.name : 'UnknownError',
+          });
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (abortController.signal.aborted || await discoveryRunAdapter.isCancelRequested(runId)) {

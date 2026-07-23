@@ -19,8 +19,10 @@ interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
   mode: QuestionMode;
-  /** Internal generation purpose; uptake answers remain private to the question row. */
-  purpose?: 'uptake';
+  /** Internal generation purpose; never exposed through public question payloads. */
+  purpose?: 'uptake' | 'recovery';
+  /** Recovery snapshot fingerprint rechecked before canonical intent mutation. */
+  recoveryIntentFingerprint?: string;
   sourceType: string;
   sourceId: string;
   answer: QuestionAnswer;
