@@ -9,7 +9,7 @@ Use this workflow from the release-operations role or a delegated read-only
 `release-verifier`. It is deliberately one-shot: never use `--watch`, waits, sleeps,
 polling loops, daemons, or infrastructure mutation.
 
-## Identity binding
+## Identity binding and delegation
 
 Before any read, record and preserve the exact identity tuple:
 
@@ -19,6 +19,22 @@ Before any read, record and preserve the exact identity tuple:
 
 A result applies only to that tuple. A notification, merge event, Slack message, or
 unrelated deployment cannot establish success.
+
+When a gate is nonterminal, explicitly call `team_delegate` with `role:
+release-verifier`, `model: gpt-5.6-luna`, and a prompt containing every tuple field:
+
+```json
+{
+  "role": "release-verifier",
+  "description": "One-shot deployment verification",
+  "prompt": "Verify exactly PR=<pr>, base=<base>, head=<head>, mergeSHA=<sha>; Railway project=<projectId>, environment=<environmentId>, service=<serviceId>, deployment=<deploymentId>. Perform one bounded read only, report status, then block this task if nonterminal.",
+  "paths": [".pi/skills/verify-deployment-async/**", ".pi/skills/finish-pr/**"],
+  "worktree": false
+}
+```
+
+Return user control immediately after delegation; do not inline the worker or wait for
+its result.
 
 ## One bounded read
 
@@ -42,10 +58,11 @@ unrelated deployment cannot establish success.
   (or `verification incomplete` when identity/evidence is unavailable), keep issues
   open, and return immediately.
 
-Use `team_report` (and `team_send` when coordination needs a direct handoff) with the
-bound identity, one-shot evidence, and a concise next-action note. The verifier may
-perform another bounded read only after an explicit durable terminal event or a natural
-orchestration tick; it must not create its own trigger or watcher.
+After the one bounded read, emit at most one pending `team_report` for the identity
+tuple plus observed status. Deduplicate repeat reports by that composite key. Then call
+`team_block` on the same task; do not spawn a replacement worker. Resume only that exact
+blocked worker after a durable terminal event or an explicit natural-tick `team_send`
+carrying the same identity tuple. The worker must not create its own trigger or watcher.
 
 ## Closeout gate
 
@@ -57,5 +74,5 @@ the release coordinator's explicit closeout action.
 
 The workflow is read-only: no deploy, restart, rollback, variable change, environment
 mutation, merge, rebase, push, or issue close. Full automatic completion still requires
-a durable external terminal-event adapter (or a later natural orchestration tick) to
-invoke another one-shot verification.
+a durable external terminal-event adapter (or a later natural orchestration tick sent to
+the exact blocked worker) to invoke another one-shot verification.

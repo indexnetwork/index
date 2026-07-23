@@ -94,8 +94,9 @@
   "externalGatePolicy": {
     "mode": "non-blocking-one-shot",
     "immediateSnapshot": true,
-    "nonterminalAction": "delegate read-only release-verifier, report merged; verification pending, and return control",
-    "recheckTrigger": "durable external terminal event or natural orchestration tick",
+    "nonterminalAction": "explicitly team_delegate one release-verifier with exact PR/base/head/merge SHA plus Railway project/environment/service/deployment IDs, return user control immediately, then team_block the same task after one bounded read",
+    "recheckTrigger": "resume only that exact blocked worker via durable external terminal event or explicit natural-tick team_send",
+    "reportDeduplication": "identity tuple plus observed status; emit at most one pending report per composite key",
     "prohibited": ["--watch", "wait", "sleep", "polling", "watcher daemon", "Railway mutation"],
     "issueCloseout": "fail-closed until bound GitHub and Railway checks both reach terminal success",
     "mcpFallback": "Railway unavailable means unverified; keep issues open and do not infer success"
@@ -189,7 +190,7 @@
         ".pi/skills/verify-deployment-async/**",
         ".pi/herdr-team.json"
       ],
-      "mission": "Perform one bounded, read-only GitHub and Railway verification for the exact PR/base/head/merge SHA and Railway project/environment/service/deployment IDs. Report terminal success/failure or fail-closed pending status; never mutate infrastructure, merge, or close issues.",
+      "mission": "Perform one bounded, read-only GitHub and Railway verification for the exact PR/base/head/merge SHA and Railway project/environment/service/deployment IDs. Emit at most one deduplicated pending report, team_block the same task when nonterminal, and resume only through a matching durable event or explicit natural-tick team_send; never mutate infrastructure, merge, or close issues.",
       "verification": [
         "take one GitHub snapshot and one Railway MCP read per explicit trigger",
         "report identity-bound evidence with team_report",

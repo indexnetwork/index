@@ -16,7 +16,7 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 - Do not merge without explicit user confirmation in the current session.
 - Do not deploy, restart, rollback, or mutate Railway resources unless the user explicitly asked for that action. Verification is okay; mutation needs confirmation.
 - Do not close Linear or GitHub issues until the PR is merged and post-merge deployment checks pass, unless the user explicitly asks to close them earlier.
-- Never claim deployment success from a queued/in-progress status. Take one immediate status snapshot; if GitHub/Railway is nonterminal, invoke the project-local `verify-deployment-async` workflow and report `merged; verification pending`, then return control immediately. Never use `--watch`, waits, sleeps, or polling. Keep issues open until a later durable terminal event or explicit orchestration tick supplies another bounded read.
+- Never claim deployment success from a queued/in-progress status. Take one immediate status snapshot; if GitHub/Railway is nonterminal, explicitly call `team_delegate` for one read-only `release-verifier`, passing the exact PR/base/head/merge SHA and Railway project/environment/service/deployment tuple. Return user control immediately. The verifier performs one bounded read, emits at most one deduplicated pending report keyed by identity tuple plus observed status, then `team_block`s that same task. Resume only that exact blocked worker from a durable terminal event or an explicit natural-tick `team_send`; never use `--watch`, waits, sleeps, or polling. Keep issues open until terminal success.
 - If Railway MCP tools are unavailable, report deployment as unverified; do not claim success or close related issues until it can be verified. GitHub merge safety does not depend on MCP availability.
 - If checks fail, keep issues open and report the blocker.
 - Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, `index` first delegates through a dedicated canonical-root coordinator; that root sends one consolidated prompt to the existing visible Herdr-managed Pi session for the PR worktree. The root/child handoff is fire-and-return without `--wait`; while the bridge is removed, `index` explicitly ticks the dedicated root on a later natural turn. That child session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
@@ -198,9 +198,10 @@ Record the user's decisions for the step-6 summary.
 ### 5. Check GitHub readiness before merge
 
 Before merge, take one factual snapshot and make the readiness decision from it. Do not
-wait for external gates in the root session. If required checks are nonterminal, report
-the pending state and hand off a bounded read-only verifier through
-`verify-deployment-async`; do not merge until normal readiness requirements are met.
+wait for external gates in the root session. If required checks are nonterminal, explicitly
+call `team_delegate` for a read-only `release-verifier` with the exact PR/base/head/merge
+SHA and Railway project/environment/service/deployment tuple. Return control immediately;
+do not merge until normal readiness requirements are met.
 
 ```bash
 bun run pr:snapshot -- PR_NUMBER [--repo owner/repo]
@@ -272,11 +273,13 @@ Check workflow runs for the target branch/commit:
 gh run list --branch BASE_BRANCH --limit 10
 ```
 
-If the relevant run is nonterminal, do not watch or poll it. Invoke
-`verify-deployment-async` for one bounded read, report `merged; verification pending`,
-and return control. A later durable terminal event or natural orchestration tick may
-trigger another one-shot read. Do not proceed to issue closure until required
-post-merge checks have terminal success.
+If the relevant run is nonterminal, do not watch or poll it. Explicitly call
+`team_delegate` for the exact read-only `release-verifier` identity tuple described in
+`verify-deployment-async`, then return control immediately. That worker gets one bounded
+read, emits at most one identity-plus-status-deduplicated pending report, and
+`team_block`s the same task. Only a durable terminal event or explicit natural-tick
+`team_send` may resume that exact blocked worker. Do not proceed to issue closure until
+required post-merge checks have terminal success.
 
 ### 8. Verify post-merge deployment, finish issues, and clean up worktrees
 

@@ -22,7 +22,7 @@ Then use the available Railway MCP tool(s) to verify:
 - recent logs for startup/runtime errors,
 - app health URL or smoke endpoint if available.
 
-If a Railway deployment is still building/deploying, do one bounded status read and report `merged; verification pending` with the deployment URL/status. Do not wait, watch, sleep, or poll; return control and let a later durable terminal event or natural orchestration tick trigger another bounded read. Do not claim success.
+If a Railway deployment is still building/deploying, explicitly call `team_delegate` for one read-only `release-verifier` with the exact PR/base/head/merge SHA and Railway project/environment/service/deployment tuple, then return user control immediately. The worker performs one bounded status read, emits at most one pending report deduplicated by identity tuple plus observed status, and `team_block`s the same task. Do not wait, watch, sleep, or poll; resume only that exact blocked worker via a durable terminal event or explicit natural-tick `team_send`. Do not claim success.
 
 If Railway MCP is not configured or does not expose enough tools to verify status/logs, report deployment verification as incomplete. Do not claim success or close related issues, but do not treat MCP unavailability alone as a reason to undo or delay an otherwise-safe GitHub merge.
 
