@@ -3,8 +3,9 @@ import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingActiveNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere } from './negotiation-attempt.atomic';
+import { runTasklessNegotiationReactivation } from './negotiation-reactivation.atomic';
 import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
-import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere } from './negotiation-attempt.atomic';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -533,7 +534,7 @@ export class OpportunityDatabaseAdapter {
    * @param actors - Participant network anchors
    * @param eligibility - Authoritative owner/network/intent scope
    * @param expectedStatus - Optional compare-and-set source status
-   * @returns The updated opportunity, or null after scope/status drift
+   * @returns The updated opportunity, or null after scope, status, or active-task drift
    */
   async updateOpportunityStatusIfNetworkEligible(
     id: string,
@@ -563,55 +564,88 @@ export class OpportunityDatabaseAdapter {
           eligibility.ownerUserId,
           eligibility.triggerIntentId,
         );
-        const [ownedIntent] = await tx
-          .select({ id: schema.intents.id })
-          .from(schema.intents)
-          .where(and(
-            eq(schema.intents.id, eligibility.triggerIntentId),
-            eq(schema.intents.userId, eligibility.ownerUserId),
-            isNull(schema.intents.archivedAt),
-            or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
-          ))
-          .for('share');
-        if (!ownedIntent) return null;
-        const assignments = await tx
-          .select({ networkId: schema.intentNetworks.networkId })
-          .from(schema.intentNetworks)
-          .where(and(
-            eq(schema.intentNetworks.intentId, eligibility.triggerIntentId),
-            inArray(schema.intentNetworks.networkId, actorNetworkIds),
-          ))
-          .for('share');
-        if (new Set(assignments.map((row) => row.networkId)).size !== actorNetworkIds.length) return null;
       }
 
-      const activePairs = await tx
-        .select({
-          userId: schema.networkMembers.userId,
-          networkId: schema.networkMembers.networkId,
-        })
-        .from(schema.networkMembers)
-        .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
-        .where(and(
-          or(...pairs.map((pair) => and(
-            eq(schema.networkMembers.userId, pair.userId),
-            eq(schema.networkMembers.networkId, pair.networkId),
-          ))),
-          isNull(schema.networkMembers.deletedAt),
-          isNull(schema.networks.deletedAt),
-        ))
-        .for('share');
-      if (activePairs.length !== pairs.length) return null;
+      const validateEligibility = async (): Promise<boolean> => {
+        if (eligibility.triggerIntentId) {
+          const [ownedIntent] = await tx
+            .select({ id: schema.intents.id })
+            .from(schema.intents)
+            .where(and(
+              eq(schema.intents.id, eligibility.triggerIntentId),
+              eq(schema.intents.userId, eligibility.ownerUserId),
+              isNull(schema.intents.archivedAt),
+              or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+            ))
+            .for('share');
+          if (!ownedIntent) return false;
+          const assignments = await tx
+            .select({ networkId: schema.intentNetworks.networkId })
+            .from(schema.intentNetworks)
+            .where(and(
+              eq(schema.intentNetworks.intentId, eligibility.triggerIntentId),
+              inArray(schema.intentNetworks.networkId, actorNetworkIds),
+            ))
+            .for('share');
+          if (new Set(assignments.map((row) => row.networkId)).size !== actorNetworkIds.length) return false;
+        }
 
-      const [row] = await tx
-        .update(opportunities)
-        .set({ status, acceptedBy: null, updatedAt: new Date() })
-        .where(and(
-          eq(opportunities.id, id),
-          ...(expectedStatus ? [eq(opportunities.status, expectedStatus)] : []),
-        ))
-        .returning();
-      return row ? toOpportunityRow(row) : null;
+        const activePairs = await tx
+          .select({
+            userId: schema.networkMembers.userId,
+            networkId: schema.networkMembers.networkId,
+          })
+          .from(schema.networkMembers)
+          .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
+          .where(and(
+            or(...pairs.map((pair) => and(
+              eq(schema.networkMembers.userId, pair.userId),
+              eq(schema.networkMembers.networkId, pair.networkId),
+            ))),
+            isNull(schema.networkMembers.deletedAt),
+            isNull(schema.networks.deletedAt),
+          ))
+          .for('share');
+        return activePairs.length === pairs.length;
+      };
+
+      const reactivate = async (): Promise<OpportunityRow | null> => {
+        const [row] = await tx
+          .update(opportunities)
+          .set({ status, acceptedBy: null, updatedAt: new Date() })
+          .where(and(
+            eq(opportunities.id, id),
+            ...(expectedStatus ? [eq(opportunities.status, expectedStatus)] : []),
+          ))
+          .returning();
+        return row ? toOpportunityRow(row) : null;
+      };
+
+      if (expectedStatus === 'negotiating') {
+        return runTasklessNegotiationReactivation({
+          acquireAttemptLock: () => acquireNegotiationAttemptLock(tx, id),
+          validateEligibility,
+          lockOpportunity: async () => {
+            const [opportunity] = await tx
+              .select({ status: opportunities.status })
+              .from(opportunities)
+              .where(eq(opportunities.id, id))
+              .for('update');
+            return opportunity ?? null;
+          },
+          hasFreshNegotiationTask: async () => {
+            const [task] = await tx
+              .select({ id: schema.tasks.id })
+              .from(schema.tasks)
+              .where(qualifyingActiveNegotiationTaskWhere(id))
+              .limit(1);
+            return Boolean(task);
+          },
+          reactivate,
+        });
+      }
+
+      return await validateEligibility() ? reactivate() : null;
     });
     if (updated) emitOpportunityPendingBestEffort(updated);
     return updated;

@@ -11,6 +11,14 @@ const opportunitySource = readFileSync(
   new URL('../opportunity.database.adapter.ts', import.meta.url),
   'utf8',
 );
+const negotiationAttemptSource = readFileSync(
+  new URL('../negotiation-attempt.atomic.ts', import.meta.url),
+  'utf8',
+);
+const negotiationReactivationSource = readFileSync(
+  new URL('../negotiation-reactivation.atomic.ts', import.meta.url),
+  'utf8',
+);
 const chatDatabaseSource = readFileSync(
   new URL('../chat.database.adapter.ts', import.meta.url),
   'utf8',
@@ -78,6 +86,47 @@ describe('intent-scope advisory lock contract', () => {
     expect(reactivation).toContain('eligibility.triggerIntentId');
     expect(intentRow).toBeGreaterThan(advisory);
     expect(opportunityMutation).toBeGreaterThan(advisory);
+
+    const tasklessGuard = reactivation.indexOf("if (expectedStatus === 'negotiating')");
+    const attemptLock = reactivation.indexOf('acquireNegotiationAttemptLock(tx, id)', tasklessGuard);
+    const opportunityRow = reactivation.indexOf(".for('update')", attemptLock);
+    const freshTask = reactivation.indexOf('qualifyingActiveNegotiationTaskWhere(id)', opportunityRow);
+    expect(tasklessGuard).toBeGreaterThan(advisory);
+    expect(attemptLock).toBeGreaterThan(tasklessGuard);
+    expect(opportunityRow).toBeGreaterThan(attemptLock);
+    expect(freshTask).toBeGreaterThan(opportunityRow);
+  });
+
+  it('reuses the canonical fresh-task SQL immediately before reactivation', () => {
+    const activeTask = methodSlice(
+      negotiationAttemptSource,
+      'export function qualifyingActiveNegotiationTaskWhere(',
+      '/** Pair-global tasks fresh enough',
+    );
+    const pairTask = methodSlice(
+      negotiationAttemptSource,
+      'export function qualifyingPairNegotiationTaskWhere(',
+      '/**\n * Qualifying tasks that prove an attempt',
+    );
+    expect(activeTask).toContain("metadata}->>'type' = 'negotiation'");
+    expect(activeTask).toContain("metadata}->>'opportunityId' = ${opportunityId}");
+    expect(activeTask).toContain('qualifyingFreshNegotiationTaskStateWhere()');
+    expect(pairTask).toContain('qualifyingFreshNegotiationTaskStateWhere()');
+    expect(negotiationAttemptSource).toContain(
+      "IN ('submitted', 'working', 'waiting_for_agent', 'claimed')",
+    );
+    expect(negotiationAttemptSource).toContain("state} = 'input_required'");
+
+    const acquire = negotiationReactivationSource.indexOf('boundary.acquireAttemptLock()');
+    const eligibility = negotiationReactivationSource.indexOf('boundary.validateEligibility()', acquire);
+    const row = negotiationReactivationSource.indexOf('boundary.lockOpportunity()', eligibility);
+    const task = negotiationReactivationSource.indexOf('boundary.hasFreshNegotiationTask()', row);
+    const mutation = negotiationReactivationSource.indexOf('boundary.reactivate()', task);
+    expect(acquire).toBeGreaterThanOrEqual(0);
+    expect(eligibility).toBeGreaterThan(acquire);
+    expect(row).toBeGreaterThan(eligibility);
+    expect(task).toBeGreaterThan(row);
+    expect(mutation).toBeGreaterThan(task);
   });
 
   it('threads lifecycle-aware recovery CAS data to both final locked intent writers', () => {
