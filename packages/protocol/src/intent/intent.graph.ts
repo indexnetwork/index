@@ -1,5 +1,5 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { IntentGraphState, VerifiedIntent, ExecutionResult } from "./intent.state.js";
+import { IntentGraphState, VerifiedIntent, ExecutionResult, type IntentValidationFailure } from "./intent.state.js";
 import { ExplicitIntentInferrer } from "./intent.inferrer.js";
 import { SemanticVerifier } from "./intent.verifier.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "./intent.specificity.js";
@@ -30,6 +30,48 @@ export function enforceIntentActionBoundary(
   if (operationMode !== 'update') return actions;
   const targets = new Set(targetIntentIds ?? []);
   return actions.filter((action) => action.type === 'update' && targets.has(action.id));
+}
+
+/**
+ * Build the only action permitted for an explicit update. This path is
+ * intentionally deterministic: semantic reconciliation may shape create
+ * operations, but it may not redirect an update away from its supplied target.
+ */
+export function buildExplicitUpdateActions(
+  targetIntentIds: string[] | undefined,
+  activeIntentIds: string[],
+  candidates: VerifiedIntent[],
+): { actions: NormalizedIntentAction[]; failure?: IntentValidationFailure } {
+  if (targetIntentIds?.length !== 1 || !activeIntentIds.includes(targetIntentIds[0])) {
+    return {
+      actions: [],
+      failure: {
+        category: 'update_target_boundary',
+        message: 'Explicit update requires exactly one active intent owned by the caller.',
+      },
+    };
+  }
+  if (candidates.length !== 1) {
+    return {
+      actions: [],
+      failure: {
+        category: 'reconciliation_boundary',
+        message: 'Explicit update must resolve to exactly one verified intent.',
+      },
+    };
+  }
+
+  const candidate = candidates[0];
+  return {
+    actions: [{
+      type: 'update',
+      id: targetIntentIds[0],
+      payload: candidate.description,
+      score: candidate.score ?? null,
+      reasoning: candidate.reasoning ?? 'Explicit user-confirmed update',
+      intentMode: candidate.verification?.referential_anchor ? 'REFERENTIAL' : 'ATTRIBUTIVE',
+    }],
+  };
 }
 
 const MAX_PERMISSIBLE_ENTROPY = 0.75;
@@ -105,13 +147,18 @@ export class IntentGraphFactory {
     private embedder?: EmbeddingGenerator,
     private intentQueue?: IntentGraphQueue,
     private questionerEnqueue?: QuestionerEnqueueFn,
+    private agents?: {
+      inferrer?: Pick<ExplicitIntentInferrer, 'invoke'>;
+      verifier?: Pick<SemanticVerifier, 'invoke'>;
+      reconciler?: Pick<IntentReconciler, 'invoke'>;
+    },
   ) { }
 
   public createGraph() {
     // Instantiate Agents (Nodes)
-    const inferrer = new ExplicitIntentInferrer();
-    const verifier = new SemanticVerifier();
-    const reconciler = new IntentReconciler();
+    const inferrer = this.agents?.inferrer ?? new ExplicitIntentInferrer();
+    const verifier = this.agents?.verifier ?? new SemanticVerifier();
+    const reconciler = this.agents?.reconciler ?? new IntentReconciler();
 
     // --- NODE DEFINITIONS ---
 
@@ -152,6 +199,7 @@ export class IntentGraphFactory {
 
         return {
           activeIntents: formattedActiveIntents,
+          activeIntentIds: activeIntents.map((intent) => intent.id),
           trace: [{
             node: "prep",
             detail: `Fetched ${activeIntents.length} active intent(s)`,
@@ -246,7 +294,9 @@ export class IntentGraphFactory {
 
         // Parallel Execution
         const verificationResults = await Promise.all(
-          intents.map(async (intent): Promise<VerifiedIntent | null> => {
+          intents.map(async (intent): Promise<
+            { intent: VerifiedIntent } | { failure: IntentValidationFailure }
+          > => {
             try {
               let description = intent.description;
               const _traceEmitterVerifier = requestContext.getStore()?.traceEmitter;
@@ -286,7 +336,14 @@ export class IntentGraphFactory {
               const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
               if (!VALID_TYPES.includes(verdict.classification)) {
                 logger.warn('Dropping intent', { description, classification: verdict.classification });
-                return null;
+                return {
+                  failure: {
+                    category: 'non_actionable',
+                    classification: verdict.classification,
+                    referentialBreadth: verdict.referential_breadth,
+                    message: `Description was classified as ${verdict.classification}, not an actionable goal.`,
+                  },
+                };
               }
 
               if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
@@ -295,17 +352,31 @@ export class IntentGraphFactory {
                   entropy: verdict.semantic_entropy,
                   clarity: verdict.felicity_scores.clarity,
                 });
-                return null;
+                return {
+                  failure: {
+                    category: 'vague_or_invalid',
+                    classification: verdict.classification,
+                    referentialBreadth: verdict.referential_breadth,
+                    message: 'Description failed clarity or semantic-entropy requirements.',
+                  },
+                };
               }
 
-              if (state.operationMode !== 'propose' && verdict.referential_breadth === 'broad') {
+              if (state.operationMode === 'create' && verdict.referential_breadth === 'broad') {
                 logger.warn('Dropping broad attributive intent before persistence', {
                   description,
                   referentialBreadth: verdict.referential_breadth,
                   missingSelectionalConstraints: verdict.missing_selectional_constraints,
                   warning: getSpecificityWarning(verdict),
                 });
-                return null;
+                return {
+                  failure: {
+                    category: 'vague_or_invalid',
+                    classification: verdict.classification,
+                    referentialBreadth: verdict.referential_breadth,
+                    message: getSpecificityWarning(verdict),
+                  },
+                };
               }
 
               // Calculate Score
@@ -317,20 +388,27 @@ export class IntentGraphFactory {
 
               // Return enriched intent
               return {
-                ...intent,
-                description,
-                verification: verdict,
-                score
+                intent: {
+                  ...intent,
+                  description,
+                  verification: verdict,
+                  score,
+                },
               };
             } catch (e) {
               logger.error('Error verifying intent', { description: intent.description, error: e });
-              return null;
+              return {
+                failure: {
+                  category: 'verification_failure',
+                  message: e instanceof Error ? e.message : 'Intent verification failed unexpectedly.',
+                },
+              };
             }
           })
         );
 
-        // Filter out nulls
-        const verified = verificationResults.filter((i): i is VerifiedIntent => i !== null);
+        const verified = verificationResults.flatMap((result) => 'intent' in result ? [result.intent] : []);
+        const validationFailures = verificationResults.flatMap((result) => 'failure' in result ? [result.failure] : []);
         logger.verbose(`Verification complete`, {
           passed: verified.length,
           total: intents.length,
@@ -376,7 +454,7 @@ export class IntentGraphFactory {
           });
         }
 
-        return { verifiedIntents: verified, agentTimings: agentTimingsAccum, trace: traceEntries };
+        return { verifiedIntents: verified, validationFailures, agentTimings: agentTimingsAccum, trace: traceEntries };
       });
     };
 
@@ -434,6 +512,27 @@ export class IntentGraphFactory {
             actions: [],
             agentTimings: agentTimingsAccum,
             trace: [{ node: "reconciler", detail: "No intents to reconcile" }],
+          };
+        }
+
+        if (state.operationMode === 'update') {
+          const explicitUpdate = buildExplicitUpdateActions(
+            state.targetIntentIds,
+            state.activeIntentIds,
+            candidates,
+          );
+          return {
+            actions: explicitUpdate.actions,
+            validationFailures: explicitUpdate.failure
+              ? [...state.validationFailures, explicitUpdate.failure]
+              : state.validationFailures,
+            agentTimings: agentTimingsAccum,
+            trace: [{
+              node: 'reconciler',
+              detail: explicitUpdate.failure
+                ? `Explicit update rejected: ${explicitUpdate.failure.category}`
+                : `Explicit update bound to target ${state.targetIntentIds?.[0]}`,
+            }],
           };
         }
 

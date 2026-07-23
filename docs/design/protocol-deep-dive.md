@@ -136,7 +136,7 @@ Under the same `WEB_SIGNAL_AGENT_ENABLED` cutover, the session-only incomplete-u
 | DELETE | prep -> reconciler -> executor -> END |
 | PROPOSE | prep -> inference -> verification -> END |
 
-The propose mode is a dry-run that extracts and verifies intents without persisting, used when the chat agent wants to preview what intents would be created.
+The propose mode is a dry-run that extracts and verifies intents without persisting, used when the chat agent wants to preview what intents would be created. Broad actionable candidates retain specificity-warning metadata and may be approved by the user. Explicit update mode uses the same breadth validity semantics, then deterministically binds its single verified candidate to the single supplied active owned intent ID; it does not delegate create-versus-update selection to the general reconciler. Non-actionable or vague candidates, ambiguous inference, and target/ownership boundary failures remain fail-closed and are returned as distinct failure categories.
 
 **Dependencies:** `IntentGraphDatabase`, `EmbeddingGenerator`, `IntentGraphQueue`
 
