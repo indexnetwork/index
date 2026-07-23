@@ -599,6 +599,9 @@ export class NegotiationGraphFactory {
           allowedActions: [...allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable })],
           ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
           ...(ownMemory.length > 0 && { negotiatorMemory: ownMemory }),
+          ...(state.privateConsultation?.recipientUserId === ownUser.id
+            ? { privateConsultation: state.privateConsultation }
+            : {}),
         };
 
         const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
@@ -659,6 +662,9 @@ export class NegotiationGraphFactory {
             ...(askUserAvailable && { canAskUser: true }),
             ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
             ...(ownMemory.length > 0 && { memory: ownMemory }),
+            ...(state.privateConsultation?.recipientUserId === ownUser.id
+              ? { privateConsultation: state.privateConsultation }
+              : {}),
           });
         }
 

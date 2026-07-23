@@ -3,7 +3,7 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment } from "./negotiation.state.js";
 import { turnSchemaFor, fallbackActionFor } from "./negotiation.protocol.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
-import type { NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
+import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { renderBargainingShiftSection } from "./negotiation.deadlock.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -73,6 +73,8 @@ export interface NegotiationAgentInput {
   isContinuation?: boolean;
   /** User answers collected by the questioner between negotiation sessions. */
   userAnswers?: NegotiationUserAnswer[];
+  /** Exact recipient's private consultation; never part of shared turn history. */
+  privateConsultation?: NegotiationPrivateConsultation;
   /**
    * The acting user's seat under the v2 client-advocate protocol. Selects the
    * seat-scoped turn schema and prompt stance when `protocolVersion` is `v2`.
@@ -253,6 +255,10 @@ Policy: You are continuing a prior dialogue. If this signal is materially the sa
         }).filter(Boolean).join("\n")}\n`
       : '';
 
+    const privateConsultationContext = input.privateConsultation
+      ? `\n\n--- ${userName}'s private consultation (not shared with the counterparty) ---\n${input.privateConsultation.selectedOptions.join(', ')}${input.privateConsultation.freeText ? ` — ${input.privateConsultation.freeText}` : ''}\nUse this only to represent ${userName}'s preferences; do not disclose it unless they explicitly authorized that in their answer.\n`
+      : '';
+
     const discoveryQueryReminder = input.discoveryQuery
       ? `\nREMINDER: ${userName} searched for "${input.discoveryQuery}". Evaluate ${otherName} against this query FIRST. If ${otherName} is not a "${input.discoveryQuery}", reject.\n`
       : '';
@@ -271,7 +277,7 @@ Skills: ${input.otherUser.profile.skills?.join(", ") ?? "N/A"}
 Intents:
 ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n")}
 
-Why this match was suggested: ${input.seedAssessment.reasoning}${input.isContinuation ? continuationContext : historyText}${userAnswersContext}
+Why this match was suggested: ${input.seedAssessment.reasoning}${input.isContinuation ? continuationContext : historyText}${userAnswersContext}${privateConsultationContext}
 ${discoveryQueryReminder}
 ${input.history.length === 0 && !input.isContinuation ? (version === "v2" && seat === "initiator" ? "This is the opening turn. Make the outreach case." : "This is the opening turn. Propose the connection case.") : "Evaluate the latest arguments and respond."}`;
 

@@ -291,6 +291,37 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   /** Continuation where the source (u-src, initiator) speaks next. */
   const continuationMessages = [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "counter", 1)];
 
+  it('delivers private consultation only to the exact recipient across immediate dispatch and system fallback', async () => {
+    const privateConsultation = {
+      recipientUserId: 'u-src', recipientIntentId: 'intent-src', kind: 'answer' as const,
+      selectedOptions: ['do not share budget'], freeText: 'Keep the range private.',
+    };
+    const dispatched: Array<Record<string, unknown>> = [];
+    const externalRecipient = mkStubs();
+    externalRecipient.dispatcher.dispatch = async (_userId: string, _scope: unknown, payload: Record<string, unknown>) => {
+      dispatched.push(payload);
+      return { handled: true, turn: declineTurn };
+    };
+    await runGraph(externalRecipient, { privateConsultation });
+    expect(dispatched[0].privateConsultation).toEqual(privateConsultation);
+
+    const externalCounterparty = mkStubs({ priorMessages: [priorMsg('u-src', 'counter', 0)] });
+    externalCounterparty.dispatcher.dispatch = async (_userId: string, _scope: unknown, payload: Record<string, unknown>) => {
+      dispatched.push(payload);
+      return { handled: true, turn: declineTurn };
+    };
+    await runGraph(externalCounterparty, { privateConsultation });
+    expect(dispatched[1].privateConsultation).toBeUndefined();
+
+    agentScript = [declineTurn];
+    await runGraph(mkStubs(), { privateConsultation });
+    expect(agentInputs[0].privateConsultation).toEqual(privateConsultation);
+
+    agentScript = [declineTurn];
+    await runGraph(mkStubs({ priorMessages: [priorMsg('u-src', 'counter', 0)] }), { privateConsultation });
+    expect(agentInputs[1].privateConsultation).toBeUndefined();
+  });
+
   it("pauses the full loop: message + material binding + timer + question + input_required, no outcome", async () => {
     const stubs = mkStubs({ priorMessages: continuationMessages });
     agentScript = [askUserTurn];

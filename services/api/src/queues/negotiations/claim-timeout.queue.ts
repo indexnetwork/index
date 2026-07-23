@@ -195,16 +195,29 @@ export class NegotiationClaimTimeoutQueue {
     // side will flip the state — the other no-ops. This prevents both paths
     // from appending a turn for the same claimed state.
     const preflight = await database.getTask(negotiationId);
-    const executionState = (preflight?.metadata as { continuationExecution?: { status?: unknown } } | null)
-      ?.continuationExecution?.status;
+    const continuationRecord = (preflight?.metadata as { continuationExecution?: { status?: unknown } } | null)
+      ?.continuationExecution;
+    const hasContinuation = continuationRecord !== undefined;
+    const executionState = continuationRecord?.status;
+    // A continuation is never allowed to downgrade into the generic timeout
+    // path: malformed, parked, expired, or stale ownership must perform zero
+    // task/message/artifact/opportunity writes.
+    if (hasContinuation && executionState !== 'claimed') {
+      this.logger.info('Continuation claim timeout lost its fence, skipping', { negotiationId });
+      return;
+    }
     // Provider-free unit tests never load Drizzle: this is reached only for a
     // real task carrying a claimed continuation fence.
-    const continuationDb = executionState === 'claimed'
+    const continuationDb = hasContinuation
       ? (await import('../../lib/drizzle/drizzle')).default
       : null;
     const continuationExecution = continuationDb
       ? await readClaimedContinuationExecution(continuationDb, negotiationId)
       : null;
+    if (hasContinuation && !continuationExecution) {
+      this.logger.info('Continuation claim timeout failed fence validation, skipping', { negotiationId });
+      return;
+    }
     const task = continuationExecution
       ? await database.transitionClaimedTaskToWorking(negotiationId, continuationExecution)
       : await database.transitionClaimedTaskToWorking(negotiationId);

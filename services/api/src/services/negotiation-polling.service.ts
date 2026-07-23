@@ -354,11 +354,20 @@ export class NegotiationPollingService {
     // 2. Atomically transition out of 'claimed' to 'working' with CAS on
     //    claimedByAgentId. This prevents the claim-timeout worker and respond
     //    from both observing 'claimed' and both appending a turn.
-    const continuationExecution = await readClaimedContinuationExecution(db, negotiationId);
-    const task = await conversationDatabaseAdapter.transitionClaimedTaskToWorking(
-      negotiationId,
-      continuationExecution ?? undefined,
-    );
+    const continuationRecord = (preflight.metadata as { continuationExecution?: unknown } | null)
+      ?.continuationExecution;
+    const hasContinuation = continuationRecord !== undefined;
+    const continuationExecution = hasContinuation
+      ? await readClaimedContinuationExecution(db, negotiationId)
+      : null;
+    // A stale/expired/malformed continuation fence must never fall through to
+    // the generic CAS; that would permit unfenced task and opportunity writes.
+    if (hasContinuation && !continuationExecution) {
+      throw new ConflictError(`Negotiation ${negotiationId} continuation fence is no longer current`);
+    }
+    const task = continuationExecution
+      ? await conversationDatabaseAdapter.transitionClaimedTaskToWorking(negotiationId, continuationExecution)
+      : await conversationDatabaseAdapter.transitionClaimedTaskToWorking(negotiationId);
     // The generic CAS must still bind the claiming agent; continuation rows
     // additionally require their current token/fence before any write.
     if (task && task.claimedByAgentId !== agentId) {
