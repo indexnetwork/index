@@ -197,6 +197,37 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     payload = nextPayload;
   }, 30_000);
 
+  test('answer and material-update reconciliation cannot deadlock or emit a drifted answer', async () => {
+    payload = 'Find a circular-economy manufacturing partner';
+    await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
+    const oldFingerprint = computeIntentFingerprint(payload, summary);
+    const questionId = await adapter.persistFreshRecoveryQuestion(
+      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint, isRecoverySuppressingOpportunity,
+    );
+    expect(questionId).toBeString();
+    questionIds.push(questionId!);
+
+    const events: unknown[] = [];
+    QuestionEvents.onAnswered = (event) => { events.push(event); };
+    const nextPayload = `${payload} for small-batch production`;
+    const newFingerprint = computeIntentFingerprint(nextPayload, summary);
+    await db.update(intents).set({ payload: nextPayload }).where(eq(intents.id, intentId));
+
+    const [answered] = await Promise.all([
+      adapter.answer(questionId!, userId, {
+        selectedOptions: ['Now'], answeredBy: userId, answeredAt: new Date().toISOString(),
+      }),
+      adapter.handleMaterialIntentUpdate({ intentId, userId, oldFingerprint, newFingerprint }),
+    ]);
+    expect(answered).toBe(false);
+    const [voided] = await db.select({ status: questions.status, detection: questions.detection })
+      .from(questions).where(eq(questions.id, questionId!));
+    expect(voided.status).toBe('dismissed');
+    expect(['intent_edit', 'recovery_drift']).toContain(voided.detection.voidedReason);
+    expect(events).toHaveLength(0);
+    payload = nextPayload;
+  }, 30_000);
+
   test('system-voids a drifted recovery answer without an event and admits a current answer', async () => {
     payload = 'Find an industrial design collaborator';
     await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
@@ -226,6 +257,13 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     );
     expect(currentId).toBeString();
     questionIds.push(currentId!);
+    const foreignUserId = crypto.randomUUID();
+    expect(await adapter.answer(currentId!, foreignUserId, {
+      selectedOptions: ['Now'], answeredBy: foreignUserId, answeredAt: new Date().toISOString(),
+    })).toBe(false);
+    expect((await adapter.getById(currentId!))?.status).toBe('pending');
+    expect(events).toHaveLength(0);
+
     expect(await adapter.answer(currentId!, userId, {
       selectedOptions: ['Now'], answeredBy: userId, answeredAt: new Date().toISOString(),
     })).toBe(true);

@@ -199,7 +199,7 @@ describe('FromIntentQueue', () => {
       expect(recoverAfterCompletion).toHaveBeenCalledWith({
         source: 'from_intent', recipientUserId: 'u1', intentId: 'i1',
       });
-      expect(order).toEqual(['discover', 'pool', 'recover']);
+      expect(order).toEqual(['discover', 'recover', 'pool']);
     });
 
     it('discover: does NOT fire the pool-mining hook when the intent is missing', async () => {
@@ -302,6 +302,33 @@ describe('FromIntentQueue', () => {
         newCandidates: null,
       });
       expect(callOrder).toEqual(['discover', 'mine-start', 'mine-end', 'narrate']);
+    });
+
+    it('runs recovery exactly once before a pool-answer narration failure propagates', async () => {
+      const callOrder: string[] = [];
+      const recoverAfterCompletion = mock(async () => { callOrder.push('recover'); });
+      const minePoolDiscriminators = mock(async () => { callOrder.push('mine'); });
+      const narratePoolRerun = mock(async () => {
+        callOrder.push('narrate');
+        throw new Error('narration failed');
+      });
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({
+            id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null,
+          }),
+        }),
+        invokeOpportunityGraph: async () => { callOrder.push('discover'); },
+        recoverAfterCompletion,
+        minePoolDiscriminators,
+        narratePoolRerun,
+      });
+
+      await expect(queue.processJob('discover_opportunities', {
+        intentId: 'i1', userId: 'u1', trigger: 'pool_answer',
+      })).rejects.toThrow('narration failed');
+      expect(recoverAfterCompletion).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(['discover', 'recover', 'mine', 'narrate']);
     });
 
     it('forwards every assigned active network through deterministic indexScope', async () => {

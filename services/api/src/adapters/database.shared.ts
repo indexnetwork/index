@@ -136,6 +136,8 @@ export interface UpdateIntentInput {
   felicityClarity?: number | null;
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
+  /** Final row-lock compare-and-set guard for recovery-answer updates only. */
+  expectedIntentFingerprint?: string;
 }
 export interface CreatedIntentRow {
   id: string;

@@ -221,6 +221,25 @@ export class FromIntentQueue {
       });
     }
 
+    // Recovery is an independent, failure-isolated post-success effect. Run it
+    // before pool mining/narration so an auxiliary Beat 2 failure cannot skip
+    // refinement after authoritative discovery has already succeeded.
+    try {
+      await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
+        source: 'from_intent',
+        recipientUserId: userId,
+        intentId,
+      });
+    } catch (error) {
+      // Discovery has already completed authoritatively. Recovery is bounded,
+      // asynchronous follow-up and must never turn success into a retry.
+      this.logger.warn('Recovery completion hook failed after successful discovery', {
+        intentId,
+        userId,
+        errorClass: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
+
     // Pool-discriminator mining + question enqueue (IND-417/418): web intent
     // creation/edit is the frontend's discovery path — without this hook only
     // MCP-triggered runs would ever produce pool questions. Normal runs stay
@@ -242,22 +261,6 @@ export class FromIntentQueue {
         userId,
         intentId,
         newCandidates: summary?.opportunitiesCreated ?? null,
-      });
-    }
-
-    try {
-      await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
-        source: 'from_intent',
-        recipientUserId: userId,
-        intentId,
-      });
-    } catch (error) {
-      // Discovery has already completed authoritatively. Recovery is bounded,
-      // asynchronous follow-up and must never turn success into a retry.
-      this.logger.warn('Recovery completion hook failed after successful discovery', {
-        intentId,
-        userId,
-        errorClass: error instanceof Error ? error.name : 'UnknownError',
       });
     }
   }

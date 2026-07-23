@@ -2,6 +2,7 @@ import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buil
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
+import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
 import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere } from './negotiation-attempt.atomic';
 
@@ -389,6 +390,14 @@ export class OpportunityDatabaseAdapter {
     );
 
     const result = await db.transaction(async (tx) => {
+      // Common recipient+intent lock comes first. Recovery persistence takes
+      // the same lock before reading exact-trigger opportunities, preventing a
+      // phantom opportunity insert between its final read and question insert.
+      await acquireIntentScopeAdvisoryLock(
+        tx,
+        eligibility.ownerUserId,
+        eligibility.triggerIntentId,
+      );
       await acquireIntentScopedPairLocks(tx, actorUserIds, eligibility.triggerIntentId);
 
       const [ownedIntent] = await tx

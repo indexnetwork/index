@@ -200,6 +200,13 @@ export class IntentDatabaseAdapter {
           userId: schema.intents.userId,
         }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
         if (!before) return null;
+        const oldFingerprint = computeIntentFingerprint(before.payload, before.summary);
+        if (
+          data.expectedIntentFingerprint !== undefined
+          && oldFingerprint !== data.expectedIntentFingerprint
+        ) {
+          return null;
+        }
         const [updated] = await tx.update(schema.intents)
           .set(updateData)
           .where(eq(schema.intents.id, intentId))
@@ -215,7 +222,7 @@ export class IntentDatabaseAdapter {
         if (!updated) return null;
         return {
           updated,
-          oldFingerprint: computeIntentFingerprint(before.payload, before.summary),
+          oldFingerprint,
           newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
         };
       });

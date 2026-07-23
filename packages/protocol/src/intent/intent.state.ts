@@ -92,6 +92,15 @@ export const IntentGraphState = Annotation.Root({
   }),
 
   /**
+   * Optional material compare-and-set guard used only by recovery-answer
+   * updates. The database rechecks it while holding the final intent row lock.
+   */
+  expectedIntentFingerprint: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /**
    * Optional network scope (network ID). Used for linking created intents to a network
    * and for scoping read operations. Prep always fetches ALL user intents via
    * getActiveIntents(userId) regardless of network scope (for global dedup/reconciliation).

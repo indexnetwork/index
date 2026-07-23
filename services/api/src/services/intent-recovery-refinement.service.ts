@@ -8,7 +8,27 @@ import { log } from '../lib/log';
 import { hasValidatedRejectedNoOpportunityEvidence, type RecoveryEvidenceArtifact, type RecoveryEvidenceTask } from '../lib/questioner/recovery-evidence';
 
 const MAX_REJECTED_EVIDENCE_OPPORTUNITIES = 50;
-const UNSAFE_RECOVERY_COPY = /\b(no matches?|could(?:n't| not) find|did not find|previous (?:attempt|run)|reject(?:ed|ion|ions)?|negotiat(?:e|ed|ion|ions|ing)?|candidates?|counterpart(?:y|ies)|search results?|pipeline|retry|reviewed)\b|\b\d+\s+(?:matches|candidates|rejections|negotiations|outcomes)\b/i;
+const RECOVERY_UNIQUE_CONSTRAINT = 'questions_recovery_recipient_intent_fingerprint_uniq';
+const UNSAFE_RECOVERY_COPY = /\b(?:no\s+(?:matches?|results?)|could(?:n't| not)(?:\s+(?:we|you|they|the\s+system))?\s+find|did\s+not\s+find|previous\s+(?:attempt|run)|reject(?:ed|ion|ions)?|negotiat(?:e|ed|ion|ions|ing)?|candidates?|counterpart(?:y|ies)|search(?:ed|es|ing)?|search\s+results?|pipeline|retry|retried|reviewed|process(?:ed|es|ing)?|count(?:ed|s|ing)?|number\s+of|we\s+(?:found|checked|reviewed|searched|tried))\b|\b\d+\s+(?:matches|candidates|rejections|negotiations|outcomes|results)\b/i;
+
+function normalizeVisibleRecoveryCopy(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/[\u2018\u2019\u02BC\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u2033]/g, '"');
+}
+
+/** Reject a generated recovery question when any user-visible field narrates process/evidence. */
+export function isSafeRecoveryQuestionCopy(
+  question: Pick<AdapterPersistableQuestion['payload'], 'title' | 'prompt' | 'options'>,
+): boolean {
+  const visibleStrings = [
+    question.title,
+    question.prompt,
+    ...question.options.flatMap((option) => [option.label, option.description]),
+  ];
+  return visibleStrings.every((value) => !UNSAFE_RECOVERY_COPY.test(normalizeVisibleRecoveryCopy(value)));
+}
 
 export interface IntentRecoveryCompletion {
   source: 'from_intent' | 'discovery_run';
@@ -35,13 +55,19 @@ export function isRecoverySuppressingOpportunity(
     && isActionableForViewer(opportunity.actors, opportunity.status, userId);
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  const candidate = error as { code?: unknown; cause?: unknown };
-  if (candidate.code === '23505') return true;
-  return typeof candidate.cause === 'object'
-    && candidate.cause !== null
-    && (candidate.cause as { code?: unknown }).code === '23505';
+/** Match only the deliberate all-status recovery cadence unique constraint. */
+export function isRecoveryQuestionUniqueViolation(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 6; depth++) {
+    if (typeof current !== 'object' || current === null) return false;
+    const candidate = current as { code?: unknown; constraint?: unknown; cause?: unknown };
+    if (
+      candidate.code === '23505'
+      && candidate.constraint === RECOVERY_UNIQUE_CONSTRAINT
+    ) return true;
+    current = candidate.cause;
+  }
+  return false;
 }
 
 function boundedRunId(runId: string | undefined): string | undefined {
@@ -122,7 +148,7 @@ export class IntentRecoveryRefinementService {
       const strategy = result.strategies[index];
       return (strategy === 'refine_intent' || strategy === 'surface_missing_detail')
         && !question.evidence
-        && !UNSAFE_RECOVERY_COPY.test(question.prompt);
+        && isSafeRecoveryQuestionCopy(question);
     });
     if (selectedIndex < 0) return null;
 
@@ -160,7 +186,7 @@ export class IntentRecoveryRefinementService {
         isRecoverySuppressingOpportunity,
       );
     } catch (error) {
-      if (isUniqueViolation(error)) return null;
+      if (isRecoveryQuestionUniqueViolation(error)) return null;
       throw error;
     }
     if (!questionId) return null;

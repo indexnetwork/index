@@ -16,16 +16,20 @@ const payload = 'Find a technical cofounder for a climate analytics startup';
 const summary = 'Climate cofounder';
 const fingerprint = computeIntentFingerprint(payload, summary);
 
-function generated(prompt = 'For your climate analytics cofounder goal, which product stage should a collaborator have experience with?'): QuestionGenerationResult {
+type GeneratedQuestion = QuestionGenerationResult['questions'][number];
+
+function generated(overrides: Partial<GeneratedQuestion> | string = {}): QuestionGenerationResult {
+  const normalizedOverrides = typeof overrides === 'string' ? { prompt: overrides } : overrides;
   return {
     questions: [{
       title: 'Stage',
-      prompt,
+      prompt: 'For your climate analytics cofounder goal, which product stage should a collaborator have experience with?',
       options: [
         { label: 'Prototype (Recommended)', description: 'Prioritizes collaborators comfortable validating an early product.' },
         { label: 'Growth', description: 'Prioritizes collaborators experienced in scaling an established product.' },
       ],
       multiSelect: false,
+      ...normalizedOverrides,
     }],
     strategies: ['surface_missing_detail'],
     underspecificationTypes: ['missing_constraint'],
@@ -82,12 +86,14 @@ function makeService(input: {
   tasks?: ReturnType<typeof task>[];
   artifacts?: Array<{ id: string; name: string | null; parts: unknown[]; metadata: Record<string, unknown> | null }>;
   persistResult?: string | null;
+  persistError?: unknown;
 }) {
   let persisted: AdapterPersistableQuestion | null = null;
   let generatorInput: RecoveryQuestionerInput | null = null;
   const onCreated = mock(() => {});
   const persistFreshRecoveryQuestion = mock(async (question: AdapterPersistableQuestion) => {
     persisted = question;
+    if (input.persistError !== undefined) throw input.persistError;
     return input.persistResult === undefined ? 'question-1' : input.persistResult;
   });
   const generate = mock(async (generationInput: RecoveryQuestionerInput) => {
@@ -225,11 +231,62 @@ describe('IntentRecoveryRefinementService', () => {
     }
   });
 
-  it('persists nothing for unsafe model copy or final-gate drift', async () => {
-    const unsafe = makeService({ generation: generated('No matches were found; should the search retry with more candidates?') });
-    expect(await unsafe.service.recover({ source: 'from_intent', recipientUserId: userId, intentId })).toBeNull();
-    expect(unsafe.persistFreshRecoveryQuestion).not.toHaveBeenCalled();
+  it('rejects unsafe process narration in every user-visible generated field', async () => {
+    const unsafeQuestions: Array<Partial<GeneratedQuestion>> = [
+      { title: 'Retry count' },
+      { prompt: 'No matches were found; should the search retry with more candidates?' },
+      {
+        options: [
+          { label: 'Retry search', description: 'Change the preferred timing.' },
+          { label: 'Keep timing', description: 'Keep the current preference.' },
+        ],
+      },
+      {
+        options: [
+          { label: 'Earlier', description: 'We couldn’t find a suitable fit.' },
+          { label: 'Later', description: 'Prefer a later start.' },
+        ],
+      },
+      {
+        options: [
+          { label: 'Earlier', description: 'We reviewed an invented counterparty during the process.' },
+          { label: 'Later', description: 'Prefer a later start.' },
+        ],
+      },
+    ];
 
+    for (const unsafeQuestion of unsafeQuestions) {
+      const harness = makeService({ generation: generated(unsafeQuestion) });
+      expect(await harness.service.recover({
+        source: 'from_intent', recipientUserId: userId, intentId,
+      })).toBeNull();
+      expect(harness.persistFreshRecoveryQuestion).not.toHaveBeenCalled();
+    }
+  });
+
+  it('swallows only the intended recovery cadence unique constraint', async () => {
+    const intended = Object.assign(new Error('recovery cadence race'), {
+      code: '23505',
+      constraint: 'questions_recovery_recipient_intent_fingerprint_uniq',
+    });
+    const wrapped = Object.assign(new Error('wrapped database error'), { cause: intended });
+    const duplicate = makeService({ persistError: wrapped });
+    expect(await duplicate.service.recover({
+      source: 'from_intent', recipientUserId: userId, intentId,
+    })).toBeNull();
+    expect(duplicate.onCreated).not.toHaveBeenCalled();
+
+    const unrelated = Object.assign(new Error('unrelated unique violation'), {
+      code: '23505',
+      constraint: 'questions_primary_key',
+    });
+    const failure = makeService({ persistError: unrelated });
+    await expect(failure.service.recover({
+      source: 'from_intent', recipientUserId: userId, intentId,
+    })).rejects.toThrow('unrelated unique violation');
+  });
+
+  it('emits nothing when the final persistence gate drifts', async () => {
     const drifted = makeService({ persistResult: null });
     expect(await drifted.service.recover({ source: 'from_intent', recipientUserId: userId, intentId })).toBeNull();
     expect(drifted.onCreated).not.toHaveBeenCalled();

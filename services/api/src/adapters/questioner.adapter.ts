@@ -18,6 +18,7 @@ import type { QuestionDetection, QuestionActor } from '../schemas/database.schem
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
 import { computeIntentFingerprint, normalizeIntentText } from '../lib/intent/intent.fingerprint';
+import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
 import { exactLivePoolWhere } from './poolquery.shared';
 
 /** Default question TTL in milliseconds (7 days). */
@@ -492,7 +493,7 @@ export class QuestionerAdapter {
     ) return null;
 
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${intentId}`}, 0))`);
+      await acquireIntentScopeAdvisoryLock(tx, userId, intentId);
       const [intent] = await tx.select({
         payload: intents.payload,
         summary: intents.summary,
@@ -615,7 +616,7 @@ export class QuestionerAdapter {
     if (!intentId || question.detection.mode !== 'pool_discovery' || !pool) return null;
 
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${intentId}`}, 0))`);
+      await acquireIntentScopeAdvisoryLock(tx, userId, intentId);
       const [intent] = await tx
         .select({
           userId: intents.userId,
@@ -744,7 +745,7 @@ export class QuestionerAdapter {
       const candidateDetection = candidate?.detection as AdapterQuestionDetection | undefined;
       if (!candidateDetection?.triggeredBy) return false;
       const intentId = candidateDetection.triggeredBy;
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${intentId}`}, 0))`);
+      await acquireIntentScopeAdvisoryLock(tx, userId, intentId);
       const [row] = await tx.select({
         status: questions.status,
         detection: questions.detection,
@@ -1418,7 +1419,7 @@ export class QuestionerAdapter {
     ) => boolean,
   ): Promise<string[]> {
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${intentId}`}, 0))`);
+      await acquireIntentScopeAdvisoryLock(tx, userId, intentId);
       const rows = await tx.select({ id: questions.id, detection: questions.detection })
         .from(questions)
         .where(and(
@@ -1478,7 +1479,7 @@ export class QuestionerAdapter {
     newFingerprint: string;
   }): Promise<{ voidedQuestions: number; staledAdjustments: number }> {
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.userId}:${input.intentId}`}, 0))`);
+      await acquireIntentScopeAdvisoryLock(tx, input.userId, input.intentId);
       const [intent] = await tx
         .select({ payload: intents.payload, summary: intents.summary })
         .from(intents)
@@ -1860,63 +1861,106 @@ export class QuestionerAdapter {
    * @returns `true` if a row was updated, `false` if no matching question found.
    */
   async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
-    const outcome = await this.db.transaction(async (tx) => {
-      const [row] = await tx.select()
-        .from(questions)
-        .where(eq(questions.id, questionId))
-        .limit(1)
-        .for('update');
-      if (!row || row.status !== 'pending') return null;
-      const actors = row.actors as AdapterQuestionActor[];
-      if (!actors.some((actor) => actor.userId === userId)) return null;
+    // Recovery provenance is discovered without a row lock so the transaction
+    // can take the canonical recipient+intent advisory lock first. This read is
+    // only a routing hint; the locked row is re-read and fully revalidated.
+    const [initial] = await this.db.select({
+      detection: questions.detection,
+      actors: questions.actors,
+    })
+      .from(questions)
+      .where(eq(questions.id, questionId))
+      .limit(1);
+    if (!initial) return false;
+    const initialDetection = initial.detection as AdapterQuestionDetection;
+    const initialActors = initial.actors as AdapterQuestionActor[];
+    if (
+      initialDetection.purpose === 'recovery'
+      && (initialActors[0]?.userId !== userId || initialActors[0]?.role !== 'subject')
+    ) return false;
 
-      const detection = row.detection as AdapterQuestionDetection;
-      if (detection.purpose === 'recovery') {
-        const intentId = detection.sourceId;
-        const recovery = detection.recovery;
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${intentId}`}, 0))`);
-        const [intent] = await tx.select({
-          userId: intents.userId,
-          payload: intents.payload,
-          summary: intents.summary,
-          status: intents.status,
-          archivedAt: intents.archivedAt,
-        }).from(intents)
-          .where(eq(intents.id, intentId))
-          .limit(1)
-          .for('update');
-        const valid = answer.answeredBy === userId
-          && actors[0]?.userId === userId
-          && actors[0]?.role === 'subject'
-          && detection.mode === 'intent'
-          && detection.sourceType === 'intent'
-          && detection.triggeredBy === intentId
-          && recovery?.version === 1
-          && row.expiresAt !== null
-          && row.expiresAt > new Date()
-          && intent?.userId === userId
-          && intent.archivedAt === null
-          && (intent.status === null || intent.status === 'ACTIVE')
-          && computeIntentFingerprint(intent.payload, intent.summary) === recovery.intentFingerprint;
-        if (!valid) {
-          await tx.update(questions)
-            .set({
-              status: 'dismissed',
-              detection: { ...detection, voidedReason: 'recovery_drift' } satisfies QuestionDetection,
-            })
-            .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')));
-          return { kind: 'voided' as const };
-        }
-      }
+    const outcome = initialDetection.purpose === 'recovery'
+      ? await this.db.transaction(async (tx) => {
+          const intentId = initialDetection.sourceId;
+          if (!isNonEmptyString(intentId)) return null;
 
-      const [updated] = await tx.update(questions)
-        .set({ status: 'answered', answer })
-        .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
-        .returning({ detection: questions.detection });
-      return updated
-        ? { kind: 'answered' as const, detection: updated.detection as AdapterQuestionDetection }
-        : null;
-    });
+          // Shared order with material intent updates: advisory scope → intent
+          // row → question row. Never trust the unlocked routing read above.
+          await acquireIntentScopeAdvisoryLock(tx, userId, intentId);
+          const [intent] = await tx.select({
+            userId: intents.userId,
+            payload: intents.payload,
+            summary: intents.summary,
+            status: intents.status,
+            archivedAt: intents.archivedAt,
+          }).from(intents)
+            .where(eq(intents.id, intentId))
+            .limit(1)
+            .for('update');
+          const [row] = await tx.select()
+            .from(questions)
+            .where(eq(questions.id, questionId))
+            .limit(1)
+            .for('update');
+          if (!row || row.status !== 'pending') return null;
+
+          const detection = row.detection as AdapterQuestionDetection;
+          if (detection.purpose !== 'recovery' || detection.sourceId !== intentId) return null;
+          const actors = row.actors as AdapterQuestionActor[];
+          const recovery = detection.recovery;
+          const valid = answer.answeredBy === userId
+            && actors[0]?.userId === userId
+            && actors[0]?.role === 'subject'
+            && detection.mode === 'intent'
+            && detection.sourceType === 'intent'
+            && detection.triggeredBy === intentId
+            && recovery?.version === 1
+            && row.expiresAt !== null
+            && row.expiresAt > new Date()
+            && intent?.userId === userId
+            && intent.archivedAt === null
+            && (intent.status === null || intent.status === 'ACTIVE')
+            && computeIntentFingerprint(intent.payload, intent.summary) === recovery.intentFingerprint;
+          if (!valid) {
+            await tx.update(questions)
+              .set({
+                status: 'dismissed',
+                detection: { ...detection, voidedReason: 'recovery_drift' } satisfies QuestionDetection,
+              })
+              .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')));
+            return { kind: 'voided' as const };
+          }
+
+          const [updated] = await tx.update(questions)
+            .set({ status: 'answered', answer })
+            .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
+            .returning({ detection: questions.detection });
+          return updated
+            ? { kind: 'answered' as const, detection: updated.detection as AdapterQuestionDetection }
+            : null;
+        })
+      : await this.db.transaction(async (tx) => {
+          const [row] = await tx.select()
+            .from(questions)
+            .where(eq(questions.id, questionId))
+            .limit(1)
+            .for('update');
+          if (!row || row.status !== 'pending') return null;
+          const actors = row.actors as AdapterQuestionActor[];
+          if (!actors.some((actor) => actor.userId === userId)) return null;
+
+          const detection = row.detection as AdapterQuestionDetection;
+          // Detection is not expected to change, but never answer a recovery
+          // row through the ordinary question-first lock path if it does.
+          if (detection.purpose === 'recovery') return null;
+          const [updated] = await tx.update(questions)
+            .set({ status: 'answered', answer })
+            .where(and(eq(questions.id, questionId), eq(questions.status, 'pending')))
+            .returning({ detection: questions.detection });
+          return updated
+            ? { kind: 'answered' as const, detection: updated.detection as AdapterQuestionDetection }
+            : null;
+        });
 
     if (!outcome || outcome.kind === 'voided') return false;
     const detection = outcome.detection;

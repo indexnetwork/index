@@ -41,6 +41,7 @@ describe("enqueueIntentRefinementFactory", () => {
     expect(call.userId).toBe("u-1");
     expect(call.userProfile).toBe('{"identity":"Founder"}');
     expect(call.targetIntentIds).toEqual(["int-1"]);
+    expect(call.expectedIntentFingerprint).toBeUndefined();
     // Composed content carries the current description, question, and answer.
     expect(call.inputContent).toContain("Looking for a React developer");
     expect(call.inputContent).toContain("What kind of developer are you looking for?");
@@ -166,6 +167,10 @@ describe("enqueueIntentRefinementFactory", () => {
     });
     expect(result.applied).toBe(true);
     expect(deps.runIntentUpdate).toHaveBeenCalledTimes(1);
+    const call = (deps.runIntentUpdate as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.expectedIntentFingerprint).toBe(
+      computeIntentFingerprint("Looking for a React developer", "React hiring"),
+    );
   });
 
   it("handles free-text-only answers (empty selectedOptions)", async () => {

@@ -10,6 +10,7 @@ import { conversations, tasks, users, userSocials, networks, networkMembers, int
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 import { PremiseEvents } from '../../events/premise.event';
 import { IntentEvents } from '../../events/intent.event';
+import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
@@ -177,6 +178,44 @@ describe('ChatDatabaseAdapter', () => {
     await adapter.updateIntent(fixture.intent1Id, { payload: `${TEST_PREFIX}Chat materially updated payload` });
     expect(handler).toHaveBeenCalledTimes(1);
     IntentEvents.onMaterialUpdated = async () => {};
+  });
+
+  it('rejects a stale recovery answer at the final locked intent write', async () => {
+    const created = await adapter.createIntent({
+      userId: fixture.userAId,
+      payload: `${TEST_PREFIX}Recovery answer original payload`,
+      summary: 'Original summary',
+      confidence: 1,
+      inferenceType: 'explicit',
+      sourceType: 'discovery_form',
+    });
+    fixture.extraIntentIds.push(created.id);
+    const admittedFingerprint = computeIntentFingerprint(created.payload, created.summary);
+
+    const concurrentPayload = `${TEST_PREFIX}Concurrent material edit`;
+    expect(await adapter.updateIntent(created.id, { payload: concurrentPayload })).not.toBeNull();
+
+    const staleRecoveryWrite = await adapter.updateIntent(created.id, {
+      payload: `${TEST_PREFIX}Stale recovery answer mutation`,
+      expectedIntentFingerprint: admittedFingerprint,
+    });
+    expect(staleRecoveryWrite).toBeNull();
+    expect((await adapter.getIntent(created.id))?.payload).toBe(concurrentPayload);
+  });
+
+  it('keeps ordinary intent updates unchanged without a fingerprint expectation', async () => {
+    const created = await adapter.createIntent({
+      userId: fixture.userAId,
+      payload: `${TEST_PREFIX}Ordinary update original payload`,
+      confidence: 1,
+      inferenceType: 'explicit',
+      sourceType: 'discovery_form',
+    });
+    fixture.extraIntentIds.push(created.id);
+
+    const ordinaryPayload = `${TEST_PREFIX}Ordinary update applied`;
+    const updated = await adapter.updateIntent(created.id, { payload: ordinaryPayload });
+    expect(updated?.payload).toBe(ordinaryPayload);
   });
 
   it('should get profile sourced from the users table', async () => {

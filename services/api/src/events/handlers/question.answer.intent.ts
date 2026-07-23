@@ -45,6 +45,7 @@ export interface IntentRefinementDeps {
     userProfile: string;
     inputContent: string;
     targetIntentIds: string[];
+    expectedIntentFingerprint?: string;
   }) => Promise<{ applied: false } | { applied: true; payload: string }>;
 }
 
@@ -143,6 +144,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
       userProfile,
       inputContent,
       targetIntentIds: [input.intentId],
+      expectedIntentFingerprint: input.expectedIntentFingerprint,
     });
 
     if (!update.applied) {
