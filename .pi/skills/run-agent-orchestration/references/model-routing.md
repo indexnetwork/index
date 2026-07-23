@@ -29,40 +29,13 @@ workspace. `herdr agent start` is not the normal launch path. If it is unavoidab
 a fallback, capture the current active workspace first and immediately restore
 `index` afterward; never leave the user's focus changed.
 
-## Coordination wait safety
+## Coordination safety
 
-This reference's launch rules do not make the user-facing main session wait. In the
-`index` (`wX`) workspace, main → root submissions use `herdr agent prompt NAME "..."`
-without `--wait` and return immediately; main only inspects root state on a later
-natural user turn or explicit orchestration tick. No polling, sleeps, watcher
-processes, or timeout loops are allowed on that path.
-
-Dedicated roots and implementation children use the same fire-and-return contract:
-`herdr agent prompt NAME "..."` without `--wait`. Register each child's exact route
-before prompting it; children signal stable RESULT/validated blocked callbacks to that
-root. Do not sleep-poll, run watchers, or use timeout loops.
-
-## Durable callback to `index`
-
-Model routing does not change the delivery path. The project-local orchestration bridge
-authorizes direct root → `index` publication only from an observable Herdr workspace
-label ending in `-root` whose checkout and Pi cwd equal the canonical root. `index` and
-unregistered implementation children fail closed; a registered child → root route is
-allowed. It resolves the unique workspace
-labeled `index` and its reported Pi session identity, then persists root `RESULT` and
-validated-rpiv blocked-question events before one best-effort Unix-socket wake. It never uses a fixed main agent name, screen scraping, editor
-injection, workspace focus, `herdr agent prompt`, or `herdr agent wait` from `index`.
-
-The `index` extension coalesces verified wakes into one non-user custom follow-up
-continuation, attaching persistent `ORCHESTRATOR_EVENT` context before it starts. It
-never reads/edits the editor, fabricates user intent, or focuses a workspace. Missing
-listeners/restarts leave the spool for natural-turn attachment fallback.
-`notification.show` remains optional visibility only.
-
-The bridge remains project-local and requires trusted project extensions plus a reload
-of the root and `index` sessions after installation. Never clear, overwrite, or infer
-the safety of a user draft; never focus `index`; and never wait from the main
-workspace.
+Model routing does not change coordination. Main, roots, and children all use
+fire-and-return prompts without `--wait`. The orchestration bridge has been removed
+pending refactor, so a later natural user turn or explicit main→root tick performs one
+status reconciliation pass. Do not poll, sleep, create watchers, or infer success from
+`idle`/`done`. Preserve workspace `index` focus for every launch and check.
 
 ## Default OpenAI-first routing
 

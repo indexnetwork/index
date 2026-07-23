@@ -43,56 +43,27 @@ agent-name collision rather than sending work to the wrong checkout.
 
 ## 2. Deliver one complete handoff
 
-Prepare one prompt file outside the repository containing:
-
-- a stable handoff name, branch, dashed folder, and expected absolute worktree path;
-- verified findings and agreed scope;
-- key files, constraints, and exclusions;
-- targeted verification commands;
-- instructions to verify cwd/branch, commit, push, and open/update the PR;
-- an instruction not to create another worktree or hidden implementation subagent.
-
-Before delivery, inspect the exact pane and recent visible output:
-
-```bash
-herdr pane read "$PANE_ID" --source visible --lines 200
-```
-
-Send the full handoff as one atomic prompt only when the agent is ready and no
-structured question or editor draft is active. **Every tier uses fire-and-return** —
-never `--wait`:
+Write one complete handoff with the absolute worktree, branch, scope, constraints,
+verification commands, and requested RESULT. Inspect the exact pane before delivery,
+then submit without waiting:
 
 ```bash
 herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)"
 ```
 
-Before a dedicated `*-root` sends a child handoff, it registers the exact child Pi
-session, workspace, pane, and worktree with `register_orchestration_child_route`.
-Discover those values from `herdr workspace list` and `herdr pane list` (including the
-child Pi `agent_session.value`), not from labels or guesses. The extension verifies
-that live Herdr identity and fails closed; the child has no target argument and can
-only publish to its one registered root route. Every child handoff mandates one stable
-`publish_child_orchestrator_event` RESULT call before its textual RESULT. Do not commit
-task-specific handoff files under `.pi`.
+Do not use `--wait`, `herdr agent wait`, polling, sleeps, watcher processes, or watcher
+panes. Do not commit task-specific handoff files under `.pi`.
 
-## 3. Reconcile results without polling
+## 3. Reconcile results manually
 
-**`sleep` polling is banned.** Do not use polling or timeout retry loops,
-`herdr agent wait`, background watcher processes, or watcher panes. The dedicated
-root's registered child inbox wakes it through one bounded non-user custom Pi
-follow-up; `index` uses the same safe wake for verified root RESULT/blocked events.
-If a listener is absent or Pi restarts, the durable event remains pending for the
-next natural turn. No path reads, clears, or edits an editor draft, steals focus, or
-injects a user message.
+The orchestration bridge has been removed pending refactor, so no automatic child
+callback exists. On a later natural user turn or explicit orchestration tick, perform
+one `herdr agent get` plus recent pane read. If the child is still working, return
+without repeated checks. If it is settled, inspect its `RESULT` and independently
+verify branch/head/status, pushed commits, PR state, checks, and targeted tests.
 
-A child publishes a stable RESULT (or validated RPIV blocked event) only through its
-exact registered root route. The root then independently inspects structured RESULT
-and factual git/PR/test state; `working`, `idle`, `done`, and `blocked` alone are
-never proof. A root whose workspace label ends in `-root` **and whose checkout/Pi cwd equal the
-canonical root** may publish its verified final RESULT to `index`; direct `index` must
-delegate child/fix work through that dedicated root. Bounded auto-wakes coalesce to one queued/in-flight
-continuation; notifications remain optional visibility only. For parallel children,
-submit multiple fire-and-return `herdr agent prompt NAME "..."` calls — never waits.
+For parallel work, inspect each owned child once per explicit tick. A missing callback
+is expected in this temporary mode; do not replace it with polling.
 
 ## 4. Answer questions safely
 
@@ -162,14 +133,14 @@ Parallel work uses separate visible Herdr workspaces and separate Git worktrees,
 one writer per worktree. Merge or reconcile those branches deliberately; never let two
 agents mutate one checkout.
 
-## 7. Supervised compaction
+## 7. Manual compaction checkpoint
 
-Use `/supervised-compact {"task":"...","validation":"...","nextAction":"..."}`
-only at a safe idle boundary: no tool/write/rebase/test/migration/merge/deploy is
-active and no RPIV question is open. It records session/worktree/branch/head/dirty
-state and parent route before Pi compacts, then resumes the same session with one
-custom continuation. Do not use bare `/compact`; threshold guidance is a prompt to
-checkpoint at a milestone, never a timer or churn loop.
+At a safe idle boundary, write a concise continuation checkpoint containing the exact
+session, worktree/branch/head, dirty state, validation completed, and next action.
+Then issue `/compact` and queue one explicit continuation prompt referencing that
+checkpoint. Verify the same session resumes; if Pi stops, relaunch that exact session
+file/model/worktree rather than creating a duplicate writer. Never compact during a
+tool, write, test, rebase, migration, merge, deployment, or structured question.
 
 ## See also
 

@@ -19,7 +19,7 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 - Never claim deployment success from a queued/in-progress status. Wait for a terminal success state or report that it is still pending.
 - If Railway MCP tools are unavailable, report deployment as unverified; do not claim success or close related issues until it can be verified. GitHub merge safety does not depend on MCP availability.
 - If checks fail, keep issues open and report the blocker.
-- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, `index` first delegates through a dedicated canonical-root coordinator; that root sends one consolidated prompt to the existing visible Herdr-managed Pi session for the PR worktree. The root/child handoff is fire-and-return without `--wait`; `index` reconciles only the dedicated root's durable callback on a later natural turn or explicit orchestration tick. That child session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
+- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, `index` first delegates through a dedicated canonical-root coordinator; that root sends one consolidated prompt to the existing visible Herdr-managed Pi session for the PR worktree. The root/child handoff is fire-and-return without `--wait`; while the bridge is removed, `index` explicitly ticks the dedicated root on a later natural turn. That child session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
 - Do not use hidden `Agent` subagents for implementation/fix rounds, and do not create a watcher process or watcher pane. Reuse the same Herdr workspace, pane, and Pi agent.
 - A PR-branch rebase is executed only from the verified PR worktree, and only ever on the PR's own feature branch — never a shared/long-lived head branch (`dev`, `main` — e.g. a release PR's head): that rewrites shared history and breaks other worktrees. Use `--force-with-lease`, never plain `--force`.
 - Do not remove a git worktree without confirming the PR is merged, the working tree is clean (no uncommitted/unpushed work), and the user has not asked to keep it. When in doubt, ask before removing.
@@ -30,14 +30,9 @@ Use other rpiv skills when they fit: `run-worktree-session` for the coordinator-
 
 ## Coordinating fixes in the visible Herdr session
 
-When a workflow step finds code, rebase, version, or push work, do not mutate from the
-canonical root. Locate the PR's existing Herdr workspace by its exact Git worktree path
-and capture the workspace, pane, and agent identities. Reject path/branch collisions;
-never open a second writer for the same checkout.
-
-Produce one consolidated prompt containing the stable handoff name, absolute worktree
-path, PR head branch, concrete findings/log excerpts, requested actions, and targeted
-checks. Inspect the agent and recent output before delivery:
+When a fix or rebase is needed, reuse the PR's exact visible worktree session. Verify
+its workspace, pane, cwd, branch, and recent output, then send one consolidated
+fire-and-return prompt without `--wait`:
 
 ```bash
 herdr agent get "$AGENT_NAME"
@@ -45,44 +40,11 @@ herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
 herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/fix-handoff.md)"
 ```
 
-Use `herdr agent prompt` only when no structured question/editor draft is active. The
-visible session confirms before mutation:
-
-```bash
-cd /absolute/path/to/pr-worktree
-pwd
-git branch --show-current
-git status --short --branch
-```
-
-Do not poll, sleep, run watcher processes/panes, use timeout loops, or prescribe
-`herdr agent wait`. All coordinator/root/child prompts are fire-and-return. Dedicated roots register each
-child's exact session/workspace/pane/worktree route before handoff; children publish
-only to that root. Verified root RESULT and validated blocked events wake `index`
-through one bounded non-user custom continuation, while missing listeners/restarts
-fall back to natural-turn attachment. Never inject a user prompt, inspect/clear the
-editor, steal focus, or rely on Herdr notifications. `index` may request approval but
-never infer it.
-
-On a routine question, inspect the visible output and automatically choose the safe,
-recommended project-compliant option. Escalate only product/architecture ambiguity,
-destructive operations, external infrastructure mutation, credentials/secrets, or
-merge approval. If a structured prompt is active, read it and answer through targeted
-pane input rather than appending a new prompt:
-
-```bash
-herdr pane read "$PANE_ID" --source visible --lines 120
-herdr pane send-text "$PANE_ID" "<safe answer>"
-herdr pane send-keys "$PANE_ID" enter
-```
-
-Reuse the same workspace/session for every fix loop; do not create a fresh worktree or
-Pi agent for each finding. After a narrow fix, rerun its affected local checks plus
-PR-head, required-check, and unresolved-thread status. Re-run the full readiness pass
-only after a rebase, broad change, or uncertain impact. Never merge from a feature
-worktree and never infer merge approval from delegated output. All pane reads, text,
-and keys remain exact-ID-targeted and non-focusing; no `herdr worktree open` may steal
-focus from `index` (`--no-focus`, never `--focus`).
+The orchestration bridge has been removed pending refactor. Reconcile only on a later
+natural turn or explicit tick with one status/output pass; never poll, sleep, wait, or
+create a watcher. If a structured prompt is active, answer it through the exact pane
+instead of appending a new prompt. Independently verify every reported git/test/PR fact
+before merging.
 
 ## Workflow
 
@@ -263,7 +225,7 @@ Before merging, summarize:
 - env variable decisions (what was set in Railway / `.env.development` / `.env.test`, what was deliberately left unset),
 - related GitHub/Linear issues that will be updated after merge.
 
-Do not ask for merge confirmation while any finding is outstanding — hand it to the existing visible Herdr session through one fire-and-return prompt, reconcile its durable callback, then re-verify proportionally. Ask the user for explicit confirmation to merge in the coordinator session.
+Do not ask for merge confirmation while any finding is outstanding — hand it to the existing visible Herdr session through one fire-and-return prompt, reconcile it once on a later natural turn or explicit tick, then re-verify proportionally. Ask the user for explicit confirmation to merge in the coordinator session.
 
 After confirmation, merge using the repository's preferred strategy. If unknown, inspect repo conventions or ask. In multi-worktree repos where the base branch is checked out in the canonical root, run the merge from that canonical root (not from the feature worktree): `gh pr merge --delete-branch` may complete the server-side merge but fail local branch cleanup if it tries to check out a base branch already used by another worktree.
 
