@@ -303,10 +303,16 @@ export class ConversationDatabaseAdapter {
 
   /**
    * Lists conversations for a user, ordered by most recent message.
-   * @param userId - The user whose conversations to list
+   * @param participantId - The participant whose conversations to list. This
+   * can be an `agent:<userId>` identity for A2A negotiations.
+   * @param viewerUserId - The human owner whose intent provenance may be
+   * projected into the summary. Defaults to `participantId` for ordinary DMs.
    * @returns Summaries with participant lists
    */
-  async getConversationsForUser(userId: string): Promise<ConversationSummary[]> {
+  async getConversationsForUser(
+    participantId: string,
+    viewerUserId = participantId,
+  ): Promise<ConversationSummary[]> {
     // Include conversations that are not hidden OR have new messages since hiding
     const rows = await db
       .select({
@@ -320,7 +326,7 @@ export class ConversationDatabaseAdapter {
       )
       .where(
         and(
-          eq(schema.conversationParticipants.participantId, userId),
+          eq(schema.conversationParticipants.participantId, participantId),
           or(
             isNull(schema.conversationParticipants.hiddenAt),
             gt(schema.conversations.lastMessageAt, schema.conversationParticipants.hiddenAt),
@@ -406,12 +412,12 @@ export class ConversationDatabaseAdapter {
           schema.conversationParticipants,
           and(
             eq(schema.conversationParticipants.conversationId, schema.messages.conversationId),
-            eq(schema.conversationParticipants.participantId, userId),
+            eq(schema.conversationParticipants.participantId, participantId),
           ),
         )
         .where(and(
           inArray(schema.messages.conversationId, ids),
-          ne(schema.messages.senderId, userId),
+          ne(schema.messages.senderId, participantId),
           or(
             isNull(schema.conversationParticipants.lastReadAt),
             gt(schema.messages.createdAt, schema.conversationParticipants.lastReadAt),
@@ -506,7 +512,7 @@ export class ConversationDatabaseAdapter {
         for (const rawEntry of metadata.matchProvenance) {
           if (!isMatchProvenanceEntry(rawEntry)) continue;
           for (const intent of rawEntry.intents) {
-            if (intent.userId === userId) provenanceIntentIds.add(intent.intentId);
+            if (intent.userId === viewerUserId) provenanceIntentIds.add(intent.intentId);
           }
         }
       }
@@ -521,7 +527,7 @@ export class ConversationDatabaseAdapter {
         .from(schema.intents)
         .where(and(
           inArray(schema.intents.id, [...provenanceIntentIds]),
-          eq(schema.intents.userId, userId),
+          eq(schema.intents.userId, viewerUserId),
         ))
       : [];
     const viewerIntentTitles = new Map(
@@ -544,7 +550,7 @@ export class ConversationDatabaseAdapter {
       const via: Array<{ intentId: string; opportunityId: string; title: string }> = [];
       for (const { entry } of entries) {
         for (const intent of entry.intents) {
-          const title = intent.userId === userId ? viewerIntentTitles.get(intent.intentId) : undefined;
+          const title = intent.userId === viewerUserId ? viewerIntentTitles.get(intent.intentId) : undefined;
           if (title) via.push({ intentId: intent.intentId, opportunityId: entry.opportunityId, title });
         }
       }
