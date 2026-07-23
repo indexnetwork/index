@@ -15,6 +15,10 @@ const chatDatabaseSource = readFileSync(
   new URL('../chat.database.adapter.ts', import.meta.url),
   'utf8',
 );
+const intentDatabaseSource = readFileSync(
+  new URL('../intent.database.adapter.ts', import.meta.url),
+  'utf8',
+);
 const answerHandlerSource = readFileSync(
   new URL('../../events/handlers/question.answer.intent.ts', import.meta.url),
   'utf8',
@@ -60,7 +64,23 @@ describe('intent-scope advisory lock contract', () => {
       .toBeLessThan(opportunity.indexOf(".from(schema.intents)"));
   });
 
-  it('threads the recovery fingerprint to the final locked intent compare-and-set', () => {
+  it('serializes exact-trigger opportunity reactivation before every conflicting row lock', () => {
+    const reactivation = methodSlice(
+      opportunitySource,
+      'async updateOpportunityStatusIfNetworkEligible(',
+      'async compensateTasklessNegotiatingOpportunity(',
+    );
+    const advisory = reactivation.indexOf('acquireIntentScopeAdvisoryLock(');
+    const intentRow = reactivation.indexOf('.from(schema.intents)', advisory);
+    const opportunityMutation = reactivation.indexOf('.update(opportunities)', advisory);
+    expect(advisory).toBeGreaterThanOrEqual(0);
+    expect(reactivation).toContain('eligibility.ownerUserId');
+    expect(reactivation).toContain('eligibility.triggerIntentId');
+    expect(intentRow).toBeGreaterThan(advisory);
+    expect(opportunityMutation).toBeGreaterThan(advisory);
+  });
+
+  it('threads lifecycle-aware recovery CAS data to both final locked intent writers', () => {
     expect(answerHandlerSource).toContain(
       'expectedIntentFingerprint: input.expectedIntentFingerprint',
     );
@@ -68,19 +88,24 @@ describe('intent-scope advisory lock contract', () => {
     expect(protocolIntentGraphSource).toContain(
       'expectedIntentFingerprint: state.expectedIntentFingerprint',
     );
+    expect(protocolIntentGraphSource).toContain('expectedIntentUserId: state.userId');
 
-    const update = methodSlice(
-      chatDatabaseSource,
-      'async updateIntent(intentId:',
-      'async archiveIntent(intentId:',
-    );
-    const rowLock = update.indexOf(".for('update')");
-    const fingerprintCompare = update.indexOf('oldFingerprint !== data.expectedIntentFingerprint');
-    const mutation = update.indexOf('tx.update(schema.intents)');
-    expect(rowLock).toBeGreaterThanOrEqual(0);
-    expect(fingerprintCompare).toBeGreaterThan(rowLock);
-    expect(mutation).toBeGreaterThan(fingerprintCompare);
-    expect(update).toContain('data.expectedIntentFingerprint !== undefined');
+    for (const source of [chatDatabaseSource, intentDatabaseSource]) {
+      const update = methodSlice(
+        source,
+        'async updateIntent(intentId:',
+        'async archiveIntent(intentId:',
+      );
+      const rowLock = update.indexOf(".for('update')");
+      const lifecycleGuard = update.indexOf('canApplyExpectedIntentUpdate(');
+      const mutation = update.indexOf('tx.update(schema.intents)');
+      expect(rowLock).toBeGreaterThanOrEqual(0);
+      expect(lifecycleGuard).toBeGreaterThan(rowLock);
+      expect(mutation).toBeGreaterThan(lifecycleGuard);
+      expect(update).toContain('status: schema.intents.status');
+      expect(update).toContain('archivedAt: schema.intents.archivedAt');
+      expect(update).toContain('data.expectedIntentUserId');
+    }
   });
 
   it('orders recovery answers and material edits as advisory, intent, then question', () => {

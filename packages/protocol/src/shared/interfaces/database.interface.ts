@@ -237,6 +237,8 @@ export interface UpdateIntentData {
    * holding the final intent row lock. Omitted for ordinary intent updates.
    */
   expectedIntentFingerprint?: string;
+  /** Expected owner paired with the recovery-answer fingerprint guard. */
+  expectedIntentUserId?: string;
 }
 
 /**

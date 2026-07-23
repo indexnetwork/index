@@ -198,6 +198,7 @@ describe('ChatDatabaseAdapter', () => {
     const staleRecoveryWrite = await adapter.updateIntent(created.id, {
       payload: `${TEST_PREFIX}Stale recovery answer mutation`,
       expectedIntentFingerprint: admittedFingerprint,
+      expectedIntentUserId: fixture.userAId,
     });
     expect(staleRecoveryWrite).toBeNull();
     expect((await adapter.getIntent(created.id))?.payload).toBe(concurrentPayload);

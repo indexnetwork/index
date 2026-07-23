@@ -556,6 +556,13 @@ export class OpportunityDatabaseAdapter {
 
     const updated = await db.transaction(async (tx) => {
       if (eligibility.triggerIntentId) {
+        // Match exact-trigger creation and recovery persistence ordering: the
+        // shared recipient+intent lock must precede every row/pair lock.
+        await acquireIntentScopeAdvisoryLock(
+          tx,
+          eligibility.ownerUserId,
+          eligibility.triggerIntentId,
+        );
         const [ownedIntent] = await tx
           .select({ id: schema.intents.id })
           .from(schema.intents)

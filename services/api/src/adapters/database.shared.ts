@@ -138,6 +138,8 @@ export interface UpdateIntentInput {
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
   /** Final row-lock compare-and-set guard for recovery-answer updates only. */
   expectedIntentFingerprint?: string;
+  /** Expected owner paired with the recovery-answer fingerprint guard. */
+  expectedIntentUserId?: string;
 }
 export interface CreatedIntentRow {
   id: string;

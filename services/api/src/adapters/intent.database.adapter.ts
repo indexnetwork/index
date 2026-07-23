@@ -1,7 +1,7 @@
 import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
 
 import { IntentEvents } from '../events/intent.event';
-import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 
 
 export class IntentDatabaseAdapter {
@@ -198,15 +198,16 @@ export class IntentDatabaseAdapter {
           payload: schema.intents.payload,
           summary: schema.intents.summary,
           userId: schema.intents.userId,
+          status: schema.intents.status,
+          archivedAt: schema.intents.archivedAt,
         }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
         if (!before) return null;
         const oldFingerprint = computeIntentFingerprint(before.payload, before.summary);
-        if (
-          data.expectedIntentFingerprint !== undefined
-          && oldFingerprint !== data.expectedIntentFingerprint
-        ) {
-          return null;
-        }
+        if (!canApplyExpectedIntentUpdate(
+          before,
+          data.expectedIntentFingerprint,
+          data.expectedIntentUserId,
+        )) return null;
         const [updated] = await tx.update(schema.intents)
           .set(updateData)
           .where(eq(schema.intents.id, intentId))
