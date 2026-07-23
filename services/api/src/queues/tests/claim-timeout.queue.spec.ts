@@ -21,6 +21,7 @@ const rearm = mock(async () => undefined);
 
 function makeDb(messages: unknown[]) {
   return {
+    getTask: mock(async () => claimedTaskResult),
     transitionClaimedTaskToWorking: mock(async () => claimedTaskResult),
     getMessagesForConversation: mock(async () => messages),
     createMessage: mock(async () => ({ id: 'm-new' })),

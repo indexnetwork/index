@@ -21,7 +21,7 @@ import { QuestionEvents } from '../events/question.event';
 import { computeIntentFingerprint, normalizeIntentText } from '../lib/intent/intent.fingerprint';
 import { derivePendingQuestionCounts, isExpectedHistoricalNegotiationSettlement, isSafeNegotiationQuestionPayload, isValidNegotiationDetectionContract } from '../lib/question/negotiation-question.contract';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
-import { claimContinuationExecution, completeContinuationExecution, heartbeatContinuationExecution, releaseContinuationExecution } from './negotiation-continuation.atomic';
+import { claimContinuationExecution, completeContinuationExecution, heartbeatContinuationExecution, parkContinuationExecution, releaseContinuationExecution } from './negotiation-continuation.atomic';
 import type { ContinuationClaimResult, ContinuationExecutionFence, ContinuationReceipt } from './negotiation-continuation.atomic';
 import { exactLivePoolWhere } from './poolquery.shared';
 
@@ -33,6 +33,14 @@ const POOL_QUESTION_PUSH_BASE_VOI = 0.6;
 const POOL_QUESTION_PUSH_DISMISSAL_DECAY = 1.15;
 const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
 const POOL_QUESTION_PUSH_DAILY_CAP = 2;
+const UPTAKE_AUTHORITY_THRESHOLD_DEFAULT = 70;
+
+/** Runtime mirror of protocol's bounded uptake threshold; adapters remain protocol-independent. */
+function currentUptakeAuthorityThreshold(): number {
+  const raw = process.env.QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD;
+  if (!raw?.trim() || !/^-?\d+$/.test(raw.trim())) return UPTAKE_AUTHORITY_THRESHOLD_DEFAULT;
+  return Math.min(100, Math.max(0, Number.parseInt(raw, 10)));
+}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -658,6 +666,7 @@ export class QuestionerAdapter {
              AND counterparty_intent.archived_at IS NULL
              AND (counterparty_intent.status IS NULL OR counterparty_intent.status = 'ACTIVE')
              AND counterparty_intent.felicity_authority = ${candidate.counterpartyFelicityAuthority!}
+             AND counterparty_intent.felicity_authority < ${currentUptakeAuthorityThreshold()}
             JOIN intent_networks counterparty_assignment
               ON counterparty_assignment.intent_id = counterparty_intent.id
              AND counterparty_assignment.network_id = ${candidate.networkId}
@@ -3006,6 +3015,11 @@ export class QuestionerAdapter {
   /** Release only the current owner after an operational failure; settlement remains requested. */
   releaseNegotiationContinuationExecution(execution: ContinuationExecutionFence): Promise<void> {
     return releaseContinuationExecution(this.db, execution);
+  }
+
+  /** Preserve the exact fence while an external recipient agent owns the next turn. */
+  parkNegotiationContinuationExecution(execution: ContinuationExecutionFence): Promise<void> {
+    return parkContinuationExecution(this.db, execution);
   }
 
   /** Complete only a positively receipted exact successor under the current token/fence. */

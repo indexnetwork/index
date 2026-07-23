@@ -33,6 +33,7 @@ type ContinuationAdapter = Pick<
   | 'claimNegotiationContinuationExecution'
   | 'heartbeatNegotiationContinuationExecution'
   | 'releaseNegotiationContinuationExecution'
+  | 'parkNegotiationContinuationExecution'
   | 'completeNegotiationContinuationExecution'
 >;
 
@@ -223,6 +224,12 @@ export class NegotiationRunExistingQueue {
       await heartbeatInFlight;
       if (heartbeatFailure) throw heartbeatFailure;
       if (!receipt) throw new Error('Exact negotiation continuation produced no positive successor receipt');
+      // A pause retains the fence for the eventual polling/timeout path; it
+      // is deliberately not a terminal receipt for the parent settlement.
+      if (receipt.outcome === 'waiting_for_agent' || receipt.outcome === 'input_required') {
+        await continuationAdapter.parkNegotiationContinuationExecution(currentExecution);
+        return;
+      }
       await continuationAdapter.completeNegotiationContinuationExecution(currentExecution, receipt);
     } catch (err) {
       clearInterval(timer);

@@ -3,6 +3,9 @@ import type { AskUserExpiryPayload, NegotiationGraphDatabase } from '@indexnetwo
 
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
+import db from '../../lib/drizzle/drizzle';
+import { claimParkedContinuationExecution, completeContinuationExecution, parkContinuationExecution } from '../../adapters/negotiation-continuation.atomic';
+import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 
 import { runTimeoutFallback, type NegotiationTaskMeta, type TimeoutNegotiatorInvoke } from './timeout.shared';
 
@@ -237,9 +240,10 @@ export class NegotiationTimeoutQueue {
    */
   private async handleTimeout(data: NegotiationTimeoutJobData): Promise<void> {
     const { negotiationId, turnNumber } = data;
-    const database =
+    const database = (
       this.deps?.database
-      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
+      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter
+    ) as NegotiationGraphDatabase & Pick<ConversationDatabaseAdapter, 'transitionClaimedTaskToWorking'>;
 
     // Load the negotiation task
     const task = await database.getTask(negotiationId);
@@ -257,26 +261,35 @@ export class NegotiationTimeoutQueue {
       return;
     }
 
-    const messages = await database.getMessagesForConversation(task.conversationId);
-    const currentTurnCount = messages.length;
-
-    // Check if turnNumber still matches (response may have come in between)
-    if (currentTurnCount !== turnNumber) {
-      this.logger.info('Turn count mismatch, skipping (stale job)', {
-        negotiationId,
-        expectedTurn: turnNumber,
-        actualTurn: currentTurnCount,
-      });
-      return;
-    }
-
-    const meta = task.metadata as NegotiationTaskMeta | null;
+    const meta = task.metadata as NegotiationTaskMeta & { continuationExecution?: { status?: unknown } } | null;
     if (meta?.type !== 'negotiation') {
       this.logger.warn('Task is not a negotiation, skipping', { negotiationId });
       return;
     }
 
-    await runTimeoutFallback({
+    // A parked exact continuation must acquire a fresh token/fence before the
+    // timeout path can transition or write anything.
+    const parked = meta.continuationExecution?.status === 'parked';
+    const claimedContinuation = parked
+      ? await claimParkedContinuationExecution(db, task.id, 'system:negotiation-timeout')
+      : null;
+    if (parked && !claimedContinuation) return;
+    const effectiveTask = claimedContinuation
+      ? await database.transitionClaimedTaskToWorking(task.id, claimedContinuation.execution)
+      : task;
+    if (!effectiveTask) return;
+    const execution = claimedContinuation?.execution;
+    const messages = await database.getMessagesForConversation(effectiveTask.conversationId);
+    const currentTurnCount = messages.length;
+
+    if (currentTurnCount !== turnNumber) {
+      this.logger.info('Turn count mismatch, skipping (stale job)', {
+        negotiationId, expectedTurn: turnNumber, actualTurn: currentTurnCount,
+      });
+      return;
+    }
+
+    const result = await runTimeoutFallback({
       database,
       logger: this.logger,
       labels: {
@@ -285,8 +298,8 @@ export class NegotiationTimeoutQueue {
         statusUpdateFailed: 'Failed to update opportunity status on timeout finalization',
       },
       negotiationId,
-      taskId: task.id,
-      conversationId: task.conversationId,
+      taskId: effectiveTask.id,
+      conversationId: effectiveTask.conversationId,
       meta,
       messages,
       currentTurnCount,
@@ -299,7 +312,16 @@ export class NegotiationTimeoutQueue {
         await this.enqueueTimeout(negotiationId, newTurnCount, parkWindowMs);
       },
       invokeNegotiator: this.deps?.invokeNegotiator,
+      ...(execution ? { continuationExecution: execution } : {}),
     });
+    if (execution && result.continuationOutcome) {
+      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(db, execution);
+      else await completeContinuationExecution(db, execution, {
+        priorTaskId: execution.taskId, settlementId: execution.settlementId,
+        successorTaskId: execution.successorTaskId, fence: execution.fence,
+        outcome: result.continuationOutcome,
+      });
+    }
   }
 
   /**

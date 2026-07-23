@@ -3,12 +3,13 @@ import { eq, and, sql, asc, isNull } from 'drizzle-orm/sql';
 import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';
 import * as dbSchema from '../schemas/database.schema';
-import { conversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeout.queue';
 import { log } from '../lib/log';
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationAction, NegotiationSeat, NegotiationProtocolVersion, NegotiatorMemoryEntry } from '@indexnetwork/protocol';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
+import { claimParkedContinuationExecution, completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
 import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
 
 const logger = log.service.from('NegotiationPollingService');
@@ -125,6 +126,8 @@ export interface PickupResult {
    * retrieved.
    */
   negotiatorMemory?: NegotiatorMemoryEntry[];
+  /** Recipient-private consultation; present only for that recipient's agent. */
+  privateConsultation?: { kind: 'answer' | 'dismiss' | 'timeout'; selectedOptions: string[]; freeText?: string };
 }
 
 export interface RespondInput {
@@ -164,7 +167,9 @@ interface NegotiationTaskMetadata {
   protocolVersion?: string;
   maxTurns?: number;
   opportunityId?: string;
-  turnContext?: PersistedTurnContext;
+  turnContext?: PersistedTurnContext & {
+    privateConsultation?: { recipientUserId: string; kind: 'answer' | 'dismiss' | 'timeout'; selectedOptions: string[]; freeText?: string };
+  };
 }
 
 /** Default maximum turns before a negotiation is force-finalized. */
@@ -253,22 +258,14 @@ export class NegotiationPollingService {
     }
 
     // 3. Atomically transition to claimed (WHERE state = 'waiting_for_agent' prevents races)
-    const now = new Date();
-    const [claimed] = await db
-      .update(convSchema.tasks)
-      .set({
-        state: 'claimed',
-        claimedByAgentId: agentId,
-        claimedAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(convSchema.tasks.id, pendingTask.id),
-          eq(convSchema.tasks.state, 'waiting_for_agent'),
-        ),
-      )
-      .returning();
+    const continuationMeta = pendingTask.metadata as { continuationExecution?: { status?: unknown } } | null;
+    const parkedContinuation = continuationMeta?.continuationExecution?.status === 'parked';
+    const claimed = parkedContinuation
+      ? (await claimParkedContinuationExecution(db, pendingTask.id, agentId))?.task
+      : (await db.update(convSchema.tasks)
+        .set({ state: 'claimed', claimedByAgentId: agentId, claimedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(convSchema.tasks.id, pendingTask.id), eq(convSchema.tasks.state, 'waiting_for_agent')))
+        .returning())[0];
 
     if (!claimed) {
       // Another agent won the race
@@ -357,18 +354,16 @@ export class NegotiationPollingService {
     // 2. Atomically transition out of 'claimed' to 'working' with CAS on
     //    claimedByAgentId. This prevents the claim-timeout worker and respond
     //    from both observing 'claimed' and both appending a turn.
-    const now = new Date();
-    const [task] = await db
-      .update(convSchema.tasks)
-      .set({ state: 'working', updatedAt: now })
-      .where(
-        and(
-          eq(convSchema.tasks.id, negotiationId),
-          eq(convSchema.tasks.state, 'claimed'),
-          eq(convSchema.tasks.claimedByAgentId, agentId),
-        ),
-      )
-      .returning();
+    const continuationExecution = await readClaimedContinuationExecution(db, negotiationId);
+    const task = await conversationDatabaseAdapter.transitionClaimedTaskToWorking(
+      negotiationId,
+      continuationExecution ?? undefined,
+    );
+    // The generic CAS must still bind the claiming agent; continuation rows
+    // additionally require their current token/fence before any write.
+    if (task && task.claimedByAgentId !== agentId) {
+      throw new ConflictError(`Negotiation ${negotiationId} is claimed by a different agent`);
+    }
 
     if (!task) {
       // Either the task does not exist, is no longer claimed, or is claimed by
@@ -416,6 +411,7 @@ export class NegotiationPollingService {
       role: 'agent',
       parts: [{ kind: 'data' as const, data: turn }],
       taskId: task.id,
+      ...(continuationExecution ? { continuationExecution } : {}),
     });
 
     const newTurnCount = currentTurnCount + 1;
@@ -438,12 +434,16 @@ export class NegotiationPollingService {
         nextSpeaker,
       );
 
-      await conversationDatabaseAdapter.updateTaskState(task.id, 'completed');
+      await conversationDatabaseAdapter.updateTaskState(task.id, 'completed', undefined, continuationExecution ?? undefined);
       await conversationDatabaseAdapter.createArtifact({
         taskId: task.id,
         name: 'negotiation-outcome',
         parts: [{ kind: 'data', data: outcome }],
-        metadata: { hasOpportunity: outcome.hasOpportunity, turnCount: newTurnCount },
+        metadata: {
+          hasOpportunity: outcome.hasOpportunity, turnCount: newTurnCount,
+          ...(continuationExecution ? { continuationOutcome: input.action === 'accept' ? 'accepted' : isRejectLikeAction(input.action) ? 'rejected' : 'stalled' } : {}),
+        },
+        ...(continuationExecution ? { continuationExecution } : {}),
       });
 
       const outcomeStr = input.action === 'accept' ? 'accepted'
@@ -454,7 +454,7 @@ export class NegotiationPollingService {
         const nextStatus = input.action === 'accept' ? 'pending'
           : isRejectLikeAction(input.action) ? 'rejected'
           : 'stalled';
-        await new ChatDatabaseAdapter().updateOpportunityStatus(meta.opportunityId, nextStatus).catch((err) => {
+        await conversationDatabaseAdapter.updateOpportunityStatus(meta.opportunityId, nextStatus, undefined, continuationExecution ?? undefined).catch((err) => {
           logger.error('Failed to update opportunity status on finalization', {
             opportunityId: meta.opportunityId,
             nextStatus,
@@ -463,6 +463,15 @@ export class NegotiationPollingService {
         });
       }
 
+      if (continuationExecution) {
+        await completeContinuationExecution(db, continuationExecution, {
+          priorTaskId: continuationExecution.taskId,
+          settlementId: continuationExecution.settlementId,
+          successorTaskId: continuationExecution.successorTaskId,
+          fence: continuationExecution.fence,
+          outcome: input.action === 'accept' ? 'accepted' : isRejectLikeAction(input.action) ? 'rejected' : 'stalled',
+        });
+      }
       logger.info('Negotiation finalized', {
         negotiationId,
         outcome: outcomeStr,
@@ -470,7 +479,8 @@ export class NegotiationPollingService {
       });
     } else {
       // Continue: set to waiting_for_agent and re-arm park-window timeout
-      await conversationDatabaseAdapter.updateTaskState(task.id, 'waiting_for_agent');
+      await conversationDatabaseAdapter.updateTaskState(task.id, 'waiting_for_agent', undefined, continuationExecution ?? undefined);
+      if (continuationExecution) await parkContinuationExecution(db, continuationExecution);
 
       await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
 
@@ -636,6 +646,13 @@ export class NegotiationPollingService {
       allowedActions: [...allowedActionsFor(protocolVersion, seat)],
       context,
       ...(negotiatorMemory.length > 0 && { negotiatorMemory }),
+      ...(meta.turnContext?.privateConsultation?.recipientUserId === userId ? {
+        privateConsultation: {
+          kind: meta.turnContext.privateConsultation.kind,
+          selectedOptions: [...meta.turnContext.privateConsultation.selectedOptions],
+          ...(meta.turnContext.privateConsultation.freeText ? { freeText: meta.turnContext.privateConsultation.freeText } : {}),
+        },
+      } : {}),
     };
   }
 

@@ -125,6 +125,8 @@ describe('negotiation question routing static invariants', () => {
     expect(continuationAtomic).toContain('const fence = (existingExecution?.fence ?? 0) + 1');
     expect(continuationAtomic).toContain('assertContinuationExecutionEffect');
     expect(continuationAtomic).toContain('loadPrivateConsultation');
+    expect(continuationAtomic).toContain('parkContinuationExecution');
+    expect(runExisting).toContain('parkNegotiationContinuationExecution');
     expect(continuationAtomic.indexOf('const consultation = await loadPrivateConsultation')).toBeLessThan(
       continuationAtomic.indexOf('const successors = await tx.select()'),
     );
@@ -136,6 +138,7 @@ describe('negotiation question routing static invariants', () => {
     expect(source).toContain('candidate.counterpartyUserId');
     expect(source).toContain('counterparty_intent.id');
     expect(source).toContain('counterparty_intent.felicity_authority');
+    expect(source).toContain('currentUptakeAuthorityThreshold()');
     expect(source).toContain('counterparty_assignment');
     expect(uptakeService).toContain('counterpartyUserId');
     expect(uptakeService).toContain('counterpartyIntentId');

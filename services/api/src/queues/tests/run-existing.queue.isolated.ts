@@ -159,6 +159,7 @@ describe('NegotiationRunExistingQueue', () => {
         claimNegotiationContinuationExecution,
         heartbeatNegotiationContinuationExecution: async (execution) => execution,
         releaseNegotiationContinuationExecution: async () => {},
+        parkNegotiationContinuationExecution: async () => {},
         completeNegotiationContinuationExecution,
       },
     });
@@ -171,6 +172,46 @@ describe('NegotiationRunExistingQueue', () => {
     }));
     expect(JSON.stringify(invokeOpportunityGraph.mock.calls)).not.toContain('latest');
     expect(completeNegotiationContinuationExecution).toHaveBeenCalledWith(claimedExecution, receipt);
+  });
+
+  it('parks rather than completes a fenced external-agent handoff', async () => {
+    const parkNegotiationContinuationExecution = mock(async () => {});
+    const completeNegotiationContinuationExecution = mock(async () => {});
+    const queue = new NegotiationRunExistingQueue({
+      invokeOpportunityGraph: async () => ({
+        negotiationContinuationReceipt: { ...receipt, outcome: 'waiting_for_agent' as const },
+      }),
+      continuationAdapter: {
+        claimNegotiationContinuationExecution: async () => ({ status: 'claimed', execution: claimedExecution }),
+        heartbeatNegotiationContinuationExecution: async (execution) => execution,
+        releaseNegotiationContinuationExecution: async () => {},
+        parkNegotiationContinuationExecution,
+        completeNegotiationContinuationExecution,
+      },
+    });
+    await queue.processJob('negotiate_existing', exactData);
+    expect(parkNegotiationContinuationExecution).toHaveBeenCalledWith(claimedExecution);
+    expect(completeNegotiationContinuationExecution).not.toHaveBeenCalled();
+  });
+
+  it('parks an input-required continuation instead of releasing and reinvoking it', async () => {
+    const parkNegotiationContinuationExecution = mock(async () => {});
+    const invokeOpportunityGraph = mock(async () => ({
+      negotiationContinuationReceipt: { ...receipt, outcome: 'input_required' as const },
+    }));
+    const queue = new NegotiationRunExistingQueue({
+      invokeOpportunityGraph,
+      continuationAdapter: {
+        claimNegotiationContinuationExecution: async () => ({ status: 'claimed', execution: claimedExecution }),
+        heartbeatNegotiationContinuationExecution: async (execution) => execution,
+        releaseNegotiationContinuationExecution: async () => {},
+        parkNegotiationContinuationExecution,
+        completeNegotiationContinuationExecution: async () => {},
+      },
+    });
+    await queue.processJob('negotiate_existing', exactData);
+    expect(parkNegotiationContinuationExecution).toHaveBeenCalledWith(claimedExecution);
+    expect(invokeOpportunityGraph).toHaveBeenCalledTimes(1);
   });
 
   it('releases the lease and retries after a process-boundary graph failure', async () => {
@@ -188,6 +229,7 @@ describe('NegotiationRunExistingQueue', () => {
         claimNegotiationContinuationExecution: async () => ({ status: 'claimed', execution: claimedExecution }),
         heartbeatNegotiationContinuationExecution: async (execution) => execution,
         releaseNegotiationContinuationExecution,
+        parkNegotiationContinuationExecution: async () => {},
         completeNegotiationContinuationExecution,
       },
     });
@@ -207,6 +249,7 @@ describe('NegotiationRunExistingQueue', () => {
           claimNegotiationContinuationExecution: async () => ({ status }),
           heartbeatNegotiationContinuationExecution: async (execution) => execution,
           releaseNegotiationContinuationExecution: async () => {},
+          parkNegotiationContinuationExecution: async () => {},
           completeNegotiationContinuationExecution: async () => {},
         },
       });
@@ -221,6 +264,7 @@ describe('NegotiationRunExistingQueue', () => {
         claimNegotiationContinuationExecution: async () => ({ status: 'claimed', execution: claimedExecution }),
         heartbeatNegotiationContinuationExecution: async (execution) => execution,
         releaseNegotiationContinuationExecution,
+        parkNegotiationContinuationExecution: async () => {},
         completeNegotiationContinuationExecution: async () => {},
       },
     });

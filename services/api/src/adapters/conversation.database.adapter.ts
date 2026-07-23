@@ -1570,14 +1570,21 @@ export class ConversationDatabaseAdapter {
    * @param taskId - Claimed task to transition.
    * @returns The transitioned task, or null when another path already moved it.
    */
-  async transitionClaimedTaskToWorking(taskId: string): Promise<Task | null> {
-    const [task] = await db
-      .update(schema.tasks)
-      .set({ state: 'working', updatedAt: new Date() })
-      .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.state, 'claimed')))
-      .returning();
-
-    return task ?? null;
+  async transitionClaimedTaskToWorking(
+    taskId: string,
+    continuationExecution?: ContinuationExecutionFence,
+  ): Promise<Task | null> {
+    return db.transaction(async (tx) => {
+      if (continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      }
+      const [task] = await tx
+        .update(schema.tasks)
+        .set({ state: 'working', updatedAt: new Date() })
+        .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.state, 'claimed')))
+        .returning();
+      return task ?? null;
+    });
   }
 
   /**

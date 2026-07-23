@@ -4,6 +4,8 @@ import type { NegotiationGraphDatabase } from '@indexnetwork/protocol';
 import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
+import db from '../../lib/drizzle/drizzle';
+import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../../adapters/negotiation-continuation.atomic';
 
 import type { NegotiationTaskMeta, TimeoutNegotiatorInvoke } from './timeout.shared';
 
@@ -193,7 +195,15 @@ export class NegotiationClaimTimeoutQueue {
     // work. If another path (agent respond) is racing this worker, only one
     // side will flip the state — the other no-ops. This prevents both paths
     // from appending a turn for the same claimed state.
-    const task = await database.transitionClaimedTaskToWorking(negotiationId);
+    const preflight = await database.getTask(negotiationId);
+    const executionState = (preflight?.metadata as { continuationExecution?: { status?: unknown } } | null)
+      ?.continuationExecution?.status;
+    const continuationExecution = executionState === 'claimed'
+      ? await readClaimedContinuationExecution(db, negotiationId)
+      : null;
+    const task = continuationExecution
+      ? await database.transitionClaimedTaskToWorking(negotiationId, continuationExecution)
+      : await database.transitionClaimedTaskToWorking(negotiationId);
 
     if (!task) {
       this.logger.info('Task no longer claimed, skipping (stale job)', {
@@ -222,7 +232,7 @@ export class NegotiationClaimTimeoutQueue {
     }
 
     const { runTimeoutFallback } = await import('./timeout.shared');
-    await runTimeoutFallback({
+    const result = await runTimeoutFallback({
       database,
       logger: this.logger,
       labels: {
@@ -253,7 +263,16 @@ export class NegotiationClaimTimeoutQueue {
         ]);
         await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
       },
+      ...(continuationExecution ? { continuationExecution } : {}),
     });
+    if (continuationExecution && result.continuationOutcome) {
+      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(db, continuationExecution);
+      else await completeContinuationExecution(db, continuationExecution, {
+        priorTaskId: continuationExecution.taskId, settlementId: continuationExecution.settlementId,
+        successorTaskId: continuationExecution.successorTaskId, fence: continuationExecution.fence,
+        outcome: result.continuationOutcome,
+      });
+    }
   }
 }
 
