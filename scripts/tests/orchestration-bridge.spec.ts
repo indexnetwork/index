@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
 	BlockedQuestionBridge,
+	RootWakeGate,
 	MAX_EVENTS_PER_TURN,
 	canonicalizeEvent,
 	acknowledgeDelivered,
@@ -14,11 +15,24 @@ import {
 	isDedicatedRootLabel,
 	outstandingCount,
 	prepareAttachment,
+	publishChildEvent,
 	publishEvent,
+	registerChildRoute,
+	resolveChildPublicationRoute,
+	resolveChildRouteRegistration,
 	resolveIndexTarget,
+	resolveRootInboundRoutes,
+	routeAuthorizesEvent,
 	resolveLiveTopology,
 	sessionDirectory,
 	summarizeAskUserPrompt,
+	writeCompactionCheckpoint,
+	markCompactionCompacted,
+	claimCompactionContinuation,
+	completeCompactionContinuation,
+	recoverCompactionContinuation,
+	getCompactionCheckpoint,
+	type CompactionCheckpoint,
 	type OrchestratorEvent,
 } from "../../.pi/extensions/orchestration-bridge/core";
 
@@ -38,6 +52,7 @@ function event(id: string, overrides: Partial<OrchestratorEvent> = {}): Orchestr
 			workspaceId: "w13",
 			workspaceLabel: "docs-root",
 			paneId: "w13:p1",
+			worktreePath: "/repo",
 			sessionId: "root-session",
 		},
 		targetSessionId: "index-session",
@@ -113,7 +128,7 @@ describe("orchestration bridge spool", () => {
 		await fs.writeFile(path.join(pending, "malformed.json"), "{not json}");
 		await fs.writeFile(
 			path.join(pending, "non-root.json"),
-			JSON.stringify(event("non-root", { source: { workspaceId: "wX", workspaceLabel: "implementation", paneId: "wX:p1", sessionId: "not-root" } })),
+			JSON.stringify(event("non-root", { source: { workspaceId: "wX", workspaceLabel: "implementation", paneId: "wX:p1", worktreePath: "/repo/implementation", sessionId: "not-root" } })),
 		);
 		for (let index = 0; index < MAX_EVENTS_PER_TURN + 1; index += 1) {
 			await publishEvent(root, event(`batch-${index}`, { timestamp: new Date(Date.now() - 10_000 + index).toISOString() }));
@@ -195,7 +210,7 @@ describe("RPIV lifecycle and root authorization", () => {
 	test("binds canonical events to the expected index session and rejects non-root provenance", () => {
 		expect(canonicalizeEvent(event("target-bound"), "index-session")?.id).toBe("target-bound");
 		expect(canonicalizeEvent(event("wrong-target"), "another-index-session")).toBeUndefined();
-		expect(canonicalizeEvent(event("non-root-canonical", { source: { workspaceId: "wX", workspaceLabel: "implementation", paneId: "wX:p1", sessionId: "not-root" } }))).toBeUndefined();
+		expect(canonicalizeEvent(event("non-root-canonical", { source: { workspaceId: "wX", workspaceLabel: "implementation", paneId: "wX:p1", worktreePath: "/repo/implementation", sessionId: "not-root" } }))).toBeUndefined();
 	});
 });
 
@@ -203,14 +218,14 @@ describe("live index target resolution", () => {
 	test("uses the unique Pi pane even when the index tab is backgrounded", () => {
 		const workspaces = {
 			workspaces: [
-				{ workspace_id: "wX", label: "index", focused: false, active_tab_id: "wX:t1" },
-				{ workspace_id: "w13", label: "docs-root", focused: false, active_tab_id: "w13:t1" },
+				{ workspace_id: "wX", label: "index", focused: false, active_tab_id: "wX:t1", worktree: { checkout_path: "/repo" } },
+				{ workspace_id: "w13", label: "docs-root", focused: false, active_tab_id: "w13:t1", worktree: { checkout_path: "/repo/root" } },
 			],
 		};
 		const panes = {
 			panes: [
-				{ workspace_id: "wX", pane_id: "wX:p1", tab_id: "wX:t2", agent: "pi", agent_status: "idle", agent_session: { value: "/sessions/current-index.jsonl" } },
-				{ workspace_id: "w13", pane_id: "w13:p1", tab_id: "w13:t1", agent: "pi", agent_status: "working", agent_session: { value: "/sessions/root.jsonl" } },
+				{ workspace_id: "wX", pane_id: "wX:p1", cwd: "/repo", tab_id: "wX:t2", agent: "pi", agent_status: "idle", agent_session: { value: "/sessions/current-index.jsonl" } },
+				{ workspace_id: "w13", pane_id: "w13:p1", cwd: "/repo/root", tab_id: "w13:t1", agent: "pi", agent_status: "working", agent_session: { value: "/sessions/root.jsonl" } },
 			],
 		};
 		expect(resolveIndexTarget(workspaces, panes)).toEqual({
@@ -242,6 +257,135 @@ describe("same-process question blocked bridge", () => {
 			{ active: false },
 		]);
 	});
+});
+
+describe("registered child → root routing", () => {
+	const rootSession = "/sessions/discovery-root.jsonl";
+	const childSession = "/sessions/child.jsonl";
+	const rootSource = {
+		workspaceId: "w-root",
+		workspaceLabel: "discovery-root",
+		paneId: "w-root:p1",
+		worktreePath: "/repo",
+		sessionId: rootSession,
+	};
+	const childSource = {
+		workspaceId: "w-child",
+		workspaceLabel: "fix-callbacks",
+		paneId: "w-child:p1",
+		worktreePath: "/repo/.worktrees/fix-callbacks",
+		sessionId: childSession,
+	};
+	const metadata = () => ({
+		workspaces: [
+			{ workspace_id: "w-root", label: "discovery-root", focused: false, worktree: { checkout_path: "/repo" } },
+			{ workspace_id: "w-child", label: "fix-callbacks", focused: false, worktree: { checkout_path: "/repo/.worktrees/fix-callbacks" } },
+		],
+		panes: [
+			{ workspace_id: "w-root", pane_id: "w-root:p1", cwd: "/repo", agent: "pi", agent_session: { value: rootSession } },
+			{ workspace_id: "w-child", pane_id: "w-child:p1", cwd: "/repo/.worktrees/fix-callbacks", agent: "pi", agent_session: { value: childSession } },
+		],
+	});
+
+	test("accepts only an exact registered child route and delivers it to that root", async () => {
+		const spool = await temporaryRoot();
+		const topology = metadata();
+		const route = resolveChildRouteRegistration(topology, topology, rootSession, childSource);
+		expect(route).toBeDefined();
+		expect(await registerChildRoute(spool, route!)).toBe("registered");
+		expect(await resolveChildPublicationRoute(spool, childSource)).toEqual(route);
+		const childResult: OrchestratorEvent = {
+			...event("child-result"),
+			source: childSource,
+			targetSessionId: rootSession,
+		};
+		expect(await publishChildEvent(spool, childResult, route!)).toBe("published");
+		const routes = await resolveRootInboundRoutes(spool, rootSource);
+		expect(routes).toEqual([route]);
+		const claims = await claimOutstanding(spool, rootSession, new Set(), "registered-child", (candidate) => routeAuthorizesEvent(routes, candidate));
+		expect(claims.map(({ event: claimed }) => claimed.id)).toEqual(["child-result"]);
+	});
+
+	test("fails closed for stale identity, absent route, and ambiguous child targets", async () => {
+		const spool = await temporaryRoot();
+		const topology = metadata();
+		const stale = structuredClone(topology);
+		stale.panes[1].cwd = "/other";
+		expect(resolveChildRouteRegistration(stale, stale, rootSession, childSource)).toBeUndefined();
+		expect(await resolveChildPublicationRoute(spool, childSource)).toBeUndefined();
+		const first = resolveChildRouteRegistration(topology, topology, rootSession, childSource)!;
+		await registerChildRoute(spool, first);
+		const secondRoot = { ...rootSource, workspaceId: "w-other-root", workspaceLabel: "other-root", paneId: "w-other-root:p1", sessionId: "/sessions/other-root.jsonl" };
+		const second = { ...first, id: "route-ambiguous", root: secondRoot };
+		await expect(registerChildRoute(spool, second)).rejects.toThrow("Unsafe");
+		// A separately valid second route represents an ambiguous child selection and must not publish.
+		const otherMetadata = metadata();
+		otherMetadata.workspaces[0] = { workspace_id: "w-other-root", label: "other-root", focused: false, worktree: { checkout_path: "/repo" } };
+		otherMetadata.panes[0] = { workspace_id: "w-other-root", pane_id: "w-other-root:p1", cwd: "/repo", agent: "pi", agent_session: { value: secondRoot.sessionId } };
+		const validSecond = resolveChildRouteRegistration(otherMetadata, otherMetadata, secondRoot.sessionId, childSource)!;
+		await registerChildRoute(spool, validSecond);
+		expect(await resolveChildPublicationRoute(spool, childSource)).toBeUndefined();
+	});
+});
+
+describe("root wake and supervised compaction protocol", () => {
+	test("coalesces one wake until the consumer settles", () => {
+		const gate = new RootWakeGate();
+		let scheduled = 0;
+		expect(gate.request(() => { scheduled += 1; })).toBeTrue();
+		expect(gate.request(() => { scheduled += 1; })).toBeFalse();
+		expect(scheduled).toBe(1);
+		gate.settled();
+		expect(gate.request(() => { scheduled += 1; })).toBeTrue();
+		expect(scheduled).toBe(2);
+	});
+
+	test("durably checkpoints, compacts, resumes once, and safely recovers an interrupted continuation", async () => {
+		const spool = await temporaryRoot();
+		const checkpoint: CompactionCheckpoint = {
+			id: "compact:session:1",
+			sessionId: "/sessions/child.jsonl",
+			task: "Finish callback safety fix",
+			worktreePath: "/repo/.worktrees/fix-callbacks",
+			branch: "fix/callbacks",
+			head: "abc123",
+			dirty: true,
+			validation: "bridge unit tests pass",
+			nextAction: "Run skills validation once the continuation starts",
+			parentRouteId: "route-parent",
+			createdAt: new Date(Date.now() - 1_000).toISOString(),
+			state: "prepared",
+		};
+		await writeCompactionCheckpoint(spool, checkpoint);
+		expect((await markCompactionCompacted(spool, checkpoint.sessionId))?.state).toBe("compacted");
+		expect((await claimCompactionContinuation(spool, checkpoint.sessionId))?.state).toBe("continuation-claimed");
+		expect((await claimCompactionContinuation(spool, checkpoint.sessionId))).toBeUndefined();
+		expect((await recoverCompactionContinuation(spool, checkpoint.sessionId))?.state).toBe("compacted");
+		expect((await claimCompactionContinuation(spool, checkpoint.sessionId))?.id).toBe(checkpoint.id);
+		expect((await completeCompactionContinuation(spool, checkpoint.sessionId))?.state).toBe("continued");
+		expect((await getCompactionCheckpoint(spool, checkpoint.sessionId))?.nextAction).toBe(checkpoint.nextAction);
+	});
+});
+
+test("workflow text keeps fire-and-return, bounded auto-resume, and supervised compaction invariants", async () => {
+	const files = [
+		".pi/skills/run-agent-orchestration/SKILL.md",
+		".pi/skills/run-agent-orchestration/references/completion-and-questions.md",
+		".pi/skills/run-agent-orchestration/references/model-routing.md",
+		".pi/skills/run-worktree-session/SKILL.md",
+		".pi/skills/finish-pr/SKILL.md",
+		".pi/skills/address-code-review/SKILL.md",
+	];
+	const text = await Promise.all(files.map((file) => fs.readFile(path.join(process.cwd(), file), "utf8")));
+	for (const value of text) {
+		expect(value).not.toMatch(/herdr agent prompt [^`\n]*--wait/);
+		expect(value).not.toMatch(/herdr agent wait \"?\$/);
+	}
+	const extension = await fs.readFile(path.join(process.cwd(), ".pi/extensions/orchestration-bridge/index.ts"), "utf8");
+	expect(extension).toContain('deliverAs: "followUp", triggerTurn: true');
+	expect(extension).toContain("register_orchestration_child_route");
+	expect(extension).toContain("supervised-compact");
+	expect(extension).not.toContain("pi.sendUserMessage");
 });
 
 test("the exact runtime spool path is gitignored", async () => {

@@ -503,9 +503,11 @@ herdr agent start feat-user-authentication --kind pi --pane <returned-pane-id>
 
 Herdr is the default visible execution plane. Record the workspace and pane IDs returned
 by `herdr worktree open`; reuse an existing workspace/Pi only when its worktree path,
-branch, and cwd match. The canonical/root Pi remains the coordinator, sends one complete
-handoff, and polls with `herdr agent get/read/wait` directly—never through a hidden
-implementation subagent, background watcher process, or watcher pane. It answers routine
+branch, and cwd match. The canonical/root Pi remains the coordinator and sends one
+complete fire-and-return handoff—never `--wait`, `herdr agent wait`, polling, a hidden
+implementation subagent, background watcher process, or watcher pane. A `*-root`
+registers each exact child session/workspace/pane/worktree callback route; durable
+custom auto-resume wakes root/index without user-message or editor injection. It answers routine
 implementation questions with the safe/recommended option and escalates only genuine
 product/architecture ambiguity, destructive actions, external infrastructure mutation,
 credentials/secrets, or merge approval. A structured question/editor draft must be

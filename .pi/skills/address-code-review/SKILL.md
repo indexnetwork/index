@@ -139,15 +139,10 @@ herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
 herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/review-fixes.md)"
 ```
 
-Use `herdr agent prompt` only when no structured question/editor draft is active. The
-coordinator remains active and polls the agent directly:
-
-```bash
-herdr agent wait "$AGENT_NAME" --until blocked --until idle --until done --timeout 30000
-herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
-```
-
-A timeout is a polling checkpoint. Continue until the visible Pi has:
+Use `herdr agent prompt` only when no structured question/editor draft is active.
+Return immediately; do not poll, wait, sleep, or create a watcher. A registered child
+callback wakes its dedicated root through the durable bridge, which then verifies the
+PR facts independently. Continue only after the visible Pi has:
 
 1. verified its cwd and PR head branch;
 2. edited the code;

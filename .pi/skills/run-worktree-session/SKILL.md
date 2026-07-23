@@ -59,38 +59,36 @@ herdr pane read "$PANE_ID" --source visible --lines 200
 ```
 
 Send the full handoff as one atomic prompt only when the agent is ready and no
-structured question or editor draft is active. The wait rule depends on the
-coordinator: the interactive main workspace dynamically identified by label `index`
-must submit `herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)"`
-without `--wait` and return idle; it reconciles durable root state only on a later
-natural turn or explicit orchestration tick. A dedicated root orchestrator outside
-`index` may and should instead use exactly one server-owned, indefinite root → child
-handoff:
+structured question or editor draft is active. **Every tier uses fire-and-return** —
+never `--wait`:
 
 ```bash
-herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)" --wait
+herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)"
 ```
 
-Do not add a timeout. Do not commit task-specific handoff files under `.pi`.
+Before a dedicated `*-root` sends a child handoff, it registers the exact child Pi
+session, workspace, pane, and worktree with `register_orchestration_child_route`.
+The extension verifies that live Herdr identity and fails closed; the child has no
+target argument and can only publish to its one registered root route. Do not commit
+task-specific handoff files under `.pi`.
 
 ## 3. Reconcile results without polling
 
 **`sleep` polling is banned.** Do not use polling or timeout retry loops,
-`herdr agent wait`, background watcher processes, or watcher panes. The interactive
-main workspace (`index`) returns after its fire-and-return root handoff and reconciles
-durable root state only on a later natural turn or explicit orchestration tick.
+`herdr agent wait`, background watcher processes, or watcher panes. The dedicated
+root's registered child inbox wakes it through one bounded non-user custom Pi
+follow-up; `index` uses the same safe wake for verified root RESULT/blocked events.
+If a listener is absent or Pi restarts, the durable event remains pending for the
+next natural turn. No path reads, clears, or edits an editor draft, steals focus, or
+injects a user message.
 
-A dedicated root outside `index` receives a child result through its one
-`agent prompt --wait` handoff. After it returns, inspect the structured `RESULT` and
-factual git/PR/test state; `working`, `idle`, `done`, and `blocked` alone are never
-proof of success. Its workspace label must end in `-root` before it can publish a
-final `RESULT` via the project-local durable orchestration bridge; implementation
-children cannot publish. Validated rpiv lifecycle alone publishes a genuine blocked
-question event. Neither path injects an agent prompt or relies on a toast. The trusted `index` extension attaches those events only on the
-user's next natural turn; Herdr notifications are optional visibility only and cannot
-resume Pi. For parallel children, the dedicated root may issue multiple complete
-`herdr agent prompt NAME "..." --wait` calls in one turn so the server owns the waits
-concurrently.
+A child publishes a stable RESULT (or validated RPIV blocked event) only through its
+exact registered root route. The root then independently inspects structured RESULT
+and factual git/PR/test state; `working`, `idle`, `done`, and `blocked` alone are
+never proof. A root whose workspace label ends in `-root` may publish its verified
+final RESULT to `index`. Bounded auto-wakes coalesce to one queued/in-flight
+continuation; notifications remain optional visibility only. For parallel children,
+submit multiple fire-and-return `herdr agent prompt NAME "..."` calls — never waits.
 
 ## 4. Answer questions safely
 
@@ -108,9 +106,9 @@ Escalate to the user only for:
 
 Never infer merge approval.
 
-A dedicated root's `agent prompt --wait` can return `blocked` when Herdr recognizes
-an approval or question UI. If a structured question, selector, or editor draft is
-active, do **not** use `herdr agent prompt`: it can append text to stale input. Read
+When Herdr shows a child `blocked` state or a durable blocked callback arrives, inspect
+the active UI. If a structured question, selector, or editor draft is active, do
+**not** use `herdr agent prompt`: it can append text to stale input. Read
 the pane, then answer the active UI through its pane ID with targeted text/keys:
 
 ```bash
@@ -159,6 +157,15 @@ prompt per comment.
 Parallel work uses separate visible Herdr workspaces and separate Git worktrees, with
 one writer per worktree. Merge or reconcile those branches deliberately; never let two
 agents mutate one checkout.
+
+## 7. Supervised compaction
+
+Use `/supervised-compact {"task":"...","validation":"...","nextAction":"..."}`
+only at a safe idle boundary: no tool/write/rebase/test/migration/merge/deploy is
+active and no RPIV question is open. It records session/worktree/branch/head/dirty
+state and parent route before Pi compacts, then resumes the same session with one
+custom continuation. Do not use bare `/compact`; threshold guidance is a prompt to
+checkpoint at a milestone, never a timer or churn loop.
 
 ## See also
 
