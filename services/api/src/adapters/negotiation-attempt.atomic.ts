@@ -50,6 +50,30 @@ function askUserLockWindowMs(): number {
     + ASK_USER_LOCK_SLACK_MS;
 }
 
+function qualifyingFreshNegotiationTaskStateWhere() {
+  return sql`
+    (
+      (
+        ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
+        AND ${schema.tasks.updatedAt} >= NOW() - (${ACTIVE_NEGOTIATION_FRESH_MS} * INTERVAL '1 millisecond')
+      )
+      OR (
+        ${schema.tasks.state} = 'input_required'
+        AND ${schema.tasks.updatedAt} >= NOW() - (${askUserLockWindowMs()} * INTERVAL '1 millisecond')
+      )
+    )
+  `;
+}
+
+/** Fresh active task for one opportunity, used by final reactivation checks. */
+export function qualifyingActiveNegotiationTaskWhere(opportunityId: string) {
+  return sql`
+    ${schema.tasks.metadata}->>'type' = 'negotiation'
+    AND ${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}
+    AND ${qualifyingFreshNegotiationTaskStateWhere()}
+  `;
+}
+
 /** Pair-global tasks fresh enough to block a concurrent cross-trigger attempt. */
 export function qualifyingPairNegotiationTaskWhere(
   actorUserIds: string[],
@@ -68,16 +92,7 @@ export function qualifyingPairNegotiationTaskWhere(
       : sql``}
     AND ${schema.opportunities.status} = 'negotiating'
     AND ${sql.join(actorContainment, sql` AND `)}
-    AND (
-      (
-        ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
-        AND ${schema.tasks.updatedAt} >= NOW() - (${ACTIVE_NEGOTIATION_FRESH_MS} * INTERVAL '1 millisecond')
-      )
-      OR (
-        ${schema.tasks.state} = 'input_required'
-        AND ${schema.tasks.updatedAt} >= NOW() - (${askUserLockWindowMs()} * INTERVAL '1 millisecond')
-      )
-    )
+    AND ${qualifyingFreshNegotiationTaskStateWhere()}
   `;
 }
 

@@ -4,11 +4,11 @@
  * context object. Only the `discovery` preset ships in Slice 1; others throw
  * until their implementation slices land.
  */
-import type { QuestionMode } from "../shared/schemas/question.schema.js";
+import type { QuestionMode, QuestionPurpose } from "../shared/schemas/question.schema.js";
 import { DISCOVERY_SYSTEM_PROMPT, buildDiscoveryQuestionPrompt } from "./questioner.discovery.prompt.js";
 
 import { QUD_UNDERSPECIFICATION_RULES } from "./questioner.qud.js";
-import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, ProfileContext, UptakeNegotiationContext } from "./questioner.types.js";
+import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, ProfileContext, RecoveryIntentContext, UptakeNegotiationContext } from "./questioner.types.js";
 
 /**
  * Shared rule block appended to every questioner system prompt. Enforces that
@@ -101,6 +101,53 @@ function buildIntentPrompt(ctx: IntentContext): string {
     "Identify the minimum set of questions the user must answer to sharpen this intent.",
     "Apply every rule from your system prompt before outputting.",
     "Return an empty `questions` array if the intent is already specific enough.",
+  ].join("\n");
+}
+
+const RECOVERY_INTENT_SYSTEM_PROMPT = `You help a user materially refine one of their own discovery signals after an authoritative discovery run completed without leaving a currently actionable opportunity. Ask directly about the user's goal, desired counterpart attributes, or constraints. Never describe the run or imply that any specific person was reviewed.
+
+Choose exactly one of these strategies:
+- refine_intent: sharpen or pivot the core signal in a way that changes who should surface.
+- surface_missing_detail: ask for one concrete missing constraint such as stage, location, timing, budget, format, or required capability.
+
+Ask a question only when the answer is not already inferable from the intent, summary, or user profile and would materially change discovery. If no safe, useful missing axis exists, return an empty questions array.
+
+Standalone prompt rule. The prompt must identify the user's intent topic in plain language and ask about their own goal or constraints. It must make sense without UI labels or hidden metadata.
+
+${REFERENTIAL_CLOSURE_RULES}
+
+Privacy and process boundary. You may receive only a bounded aggregate count of validated prior outcomes. Use it solely as a weak signal to choose a missing axis. Never mention or imply counts, matches, no matches, rejections, negotiations, candidates, counterparties, searches, retries, pipeline state, evidence, or what another person did or did not say. Never invent people or facts.
+
+Cardinality. Return at most ONE question. Use only refine_intent or surface_missing_detail. The question must nudge a material edit, not ask whether to search again.
+
+Option construction. Provide 2–4 materially different outcomes. Put the safest or most common path first with " (Recommended)" when appropriate. Descriptions state the discovery consequence. Never add an Other option.
+
+Title rules. ≤12 chars and name the decision domain, such as Scope, Timing, Location, Stage, Budget, Format, or Skills.
+
+Output. Return zero or one question. Set underspecificationType to the applicable QUD category, or null when none applies.`;
+
+function buildRecoveryIntentPrompt(ctx: RecoveryIntentContext): string {
+  return [
+    "## Intent",
+    ctx.payload,
+    "",
+    "## Summary",
+    ctx.summary?.trim() || "(no summary available)",
+    "",
+    "## User profile",
+    buildUserContextBlock(ctx.userContext),
+    ...(ctx.rejectedNegotiationCount
+      ? [
+          "",
+          "## Private aggregate signal",
+          `Validated prior outcomes without an actionable connection: ${ctx.rejectedNegotiationCount}`,
+        ]
+      : []),
+    "",
+    "## Your task",
+    "Ask at most one direct question whose answer would materially refine this intent.",
+    "Do not narrate discovery outcomes or internal process state in the question.",
+    "Return an empty `questions` array when no safe useful axis is missing.",
   ].join("\n");
 }
 
@@ -469,7 +516,13 @@ const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
  * @returns The matching preset with systemPrompt and buildPrompt.
  * @throws Error if the mode's preset is not yet implemented.
  */
-export function getPreset(mode: QuestionMode): QuestionerPreset {
+export function getPreset(mode: QuestionMode, purpose?: QuestionPurpose): QuestionerPreset {
+  if (mode === "intent" && purpose === "recovery") {
+    return {
+      systemPrompt: withQudMetadataRules(RECOVERY_INTENT_SYSTEM_PROMPT),
+      buildPrompt: (context: unknown) => buildRecoveryIntentPrompt(context as RecoveryIntentContext),
+    };
+  }
   const preset = presets[mode];
   if (!preset) {
     throw new Error(`QuestionerAgent preset "${mode}" is not implemented yet`);

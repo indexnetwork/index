@@ -528,6 +528,8 @@ export interface QuestionDetection {
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
+  /** Post-discovery intent recovery snapshot. Never exposed publicly. */
+  recovery?: import('@indexnetwork/protocol').QuestionRecoverySnapshot;
   /** Durable proactive-delivery request marker. Never exposed publicly. */
   pushRequestedAt?: string;
   /** Last bounded recovery sweep that selected this request. Never exposed publicly. */
@@ -583,6 +585,16 @@ export const questions = pgTable('questions', {
       sql`(${table.detection}->>'purpose')`,
     )
     .where(sql`${table.detection}->>'purpose' = 'uptake'`),
+  // One recovery refinement per recipient + intent + material fingerprint
+  // across every status and expiry state. Advisory locking is the application
+  // gate; this expression index is the final cross-worker race guard.
+  recoveryRecipientIntentFingerprintUnique: uniqueIndex('questions_recovery_recipient_intent_fingerprint_uniq')
+    .on(
+      sql`(${table.actors}->0->>'userId')`,
+      sql`(${table.detection}->>'sourceId')`,
+      sql`(${table.detection}->'recovery'->>'intentFingerprint')`,
+    )
+    .where(sql`${table.detection}->>'purpose' = 'recovery' AND ${table.detection}->>'mode' = 'intent' AND ${table.detection}->>'sourceType' = 'intent'`),
   // One claim per recipient + intent + pool refresh cycle. The advisory lock
   // enforces budgets; this expression index is the final cross-worker guard.
   poolPushRecipientIntentCycleUnique: uniqueIndex('questions_pool_push_recipient_intent_cycle_uniq')

@@ -9,6 +9,8 @@ import type { NegotiationGraphLike, AgentDispatcher, StampNewbornOpportunitiesFn
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 import { maybeMinePoolDiscriminators, minePoolDiscriminatorsOnCompletion, type PoolMiningTrigger } from '../pool/mining.shared';
+import { maybeEnqueueIntentRecovery } from '../questioner/recovery.shared';
+import type { RecoveryQuestionerJobData } from '../questioner.queue';
 
 export const QUEUE_NAME = 'opportunity-from-intent';
 
@@ -51,6 +53,8 @@ export interface FromIntentDeps {
   getPoolAnswerContext?: (userId: string, intentId: string) => Promise<string>;
   /** Beat-2 narration for pool-answer re-runs (IND-419); injectable for tests. */
   narratePoolRerun?: (input: { userId: string; intentId: string; newCandidates: number | null }) => Promise<void>;
+  /** Post-success no-opportunity recovery hook; failure-isolated by this queue. */
+  recoverAfterCompletion?: (input: RecoveryQuestionerJobData) => Promise<unknown>;
 }
 
 export class FromIntentQueue {
@@ -214,6 +218,25 @@ export class FromIntentQueue {
         intentId,
         userId,
         error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Recovery is an independent, failure-isolated post-success effect. Run it
+    // before pool mining/narration so an auxiliary Beat 2 failure cannot skip
+    // refinement after authoritative discovery has already succeeded.
+    try {
+      await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
+        source: 'from_intent',
+        recipientUserId: userId,
+        intentId,
+      });
+    } catch (error) {
+      // Discovery has already completed authoritatively. Recovery is bounded,
+      // asynchronous follow-up and must never turn success into a retry.
+      this.logger.warn('Recovery completion hook failed after successful discovery', {
+        intentId,
+        userId,
+        errorClass: error instanceof Error ? error.name : 'UnknownError',
       });
     }
 

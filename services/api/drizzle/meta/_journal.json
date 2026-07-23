@@ -736,6 +736,13 @@
       "when": 1784711827927,
       "tag": "0104_update_message_cursor_index",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1784791677727,
+      "tag": "0105_add_recovery_question_uniqueness",
+      "breakpoints": true
     }
   ]
 }

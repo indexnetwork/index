@@ -327,9 +327,22 @@ const enqueueIntentRefinement = enqueueIntentRefinementFactory({
     const profile = await chatDatabaseAdapter.getProfile(userId);
     return profile ? JSON.stringify(profile) : '';
   },
-  runIntentUpdate: async ({ userId, userProfile, inputContent, targetIntentIds }) => {
+  runIntentUpdate: async ({
+    userId,
+    userProfile,
+    inputContent,
+    targetIntentIds,
+    expectedIntentFingerprint,
+  }) => {
     const result = await answerIntentGraph.invoke(
-      { userId, userProfile, operationMode: 'update' as const, inputContent, targetIntentIds },
+      {
+        userId,
+        userProfile,
+        operationMode: 'update' as const,
+        inputContent,
+        targetIntentIds,
+        expectedIntentFingerprint,
+      },
       { recursionLimit: 100 },
     );
     const executionResults = (result as {

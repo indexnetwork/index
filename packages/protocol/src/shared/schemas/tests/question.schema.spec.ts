@@ -155,8 +155,9 @@ describe("QuestionGeneratorResponseSchema", () => {
 });
 
 describe("QuestionPurpose", () => {
-  it("accepts only the internal uptake discriminator", () => {
+  it("accepts only internal purpose discriminators", () => {
     expect(QuestionPurposeSchema.parse("uptake")).toBe("uptake");
+    expect(QuestionPurposeSchema.parse("recovery")).toBe("recovery");
     expect(QuestionPurposeSchema.safeParse("negotiation").success).toBe(false);
   });
 });
@@ -228,6 +229,34 @@ describe("QuestionDetection", () => {
     });
     expect(result.success).toBe(true);
     expect(result.data!.triggeredBy).toBe("intent-456");
+  });
+
+  it("ties recovery metadata to exact ordinary intent provenance", () => {
+    const base = {
+      mode: "intent",
+      purpose: "recovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-23T12:00:00.000Z",
+      recovery: {
+        version: 1,
+        intentFingerprint: "a".repeat(64),
+        completionSource: "discovery_run",
+        rejectedNegotiationCount: 2,
+        runId: "run-1",
+      },
+    };
+    expect(QuestionDetectionSchema.safeParse(base).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({ ...base, mode: "discovery" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, sourceType: "opportunity" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-2" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, recovery: undefined }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, purpose: undefined }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      recovery: { ...base.recovery, rejectedNegotiationCount: 51 },
+    }).success).toBe(false);
   });
 
   it("accepts the complete internal proactive push ledger", () => {
@@ -321,9 +350,10 @@ describe("QuestionDetection", () => {
     }).success).toBe(true);
   });
 
-  it("accepts only pool drift and intent edit as internal void reasons", () => {
+  it("accepts only canonical internal void reasons", () => {
     expect(QuestionVoidedReasonSchema.safeParse("pool_drift").success).toBe(true);
     expect(QuestionVoidedReasonSchema.safeParse("intent_edit").success).toBe(true);
+    expect(QuestionVoidedReasonSchema.safeParse("recovery_drift").success).toBe(true);
     expect(QuestionVoidedReasonSchema.safeParse("manual").success).toBe(false);
 
     const base = {

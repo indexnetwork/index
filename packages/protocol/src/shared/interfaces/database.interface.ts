@@ -231,6 +231,14 @@ export interface UpdateIntentData {
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   /** Speech act category used by protocol enum */
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
+  /**
+   * Optional compare-and-set guard for recovery-answer writes. Implementations
+   * must compare this value with the material payload+summary fingerprint while
+   * holding the final intent row lock. Omitted for ordinary intent updates.
+   */
+  expectedIntentFingerprint?: string;
+  /** Expected owner paired with the recovery-answer fingerprint guard. */
+  expectedIntentUserId?: string;
 }
 
 /**

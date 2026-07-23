@@ -32,8 +32,10 @@ interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
   mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
-  /** Internal generation purpose; uptake answers must not enter shared opportunity metadata. */
-  purpose?: 'uptake';
+  /** Internal generation purpose; never exposed through public question payloads. */
+  purpose?: 'uptake' | 'recovery';
+  /** Recovery fingerprint rechecked immediately before intent mutation. */
+  recoveryIntentFingerprint?: string;
   sourceType: string;
   sourceId: string;
   answer: {
@@ -61,6 +63,7 @@ export interface QuestionAnswerHandlerDeps {
     questionId: string;
     selectedOptions: string[];
     freeText?: string;
+    expectedIntentFingerprint?: string;
   }) => Promise<IntentRefinementResult>;
 
   /** Store the answer as negotiation context for the next turn. */
@@ -141,6 +144,9 @@ export async function handleQuestionAnswered(
           questionId,
           selectedOptions: answer.selectedOptions,
           freeText: answer.freeText,
+          ...(payload.recoveryIntentFingerprint
+            ? { expectedIntentFingerprint: payload.recoveryIntentFingerprint }
+            : {}),
         });
         break;
 

@@ -649,6 +649,10 @@ export class IntentGraphFactory {
                 felicityClarity: matchedVerifiedIntent?.verification?.felicity_scores.clarity ?? null,
                 intentMode: updateAction.intentMode ?? null,
                 speechActType: toSpeechActType(matchedVerifiedIntent?.verification?.classification),
+                ...(state.expectedIntentFingerprint !== undefined ? {
+                  expectedIntentFingerprint: state.expectedIntentFingerprint,
+                  expectedIntentUserId: state.userId,
+                } : {}),
               });
               results.push({
                 actionType: 'update',

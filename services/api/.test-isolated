@@ -72,6 +72,7 @@ src/events/handlers/tests/question.answer.pool.isolated.ts
 src/controllers/tests/enrichment.controller.isolated.ts
 src/adapters/tests/cache.adapter.isolated.ts
 src/queues/tests/questioner.queue.isolated.ts
+src/queues/tests/recovery.shared.isolated.ts
 src/adapters/tests/questioner.uptake.isolated.ts
 src/queues/outcome/tests/outcome.mining.shared.isolated.ts
 src/queues/pool/tests/mining.shared.isolated.ts
@@ -102,5 +103,6 @@ src/queues/tests/discovery-run.queue.deps.isolated.ts
 src/controllers/tests/question.visitmining.isolated.ts
 src/controllers/tests/agent-action.controller.isolated.ts
 src/services/tests/agent-action.service.isolated.ts
+src/services/tests/intent-recovery-refinement.service.isolated.ts
 src/adapters/tests/agent-action-proposal.database.adapter.isolated.ts
 src/adapters/tests/conversation.reporter.isolated.ts

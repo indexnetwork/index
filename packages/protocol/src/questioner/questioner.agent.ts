@@ -55,7 +55,7 @@ export class QuestionerAgent {
     input: QuestionerInput,
     options?: { signal?: AbortSignal },
   ): Promise<QuestionGenerationResult | null> {
-    const preset = getPreset(input.mode);
+    const preset = getPreset(input.mode, input.purpose);
     const userMessage = preset.buildPrompt(input.context);
 
     let raw: unknown;

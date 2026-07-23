@@ -3,7 +3,7 @@ title: "Intents"
 type: domain
 tags: [intents, speech-acts, felicity-conditions, semantic-entropy, reconciliation, lifecycle, pool-questions]
 created: 2026-03-26
-updated: 2026-07-16
+updated: 2026-07-23
 ---
 
 # Intents
@@ -217,6 +217,18 @@ A successful push has exactly two surfaces: the delivered row joins the Personal
 Pool answers do **not** create premises. The canonical intent-refinement graph already incorporates substantive answers into the owned intent, so creating a premise would duplicate authority and trigger unrelated premise cascades.
 
 This behavior is independently gated: `POOL_QUESTIONS_MINING` controls shadow-only scoring, `POOL_QUESTIONS_MODE` controls durable question generation/application, `POOL_QUESTIONS_PUSH` controls proactive delivery, `POOL_QUESTIONS_STAMP_NEWBORN` controls pre-insert preference stamping, and `POOL_QUESTIONS_RANKING` controls whether fresh stored adjustments affect read-time ordering. With ranking off, feed ordering remains unchanged. The question TTL remains seven days.
+
+---
+
+## Post-Discovery Recovery Refinement
+
+After an authoritative from-intent or exact-intent asynchronous discovery run succeeds, an active owned intent may receive one additional ordinary intent-refinement question when the owner has no currently actionable exact-trigger opportunity. Actionability uses the same canonical read and role rules as the home feed: only role-eligible `latent` and `pending` rows suppress recovery; `draft`, `negotiating`, `stalled`, `accepted`, `rejected`, and `expired` history does not.
+
+Recovery remains private implementation metadata rather than a new user-facing question type. Rows persist and render as `mode='intent'`, `sourceType='intent'`, and `sourceId=intentId`, then answers follow the existing canonical intent-update, embedding/HyDE, and rediscovery lifecycle. Pool-discovery questions are independent and may coexist with recovery refinement.
+
+Generation is source-grounded. With no safely validated prior negotiation evidence, the model receives only the signal payload/summary and the owner's global context. Rejected negotiation history may influence the missing axis only as a bounded aggregate count after exact-trigger, bilateral-participant, capture-time fingerprint, completed-task, network-provenance, and single no-opportunity-artifact validation. IDs, identities, profiles, networks, transcripts/turns, outcome reasoning, evaluator reasoning, match reasons, candidate snapshots, and event/community context never enter generation or question persistence. Unsafe or unhelpful output produces no row.
+
+Cadence is one recovery question per exact recipient, intent, and normalized payload+summary fingerprint across every status and expiry state. Recovery persistence, owned exact-trigger opportunity creation, and exact-trigger reactivation share one recipient+intent advisory lock; the recovery side then rechecks ownership, active lifecycle, fingerprint, and canonical exact-trigger actionability immediately before insertion, while an expression unique index remains the final concurrent-worker guard. A material edit permits one new question and system-voids stale pending recovery rows. Answer admission follows the same advisory→intent-row→question-row order as material reconciliation, then carries the expected fingerprint and owner through the answer-only graph so the final intent row lock also requires active/non-archived lifecycle before mutation; delayed answers cannot update a drifted, paused, or archived signal.
 
 ---
 
