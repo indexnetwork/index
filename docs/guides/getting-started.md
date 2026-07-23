@@ -425,9 +425,7 @@ herdr pane send-keys <returned-pane-id> enter
 ```
 
 Before mutation, the visible Pi verifies `pwd`, `git branch --show-current`, and
-`git status --short --branch`. The canonical/root Pi sends one complete fire-and-return
-handoff, then reconciles the registered child's durable RESULT callback on a later
-natural coordinator turn; it never polls, waits, or creates a background watcher.
+`git status --short --branch`. The canonical/root Pi sends one complete fire-and-return handoff. While the orchestration bridge is removed pending refactor, it reconciles the child once on a later natural turn or explicit tick; it never polls, waits, or creates a background watcher.
 Routine questions are
 answered with the safe/recommended option. Structured prompts are read and answered
 through targeted `herdr pane` text/keys rather than a new agent prompt.

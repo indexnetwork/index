@@ -51,44 +51,24 @@ visible Pi footer quota before choosing the model; never switch models
 mid-implementation. All direct pane reads, text, and keys must target the exact pane
 ID and must not focus it. `herdr agent start` is not the launch path for this skill.
 
-## Fire-and-return handoffs and durable callbacks
+## Fire-and-return manual coordination (temporary)
 
-Every tier submits a complete handoff and returns immediately:
+The project-local orchestration bridge has been removed pending a dedicated refactor.
+Every tier submits one complete handoff without `--wait` and returns immediately:
 
 ```bash
 herdr agent prompt AGENT_NAME "$(< /absolute/path/to/handoff.md)"
 ```
 
-No root may use `--wait`, `herdr agent wait`, polling, sleeps, watcher processes, or
-watcher panes. Before a dedicated `*-root` sends a child handoff, it calls
-`register_orchestration_child_route` with that child's exact live Pi session,
-workspace, pane, and worktree identity. The route is persisted bidirectionally and
-fails closed when absent, stale, or ambiguous. A child has no target selector: stable
-RESULT and validated RPIV blocked events can reach only its one registered root.
+Do not use `herdr agent wait`, polling, sleeps, watcher processes, or watcher panes.
+There is currently no automatic cross-session callback. The user-facing `index`
+session explicitly ticks the root on a later natural turn; the root then performs one
+read-only status/recent-output pass over its owned children and continues actionable
+work. Children end with a concise `RESULT` in their pane, but the coordinator must
+independently verify worktree, git, tests, PR, and deployment state before acting.
 
-The project-local bridge is a private durable spool plus a best-effort local socket
-wake. Root → `index` requires both a `*-root` label **and** its session/workspace/pane
-checkout to equal the canonical repository root; child → root requires the exact
-registered route. Events are bounded, timestamp/id ordered,
-idempotent, quarantined when unsafe, and rendered as explicitly untrusted JSON data.
-The consumer acknowledges only after its persistent custom message is in session
-history; dispatch decisions linearize attachment against cancellation.
-
-A received verified event coalesces to at most one non-user custom
-`sendMessage({ deliverAs:"followUp", triggerTurn:true })` continuation. It wakes an
-idle `index` or root, and queues one follow-up while busy; it never uses
-`sendUserMessage`, reads/edits/clears the editor, focuses a workspace, or invokes
-Herdr prompt APIs. `index` may present an approval request but cannot grant or infer
-approval; blocked questions still need the actual user answer. A missing listener or
-restart leaves the event durable for attachment on the next natural turn.
-Notifications are optional visibility only. After a callback, independently reconcile
-child git/tests/PR facts — a RESULT is not proof.
-
-For long-lived roots/children, invoke `/supervised-compact` only at a verified idle
-boundary with task, validation, and exact next action. It checkpoints session/worktree/
-branch/head/dirty state and parent route before using Pi's compaction API, then resumes
-the same session with one explicit custom continuation. Bare `/compact` is refused;
-thresholds are guidance to checkpoint at milestones, not a churn loop.
+Structured questions are handled only after an explicit status tick observes the
+child as blocked. Never infer approval or treat a settled state as success.
 
 ## Settled states are not success
 
@@ -106,18 +86,11 @@ in a temp directory — never request file output in the initial prompt. Full co
 
 ## Structured questions propagate, not stall
 
-When a child is `blocked`, the root orchestrator reads its pane and answers routine
-safe/recommended choices through non-focusing, pane-ID-targeted UI (`herdr pane read
-PANE_ID`, `herdr pane send-text PANE_ID`, `herdr pane send-keys PANE_ID`) — never a
-new agent prompt into an active question. Genuine product/architecture ambiguity,
-destructive/external mutation, credentials, or merge approval is re-raised by the root
-with its **own** `ask_user_question`. The project-local bridge reference-counts that
-tool's awaited lifetime and emits the same-process `herdr:blocked` lifecycle event, so
-Herdr reports `blocked` until the question resolves. The bridge reference-counts nested
-questions and removes its pending/claimed durable block event on tool end; an event
-already attached during a truthful wait stays in history but is never replayed. Never
-infer merge approval.
-Full flow: `references/completion-and-questions.md`.
+On an explicit coordination tick, inspect any child reported as `blocked`. Answer
+routine safe choices through exact pane-targeted UI. Re-raise genuine product or
+architecture ambiguity, destructive/external mutation, credentials, or merge approval
+with the root's own `ask_user_question`. No background callback exists, so report this
+temporary limitation plainly and never fabricate an answer.
 
 ## Roles and models
 

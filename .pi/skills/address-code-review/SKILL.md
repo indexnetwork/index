@@ -25,7 +25,7 @@ Do not silently resolve Copilot conversations.
 
 - The repository uses GitHub pull requests.
 - The `gh` CLI is installed and authenticated.
-- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the PR's existing visible Herdr-managed Pi worktree session** — when this skill runs in the canonical-root coordinator, e.g. via `finish-pr`, give that session one consolidated fire-and-return fix prompt and reconcile its durable callback on a later natural coordinator turn; keep reply/resolve operations in the coordinator (see `run-worktree-session`).
+- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the PR's existing visible Herdr-managed Pi worktree session** — when this skill runs in the canonical-root coordinator, e.g. via `finish-pr`, give that session one consolidated fire-and-return fix prompt and reconcile it once on a later natural turn or explicit tick; keep reply/resolve operations in the coordinator (see `run-worktree-session`).
 - Do not use hidden `Agent` subagents for code-review fixes, and do not create a watcher process or watcher pane. Reuse one visible Herdr workspace/Pi agent for every review round on the PR.
 - If the user does not provide a PR number, infer it from the current branch.
 
@@ -140,9 +140,7 @@ herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/review-fixes.md)"
 ```
 
 Use `herdr agent prompt` only when no structured question/editor draft is active.
-Return immediately; do not poll, wait, sleep, or create a watcher. A registered child
-callback wakes its dedicated root through the durable bridge, which then verifies the
-PR facts independently. Continue only after the visible Pi has:
+Return immediately; do not poll, wait, sleep, or create a watcher. The bridge is removed pending refactor, so reconcile the session once on a later natural turn or explicit tick and independently verify the PR facts. Continue only after the visible Pi has:
 
 1. verified its cwd and PR head branch;
 2. edited the code;

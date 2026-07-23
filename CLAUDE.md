@@ -557,8 +557,7 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 ### Implementation in Visible Herdr Worktrees
 
 Execute implementation and fix plans in visible Herdr-managed Pi sessions for isolated
-Git worktrees. The canonical/root Pi coordinates, remains active through durable callbacks,
-and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
+Git worktrees. The canonical/root Pi coordinates through fire-and-return handoffs and explicit manual ticks while the orchestration bridge is removed, and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
 parallel work is genuinely useful, use separate worktrees/workspaces with one writer per
 checkout. Follow the `create-worktree` and `run-worktree-session` skills.
 
