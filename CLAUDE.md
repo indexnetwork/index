@@ -193,7 +193,7 @@ bun run worktree:setup <name>               # Install node_modules & symlink .en
 herdr worktree open --path <path> --label <name> --no-focus --json # Open a non-focusing visible worktree workspace
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
-bun run skills:validate                      # Validate every project-local Agent Skill
+bun run skills:validate                      # Validate every project-local Pi and Codex skill
 bun run test:scripts                         # Run focused deterministic script tests
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
