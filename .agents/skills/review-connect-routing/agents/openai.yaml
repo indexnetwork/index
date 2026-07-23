@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Connect Routing"
+  short_description: "Index project workflow: Review Connect Routing"
+  default_prompt: "Use $review-connect-routing to follow the repository-specific Review Connect Routing workflow."

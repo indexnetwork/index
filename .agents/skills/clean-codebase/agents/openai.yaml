@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clean Codebase"
+  short_description: "Index project workflow: Clean Codebase"
+  default_prompt: "Use $clean-codebase to follow the repository-specific Clean Codebase workflow."

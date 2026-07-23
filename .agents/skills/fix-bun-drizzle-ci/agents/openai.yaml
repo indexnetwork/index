@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fix Bun Drizzle Ci"
+  short_description: "Index project workflow: Fix Bun Drizzle Ci"
+  default_prompt: "Use $fix-bun-drizzle-ci to follow the repository-specific Fix Bun Drizzle Ci workflow."

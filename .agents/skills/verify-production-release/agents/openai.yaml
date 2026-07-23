@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Production Release"
+  short_description: "Index project workflow: Verify Production Release"
+  default_prompt: "Use $verify-production-release to follow the repository-specific Verify Production Release workflow."

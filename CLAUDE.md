@@ -193,7 +193,7 @@ bun run worktree:setup <name>               # Install node_modules & symlink .en
 herdr worktree open --path <path> --label <name> --no-focus --json # Open a non-focusing visible worktree workspace
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
-bun run skills:validate                      # Validate every project-local Pi skill
+bun run skills:validate                      # Validate every project-local Agent Skill
 bun run test:scripts                         # Run focused deterministic script tests
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
@@ -593,11 +593,11 @@ When wrapping up a session that uncovered something **reusable and non-obvious**
 workflow, a fix for a recurring failure, an exact command sequence, an environment
 gotcha, or a convention — run the `learn-skill` skill to persist it before ending.
 
-- `learn-skill` writes to the project-local `.pi/skills/` and **never edits
+- `learn-skill` writes to the project-local `.agents/skills/` and **never edits
   protected/home skills in place** (it migrates them local first, then updates the copy).
-- It is configurable via `.pi/skills/learn-skill/config.json` (target, protected
+- It is configurable via `.agents/skills/learn-skill/config.json` (target, protected
   locations, dedup/cross-link features, and rpiv integrations: todo,
   ask-user-question, args, advisor).
-- Use `.pi/skills/create-skill` for the mechanics of writing a correct `SKILL.md`.
+- Use `.agents/skills/create-skill` for the mechanics of writing a correct `SKILL.md`.
 - Skip silently when nothing meets the "reusable and non-obvious" bar — never capture
   one-off facts.

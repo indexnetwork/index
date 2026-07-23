@@ -1,0 +1,4 @@
+interface:
+  display_name: "Address Code Review"
+  short_description: "Index project workflow: Address Code Review"
+  default_prompt: "Use $address-code-review to follow the repository-specific Address Code Review workflow."

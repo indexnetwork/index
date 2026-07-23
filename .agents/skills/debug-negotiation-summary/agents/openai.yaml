@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debug Negotiation Summary"
+  short_description: "Index project workflow: Debug Negotiation Summary"
+  default_prompt: "Use $debug-negotiation-summary to follow the repository-specific Debug Negotiation Summary workflow."

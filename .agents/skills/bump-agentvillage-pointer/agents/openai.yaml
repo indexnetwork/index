@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bump Agentvillage Pointer"
+  short_description: "Index project workflow: Bump Agentvillage Pointer"
+  default_prompt: "Use $bump-agentvillage-pointer to follow the repository-specific Bump Agentvillage Pointer workflow."
