@@ -1,6 +1,8 @@
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
+import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { log } from '../lib/log';
 import { assertContinuationExecutionEffect } from './negotiation-continuation.atomic';
 import type { ContinuationExecutionFence } from './negotiation-continuation.atomic';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
@@ -10,6 +12,7 @@ const ORCHESTRATOR_PERSONA = 'orchestrator';
 const SIGNAL_PERSONA = 'signal';
 const NEGOTIATOR_PERSONA = 'negotiator';
 const REPORTER_PERSONA = 'reporter';
+const logger = log.lib.from('conversation-database');
 
 /** Persona-specific registry key for Signal Agent's canonical intent scope. */
 const SIGNAL_INTENT_SCOPE_TYPE = 'signal-intent';
@@ -666,7 +669,7 @@ export class ConversationDatabaseAdapter {
     referenceTaskIds?: string[];
     continuationExecution?: ContinuationExecutionFence;
   }): Promise<Message> {
-    return this.insertMessageWithConversationSession({
+    const message = await this.insertMessageWithConversationSession({
       id: crypto.randomUUID(),
       conversationId: data.conversationId,
       senderId: data.senderId,
@@ -677,6 +680,20 @@ export class ConversationDatabaseAdapter {
       extensions: data.extensions ?? null,
       referenceTaskIds: data.referenceTaskIds ?? null,
     }, data.continuationExecution);
+
+    // All message writers (including the protocol negotiation graph) converge
+    // here. Publish only after persistence, and only to authenticated owners
+    // represented by the stored participant rows.
+    try {
+      await publishConversationMessageEvent(message, await this.getParticipants(data.conversationId));
+    } catch (error) {
+      logger.error('Failed to publish conversation SSE event', {
+        conversationId: data.conversationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return message;
   }
 
   /**
