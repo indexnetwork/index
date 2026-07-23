@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Web Persona Routing"
+  short_description: "Index project workflow: Review Web Persona Routing"
+  default_prompt: "Use $review-web-persona-routing to follow the repository-specific Review Web Persona Routing workflow."

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const skillctl = resolve(import.meta.dir, "../../.pi/skills/learn-skill/scripts/skillctl.ts");
+const skillctl = resolve(import.meta.dir, "../../.agents/skills/learn-skill/scripts/skillctl.ts");
 const tempDirs: string[] = [];
 
 function makeProject(): string {
@@ -13,9 +13,13 @@ function makeProject(): string {
 }
 
 function writeSkill(project: string, directory: string, frontmatter: string): void {
-  const dir = join(project, ".pi/skills", directory);
-  mkdirSync(dir, { recursive: true });
+  const dir = join(project, ".agents/skills", directory);
+  mkdirSync(join(dir, "agents"), { recursive: true });
   writeFileSync(join(dir, "SKILL.md"), `---\n${frontmatter}\n---\n\n# ${directory}\n`);
+  writeFileSync(
+    join(dir, "agents/openai.yaml"),
+    `interface:\n  display_name: "${directory}"\n  short_description: "Test workflow for ${directory}"\n  default_prompt: "Use $${directory} for this test workflow."\n`,
+  );
 }
 
 async function validate(project: string, args: string[]) {
@@ -51,12 +55,12 @@ describe("skillctl validate", () => {
       valid: true,
       skills: [
         {
-          path: ".pi/skills/audit-alpha-data/SKILL.md",
+          path: ".agents/skills/audit-alpha-data/SKILL.md",
           name: "audit-alpha-data",
           errors: [],
         },
         {
-          path: ".pi/skills/run-zeta-task/SKILL.md",
+          path: ".agents/skills/run-zeta-task/SKILL.md",
           name: "run-zeta-task",
           errors: [],
         },
@@ -89,10 +93,50 @@ describe("skillctl validate", () => {
     expect(errors.some((error) => error.startsWith("invalid YAML frontmatter:"))).toBe(true);
   });
 
+  it("requires metadata, valid references, and a SKILL.md in every skill directory", async () => {
+    const project = makeProject();
+    writeSkill(project, "run-missing-metadata", "name: run-missing-metadata\ndescription: Run a fixture without metadata.");
+    rmSync(join(project, ".agents/skills/run-missing-metadata/agents/openai.yaml"));
+
+    writeSkill(project, "review-broken-reference", "name: review-broken-reference\ndescription: Review a fixture with a broken reference.");
+    writeFileSync(
+      join(project, ".agents/skills/review-broken-reference/SKILL.md"),
+      "---\nname: review-broken-reference\ndescription: Review a fixture with a broken reference.\n---\n\n[Missing](references/missing.md)\n",
+    );
+
+    mkdirSync(join(project, ".agents/skills/audit-empty-directory"), { recursive: true });
+
+    const result = await validate(project, ["all", "--json"]);
+    const report = JSON.parse(result.stdout) as {
+      valid: boolean;
+      skills: Array<{ path: string; name: string | null; errors: string[] }>;
+    };
+
+    expect(result.code).toBe(1);
+    expect(report.valid).toBe(false);
+    expect(report.skills).toEqual([
+      {
+        path: ".agents/skills/audit-empty-directory/SKILL.md",
+        name: null,
+        errors: ["SKILL.md not found"],
+      },
+      {
+        path: ".agents/skills/review-broken-reference/SKILL.md",
+        name: "review-broken-reference",
+        errors: ["missing Markdown reference references/missing.md"],
+      },
+      {
+        path: ".agents/skills/run-missing-metadata/SKILL.md",
+        name: "run-missing-metadata",
+        errors: ["agents/openai.yaml not found"],
+      },
+    ]);
+  });
+
   it("reports direct-file skills without recursively treating references as skills", async () => {
     const project = makeProject();
     writeSkill(project, "create-test-fixture", "name: create-test-fixture\ndescription: Create a deterministic test fixture.");
-    const skillRoot = join(project, ".pi/skills");
+    const skillRoot = join(project, ".agents/skills");
     writeFileSync(
       join(skillRoot, "run-direct-helper.md"),
       "---\nname: run-direct-helper\ndescription: Run a direct-file helper fixture.\n---\n",
@@ -110,14 +154,14 @@ describe("skillctl validate", () => {
     expect(result.code).toBe(1);
     expect(report.valid).toBe(false);
     expect(report.skills.map((skill) => skill.path)).toEqual([
-      ".pi/skills/create-test-fixture/SKILL.md",
-      ".pi/skills/run-direct-helper.md",
+      ".agents/skills/create-test-fixture/SKILL.md",
+      ".agents/skills/run-direct-helper.md",
     ]);
     expect(report.skills[0].errors).toEqual([]);
     expect(report.skills[1]).toEqual({
-      path: ".pi/skills/run-direct-helper.md",
+      path: ".agents/skills/run-direct-helper.md",
       name: "run-direct-helper",
-      errors: ["direct-file skills are not allowed; move this skill to .pi/skills/<name>/SKILL.md"],
+      errors: ["direct-file skills are not allowed; move this skill to .agents/skills/<name>/SKILL.md"],
     });
   });
 
@@ -125,7 +169,7 @@ describe("skillctl validate", () => {
     const project = makeProject();
     writeSkill(project, "create-test-fixture", "name: create-test-fixture\ndescription: Create a deterministic test fixture.");
 
-    const valid = await validate(project, [".pi/skills/create-test-fixture", "--json"]);
+    const valid = await validate(project, [".agents/skills/create-test-fixture", "--json"]);
     expect(valid.code).toBe(0);
     expect(JSON.parse(valid.stdout).skills).toHaveLength(1);
 

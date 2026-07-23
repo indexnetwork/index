@@ -1,0 +1,4 @@
+interface:
+  display_name: "Learn Skill"
+  short_description: "Index project workflow: Learn Skill"
+  default_prompt: "Use $learn-skill to follow the repository-specific Learn Skill workflow."

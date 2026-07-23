@@ -258,7 +258,7 @@ export default function (pi: ExtensionAPI) {
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nProject branch guard: the canonical root ${CANONICAL_ROOT} should remain on ${REQUIRED_BRANCH}. ${posture} Create and use ${WORKTREES_DIR}/<name> for implementation changes via \`bun run worktree:session -- <type>/<description>\`, and run mutating commands from the worktree. See the create-worktree skill (.pi/skills/create-worktree/SKILL.md) for the launcher contract and sanctioned escapes this guard allows.`,
+				`\n\nProject branch guard: the canonical root ${CANONICAL_ROOT} should remain on ${REQUIRED_BRANCH}. ${posture} Create and use ${WORKTREES_DIR}/<name> for implementation changes via \`bun run worktree:session -- <type>/<description>\`, and run mutating commands from the worktree. See the create-worktree skill (.agents/skills/create-worktree/SKILL.md) for the launcher contract and sanctioned escapes this guard allows.`,
 		};
 	});
 

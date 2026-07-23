@@ -1,0 +1,4 @@
+interface:
+  display_name: "Inspect Edge City Railway"
+  short_description: "Index project workflow: Inspect Edge City Railway"
+  default_prompt: "Use $inspect-edge-city-railway to follow the repository-specific Inspect Edge City Railway workflow."
