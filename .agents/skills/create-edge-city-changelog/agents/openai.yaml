@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create Edge City Changelog"
-  short_description: "Index project workflow: Create Edge City Changelog"
-  default_prompt: "Use $create-edge-city-changelog to follow the repository-specific Create Edge City Changelog workflow."

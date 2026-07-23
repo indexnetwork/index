@@ -11,15 +11,27 @@ git log --oneline --decorate --left-right --cherry-pick origin/main...origin/dev
 git diff --quiet origin/main <prior-dev-release-head> && echo "main squash tree matches prior dev release head"
 ```
 
-If true, build the release branch from `origin/main` and cherry-pick only commits after `<prior-dev-release-head>`:
+If true, build the release head from `origin/main` and cherry-pick only commits after
+`<prior-dev-release-head>`. Capture the repaired commit before returning to the root:
 
 ```bash
-git worktree add --detach .worktrees/fix-release-YYYY-MM-DD origin/main
-cd .worktrees/fix-release-YYYY-MM-DD
+ROOT="$(git rev-parse --show-toplevel)"
+REPAIR_WORKTREE="$ROOT/.worktrees/fix-release-YYYY-MM-DD"
+git worktree add --detach "$REPAIR_WORKTREE" origin/main
+cd "$REPAIR_WORKTREE"
 git cherry-pick <new-commit-1> <new-commit-2> ...
 git diff --quiet HEAD origin/dev && echo "release branch tree matches dev tree"
 git merge-tree "$(git merge-base origin/main HEAD)" origin/main HEAD | grep -E '<<<<<<<|CONFLICT|^changed in both$|^added in both$' || echo "no merge-tree conflicts"
+REPAIRED_HEAD="$(git rev-parse HEAD)"
+cd "$ROOT"
+BASE="$(git rev-parse origin/main)"
+HEAD="$REPAIRED_HEAD"
 ```
+
+Stop unless the tree-match and merge-simulation checks pass. `open-release-pr` must use
+this repaired `BASE`/`HEAD` for both its evidence range and `git push`; pushing
+`origin/dev` after this repair would discard it. Remove the detached repair worktree
+after the release PR is opened and its remote head matches `HEAD`.
 
 ## After merging the release PR
 

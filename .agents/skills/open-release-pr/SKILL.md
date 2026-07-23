@@ -9,7 +9,7 @@ Use this workflow to cut a release PR from `dev` to `main` with a changelog that
 
 ## Goal
 
-1. Create a `release/<DATE>` branch from the latest `dev`.
+1. Create a `release/<DATE>` branch whose tree represents the latest `dev` (directly from `origin/dev`, or from a verified repaired head when squash-release ancestry diverged).
 2. Push that branch to GitHub.
 3. Open a PR targeting `main`.
 4. Generate the PR body from `git log` and `git diff` so it includes:
@@ -86,16 +86,19 @@ git rev-parse --verify origin/main
 
 ### 2. Compute release range
 
-Use the merge base between `origin/main` and `origin/dev` as the release base:
+Start with the ordinary release range:
 
 ```bash
 BASE="$(git merge-base origin/main origin/dev)"
 HEAD="$(git rev-parse origin/dev)"
 ```
 
+`HEAD` is the exact commit that will be pushed as the release branch; do not later
+replace it implicitly with `origin/dev`.
+
 #### Squash-release divergence check
 
-If the previous release PR was squash-merged into `main`, `dev` may still contain the same changes as individual commits. That makes `merge-base` look old and causes the next release PR to re-include already-shipped commits, often with conflicts. Follow the detection/rebuild steps in `../_shared/squash-release-reconciliation.md` before trusting `BASE..HEAD`.
+If the previous release PR was squash-merged into `main`, `dev` may still contain the same changes as individual commits. That makes `merge-base` look old and causes the next release PR to re-include already-shipped commits, often with conflicts. Follow the detection/rebuild steps in `../_shared/squash-release-reconciliation.md` before trusting `BASE..HEAD`. When repair is needed, that workflow outputs a repaired `BASE` and `HEAD`; use those exact values for the changelog **and** branch push below.
 
 After the release PR merges, `finish-pr` should reconcile `main` back into `dev` with a no-content merge so the next release starts from sane ancestry.
 
@@ -174,7 +177,7 @@ Recommended structure:
 ```
 
 ### Verification
-- [ ] Release branch created from `origin/dev` at `<HEAD>`.
+- [ ] Release branch created from selected release head `<HEAD>` (ordinary `origin/dev` or the verified repaired head).
 - [ ] GitHub checks pass on this PR.
 - [ ] Release PR reviewed and approved.
 ````
@@ -191,16 +194,16 @@ Keep the changelog concise but complete. For a long release, group changes under
 
 ### 5. Create and push the release branch
 
-Create the release branch **as a remote ref** from `origin/dev` — do **not** `git switch`
-to it. This skill is usually invoked from the canonical-root session, where switching
-branches violates the root-stays-on-`dev` rule (root-dev-guard flags it) and is
-unnecessary: the PR only needs the branch to exist on `origin`.
+Create the release branch **as a remote ref** from the selected `HEAD` — do **not**
+`git switch` to it. This skill is usually invoked from the canonical-root session,
+where switching branches violates the root-stays-on-`dev` rule (root-dev-guard flags
+it) and is unnecessary: the PR only needs the branch to exist on `origin`.
 
 First check the branch does not already exist, then push the ref:
 
 ```bash
 git ls-remote --heads origin "$BRANCH"          # must print nothing
-git push origin origin/dev:refs/heads/$BRANCH   # creates the branch on origin
+git push origin "$HEAD:refs/heads/$BRANCH"      # creates the branch from the audited head
 ```
 
 If the branch already exists, stop and ask the user how to proceed — never force-update

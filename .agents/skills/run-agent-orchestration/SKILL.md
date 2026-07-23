@@ -13,7 +13,7 @@ description: >-
 
 One user-facing main agent delegates repository orchestration to **exactly one**
 visible Herdr root orchestrator. The root orchestrator fans work out to child Pi
-sessions in isolated worktrees selected by path-triggered role profiles — not
+sessions in isolated worktrees selected by path and task-type role profiles — not
 long-lived frontend/backend/protocol personas.
 
 ## Topology
@@ -28,7 +28,7 @@ long-lived frontend/backend/protocol personas.
   GitHub/Linear/Railway coordination, and cleanup. It never edits source in the
   canonical root; implementation always happens in child worktrees.
 - **Children** — one writer per Git worktree, each launched with a role profile chosen
-  by the paths it will change (see `references/role-profiles.md`) and a model chosen at
+  by the paths it will change or the release/review task type (see `references/role-profiles.md`) and a model chosen at
   launch time (see `references/model-routing.md`).
 
 ## Launching the root orchestrator
@@ -95,7 +95,7 @@ temporary limitation plainly and never fabricate an answer.
 ## Roles and models
 
 - Role is selected per task by changed paths (`packages/protocol/**`,
-  `services/api/**`, `apps/web/**`, release/review) and injected as a handoff
+  `services/api/**`, `apps/web/**`) or by release/review activity and injected as a handoff
   checklist — no persistent personas. See `references/role-profiles.md`.
 - Model is chosen at child launch time from the OpenAI-first routing table: Sol,
   Terra, and Luna are primary; Claude is quota-aware alternative capacity, while Fable
@@ -120,7 +120,6 @@ skills:
 
 - `create-worktree` — worktree/workspace/agent identity contracts per child.
 - `run-worktree-session` — single-session fire-and-return handoff, question handling, fix loops.
-- `address-code-review` — Copilot review threads and visible fix rounds.
 - `finish-pr` — readiness, explicit merge confirmation, post-merge verification, cleanup.
 
 ## See also

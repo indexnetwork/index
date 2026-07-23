@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -45,6 +45,13 @@ describe("skillctl validate", () => {
     const project = makeProject();
     writeSkill(project, "run-zeta-task", "name: run-zeta-task\ndescription: >-\n  Run the zeta task when a fixture needs it.");
     writeSkill(project, "audit-alpha-data", "name: audit-alpha-data\ndescription: Audit alpha data when validating fixtures.");
+    const sharedDir = join(project, ".agents/skills/_shared");
+    mkdirSync(sharedDir, { recursive: true });
+    writeFileSync(join(sharedDir, "release.md"), "# Shared release workflow\n");
+    appendFileSync(
+      join(project, ".agents/skills/run-zeta-task/SKILL.md"),
+      "\nFollow `../_shared/release.md`. Generic examples like `references/*.md` are not concrete links.\n",
+    );
 
     const result = await validate(project, ["all", "--json"]);
 

@@ -27,8 +27,9 @@ description: What it does AND when to use it. Be specific.
   it alone decides when the skill loads. State the capability *and* the trigger
   conditions. Bad: "Helps with PDFs." Good: "Extracts text/tables from PDFs and fills
   forms. Use when working with PDF documents."
-- Optional: `license`, `compatibility`, `metadata`, `allowed-tools`,
-  `disable-model-invocation` (`true` hides it from the prompt; only `/skill:name` runs it).
+- The Agent Skills standard defines additional optional keys, but this repository's
+  validator intentionally permits only `name` and `description`. Do not add other
+  frontmatter keys to project-local skills.
 
 **YAML safety — quote any value containing a colon.** A plain (unquoted) scalar that
 contains a `: ` (colon followed by space) makes the YAML loader read it as a nested
@@ -44,8 +45,8 @@ description: Checks two things: (1) the lockfile, and (2) the migration.
 description: "Checks two things: (1) the lockfile, and (2) the migration."
 ```
 
-The same rule applies to any colon-bearing value (`metadata`, etc.), not just
-`description`.
+The same rule applies to any colon-bearing YAML value, including values in
+`agents/openai.yaml`, not just `description`.
 
 ## Structure
 
@@ -105,7 +106,7 @@ machine-readable report.
 - [ ] description states what + when, ≤1024 chars, non-empty
 - [ ] body is concise; details pushed to `references/`
 - [ ] `agents/openai.yaml` has all three interface strings and `$<name>` in `default_prompt`
-- [ ] scripts/assets and Markdown references resolve relative to the skill directory
+- [ ] every referenced Markdown workflow file resolves relative to the skill directory; invoked scripts/assets are checked manually
 - [ ] written to the right (project-local, non-protected) location
 
 ## See also

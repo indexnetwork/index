@@ -1,15 +1,15 @@
-# Role profiles (path-triggered, not personas)
+# Role profiles (task-triggered, not personas)
 
 Do **not** create separate persistent frontend/backend/protocol personas. A role is
-selected per child task by the paths it will change, and the role-specific checklist
+selected per child task by the paths it will change or by release/review activity, and the role-specific checklist
 below is injected into that child's handoff. The same child keeps its role for its
 whole session (including fix rounds); a new task with different paths gets a new role
 selection.
 
 ## Selecting a role
 
-1. List the paths the task will touch.
-2. If all paths fall under one trigger, that role is primary.
+1. List the paths the task will touch and whether it is release/review-only work.
+2. If all paths or the task type fall under one trigger, that role is primary.
 3. Mixed-path tasks use **one primary role** (the riskiest/most architectural area)
    and explicitly attach the secondary roles' checklists to the same handoff.
 4. Split into multiple children only when ownership is genuinely independent

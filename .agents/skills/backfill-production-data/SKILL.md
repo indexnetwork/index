@@ -6,8 +6,11 @@ description: Safely run an ad-hoc data backfill/UPDATE against the Index product
 # backfill-production-data
 
 Ad-hoc prod data mutations (not schema migrations — those go through Drizzle) run
-through the **Neon MCP** tools. This skill encodes the safe sequence proven in the
-2026-07-06 stalled-opportunities backfill (299 rows reclassified, zero surprises).
+through the **Neon MCP** tools. This is the narrow exception to the repository's
+ordinary “production: never touch” rule: enter it only for an explicitly requested
+backfill, require user confirmation immediately before the write, and follow every
+safety step below. The sequence was proven in the 2026-07-06 stalled-opportunities
+backfill (299 rows reclassified, zero surprises).
 
 ## Topology (also in CLAUDE.md → Neon Database Topology)
 
@@ -62,10 +65,11 @@ Useful JSONB patterns for this schema: `jsonb_array_elements(o.actors) a` +
 
 - Prod writes need **explicit user confirmation** in the session; read-only sizing does not.
 - Clean up the backup branch after a few days of confidence (`neon_delete_branch`).
-- If the mutation is repeatable/ongoing, promote it to a CLI under
-  `services/api/src/cli/` (see `expire-opportunities.ts`) instead of re-running raw SQL.
+- If the mutation is repeatable/ongoing, promote it to a maintained CLI under
+  `services/api/src/cli/` instead of re-running raw SQL. Follow the current root env-file
+  conventions in `docs/guides/getting-started.md`; do not copy legacy `.env.production`
+  loading from older maintenance scripts.
 
 ## See also
 
 - `verify-production-release` — for schema-migration-level prod risk (frozen lockfile, destructive Drizzle migrations); this skill is for *data* fixes.
-- `inspect-edge-city-railway` — Railway-side log correlation when diagnosing what wrote the bad data.

@@ -22,11 +22,11 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 - Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, `index` first delegates through a dedicated canonical-root coordinator; that root sends one consolidated prompt to the existing visible Herdr-managed Pi session for the PR worktree. The root/child handoff is fire-and-return without `--wait`; while the bridge is removed, `index` explicitly ticks the dedicated root on a later natural turn. That child session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
 - Do not use hidden `Agent` subagents for implementation/fix rounds, and do not create a watcher process or watcher pane. Reuse the same Herdr workspace, pane, and Pi agent.
 - A PR-branch rebase is executed only from the verified PR worktree, and only ever on the PR's own feature branch — never a shared/long-lived head branch (`dev`, `main` — e.g. a release PR's head): that rewrites shared history and breaks other worktrees. Use `--force-with-lease`, never plain `--force`.
-- Do not remove a git worktree without confirming the PR is merged, the working tree is clean (no uncommitted/unpushed work), and the user has not asked to keep it. When in doubt, ask before removing.
+- Do not remove a git worktree until the PR is merged and every dirty/unpushed change has been inspected. A dirty tree may be force-removed only when each leftover is proven disposable or preserved elsewhere; keep it or ask when that cannot be established. Honor any user request to keep it.
 
 ## Supporting rpiv skills
 
-Use other rpiv skills when they fit: `run-worktree-session` for the coordinator-managed visible Herdr handoff and fix loop, `manage-feature-flags` for env-flag flips across Railway/local surfaces, `address-code-review` for unresolved review threads, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `verify-production-release` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
+Use other rpiv skills when they fit: `run-worktree-session` for the coordinator-managed visible Herdr handoff and fix loop, `manage-feature-flags` for env-flag flips across Railway/local surfaces, `validate` for rpiv-plan success criteria, `code-review` for risky/multi-round diffs, `changelog` for release notes, `commit` for finishing commits, and `verify-production-release` for dev→main releases. Do not invoke heavyweight skills for trivial PRs with already-green checks and no open review threads.
 
 ## Coordinating fixes in the visible Herdr session
 
@@ -70,7 +70,7 @@ the user explicitly confirms how to proceed.
 
 Collect related issue references from:
 
-- `closingIssuesReferences` from `gh pr view`,
+- `pullRequest.closingIssuesReferences` from the step-1 snapshot,
 - PR title/body,
 - branch name,
 - commit messages,
@@ -93,16 +93,16 @@ If no related issues are discoverable, continue but mention that no linked GitHu
 
 ### 3. Check working-tree and push state (read-only)
 
-Check local state and the pushed head (all read-only):
+Use the step-1 snapshot's matching-worktree status plus `headRefName`/`headRefOid` as
+the source of truth. If a matching worktree exists, these read-only local commands may
+add context without repeating GitHub queries:
 
 ```bash
-git status --short --branch
-git log --oneline --decorate -5
-PR_HEAD=$(gh pr view PR_NUMBER --json headRefName --jq .headRefName)
-gh pr view PR_NUMBER --json headRefOid --jq .headRefOid
+git -C <matching-worktree> status --short --branch
+git -C <matching-worktree> log --oneline --decorate -5
 ```
 
-If you find uncommitted changes, unpushed commits, or a push that went to a helper/review branch instead of `headRefName`, treat them as findings and include them in the consolidated prompt for the existing worktree session (see "Handing fixes"). An accidental helper branch can be cleaned up during final worktree cleanup if it is no longer needed.
+If you find uncommitted changes, unpushed commits, or a push that went to a helper/review branch instead of `headRefName`, treat them as findings and include them in the consolidated prompt for the existing worktree session (see "Coordinating fixes in the visible Herdr session"). An accidental helper branch can be cleaned up during final worktree cleanup if it is no longer needed.
 
 ### 3b. Check base freshness; hand off any rebase
 
@@ -190,7 +190,7 @@ If nothing changed, record "no env changes" and move on. Otherwise, for each aff
 2. **Report its state on every surface:**
    - `startup.env.ts` registration and `.env.example` (committed — `tests/env-example-drift.spec.ts` keeps them in sync). Missing entries are committed-code gaps → add them only from the verified PR worktree.
    - Root `.env.development` and `.env.test` (gitignored local files — `.env.development` mirrors Railway dev). Read them and report set/unset.
-   - Railway dev service variables (query via Railway MCP; `bun scripts/audit-railway-env.ts` diffs a Railway service against the schema). For dev→main release PRs, check the production service too.
+   - Railway dev service variables: query live values via Railway MCP. Separately, when an authenticated Railway CLI is installed and linked to the intended project/environment, `bun scripts/audit-railway-env.ts` can diff that service against the schema. Do not present the CLI audit as an MCP call. For dev→main release PRs, check the production service too.
 3. **Ask the user what to do**, per variable or as one batched question, with the plain-English explanations included: set/update a value in Railway, add it to `.env.development`/`.env.test`, or deliberately leave a flag off. Setting Railway variables is a mutation — it needs explicit user confirmation per the safety rules (use the `manage-feature-flags` skill for the mechanics: ship-dark→flip order, snake_case ids, auto-redeploy). Editing the gitignored root `.env.development`/`.env.test` is allowed from this session after confirmation — they are not worktree contents and not committed. Make committed-file fixes (`.env.example`, `startup.env.ts`) only from the verified PR worktree.
 
 Record the user's decisions for the step-6 summary.
@@ -206,10 +206,9 @@ bun run pr:snapshot -- PR_NUMBER [--repo owner/repo]
 ```
 
 Evaluate the refreshed checks, review decision, local worktree status, ancestry, and
-unresolved review threads. Use the `address-code-review` skill if unresolved Copilot or
-human review feedback remains. Replying to threads with technical reasoning and
-resolving them is GitHub-side; include any required code change in the consolidated
-worktree prompt.
+unresolved review threads. Inspect each human or automated-review thread on its merits:
+reply with technical reasoning when no fix is needed, and include every required code
+change in the consolidated worktree prompt before resolving the thread.
 
 Do not merge if required checks are failing/pending, required reviews are missing, the PR is draft, unresolved blocking review conversations remain, or local verification failed.
 

@@ -10,10 +10,9 @@ for large packages, dispatch independent dimensions to parallel `Explore` agents
 ## D1 — Dead code & reachability
 
 ```bash
-# Files nothing imports (orphans). Adjust <pkg>/src as needed.
-comm -23 \
-  <(git ls-files '<pkg>/src/**/*.ts' '<pkg>/src/**/*.tsx' | sort) \
-  <(grep -rhoE "from ['\"][^'\"]+['\"]" <pkg>/src | sed -E "s/.*from ['\"]//; s/['\"].*//" | sort -u)
+# Reachability-aware orphan/unused-export scan (temporary; do not commit config unless asked).
+# Review aliases, generated entry points, and dynamic imports before accepting a finding.
+bunx knip --workspace <pkg>
 
 # Alternate / abandoned implementations
 git ls-files | grep -iE '(_v[0-9]|_old|_new|_copy|\.bak|deprecated|legacy)'
@@ -25,11 +24,10 @@ grep -rnE '^\s*//\s*(import|export|const|function|class|return|await|if|for)\b' 
 grep -rniE 'coming soon|not implemented|placeholder|stub|wip' <pkg>/src
 ```
 
-**Unused exports** (no knip in this repo yet). Either:
-- Add `knip` ad-hoc: `bunx knip --workspace <pkg>` (don't commit config unless asked), or
-- Manual: for each `export`, grep the symbol across `services/api apps/web packages` — a symbol
-  exported but referenced only at its definition is dead. The eslint config
-  (`no-unused-vars`) already flags unused *locals*, not unused exports.
+**Unused exports:** Treat `knip` output as candidate evidence, not proof; resolve path
+aliases, package exports, generated entry points, and dynamic imports. Confirm each candidate
+by grepping the symbol across `services/api apps/web packages`. The eslint config
+(`no-unused-vars`) already flags unused *locals*, not unused exports.
 
 **Reachability:** trace from entry points (`services/api/src/main.ts`, web routes in
 `src/app/`, CLI `main.ts`, protocol factory exports). A module reachable from none is a
@@ -43,7 +41,7 @@ removal candidate regardless of internal quality.
 # Copy-paste detector — blocks >6 lines duplicated (no config committed unless asked)
 bunx jscpd --min-lines 6 --reporters console <pkg>/src
 
-# Repeated string literals used as keys/thresholds (sonarjs covers this in lint too)
+# Repeated string literals used as keys/thresholds (heuristic; inspect before flagging)
 grep -rhoE "'[^']{8,}'" <pkg>/src | sort | uniq -c | sort -rn | head -30
 ```
 
@@ -67,9 +65,12 @@ git ls-files '<pkg>/src/**/*.ts' | xargs wc -l | sort -rn | head -20   # biggest
 grep -rnE '^(\t| {8,})+\S' <pkg>/src | head             # deep indentation (4+ levels)
 ```
 
-Enable/read the metric rules rather than eyeballing:
-- eslint built-in `complexity` (cyclomatic) — flag ≥ 11.
-- `eslint-plugin-sonarjs` `cognitive-complexity` — flag > 15 (better readability proxy).
+Measure rather than eyeballing. The repository does **not** currently configure ESLint's
+`complexity` rule or `eslint-plugin-sonarjs`, so ordinary `bun run lint` does not produce
+these metrics. Use temporary analysis tooling or a manual control-flow count and record the
+method alongside any finding:
+- cyclomatic complexity — flag ≥ 11;
+- cognitive complexity — flag > 15 (readability proxy).
 - Hotspots = high churn × high complexity. Find churn with
   `git log --format= --name-only -- <pkg>/src | sort | uniq -c | sort -rn | head`.
 
@@ -105,12 +106,12 @@ A baseline that doesn't lint/test/build clean is **finding #1** — fix it befor
 self-contained `packages/protocol`. Confirm by grep and treat violations as real findings:
 
 ```bash
-# Controllers importing adapters (forbidden)
-grep -rn "adapters/" services/api/src/controllers
-# Services importing other services (forbidden — use events/queues)
-grep -rn "services/" services/api/src/services
+# Controllers importing adapters (forbidden except the privileged MCP composition root)
+rg -n "from ['\"].*adapters/" services/api/src/controllers -g '*.ts' -g '!mcp.controller.ts' -g '!**/tests/**'
+# Services importing sibling services (forbidden — use events/queues); exclude tests
+rg -n "from ['\"](?:\./|\.\./).*\.service(?:\.[jt]s)?['\"]" services/api/src/services -g '!**/tests/**'
 # protocol importing app code (forbidden — must be injected)
-grep -rnE "from ['\"].*(services/api|apps/web)" packages/protocol/src
+rg -n "from ['\"].*(services/api|apps/web)" packages/protocol/src
 ```
 
 Topology / coupling metrics (find the tangles, not just rule breaks):

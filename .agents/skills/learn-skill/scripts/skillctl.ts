@@ -45,7 +45,6 @@ type Integrations = {
 type Config = {
   target: string;
   protectedLocations: string[];
-  allowProtectedWrites: boolean;
   skillNaming: SkillNaming;
   features: Features;
   modularize: Modularize;
@@ -55,7 +54,6 @@ type Config = {
 const DEFAULTS: Config = {
   target: ".agents/skills",
   protectedLocations: ["~/.pi/agent/skills", "~/.agents/skills"],
-  allowProtectedWrites: false,
   skillNaming: {
     policy: "imperative-action-object",
     minimumSegments: 2,
@@ -90,14 +88,14 @@ function loadConfig(): Config {
     return {
       target: raw.target ?? DEFAULTS.target,
       protectedLocations: raw.protectedLocations ?? DEFAULTS.protectedLocations,
-      allowProtectedWrites: raw.allowProtectedWrites ?? DEFAULTS.allowProtectedWrites,
       skillNaming: { ...DEFAULTS.skillNaming, ...(raw.skillNaming ?? {}) },
       features: { ...DEFAULTS.features, ...(raw.features ?? {}) },
       modularize: { ...DEFAULTS.modularize, ...(raw.modularize ?? {}) },
       integrations: { ...DEFAULTS.integrations, ...(raw.integrations ?? {}) },
     };
-  } catch {
-    return DEFAULTS;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid learn-skill config at ${configPath}: ${message}`, { cause: error });
   }
 }
 
@@ -314,7 +312,7 @@ function validateReferences(skillFile: string, errors: string[]): void {
       errors.push(`missing Markdown reference ${reference}`);
     }
   }
-  for (const match of text.matchAll(/`(references\/[a-zA-Z0-9._/-]+\.md)`/g)) {
+  for (const match of text.matchAll(/`((?:references\/|\.\.\/_shared\/)[a-zA-Z0-9._/-]+\.md)`/g)) {
     const reference = match[1];
     if (!existsSync(resolve(dirname(skillFile), reference))) {
       errors.push(`missing workflow reference ${reference}`);
@@ -436,7 +434,7 @@ function blockLineCount(b: string): number {
  */
 function duplicateBlocks(minLines: number): { skills: string[]; preview: string; lines: number }[] {
   const map = new Map<string, { skills: Set<string>; preview: string; lines: number }>();
-  for (const s of discover()) {
+  for (const s of discover().filter((skill) => !skill.protected)) {
     for (const block of splitBlocks(skillBody(s.skillFile))) {
       const lines = blockLineCount(block);
       if (lines < minLines) continue;
@@ -513,10 +511,8 @@ switch (cmd) {
       action = "update";
       detail = local.dir;
     } else if (prot) {
-      action = config.allowProtectedWrites ? "update-protected" : "migrate";
-      detail = config.allowProtectedWrites
-        ? prot.dir
-        : `${prot.dir}  ->  ${join(targetDir, basename(prot.dir))}`;
+      action = "migrate";
+      detail = `${prot.dir}  ->  ${join(targetDir, basename(prot.dir))}`;
     } else {
       action = "create";
       detail = join(targetDir, arg);
@@ -589,7 +585,7 @@ switch (cmd) {
     const target = arg && arg !== "all" ? arg : null;
 
     // Per-skill size + shared-link report.
-    const skills = discover().filter((s) => !target || s.name === target || basename(s.dir) === target);
+    const skills = discover().filter((s) => !s.protected && (!target || s.name === target || basename(s.dir) === target));
     if (target && skills.length === 0) { console.error(`skill not found: ${target}`); process.exit(1); }
 
     console.log(`Modularization audit (maxBodyLines=${maxBodyLines}, sharedDir=${sharedDir})\n`);
@@ -644,8 +640,8 @@ switch (cmd) {
     if (local) {
       action = "update"; detail = local.dir;
     } else if (prot) {
-      action = config.allowProtectedWrites ? "update-protected" : "migrate";
-      detail = config.allowProtectedWrites ? prot.dir : `${prot.dir} -> ${join(targetDir, basename(prot.dir))}`;
+      action = "migrate";
+      detail = `${prot.dir} -> ${join(targetDir, basename(prot.dir))}`;
     } else {
       action = "create"; detail = join(targetDir, arg);
     }

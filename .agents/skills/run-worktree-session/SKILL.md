@@ -2,9 +2,9 @@
 name: run-worktree-session
 description: >-
   Run feature and fix implementation in a visible Herdr-managed Pi worktree session,
-  with event-driven root-to-child coordination and a verify-commit-push-PR loop. Use when
-  Index work moves from root investigation into implementation or returns for review
-  and finish-pr fixes.
+  with fire-and-return handoffs, explicit manual reconciliation, and a
+  verify-commit-push-PR loop. Use when Index work moves from root investigation into
+  implementation or returns for review and finish-pr fixes.
 ---
 
 # run-worktree-session
@@ -147,5 +147,4 @@ tool, write, test, rebase, migration, merge, deployment, or structured question.
 - `create-worktree` — branch, setup, Herdr-open, and collision contracts.
 - `run-agent-orchestration` — multi-task waves, role profiles, model routing, and the
   full blocked-question escalation ladder across agents.
-- `address-code-review` — factual thread inspection and visible fix-loop workflow.
 - `finish-pr` — merge approval and post-merge operations.

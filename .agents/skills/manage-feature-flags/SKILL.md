@@ -1,11 +1,15 @@
 ---
 name: manage-feature-flags
-description: Ship and flip feature flags consistently across ALL env surfaces in the index monorepo — .env.example (committed, commented docs), root .env.development (gitignored local mirror of Railway dev), Railway dev service variables (Railway MCP), and startup.env.ts registration. Use when adding a new env-gated feature flag, enabling/disabling a flag on dev, or when a flag behaves differently locally vs on Railway. Covers the ship-dark→flip order, railway_set_variables gotchas (snake_case ids, map-shaped variables, auto-redeploy), and why the root-dev-guard warning on .env.development edits is safe to ignore.
+description: Ship and flip feature flags consistently across the four primary env surfaces in the index monorepo — .env.example, root .env.development, Railway dev service variables, and startup.env.ts — plus .env.test when tests intentionally need a non-default value. Use when adding a new env-gated flag, enabling/disabling one on dev, or diagnosing local/Railway drift. Covers ship-dark→flip order and railway_set_variables gotchas.
 ---
 
 # Flag rollout consistency
 
-Every feature flag in this repo lives on **four surfaces**. Shipping or flipping a flag means touching all of them — missing one produces "works on dev but not locally" drift or undocumented flags. This was learned the hard way during the pool-questions rollout (IND-416 P1–P3): the user had to ask twice for `.env.development` / `.env.example` to be kept in sync.
+Every feature flag in this repo has **four primary surfaces**, but they are updated at
+different stages: registration/docs ship with the code; active values change at flip
+time. Missing the applicable surface produces "works on dev but not locally" drift or
+undocumented flags. `.env.test` is a conditional fifth surface only when tests must
+exercise a non-default value.
 
 ## The four surfaces
 
@@ -15,6 +19,10 @@ Every feature flag in this repo lives on **four surfaces**. Shipping or flipping
 | `.env.example` | yes (in feature PR) | commented-out entry + docs, **default off**, in the correct numbered section next to related flags | with the feature code |
 | Railway dev (`protocol` service) | no | the live value | at flip time |
 | root `.env.development` | no (gitignored) | local mirror of Railway dev so local runs behave like dev | at flip time, same value as Railway |
+
+When affected tests deliberately require the flag on (or another non-default value),
+also set/document it in root `.env.test`; otherwise leave it unset so tests cover the
+default-off contract.
 
 House style: code reads the flag through a centralized accessor module (e.g. `discriminator.env.ts`, `questioner.env.ts`) — never bare `process.env` at call sites; default is always the "off" behavior.
 
@@ -35,6 +43,7 @@ Check all surfaces for a flag in one pass:
 
 ```bash
 grep -n "FLAG_NAME" .env.example .env.development services/api/src/startup.env.ts
+# If tests use a non-default value: grep -n "FLAG_NAME" .env.test
 # + railway_list_variables({service_id:"protocol", environment_id:"dev"})
 ```
 
@@ -42,4 +51,4 @@ If a flag exists on Railway but is absent from `.env.development` (or vice versa
 
 ## Pool-questions flag family (reference)
 
-Five related flags, all with accessors in `packages/protocol/src/opportunity/discriminator/discriminator.env.ts` and documented commented-off in `.env.example` (section 9): `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_RANKING`, `POOL_QUESTIONS_STAMP_NEWBORN`. This list is the *names* only — do not record live values here, they rot. Check current values on all surfaces with the Quick audit above (`.env.development` + `railway_list_variables`) before reasoning about pool-question behavior.
+Six related flags, all with accessors in `packages/protocol/src/opportunity/discriminator/discriminator.env.ts` and documented commented-off in `.env.example` section 13: `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_RANKING`, `POOL_QUESTIONS_STAMP_NEWBORN`, `POOL_QUESTIONS_VISIT_TRIGGER`. This list is the *names* only — do not record live values here, they rot. Check current values on all applicable surfaces with the Quick audit above (`.env.development`, conditional `.env.test`, and `railway_list_variables`) before reasoning about pool-question behavior.

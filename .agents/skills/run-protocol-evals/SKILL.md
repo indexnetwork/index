@@ -1,6 +1,6 @@
 ---
 name: run-protocol-evals
-description: Run the packages/protocol eval harnesses correctly — the live LLM harnesses (bun run eval:matching/hyde/premise/profile/opportunity/clarification, which need OPENROUTER_API_KEY auto-loaded from root .env.test) versus the provider-free CI gate (bun run eval:verify, which strips credentials and never calls a model). Use when asked to "run the evals", verify eval suites, add a new eval harness, update a baseline, or when eval:verify fails on an unlisted directory or a baseline-coverage spec after adding a corpus case.
+description: Run packages/protocol evals correctly across baseline-backed live harnesses, the staged HyDE study, one-pass clarification taxonomy, budgeted live canary, and provider-free eval:verify gate. Use when asked to run evals, verify suites, add a harness, update a baseline, or fix eval:verify inventory/coverage failures. Live commands load OPENROUTER_API_KEY from root .env.test; eval:verify strips credentials.
 ---
 
 # Run protocol evals
@@ -10,29 +10,56 @@ classic mistake:
 
 | Mode | Command | Credentials | What it proves |
 |---|---|---|---|
-| **Live harness** | `bun run eval:<name>` | `OPENROUTER_API_KEY` required | Actual LLM agent behavior vs committed baseline |
+| **Live eval** | suite-specific `bun run eval:<name>` command | `OPENROUTER_API_KEY` required | Actual model behavior under that suite's contract |
 | **CI gate** | `bun run eval:verify` | none — deliberately stripped | Types + provider-free specs + suite inventory |
 
 When a user says "run the eval", they almost always mean the **live harness** — the
 evals exist to test LLMs. Do not strip credentials for live runs.
 
-## Live harness runs
+## Live eval modes
 
-Run from `packages/protocol`. Harnesses: `matching`, `hyde`, `premise`, `profile`,
-`opportunity`, `clarification`.
+Run from `packages/protocol`. Package scripts embed `bun --env-file=../../.env.test`,
+so `OPENROUTER_API_KEY` is auto-loaded from the root `.env.test`. The harnesses do not
+share one CLI contract; choose the correct mode below.
 
-- Package scripts embed `bun --env-file=../../.env.test`, so `OPENROUTER_API_KEY` is
-  auto-loaded from the root `.env.test` (also present in root `.env.development`).
-  No manual env exporting needed — just don't unset it.
-- Defaults: all cases, **3 runs/case**, LLM judge on, diff vs committed baseline,
-  exit 1 on statistically significant regression.
-- Useful flags (after `--`): `--runs N`, `--case ID`, `--rule R`, `--tier N`,
-  `--no-judge`, `--no-save`, `--report [path]`, `--html [path]`.
-- Cost control: `--runs 1 --case <id>` for a cheap smoke; full-corpus runs cost real
-  tokens. `hyde` is a staged evidence study (90 cases × 4 paired runs + human
-  adjudication) — never run it casually.
-- Run reports land in gitignored `eval/<name>/runs/`; baselines only change via
-  `--update-baseline`.
+### Baseline-backed harnesses
+
+`matching`, `premise`, `profile`, and `opportunity` default to all cases, three
+runs/case, judge-on evaluation, and committed-baseline comparison. Common flags after
+`--` include `--runs N`, `--case ID`, `--rule R`, `--tier N`, `--no-judge`,
+`--no-save`, `--report [path]`, and `--html [path]` (check `--help` for
+suite-specific selectors such as premise `--component`). A cheap smoke may use
+`--runs 1 --case <id>`; a full run costs real tokens.
+
+Reports land in gitignored `eval/<name>/runs/`. Baseline updates require a complete,
+unfiltered full-corpus run at a clean identifiable revision, an operator reason, and
+explicit overwrite consent when replacing the committed baseline:
+
+```bash
+bun run eval:matching -- --runs 7 --update-baseline --reason "<why this change is intentional>" --force
+```
+
+### Staged HyDE evidence study
+
+HyDE requires an explicit stage and does not use the baseline-backed flags or
+`--update-baseline`. Start with `bun run eval:hyde -- list-cases` or
+`validate-corpus`; collection uses
+`bun run eval:hyde -- collect --out <path> [--case <prefix>] [--runs <even>]`.
+Runs must be even and at least two; the canonical policy uses four paired runs. The
+later `export`, `resolve`, `analyze`, and `report` stages require their documented
+artifact paths and human judgments. Do not run the canonical study casually.
+
+### Clarification taxonomy
+
+`bun run eval:clarification` performs one pass over all clarification cases and reports
+exact taxonomy matches. It has no runs/judge/baseline flags; do not append the common
+baseline-backed options.
+
+### Budgeted canary
+
+`bun run eval:canary` executes the committed, budget-capped live subset and never
+updates baselines. Use `bun run eval:canary -- --plan` for a provider-free manifest and
+budget dry-run.
 
 ## Provider-free CI gate
 
@@ -53,7 +80,7 @@ live model fails loudly. CI runs it in the `eval-verify` job of
    missing `tsconfig.json` or `tests/`). Adding a harness requires touching the manifest.
 2. **New corpus case ⇒ baseline coverage spec breaks.** The provider-free spec
    "committed baseline covers every corpus case" fails if a case is added without a live
-   `--update-baseline` run (e.g. `bun run eval:matching -- --runs 7 --update-baseline`).
+   baseline update (for example the complete, reasoned, forced command above).
    If a live run isn't feasible yet, add the id to `BASELINE_PENDING_CASE_IDS` in
    `eval/matching/tests/matching.cases.spec.ts` and remove it at the next refresh —
    stale allowlist entries fail the spec by design.

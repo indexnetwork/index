@@ -1,4 +1,0 @@
-interface:
-  display_name: "Audit Digests"
-  short_description: "Index project workflow: Audit Digests"
-  default_prompt: "Use $audit-digests to follow the repository-specific Audit Digests workflow."

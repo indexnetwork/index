@@ -5,7 +5,7 @@ description: "Pre-merge and post-merge safety checks for promoting a dev→main 
 
 # verify-production-release
 
-Two production-release foot-guns observed shipping the `user_profiles` removal epic. Both passed CI and dev yet threatened prod. Check these when promoting `dev`→`main` (pairs with `finish-pr` for the merge/verify and `open-release-pr` for cutting the PR).
+Two production-release foot-guns observed shipping the `user_profiles` removal epic. Current CI catches lockfile drift, but Railway watched-path behavior and destructive-migration data readiness still deserve explicit release checks. Use this when promoting `dev`→`main` (pairs with `finish-pr` for merge/verify and `open-release-pr` for cutting the PR).
 
 ## 1. Stale root `bun.lock` breaks the prod build (not dev)
 
@@ -15,7 +15,7 @@ error: lockfile had changes, but lockfile is frozen
 ```
 Build fails BEFORE the release/`db:migrate` phase, so no migration runs and the previous deployment keeps serving (no downtime, no partial migration).
 
-**Why dev never caught it:** Railway only rebuilds a service when its watched paths change. A package version bump in `packages/cli` (or `claude-plugin`/`protocol`) that isn't reflected in the root `bun.lock` won't trigger a protocol rebuild on dev, so dev never re-runs `bun install --frozen-lockfile`. The merge to `main` rebuilds everything and surfaces the drift. CI (`check`/`lint`/`typecheck`) does NOT run a frozen install, so it stays green too.
+**Why Railway dev may not catch it:** Railway only rebuilds a service when its watched paths change. A package version bump in a workspace outside that service's watched paths may not trigger a dev rebuild, so Railway dev does not re-run its frozen install. The current GitHub workflow **does** run `bun install --frozen-lockfile` on PRs and pushes to `dev`/`main`; a green current check should catch this. If production still reports drift, verify the deployed merge commit actually ran the current workflow and was not built from stale/skipped checks.
 
 **Prevent / fix:** whenever you bump any workspace `package.json` version (incl. `optionalDependencies` like the CLI platform packages), regenerate and commit `bun.lock`. Verify before merging a release:
 ```bash

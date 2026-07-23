@@ -18,7 +18,6 @@ project-local target so a machine-wide skill is never silently mutated.
 |---|---|---|
 | `target` | `.agents/skills` | Where new/migrated/updated skills are written, resolved relative to the current project (cwd). |
 | `protectedLocations` | `~/.pi/agent/skills`, `~/.agents/skills` | Never modified in place. |
-| `allowProtectedWrites` | `false` | Escape hatch — when `true`, allows editing a protected skill in place instead of migrating. Leave `false` unless explicitly intended. |
 | `skillNaming.policy` | `imperative-action-object` | Requires every local skill name to begin with an approved imperative verb and name its object. |
 | `skillNaming.minimumSegments` | `2` | Minimum number of hyphen-separated name segments. |
 | `skillNaming.imperativeVerbs` | configured allowlist | Approved first verbs for project-local skills. |
@@ -49,7 +48,7 @@ Only capture a learning that is **reusable and non-obvious**: a multi-step workf
 a fix for a recurring failure, an exact command sequence, an environment gotcha, or a
 convention. Skip one-off facts and anything already covered by an existing skill.
 Name it as an imperative action-object using an allowed first verb from `config.json`
-(e.g. `inspect-edge-city-railway`), lowercase and hyphenated (≤64 chars).
+(e.g. `inspect-railway-services`), lowercase and hyphenated (≤64 chars).
 
 If `integrations.useTodo` is active and the capture spans multiple skills or steps,
 track the work with the `todo` tool. If `integrations.useAskUserQuestion` is active and
@@ -82,7 +81,6 @@ This prints one of:
 - `create` — no skill by that name exists → create it under `target`.
 - `update` — a **local** skill exists → edit it in place.
 - `migrate` — only a **protected** (home) skill exists → copy it local, then edit the copy.
-- `update-protected` — only appears when `allowProtectedWrites: true`.
 
 Use `list` / `locate` to inspect first if unsure:
 
@@ -174,8 +172,7 @@ session you can `read` it directly.
 
 ## Guardrails
 
-- Never write to or edit a path under `protectedLocations` unless `allowProtectedWrites`
-  is explicitly `true`. When in doubt, migrate.
+- Never write to or edit a path under `protectedLocations`. When in doubt, migrate.
 - Prefer updating an existing skill over creating a near-duplicate.
 - Keep skills focused — one capability per skill. Split rather than bloat.
 - If nothing in the session meets the "reusable and non-obvious" bar, capture nothing

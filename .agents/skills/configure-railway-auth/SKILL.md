@@ -83,5 +83,4 @@ curl -s https://backboard.railway.com/graphql/v2 -H "Authorization: Bearer $T" \
 
 ## See also
 
-- `inspect-edge-city-railway` — querying Edge City control-plane/sidecar projects (non-default project IDs, snake_case params).
 - `use-railway` (home, read-only) — broad vendor skill for Railway operations; documents `RAILWAY_API_TOKEN`/`RAILWAY_TOKEN` for unattended use and `railway setup agent`.

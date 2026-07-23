@@ -33,21 +33,28 @@ function parseFrontmatter(path: string): Record<string, unknown> | null {
 function validateReferences(skillFile: string): void {
   const text = readFileSync(skillFile, "utf8");
   for (const match of text.matchAll(/\]\(([^)]+\.md)\)/g)) {
-    const target = resolve(dirname(skillFile), match[1]);
-    if (!existsSync(target)) fail(skillFile, `missing Markdown reference ${match[1]}`);
+    const reference = match[1];
+    if (/^[a-z]+:\/\//i.test(reference)) continue;
+    const target = resolve(dirname(skillFile), reference);
+    if (!existsSync(target)) fail(skillFile, `missing Markdown reference ${reference}`);
   }
-  for (const match of text.matchAll(/`(references\/[^`]+\.md)`/g)) {
-    const target = resolve(dirname(skillFile), match[1]);
-    if (!existsSync(target)) fail(skillFile, `missing workflow reference ${match[1]}`);
+  for (const match of text.matchAll(/`((?:references\/|\.\.\/_shared\/)[a-zA-Z0-9._/-]+\.md)`/g)) {
+    const reference = match[1];
+    const target = resolve(dirname(skillFile), reference);
+    if (!existsSync(target)) fail(skillFile, `missing workflow reference ${reference}`);
   }
+}
+
+function skillDirectories() {
+  return readdirSync(skillsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 if (!existsSync(skillsRoot)) {
   fail(skillsRoot, "directory does not exist");
 } else {
-  const entries = readdirSync(skillsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const entries = skillDirectories();
   const seen = new Set<string>();
 
   for (const entry of entries) {
@@ -103,4 +110,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Validated ${readdirSync(skillsRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory()).length} Codex skills.`);
+console.log(`Validated ${skillDirectories().length} Codex skills.`);

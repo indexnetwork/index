@@ -561,7 +561,7 @@ Git worktrees. The canonical/root Pi coordinates through fire-and-return handoff
 parallel work is genuinely useful, use separate worktrees/workspaces with one writer per
 checkout. Follow the `create-worktree` and `run-worktree-session` skills.
 
-### Receiving Code Review (`/address-code-review`)
+### Receiving Code Review
 
 Code reviews on this project are done by **GitHub Copilot**, triggered manually by the user (via the Reviewers menu on the PR, or `gh pr edit PR-NUMBER --add-reviewer @copilot`). Copilot does not auto-review on push and replies do not trigger it — only an explicit re-review request does.
 
