@@ -6,6 +6,7 @@ import { allowedActionsFor, turnSchemaFor, configuredAskUserEnabled, askUserAnsw
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questioner/questioner.types.js";
+import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../negotiation.consultation-policy.js";
 
 /**
  * IND-401 — `ask_user` client-consult pause (P3.2).
@@ -96,6 +97,58 @@ describe("ask_user vocabulary + seat schemas", () => {
     } finally {
       if (origEnabled === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED; else process.env.NEGOTIATION_ASK_USER_ENABLED = origEnabled;
       if (origWindow === undefined) delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS; else process.env.NEGOTIATION_ASK_USER_WINDOW_MS = origWindow;
+    }
+  });
+});
+
+describe("deterministic consultation eligibility policy (IND-508)", () => {
+  const base = {
+    protocolVersion: "v2" as const,
+    seat: "initiator" as const,
+    isOpeningTurn: false,
+    isFinalTurn: false,
+    screenedOut: false,
+    ownSuggestedRole: "peer" as const,
+    priorActions: [] as const,
+    previouslyConsulted: false,
+    hasExactResumeCoordinate: true,
+    lifecycleValid: true,
+  };
+
+  it.each([
+    ["unresolved owner-controlled constraint", { action: "question" as const }, "unresolved_owner_constraint"],
+    ["consequential disclosure/permission", { action: "ask_user" as const }, "consequential_disclosure_permission"],
+    ["repeated non-convergence", { action: "counter" as const, priorActions: ["counter", "question"] as const }, "repeated_non_convergence"],
+    ["insufficient commitment authority", { action: "counter" as const, ownSuggestedRole: "agent" as const }, "insufficient_commitment_authority"],
+  ])("classifies %s without reading free-form content", (_label, partial, reason) => {
+    expect(assessConsultationEligibility({ ...base, ...partial })).toEqual({ eligible: true, reason });
+  });
+
+  it.each([
+    { protocolVersion: "v1" as const },
+    { isOpeningTurn: true },
+    { isFinalTurn: true },
+    { screenedOut: true },
+    { action: "accept" as const },
+    { action: "decline" as const },
+    { previouslyConsulted: true },
+    { hasExactResumeCoordinate: false },
+    { lifecycleValid: false },
+  ])("fails closed for excluded state %#", (partial) => {
+    expect(assessConsultationEligibility({ ...base, action: "question", ...partial })).toEqual({ eligible: false });
+  });
+
+  it("defaults invalid policy modes to off", () => {
+    const prior = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
+    try {
+      delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
+      expect(negotiationConsultationPolicyMode()).toBe("off");
+      process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "unexpected";
+      expect(negotiationConsultationPolicyMode()).toBe("off");
+      process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "shadow";
+      expect(negotiationConsultationPolicyMode()).toBe("shadow");
+    } finally {
+      if (prior === undefined) delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE; else process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = prior;
     }
   });
 });
@@ -259,6 +312,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
   const origWindow = process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
   const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
+  const origPolicyMode = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -279,6 +333,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     agentScript = [];
     process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
     process.env.NEGOTIATION_SCREEN_MODE = "off";
+    delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
     delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
   });
 
@@ -286,10 +341,68 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     if (origFlag === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED; else process.env.NEGOTIATION_ASK_USER_ENABLED = origFlag;
     if (origWindow === undefined) delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS; else process.env.NEGOTIATION_ASK_USER_WINDOW_MS = origWindow;
     if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
+    if (origPolicyMode === undefined) delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE; else process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = origPolicyMode;
   });
 
   /** Continuation where the source (u-src, initiator) speaks next. */
   const continuationMessages = [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "counter", 1)];
+
+  it.each([
+    ["unresolved_owner_constraint", continuationMessages, { ...declineTurn, action: "question" }],
+    ["consequential_disclosure_permission", continuationMessages, askUserTurn],
+    ["repeated_non_convergence", [priorMsg("u-src", "counter", 0), priorMsg("u-cand", "question", 1)], { ...declineTurn, action: "counter" }],
+    ["insufficient_commitment_authority", continuationMessages, {
+      action: "counter" as const,
+      assessment: { reasoning: "CANARY_PRIVATE_REASONING", suggestedRoles: { ownUser: "agent" as const, otherUser: "peer" as const } },
+      message: "CANARY_PRIVATE_MESSAGE",
+    }],
+  ] as Array<[string, FakeMessage[], NegotiationTurn]>)('deterministically pauses one exact safe consultation for %s', async (reason, priorMessages, draft) => {
+    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
+    const stubs = mkStubs({ priorMessages });
+    agentScript = [draft];
+
+    await runGraph(stubs);
+
+    expect(stubs.createdMessages).toHaveLength(1);
+    expect(stubs.createdMessages[0].parts[0].data.action).toBe("ask_user");
+    expect(stubs.expiryArms).toHaveLength(1);
+    expect(stubs.questionerEnqueues).toHaveLength(1);
+    expect(stubs.stateWrites.filter((write) => write.state === "input_required")).toHaveLength(1);
+    expect(stubs.questionerEnqueues[0].userId).toBe("u-src");
+    expect(stubs.questionerEnqueues[0].negotiation?.recipientIntentId).toBe("intent-src");
+    const serialized = JSON.stringify({ messages: stubs.createdMessages, questions: stubs.questionerEnqueues, timers: stubs.expiryArms });
+    expect(serialized).toContain(reason === "unresolved_owner_constraint" ? "your preferences" : "your");
+    expect(serialized).not.toContain("CANARY_PRIVATE_REASONING");
+    expect(serialized).not.toContain("CANARY_PRIVATE_MESSAGE");
+  });
+
+  it('shadow observes eligibility without consultation persistence, parking, timers, or continuation work', async () => {
+    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "shadow";
+    const stubs = mkStubs({ priorMessages: continuationMessages });
+    agentScript = [{ ...declineTurn, action: "question" }, declineTurn];
+
+    await runGraph(stubs);
+
+    expect(stubs.questionerEnqueues).toHaveLength(0);
+    expect(stubs.expiryArms).toHaveLength(0);
+    expect(stubs.createdMessages.map((message) => message.parts[0].data.action)).not.toContain("ask_user");
+    expect(stubs.stateWrites.map((write) => write.state)).not.toContain("input_required");
+  });
+
+  it('policy on still excludes opening, final, already-consulted, and terminal drafts', async () => {
+    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
+    const opening = mkStubs({ priorMessages: [], priorTask: null });
+    const priorVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
+    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
+    try {
+      agentScript = [{ ...declineTurn, action: "question" }, declineTurn];
+      await runGraph(opening);
+      expect(opening.questionerEnqueues).toHaveLength(0);
+      expect(opening.expiryArms).toHaveLength(0);
+    } finally {
+      if (priorVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = priorVersion;
+    }
+  });
 
   it('delivers private consultation only to the exact recipient across immediate dispatch and system fallback', async () => {
     const privateConsultation = {

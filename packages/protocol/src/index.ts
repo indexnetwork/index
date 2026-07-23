@@ -247,6 +247,8 @@ export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";
 // ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
 
 export { allowedActionsFor, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./negotiation/negotiation.protocol.js";
+export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "./negotiation/negotiation.consultation-policy.js";
+export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode, NegotiationConsultationReason } from "./negotiation/negotiation.consultation-policy.js";
 export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
   NEGOTIATION_QUESTION_GENERIC_NETWORK,

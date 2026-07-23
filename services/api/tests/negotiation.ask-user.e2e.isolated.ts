@@ -21,13 +21,14 @@ import { resumeInflightNegotiationFactory } from "../src/events/handlers/questio
 //
 // Run with: cd services/api && bun test tests/negotiation.ask-user.e2e.spec.ts
 
-const ENV_KEYS = ["NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_SCREEN_MODE"] as const;
+const ENV_KEYS = ["NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_SCREEN_MODE"] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeAll(() => {
   for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
   process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
   process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
+  delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
   delete process.env.NEGOTIATION_SCREEN_MODE;
 });
 
@@ -112,6 +113,8 @@ describe("ask_user pause/resume E2E (IND-401)", () => {
       indexContext: { networkId: `e2e-net-${runId}`, prompt: "collaboration network" },
       seedAssessment: { reasoning: "complementary", valencyRole: "peer" },
       opportunityId,
+      sourceIntentId: `i-${sourceId}`,
+      candidateIntentId: `i-${candidateId}`,
       maxTurns: 6,
       initiatorUserId: sourceId,
     };
@@ -216,6 +219,8 @@ describe("ask_user pause/resume E2E (IND-401)", () => {
       indexContext: { networkId: `e2e-net2-${runId}`, prompt: "network" },
       seedAssessment: { reasoning: "fit", valencyRole: "peer" },
       opportunityId,
+      sourceIntentId: `i-${sourceId}`,
+      candidateIntentId: `i-${candidateId}`,
       maxTurns: 6,
       initiatorUserId: sourceId,
     };
