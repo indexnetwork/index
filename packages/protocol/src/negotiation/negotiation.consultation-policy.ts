@@ -56,9 +56,16 @@ export function assessConsultationEligibility(input: ConsultationEligibilityInpu
     || isObviousTerminal(input.action)
   ) return { eligible: false };
 
-  // A pre-existing structured ask_user action is treated only as a request for
-  // permission/disclosure consultation. Its free-form fields never enter this
-  // policy and are still replaced with fixed safe prompt inputs below.
+  // A patient-side counter is a schema-constrained, source-safe signal that
+  // the owner must decide whether a consequential disclosure or permission is
+  // acceptable. This is reachable under the normal v2 action vocabulary; it
+  // deliberately does not inspect or depend on a model-produced `ask_user`.
+  if (input.ownSuggestedRole === "patient" && input.action === "counter") {
+    return { eligible: true, reason: "consequential_disclosure_permission" };
+  }
+  // Preserve observability for a valid legacy ask_user draft; production
+  // policy admission no longer depends on this action because the patient-side
+  // counter rule above is schema-constrained and independently reachable.
   if (input.action === "ask_user") {
     return { eligible: true, reason: "consequential_disclosure_permission" };
   }

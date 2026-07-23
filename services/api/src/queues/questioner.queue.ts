@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
 import { NegotiationQuestionCandidateSchema, POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled, isValidQuestionerInputContract, poolQuestionCycleKey, poolQuestionsMode } from '@indexnetwork/protocol';
-import type { NegotiationQuestionProvenance, PersistableQuestion, PoolDiscoveryContext, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
+import type { NegotiationConsultationReason, NegotiationQuestionProvenance, PersistableQuestion, PoolDiscoveryContext, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
@@ -12,6 +12,7 @@ import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './p
 import type { PoolQuestionPostPersist } from './pool/question.shared';
 import { isPoolArtifactFresh } from './pool/poolquestions.constants';
 import { isSafeNegotiationQuestionPayload } from '../lib/question/negotiation-question.contract';
+import { emitConsultationDeliveredTelemetry } from '../lib/question/consultation-policy.telemetry';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
@@ -43,6 +44,8 @@ type QuestionerQueueAdapter = Pick<
 
 export interface QuestionerQueueDeps {
   adapter?: QuestionerQueueAdapter;
+  /** Content-free IND-508 telemetry emitted only after authoritative persistence. */
+  onConsultationTelemetry?: (event: { stage: 'delivered'; reason: NegotiationConsultationReason }) => void;
   agent?: Pick<QuestionerAgent, 'invoke'>;
   /** Lifecycle lookup used to gate intent-scoped jobs before generation. */
   getIntentLifecycle?: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
@@ -73,6 +76,7 @@ export class QuestionerQueue {
   private readonly getIntentLifecycle: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
   private readonly poolQuestionPostPersist?: PoolQuestionPostPersist;
   private readonly recoveryService: Pick<IntentRecoveryRefinementService, 'recover'>;
+  private readonly onConsultationTelemetry: (event: { stage: 'delivered'; reason: NegotiationConsultationReason }) => void;
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
 
@@ -92,6 +96,8 @@ export class QuestionerQueue {
           await enqueuePoolQuestionPush(questionId, userId);
         };
     this.recoveryService = deps?.recoveryService ?? new IntentRecoveryRefinementService();
+    this.onConsultationTelemetry = deps?.onConsultationTelemetry
+      ?? ((event) => this.logger.info('negotiation_consultation_policy', event));
     this.agent = deps?.agent ?? null; // lazy — created on first job
   }
 
@@ -403,6 +409,12 @@ export class QuestionerQueue {
       sourceId: data.sourceId,
       count: batch.length,
     });
+
+    // This is the shared final persistence choke point: enqueue, generation,
+    // rejected visible payloads, and zero-row freshness outcomes cannot claim
+    // delivery. The category stays worker-private and is never added to row
+    // detection/payload/actors or public projections.
+    emitConsultationDeliveredTelemetry(data, { state: 'persisted', ids }, this.onConsultationTelemetry);
 
     for (let i = 0; i < ids.length; i++) {
       QuestionEvents.onCreated({

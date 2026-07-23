@@ -541,20 +541,14 @@ export class NegotiationGraphFactory {
           ? 'initiator'
           : 'counterparty';
 
-        // ask_user availability (P3.2): flag on, full pause loop wired
+        // Legacy ask_user availability (P3.2): flag on, full pause loop wired
         // (questioner + answer-window timer + an opportunity to resume
         // against), v2 non-final non-opening turn, and this side's one client
-        // consultation not yet spent (rationing). Chat-triggered runs get no
-        // special casing — the pause exits the graph at the turn boundary, so
-        // the stream never blocks on a question; the resume is always an async
-        // continuation.
+        // consultation not yet spent (rationing). Shadow is observational and
+        // must preserve this legacy path byte-for-byte except for telemetry.
         const policyMode = negotiationConsultationPolicyMode();
-        // Off preserves the pre-IND-508 spontaneous ask_user path exactly. In
-        // shadow/on the policy owns admission, so the model/external agent is
-        // not granted ask_user vocabulary and cannot create a side effect.
         const askUserAvailable =
-          policyMode === 'off'
-          && version === 'v2'
+          version === 'v2'
           && !isFinalTurn
           && configuredAskUserEnabled()
           && !!questionerEnqueue
@@ -719,7 +713,7 @@ export class NegotiationGraphFactory {
           ),
           lifecycleValid: Boolean(state.taskId && state.opportunityId && ownIntentId && state.indexContext.networkId),
         });
-        const emitConsultationTelemetry = (stage: 'eligible' | 'asked' | 'delivered', reason: NegotiationConsultationReason) => {
+        const emitConsultationTelemetry = (stage: 'eligible' | 'asked', reason: NegotiationConsultationReason) => {
           turnLog.info('negotiation_consultation_policy', { stage, mode: policyMode, reason });
           emitWide({ type: 'negotiation_consultation_policy', stage, mode: policyMode, reason });
         };
@@ -741,12 +735,10 @@ export class NegotiationGraphFactory {
           }
         }
 
-        // Safety net: an ask_user that slipped past availability gating (e.g. a
-        // locally-dispatched agent ignoring allowedActions, or rationing already
-        // spent) is coerced to the conservative fallback BEFORE persisting — a
-        // pause we cannot resume must never enter the turn history. The one
-        // exception is the just-authorized deterministic policy turn above.
-        if (turn.action === 'ask_user' && !askUserAvailable && !consultationPolicyReason) {
+        // Safety net: off/shadow retain legacy behavior. In on, a spontaneous
+        // ask_user is admissible only when the deterministic policy just
+        // authorized it, so no unbounded pause can enter shared history.
+        if (turn.action === 'ask_user' && (!askUserAvailable || (policyMode === 'on' && !consultationPolicyReason))) {
           turnLog.warn('ask_user emitted while unavailable, coercing to conservative fallback', {
             seat, isFinalTurn, taskId: state.taskId,
           });
@@ -896,10 +888,9 @@ export class NegotiationGraphFactory {
                 disclosureSubject: safeAskUser.disclosureSubject,
                 ...(safeAskUser.draftQuestion && { draftQuestion: safeAskUser.draftQuestion }),
                 indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
+                ...(consultationPolicyReason && { consultationPolicyReason }),
                 ...(userContext && { userContext }),
               },
-            }).then(() => {
-              if (consultationPolicyReason) emitConsultationTelemetry('delivered', consultationPolicyReason);
             }).catch((error) => {
               turnLog.error('Failed to enqueue safe ask_user question; timeout recovery remains armed', {
                 taskId: state.taskId,

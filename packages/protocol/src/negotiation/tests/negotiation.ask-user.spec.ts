@@ -7,6 +7,7 @@ import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../nego
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questioner/questioner.types.js";
 import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../negotiation.consultation-policy.js";
+import { requestContext } from "../../shared/observability/request-context.js";
 
 /**
  * IND-401 — `ask_user` client-consult pause (P3.2).
@@ -117,7 +118,7 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
 
   it.each([
     ["unresolved owner-controlled constraint", { action: "question" as const }, "unresolved_owner_constraint"],
-    ["consequential disclosure/permission", { action: "ask_user" as const }, "consequential_disclosure_permission"],
+    ["consequential disclosure/permission", { action: "counter" as const, ownSuggestedRole: "patient" as const }, "consequential_disclosure_permission"],
     ["repeated non-convergence", { action: "counter" as const, priorActions: ["counter", "question"] as const }, "repeated_non_convergence"],
     ["insufficient commitment authority", { action: "counter" as const, ownSuggestedRole: "agent" as const }, "insufficient_commitment_authority"],
   ])("classifies %s without reading free-form content", (_label, partial, reason) => {
@@ -131,6 +132,8 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     { screenedOut: true },
     { action: "accept" as const },
     { action: "decline" as const },
+    { action: "reject" as const },
+    { action: "withdraw" as const },
     { previouslyConsulted: true },
     { hasExactResumeCoordinate: false },
     { lifecycleValid: false },
@@ -349,7 +352,11 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
 
   it.each([
     ["unresolved_owner_constraint", continuationMessages, { ...declineTurn, action: "question" }],
-    ["consequential_disclosure_permission", continuationMessages, askUserTurn],
+    ["consequential_disclosure_permission", continuationMessages, {
+      action: "counter" as const,
+      assessment: { reasoning: "CANARY_DISCLOSURE_REASONING", suggestedRoles: { ownUser: "patient" as const, otherUser: "peer" as const } },
+      message: "CANARY_DISCLOSURE_MESSAGE",
+    }],
     ["repeated_non_convergence", [priorMsg("u-src", "counter", 0), priorMsg("u-cand", "question", 1)], { ...declineTurn, action: "counter" }],
     ["insufficient_commitment_authority", continuationMessages, {
       action: "counter" as const,
@@ -376,32 +383,75 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(serialized).not.toContain("CANARY_PRIVATE_MESSAGE");
   });
 
-  it('shadow observes eligibility without consultation persistence, parking, timers, or continuation work', async () => {
+  it('shadow retains a valid legacy ask_user pause while adding only eligibility telemetry', async () => {
+    const off = mkStubs({ priorMessages: continuationMessages });
+    agentScript = [askUserTurn];
+    await runGraph(off);
+
     process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "shadow";
-    const stubs = mkStubs({ priorMessages: continuationMessages });
-    agentScript = [{ ...declineTurn, action: "question" }, declineTurn];
+    const shadow = mkStubs({ priorMessages: continuationMessages });
+    const events: Array<Record<string, unknown>> = [];
+    agentScript = [askUserTurn];
+    await requestContext.run({ traceEmitter: (event) => events.push(event as unknown as Record<string, unknown>) }, async () => runGraph(shadow));
 
-    await runGraph(stubs);
-
-    expect(stubs.questionerEnqueues).toHaveLength(0);
-    expect(stubs.expiryArms).toHaveLength(0);
-    expect(stubs.createdMessages.map((message) => message.parts[0].data.action)).not.toContain("ask_user");
-    expect(stubs.stateWrites.map((write) => write.state)).not.toContain("input_required");
+    expect(shadow.createdMessages).toEqual(off.createdMessages);
+    expect(shadow.expiryArms).toEqual(off.expiryArms);
+    expect(shadow.questionerEnqueues).toEqual(off.questionerEnqueues);
+    expect(shadow.stateWrites).toEqual(off.stateWrites);
+    expect(events.filter((event) => event.type === 'negotiation_consultation_policy')).toEqual([
+      { type: 'negotiation_consultation_policy', stage: 'eligible', mode: 'shadow', reason: 'consequential_disclosure_permission' },
+    ]);
+    expect(JSON.stringify(events)).not.toContain('Can I tell them');
   });
 
-  it('policy on still excludes opening, final, already-consulted, and terminal drafts', async () => {
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
-    const opening = mkStubs({ priorMessages: [], priorTask: null });
+  it.each([
+    ['opening', [], { priorTask: null }, { ...declineTurn, action: 'question' as const }, { maxTurns: 4, fresh: true }],
+    ['final', continuationMessages, {}, { ...declineTurn, action: 'question' as const }, { maxTurns: 1 }],
+    ['accept', continuationMessages, {}, { ...declineTurn, action: 'accept' as const }, { maxTurns: 4 }],
+    ['reject', continuationMessages, {}, { ...declineTurn, action: 'reject' as const }, { maxTurns: 4 }],
+    ['withdraw', continuationMessages, {}, { ...declineTurn, action: 'withdraw' as const }, { maxTurns: 4 }],
+    ['already consulted', [...continuationMessages, priorMsg('u-src', 'ask_user', 2), priorMsg('u-cand', 'counter', 3)], {}, { ...declineTurn, action: 'question' as const }, { maxTurns: 4 }],
+  ] as Array<[string, FakeMessage[], Parameters<typeof mkStubs>[0], NegotiationTurn, { maxTurns: number; fresh?: boolean }]>)('policy on does not create consultation effects for %s', async (_label, priorMessages, stubOptions, draft, runOptions) => {
+    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = 'on';
     const priorVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
+    process.env.NEGOTIATION_PROTOCOL_VERSION = 'v2';
     try {
-      agentScript = [{ ...declineTurn, action: "question" }, declineTurn];
-      await runGraph(opening);
-      expect(opening.questionerEnqueues).toHaveLength(0);
-      expect(opening.expiryArms).toHaveLength(0);
+      const stubs = mkStubs({ ...stubOptions, priorMessages });
+      agentScript = [draft, declineTurn];
+      await runGraph(stubs, { maxTurns: runOptions.maxTurns });
+      expect(stubs.questionerEnqueues.filter((question) => question.mode === 'negotiation_inflight')).toEqual([]);
+      expect(stubs.expiryArms).toEqual([]);
+      expect(stubs.stateWrites.map((write) => write.state)).not.toContain('input_required');
+      expect(stubs.createdMessages.map((message) => message.parts[0].data.action)).not.toContain('ask_user');
+      expect(stubs.askUserBindingCaptures).toEqual([]);
     } finally {
       if (priorVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = priorVersion;
     }
+  });
+
+  it('policy on excludes a pre-screened path before consultation effects', async () => {
+    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = 'on';
+    const stubs = mkStubs({ priorMessages: continuationMessages });
+    agentScript = [{ ...declineTurn, action: 'question' }, declineTurn];
+    await runGraph(stubs, {
+      screenDecision: { mode: 'enforce', decision: 'pass', screenedAt: new Date().toISOString(), durationMs: 0 },
+    });
+    expect(stubs.questionerEnqueues).toEqual([]);
+    expect(stubs.expiryArms).toEqual([]);
+    expect(stubs.askUserBindingCaptures).toEqual([]);
+    expect(stubs.createdMessages.map((message) => message.parts[0].data.action)).not.toContain('ask_user');
+  });
+
+  it('policy on excludes a missing exact resume coordinate before consultation effects', async () => {
+    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = 'on';
+    const stubs = mkStubs({ priorMessages: continuationMessages });
+    agentScript = [askUserTurn, declineTurn];
+    await runGraph(stubs, {}, { omitQuestioner: true });
+    expect(stubs.questionerEnqueues).toEqual([]);
+    expect(stubs.expiryArms).toEqual([]);
+    expect(stubs.askUserBindingCaptures).toEqual([]);
+    expect(stubs.stateWrites.map((write) => write.state)).not.toContain('input_required');
+    expect(stubs.createdMessages.map((message) => message.parts[0].data.action)).not.toContain('ask_user');
   });
 
   it('delivers private consultation only to the exact recipient across immediate dispatch and system fallback', async () => {
