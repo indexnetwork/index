@@ -1,4 +1,4 @@
-import { QuestionerAgent, canUserSeeOpportunity, isActionableForViewer, type QuestionGenerationResult, type RecoveryQuestionerInput } from '@indexnetwork/protocol';
+import { QuestionerAgent, type QuestionGenerationResult, type QuestionerInput } from '@indexnetwork/protocol';
 
 import { QuestionerAdapter, type AdapterPersistableQuestion, type RecoveryOpportunitySnapshot } from '../adapters/questioner.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
@@ -31,7 +31,7 @@ export function isSafeRecoveryQuestionCopy(
 }
 
 export interface IntentRecoveryCompletion {
-  source: 'from_intent' | 'discovery_run';
+  source: 'intent_creation' | 'from_intent' | 'discovery_run';
   recipientUserId: string;
   intentId: string;
   runId?: string;
@@ -42,17 +42,8 @@ interface RecoveryServiceDeps {
   getNegotiationTasksForOpportunity?: typeof chatDatabaseAdapter.getNegotiationTasksForOpportunity;
   getArtifactsForTask?: typeof chatDatabaseAdapter.getArtifactsForTask;
   getGlobalUserContext?: (userId: string) => Promise<string>;
-  generate?: (input: RecoveryQuestionerInput) => Promise<QuestionGenerationResult | null>;
+  generate?: (input: QuestionerInput) => Promise<QuestionGenerationResult | null>;
   onCreated?: typeof QuestionEvents.onCreated;
-}
-
-/** Canonical read + actionability policy used by both preparation and final persistence. */
-export function isRecoverySuppressingOpportunity(
-  opportunity: RecoveryOpportunitySnapshot,
-  userId: string,
-): boolean {
-  return canUserSeeOpportunity(opportunity.actors, opportunity.status, userId)
-    && isActionableForViewer(opportunity.actors, opportunity.status, userId);
 }
 
 /** Match only the deliberate all-status recovery cadence unique constraint. */
@@ -76,7 +67,10 @@ function boundedRunId(runId: string | undefined): string | undefined {
 }
 
 /**
- * Generates and persists one privacy-safe post-discovery intent refinement.
+ * Generates and persists one privacy-safe intent refinement for each material
+ * intent version. Intent creation and both authoritative discovery paths share
+ * this service so the intent-page Personal Agent receives the same ordinary
+ * clarification regardless of which producer reached the intent first.
  * Raw opportunity/task/artifact evidence is reduced to a bounded integer before
  * the QuestionerAgent is invoked and is never copied into persistence.
  */
@@ -103,8 +97,8 @@ export class IntentRecoveryRefinementService {
   }
 
   /**
-   * Process one successful authoritative discovery completion.
-   * @param completion - Exact recipient, intent, and completion provenance.
+   * Process one intent-creation or authoritative-discovery surfacing trigger.
+   * @param completion - Exact recipient, intent, and trigger provenance.
    * @returns The inserted question id, or null when policy safely skips.
    */
   async recover(completion: IntentRecoveryCompletion): Promise<string | null> {
@@ -113,10 +107,6 @@ export class IntentRecoveryRefinementService {
       completion.intentId,
     );
     if (!prepared || prepared.hasCadenceAnchor) return null;
-    if (prepared.opportunities.some((opportunity) =>
-      isRecoverySuppressingOpportunity(opportunity, completion.recipientUserId))) {
-      return null;
-    }
 
     const rejectedNegotiationCount = await this.countValidatedRejectedNegotiations(
       prepared.opportunities,
@@ -125,22 +115,34 @@ export class IntentRecoveryRefinementService {
       prepared.intent.intentFingerprint,
     );
     const userContext = await this.getGlobalUserContext(completion.recipientUserId);
-    const input: RecoveryQuestionerInput = {
-      mode: 'intent',
-      purpose: 'recovery',
-      userId: completion.recipientUserId,
-      sourceType: 'intent',
-      sourceId: completion.intentId,
-      triggeredByIntentId: completion.intentId,
-      context: {
-        purpose: 'recovery',
-        intentId: completion.intentId,
-        payload: prepared.intent.payload,
-        ...(prepared.intent.summary ? { summary: prepared.intent.summary } : {}),
-        ...(userContext.trim() ? { userContext: userContext.trim() } : {}),
-        ...(rejectedNegotiationCount > 0 ? { rejectedNegotiationCount } : {}),
-      },
+    const sharedContext = {
+      intentId: completion.intentId,
+      payload: prepared.intent.payload,
+      ...(prepared.intent.summary ? { summary: prepared.intent.summary } : {}),
+      ...(userContext.trim() ? { userContext: userContext.trim() } : {}),
     };
+    const input: QuestionerInput = completion.source === 'intent_creation'
+      ? {
+          mode: 'intent',
+          userId: completion.recipientUserId,
+          sourceType: 'intent',
+          sourceId: completion.intentId,
+          triggeredByIntentId: completion.intentId,
+          context: sharedContext,
+        }
+      : {
+          mode: 'intent',
+          purpose: 'recovery',
+          userId: completion.recipientUserId,
+          sourceType: 'intent',
+          sourceId: completion.intentId,
+          triggeredByIntentId: completion.intentId,
+          context: {
+            ...sharedContext,
+            purpose: 'recovery',
+            ...(rejectedNegotiationCount > 0 ? { rejectedNegotiationCount } : {}),
+          },
+        };
 
     const result = await this.generate(input);
     if (!result) return null;
@@ -183,7 +185,6 @@ export class IntentRecoveryRefinementService {
         question,
         completion.recipientUserId,
         prepared.intent.intentFingerprint,
-        isRecoverySuppressingOpportunity,
       );
     } catch (error) {
       if (isRecoveryQuestionUniqueViolation(error)) return null;
@@ -208,7 +209,7 @@ export class IntentRecoveryRefinementService {
     return questionId;
   }
 
-  private async generate(input: RecoveryQuestionerInput): Promise<QuestionGenerationResult | null> {
+  private async generate(input: QuestionerInput): Promise<QuestionGenerationResult | null> {
     if (this.generateOverride) return this.generateOverride(input);
     this.agent ??= new QuestionerAgent();
     return this.agent.invoke(input);

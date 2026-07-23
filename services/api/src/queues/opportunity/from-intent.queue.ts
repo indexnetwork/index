@@ -221,9 +221,11 @@ export class FromIntentQueue {
       });
     }
 
-    // Recovery is an independent, failure-isolated post-success effect. Run it
-    // before pool mining/narration so an auxiliary Beat 2 failure cannot skip
-    // refinement after authoritative discovery has already succeeded.
+    // Intent refinement is an independent, failure-isolated post-success
+    // effect. It shares a material-fingerprint cadence with the creation-time
+    // intent Questioner, so this completion retry cannot duplicate a question.
+    // Run it before pool mining/narration so every intent-page question family
+    // gets the same completion opportunity.
     try {
       await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
         source: 'from_intent',

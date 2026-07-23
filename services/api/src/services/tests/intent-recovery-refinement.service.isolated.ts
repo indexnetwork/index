@@ -2,11 +2,11 @@ process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://unused:unus
 
 import { describe, expect, it, mock } from 'bun:test';
 
-import type { QuestionGenerationResult, RecoveryQuestionerInput } from '@indexnetwork/protocol';
+import type { QuestionGenerationResult, QuestionerInput } from '@indexnetwork/protocol';
 
 import type { AdapterPersistableQuestion, RecoveryOpportunitySnapshot, RecoveryPreparation } from '../../adapters/questioner.adapter';
 import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
-import { IntentRecoveryRefinementService, isRecoverySuppressingOpportunity } from '../intent-recovery-refinement.service';
+import { IntentRecoveryRefinementService } from '../intent-recovery-refinement.service';
 
 const userId = 'user-owner';
 const counterpartyId = 'user-counterparty';
@@ -89,14 +89,14 @@ function makeService(input: {
   persistError?: unknown;
 }) {
   let persisted: AdapterPersistableQuestion | null = null;
-  let generatorInput: RecoveryQuestionerInput | null = null;
+  let generatorInput: QuestionerInput | null = null;
   const onCreated = mock(() => {});
   const persistFreshRecoveryQuestion = mock(async (question: AdapterPersistableQuestion) => {
     persisted = question;
     if (input.persistError !== undefined) throw input.persistError;
     return input.persistResult === undefined ? 'question-1' : input.persistResult;
   });
-  const generate = mock(async (generationInput: RecoveryQuestionerInput) => {
+  const generate = mock(async (generationInput: QuestionerInput) => {
     generatorInput = generationInput;
     return input.generation === undefined ? generated() : input.generation;
   });
@@ -122,6 +122,26 @@ function makeService(input: {
 }
 
 describe('IntentRecoveryRefinementService', () => {
+  it('preserves the ordinary intent-creation preset while sharing durable surfacing', async () => {
+    const harness = makeService({});
+    expect(await harness.service.recover({
+      source: 'intent_creation', recipientUserId: userId, intentId,
+    })).toBe('question-1');
+
+    expect(harness.getGeneratorInput()).toEqual({
+      mode: 'intent', userId, sourceType: 'intent', sourceId: intentId,
+      triggeredByIntentId: intentId,
+      context: {
+        intentId, payload, summary,
+        userContext: 'Owner builds climate-data products in Berlin.',
+      },
+    });
+    expect(harness.getPersisted()?.detection.recovery).toMatchObject({
+      completionSource: 'intent_creation',
+      intentFingerprint: fingerprint,
+    });
+  });
+
   it('uses source-only intent and global context when no candidate or negotiation exists', async () => {
     const harness = makeService({});
     expect(await harness.service.recover({
@@ -194,33 +214,17 @@ describe('IntentRecoveryRefinementService', () => {
     expect(harness.getGeneratorInput()?.context).not.toHaveProperty('rejectedNegotiationCount');
   });
 
-  it('suppresses generation for any exact recipient-visible canonical actionable opportunity', async () => {
+  it('surfaces refinement even when discovery already produced an actionable opportunity', async () => {
     const harness = makeService({
       prepared: preparation([{
         id: 'actionable', status: 'pending', context: null,
         actors: [{ userId, role: 'peer' }, { userId: counterpartyId, role: 'peer' }],
       }]),
     });
-    expect(await harness.service.recover({ source: 'from_intent', recipientUserId: userId, intentId })).toBeNull();
-    expect(harness.generate).not.toHaveBeenCalled();
-  });
-
-  it('locks the canonical status and role actionability matrix', () => {
-    const peerActors = [{ userId, role: 'peer' }, { userId: counterpartyId, role: 'peer' }];
-    for (const status of ['latent', 'pending']) {
-      expect(isRecoverySuppressingOpportunity({ id: status, status, actors: peerActors, context: null }, userId)).toBe(true);
-    }
-    for (const status of ['draft', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired']) {
-      expect(isRecoverySuppressingOpportunity({ id: status, status, actors: peerActors, context: null }, userId)).toBe(false);
-    }
-    expect(isRecoverySuppressingOpportunity({
-      id: 'acted', status: 'pending', context: null,
-      actors: [{ userId, role: 'peer', actedAt: new Date().toISOString() }, { userId: counterpartyId, role: 'peer' }],
-    }, userId)).toBe(false);
-    expect(isRecoverySuppressingOpportunity({
-      id: 'foreign', status: 'latent', context: null,
-      actors: [{ userId: 'foreign', role: 'peer' }, { userId: counterpartyId, role: 'peer' }],
-    }, userId)).toBe(false);
+    expect(await harness.service.recover({
+      source: 'from_intent', recipientUserId: userId, intentId,
+    })).toBe('question-1');
+    expect(harness.generate).toHaveBeenCalledTimes(1);
   });
 
   it('skips missing, foreign, paused, archived, or same-fingerprint cadence failures before generation', async () => {

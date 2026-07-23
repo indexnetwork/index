@@ -12,6 +12,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+### Fixed
+- Allow the private intent-refinement provenance snapshot to identify intent creation as a producer and make the shared refinement prompt independent of no-opportunity process state, enabling creation and authoritative discovery producers to converge on one ordinary intent-page question cadence.
+
 ### Added
 - Add the private `recovery` Questioner purpose and one-question intent recovery preset for post-discovery signal refinement (IND-506). The preset receives only the owned intent, global owner context, and an optional bounded aggregate count of fail-closed validated no-opportunity outcomes; it forbids candidate/counterparty/process narration, preserves the existing creation-time intent preset, persists publicly as ordinary `mode='intent'` questions with versioned internal recovery metadata, and carries optional material-fingerprint plus expected-owner guards through answer-only updates so the final database write can recheck lifecycle as well as content.
 - Add versioned internal negotiation-question provenance and explicit source/candidate opportunity-actor intent threading for ordinary follow-up, inflight consultation, and uptake questions (IND-507). Runtime mode/purpose discriminants, structured `askUser` safety validation, neutral uptake context, and visible-field output gates exclude raw counterparty profile/identity/intent, private transcript, evaluator reasoning, match reasons, event/community inference, evidence, and internal IDs. Exact settlement/task correlation now threads through run-existing continuation admission without changing producer triggers or the ≤2 ordinary/inflight and ≤1 uptake cardinality.

@@ -981,14 +981,13 @@ export class QuestionerAdapter {
   }
 
   /**
-   * Final recovery gate under one recipient+intent advisory lock. Re-reads
-   * lifecycle, fingerprint, cadence, and exact-trigger actionability before insert.
+   * Final intent-refinement gate under one recipient+intent advisory lock.
+   * Re-reads lifecycle, fingerprint, and cadence before insert.
    */
   async persistFreshRecoveryQuestion(
     question: AdapterPersistableQuestion,
     userId: string,
     expectedIntentFingerprint: string,
-    isActionable: (opportunity: RecoveryOpportunitySnapshot, userId: string) => boolean,
   ): Promise<string | null> {
     const intentId = question.detection.sourceId;
     const recovery = question.detection.recovery;
@@ -1034,21 +1033,6 @@ export class QuestionerAdapter {
         ))
         .limit(1);
       if (anchor) return null;
-
-      const opportunityRows = await tx.select({
-        id: opportunities.id,
-        status: opportunities.status,
-        actors: opportunities.actors,
-        context: opportunities.context,
-      }).from(opportunities)
-        .where(and(
-          sql`${opportunities.detection}->>'triggeredBy' = ${intentId}`,
-          sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
-        ))
-        .for('update');
-      if ((opportunityRows as RecoveryOpportunitySnapshot[]).some((row) => isActionable(row, userId))) {
-        return null;
-      }
 
       const [inserted] = await tx.insert(questions).values({
         detection: {
