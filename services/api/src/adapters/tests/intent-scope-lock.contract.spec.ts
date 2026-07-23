@@ -11,6 +11,19 @@ const opportunitySource = readFileSync(
   new URL('../opportunity.database.adapter.ts', import.meta.url),
   'utf8',
 );
+const chatDatabaseSource = readFileSync(
+  new URL('../chat.database.adapter.ts', import.meta.url),
+  'utf8',
+);
+const answerHandlerSource = readFileSync(
+  new URL('../../events/handlers/question.answer.intent.ts', import.meta.url),
+  'utf8',
+);
+const mainSource = readFileSync(new URL('../../main.ts', import.meta.url), 'utf8');
+const protocolIntentGraphSource = readFileSync(
+  new URL('../../../../../packages/protocol/src/intent/intent.graph.ts', import.meta.url),
+  'utf8',
+);
 
 function methodSlice(source: string, start: string, end: string): string {
   const startIndex = source.indexOf(start);
@@ -45,6 +58,29 @@ describe('intent-scope advisory lock contract', () => {
       .toBeLessThan(opportunity.indexOf('acquireIntentScopedPairLocks('));
     expect(opportunity.indexOf('acquireIntentScopeAdvisoryLock('))
       .toBeLessThan(opportunity.indexOf(".from(schema.intents)"));
+  });
+
+  it('threads the recovery fingerprint to the final locked intent compare-and-set', () => {
+    expect(answerHandlerSource).toContain(
+      'expectedIntentFingerprint: input.expectedIntentFingerprint',
+    );
+    expect(mainSource).toContain('expectedIntentFingerprint,');
+    expect(protocolIntentGraphSource).toContain(
+      'expectedIntentFingerprint: state.expectedIntentFingerprint',
+    );
+
+    const update = methodSlice(
+      chatDatabaseSource,
+      'async updateIntent(intentId:',
+      'async archiveIntent(intentId:',
+    );
+    const rowLock = update.indexOf(".for('update')");
+    const fingerprintCompare = update.indexOf('oldFingerprint !== data.expectedIntentFingerprint');
+    const mutation = update.indexOf('tx.update(schema.intents)');
+    expect(rowLock).toBeGreaterThanOrEqual(0);
+    expect(fingerprintCompare).toBeGreaterThan(rowLock);
+    expect(mutation).toBeGreaterThan(fingerprintCompare);
+    expect(update).toContain('data.expectedIntentFingerprint !== undefined');
   });
 
   it('orders recovery answers and material edits as advisory, intent, then question', () => {
