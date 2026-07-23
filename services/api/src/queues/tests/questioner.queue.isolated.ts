@@ -8,6 +8,20 @@ import type { PersistableQuestion, QuestionGenerationResult } from '@indexnetwor
 
 describe('QuestionerQueue', () => {
   const queues: QuestionerQueue[] = [];
+  const uptakeCandidate = {
+    purpose: 'uptake' as const,
+    recipientUserId: 'user-1',
+    recipientIntentId: 'intent-1',
+    opportunityId: 'opp-1',
+    networkId: 'network-1',
+  };
+  const uptakeAdmission = {
+    version: 1 as const,
+    ...uptakeCandidate,
+    intentFingerprint: 'fingerprint-1',
+    opportunityStatus: 'pending' as const,
+    opportunityUpdatedAt: '2026-07-23T00:00:00.000Z',
+  };
 
   afterEach(async () => {
     await Promise.all(queues.splice(0).map((queue) => queue.close().catch(() => undefined)));
@@ -197,7 +211,9 @@ describe('QuestionerQueue', () => {
     const queue = new QuestionerQueue({
       adapter: {
         findPending: async () => [],
-        persist: async (batch) => { captured = batch; return ['question-1']; },
+        persist: async () => [],
+        prepareNegotiationQuestion: async () => uptakeAdmission,
+        persistFreshNegotiationQuestions: async (batch) => { captured = batch; return ['question-1']; },
       },
       agent: {
         invoke: async () => {
@@ -216,6 +232,7 @@ describe('QuestionerQueue', () => {
       mode: 'negotiation', purpose: 'uptake', userId: 'user-1',
       sourceType: 'opportunity', sourceId: 'opp-1',
       scopeType: 'network', scopeId: 'network-1',
+      negotiation: uptakeCandidate,
       context: {
         purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'A builder',
         indexContext: 'Community', proposedActivity: 'Host a workshop',
@@ -225,8 +242,214 @@ describe('QuestionerQueue', () => {
     expect(invoked).toBe(1);
     expect(captured).toHaveLength(1);
     expect(captured[0].detection.purpose).toBe('uptake');
+    expect(captured[0].detection.negotiation).toEqual({ ...uptakeAdmission, questionOrdinal: 0 });
     expect(captured[0].underspecificationType).toBeNull();
     expect(captured[0].actors).toEqual([{ userId: 'user-1', role: 'subject', networkId: 'network-1' }]);
+  });
+
+  it('stamps task-backed follow-up provenance on every generated ordinal without changing cardinality', async () => {
+    const captured: PersistableQuestion[][] = [];
+    const candidate = {
+      purpose: 'stalled_followup' as const,
+      recipientUserId: 'user-1',
+      recipientIntentId: 'intent-1',
+      opportunityId: 'opp-1',
+      taskId: 'task-1',
+      networkId: 'network-1',
+    };
+    const admission = {
+      version: 1 as const,
+      ...candidate,
+      intentFingerprint: 'fingerprint-1',
+      opportunityStatus: 'stalled' as const,
+      opportunityUpdatedAt: '2026-07-23T00:00:00.000Z',
+      taskState: 'completed' as const,
+      taskUpdatedAt: '2026-07-23T00:00:01.000Z',
+    };
+    const generated = {
+      title: 'Scope',
+      prompt: 'Which scope best fits your signal?',
+      options: [{ label: 'Narrow', description: 'Focus it' }, { label: 'Broad', description: 'Keep range' }],
+      multiSelect: false,
+    };
+    const queue = new QuestionerQueue({
+      adapter: {
+        findPending: async () => [],
+        persist: async () => [],
+        prepareNegotiationQuestion: async () => admission,
+        persistFreshNegotiationQuestions: async (batch) => { captured.push(batch); return ['q-1', 'q-2']; },
+      },
+      agent: { invoke: async () => ({
+        questions: [generated, { ...generated, title: 'Timing' }],
+        strategies: ['refine_intent', 'surface_missing_detail'],
+        underspecificationTypes: ['missing_constraint', 'missing_constituent'],
+      }) },
+    });
+    queues.push(queue);
+
+    await queue.processJob('generate_questions', {
+      mode: 'negotiation',
+      purpose: 'stalled_followup',
+      userId: 'user-1',
+      sourceType: 'opportunity',
+      sourceId: 'opp-1',
+      negotiation: candidate,
+      context: {
+        negotiationId: 'task-1',
+        counterpartyHint: 'the other participant in this match',
+        indexContext: 'the selected network',
+        outcomeReason: 'stalled',
+        recipientIntent: 'Find a collaborator',
+      },
+    });
+
+    expect(captured[0]).toHaveLength(2);
+    expect(captured[0].map((question) => question.detection.negotiation?.questionOrdinal)).toEqual([0, 1]);
+    expect(captured[0][0].conversationId).toBeUndefined();
+    expect(captured[0][0].detection.messageId).toBeUndefined();
+  });
+
+  it('stamps exact inflight task provenance for the current speaker', async () => {
+    let captured: PersistableQuestion[] = [];
+    const candidate = {
+      purpose: 'inflight_consultation' as const,
+      recipientUserId: 'user-candidate',
+      recipientIntentId: 'intent-candidate',
+      opportunityId: 'opp-1',
+      taskId: 'task-inflight',
+      networkId: 'network-1',
+    };
+    const admission = {
+      version: 1 as const,
+      ...candidate,
+      intentFingerprint: 'fingerprint-candidate',
+      opportunityStatus: 'negotiating' as const,
+      opportunityUpdatedAt: '2026-07-23T00:00:00.000Z',
+      taskState: 'input_required' as const,
+      taskUpdatedAt: '2026-07-23T00:00:01.000Z',
+    };
+    const queue = new QuestionerQueue({
+      adapter: {
+        findPending: async () => [], persist: async () => [],
+        prepareNegotiationQuestion: async () => admission,
+        persistFreshNegotiationQuestions: async (batch) => { captured = batch; return ['q-inflight']; },
+      },
+      agent: { invoke: async () => ({
+        questions: [{
+          title: 'Disclosure', prompt: 'May I share the timing?',
+          options: [{ label: 'Share', description: 'Share it' }, { label: 'Private', description: 'Keep private' }],
+          multiSelect: false,
+        }],
+        strategies: ['reflective_summary'], underspecificationTypes: [null],
+      }) },
+    });
+    queues.push(queue);
+    await queue.processJob('generate_questions', {
+      mode: 'negotiation_inflight', purpose: 'inflight_consultation',
+      userId: 'user-candidate', sourceType: 'opportunity', sourceId: 'opp-1',
+      negotiation: candidate,
+      context: {
+        negotiationId: 'task-inflight', counterpartyHint: 'the other participant in this match',
+        disclosureSubject: 'timing', indexContext: 'the selected network',
+      },
+    });
+    expect(captured[0].detection.negotiation).toEqual({ ...admission, questionOrdinal: 0 });
+    expect(captured[0].actors).toEqual([{ userId: 'user-candidate', networkId: 'network-1', role: 'subject' }]);
+  });
+
+  it('skips before generation when authoritative negotiation admission drifts', async () => {
+    let invoked = false;
+    const queue = new QuestionerQueue({
+      adapter: {
+        findPending: async () => [],
+        persist: async () => [],
+        prepareNegotiationQuestion: async () => null,
+        persistFreshNegotiationQuestions: async () => [],
+      },
+      agent: { invoke: async () => { invoked = true; return null; } },
+    });
+    queues.push(queue);
+    await queue.processJob('generate_questions', {
+      mode: 'negotiation', purpose: 'uptake', userId: 'user-1',
+      sourceType: 'opportunity', sourceId: 'opp-1', negotiation: uptakeCandidate,
+      context: {
+        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
+        indexContext: 'Community', proposedActivity: 'Activity',
+      },
+    });
+    expect(invoked).toBe(false);
+  });
+
+  it('fails closed when final pre-insert revalidation drifts', async () => {
+    let invoked = false;
+    let ordinaryPersisted = false;
+    const queue = new QuestionerQueue({
+      adapter: {
+        findPending: async () => [],
+        persist: async () => { ordinaryPersisted = true; return []; },
+        prepareNegotiationQuestion: async () => uptakeAdmission,
+        persistFreshNegotiationQuestions: async () => [],
+      },
+      agent: { invoke: async () => {
+        invoked = true;
+        return {
+          questions: [{
+            title: 'Readiness', prompt: 'Is the practical setup clear?',
+            options: [{ label: 'Yes', description: 'Proceed' }, { label: 'No', description: 'Clarify' }],
+            multiSelect: false,
+          }],
+          strategies: ['surface_missing_detail'], underspecificationTypes: [null],
+        };
+      } },
+    });
+    queues.push(queue);
+    await queue.processJob('generate_questions', {
+      mode: 'negotiation', purpose: 'uptake', userId: 'user-1',
+      sourceType: 'opportunity', sourceId: 'opp-1', negotiation: uptakeCandidate,
+      context: {
+        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
+        indexContext: 'Community', proposedActivity: 'Activity',
+      },
+    });
+    expect(invoked).toBe(true);
+    expect(ordinaryPersisted).toBe(false);
+  });
+
+  it('treats only the named provenance constraint as success-equivalent', async () => {
+    const generated = {
+      title: 'Readiness', prompt: 'Is the setup clear?',
+      options: [{ label: 'Yes', description: 'Proceed' }, { label: 'No', description: 'Clarify' }],
+      multiSelect: false,
+    };
+    const makeQueue = (constraintName: string) => new QuestionerQueue({
+      adapter: {
+        findPending: async () => [], persist: async () => [],
+        prepareNegotiationQuestion: async () => uptakeAdmission,
+        persistFreshNegotiationQuestions: async () => {
+          throw { code: '23505', constraint_name: constraintName };
+        },
+      },
+      agent: { invoke: async () => ({
+        questions: [generated], strategies: ['surface_missing_detail'], underspecificationTypes: [null],
+      }) },
+    });
+    const input = {
+      mode: 'negotiation' as const, purpose: 'uptake' as const, userId: 'user-1',
+      sourceType: 'opportunity', sourceId: 'opp-1', negotiation: uptakeCandidate,
+      context: {
+        purpose: 'uptake' as const, negotiationId: 'opp-1', counterpartyHint: 'the other participant',
+        indexContext: 'Community', proposedActivity: 'Activity',
+      },
+    };
+    const winningRace = makeQueue('questions_negotiation_provenance_uniq');
+    queues.push(winningRace);
+    await expect(winningRace.processJob('generate_questions', input)).resolves.toBeUndefined();
+
+    const unrelated = makeQueue('some_other_unique_constraint');
+    queues.push(unrelated);
+    await expect(unrelated.processJob('generate_questions', input)).rejects.toMatchObject({
+      constraint_name: 'some_other_unique_constraint',
+    });
   });
 
   it('deduplicates uptake before invoking the generator', async () => {
@@ -235,6 +458,8 @@ describe('QuestionerQueue', () => {
       adapter: {
         findPending: async () => [{ id: 'existing' } as never],
         persist: async () => [],
+        prepareNegotiationQuestion: async () => uptakeAdmission,
+        persistFreshNegotiationQuestions: async () => [],
       },
       agent: { invoke: async () => { invoked += 1; return null; } },
     });
@@ -242,6 +467,7 @@ describe('QuestionerQueue', () => {
     await queue.processJob('generate_questions', {
       mode: 'negotiation', purpose: 'uptake', userId: 'user-1',
       sourceType: 'opportunity', sourceId: 'opp-1',
+      negotiation: uptakeCandidate,
       context: {
         purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'Builder',
         indexContext: 'Community', proposedActivity: 'Activity',

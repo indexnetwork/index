@@ -50,6 +50,7 @@ function Probe() {
       <span data-testid="pushed">{questions.pushedPoolPending}</span>
       <span data-testid="personal">{questions.personalAgentPending}</span>
       <span data-testid="legacy">{questions.count}</span>
+      <span data-testid="revision">{questions.pendingRevision}</span>
       <button onClick={() => void questions.answer('global-1', { selectedOptions: ['A'] })}>answer</button>
       <button onClick={() => void questions.dismiss('global-1')}>dismiss</button>
       <button onClick={() => void questions.refresh()}>refresh</button>
@@ -80,6 +81,24 @@ describe('QuestionsContext proactive pool counts', () => {
       noConversation: true,
       excludeModes: ['pool_discovery'],
     });
+  });
+
+  it('changes the invalidation revision only when the authoritative pending id set changes', async () => {
+    render(<QuestionsProvider><Probe /></QuestionsProvider>);
+    await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('global-1'));
+    const initial = screen.getByTestId('revision').textContent;
+
+    mocks.getPending.mockResolvedValueOnce([{ ...pending('global-1'), payload: { ...pending('global-1').payload, prompt: 'Changed copy' } }]);
+    mocks.getPendingCounts.mockResolvedValueOnce({ globalPending: 9, pushedPoolPending: 0, personalAgentPending: 9 });
+    fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+    await waitFor(() => expect(screen.getByTestId('global')).toHaveTextContent('9'));
+    expect(screen.getByTestId('revision').textContent).toBe(initial);
+
+    mocks.getPending.mockResolvedValueOnce([pending('global-1'), pending('new-question')]);
+    mocks.getPendingCounts.mockResolvedValueOnce({ globalPending: 2, pushedPoolPending: 0, personalAgentPending: 2 });
+    fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+    await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('new-question'));
+    expect(screen.getByTestId('revision').textContent).not.toBe(initial);
   });
 
   it('refreshes canonical counts after answer and dismiss', async () => {

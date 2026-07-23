@@ -10,10 +10,10 @@
  * - discovery: no-op (answers enrich chat context via the message path)
  * - profile:   create a premise from the answer → triggers profile regen
  * - intent:    enqueue intent refinement with the new context
- * - negotiation: store answer as context for the next negotiation turn
- * - negotiation_inflight: store answer, cancel the 24h answer-window timer,
- *              close the paused input_required task, resume the negotiation
- *              via the run-existing continuation (P3.2 ask_user loop)
+ * - negotiation: no-op after authoritative adapter settlement (uptake private;
+ *              ordinary shared context already committed)
+ * - negotiation_inflight: after authoritative exact-task settlement, cancel
+ *              that timer and enqueue the run-existing continuation
  * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
  *              tool call resumes the paused chat turn with the answer
  * - pool_discovery: deterministically re-rank the live pool, narrate the
@@ -32,8 +32,8 @@ interface QuestionAnsweredPayload {
   questionId: string;
   userId: string;
   mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
-  /** Internal generation purpose; never exposed through public question payloads. */
-  purpose?: 'uptake' | 'recovery';
+  /** Internal generation purpose; never enters public projections. */
+  purpose?: 'uptake' | 'recovery' | 'stalled_followup' | 'inflight_consultation';
   /** Recovery fingerprint rechecked immediately before intent mutation. */
   recoveryIntentFingerprint?: string;
   sourceType: string;
@@ -43,6 +43,13 @@ interface QuestionAnsweredPayload {
     freeText?: string;
     answeredBy: string;
     answeredAt: string;
+  };
+  /** DB-claimed exact settlement. Present on every new negotiation-family path. */
+  settlement?: {
+    authoritative: true;
+    purpose: 'uptake' | 'stalled_followup' | 'inflight_consultation';
+    taskId?: string;
+    resumeClaimed: boolean;
   };
 }
 
@@ -66,15 +73,6 @@ export interface QuestionAnswerHandlerDeps {
     expectedIntentFingerprint?: string;
   }) => Promise<IntentRefinementResult>;
 
-  /** Store the answer as negotiation context for the next turn. */
-  storeNegotiationContext: (input: {
-    userId: string;
-    opportunityId: string;
-    questionId: string;
-    selectedOptions: string[];
-    freeText?: string;
-  }) => Promise<void>;
-
   /**
    * Resume a negotiation paused on an `ask_user` client consultation:
    * store the answer, cancel the answer-window timer, close the paused
@@ -86,6 +84,7 @@ export interface QuestionAnswerHandlerDeps {
     questionId: string;
     selectedOptions: string[];
     freeText?: string;
+    taskId: string;
   }) => Promise<void>;
 
   /**
@@ -151,26 +150,23 @@ export async function handleQuestionAnswered(
         break;
 
       case 'negotiation':
-        // Uptake answers are private acceptance-decision context. Persisting
-        // them in shared opportunity.metadata.userAnswers would expose them to
-        // the counterparty through opportunity reads.
-        if (payload.purpose === 'uptake') break;
-        await deps.storeNegotiationContext({
-          userId,
-          opportunityId: sourceId,
-          questionId,
-          selectedOptions: answer.selectedOptions,
-          freeText: answer.freeText,
-        });
+        // Uptake privacy and ordinary shared-metadata writes are both settled
+        // under locks at the adapter boundary before this event exists.
         break;
 
       case 'negotiation_inflight':
+        if (
+          !payload.settlement?.authoritative
+          || !payload.settlement.resumeClaimed
+          || !payload.settlement.taskId
+        ) break;
         await deps.resumeInflightNegotiation({
           userId,
           opportunityId: sourceId,
           questionId,
           selectedOptions: answer.selectedOptions,
           freeText: answer.freeText,
+          taskId: payload.settlement.taskId,
         });
         break;
 

@@ -1,8 +1,10 @@
 import { log } from '../lib/log';
 
-import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import { QuestionerAdapter, questionerAdapter } from '../adapters/questioner.adapter';
 import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion, PendingQuestionCounts } from '../adapters/questioner.adapter';
-import db from '../lib/drizzle/drizzle';
+import { stripInternalDetection } from '../lib/question/question.public';
+
+export { stripInternalDetection } from '../lib/question/question.public';
 
 // Re-export adapter types so the controller layer can reference them without
 // importing from the adapters directory directly (enforced by layer boundaries).
@@ -17,57 +19,19 @@ const logger = log.service.from('QuestionService');
  * mutations through a service boundary, keeping controllers free of adapter
  * dependencies.
  */
-/**
- * Removes server-only detection fields before a question leaves the API.
- * `detection.pool` carries pool_discovery candidate assignments + chain
- * alternates (IND-418); strategy and QUD type are generation/debug metadata
- * rather than client rendering contracts (IND-425).
- */
-export function stripInternalDetection(question: AdapterPersistedQuestion): AdapterPersistedQuestion {
-  const {
-    pool: _pool,
-    recovery: _recovery,
-    purpose: _purpose,
-    strategy: _strategy,
-    underspecificationType: _underspecificationType,
-    pushRequestedAt: _pushRequestedAt,
-    pushRecoveryAttemptedAt: _pushRecoveryAttemptedAt,
-    pushRequestStatus: _pushRequestStatus,
-    pushRequestReason: _pushRequestReason,
-    pushRequestSuppressedAt: _pushRequestSuppressedAt,
-    push: _push,
-    pushedAt: _pushedAt,
-    ...detection
-  } = question.detection;
-  if (
-    !_pool
-    && !_recovery
-    && !_purpose
-    && !_strategy
-    && _underspecificationType === undefined
-    && !_pushRequestedAt
-    && !_pushRecoveryAttemptedAt
-    && !_pushRequestStatus
-    && !_pushRequestReason
-    && !_pushRequestSuppressedAt
-    && !_push
-    && !_pushedAt
-  ) return question;
-  return { ...question, detection };
-}
 
 export class QuestionService {
   private readonly adapter: QuestionerAdapter;
 
   constructor(adapter?: QuestionerAdapter) {
-    this.adapter = adapter ?? new QuestionerAdapter(db);
+    this.adapter = adapter ?? questionerAdapter;
   }
 
   /**
    * Find pending questions for a given user, optionally filtered by detection
    * mode, source type, source id, or selected-intent scope. Intent scope returns
-   * direct intent questions plus negotiation questions whose source opportunity
-   * belongs to that intent for the same viewer.
+   * direct intent questions plus only negotiation-family rows whose versioned
+   * exact recipient provenance currently validates for that owned intent.
    *
    * @param userId  - The user to find pending questions for.
    * @param filters - Optional narrowing filters.

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useQuestionsService } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
@@ -17,6 +17,8 @@ interface QuestionsContextType {
   pushedPoolPending: number;
   /** Sum used by the Personal Agent sidebar badge. */
   personalAgentPending: number;
+  /** Stable authoritative pending-set signature used only for invalidation. */
+  pendingRevision: string;
   /** Whether the initial fetch is in progress. */
   loading: boolean;
   /** Submit an answer for a question and remove it from the list. */
@@ -105,6 +107,11 @@ export function QuestionsProvider({ children }: { children: ReactNode }) {
     };
   }, [fetchQuestions, userId]);
 
+  const pendingRevision = useMemo(
+    () => `${userId ?? 'anonymous'}:${questions.map((question) => question.id).sort().join(',')}`,
+    [questions, userId],
+  );
+
   const answer = useCallback(async (questionId: string, body: AnswerBody) => {
     await questionsService.answer(questionId, body);
     setQuestions((prev) => prev.filter((q) => q.id !== questionId));
@@ -125,6 +132,7 @@ export function QuestionsProvider({ children }: { children: ReactNode }) {
         globalPending: counts.globalPending,
         pushedPoolPending: counts.pushedPoolPending,
         personalAgentPending: counts.personalAgentPending,
+        pendingRevision,
         loading,
         answer,
         dismiss,

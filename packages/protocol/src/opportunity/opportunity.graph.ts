@@ -2159,14 +2159,16 @@ export class OpportunityGraphFactory {
               return null;
             }
 
-            const candidateActor = (opp.actors as Array<{
+            const opportunityActors = opp.actors as Array<{
               userId: string;
               role?: string;
               networkId?: string;
               intent?: string;
               intentId?: string;
-            }>).find(a => a.userId !== discoveryUserId);
-            if (!candidateActor) {
+            }>;
+            const sourceActor = opportunityActors.find(a => a.userId === discoveryUserId && a.role !== 'introducer');
+            const candidateActor = opportunityActors.find(a => a.userId !== discoveryUserId && a.role !== 'introducer');
+            if (!sourceActor || !candidateActor) {
               negotiateLog.verbose('Skipping opportunity: no candidateActor found', {
                 opportunityId: opp.id,
                 discoveryUserId,
@@ -2175,7 +2177,7 @@ export class OpportunityGraphFactory {
               filteredBeforeInvocation.push(opp.id);
               return null;
             }
-            return { opp, candidateActor };
+            return { opp, sourceActor, candidateActor };
           })
           .filter((e): e is NonNullable<typeof e> => e !== null);
 
@@ -2187,8 +2189,9 @@ export class OpportunityGraphFactory {
         });
 
         const candidates: NegotiationCandidate[] = await Promise.all(
-          candidateEntries.map(async ({ opp, candidateActor }) => {
+          candidateEntries.map(async ({ opp, sourceActor, candidateActor }) => {
             const userId = candidateActor.userId as string;
+            const sourceIntentId = resolveOpportunityActorIntent(sourceActor);
             const candidateIntentId = resolveOpportunityActorIntent(candidateActor);
             const [profile, user, activeIntents, intent] = await Promise.all([
               this.database.getProfile(userId).catch(() => null),
@@ -2208,6 +2211,8 @@ export class OpportunityGraphFactory {
 
             return {
               userId,
+              ...(sourceIntentId ? { sourceIntentId } : {}),
+              ...(candidateIntentId ? { candidateIntentId } : {}),
               opportunityId: opp.id as string,
               opportunityStatus: opp.status,
               opportunityUpdatedAt: opp.updatedAt,
@@ -4145,6 +4150,8 @@ export class OpportunityGraphFactory {
 
         const candidate: NegotiationCandidate = {
           userId: candidateActor.userId,
+          ...(sourceIntentId ? { sourceIntentId } : {}),
+          ...(candidateIntentId ? { candidateIntentId } : {}),
           opportunityId: opp.id as string,
           reasoning: (opp.interpretation as { reasoning?: string } | null)?.reasoning ?? '',
           valencyRole: candidateActor.role ?? 'peer',

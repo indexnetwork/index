@@ -7,7 +7,7 @@
  */
 import type { DiscoveryQuestionInput } from "../shared/schemas/discovery-question.schema.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
-import type { QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/question.schema.js";
+import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/question.schema.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
 
@@ -45,7 +45,9 @@ export interface ProfileContext {
 /** Shared context fields for negotiation-mode questions. */
 interface NegotiationContextBase {
   negotiationId: string;
+  /** Privacy-reviewed generic description; never raw counterparty identity/profile. */
   counterpartyHint: string;
+  /** Source-safe network label, never an internal prompt or identifier. */
   indexContext: string;
   /** The user's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
@@ -55,7 +57,8 @@ interface NegotiationContextBase {
 export interface PostStallNegotiationContext extends NegotiationContextBase {
   purpose?: undefined;
   outcomeReason: "turn_cap" | "timeout" | "stalled";
-  keyTake: string;
+  /** The recipient's own exact opportunity-bound signal, never evaluator reasoning. */
+  recipientIntent: string;
 }
 
 /** Pre-accept uptake context targeting a counterparty's preparatory conditions. */
@@ -181,11 +184,16 @@ interface QuestionerInputBase {
   conversationId?: string;
   /** Assistant message ID — set when we know which message triggered the question. Stored in detection.messageId for inline anchoring. */
   messageId?: string;
+  /**
+   * Candidate exact binding for negotiation-family jobs. The API/DB must
+   * authoritatively re-resolve it before generation and again before insert.
+   */
+  negotiation?: NegotiationQuestionCandidate;
 }
 
 /** Existing question inputs, including post-stall negotiation source compatibility. */
 interface StandardQuestionerInput extends QuestionerInputBase {
-  purpose?: undefined;
+  purpose?: "stalled_followup" | "inflight_consultation";
   /** Mode-specific context. Must align with the selected mode. */
   context: Exclude<QuestionerContext, UptakeNegotiationContext | RecoveryIntentContext>;
 }
@@ -194,6 +202,7 @@ interface StandardQuestionerInput extends QuestionerInputBase {
 export interface UptakeQuestionerInput extends QuestionerInputBase {
   mode: "negotiation";
   purpose: "uptake";
+  negotiation: NegotiationQuestionCandidate & { purpose: "uptake"; taskId?: undefined };
   context: UptakeNegotiationContext;
 }
 

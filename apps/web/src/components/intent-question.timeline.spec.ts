@@ -40,4 +40,25 @@ describe('buildIntentQuestionTimeline', () => {
       'intent',
     ]);
   });
+
+  it('anchors only to an existing assistant message and trails everything else deterministically', () => {
+    const anchored = question('anchored', 'intent');
+    anchored.detection.messageId = 'assistant-1';
+    const invalidAnchor = question('invalid-anchor', 'intent');
+    invalidAnchor.detection.messageId = 'other-session-message';
+    invalidAnchor.detection.timestamp = '2026-07-22T12:02:00.000Z';
+    const trailing = question('trailing', 'intent');
+    trailing.detection.timestamp = '2026-07-22T12:01:00.000Z';
+    const messages = [{ id: 'assistant-1', role: 'assistant' as const, timestamp: new Date('2026-07-22T12:00:00.000Z') }];
+
+    const timeline = buildIntentQuestionTimeline(messages, [invalidAnchor, anchored, trailing], [
+      { id: 'answered-late', prompt: 'Late?', response: 'Yes', answeredAt: '2026-07-22T12:04:00.000Z' },
+      { id: 'answered-early', prompt: 'Early?', response: 'No', answeredAt: '2026-07-22T12:03:00.000Z' },
+    ]);
+
+    expect(timeline.pendingByMessageId.get('assistant-1')).toEqual([anchored]);
+    expect(timeline.trailingPending.map((item) => item.id)).toEqual(['trailing', 'invalid-anchor']);
+    expect(timeline.trailingAnswered.map((item) => item.id)).toEqual(['answered-early', 'answered-late']);
+    expect(timeline.items.map((item) => item.type)).toEqual(['message']);
+  });
 });

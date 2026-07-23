@@ -131,62 +131,35 @@ describe('NegotiationTimeoutQueue.handleTimeout', () => {
 
 // ─── ask_user answer-window expiry (IND-401) ─────────────────────────────────
 
-function makeExpiryDeps(taskState: string | null) {
-  const task = taskState === null ? null : negTask({ state: taskState });
-  const { db } = makeDb(task, []);
-  const stored: Array<{ opportunityId: string; disclosureSubject: string }> = [];
-  const dismissed: string[] = [];
-  const resumed: Array<{ opportunityId: string; userId: string }> = [];
-  const q = createQueue({
-    database: db as never,
-    storeExpiryAnswer: async (opportunityId, disclosureSubject) => { stored.push({ opportunityId, disclosureSubject }); },
-    dismissInflightQuestions: async (opportunityId) => { dismissed.push(opportunityId); },
-    enqueueResume: async (opportunityId, userId) => { resumed.push({ opportunityId, userId }); },
-  });
-  return { q, db, stored, dismissed, resumed };
-}
-
 const expiryData = { negotiationId: 'task-1', opportunityId: 'opp-1', userId: 'u-src', disclosureSubject: 'budget range' };
 
 describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
-  it('input_required: stores conservative answer, dismisses questions, cancels task, resumes', async () => {
-    const { q, db, stored, dismissed, resumed } = makeExpiryDeps('input_required');
+  it('authoritative settlement resumes the exact stamped task at most once across duplicate delivery', async () => {
+    let available = true;
+    const settled: string[] = [];
+    const resumed: Array<{ opportunityId: string; userId: string }> = [];
+    const q = createQueue({
+      settleInflightExpiry: async ({ taskId, opportunityId, userId }) => {
+        settled.push(taskId);
+        if (!available) return null;
+        available = false;
+        return { taskId, opportunityId, userId };
+      },
+      enqueueResume: async (opportunityId, userId) => { resumed.push({ opportunityId, userId }); },
+    });
+
+    await q.processJob('ask_user_expiry', expiryData);
     await q.processJob('ask_user_expiry', expiryData);
 
-    expect(stored).toEqual([{ opportunityId: 'opp-1', disclosureSubject: 'budget range' }]);
-    expect(dismissed).toEqual(['opp-1']);
-    expect(db.updateTaskState).toHaveBeenCalledWith('task-1', 'canceled', { reason: 'ask_user_window_expired' });
+    expect(settled).toEqual(['task-1', 'task-1']);
     expect(resumed).toEqual([{ opportunityId: 'opp-1', userId: 'u-src' }]);
   });
 
-  it('no-ops when the task already left input_required (answer won the race)', async () => {
-    const { q, db, stored, resumed } = makeExpiryDeps('canceled');
+  it('authoritative stale settlement performs no continuation', async () => {
+    const enqueueResume = mock(async () => {});
+    const q = createQueue({ settleInflightExpiry: async () => null, enqueueResume });
     await q.processJob('ask_user_expiry', expiryData);
-
-    expect(stored).toEqual([]);
-    expect(db.updateTaskState).not.toHaveBeenCalled();
-    expect(resumed).toEqual([]);
-  });
-
-  it('no-ops when the task is missing', async () => {
-    const { q, stored, resumed } = makeExpiryDeps(null);
-    await q.processJob('ask_user_expiry', expiryData);
-    expect(stored).toEqual([]);
-    expect(resumed).toEqual([]);
-  });
-
-  it('a store failure does not block the resume (negotiation must always terminate)', async () => {
-    const { db } = makeDb(negTask({ state: 'input_required' }), []);
-    const resumed: string[] = [];
-    const q = createQueue({
-      database: db as never,
-      storeExpiryAnswer: async () => { throw new Error('db down'); },
-      dismissInflightQuestions: async () => {},
-      enqueueResume: async (oid) => { resumed.push(oid); },
-    });
-    await q.processJob('ask_user_expiry', expiryData);
-    expect(db.updateTaskState).toHaveBeenCalledWith('task-1', 'canceled', { reason: 'ask_user_window_expired' });
-    expect(resumed).toEqual(['opp-1']);
+    expect(enqueueResume).not.toHaveBeenCalled();
   });
 
   it('enqueueAskUserExpiry adds a delayed job under its own jobId namespace', async () => {

@@ -23,15 +23,15 @@ const standaloneModeExpectations = [
   },
   {
     mode: "negotiation" as const,
-    anchors: ["underlying goal or topic", "relevant community", "intent or profile"],
+    anchors: ["underlying goal or topic", "relevant community", "source-safe label"],
     positiveExample: "For your search for AI infrastructure collaborators in the AI founders community",
     negativeExample: "Which role is a better fit for your immediate needs?",
   },
   {
     mode: "negotiation_inflight" as const,
-    anchors: ["disclosure subject", "counterparty hint"],
-    positiveExample: "May I share your budget range with a Berlin-based AI-infrastructure founder",
-    negativeExample: "Can I share your budget with them?",
+    anchors: ["disclosure subject", "the other participant in this match"],
+    positiveExample: "May I share your budget range with the other participant in this match?",
+    negativeExample: "May I share your budget with Alex, a Berlin-based founder from the event?",
   },
 ];
 
@@ -248,7 +248,7 @@ describe("negotiation preset", () => {
       counterpartyHint: "AI infra founder, Berlin",
       indexContext: "AI founders community",
       outcomeReason: "turn_cap",
-      keyTake: "Both interested but scope unclear",
+      recipientIntent: "Find an AI infrastructure collaborator",
       userContext: "Alice is a builder.",
     });
     expect(typeof result).toBe("string");
@@ -313,13 +313,18 @@ describe("negotiation_inflight preset", () => {
     expect(typeof preset.buildPrompt).toBe("function");
   });
 
-  it("buildPrompt contains the counterparty hint, disclosure subject, and community", () => {
+  it("buildPrompt contains only the supplied source-safe negotiation context", () => {
     const preset = getPreset("negotiation_inflight");
-    const result = preset.buildPrompt(baseContext);
-    expect(result).toContain("a fintech CTO exploring agent tooling in Berlin");
+    const result = preset.buildPrompt({
+      ...baseContext,
+      counterpartyHint: "the other participant in this match",
+    });
+    expect(result).toContain("the other participant in this match");
     expect(result).toContain("permission to share the client's budget range");
     expect(result).toContain("AI founders community");
     expect(result).toContain("Alice is a protocol engineer.");
+    expect(result).not.toContain("fintech CTO");
+    expect(result).not.toContain("Berlin");
   });
 
   it("buildPrompt passes the negotiator's draft question through for refinement", () => {

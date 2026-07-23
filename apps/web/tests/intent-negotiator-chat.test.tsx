@@ -225,7 +225,7 @@ describe('IntentNegotiatorChat', () => {
     expect(props.onDismissQuestion).toHaveBeenCalledWith('q-anchored');
   });
 
-  test('interleaves an unanchored answered exchange by timestamp but keeps pending at the end', async () => {
+  test('keeps an unanchored answered exchange deterministically trailing before pending', async () => {
     mocks.chat.messages = [
       { id: 'older-assistant', role: 'assistant', content: 'Old agent turn', timestamp: new Date('2026-07-20T10:00:00Z') },
       { id: 'newer-user', role: 'user', content: 'New user turn', timestamp: new Date('2026-07-20T12:00:00Z') },
@@ -243,9 +243,9 @@ describe('IntentNegotiatorChat', () => {
     const chat = await screen.findByTestId('intent-negotiator-chat');
     await screen.findByText('New user turn');
     const content = chat.textContent ?? '';
-    expect(content.indexOf('Old agent turn')).toBeLessThan(content.indexOf('Answered between turns?'));
-    expect(content.indexOf('Answered between turns?')).toBeLessThan(content.indexOf('New user turn'));
-    expect(content.indexOf('New user turn')).toBeLessThan(content.indexOf('Which city should we prioritize?'));
+    expect(content.indexOf('Old agent turn')).toBeLessThan(content.indexOf('New user turn'));
+    expect(content.indexOf('New user turn')).toBeLessThan(content.indexOf('Answered between turns?'));
+    expect(content.indexOf('Answered between turns?')).toBeLessThan(content.indexOf('Which city should we prioritize?'));
   });
 
   test('uses a deterministic end fallback for an answered exchange without timestamps', async () => {

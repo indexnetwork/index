@@ -87,7 +87,7 @@ function modeInput(mode: QuestionerInput["mode"]): QuestionerInput {
     counterpartyHint: "AI infra founder, Berlin",
     indexContext: "AI founders community",
     outcomeReason: "turn_cap",
-    keyTake: "Both interested but scope unclear",
+    recipientIntent: "Find an AI infrastructure collaborator",
     userContext: "Dana is a builder of agent tools.",
   };
   const contexts = {
@@ -204,7 +204,7 @@ describe("QuestionerAgent", () => {
     { mode: "discovery" as const, contextNeedles: ["find decentralized identity protocol designers", "3 people reviewed"] },
     { mode: "intent" as const, contextNeedles: ["Connect with people building decentralized identity protocols", "Decentralized identity protocol design collaborations"] },
     { mode: "enrichment" as const, contextNeedles: ["availability", "I build agent tools for event communities"] },
-    { mode: "negotiation" as const, contextNeedles: ["AI infra founder, Berlin", "Both interested but scope unclear"] },
+    { mode: "negotiation" as const, contextNeedles: ["AI infra founder, Berlin", "Find an AI infrastructure collaborator"] },
   ])("mode '$mode' sends standalone-context instructions alongside source evidence", async ({ mode, contextNeedles }) => {
     let capturedMessages: unknown[] | undefined;
     const agent = makeAgent(async (input) => {
@@ -233,7 +233,7 @@ describe("QuestionerAgent", () => {
     const discoveryContext: DiscoveryContext = makeDiscoveryInput().context as DiscoveryContext;
     const intentContext: IntentContext = { intentId: "i-1", payload: "test intent", userContext: "Test user." };
     const profileContext: ProfileContext = { userContext: "Test user.", gaps: ["location"] };
-    const negotiationContext: NegotiationContext = { negotiationId: "n-1", counterpartyHint: "founder", indexContext: "AI", outcomeReason: "turn_cap" as const, keyTake: "test", userContext: "Test user." };
+    const negotiationContext: NegotiationContext = { negotiationId: "n-1", counterpartyHint: "founder", indexContext: "AI", outcomeReason: "turn_cap" as const, recipientIntent: "Find a collaborator", userContext: "Test user." };
     const contexts = {
       discovery: discoveryContext,
       intent: intentContext,

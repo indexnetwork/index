@@ -189,8 +189,10 @@ async function runGraph(
     opts?.omitQuestioner ? undefined : stubs.questionerEnqueue,
   ).createGraph();
   return graph.invoke({
-    sourceUser: { id: "u-src", intents: [], profile: { name: "Alice", bio: "PM", skills: ["product"] } },
-    candidateUser: { id: "u-cand", intents: [], profile: { name: "Bob", bio: "ML engineer", location: "Berlin", skills: ["ml"] } },
+    sourceUser: { id: "u-src", intents: [{ id: "intent-src", title: "Build AI", description: "Find an AI collaborator", confidence: 1 }], profile: { name: "Alice", bio: "PM", skills: ["product"] } },
+    candidateUser: { id: "u-cand", intents: [{ id: "intent-cand", title: "Apply ML", description: "Join an AI product", confidence: 1 }], profile: { name: "Bob", bio: "ML engineer", location: "Berlin", skills: ["ml"] } },
+    sourceIntentId: "intent-src",
+    candidateIntentId: "intent-cand",
     indexContext: { networkId: "net-1", prompt: "AI startup network" },
     seedAssessment: { reasoning: "complementary", valencyRole: "peer" },
     opportunityId: "opp-1",
@@ -213,6 +215,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
   const origWindow = process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
+  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -232,12 +235,14 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     agentInputs = [];
     agentScript = [];
     process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
+    process.env.NEGOTIATION_SCREEN_MODE = "off";
     delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
   });
 
   afterEach(() => {
     if (origFlag === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED; else process.env.NEGOTIATION_ASK_USER_ENABLED = origFlag;
     if (origWindow === undefined) delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS; else process.env.NEGOTIATION_ASK_USER_WINDOW_MS = origWindow;
+    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
   });
 
   /** Continuation where the source (u-src, initiator) speaks next. */
@@ -268,26 +273,56 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(stubs.expiryArms[0].delayMs).toBe(DEFAULT_ASK_USER_WINDOW_MS);
 
     // Question enqueued through the negotiation_inflight preset for the
-    // asker's OWN client, counterparty referenced by attributes.
+    // asker's OWN exact opportunity-bound signal.
     expect(stubs.questionerEnqueues).toHaveLength(1);
     const q = stubs.questionerEnqueues[0];
     expect(q.mode).toBe("negotiation_inflight");
     expect(q.userId).toBe("u-src");
     expect(q.sourceType).toBe("opportunity");
     expect(q.sourceId).toBe("opp-1");
+    expect(q.purpose).toBe("inflight_consultation");
+    expect(q.negotiation).toEqual({
+      purpose: "inflight_consultation",
+      recipientUserId: "u-src",
+      recipientIntentId: "intent-src",
+      opportunityId: "opp-1",
+      taskId: "task-new",
+      networkId: "net-1",
+    });
     const ctx = q.context as Record<string, unknown>;
     expect(ctx.negotiationId).toBe("task-new");
     expect(ctx.disclosureSubject).toBe("budget range");
     expect(ctx.draftQuestion).toBe("Can I tell them your budget range?");
-    expect(ctx.counterpartyHint).toContain("ML engineer");
+    expect(ctx.counterpartyHint).toBe("the other participant in this match");
     expect(ctx.counterpartyHint).not.toContain("Bob");
-    expect(ctx.indexContext).toBe("AI startup network");
+    expect(ctx.counterpartyHint).not.toContain("ML engineer");
+    expect(ctx.indexContext).toBe("the selected network");
     expect(ctx.userContext).toBe("Alice builds AI startups");
 
     // Task suspended as input_required; no completed transition, no outcome.
     expect(stubs.stateWrites).toContainEqual({ taskId: "task-new", state: "input_required" });
     expect(stubs.stateWrites.map((w) => w.state)).not.toContain("completed");
     expect(result.outcome).toBeNull();
+  });
+
+  it("routes candidate-side consultation to the candidate's own exact intent", async () => {
+    const stubs = mkStubs({
+      priorMessages: [priorMsg("u-src", "outreach", 0), priorMsg("u-src", "counter", 1)],
+    });
+    agentScript = [askUserTurn];
+    await runGraph(stubs);
+
+    expect(stubs.questionerEnqueues).toHaveLength(1);
+    expect(stubs.questionerEnqueues[0].userId).toBe("u-cand");
+    expect(stubs.questionerEnqueues[0].negotiation).toEqual({
+      purpose: "inflight_consultation",
+      recipientUserId: "u-cand",
+      recipientIntentId: "intent-cand",
+      opportunityId: "opp-1",
+      taskId: "task-new",
+      networkId: "net-1",
+    });
+    expect(stubs.questionerEnqueues[0].negotiation?.recipientIntentId).not.toBe("intent-src");
   });
 
   it("respects the env window override when arming the timer", async () => {

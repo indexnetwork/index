@@ -110,6 +110,8 @@ export const createQuestionsService = (
     noConversation?: boolean;
     /** Drop these modes server-side (e.g. pool_discovery on non-scoped surfaces). */
     excludeModes?: Array<QuestionDetection['mode']>;
+    /** Passive exact-scope refetch; never triggers visit-time pool mining. */
+    passive?: boolean;
   }): Promise<PendingQuestion[]> => {
     const params = new URLSearchParams({ status: 'pending' });
     if (filters?.mode) params.set('mode', filters.mode);
@@ -119,6 +121,7 @@ export const createQuestionsService = (
     if (filters?.scopeId) params.set('scopeId', filters.scopeId);
     if (filters?.noConversation) params.set('noConversation', 'true');
     if (filters?.excludeModes?.length) params.set('excludeModes', filters.excludeModes.join(','));
+    if (filters?.passive) params.set('passive', 'true');
     const res = await api.get<QuestionsListResponse>(`/questions?${params}`);
     return res.questions ?? [];
   },
@@ -127,10 +130,12 @@ export const createQuestionsService = (
   getAnswered: async (filters?: {
     scopeType?: 'intent';
     scopeId?: string;
+    passive?: boolean;
   }): Promise<AnsweredQuestion[]> => {
     const params = new URLSearchParams({ status: 'answered' });
     if (filters?.scopeType) params.set('scopeType', filters.scopeType);
     if (filters?.scopeId) params.set('scopeId', filters.scopeId);
+    if (filters?.passive) params.set('passive', 'true');
     const res = await api.get<AnsweredQuestionsListResponse>(`/questions?${params}`);
     return res.questions ?? [];
   },

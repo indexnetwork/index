@@ -3362,17 +3362,18 @@ List pending questions for the authenticated user.
 **Query params:**
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `status` | `pending` \| `answered` \| `dismissed` | `pending` | Only `pending` is currently supported |
+| `status` | `pending` \| `answered` \| `dismissed` | `pending` | `pending` and `answered` are supported; `dismissed` is rejected. |
 | `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `negotiation_inflight` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
 | `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
-| `scopeId` | UUID | — | Required when `scopeType=intent`; returns direct intent questions plus negotiation questions whose source opportunity matches the selected-intent predicate. |
+| `scopeId` | UUID | — | Required when `scopeType=intent`. Non-negotiation modes retain their established scope rules. Negotiation-family rows require valid versioned exact-recipient provenance whose stamped intent equals this ID and whose current intent/network/opportunity/task state still validates; legacy or drifted rows fail closed. |
 | `intentId` | UUID | — | Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`. |
 | `conversationId` | string | — | Filter to questions linked to a specific chat session |
 | `noConversation` | `true` | — | Exclude questions that have a `conversationId` (sidebar badge use) |
+| `passive` | `true` | — | Exact-intent refetch only. Requires `scopeType=intent`; suppresses visit-time pool-mining enqueue. Used by mounted-workspace invalidation, not initial active visitation. |
 
-Unscoped/global reads always exclude `pool_discovery`; those rows are available only with an explicit intent scope. Public rows strip internal pool snapshots, assignments, embeddings, push claims/status, cycle keys, and the authoritative `pushedAt` ledger.
+Unscoped/global reads always exclude `pool_discovery`; those rows are available only with an explicit intent scope. Public rows strip internal pool snapshots, assignments, embeddings, push claims/status, cycle keys, the authoritative `pushedAt` ledger, negotiation provenance/purpose/task/network/fingerprint/lifecycle metadata, server session bindings, and actor network IDs. A `messageId` anchor survives an intent-scoped read only when its exact assistant message/session/conversation belongs to the authenticated user's exact `negotiator-intent` scope.
 
 **Response:** `{ questions: PersistedQuestion[] }`
 
@@ -3396,7 +3397,7 @@ Returns the canonical count split used by the two allowed surfaces. Counts requi
 
 **Auth**: Required (session or API key)
 
-Submit an answer for a pending question. Only succeeds if the user is an actor on the question and the question is still pending.
+Submit an answer for a pending question. For non-negotiation modes, existing actor/pending semantics apply. Negotiation-family answers additionally lock and revalidate exact actor/provenance, owned ACTIVE fingerprint-equal intent, assignment/membership, opportunity actor visibility/state, and exact task state before any effect. Stale rows fail closed/system-void without shared mutation or user-answer events. Uptake remains private; ordinary follow-up uses the established shared metadata visibility; inflight atomically claims only its stamped `input_required` task and enqueues at most one continuation.
 
 **Body:**
 ```json
@@ -3414,7 +3415,7 @@ Submit an answer for a pending question. Only succeeds if the user is an actor o
 
 **Auth**: Required (session or API key)
 
-Dismiss a pending question. Only succeeds if the user is an actor on the question and the question is still pending.
+Dismiss a pending question. Negotiation-family rows use the same exact locked revalidation as answers. Inflight dismissal applies the conservative no-disclosure default, dismisses only the exact stamped task cohort, and resumes at most once; it never selects a newer/latest task for the opportunity.
 
 **Response:** `{ success: true }` (200) or `{ error: "Question not found" }` (404)
 

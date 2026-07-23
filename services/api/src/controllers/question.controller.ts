@@ -95,8 +95,16 @@ export class QuestionController {
     const conversationId = url.searchParams.get('conversationId');
     const noConversation = url.searchParams.get('noConversation');
     const rawExcludeModes = url.searchParams.get('excludeModes');
+    const rawPassive = url.searchParams.get('passive');
     const scope = parseIntentScopeFromUrl(url);
     if (scope instanceof Response) return scope;
+
+    if (rawPassive && rawPassive !== 'true') {
+      return Response.json({ error: 'Invalid passive flag' }, { status: 400 });
+    }
+    if (rawPassive === 'true' && scope.scopeType !== 'intent') {
+      return Response.json({ error: 'Passive refresh requires exact intent scope' }, { status: 400 });
+    }
 
     const statusResult = statusQuerySchema.safeParse(rawStatus ?? 'pending');
     if (!statusResult.success) {
@@ -191,7 +199,7 @@ export class QuestionController {
     // may re-mine the pool (flag-gated, debounced, fire-and-forget — default
     // off is a strict no-op). Network-scoped keys never see pool questions and
     // never trigger; the worker enforces ownership authoritatively.
-    if (status === 'pending' && scope.scopeType === 'intent' && scope.scopeId && !networkScopeId) {
+    if (status === 'pending' && scope.scopeType === 'intent' && scope.scopeId && !networkScopeId && rawPassive !== 'true') {
       maybeEnqueueVisitPoolMining({
         userId: user.id,
         intentId: scope.scopeId,

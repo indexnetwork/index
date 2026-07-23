@@ -269,6 +269,12 @@ export class NegotiationGraphFactory {
           protocolVersion,
           candidateUserId: state.candidateUser.id,
           networkId: state.indexContext.networkId,
+          sourceIntentId: state.sourceIntentId,
+          candidateIntentId: state.candidateIntentId,
+          participantBindings: [
+            ...(state.sourceIntentId ? [{ userId: state.sourceUser.id, intentId: state.sourceIntentId, networkId: state.indexContext.networkId }] : []),
+            ...(state.candidateIntentId ? [{ userId: state.candidateUser.id, intentId: state.candidateIntentId, networkId: state.indexContext.networkId }] : []),
+          ],
           intentSnapshots: buildIntentSnapshots(state.sourceUser, state.candidateUser),
           ...(state.opportunityId && { opportunityId: state.opportunityId }),
           maxTurns,
@@ -472,6 +478,7 @@ export class NegotiationGraphFactory {
         const isSource = state.currentSpeaker === "source";
         const ownUser = isSource ? state.sourceUser : state.candidateUser;
         const otherUser = isSource ? state.candidateUser : state.sourceUser;
+        const ownIntentId = isSource ? state.sourceIntentId : state.candidateIntentId;
 
         // Determine if this is the system agent's final allowed turn
         const maxTurns = state.maxTurns ?? 0;
@@ -499,6 +506,8 @@ export class NegotiationGraphFactory {
           && !!questionerEnqueue
           && !!timeoutQueue?.enqueueAskUserExpiry
           && !!state.opportunityId
+          && !!ownIntentId
+          && !!state.indexContext.networkId
           && !(state.turnCount === 0 && !state.isContinuation)
           && !hasPriorAskUser(state.messages, ownUser.id);
 
@@ -701,6 +710,12 @@ export class NegotiationGraphFactory {
             candidateUser: state.candidateUser,
             indexContext: state.indexContext,
             seedAssessment: state.seedAssessment,
+            askUserBinding: {
+              recipientUserId: ownUser.id,
+              recipientIntentId: ownIntentId,
+              opportunityId: state.opportunityId,
+              networkId: state.indexContext.networkId,
+            },
             ...(isSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
           });
 
@@ -715,31 +730,35 @@ export class NegotiationGraphFactory {
             disclosureSubject,
           }, windowMs);
 
-          // Counterparty referenced by attributes, never identity — the
-          // negotiation_inflight preset's referential-closure contract.
-          const counterpartyHint = [
-            otherUser.profile.bio,
-            otherUser.profile.location,
-            otherUser.profile.skills?.length ? `skills: ${otherUser.profile.skills.join(', ')}` : undefined,
-          ].filter(Boolean).join('; ') || 'a potential match on the network';
           const userContext = (await database.getUserContext(ownUser.id, null).catch(() => null))?.text ?? '';
 
+          // Persistence admission requires the exact task to be input_required.
+          // Flip before enqueue; if Redis enqueue fails, the already-armed timer
+          // retains the conservative no-disclosure fail-safe.
+          await database.updateTaskState(state.taskId, 'input_required');
           await questionerEnqueue!({
             mode: 'negotiation_inflight',
+            purpose: 'inflight_consultation',
             userId: ownUser.id,
             sourceType: 'opportunity',
             sourceId: state.opportunityId,
+            negotiation: {
+              purpose: 'inflight_consultation',
+              recipientUserId: ownUser.id,
+              recipientIntentId: ownIntentId!,
+              opportunityId: state.opportunityId,
+              taskId: state.taskId,
+              networkId: state.indexContext.networkId,
+            },
             context: {
               negotiationId: state.taskId,
-              counterpartyHint,
+              counterpartyHint: 'the other participant in this match',
               disclosureSubject,
               ...(draftQuestion && { draftQuestion }),
-              indexContext: state.indexContext.prompt,
+              indexContext: 'the selected network',
               ...(userContext && { userContext }),
             },
           });
-
-          await database.updateTaskState(state.taskId, 'input_required');
 
           turnLog.info('negotiation_ask_user_pause', {
             taskId: state.taskId,
@@ -1013,7 +1032,7 @@ export class NegotiationGraphFactory {
 
       // Enqueue question generation for stalled/capped negotiations (not accepted or explicitly rejected).
       // Require turnCount > 0 so early init/turn errors don't enqueue with empty context.
-      if (!hasOpportunity && !isRejectLikeAction(lastTurn?.action) && state.turnCount > 0 && state.opportunityId && questionerEnqueue) {
+      if (!hasOpportunity && !isRejectLikeAction(lastTurn?.action) && state.turnCount > 0 && state.opportunityId && state.sourceIntentId && state.indexContext.networkId && questionerEnqueue) {
         const stallReason: 'turn_cap' | 'timeout' | 'stalled' = atCap
           ? 'turn_cap'
           : (state.error && /timeout/i.test(state.error))
@@ -1021,17 +1040,29 @@ export class NegotiationGraphFactory {
             : 'stalled';
 
         const userContext = (await database.getUserContext(state.sourceUser.id, null))?.text ?? '';
+        const sourceIntent = state.sourceUser.intents.find((intent) => intent.id === state.sourceIntentId);
         questionerEnqueue({
           mode: 'negotiation',
+          purpose: 'stalled_followup',
           userId: state.sourceUser.id,
           sourceType: 'opportunity',
           sourceId: state.opportunityId,
+          negotiation: {
+            purpose: 'stalled_followup',
+            recipientUserId: state.sourceUser.id,
+            recipientIntentId: state.sourceIntentId,
+            opportunityId: state.opportunityId,
+            taskId: state.taskId,
+            networkId: state.indexContext.networkId,
+          },
           context: {
             negotiationId: state.taskId,
-            counterpartyHint: `${state.candidateUser.profile.name ?? 'Unknown'}${state.candidateUser.profile.bio ? ', ' + state.candidateUser.profile.bio : ''}`,
-            indexContext: state.indexContext.prompt,
+            counterpartyHint: 'the other participant in this match',
+            indexContext: 'the selected network',
             outcomeReason: stallReason,
-            keyTake: outcome.reasoning,
+            recipientIntent: sourceIntent
+              ? `${sourceIntent.title}: ${sourceIntent.description}`
+              : 'the signal attached to this match',
             userContext,
           },
         }).catch((err) =>
@@ -1074,6 +1105,9 @@ export class NegotiationGraphFactory {
 
 export interface NegotiationCandidate {
   userId: string;
+  /** Exact opportunity-bound source and candidate intent IDs. */
+  sourceIntentId?: string;
+  candidateIntentId?: string;
   reasoning: string;
   valencyRole: string;
   networkId?: string;
@@ -1177,6 +1211,8 @@ export async function negotiateCandidates(
         const result = await invokeWithAbortSignal(negotiationGraph, {
           sourceUser,
           candidateUser: candidate.candidateUser,
+          ...(candidate.sourceIntentId && { sourceIntentId: candidate.sourceIntentId }),
+          ...(candidate.candidateIntentId && { candidateIntentId: candidate.candidateIntentId }),
           indexContext: candidateIndexContext,
           seedAssessment: {
             reasoning: candidate.reasoning,

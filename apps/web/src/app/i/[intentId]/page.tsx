@@ -300,7 +300,7 @@ export default function IntentDetailPage() {
   const opportunitiesService = useOpportunities();
   const questionsService = useQuestionsService();
   useIntentVisitPing(intentId);
-  const { refresh: refreshQuestionCounts } = useQuestions();
+  const { refresh: refreshQuestionCounts, pendingRevision } = useQuestions();
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
 
@@ -345,6 +345,10 @@ export default function IntentDetailPage() {
   // Conversation thread: answered questions retain server anchors/timestamps so
   // the Personal Agent can place them within chat history after reloads.
   const [answered, setAnswered] = useState<AnsweredThreadEntry[]>([]);
+  const pendingInvalidationRef = useRef<{ intentId?: string; revision: string }>({
+    intentId,
+    revision: pendingRevision,
+  });
   // Chat-style conversation column: scrolls internally, pinned to the bottom so
   // the newest question is always in view above the composer.
   const conversationRef = useRef<HTMLDivElement>(null);
@@ -411,26 +415,30 @@ export default function IntentDetailPage() {
     inviteModalElement,
   } = useOpportunityActions({ scope });
 
-  /** Monotonic load id — guards against out-of-order responses when a reload
-   * (e.g. after refine) starts while a previous two-phase load is in flight. */
+  /** Monotonic load ids guard every intent-scoped feed against stale responses. */
   const loadSeqRef = useRef(0);
+  const questionLoadSeqRef = useRef(0);
+  const answeredLoadSeqRef = useRef(0);
 
-  const loadQuestions = useCallback(async (appendOnly = false) => {
+  const loadQuestions = useCallback(async (appendOnly = false, passive = false) => {
     if (!intentId) return;
+    const seq = ++questionLoadSeqRef.current;
     try {
       const res = await questionsService.getPending({
         scopeType: "intent",
         scopeId: intentId,
+        ...(passive ? { passive: true } : {}),
       });
-      if (activeIntentIdRef.current !== intentId) return;
-      for (const question of res) seenQuestionIdsRef.current.add(question.id);
+      if (activeIntentIdRef.current !== intentId || questionLoadSeqRef.current !== seq) return;
+      const canonical = [...new Map(res.map((question) => [question.id, question])).values()];
+      for (const question of canonical) seenQuestionIdsRef.current.add(question.id);
       if (!appendOnly) {
-        setQuestions(res);
+        setQuestions(canonical);
         return;
       }
       setQuestions((current) => {
         const currentIds = new Set(current.map((question) => question.id));
-        const fresh = res.filter((question) => !currentIds.has(question.id));
+        const fresh = canonical.filter((question) => !currentIds.has(question.id));
         return fresh.length > 0 ? [...current, ...fresh] : current;
       });
     } catch {
@@ -438,26 +446,29 @@ export default function IntentDetailPage() {
     }
   }, [intentId, questionsService]);
 
-  const loadAnswered = useCallback(async () => {
+  const loadAnswered = useCallback(async (passive = false) => {
     if (!intentId) return;
+    const seq = ++answeredLoadSeqRef.current;
     try {
       const res = await questionsService.getAnswered({
         scopeType: "intent",
         scopeId: intentId,
+        ...(passive ? { passive: true } : {}),
       });
-      if (activeIntentIdRef.current !== intentId) return;
+      if (activeIntentIdRef.current !== intentId || answeredLoadSeqRef.current !== seq) return;
       const serverEntries = res
         .map(toAnsweredThreadEntry)
         .filter((entry): entry is AnsweredThreadEntry => entry !== null);
-      const serverIds = new Set(serverEntries.map((entry) => entry.id));
+      const canonical = [...new Map(serverEntries.map((entry) => [entry.id, entry])).values()]
+        .sort((left, right) => {
+          const leftTime = Date.parse(left.answeredAt ?? left.detectedAt ?? left.createdAt ?? '') || 0;
+          const rightTime = Date.parse(right.answeredAt ?? right.detectedAt ?? right.createdAt ?? '') || 0;
+          return leftTime - rightTime || left.id.localeCompare(right.id);
+        });
       setAnswered((current) => {
-        const merged = [
-          ...serverEntries,
-          ...current.filter((entry) => !serverIds.has(entry.id)),
-        ];
         const unchanged =
-          merged.length === current.length &&
-          merged.every((entry, index) => {
+          canonical.length === current.length &&
+          canonical.every((entry, index) => {
             const previous = current[index];
             return (
               previous?.id === entry.id &&
@@ -469,7 +480,7 @@ export default function IntentDetailPage() {
               previous.answeredAt === entry.answeredAt
             );
           });
-        return unchanged ? current : merged;
+        return unchanged ? current : canonical;
       });
     } catch {
       // Best-effort hydration; keep optimistic entries on failure.
@@ -548,6 +559,21 @@ export default function IntentDetailPage() {
       active = false;
     };
   }, [intentId, intentsService, loadQuestions, loadAnswered, loadOpportunities]);
+
+  // Reuse the application-wide 30s poll only as an invalidation signal. A
+  // changed authoritative pending set causes one passive exact-intent pending
+  // + answered refetch; passive requests cannot enqueue visit-time pool mining.
+  useEffect(() => {
+    const previous = pendingInvalidationRef.current;
+    if (previous.intentId !== intentId) {
+      pendingInvalidationRef.current = { intentId, revision: pendingRevision };
+      return;
+    }
+    if (!intentId || previous.revision === pendingRevision) return;
+    pendingInvalidationRef.current = { intentId, revision: pendingRevision };
+    void loadQuestions(false, true);
+    void loadAnswered(true);
+  }, [intentId, pendingRevision, loadAnswered, loadQuestions]);
 
   const refreshWorkspaceAfterReaction = useCallback((includeQuestions: boolean) => {
     setNegotiatorRefreshVersion((version) => version + 1);

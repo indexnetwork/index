@@ -1,9 +1,8 @@
 import { isUptakeGuardEnabled, uptakeAuthorityThreshold } from '@indexnetwork/protocol';
 
 import type { OpportunityRow } from '../adapters/database.shared';
-import { uptakeQuestionDatabaseAdapter, type UptakeIntentRow, type UptakePublicUserHint } from '../adapters/uptake-question.database.adapter';
+import type { UptakeIntentRow } from '../adapters/uptake-question.database.adapter';
 import { log } from '../lib/log';
-import { questionerQueue } from '../queues/questioner.queue';
 
 const logger = log.service.from('UptakeQuestionService');
 
@@ -12,7 +11,6 @@ type OpportunityActor = OpportunityRow['actors'][number];
 export interface UptakeQuestionServiceDeps {
   getOpportunity: (id: string) => Promise<OpportunityRow | null>;
   getIntent: (id: string, networkId: string) => Promise<UptakeIntentRow | null>;
-  getPublicUserHint: (userId: string) => Promise<UptakePublicUserHint | null>;
   resolveSafeCommonNetwork: (
     recipientUserId: string,
     counterpartyUserId: string,
@@ -54,26 +52,20 @@ function sharedActorNetworks(
   return [recipient.networkId];
 }
 
-function publicCounterpartyHint(hint: UptakePublicUserHint | null): string {
-  const attributes = [hint?.bio?.trim(), hint?.location?.trim() ? `Location: ${hint.location.trim()}` : '']
-    .filter(Boolean);
-  return attributes.length > 0 ? attributes.join('. ') : 'The other participant in this proposed activity';
-}
-
 /**
  * Generates one advisory uptake question for each eligible non-introducer
  * recipient when an opportunity becomes pending. Every error fails open.
  */
 export class UptakeQuestionService {
   constructor(private readonly deps: UptakeQuestionServiceDeps = {
-    getOpportunity: (id) => uptakeQuestionDatabaseAdapter.getOpportunity(id),
-    getIntent: (id, networkId) => uptakeQuestionDatabaseAdapter.getIntent(id, networkId),
-    getPublicUserHint: (userId) => uptakeQuestionDatabaseAdapter.getPublicUserHint(userId),
-    resolveSafeCommonNetwork: (recipient, counterparty, networks) =>
-      uptakeQuestionDatabaseAdapter.resolveSafeCommonNetwork(recipient, counterparty, networks),
-    hasQuestionForRecipientSourcePurpose: (recipient, sourceType, sourceId, purpose) =>
-      uptakeQuestionDatabaseAdapter.hasQuestionForRecipientSourcePurpose(recipient, sourceType, sourceId, purpose),
+    getOpportunity: async (id) => (await import('../adapters/uptake-question.database.adapter')).uptakeQuestionDatabaseAdapter.getOpportunity(id),
+    getIntent: async (id, networkId) => (await import('../adapters/uptake-question.database.adapter')).uptakeQuestionDatabaseAdapter.getIntent(id, networkId),
+    resolveSafeCommonNetwork: async (recipient, counterparty, networks) =>
+      (await import('../adapters/uptake-question.database.adapter')).uptakeQuestionDatabaseAdapter.resolveSafeCommonNetwork(recipient, counterparty, networks),
+    hasQuestionForRecipientSourcePurpose: async (recipient, sourceType, sourceId, purpose) =>
+      (await import('../adapters/uptake-question.database.adapter')).uptakeQuestionDatabaseAdapter.hasQuestionForRecipientSourcePurpose(recipient, sourceType, sourceId, purpose),
     enqueue: async (input, jobId) => {
+      const { questionerQueue } = await import('../queues/questioner.queue');
       await questionerQueue.addGenerateJob(input, { jobId });
     },
   }) {}
@@ -116,25 +108,36 @@ export class UptakeQuestionService {
     const counterpartyActors = opportunity.actors.filter((actor) =>
       actor.role !== 'introducer' && actor.userId === counterpartyUserId,
     );
+    // Exact recipient routing is ambiguous when either participant has more
+    // than one actor binding on this opportunity.
+    if (recipientActors.length !== 1 || counterpartyActors.length !== 1) return;
 
     for (const recipient of recipientActors) {
       for (const counterparty of counterpartyActors) {
-        const intentId = exactActorIntent(counterparty);
+        const recipientIntentId = exactActorIntent(recipient);
+        const counterpartyIntentId = exactActorIntent(counterparty);
         const networkIds = sharedActorNetworks(recipient, counterparty);
         const networkId = networkIds[0];
-        if (!intentId || !networkId) continue;
+        if (!recipientIntentId || !counterpartyIntentId || !networkId) continue;
 
-        // Resolve the exact actor intent through its network assignment. A stale
-        // or malformed actor intent must never pull private payload from another
-        // network into the recipient's question.
-        const intent = await this.deps.getIntent(intentId, networkId);
+        // Validate both exact actor-bound intents. The counterparty intent
+        // determines uptake eligibility; the recipient's own intent is the
+        // only lawful routing provenance.
+        const [recipientIntent, counterpartyIntent] = await Promise.all([
+          this.deps.getIntent(recipientIntentId, networkId),
+          this.deps.getIntent(counterpartyIntentId, networkId),
+        ]);
         if (
-          !intent
-          || intent.userId !== counterpartyUserId
-          || intent.archivedAt !== null
-          || intent.status !== 'ACTIVE'
-          || intent.felicityAuthority === null
-          || intent.felicityAuthority >= uptakeAuthorityThreshold()
+          !recipientIntent
+          || recipientIntent.userId !== recipientUserId
+          || recipientIntent.archivedAt !== null
+          || (recipientIntent.status !== null && recipientIntent.status !== 'ACTIVE')
+          || !counterpartyIntent
+          || counterpartyIntent.userId !== counterpartyUserId
+          || counterpartyIntent.archivedAt !== null
+          || (counterpartyIntent.status !== null && counterpartyIntent.status !== 'ACTIVE')
+          || counterpartyIntent.felicityAuthority === null
+          || counterpartyIntent.felicityAuthority >= uptakeAuthorityThreshold()
         ) continue;
 
         const network = await this.deps.resolveSafeCommonNetwork(
@@ -151,8 +154,7 @@ export class UptakeQuestionService {
           'uptake',
         )) return;
 
-        const publicHint = await this.deps.getPublicUserHint(counterpartyUserId);
-        const proposedActivity = intent.summary?.trim() || intent.payload.trim();
+        const proposedActivity = counterpartyIntent.summary?.trim() || counterpartyIntent.payload.trim();
         if (!proposedActivity) continue;
 
         await this.deps.enqueue({
@@ -163,10 +165,17 @@ export class UptakeQuestionService {
           sourceId: opportunity.id,
           scopeType: 'network',
           scopeId: network.id,
+          negotiation: {
+            purpose: 'uptake',
+            recipientUserId,
+            recipientIntentId,
+            opportunityId: opportunity.id,
+            networkId: network.id,
+          },
           context: {
             purpose: 'uptake',
             negotiationId: opportunity.id,
-            counterpartyHint: publicCounterpartyHint(publicHint),
+            counterpartyHint: 'the other participant in this proposed activity',
             indexContext: network.title,
             proposedActivity,
           },

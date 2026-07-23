@@ -29,10 +29,12 @@ export interface NegotiationTimeoutQueueDeps {
   queue?: Queue<NegotiationTimeoutQueueJobData>;
   invokeNegotiator?: TimeoutNegotiatorInvoke;
   parkWindowMs?: number;
-  /** Append a synthetic conservative answer to opportunity metadata (ask_user expiry). */
-  storeExpiryAnswer?: (opportunityId: string, disclosureSubject: string) => Promise<void>;
-  /** Dismiss pending negotiation_inflight question rows for an opportunity. */
-  dismissInflightQuestions?: (opportunityId: string) => Promise<void>;
+  /** Authoritatively settle the exact stamped question/task cohort. */
+  settleInflightExpiry?: (input: {
+    taskId: string;
+    opportunityId: string;
+    userId: string;
+  }) => Promise<{ taskId: string; opportunityId: string; userId: string } | null>;
   /** Enqueue the resume continuation after an expiry. */
   enqueueResume?: (opportunityId: string, userId: string) => Promise<void>;
 }
@@ -299,103 +301,26 @@ export class NegotiationTimeoutQueue {
    * the negotiation terminated another way).
    */
   private async handleAskUserExpiry(data: AskUserExpiryJobData): Promise<void> {
-    const { negotiationId, opportunityId, userId, disclosureSubject } = data;
-    const database =
-      this.deps?.database
-      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
-
-    const task = await database.getTask(negotiationId);
-    if (!task) {
-      this.logger.warn('Task not found, skipping ask-user expiry', { negotiationId });
-      return;
-    }
-    if (task.state !== 'input_required') {
-      this.logger.info('Task no longer input_required, skipping ask-user expiry (stale job)', {
+    const { negotiationId, opportunityId, userId } = data;
+    const settle = this.deps?.settleInflightExpiry
+      ?? (async (input: { taskId: string; opportunityId: string; userId: string }) =>
+        (await import('../../adapters/questioner.adapter')).questionerAdapter.expireInflightQuestion(input));
+    const claim = await settle({ taskId: negotiationId, opportunityId, userId });
+    if (!claim) {
+      this.logger.info('Ask-user expiry lost or stale; no continuation enqueued', {
         negotiationId,
-        currentState: task.state,
+        opportunityId,
       });
       return;
     }
-
-    // 1. Record the conservative default as a synthetic answer on the
-    //    opportunity so the resuming session's userAnswers context carries it.
-    const storeExpiryAnswer = this.deps?.storeExpiryAnswer ?? defaultStoreExpiryAnswer;
-    await storeExpiryAnswer(opportunityId, disclosureSubject).catch((err) => {
-      this.logger.error('Failed to store conservative expiry answer', { negotiationId, opportunityId, error: err });
-    });
-
-    // 2. Dismiss the now-moot pending question row(s) so the inbox stops asking.
-    const dismissInflight = this.deps?.dismissInflightQuestions ?? defaultDismissInflightQuestions;
-    await dismissInflight(opportunityId).catch((err) => {
-      this.logger.warn('Failed to dismiss expired inflight questions', { opportunityId, error: err });
-    });
-
-    // 3. Terminally close the paused task — the resume session creates a fresh
-    //    task that inherits seat + protocol version from this one's metadata.
-    await database.updateTaskState(negotiationId, 'canceled', { reason: 'ask_user_window_expired' });
-
-    // 4. Resume via the existing continuation path. Lazy import: keeps this
-    //    module free of a static run-existing dependency (circular-import and
-    //    barrel-mock hazard — run-existing pulls OpportunityGraphFactory from
-    //    the protocol barrel at module scope).
     const enqueueResume = this.deps?.enqueueResume
       ?? (async (oid: string, uid: string) => {
         const { negotiationRunExistingQueue } = await import('./run-existing.queue');
         await negotiationRunExistingQueue.addJob({ opportunityId: oid, userId: uid });
       });
-    await enqueueResume(opportunityId, userId);
-
-    this.logger.info('Ask-user window expired; negotiation resumed with conservative default', {
-      negotiationId,
-      opportunityId,
-      userId,
-    });
+    await enqueueResume(claim.opportunityId, claim.userId);
+    this.logger.info('Ask-user window expired; exact task resumed with conservative default', claim);
   }
-}
-
-/**
- * Default expiry-answer store: appends a synthetic `userAnswers` entry to the
- * opportunity metadata. The resuming IndexNegotiator renders it under
- * "additional context (provided between sessions)".
- */
-async function defaultStoreExpiryAnswer(opportunityId: string, disclosureSubject: string): Promise<void> {
-  const { ChatDatabaseAdapter } = await import('../../adapters/database.adapter');
-  const chatDb = new ChatDatabaseAdapter();
-  const opportunity = await chatDb.getOpportunity(opportunityId);
-  if (!opportunity) return;
-  const metadata = (opportunity.metadata ?? {}) as Record<string, unknown>;
-  const existing = Array.isArray(metadata.userAnswers) ? metadata.userAnswers : [];
-  await chatDb.updateOpportunityMetadata(opportunityId, {
-    ...metadata,
-    userAnswers: [
-      ...existing,
-      {
-        questionId: `ask-user-expired-${opportunityId}`,
-        selectedOptions: [],
-        freeText: `(no response) The client did not answer the negotiator's question about "${disclosureSubject}" within the allowed window. Conservative default applies: do NOT disclose or commit on this subject; proceed without it.`,
-        answeredAt: new Date().toISOString(),
-      },
-    ],
-  });
-}
-
-/** Default dismissal: pending negotiation_inflight rows for the opportunity. */
-async function defaultDismissInflightQuestions(opportunityId: string): Promise<void> {
-  const [{ default: db }, { questions }, { and, eq, sql }] = await Promise.all([
-    import('../../lib/drizzle/drizzle'),
-    import('../../schemas/database.schema'),
-    import('drizzle-orm/sql'),
-  ]);
-  await db
-    .update(questions)
-    .set({ status: 'dismissed' })
-    .where(
-      and(
-        eq(questions.status, 'pending'),
-        sql`${questions.detection}->>'mode' = 'negotiation_inflight'`,
-        sql`${questions.detection}->>'sourceId' = ${opportunityId}`,
-      ),
-    );
 }
 
 /** Singleton negotiation timeout queue instance. */
