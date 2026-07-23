@@ -105,6 +105,10 @@ export interface NegotiationGraphLike {
      * opportunity → conversation-scoped tie-break → fall back to sourceUser.id.
      */
     initiatorUserId?: string;
+    /** Exact settled task for a durable ask_user continuation. */
+    resumeFromTaskId?: string;
+    /** Deterministic durable settlement/outbox identifier. */
+    continuationSettlementId?: string;
   }): Promise<{
     outcome: NegotiationOutcome | null;
     messages?: NegotiationMessage[];
@@ -225,6 +229,16 @@ export const NegotiationGraphState = Annotation.Root({
     default: () => undefined,
   }),
   opportunityUpdatedAt: Annotation<Date | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+  /** Exact prior task selected by a durable continuation; bypasses latest-task lookup. */
+  resumeFromTaskId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+  /** Deterministic settlement key used to idempotently reuse a successor task. */
+  continuationSettlementId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

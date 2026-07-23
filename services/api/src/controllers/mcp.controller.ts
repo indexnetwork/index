@@ -46,6 +46,7 @@ import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
+import { questionService } from '../services/question.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
@@ -96,6 +97,40 @@ const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferre
  * synchronous chat-question persistence plus the in-memory answer wait bus
  * (resolved by QuestionEvents.onAnswered/onDismissed wiring in main.ts).
  */
+const findPendingQuestionsForTools: NonNullable<ToolDeps['findPendingQuestions']> = async (userId, filters) => {
+  const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
+    ? filters
+    : { ...filters, excludeModes: ['pool_discovery'] });
+  return rows.map((row): PendingQuestionSummary => ({
+    id: row.id,
+    title: row.payload.title,
+    prompt: row.payload.prompt,
+    options: row.payload.options,
+    multiSelect: row.payload.multiSelect,
+    mode: row.detection.mode,
+    ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
+    sourceType: row.detection.sourceType,
+    sourceId: row.detection.sourceId,
+    createdAt: row.createdAt,
+    ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+    actors: row.actors.map((actor) => ({
+      userId: actor.userId,
+      ...(actor.networkId ? { networkId: actor.networkId } : {}),
+    })),
+  }));
+};
+
+const answerPendingQuestionForTools: NonNullable<ToolDeps['answerPendingQuestion']> = async (
+  userId,
+  questionId,
+  answer,
+) => questionService.answer(questionId, userId, {
+  selectedOptions: answer.selectedOptions,
+  ...(answer.freeText !== undefined ? { freeText: answer.freeText } : {}),
+  answeredBy: userId,
+  answeredAt: new Date().toISOString(),
+});
+
 const chatQuestionsHost: ChatQuestionsHost = {
   persist: async (batch: PersistableQuestion[]): Promise<PersistedQuestion[]> => {
     const ids = await questionerAdapter.persist(batch as AdapterPersistableQuestion[]);
@@ -156,6 +191,8 @@ const protocolDeps = {
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
   questionerDatabase: questionerAdapter,
+  findPendingQuestions: findPendingQuestionsForTools,
+  answerPendingQuestion: answerPendingQuestionForTools,
   getUserContextText: ensureGlobalUserContext,
   chatQuestions: chatQuestionsHost,
   ...(isQuestionerEnabled() && {
@@ -680,40 +717,8 @@ function createMcpServerInstance(): McpServer {
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
-    findPendingQuestions: async (
-      userId: string,
-      filters?: {
-        sourceType?: string;
-        sourceId?: string;
-        purpose?: import('@indexnetwork/protocol').QuestionPurpose;
-        networkId?: string;
-        scopeType?: 'intent';
-        scopeId?: string;
-        modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery'>;
-        limit?: number;
-      },
-    ) => {
-      const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
-        ? filters
-        : { ...filters, excludeModes: ['pool_discovery'] });
-      return rows.map((row): PendingQuestionSummary => ({
-        id: row.id,
-        title: row.payload.title,
-        prompt: row.payload.prompt,
-        options: row.payload.options,
-        multiSelect: row.payload.multiSelect,
-        mode: row.detection.mode,
-        ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
-        sourceType: row.detection.sourceType,
-        sourceId: row.detection.sourceId,
-        createdAt: row.createdAt,
-        ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-        actors: row.actors.map((actor) => ({
-          userId: actor.userId,
-          ...(actor.networkId ? { networkId: actor.networkId } : {}),
-        })),
-      }));
-    },
+    findPendingQuestions: protocolDeps.findPendingQuestions,
+    answerPendingQuestion: protocolDeps.answerPendingQuestion,
     graphs,
   };
 

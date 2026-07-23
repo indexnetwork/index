@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { NegotiationQuestionCandidateSchema, POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled, poolQuestionCycleKey, poolQuestionsMode } from '@indexnetwork/protocol';
+import { NegotiationQuestionCandidateSchema, POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled, isValidQuestionerInputContract, poolQuestionCycleKey, poolQuestionsMode } from '@indexnetwork/protocol';
 import type { NegotiationQuestionProvenance, PersistableQuestion, PoolDiscoveryContext, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -11,6 +11,7 @@ import { IntentRecoveryRefinementService, type IntentRecoveryCompletion } from '
 import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool/question.shared';
 import type { PoolQuestionPostPersist } from './pool/question.shared';
 import { isPoolArtifactFresh } from './pool/poolquestions.constants';
+import { isSafeNegotiationQuestionPayload } from '../lib/question/negotiation-question.contract';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
@@ -97,7 +98,7 @@ export class QuestionerQueue {
   /** Resolve the production adapter lazily so provider-free queue tests never import Drizzle. */
   private async getAdapter(): Promise<QuestionerQueueAdapter & Pick<QuestionerAdapter, 'getIntentLifecycle'>> {
     if (!this.adapter) {
-      const { questionerAdapter } = await import('../adapters/questioner.adapter');
+      const { questionerAdapter } = await import('../adapters/questioner.adapter.instance');
       this.adapter = questionerAdapter;
     }
     return this.adapter as QuestionerQueueAdapter & Pick<QuestionerAdapter, 'getIntentLifecycle'>;
@@ -144,6 +145,9 @@ export class QuestionerQueue {
     data: QuestionerJobData,
     options?: { jobId?: string; priority?: number },
   ): Promise<Job<QuestionerJobData>> {
+    if (name === 'generate_questions' && !isValidQuestionerInputContract(data as QuestionerInput)) {
+      throw new Error('Invalid questioner mode/purpose/context contract');
+    }
     return this.queue.add(name, data, {
       jobId: options?.jobId,
       priority: options?.priority,
@@ -202,6 +206,10 @@ export class QuestionerQueue {
         userId: data.userId,
         sourceId: data.sourceId,
       });
+      return;
+    }
+    if (!isValidQuestionerInputContract(data)) {
+      this.logger.warn('Question generation rejected invalid mode/purpose/context contract', { mode: data.mode });
       return;
     }
     const adapter = await this.getAdapter();
@@ -325,7 +333,24 @@ export class QuestionerQueue {
 
     const generatedQuestions = data.purpose === 'uptake'
       ? result.questions.slice(0, 1)
-      : result.questions;
+      : (data.mode === 'negotiation' || data.mode === 'negotiation_inflight')
+        ? result.questions.slice(0, 2)
+        : result.questions;
+    if (
+      negotiationAdmission
+      && (
+        generatedQuestions.length === 0
+        || result.strategies.length < generatedQuestions.length
+        || result.underspecificationTypes.length < generatedQuestions.length
+        || generatedQuestions.some((question) => !isSafeNegotiationQuestionPayload(question))
+      )
+    ) {
+      this.logger.warn('Negotiation question output rejected by deterministic safety gate', {
+        mode: data.mode,
+        sourceId: data.sourceId,
+      });
+      return;
+    }
     const batch: PersistableQuestion[] = generatedQuestions.map((question, i) => ({
       detection: {
         mode: data.mode,

@@ -162,6 +162,13 @@ export function resolveInitialStatus(
  * Options passed to the graph
  */
 export interface OpportunityGraphOptions {
+  /** Exact durable ask_user settlement being resumed; internal queue path only. */
+  negotiationContinuation?: {
+    taskId: string;
+    settlementId: string;
+    recipientIntentId: string;
+    networkId: string;
+  };
   /** Initial status for created opportunities (default: 'pending') */
   initialStatus?: OpportunityStatus;
   /** Minimum score threshold (default: 50) */

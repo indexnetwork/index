@@ -3,7 +3,6 @@ import { resumeInflightNegotiationFactory, type InflightResumeDeps } from "../qu
 
 function makeDeps(overrides?: Partial<InflightResumeDeps>): InflightResumeDeps {
   return {
-    cancelAskUserExpiry: mock(async () => {}),
     enqueueResume: mock(async () => {}),
     ...overrides,
   };
@@ -16,6 +15,9 @@ const input = {
   selectedOptions: ["Yes, share it"],
   freeText: "but only the range",
   taskId: "task-exact",
+  settlementId: 'negotiation-question-settlement-v1-task-exact',
+  recipientIntentId: 'intent-1',
+  networkId: 'network-1',
 };
 
 describe("resumeInflightNegotiationFactory", () => {
@@ -25,18 +27,23 @@ describe("resumeInflightNegotiationFactory", () => {
     deps = makeDeps();
   });
 
-  it("cancels and resumes only the exact DB-claimed task", async () => {
+  it("enqueues only the exact DB-claimed settlement and leaves recovery armed", async () => {
     const resume = resumeInflightNegotiationFactory(deps);
     await resume(input);
 
-    expect(deps.cancelAskUserExpiry).toHaveBeenCalledWith("task-exact");
-    expect(deps.enqueueResume).toHaveBeenCalledWith("opp-1", "u-1");
+    expect(deps.enqueueResume).toHaveBeenCalledWith({
+      opportunityId: 'opp-1',
+      userId: 'u-1',
+      taskId: 'task-exact',
+      settlementId: 'negotiation-question-settlement-v1-task-exact',
+      recipientIntentId: 'intent-1',
+      networkId: 'network-1',
+    });
   });
 
-  it("a timer-cancel failure is non-fatal after the DB task claim", async () => {
-    deps = makeDeps({ cancelAskUserExpiry: mock(async () => { throw new Error("redis down"); }) });
-    await resumeInflightNegotiationFactory(deps)(input);
-    expect(deps.enqueueResume).toHaveBeenCalledWith("opp-1", "u-1");
+  it("surfaces a first enqueue failure so answer retry can reconcile", async () => {
+    deps = makeDeps({ enqueueResume: mock(async () => { throw new Error("redis down"); }) });
+    await expect(resumeInflightNegotiationFactory(deps)(input)).rejects.toThrow('redis down');
   });
 
   it("records an optional private disclosure rule without affecting resume", async () => {

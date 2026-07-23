@@ -4,8 +4,8 @@
  * The QuestionerAdapter has already locked/revalidated the exact provenance,
  * stored the answer, closed only the stamped input_required task, and won the
  * answer-vs-timeout claim. This handler must never re-resolve a "latest" task
- * or repeat shared mutation; it only cancels the exact timer, records optional
- * private memory, and enqueues one continuation.
+ * or repeat shared mutation; it enqueues the exact durable continuation and
+ * records optional private memory. The timer stays armed as recovery.
  */
 
 import { log } from '../../lib/log';
@@ -13,10 +13,15 @@ import { log } from '../../lib/log';
 const logger = log.service.from('QuestionAnswerNegotiationInflight');
 
 export interface InflightResumeDeps {
-  /** Cancel the pending ask_user answer-window timer for the exact task. */
-  cancelAskUserExpiry: (negotiationId: string) => Promise<void>;
-  /** Enqueue the run-existing continuation. */
-  enqueueResume: (opportunityId: string, userId: string) => Promise<void>;
+  /** Enqueue the exact durable run-existing continuation. */
+  enqueueResume: (input: {
+    opportunityId: string;
+    userId: string;
+    taskId: string;
+    settlementId: string;
+    recipientIntentId: string;
+    networkId: string;
+  }) => Promise<void>;
   /** Optional private disclosure-rule memory write. */
   recordDisclosureRule?: (input: {
     userId: string;
@@ -36,21 +41,31 @@ export function resumeInflightNegotiationFactory(deps: InflightResumeDeps) {
     selectedOptions: string[];
     freeText?: string;
     taskId: string;
+    settlementId: string;
+    recipientIntentId: string;
+    networkId: string;
   }): Promise<void> => {
-    await deps.cancelAskUserExpiry(input.taskId).catch((err) => {
-      // Non-fatal: the timer will observe the task is no longer input_required.
-      logger.warn('Failed to cancel settled ask-user expiry timer', {
-        negotiationId: input.taskId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+    // Durable settlement is already committed. Enqueue first; canceling the
+    // recovery timer before this acknowledgement would recreate the crash hole.
+    await deps.enqueueResume({
+      opportunityId: input.opportunityId,
+      userId: input.userId,
+      taskId: input.taskId,
+      settlementId: input.settlementId,
+      recipientIntentId: input.recipientIntentId,
+      networkId: input.networkId,
     });
-    deps.recordDisclosureRule?.(input).catch((err) => {
-      logger.warn('Failed to record disclosure rule from ask_user answer', {
-        questionId: input.questionId,
-        error: err instanceof Error ? err.message : String(err),
+    // Keep the original delayed timeout armed as the durable recovery sweep.
+    // If the continuation finishes first it observes `completed` and no-ops;
+    // if Redis/worker delivery is lost it re-enqueues this same settlement ID.
+    if (input.selectedOptions.length > 0 || input.freeText) {
+      deps.recordDisclosureRule?.(input).catch((err) => {
+        logger.warn('Failed to record disclosure rule from ask_user answer', {
+          questionId: input.questionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
-    await deps.enqueueResume(input.opportunityId, input.userId);
+    }
     logger.info('Authoritatively settled inflight task resumed', {
       negotiationId: input.taskId,
       opportunityId: input.opportunityId,

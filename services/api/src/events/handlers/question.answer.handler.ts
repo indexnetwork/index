@@ -12,8 +12,8 @@
  * - intent:    enqueue intent refinement with the new context
  * - negotiation: no-op after authoritative adapter settlement (uptake private;
  *              ordinary shared context already committed)
- * - negotiation_inflight: after authoritative exact-task settlement, cancel
- *              that timer and enqueue the run-existing continuation
+ * - negotiation_inflight: after authoritative exact-task settlement, enqueue
+ *              the durable run-existing continuation; its timer remains recovery
  * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
  *              tool call resumes the paused chat turn with the answer
  * - pool_discovery: deterministically re-rank the live pool, narrate the
@@ -49,6 +49,11 @@ interface QuestionAnsweredPayload {
     authoritative: true;
     purpose: 'uptake' | 'stalled_followup' | 'inflight_consultation';
     taskId?: string;
+    settlementId?: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    continuationStatus?: 'requested' | 'completed';
     resumeClaimed: boolean;
   };
 }
@@ -75,8 +80,8 @@ export interface QuestionAnswerHandlerDeps {
 
   /**
    * Resume a negotiation paused on an `ask_user` client consultation:
-   * store the answer, cancel the answer-window timer, close the paused
-   * task, and enqueue the run-existing continuation.
+   * enqueue the exact durable run-existing continuation. The adapter already
+   * stored the answer/closed the task; the answer-window timer remains recovery.
    */
   resumeInflightNegotiation: (input: {
     userId: string;
@@ -85,6 +90,9 @@ export interface QuestionAnswerHandlerDeps {
     selectedOptions: string[];
     freeText?: string;
     taskId: string;
+    settlementId: string;
+    recipientIntentId: string;
+    networkId: string;
   }) => Promise<void>;
 
   /**
@@ -159,14 +167,18 @@ export async function handleQuestionAnswered(
           !payload.settlement?.authoritative
           || !payload.settlement.resumeClaimed
           || !payload.settlement.taskId
+          || !payload.settlement.settlementId
         ) break;
         await deps.resumeInflightNegotiation({
           userId,
-          opportunityId: sourceId,
+          opportunityId: payload.settlement.opportunityId,
           questionId,
           selectedOptions: answer.selectedOptions,
           freeText: answer.freeText,
           taskId: payload.settlement.taskId,
+          settlementId: payload.settlement.settlementId,
+          recipientIntentId: payload.settlement.recipientIntentId,
+          networkId: payload.settlement.networkId,
         });
         break;
 
@@ -194,5 +206,9 @@ export async function handleQuestionAnswered(
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
+    // The DB settlement is durable and the answer-window timer remains armed.
+    // Surface enqueue failures so a caller retry can reconcile immediately;
+    // Bull/timeout redelivery remains the process-boundary fallback.
+    if (mode === 'negotiation_inflight') throw err;
   }
 }

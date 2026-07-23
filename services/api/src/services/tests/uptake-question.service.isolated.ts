@@ -111,15 +111,17 @@ describe('UptakeQuestionService', () => {
       context: {
         purpose: 'uptake',
         negotiationId: OPPORTUNITY,
-        counterpartyHint: 'the other participant in this proposed activity',
-        indexContext: 'Builders Community',
-        proposedActivity: 'Host a TypeScript workshop',
+        counterpartyHint: 'the other participant',
+        indexContext: 'the selected network',
+        proposedActivity: 'a potential collaboration that may require clarification before you decide',
       },
     });
     expect(JSON.stringify(input)).not.toContain('45');
     expect(JSON.stringify(input)).not.toContain('private reasoning');
     expect(JSON.stringify(input)).not.toContain('Open-source maintainer');
     expect(JSON.stringify(input)).not.toContain('Berlin');
+    expect(JSON.stringify(input)).not.toContain('TypeScript workshop');
+    expect(JSON.stringify(input)).not.toContain('Builders Community');
     expect(jobId).toBe(`uptake-${RECIPIENT}-${OPPORTUNITY}`);
   });
 

@@ -131,28 +131,51 @@ describe('NegotiationTimeoutQueue.handleTimeout', () => {
 
 // ─── ask_user answer-window expiry (IND-401) ─────────────────────────────────
 
-const expiryData = { negotiationId: 'task-1', opportunityId: 'opp-1', userId: 'u-src', disclosureSubject: 'budget range' };
+const expiryData = {
+  negotiationId: 'task-1',
+  settlementId: 'negotiation-question-settlement-v1-task-1',
+  opportunityId: 'opp-1',
+  userId: 'u-src',
+  recipientIntentId: 'intent-src',
+  networkId: 'network-1',
+};
 
 describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
-  it('authoritative settlement resumes the exact stamped task at most once across duplicate delivery', async () => {
-    let available = true;
+  it('redelivers the same exact settlement payload for deterministic queue deduplication', async () => {
     const settled: string[] = [];
-    const resumed: Array<{ opportunityId: string; userId: string }> = [];
+    const resumed: Array<Omit<typeof expiryData, 'negotiationId'> & { taskId: string }> = [];
     const q = createQueue({
-      settleInflightExpiry: async ({ taskId, opportunityId, userId }) => {
-        settled.push(taskId);
-        if (!available) return null;
-        available = false;
-        return { taskId, opportunityId, userId };
+      settleInflightExpiry: async (input) => {
+        settled.push(input.taskId);
+        return input;
       },
-      enqueueResume: async (opportunityId, userId) => { resumed.push({ opportunityId, userId }); },
+      enqueueResume: async (input) => { resumed.push(input); },
     });
 
     await q.processJob('ask_user_expiry', expiryData);
     await q.processJob('ask_user_expiry', expiryData);
 
     expect(settled).toEqual(['task-1', 'task-1']);
-    expect(resumed).toEqual([{ opportunityId: 'opp-1', userId: 'u-src' }]);
+    const { negotiationId, ...coordinates } = expiryData;
+    const expected = { ...coordinates, taskId: negotiationId };
+    expect(resumed).toEqual([expected, expected]);
+  });
+
+  it('Bull redelivery reconciles a first continuation enqueue rejection', async () => {
+    let attempts = 0;
+    const resumed: string[] = [];
+    const q = createQueue({
+      settleInflightExpiry: async (input) => input,
+      enqueueResume: async (input) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('redis unavailable');
+        resumed.push(input.settlementId);
+      },
+    });
+
+    await expect(q.processJob('ask_user_expiry', expiryData)).rejects.toThrow('redis unavailable');
+    await expect(q.processJob('ask_user_expiry', expiryData)).resolves.toBeUndefined();
+    expect(resumed).toEqual(['negotiation-question-settlement-v1-task-1']);
   });
 
   it('authoritative stale settlement performs no continuation', async () => {
@@ -164,10 +187,16 @@ describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
 
   it('enqueueAskUserExpiry adds a delayed job under its own jobId namespace', async () => {
     const q = createQueue();
-    await q.enqueueAskUserExpiry('task-1', { opportunityId: 'opp-1', userId: 'u-src', disclosureSubject: 's' }, 86_400_000);
+    await q.enqueueAskUserExpiry('task-1', {
+      settlementId: 'negotiation-question-settlement-v1-task-1',
+      opportunityId: 'opp-1',
+      userId: 'u-src',
+      recipientIntentId: 'intent-src',
+      networkId: 'network-1',
+    }, 86_400_000);
     expect(mockAdd).toHaveBeenCalledWith(
       'ask_user_expiry',
-      { negotiationId: 'task-1', opportunityId: 'opp-1', userId: 'u-src', disclosureSubject: 's' },
+      expiryData,
       expect.objectContaining({ jobId: 'neg-askuser-task-1', delay: 86_400_000 }),
     );
   });

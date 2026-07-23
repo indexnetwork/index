@@ -278,7 +278,7 @@ describe('Intent page — negotiator chat gating', () => {
       }];
       return { success: true };
     });
-    renderIntentPage();
+    const view = renderIntentPage();
 
     expect(await screen.findByText('Technical founder')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'answer-q-1' }));
@@ -287,6 +287,19 @@ describe('Intent page — negotiator chat gating', () => {
     expect(screen.getByText('Technical founder')).toBeInTheDocument();
     expect(screen.getByTestId('answered-entry-q-1').getAttribute('data-answered-at')).not.toBe('');
     expect(mocks.questionsService.answer).toHaveBeenCalledWith('q-1', { selectedOptions: ['Berlin'] });
+
+    mocks.questionsService.getPending.mockClear();
+    mocks.questionsService.getAnswered.mockClear();
+    mocks.questionRevision = 'revision-after-continuation';
+    view.rerender(
+      <MemoryRouter initialEntries={['/i/intent-1']}>
+        <Routes><Route path="/i/:intentId" element={<IntentDetailPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(mocks.questionsService.getAnswered).toHaveBeenCalledWith({
+      scopeType: 'intent', scopeId: 'intent-1', passive: true,
+    }));
+    expect(screen.getAllByTestId('answered-entry-q-1')).toHaveLength(1);
   });
 
   test('pending-set invalidation performs one passive exact-intent pending+answered refetch', async () => {
@@ -316,6 +329,15 @@ describe('Intent page — negotiator chat gating', () => {
       scopeId: 'intent-1',
       passive: true,
     });
+
+    view.rerender(
+      <MemoryRouter initialEntries={['/i/intent-1']}>
+        <Routes><Route path="/i/:intentId" element={<IntentDetailPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await Promise.resolve();
+    expect(mocks.questionsService.getPending).toHaveBeenCalledTimes(1);
+    expect(mocks.questionsService.getAnswered).toHaveBeenCalledTimes(1);
   });
 
   test('runtime bootstrap failure → falls back to the questions block', async () => {

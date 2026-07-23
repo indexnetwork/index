@@ -7,10 +7,15 @@ interface QuestionAnswer {
 
 type QuestionMode = 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
 
-type NegotiationSettlement = {
+export type NegotiationSettlement = {
   authoritative: true;
   purpose: 'uptake' | 'stalled_followup' | 'inflight_consultation';
   taskId?: string;
+  settlementId?: string;
+  recipientIntentId: string;
+  opportunityId: string;
+  networkId: string;
+  continuationStatus?: 'requested' | 'completed';
   resumeClaimed: boolean;
 };
 
@@ -52,7 +57,7 @@ interface QuestionDismissedPayload {
  */
 export const QuestionEvents = {
   onCreated: (_payload: QuestionCreatedPayload): void => {},
-  onAnswered: (_payload: QuestionAnsweredPayload): void => {},
+  onAnswered: (_payload: QuestionAnsweredPayload): void | Promise<void> => {},
   /** Fired on dismissal — used to unblock chat turns waiting on ask_user_question. */
-  onDismissed: (_payload: QuestionDismissedPayload): void => {},
+  onDismissed: (_payload: QuestionDismissedPayload): void | Promise<void> => {},
 };

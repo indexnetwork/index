@@ -1,4 +1,4 @@
-import { isUptakeGuardEnabled, uptakeAuthorityThreshold } from '@indexnetwork/protocol';
+import { isUptakeGuardEnabled, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, uptakeAuthorityThreshold } from '@indexnetwork/protocol';
 
 import type { OpportunityRow } from '../adapters/database.shared';
 import type { UptakeIntentRow } from '../adapters/uptake-question.database.adapter';
@@ -154,9 +154,6 @@ export class UptakeQuestionService {
           'uptake',
         )) return;
 
-        const proposedActivity = counterpartyIntent.summary?.trim() || counterpartyIntent.payload.trim();
-        if (!proposedActivity) continue;
-
         await this.deps.enqueue({
           mode: 'negotiation',
           purpose: 'uptake',
@@ -175,9 +172,9 @@ export class UptakeQuestionService {
           context: {
             purpose: 'uptake',
             negotiationId: opportunity.id,
-            counterpartyHint: 'the other participant in this proposed activity',
-            indexContext: network.title,
-            proposedActivity,
+            counterpartyHint: NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
+            indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
+            proposedActivity: NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY,
           },
         }, `uptake-${recipientUserId}-${opportunity.id}`);
         return;

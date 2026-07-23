@@ -234,8 +234,9 @@ describe('QuestionerQueue', () => {
       scopeType: 'network', scopeId: 'network-1',
       negotiation: uptakeCandidate,
       context: {
-        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'A builder',
-        indexContext: 'Community', proposedActivity: 'Host a workshop',
+        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
+        indexContext: 'the selected network',
+        proposedActivity: 'a potential collaboration that may require clarification before you decide',
       },
     });
 
@@ -296,7 +297,7 @@ describe('QuestionerQueue', () => {
       negotiation: candidate,
       context: {
         negotiationId: 'task-1',
-        counterpartyHint: 'the other participant in this match',
+        counterpartyHint: 'the other participant',
         indexContext: 'the selected network',
         outcomeReason: 'stalled',
         recipientIntent: 'Find a collaborator',
@@ -349,7 +350,7 @@ describe('QuestionerQueue', () => {
       userId: 'user-candidate', sourceType: 'opportunity', sourceId: 'opp-1',
       negotiation: candidate,
       context: {
-        negotiationId: 'task-inflight', counterpartyHint: 'the other participant in this match',
+        negotiationId: 'task-inflight', counterpartyHint: 'the other participant',
         disclosureSubject: 'timing', indexContext: 'the selected network',
       },
     });
@@ -374,7 +375,8 @@ describe('QuestionerQueue', () => {
       sourceType: 'opportunity', sourceId: 'opp-1', negotiation: uptakeCandidate,
       context: {
         purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
-        indexContext: 'Community', proposedActivity: 'Activity',
+        indexContext: 'the selected network',
+        proposedActivity: 'a potential collaboration that may require clarification before you decide',
       },
     });
     expect(invoked).toBe(false);
@@ -408,7 +410,8 @@ describe('QuestionerQueue', () => {
       sourceType: 'opportunity', sourceId: 'opp-1', negotiation: uptakeCandidate,
       context: {
         purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
-        indexContext: 'Community', proposedActivity: 'Activity',
+        indexContext: 'the selected network',
+        proposedActivity: 'a potential collaboration that may require clarification before you decide',
       },
     });
     expect(invoked).toBe(true);
@@ -438,7 +441,8 @@ describe('QuestionerQueue', () => {
       sourceType: 'opportunity', sourceId: 'opp-1', negotiation: uptakeCandidate,
       context: {
         purpose: 'uptake' as const, negotiationId: 'opp-1', counterpartyHint: 'the other participant',
-        indexContext: 'Community', proposedActivity: 'Activity',
+        indexContext: 'the selected network',
+        proposedActivity: 'a potential collaboration that may require clarification before you decide',
       },
     };
     const winningRace = makeQueue('questions_negotiation_provenance_uniq');
@@ -469,8 +473,9 @@ describe('QuestionerQueue', () => {
       sourceType: 'opportunity', sourceId: 'opp-1',
       negotiation: uptakeCandidate,
       context: {
-        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'Builder',
-        indexContext: 'Community', proposedActivity: 'Activity',
+        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
+        indexContext: 'the selected network',
+        proposedActivity: 'a potential collaboration that may require clarification before you decide',
       },
     });
     expect(invoked).toBe(0);
@@ -528,6 +533,108 @@ describe('QuestionerQueue', () => {
       },
     });
     expect(persisted).toBe(true);
+  });
+
+  it('persists no inflight row when the generator returns zero questions', async () => {
+    let persisted = false;
+    const candidate = {
+      purpose: 'inflight_consultation' as const,
+      recipientUserId: 'user-1', recipientIntentId: 'intent-1', opportunityId: 'opp-1',
+      taskId: 'task-1', networkId: 'network-1',
+    };
+    const queue = new QuestionerQueue({
+      adapter: {
+        findPending: async () => [], persist: async () => [],
+        prepareNegotiationQuestion: async () => ({
+          version: 1, ...candidate, intentFingerprint: 'fp', opportunityStatus: 'negotiating',
+          opportunityUpdatedAt: '2026-07-23T00:00:00.000Z', taskState: 'input_required',
+          taskUpdatedAt: '2026-07-23T00:00:01.000Z',
+        }),
+        persistFreshNegotiationQuestions: async () => { persisted = true; return []; },
+      },
+      agent: { invoke: async () => null },
+    });
+    queues.push(queue);
+    await queue.processJob('generate_questions', {
+      mode: 'negotiation_inflight', purpose: 'inflight_consultation', userId: 'user-1',
+      sourceType: 'opportunity', sourceId: 'opp-1', negotiation: candidate,
+      context: {
+        negotiationId: 'task-1', counterpartyHint: 'the other participant',
+        indexContext: 'the selected network', disclosureSubject: 'budget range',
+      },
+    });
+    expect(persisted).toBe(false);
+  });
+
+  it('rejects crossed negotiation mode/purpose contracts before generation', async () => {
+    let invoked = 0;
+    const queue = new QuestionerQueue({
+      adapter: { findPending: async () => [], persist: async () => [] },
+      agent: { invoke: async () => { invoked += 1; return null; } },
+    });
+    queues.push(queue);
+    const crossed = [
+      {
+        mode: 'negotiation', purpose: 'inflight_consultation', negotiation: {
+          purpose: 'inflight_consultation', recipientUserId: 'user-1', recipientIntentId: 'intent-1',
+          opportunityId: 'opp-1', taskId: 'task-1', networkId: 'network-1',
+        },
+        context: { negotiationId: 'task-1', counterpartyHint: 'the other participant', indexContext: 'the selected network', disclosureSubject: 'timing' },
+      },
+      {
+        mode: 'negotiation_inflight', purpose: 'stalled_followup', negotiation: {
+          purpose: 'stalled_followup', recipientUserId: 'user-1', recipientIntentId: 'intent-1',
+          opportunityId: 'opp-1', taskId: 'task-1', networkId: 'network-1',
+        },
+        context: { negotiationId: 'task-1', counterpartyHint: 'the other participant', indexContext: 'the selected network', outcomeReason: 'stalled', recipientIntent: 'Find help' },
+      },
+      {
+        mode: 'negotiation_inflight', purpose: 'uptake', negotiation: uptakeCandidate,
+        context: { purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant', indexContext: 'the selected network', proposedActivity: 'a potential collaboration that may require clarification before you decide' },
+      },
+    ];
+    for (const input of crossed) {
+      await queue.processJob('generate_questions', {
+        ...input,
+        userId: 'user-1', sourceType: 'opportunity', sourceId: 'opp-1',
+      } as never);
+    }
+    expect(invoked).toBe(0);
+  });
+
+  it('rejects tainted visible negotiation output before final persistence', async () => {
+    let persisted = false;
+    const queue = new QuestionerQueue({
+      adapter: {
+        findPending: async () => [], persist: async () => [],
+        prepareNegotiationQuestion: async () => uptakeAdmission,
+        persistFreshNegotiationQuestions: async () => { persisted = true; return ['q-1']; },
+      },
+      agent: { invoke: async () => ({
+        questions: [{
+          title: "Alice's profile",
+          prompt: 'PRIVATE TRANSCRIPT matchReason 123e4567-e89b-12d3-a456-426614174000',
+          options: [
+            { label: 'Same event', description: 'They both attended the same event' },
+            { label: 'No', description: 'Do not share' },
+          ],
+          multiSelect: false,
+          evidence: 'internal opportunityId',
+        }],
+        strategies: ['surface_missing_detail'], underspecificationTypes: [null],
+      }) },
+    });
+    queues.push(queue);
+    await queue.processJob('generate_questions', {
+      mode: 'negotiation', purpose: 'uptake', userId: 'user-1',
+      sourceType: 'opportunity', sourceId: 'opp-1', negotiation: uptakeCandidate,
+      context: {
+        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
+        indexContext: 'the selected network',
+        proposedActivity: 'a potential collaboration that may require clarification before you decide',
+      },
+    });
+    expect(persisted).toBe(false);
   });
 
   it('omits actor networkId for unscoped question jobs', async () => {

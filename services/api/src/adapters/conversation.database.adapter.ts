@@ -1408,6 +1408,60 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Idempotently create or recover the exact successor for one durable
+   * ask_user settlement. The advisory lock and exact prior-task validation
+   * prevent concurrent Bull deliveries from minting sibling continuations.
+   */
+  async getOrCreateNegotiationContinuationTask(input: {
+    priorTaskId: string;
+    settlementId: string;
+    conversationId: string;
+    opportunityId: string;
+    metadata: Record<string, unknown>;
+  }): Promise<(Task & { created: boolean }) | null> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`negotiation-continuation:${input.settlementId}`}, 0))`);
+      const [prior] = await tx.select({ id: schema.tasks.id })
+        .from(schema.tasks)
+        .where(and(
+          eq(schema.tasks.id, input.priorTaskId),
+          eq(schema.tasks.conversationId, input.conversationId),
+          eq(schema.tasks.state, 'canceled'),
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${input.opportunityId}`,
+          sql`${schema.tasks.metadata}->'questionSettlement'->>'settlementId' = ${input.settlementId}`,
+        ))
+        .limit(1)
+        .for('update');
+      if (!prior) return null;
+
+      const existing = await tx.select()
+        .from(schema.tasks)
+        .where(and(
+          eq(schema.tasks.conversationId, input.conversationId),
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${input.opportunityId}`,
+          sql`${schema.tasks.metadata}->>'continuationSettlementId' = ${input.settlementId}`,
+          sql`${schema.tasks.metadata}->>'resumeFromTaskId' = ${input.priorTaskId}`,
+        ))
+        .orderBy(schema.tasks.createdAt, schema.tasks.id)
+        .limit(2)
+        .for('update');
+      if (existing.length > 1) throw new Error('Duplicate negotiation continuation tasks');
+      if (existing[0]) return { ...existing[0], created: false };
+
+      const [created] = await tx.insert(schema.tasks).values({
+        conversationId: input.conversationId,
+        metadata: {
+          ...input.metadata,
+          continuationSettlementId: input.settlementId,
+          resumeFromTaskId: input.priorTaskId,
+        },
+      }).returning();
+      return { ...created, created: true };
+    });
+  }
+
+  /**
    * Lists old negotiation tasks that may have lost their kickoff or worker job.
    * The state-specific age thresholds deliberately use createdAt for submitted
    * tasks and updatedAt for working tasks.

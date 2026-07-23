@@ -1,6 +1,6 @@
 import { log } from '../lib/log';
 
-import { QuestionerAdapter, questionerAdapter } from '../adapters/questioner.adapter';
+import type { QuestionerAdapter } from '../adapters/questioner.adapter';
 import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion, PendingQuestionCounts } from '../adapters/questioner.adapter';
 import { stripInternalDetection } from '../lib/question/question.public';
 
@@ -21,10 +21,15 @@ const logger = log.service.from('QuestionService');
  */
 
 export class QuestionService {
-  private readonly adapter: QuestionerAdapter;
+  private adapter: QuestionerAdapter | null;
 
   constructor(adapter?: QuestionerAdapter) {
-    this.adapter = adapter ?? questionerAdapter;
+    this.adapter = adapter ?? null;
+  }
+
+  private async getAdapter(): Promise<QuestionerAdapter> {
+    this.adapter ??= (await import('../adapters/questioner.adapter.instance')).questionerAdapter;
+    return this.adapter;
   }
 
   /**
@@ -42,7 +47,7 @@ export class QuestionService {
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
     logger.verbose('Finding pending questions', { userId, filters });
-    const rows = await this.adapter.findPending(userId, filters);
+    const rows = await (await this.getAdapter()).findPending(userId, filters);
     return rows.map(stripInternalDetection);
   }
 
@@ -58,7 +63,7 @@ export class QuestionService {
     filters?: AdapterQuestionFilters,
   ): Promise<AdapterPersistedQuestion[]> {
     logger.verbose('Finding answered questions', { userId, filters });
-    const rows = await this.adapter.findAnswered(userId, filters);
+    const rows = await (await this.getAdapter()).findAnswered(userId, filters);
     return rows.map(stripInternalDetection);
   }
 
@@ -74,7 +79,7 @@ export class QuestionService {
     conversationId: string;
     messageId: string;
   }): Promise<void> {
-    await this.adapter.bindChatQuestionsToMessage(input);
+    await (await this.getAdapter()).bindChatQuestionsToMessage(input);
   }
 
   /**
@@ -84,7 +89,7 @@ export class QuestionService {
    * @returns Global, delivered-pool, and summed Personal Agent counts.
    */
   async countPending(userId: string): Promise<PendingQuestionCounts> {
-    return this.adapter.countPending(userId);
+    return (await this.getAdapter()).countPending(userId);
   }
 
   /**
@@ -98,7 +103,7 @@ export class QuestionService {
    */
   async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
     logger.verbose('Answering question', { questionId, answeredBy: answer.answeredBy });
-    return this.adapter.answer(questionId, userId, answer);
+    return (await this.getAdapter()).answer(questionId, userId, answer);
   }
 
   /**
@@ -111,7 +116,7 @@ export class QuestionService {
    */
   async dismiss(questionId: string, userId: string): Promise<boolean> {
     logger.verbose('Dismissing question', { questionId, userId });
-    return this.adapter.dismiss(questionId, userId);
+    return (await this.getAdapter()).dismiss(questionId, userId);
   }
 }
 

@@ -138,6 +138,7 @@ export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";
 export { NegotiationGraphFactory, negotiateCandidates } from "./negotiation/negotiation.graph.js";
 export { OpportunityGraphFactory } from "./opportunity/opportunity.graph.js";
+export { hasUnsupportedOpportunityClaim } from "./opportunity/opportunity.claim-safety.js";
 export type { StampNewbornOpportunitiesFn } from "./opportunity/opportunity.graph.js";
 export { EnrichmentGraphFactory } from "./enrichment/enrichment.graph.js";
 export { PremiseGraphFactory } from "./premise/premise.graph.js";
@@ -162,7 +163,8 @@ export { NegotiationReflector } from "./negotiation/negotiation.reflect.js";
 export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiation/negotiation.reflect.js";
 export type { NegotiatorMemoryEntry } from "./negotiation/negotiation.memory.js";
 export { QuestionerAgent } from "./questioner/questioner.agent.js";
-export type { QuestionerInput, RecoveryQuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questioner/questioner.types.js";
+export { isValidQuestionerInputContract } from "./questioner/questioner.types.js";
+export type { QuestionerInput, RecoveryQuestionerInput, UptakeQuestionerInput, PostStallQuestionerInput, InflightQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questioner/questioner.types.js";
 export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold } from "./questioner/questioner.env.js";
 export { PoolDiscriminatorMiner } from "./opportunity/discriminator/discriminator.miner.js";
 export { PoolDiscriminatorAssigner } from "./opportunity/discriminator/discriminator.assigner.js";
@@ -243,4 +245,12 @@ export type { NegotiationGraphLike } from "./negotiation/negotiation.state.js";
 // ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
 
 export { allowedActionsFor, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./negotiation/negotiation.protocol.js";
+export {
+  NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
+  NEGOTIATION_QUESTION_GENERIC_NETWORK,
+  NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY,
+  isSafeNegotiationQuestionText,
+  negotiationQuestionSettlementId,
+  validateInflightAskUserFields,
+} from "./negotiation/negotiation.question-safety.js";
 

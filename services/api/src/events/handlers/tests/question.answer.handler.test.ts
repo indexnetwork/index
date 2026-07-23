@@ -12,6 +12,18 @@ function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswe
   };
 }
 
+const exactSettlement = {
+  authoritative: true as const,
+  purpose: 'inflight_consultation' as const,
+  taskId: 'task-exact',
+  settlementId: 'negotiation-question-settlement-v1-task-exact',
+  recipientIntentId: 'intent-1',
+  opportunityId: 'opp-1',
+  networkId: 'network-1',
+  continuationStatus: 'requested' as const,
+  resumeClaimed: true,
+};
+
 const basePayload = {
   questionId: "q-1",
   userId: "u-1",
@@ -115,7 +127,14 @@ describe("handleQuestionAnswered", () => {
       purpose: "stalled_followup",
       sourceType: "opportunity",
       sourceId: "opp-1",
-      settlement: { authoritative: true, purpose: "stalled_followup", taskId: "task-old", resumeClaimed: false },
+      settlement: {
+        ...exactSettlement,
+        purpose: 'stalled_followup',
+        taskId: 'task-old',
+        settlementId: undefined,
+        continuationStatus: undefined,
+        resumeClaimed: false,
+      },
     }, deps);
     expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
   });
@@ -155,7 +174,7 @@ describe("handleQuestionAnswered", () => {
       purpose: "inflight_consultation",
       sourceType: "opportunity",
       sourceId: "opp-1",
-      settlement: { authoritative: true, purpose: "inflight_consultation", taskId: "task-exact", resumeClaimed: true },
+      settlement: exactSettlement,
     }, deps);
     expect(deps.resumeInflightNegotiation).toHaveBeenCalledWith(expect.objectContaining({
       taskId: "task-exact",
@@ -170,24 +189,24 @@ describe("handleQuestionAnswered", () => {
       purpose: "inflight_consultation",
       sourceType: "opportunity",
       sourceId: "opp-1",
-      settlement: { authoritative: true, purpose: "inflight_consultation", taskId: "task-stale", resumeClaimed: false },
+      settlement: { ...exactSettlement, taskId: 'task-stale', settlementId: 'negotiation-question-settlement-v1-task-stale', resumeClaimed: false },
     }, deps);
     expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
   });
 
-  it("resumeInflightNegotiation failure is caught, not thrown", async () => {
+  it("resumeInflightNegotiation failure is rethrown for durable caller retry", async () => {
     deps = makeDeps({ resumeInflightNegotiation: mock(async () => { throw new Error("boom"); }) });
-    await handleQuestionAnswered(
+    await expect(handleQuestionAnswered(
       {
         ...basePayload,
         mode: "negotiation_inflight",
         purpose: "inflight_consultation",
         sourceType: "opportunity",
         sourceId: "opp-1",
-        settlement: { authoritative: true, purpose: "inflight_consultation", taskId: "task-exact", resumeClaimed: true },
+        settlement: exactSettlement,
       },
       deps,
-    );
+    )).rejects.toThrow('boom');
     expect(deps.resumeInflightNegotiation).toHaveBeenCalledTimes(1);
   });
 

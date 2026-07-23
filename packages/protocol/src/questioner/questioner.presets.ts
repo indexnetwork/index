@@ -295,7 +295,6 @@ function buildPostStallNegotiationPrompt(ctx: PostStallNegotiationContext): stri
 
 function buildUptakeNegotiationPrompt(ctx: UptakeNegotiationContext): string {
   const profileBlock = buildUserContextBlock(ctx.userContext);
-  const evidence = ctx.preparatoryEvidence?.trim() || "(no additional public evidence provided)";
 
   return [
     "## Purpose",
@@ -309,9 +308,6 @@ function buildUptakeNegotiationPrompt(ctx: UptakeNegotiationContext): string {
     "",
     "## Community",
     ctx.indexContext,
-    "",
-    "## Public preparatory evidence",
-    evidence,
     "",
     "## User profile",
     profileBlock,

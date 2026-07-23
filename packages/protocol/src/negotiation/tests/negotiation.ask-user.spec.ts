@@ -127,10 +127,13 @@ const V2_PRIOR_TASK = {
 function mkStubs(opts?: {
   priorMessages?: FakeMessage[];
   priorTask?: Record<string, unknown> | null;
+  exactTask?: Record<string, unknown> | null;
 }) {
   const createdMessages: Array<{ senderId: string; parts: Array<{ kind: string; data: NegotiationTurn }> }> = [];
   const stateWrites: Array<{ taskId: string; state: string }> = [];
-  const turnContextWrites: Array<{ taskId: string }> = [];
+  const turnContextWrites: Array<{ taskId: string; context: Record<string, unknown> }> = [];
+  const continuationTaskRequests: Array<Record<string, unknown>> = [];
+  let opportunityTaskReads = 0;
   const database = {
     getOrCreateDM: async () => ({ id: "conv-1" }),
     createTask: async (conversationId: string) => ({ id: "task-new", conversationId, state: "submitted" }),
@@ -143,12 +146,20 @@ function mkStubs(opts?: {
       stateWrites.push({ taskId, state });
     },
     createArtifact: async () => {},
-    setTaskTurnContext: async (taskId: string) => {
-      turnContextWrites.push({ taskId });
+    setTaskTurnContext: async (taskId: string, context: Record<string, unknown>) => {
+      turnContextWrites.push({ taskId, context });
     },
     getMessagesForConversation: async () => opts?.priorMessages ?? [],
     getOpportunityUserAnswers: async () => [],
-    getNegotiationTaskForOpportunity: async () => (opts?.priorTask === undefined ? V2_PRIOR_TASK : opts.priorTask),
+    getNegotiationTaskForOpportunity: async () => {
+      opportunityTaskReads += 1;
+      return opts?.priorTask === undefined ? V2_PRIOR_TASK : opts.priorTask;
+    },
+    getTask: async () => opts?.exactTask ?? null,
+    getOrCreateNegotiationContinuationTask: async (input: Record<string, unknown>) => {
+      continuationTaskRequests.push(input);
+      return { id: 'task-new', conversationId: 'conv-1', state: 'submitted', created: true };
+    },
     getLatestNegotiationTaskForConversation: async () => null,
     getUserContext: async () => ({ text: "Alice builds AI startups" }),
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0];
@@ -174,7 +185,11 @@ function mkStubs(opts?: {
     questionerEnqueues.push(input);
   };
 
-  return { database, dispatcher, timeoutQueue, questionerEnqueue, createdMessages, stateWrites, turnContextWrites, expiryArms, questionerEnqueues };
+  return {
+    database, dispatcher, timeoutQueue, questionerEnqueue, createdMessages, stateWrites,
+    turnContextWrites, expiryArms, questionerEnqueues, continuationTaskRequests,
+    get opportunityTaskReads() { return opportunityTaskReads; },
+  };
 }
 
 async function runGraph(
@@ -260,15 +275,26 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(stubs.createdMessages[0].senderId).toBe("agent:u-src");
 
     // Turn context parked for pickup/resume.
-    expect(stubs.turnContextWrites).toEqual([{ taskId: "task-new" }]);
+    expect(stubs.turnContextWrites).toHaveLength(1);
+    expect(stubs.turnContextWrites[0].taskId).toBe('task-new');
+    expect((stubs.turnContextWrites[0].context.askUserBinding as Record<string, unknown>)).toEqual({
+      version: 1,
+      settlementId: 'negotiation-question-settlement-v1-task-new',
+      recipientUserId: 'u-src',
+      recipientIntentId: 'intent-src',
+      opportunityId: 'opp-1',
+      networkId: 'net-1',
+    });
 
     // Answer-window timer armed with resume coordinates + default window.
     expect(stubs.expiryArms).toHaveLength(1);
     expect(stubs.expiryArms[0].negotiationId).toBe("task-new");
     expect(stubs.expiryArms[0].payload).toEqual({
+      settlementId: 'negotiation-question-settlement-v1-task-new',
       opportunityId: "opp-1",
       userId: "u-src",
-      disclosureSubject: "budget range",
+      recipientIntentId: 'intent-src',
+      networkId: 'net-1',
     });
     expect(stubs.expiryArms[0].delayMs).toBe(DEFAULT_ASK_USER_WINDOW_MS);
 
@@ -293,7 +319,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(ctx.negotiationId).toBe("task-new");
     expect(ctx.disclosureSubject).toBe("budget range");
     expect(ctx.draftQuestion).toBe("Can I tell them your budget range?");
-    expect(ctx.counterpartyHint).toBe("the other participant in this match");
+    expect(ctx.counterpartyHint).toBe("the other participant");
     expect(ctx.counterpartyHint).not.toContain("Bob");
     expect(ctx.counterpartyHint).not.toContain("ML engineer");
     expect(ctx.indexContext).toBe("the selected network");
@@ -303,6 +329,40 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(stubs.stateWrites).toContainEqual({ taskId: "task-new", state: "input_required" });
     expect(stubs.stateWrites.map((w) => w.state)).not.toContain("completed");
     expect(result.outcome).toBeNull();
+  });
+
+  it('keeps the exact task paused when question enqueue fails', async () => {
+    const stubs = mkStubs({ priorMessages: continuationMessages });
+    stubs.questionerEnqueue = async () => { throw new Error('redis unavailable'); };
+    agentScript = [askUserTurn];
+
+    const result = await runGraph(stubs);
+
+    expect(stubs.expiryArms).toHaveLength(1);
+    expect(stubs.stateWrites).toContainEqual({ taskId: 'task-new', state: 'input_required' });
+    expect(stubs.stateWrites.map((write) => write.state)).not.toContain('completed');
+    expect(result.outcome).toBeNull();
+  });
+
+  it('keeps timeout recovery armed but emits no card when structured safe fields are absent', async () => {
+    const stubs = mkStubs({ priorMessages: continuationMessages });
+    agentScript = [{
+      action: 'ask_user',
+      assessment: {
+        reasoning: 'PRIVATE TRANSCRIPT: Alice profile and matchReason 123e4567-e89b-12d3-a456-426614174000',
+        suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+      },
+      message: 'Raw private transcript must never become a question.',
+      askUser: null,
+    }];
+
+    await runGraph(stubs);
+
+    expect(stubs.expiryArms).toHaveLength(1);
+    expect(stubs.stateWrites).toContainEqual({ taskId: 'task-new', state: 'input_required' });
+    expect(stubs.questionerEnqueues).toHaveLength(0);
+    expect(JSON.stringify(stubs.expiryArms)).not.toContain('PRIVATE TRANSCRIPT');
+    expect(JSON.stringify(stubs.expiryArms)).not.toContain('matchReason');
   });
 
   it("routes candidate-side consultation to the candidate's own exact intent", async () => {
@@ -323,6 +383,60 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       networkId: "net-1",
     });
     expect(stubs.questionerEnqueues[0].negotiation?.recipientIntentId).not.toBe("intent-src");
+  });
+
+  it('resumes only the exact settled task and never asks for a newer opportunity task', async () => {
+    const settlementId = 'negotiation-question-settlement-v1-task-paused';
+    const stubs = mkStubs({
+      priorMessages: [...continuationMessages, priorMsg('u-src', 'ask_user', 2)],
+      exactTask: {
+        id: 'task-paused',
+        conversationId: 'conv-1',
+        state: 'canceled',
+        metadata: {
+          type: 'negotiation',
+          protocolVersion: 'v2',
+          initiatorUserId: 'u-src',
+          sourceUserId: 'u-src',
+          candidateUserId: 'u-cand',
+          opportunityId: 'opp-1',
+          networkId: 'net-1',
+          questionSettlement: {
+            version: 1,
+            settlementId,
+            taskId: 'task-paused',
+            recipientUserId: 'u-src',
+            recipientIntentId: 'intent-src',
+            opportunityId: 'opp-1',
+            networkId: 'net-1',
+            kind: 'answer',
+            questionId: 'q-1',
+            continuationStatus: 'requested',
+            settledAt: '2026-07-23T00:00:00.000Z',
+          },
+        },
+        createdAt: new Date(Date.now() - 60_000),
+        updatedAt: new Date(),
+      },
+    });
+    agentScript = [{
+      action: 'withdraw',
+      assessment: { reasoning: 'stop', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } },
+      message: null,
+    }];
+
+    await runGraph(stubs, {
+      resumeFromTaskId: 'task-paused',
+      continuationSettlementId: settlementId,
+    });
+
+    expect(stubs.opportunityTaskReads).toBe(0);
+    expect(stubs.continuationTaskRequests).toHaveLength(1);
+    expect(stubs.continuationTaskRequests[0]).toMatchObject({
+      priorTaskId: 'task-paused',
+      settlementId,
+      opportunityId: 'opp-1',
+    });
   });
 
   it("respects the env window override when arming the timer", async () => {

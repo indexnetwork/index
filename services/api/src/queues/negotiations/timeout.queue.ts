@@ -32,11 +32,28 @@ export interface NegotiationTimeoutQueueDeps {
   /** Authoritatively settle the exact stamped question/task cohort. */
   settleInflightExpiry?: (input: {
     taskId: string;
+    settlementId: string;
     opportunityId: string;
     userId: string;
-  }) => Promise<{ taskId: string; opportunityId: string; userId: string } | null>;
-  /** Enqueue the resume continuation after an expiry. */
-  enqueueResume?: (opportunityId: string, userId: string) => Promise<void>;
+    recipientIntentId: string;
+    networkId: string;
+  }) => Promise<{
+    taskId: string;
+    settlementId: string;
+    opportunityId: string;
+    userId: string;
+    recipientIntentId: string;
+    networkId: string;
+  } | null>;
+  /** Enqueue the exact durable resume continuation after an expiry. */
+  enqueueResume?: (input: {
+    taskId: string;
+    settlementId: string;
+    opportunityId: string;
+    userId: string;
+    recipientIntentId: string;
+    networkId: string;
+  }) => Promise<void>;
 }
 
 /**
@@ -301,11 +318,24 @@ export class NegotiationTimeoutQueue {
    * the negotiation terminated another way).
    */
   private async handleAskUserExpiry(data: AskUserExpiryJobData): Promise<void> {
-    const { negotiationId, opportunityId, userId } = data;
+    const { negotiationId, settlementId, opportunityId, userId, recipientIntentId, networkId } = data;
     const settle = this.deps?.settleInflightExpiry
-      ?? (async (input: { taskId: string; opportunityId: string; userId: string }) =>
-        (await import('../../adapters/questioner.adapter')).questionerAdapter.expireInflightQuestion(input));
-    const claim = await settle({ taskId: negotiationId, opportunityId, userId });
+      ?? (async (input: {
+        taskId: string;
+        settlementId: string;
+        opportunityId: string;
+        userId: string;
+        recipientIntentId: string;
+        networkId: string;
+      }) => (await import('../../adapters/questioner.adapter.instance')).questionerAdapter.expireInflightQuestion(input));
+    const claim = await settle({
+      taskId: negotiationId,
+      settlementId,
+      opportunityId,
+      userId,
+      recipientIntentId,
+      networkId,
+    });
     if (!claim) {
       this.logger.info('Ask-user expiry lost or stale; no continuation enqueued', {
         negotiationId,
@@ -314,11 +344,11 @@ export class NegotiationTimeoutQueue {
       return;
     }
     const enqueueResume = this.deps?.enqueueResume
-      ?? (async (oid: string, uid: string) => {
+      ?? (async (input: NonNullable<typeof claim>) => {
         const { negotiationRunExistingQueue } = await import('./run-existing.queue');
-        await negotiationRunExistingQueue.addJob({ opportunityId: oid, userId: uid });
+        await negotiationRunExistingQueue.addJob(input);
       });
-    await enqueueResume(claim.opportunityId, claim.userId);
+    await enqueueResume(claim);
     this.logger.info('Ask-user window expired; exact task resumed with conservative default', claim);
   }
 }

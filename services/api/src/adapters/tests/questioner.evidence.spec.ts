@@ -13,7 +13,7 @@ import { questions } from '../../schemas/database.schema';
  * (IND-465 slice 2 — Lens C owner_answer evidence). Every fail-closed SQL
  * constraint is exercised against real rows: status, subject-actor scoping,
  * negotiation-family mode restriction, opportunity binding, answeredBy
- * authority, and capture-time fingerprint tolerance/equality.
+ * authority, mandatory versioned provenance, and capture-time fingerprint equality.
  */
 describe('QuestionerAdapter.getAnsweredNegotiationQuestionsForOpportunity', () => {
   const adapter = new QuestionerAdapter(db);
@@ -35,20 +35,41 @@ describe('QuestionerAdapter.getAnsweredNegotiationQuestionsForOpportunity', () =
     selectedOptions?: string[];
     freeText?: string;
     detectionIntentFingerprint?: string;
+    omitNegotiationProvenance?: boolean;
     createdAt?: Date;
   } = {}): Promise<string> {
     const id = crypto.randomUUID();
     questionIds.push(id);
+    const mode = options.mode ?? 'negotiation';
+    const sourceId = options.sourceId ?? opportunityId;
+    const purpose = mode === 'negotiation_inflight' ? 'inflight_consultation' : 'uptake';
     await db.insert(questions).values({
       id,
       detection: {
-        mode: options.mode ?? 'negotiation',
+        mode,
+        ...(mode === 'negotiation' || mode === 'negotiation_inflight' ? { purpose } : {}),
         sourceType: options.sourceType ?? 'opportunity',
-        sourceId: options.sourceId ?? opportunityId,
+        sourceId,
         timestamp: new Date().toISOString(),
-        ...(options.detectionIntentFingerprint !== undefined
-          ? { intentFingerprint: options.detectionIntentFingerprint }
-          : {}),
+        ...(!options.omitNegotiationProvenance && (mode === 'negotiation' || mode === 'negotiation_inflight') ? {
+          negotiation: {
+            version: 1,
+            purpose,
+            recipientUserId,
+            recipientIntentId: crypto.randomUUID(),
+            opportunityId: sourceId,
+            ...(mode === 'negotiation_inflight' ? {
+              taskId: crypto.randomUUID(),
+              taskState: 'input_required',
+              taskUpdatedAt: new Date().toISOString(),
+            } : {}),
+            networkId: crypto.randomUUID(),
+            intentFingerprint: options.detectionIntentFingerprint ?? fingerprint,
+            opportunityStatus: mode === 'negotiation_inflight' ? 'negotiating' : 'pending',
+            opportunityUpdatedAt: new Date().toISOString(),
+            questionOrdinal: 0,
+          },
+        } : {}),
       } as (typeof questions.$inferInsert)['detection'],
       actors: [{
         userId: options.actorUserId ?? recipientUserId,
@@ -126,7 +147,7 @@ describe('QuestionerAdapter.getAnsweredNegotiationQuestionsForOpportunity', () =
     expect(JSON.stringify(results)).not.toContain('Share your preference?');
   }, 30_000);
 
-  test('tolerates an absent capture-time fingerprint and requires equality when present', async () => {
+  test('rejects legacy missing provenance and requires capture-time fingerprint equality', async () => {
     const localOpportunityId = crypto.randomUUID();
     const matchingId = await createAnsweredQuestion({
       sourceId: localOpportunityId,
@@ -135,7 +156,8 @@ describe('QuestionerAdapter.getAnsweredNegotiationQuestionsForOpportunity', () =
     });
     const absentId = await createAnsweredQuestion({
       sourceId: localOpportunityId,
-      selectedOptions: ['Tolerated'],
+      omitNegotiationProvenance: true,
+      selectedOptions: ['Legacy'],
     });
     await createAnsweredQuestion({
       sourceId: localOpportunityId,
@@ -149,9 +171,9 @@ describe('QuestionerAdapter.getAnsweredNegotiationQuestionsForOpportunity', () =
       fingerprint,
     );
 
-    expect(results.map((result) => result.questionId).sort()).toEqual([matchingId, absentId].sort());
+    expect(results.map((result) => result.questionId)).toEqual([matchingId]);
     expect(results.find((result) => result.questionId === matchingId)?.capturedIntentFingerprint).toBe(fingerprint);
-    expect(results.find((result) => result.questionId === absentId)?.capturedIntentFingerprint).toBeUndefined();
+    expect(results.find((result) => result.questionId === absentId)).toBeUndefined();
     expect(JSON.stringify(results)).not.toContain('Stale');
   }, 30_000);
 });

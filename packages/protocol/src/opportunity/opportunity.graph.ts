@@ -4087,6 +4087,21 @@ export class OpportunityGraphFactory {
 
         const actors = opp.actors as Array<OpportunityActor & { intentId?: string }>;
         const nonIntroducerActors = actors.filter(a => a.role !== 'introducer');
+        const continuation = state.options.negotiationContinuation;
+        if (continuation) {
+          const recipientActor = nonIntroducerActors.find((actor) => actor.userId === state.userId);
+          if (
+            !recipientActor
+            || resolveOpportunityActorIntent(recipientActor) !== continuation.recipientIntentId
+            || recipientActor.networkId !== continuation.networkId
+          ) {
+            negotiateExistingLog.warn('Exact continuation actor binding is stale', {
+              opportunityId: state.opportunityId,
+              taskId: continuation.taskId,
+            });
+            return {};
+          }
+        }
 
         // Find the sourceActor: non-introducer with role patient or party, fallback to first non-introducer
         const sourceActor = nonIntroducerActors.find(a => a.role === 'patient' || a.role === 'party')
@@ -4189,6 +4204,10 @@ export class OpportunityGraphFactory {
             indexContextOverrides: indexContextMap,
             timeoutMs: AMBIENT_PARK_WINDOW_MS,
             trigger: 'ambient',
+            ...(continuation ? {
+              resumeFromTaskId: continuation.taskId,
+              continuationSettlementId: continuation.settlementId,
+            } : {}),
           },
         );
 

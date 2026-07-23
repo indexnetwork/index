@@ -363,9 +363,8 @@ const questionAnswerDeps = {
   }),
   enqueueIntentRefinement,
   resumeInflightNegotiation: resumeInflightNegotiationFactory({
-    cancelAskUserExpiry: (negotiationId) => negotiationTimeoutQueue.cancelAskUserExpiry(negotiationId),
-    enqueueResume: async (opportunityId, userId) => {
-      await negotiationRunExistingQueue.addJob({ opportunityId, userId });
+    enqueueResume: async (input) => {
+      await negotiationRunExistingQueue.addJob(input);
     },
     // P5.2: the answer is already a distilled disclosure policy — record it
     // as a negotiator memory (no-op while NEGOTIATOR_MEMORY_WRITE_ENABLED is off).
@@ -402,19 +401,15 @@ const questionAnswerDeps = {
   }),
 };
 
-QuestionEvents.onAnswered = (payload) => {
-  handleQuestionAnswered(payload, questionAnswerDeps)
-    .catch(err => log.job.from('QuestionEvents').error('Answer handler failed', {
-      questionId: payload.questionId,
-      error: err instanceof Error ? err.message : String(err),
-    }));
+QuestionEvents.onAnswered = async (payload) => {
+  await handleQuestionAnswered(payload, questionAnswerDeps);
 };
 
 // Chat dismissals unblock the waiting turn. An authoritative inflight
 // dismissal has already conservatively closed exactly its stamped task at the
-// adapter boundary; post-commit work only cancels that timer and enqueues one
-// continuation.
-QuestionEvents.onDismissed = (payload) => {
+// adapter boundary; post-commit work enqueues the deterministic continuation
+// while the original timer remains the durable recovery sweep.
+QuestionEvents.onDismissed = async (payload) => {
   if (payload.mode === 'chat') {
     emitChatQuestionResolution({ questionId: payload.questionId, status: 'dismissed' });
     return;
@@ -424,17 +419,18 @@ QuestionEvents.onDismissed = (payload) => {
     && payload.settlement?.authoritative
     && payload.settlement.resumeClaimed
     && payload.settlement.taskId
+    && payload.settlement.settlementId
   ) {
-    void negotiationTimeoutQueue.cancelAskUserExpiry(payload.settlement.taskId)
-      .catch((error) => log.job.from('QuestionEvents').warn('Failed to cancel dismissed ask-user timer', {
-        taskId: payload.settlement?.taskId,
-        error,
-      }))
-      .then(() => negotiationRunExistingQueue.addJob({ opportunityId: payload.sourceId, userId: payload.userId }))
-      .catch((error) => log.job.from('QuestionEvents').error('Failed to resume dismissed ask-user task', {
-        taskId: payload.settlement?.taskId,
-        error,
-      }));
+    await questionAnswerDeps.resumeInflightNegotiation({
+      userId: payload.userId,
+      opportunityId: payload.settlement.opportunityId,
+      questionId: payload.questionId,
+      selectedOptions: [],
+      taskId: payload.settlement.taskId,
+      settlementId: payload.settlement.settlementId,
+      recipientIntentId: payload.settlement.recipientIntentId,
+      networkId: payload.settlement.networkId,
+    });
   }
 };
 

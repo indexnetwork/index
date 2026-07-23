@@ -101,6 +101,19 @@ describe('QuestionsContext proactive pool counts', () => {
     expect(screen.getByTestId('revision').textContent).not.toBe(initial);
   });
 
+  it('drops a lifecycle-stale negotiation id from the revision even when counts copy is unchanged', async () => {
+    render(<QuestionsProvider><Probe /></QuestionsProvider>);
+    await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('global-1'));
+    const initial = screen.getByTestId('revision').textContent;
+
+    mocks.getPending.mockResolvedValueOnce([]);
+    mocks.getPendingCounts.mockResolvedValueOnce({ globalPending: 1, pushedPoolPending: 2, personalAgentPending: 3 });
+    fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+
+    await waitFor(() => expect(screen.getByTestId('rows').textContent).toBe(''));
+    expect(screen.getByTestId('revision').textContent).not.toBe(initial);
+  });
+
   it('refreshes canonical counts after answer and dismiss', async () => {
     render(<QuestionsProvider><Probe /></QuestionsProvider>);
     await waitFor(() => expect(mocks.getPendingCounts).toHaveBeenCalledTimes(1));

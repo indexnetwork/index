@@ -2549,6 +2549,19 @@ export type NegotiationGraphDatabase = Pick<
   /** Creates a generic task to track a non-attempt-bound lifecycle. */
   createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
 
+  /**
+   * Under a deterministic settlement lock, validate the exact canceled ask_user
+   * task and return its existing successor or create one. Never consults a
+   * latest-task lookup.
+   */
+  getOrCreateNegotiationContinuationTask(input: {
+    priorTaskId: string;
+    settlementId: string;
+    conversationId: string;
+    opportunityId: string;
+    metadata: Record<string, unknown>;
+  }): Promise<{ id: string; conversationId: string; state: string; created: boolean } | null>;
+
   /** Transitions a task to a new state (e.g. working, completed, failed). */
   updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<{ id: string; conversationId: string; state: string }>;
 

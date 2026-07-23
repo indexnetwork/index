@@ -48,6 +48,14 @@ const mockQuestion: PendingQuestionSummary = {
   actors: [{ userId, networkId: 'net-0001' }],
 };
 
+const inflightQuestion: PendingQuestionSummary = {
+  ...mockQuestion,
+  id: 'q-inflight',
+  mode: 'negotiation_inflight',
+  sourceType: 'opportunity',
+  sourceId: 'opp-1',
+};
+
 function makeDeps(overrides?: {
   findPendingQuestions?: ((userId: string, filters?: CapturedFilters) => Promise<PendingQuestionSummary[]>) | undefined;
   answerPendingQuestion?: ((userId: string, questionId: string, answer: { selectedOptions: string[]; freeText?: string }) => Promise<boolean>) | undefined;
@@ -256,6 +264,34 @@ describe("createQuestionerTools", () => {
         questionId: "q-0001",
         answer: { selectedOptions: ["Co-building"], freeText: "ideally something climate-adjacent" },
       }]);
+    });
+
+    it('routes an exact inflight question through the authenticated principal bridge', async () => {
+      const { defineTool, call } = makeDefineTool();
+      const { deps, calls } = makeAnswerDeps({ pending: [inflightQuestion] });
+      createQuestionerTools(defineTool as never, deps);
+      const result = await call('answer_pending_question', {
+        questionId: 'q-inflight',
+        selectedOptions: ['Keep private'],
+      }) as { success: boolean };
+      expect(result.success).toBe(true);
+      expect(calls).toEqual([{
+        userId,
+        questionId: 'q-inflight',
+        answer: { selectedOptions: ['Keep private'] },
+      }]);
+    });
+
+    it('fails closed when the canonical host rejects the authenticated principal', async () => {
+      const { defineTool, call } = makeDefineTool();
+      const { deps, calls } = makeAnswerDeps({ pending: [inflightQuestion], answered: false });
+      createQuestionerTools(defineTool as never, deps);
+      const result = await call('answer_pending_question', {
+        questionId: 'q-inflight', freeText: 'attempt',
+      }) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('already answered or dismissed');
+      expect(calls[0]?.userId).toBe(userId);
     });
 
     it("rejects an empty answer (never answers on the client's behalf)", async () => {

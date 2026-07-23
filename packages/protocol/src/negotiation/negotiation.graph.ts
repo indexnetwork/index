@@ -15,6 +15,7 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId, validateInflightAskUserFields } from './negotiation.question-safety.js';
 
 const logger = protocolLogger("NegotiationGraph");
 const initLog = protocolLogger("NegotiationGraph:Init");
@@ -164,10 +165,29 @@ export class NegotiationGraphFactory {
           return (Date.now() - new Date(t.updatedAt).getTime()) < freshnessMs;
         };
 
-        const priorTask = state.opportunityId
-          ? await database.getNegotiationTaskForOpportunity(state.opportunityId)
+        if (Boolean(state.resumeFromTaskId) !== Boolean(state.continuationSettlementId)) {
+          return { error: 'invalid continuation correlation' };
+        }
+        const exactContinuation = state.resumeFromTaskId && state.continuationSettlementId
+          ? { taskId: state.resumeFromTaskId, settlementId: state.continuationSettlementId }
           : null;
-        const isLocked = !!priorTask && isActiveAndFresh(priorTask);
+        const priorTask = exactContinuation
+          ? await database.getTask(exactContinuation.taskId)
+          : state.opportunityId
+            ? await database.getNegotiationTaskForOpportunity(state.opportunityId)
+            : null;
+        if (exactContinuation) {
+          const settlement = priorTask?.metadata?.questionSettlement as Record<string, unknown> | undefined;
+          if (
+            !priorTask
+            || priorTask.conversationId !== conversation.id
+            || priorTask.state !== 'canceled'
+            || priorTask.metadata?.opportunityId !== state.opportunityId
+            || settlement?.settlementId !== exactContinuation.settlementId
+            || settlement?.taskId !== exactContinuation.taskId
+          ) return { error: 'invalid exact continuation task' };
+        }
+        const isLocked = !exactContinuation && !!priorTask && isActiveAndFresh(priorTask);
 
         if (isLocked) {
           initLog.info('Conversation locked by active task, returning busy', {
@@ -228,7 +248,7 @@ export class NegotiationGraphFactory {
         // Conversation-scoped prior task: reused for both the initiator tie-break
         // (only when active+fresh) and protocol-version inheritance (any prior
         // task on the conversation pins the version).
-        const convTask = (!readInitiator(priorTask?.metadata) || !readProtocolVersion(priorTask?.metadata))
+        const convTask = !exactContinuation && (!readInitiator(priorTask?.metadata) || !readProtocolVersion(priorTask?.metadata))
           ? await database.getLatestNegotiationTaskForConversation?.(conversation.id).catch(() => null)
           : null;
         if (!readInitiator(priorTask?.metadata)) {
@@ -280,23 +300,38 @@ export class NegotiationGraphFactory {
           maxTurns,
           isContinuation,
           priorTurnCount: priorTurns.length,
+          ...(exactContinuation ? {
+            resumeFromTaskId: exactContinuation.taskId,
+            continuationSettlementId: exactContinuation.settlementId,
+          } : {}),
         };
         if (state.opportunityId && Boolean(state.opportunityStatus) !== Boolean(state.opportunityUpdatedAt)) {
           throw new Error('Negotiation attempt requires both opportunity status and updatedAt');
         }
 
-        const task = state.opportunityId && state.opportunityStatus && state.opportunityUpdatedAt
-          ? await database.createNegotiationTaskForAttempt({
+        const task = exactContinuation && state.opportunityId
+          ? await database.getOrCreateNegotiationContinuationTask({
+              priorTaskId: exactContinuation.taskId,
+              settlementId: exactContinuation.settlementId,
               conversationId: conversation.id,
               opportunityId: state.opportunityId,
-              expectedStatus: state.opportunityStatus,
-              expectedUpdatedAt: state.opportunityUpdatedAt,
               metadata: taskMetadata,
             })
-          : await database.createTask(conversation.id, taskMetadata);
+          : state.opportunityId && state.opportunityStatus && state.opportunityUpdatedAt
+            ? await database.createNegotiationTaskForAttempt({
+                conversationId: conversation.id,
+                opportunityId: state.opportunityId,
+                expectedStatus: state.opportunityStatus,
+                expectedUpdatedAt: state.opportunityUpdatedAt,
+                metadata: taskMetadata,
+              })
+            : await database.createTask(conversation.id, taskMetadata);
 
         if (!task) {
           throw new Error('Negotiation attempt is stale or already claimed');
+        }
+        if (exactContinuation && 'created' in task && !task.created && !['submitted', 'working'].includes(task.state)) {
+          return { error: 'continuation already delivered' };
         }
 
         // Attempt-bound discovery atomically promoted the exact persisted state
@@ -700,10 +735,28 @@ export class NegotiationGraphFactory {
         // like the waiting_for_agent suspend; the answer (or window expiry)
         // resumes via the run-existing continuation path.
         if (turn.action === 'ask_user') {
-          const disclosureSubject = turn.askUser?.disclosureSubject?.trim()
-            || turn.message
-            || turn.assessment.reasoning;
-          const draftQuestion = turn.askUser?.draftQuestion ?? turn.message ?? undefined;
+          const counterparty = isSource ? state.candidateUser : state.sourceUser;
+          const safeAskUser = validateInflightAskUserFields({
+            disclosureSubject: turn.askUser?.disclosureSubject,
+            draftQuestion: turn.askUser?.draftQuestion,
+            forbiddenIdentifiers: [
+              counterparty.id,
+              counterparty.profile.name ?? '',
+              state.opportunityId,
+              state.taskId,
+              state.indexContext.networkId,
+              isSource ? state.candidateIntentId ?? '' : state.sourceIntentId ?? '',
+            ],
+            forbiddenSourceText: [
+              counterparty.profile.bio ?? '',
+              counterparty.profile.location ?? '',
+              ...counterparty.intents.flatMap((intent) => [intent.title, intent.description]),
+              state.seedAssessment.reasoning,
+              state.indexContext.prompt,
+              state.discoveryQuery ?? '',
+            ],
+          });
+          const settlementId = negotiationQuestionSettlementId(state.taskId);
 
           await database.setTaskTurnContext(state.taskId, {
             sourceUser: state.sourceUser,
@@ -711,6 +764,8 @@ export class NegotiationGraphFactory {
             indexContext: state.indexContext,
             seedAssessment: state.seedAssessment,
             askUserBinding: {
+              version: 1,
+              settlementId,
               recipientUserId: ownUser.id,
               recipientIntentId: ownIntentId,
               opportunityId: state.opportunityId,
@@ -719,46 +774,58 @@ export class NegotiationGraphFactory {
             ...(isSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
           });
 
-          // Arm the timer BEFORE flipping state: a timer against a task that
-          // never reaches input_required no-ops harmlessly at fire time, while
-          // an input_required task without a timer would strand until the lock
-          // slack expires.
+          // Arm the timer BEFORE flipping state: it is the durable recovery
+          // trigger even when generation enqueues no job or persists no row.
           const windowMs = askUserAnswerWindowMs();
           await timeoutQueue!.enqueueAskUserExpiry!(state.taskId, {
+            settlementId,
             opportunityId: state.opportunityId,
             userId: ownUser.id,
-            disclosureSubject,
+            recipientIntentId: ownIntentId!,
+            networkId: state.indexContext.networkId,
           }, windowMs);
 
-          const userContext = (await database.getUserContext(ownUser.id, null).catch(() => null))?.text ?? '';
-
           // Persistence admission requires the exact task to be input_required.
-          // Flip before enqueue; if Redis enqueue fails, the already-armed timer
-          // retains the conservative no-disclosure fail-safe.
+          // Flip before enqueue; if the structured ask_user fields fail the
+          // deterministic privacy gate, the timer alone closes the exact task.
           await database.updateTaskState(state.taskId, 'input_required');
-          await questionerEnqueue!({
-            mode: 'negotiation_inflight',
-            purpose: 'inflight_consultation',
-            userId: ownUser.id,
-            sourceType: 'opportunity',
-            sourceId: state.opportunityId,
-            negotiation: {
+          if (safeAskUser) {
+            const userContext = (await database.getUserContext(ownUser.id, null).catch(() => null))?.text ?? '';
+            await questionerEnqueue!({
+              mode: 'negotiation_inflight',
               purpose: 'inflight_consultation',
-              recipientUserId: ownUser.id,
-              recipientIntentId: ownIntentId!,
-              opportunityId: state.opportunityId,
+              userId: ownUser.id,
+              sourceType: 'opportunity',
+              sourceId: state.opportunityId,
+              negotiation: {
+                purpose: 'inflight_consultation',
+                recipientUserId: ownUser.id,
+                recipientIntentId: ownIntentId!,
+                opportunityId: state.opportunityId,
+                taskId: state.taskId,
+                networkId: state.indexContext.networkId,
+              },
+              context: {
+                negotiationId: state.taskId,
+                counterpartyHint: NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
+                disclosureSubject: safeAskUser.disclosureSubject,
+                ...(safeAskUser.draftQuestion && { draftQuestion: safeAskUser.draftQuestion }),
+                indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
+                ...(userContext && { userContext }),
+              },
+            }).catch((error) => {
+              turnLog.error('Failed to enqueue safe ask_user question; timeout recovery remains armed', {
+                taskId: state.taskId,
+                opportunityId: state.opportunityId,
+                error,
+              });
+            });
+          } else {
+            turnLog.warn('Skipping unsafe or incomplete ask_user question generation', {
               taskId: state.taskId,
-              networkId: state.indexContext.networkId,
-            },
-            context: {
-              negotiationId: state.taskId,
-              counterpartyHint: 'the other participant in this match',
-              disclosureSubject,
-              ...(draftQuestion && { draftQuestion }),
-              indexContext: 'the selected network',
-              ...(userContext && { userContext }),
-            },
-          });
+              opportunityId: state.opportunityId,
+            });
+          }
 
           turnLog.info('negotiation_ask_user_pause', {
             taskId: state.taskId,
@@ -774,7 +841,7 @@ export class NegotiationGraphFactory {
             negotiationConversationId: state.conversationId,
             turnIndex: state.turnCount,
             actor: isSource ? 'source' : 'candidate',
-            disclosureSubject,
+            questionGenerationSafe: Boolean(safeAskUser),
             windowMs,
           });
 
@@ -1057,8 +1124,8 @@ export class NegotiationGraphFactory {
           },
           context: {
             negotiationId: state.taskId,
-            counterpartyHint: 'the other participant in this match',
-            indexContext: 'the selected network',
+            counterpartyHint: NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
+            indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
             outcomeReason: stallReason,
             recipientIntent: sourceIntent
               ? `${sourceIntent.title}: ${sourceIntent.description}`
@@ -1174,9 +1241,23 @@ export async function negotiateCandidates(
      * inheriting from a prior task on the same opportunity/conversation.
      */
     initiatorUserId?: string;
+    /** Exact settled task to resume; only the durable run-existing path sets this. */
+    resumeFromTaskId?: string;
+    /** Deterministic settlement key paired with resumeFromTaskId. */
+    continuationSettlementId?: string;
   },
 ): Promise<NegotiationResult[]> {
-  const { maxTurns, traceEmitter, indexContextOverrides, timeoutMs, onCandidateResolved, trigger, initiatorUserId } = opts ?? {};
+  const {
+    maxTurns,
+    traceEmitter,
+    indexContextOverrides,
+    timeoutMs,
+    onCandidateResolved,
+    trigger,
+    initiatorUserId,
+    resumeFromTaskId,
+    continuationSettlementId,
+  } = opts ?? {};
 
   // Local helper to emit events whose shape is wider than the declared
   // `TraceEmitter` union (mirrors the cast used in chat.agent at the relay sink
@@ -1223,6 +1304,10 @@ export async function negotiateCandidates(
           ...(candidate.opportunityStatus && { opportunityStatus: candidate.opportunityStatus }),
           ...(candidate.opportunityUpdatedAt && { opportunityUpdatedAt: candidate.opportunityUpdatedAt }),
           ...(initiatorUserId && { initiatorUserId }),
+          ...(resumeFromTaskId && continuationSettlementId ? {
+            resumeFromTaskId,
+            continuationSettlementId,
+          } : {}),
           ...(maxTurns !== undefined && { maxTurns }),
           ...(timeoutMs !== undefined && { timeoutMs }),
         });

@@ -457,7 +457,7 @@ describe("negotiation graph — questioner enqueue on stall", () => {
       });
       const context = job.context as Record<string, unknown>;
       expect(context.outcomeReason).toBe("turn_cap");
-      expect(context.counterpartyHint).toBe("the other participant in this match");
+      expect(context.counterpartyHint).toBe("the other participant");
       expect(context.recipientIntent).toContain("Find a product collaborator");
       expect(context.indexContext).toBe("the selected network");
       expect(context.userContext).toBe("user ctx");
