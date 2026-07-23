@@ -122,7 +122,12 @@ After verification succeeds, the visible agent:
 
 1. commits with a conventional commit message;
 2. pushes the semantic branch;
-3. opens or updates a PR into `dev` with exact verification results and caveats.
+3. fetches that branch and confirms its local checkout has no upstream drift (`git
+   fetch origin <branch>`; `git status --short --branch`);
+4. opens or updates a PR into `dev` with exact verification results and caveats.
+
+Do not move on from a push using stale remote refs. If the fetch reveals divergence,
+reconcile it deliberately in the worktree before reporting completion.
 
 Opening a PR is not merge approval. The coordinator's `finish-pr` workflow owns
 readiness, explicit merge confirmation, deployment verification, issue updates, and

@@ -522,6 +522,16 @@ credentials/secrets, or merge approval. A structured question/editor draft must 
 answered through targeted `herdr pane read/send-text/send-keys`, not a new agent prompt.
 Never infer merge approval.
 
+### Git remote-state reconciliation
+
+After every `git push`, fetch the pushed branch and verify the local branch has no
+ahead/behind drift from its upstream (`git fetch origin <branch>` followed by
+`git status --short --branch`). After `gh pr merge`, first verify the server-side
+merge, then fetch the base branch; if its canonical checkout is clean, fast-forward it
+with `git pull --ff-only origin <base>`. Do not continue from stale remote refs. If a
+dirty checkout prevents the fast-forward, preserve its work and report the pending
+reconciliation rather than merging or resetting over it.
+
 Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
 workspaces, and agent sessions, with one writer per worktree. Reuse the same visible session
 for review and finish-pr fix loops. The legacy `bun run worktree:session` helper remains

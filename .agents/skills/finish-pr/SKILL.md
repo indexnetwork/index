@@ -251,6 +251,18 @@ If `state` is `MERGED`, proceed; the leftover local branch is removed later duri
 
 If the PR should use merge commit or rebase instead, use the user/repo preference.
 
+Before any post-merge work, reconcile the local base checkout with the merged remote
+state. Fetch the base and, only when its canonical checkout is clean, fast-forward it:
+
+```bash
+git fetch origin BASE_BRANCH
+git -C /Users/yanek/Projects/index status --short
+git -C /Users/yanek/Projects/index pull --ff-only origin BASE_BRANCH
+```
+
+If that checkout is dirty, do not reset, merge over, or otherwise disturb it. Report
+the pending local reconciliation and continue only with remote facts where safe.
+
 ### 7. Verify post-merge GitHub checks
 
 After merge, identify the merge/base branch commit:
