@@ -22,7 +22,7 @@ Then use the available Railway MCP tool(s) to verify:
 - recent logs for startup/runtime errors,
 - app health URL or smoke endpoint if available.
 
-If a Railway deployment is still building/deploying, wait only as long as is reasonable, then report it as pending with the deployment URL/status. Do not claim success.
+If a Railway deployment is still building/deploying, do one bounded status read and report `merged; verification pending` with the deployment URL/status. Do not wait, watch, sleep, or poll; return control and let a later durable terminal event or natural orchestration tick trigger another bounded read. Do not claim success.
 
 If Railway MCP is not configured or does not expose enough tools to verify status/logs, report deployment verification as incomplete. Do not claim success or close related issues, but do not treat MCP unavailability alone as a reason to undo or delay an otherwise-safe GitHub merge.
 
@@ -41,14 +41,14 @@ gh issue comment ISSUE_NUMBER --body "Shipped in PR PR_URL and verified after de
 gh issue close ISSUE_NUMBER --reason completed
 ```
 
-If deployment is pending or failed, leave the issue open and comment with the blocker/status only if useful.
+If deployment is pending or failed, leave the issue open and comment with the blocker/status only if useful. Issue closure is gated on terminal success, never on merge or notifications.
 
 ### 10. Finish related Linear issues
 
 For each related Linear issue:
 
 1. Add a comment with PR URL, merge commit, verification commands, and Railway deployment status.
-2. Move the issue to the appropriate done/completed status only after merge and deployment verification succeed.
+2. Move the issue to the appropriate done/completed status only after merge and deployment verification reach terminal success. A nonterminal result remains fail-closed and pending.
 
 Use Linear tools rather than guessing API calls:
 

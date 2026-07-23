@@ -16,7 +16,7 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 - Do not merge without explicit user confirmation in the current session.
 - Do not deploy, restart, rollback, or mutate Railway resources unless the user explicitly asked for that action. Verification is okay; mutation needs confirmation.
 - Do not close Linear or GitHub issues until the PR is merged and post-merge deployment checks pass, unless the user explicitly asks to close them earlier.
-- Never claim deployment success from a queued/in-progress status. Wait for a terminal success state or report that it is still pending.
+- Never claim deployment success from a queued/in-progress status. Take one immediate status snapshot; if GitHub/Railway is nonterminal, invoke the project-local `verify-deployment-async` workflow and report `merged; verification pending`, then return control immediately. Never use `--watch`, waits, sleeps, or polling. Keep issues open until a later durable terminal event or explicit orchestration tick supplies another bounded read.
 - If Railway MCP tools are unavailable, report deployment as unverified; do not claim success or close related issues until it can be verified. GitHub merge safety does not depend on MCP availability.
 - If checks fail, keep issues open and report the blocker.
 - Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, `index` first delegates through a dedicated canonical-root coordinator; that root sends one consolidated prompt to the existing visible Herdr-managed Pi session for the PR worktree. The root/child handoff is fire-and-return without `--wait`; while the bridge is removed, `index` explicitly ticks the dedicated root on a later natural turn. That child session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
@@ -197,11 +197,12 @@ Record the user's decisions for the step-6 summary.
 
 ### 5. Check GitHub readiness before merge
 
-Wait for checks when needed, then refresh the same factual snapshot before each
-readiness decision and after every pushed fix/rebase:
+Before merge, take one factual snapshot and make the readiness decision from it. Do not
+wait for external gates in the root session. If required checks are nonterminal, report
+the pending state and hand off a bounded read-only verifier through
+`verify-deployment-async`; do not merge until normal readiness requirements are met.
 
 ```bash
-gh pr checks PR_NUMBER --watch
 bun run pr:snapshot -- PR_NUMBER [--repo owner/repo]
 ```
 
@@ -254,7 +255,8 @@ If the PR should use merge commit or rebase instead, use the user/repo preferenc
 
 ### 7. Verify post-merge GitHub checks
 
-After merge, identify the merge/base branch commit:
+After merge, identify the merge/base branch commit and take one immediate post-merge
+GitHub status snapshot:
 
 ```bash
 gh pr view PR_NUMBER --json state,mergedAt,mergeCommit,url
@@ -270,20 +272,20 @@ Check workflow runs for the target branch/commit:
 gh run list --branch BASE_BRANCH --limit 10
 ```
 
-If needed, watch the relevant run:
-
-```bash
-gh run watch RUN_ID
-```
-
-Do not proceed to issue closure until required post-merge checks have passed or the user explicitly accepts a pending state.
+If the relevant run is nonterminal, do not watch or poll it. Invoke
+`verify-deployment-async` for one bounded read, report `merged; verification pending`,
+and return control. A later durable terminal event or natural orchestration tick may
+trigger another one-shot read. Do not proceed to issue closure until required
+post-merge checks have terminal success.
 
 ### 8. Verify post-merge deployment, finish issues, and clean up worktrees
 
-Follow `references/post-merge-operations.md` for the detailed Railway MCP verification, GitHub/Linear issue closure, and mandatory worktree cleanup procedure. Key invariants:
+Follow `references/post-merge-operations.md` and the project-local
+`verify-deployment-async` skill for bounded Railway MCP verification, GitHub/Linear issue
+closure, and mandatory worktree cleanup procedure. Key invariants:
 
 - Verify Railway with MCP only; do not mutate Railway resources without explicit user approval.
-- Wait for terminal deployment success before closing issues or claiming the deploy is healthy.
+- Require terminal deployment success before closing issues or claiming the deploy is healthy; do not wait in-session for it.
 - For squash-merged PRs, the local branch may not appear in `git branch --merged`; use the PR merged state and merge commit as the source of truth.
 - Before removing a finished worktree, restore any external local pointers that target it (for example `~/.hermes/plugins/index-network` symlinked to a PR worktree).
 - Remove the finished PR worktree, prune, and report it. Report other apparently finished worktrees for separate cleanup; do not turn this PR closeout into an unrelated sweep.

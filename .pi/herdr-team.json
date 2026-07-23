@@ -1,0 +1,252 @@
+{
+  "version": 1,
+  "project": {
+    "name": "Index Network",
+    "repository": "index-monorepo",
+    "primaryBranch": "dev",
+    "stack": [
+      "Bun",
+      "TypeScript",
+      "React",
+      "Drizzle",
+      "PostgreSQL/pgvector",
+      "Redis/BullMQ",
+      "Railway"
+    ]
+  },
+  "requestedByRole": "CTO/Founding Engineer/System Architect",
+  "status": "implementation_team_configured",
+  "setupMetadata": {
+    "initializedAt": "2026-07-23T12:31:05.300Z",
+    "reconfiguredAt": "2026-07-23T13:16:06.699Z",
+    "method": "repository-derived autonomous-implementation topology",
+    "notes": "Converted from read-only investigation bootstrap to an autonomous-implementation team. Protocol/API is the priority surface and gets a dedicated writer. Worktree-per-writer; canonical root stays read-only on dev."
+  },
+  "topology": {
+    "mode": "direct-hierarchy",
+    "root": {
+      "role": "orchestrator",
+      "displayName": "index-root",
+      "owns": [
+        "policy",
+        "prioritization",
+        "task delegation",
+        "cross-surface coordination",
+        "merge approval gating",
+        "final synthesis"
+      ]
+    },
+    "workers": [
+      {
+        "role": "protocol-engineer",
+        "displayName": "protocol-engineer",
+        "mode": "implement",
+        "priority": true,
+        "owns": [
+          "packages/protocol",
+          "services/api services/adapters/queues/controllers/events",
+          "services/api database schema + drizzle migrations",
+          "protocol eval harness"
+        ],
+        "independent": true
+      },
+      {
+        "role": "web-client-engineer",
+        "displayName": "web-client-engineer",
+        "mode": "implement",
+        "owns": [
+          "apps/web",
+          "packages/cli",
+          "packages/claude-plugin",
+          "packages/hermes-plugin",
+          "apps/mac"
+        ],
+        "independent": true,
+        "dependsOn": [
+          "protocol-engineer (API contracts; coordinate via root, never edit protocol paths directly)"
+        ]
+      },
+      {
+        "role": "reviewer",
+        "displayName": "reviewer",
+        "mode": "read-only",
+        "owns": [
+          "PR review / GitHub Copilot address-code-review flow",
+          "eval:verify + targeted test/eval verification",
+          "pr:snapshot",
+          "pre-merge verify-production-release checks"
+        ],
+        "independent": true
+      },
+      {
+        "role": "release-verifier",
+        "displayName": "release-verifier",
+        "mode": "read-only",
+        "owns": [
+          "bounded GitHub/Railway deployment verification",
+          "release status reporting",
+          "issue closeout recommendation only after terminal success"
+        ],
+        "independent": true
+      }
+    ]
+  },
+  "externalGatePolicy": {
+    "mode": "non-blocking-one-shot",
+    "immediateSnapshot": true,
+    "nonterminalAction": "delegate read-only release-verifier, report merged; verification pending, and return control",
+    "recheckTrigger": "durable external terminal event or natural orchestration tick",
+    "prohibited": ["--watch", "wait", "sleep", "polling", "watcher daemon", "Railway mutation"],
+    "issueCloseout": "fail-closed until bound GitHub and Railway checks both reach terminal success",
+    "mcpFallback": "Railway unavailable means unverified; keep issues open and do not infer success"
+  },
+  "worktreePolicy": {
+    "canonicalRoot": "read-only for source mutations; remains on dev",
+    "implementationRequiresWorktree": true,
+    "worktreeDirectory": ".worktrees/<dashed-branch-name>",
+    "branchPattern": "<type>/<short-description>",
+    "oneWriterPerWorktree": true,
+    "readOnlyReviewMayUseSharedCheckout": true,
+    "visibleHerdrSessionRequiredForImplementation": true,
+    "openWithoutFocus": true,
+    "verifyBeforeMutation": [
+      "pwd",
+      "git branch --show-current",
+      "git status --short --branch"
+    ],
+    "neverMutateProduction": true
+  },
+  "limits": {
+    "maxWorkers": 3,
+    "maxConcurrentWorkers": 3,
+    "maxHierarchyDepth": 1,
+    "nestedDelegation": false,
+    "backgroundCoordinationOnly": true,
+    "pollingForCoordination": false,
+    "hiddenImplementationAgents": false
+  },
+  "modelPolicy": {
+    "mode": "ask-per-role",
+    "editable": true,
+    "instructions": "Model choices are per-role and editable here. Re-run /setup-herdr or edit roleProfiles[*].model to change."
+  },
+  "modelChoices": {
+    "protocol-engineer": "gpt-5.6-terra",
+    "web-client-engineer": "gpt-5.6-terra",
+    "reviewer": "gpt-5.6-sol",
+    "release-verifier": "gpt-5.6-luna"
+  },
+  "roleProfiles": {
+    "protocol-engineer": {
+      "model": "gpt-5.6-terra",
+      "mode": "implement",
+      "paths": [
+        "packages/protocol/**",
+        "services/api/src/**",
+        "services/api/drizzle/**",
+        "services/api/tests/**"
+      ],
+      "mission": "Implement protocol agent graphs, evaluators, services, adapters, queues, controllers, events, and Drizzle schema/migrations. Priority surface. Work in a dedicated worktree; keep the canonical dev checkout untouched.",
+      "verification": [
+        "run targeted `bun test path/to/test.ts` for affected areas",
+        "run relevant `bun run eval:*` and `bun run eval:verify` when protocol logic changes",
+        "regenerate + rename migrations per the schema-change checklist",
+        "conventional commits; open PR into dev"
+      ],
+      "completion": [
+        "cite changed file paths",
+        "attach test/eval evidence (commands + results)",
+        "reference commit and PR"
+      ]
+    },
+    "web-client-engineer": {
+      "model": "gpt-5.6-terra",
+      "mode": "implement",
+      "paths": [
+        "apps/web/**",
+        "packages/cli/**",
+        "packages/claude-plugin/**",
+        "packages/hermes-plugin/**",
+        "apps/mac/**"
+      ],
+      "mission": "Implement web (Vite/React 19), CLI, plugin, and mac-client surfaces. Consume protocol API contracts; coordinate contract changes through root rather than editing protocol paths.",
+      "verification": [
+        "run `bun run lint` and relevant build for the touched package",
+        "bump package.json version for touched npm-published packages",
+        "conventional commits; open PR into dev"
+      ],
+      "completion": [
+        "cite changed file paths",
+        "attach lint/build evidence",
+        "reference commit and PR"
+      ]
+    },
+    "release-verifier": {
+      "model": "gpt-5.6-luna",
+      "mode": "read-only",
+      "paths": [
+        ".pi/skills/finish-pr/**",
+        ".pi/skills/verify-deployment-async/**",
+        ".pi/herdr-team.json"
+      ],
+      "mission": "Perform one bounded, read-only GitHub and Railway verification for the exact PR/base/head/merge SHA and Railway project/environment/service/deployment IDs. Report terminal success/failure or fail-closed pending status; never mutate infrastructure, merge, or close issues.",
+      "verification": [
+        "take one GitHub snapshot and one Railway MCP read per explicit trigger",
+        "report identity-bound evidence with team_report",
+        "keep issues open unless both bound gates are terminal-success"
+      ],
+      "completion": [
+        "state exact IDs, statuses, and evidence",
+        "report verification pending when nonterminal",
+        "never infer success from merge or notifications"
+      ]
+    },
+    "reviewer": {
+      "model": "gpt-5.6-sol",
+      "mode": "read-only",
+      "paths": [],
+      "mission": "Review PRs (including the GitHub Copilot address-code-review flow), verify tests/evals, run eval:verify and pr:snapshot, and run pre-merge verify-production-release checks. Never mutate source, git state, infrastructure, or credentials.",
+      "verification": [
+        "state which commands were run and their results",
+        "flag pre-existing dirty/untracked state without changing it"
+      ],
+      "completion": [
+        "report pass/fail per check with evidence",
+        "recommend merge / block with reasoning",
+        "never infer merge approval"
+      ]
+    }
+  },
+  "completionRequirements": {
+    "allWorkers": [
+      "finish asynchronously (team_report / team_send)",
+      "never use herdr --wait, agent wait, pane wait-output, sleep, or polling",
+      "implementers mutate only inside their own worktree; reviewer mutates nothing",
+      "never touch production data or infrastructure",
+      "send a concise report to the root with verification evidence"
+    ],
+    "reportFormat": [
+      "scope",
+      "changes with file paths",
+      "verification performed (commands + results)",
+      "risks/gaps",
+      "commit + PR reference",
+      "recommended next action"
+    ],
+    "root": [
+      "delegate only concrete, independent tasks",
+      "keep canonical dev checkout stable and read-only",
+      "gate merges on explicit human approval",
+      "synthesize worker reports for the human",
+      "surface genuine product/architecture ambiguity to the human"
+    ]
+  },
+  "setup": {
+    "goal": "Handle work",
+    "workflow": "Autonomous implementation",
+    "focus": "Protocol is the most important. We already have a workflow using git worktrees.",
+    "modelPolicy": "ask-per-role",
+    "launchSuggestedTeam": true,
+    "requestedAt": "2026-07-23T13:16:06.699Z"
+  }
+}
