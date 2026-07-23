@@ -5,7 +5,7 @@ import { describe, expect, it, mock } from "bun:test";
 
 import { ORCHESTRATOR_PERSONA, ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import { SIGNAL_PERSONA, SIGNAL_PERSONA_ID, SIGNAL_TOOL_NAMES, filterSignalTools, narrowSignalTools } from "../signal.persona.js";
-import { buildSignalSystemContent, getSignalIntakeStage, isSignalNewSignalKickoff, SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
+import { buildSignalSystemContent, getSignalIntakeStage, isSignalNewSignalFeedback, isSignalNewSignalKickoff, SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 import type { SystemDatabase, UserDatabase } from "../../shared/interfaces/database.interface.js";
 
@@ -239,6 +239,12 @@ describe("guided New Signal intake", () => {
     expect(isSignalNewSignalKickoff("please tell me about my new signal")).toBe(false);
   });
 
+  it("keeps preview feedback in the completed intake stage", () => {
+    const feedback = "new-signal-preview-feedback: Make the location Berlin-specific.";
+    expect(isSignalNewSignalFeedback(feedback)).toBe(true);
+    expect(getSignalIntakeStage({ ...iteration(), currentMessage: feedback, recentTools: [] })).toBe("complete");
+  });
+
   it("advances through three blocking rounds and then proposal synthesis", () => {
     expect(getSignalIntakeStage(iteration())).toBe("who");
     expect(getSignalIntakeStage(iteration([{ name: "ask_user_question" }]))).toBe("contribution");
@@ -287,6 +293,18 @@ describe("guided New Signal intake", () => {
     expect(proposal).toContain("Call `create_intent` now");
     expect(proposal).toContain("```intent_proposal");
     expect(proposal).toContain("proposal-only");
+  });
+
+  it("asks the Signal Agent to return a replacement proposal when preview feedback arrives", () => {
+    const complete = buildSignalSystemContent(context, {
+      ...iteration(),
+      currentMessage: "new-signal-preview-feedback: Make the location Berlin-specific.",
+      recentTools: [],
+    });
+
+    expect(complete).toContain("feedback on that draft");
+    expect(complete).toContain("call `create_intent` again");
+    expect(complete).toContain("replacement proposal only");
   });
 });
 
