@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { IntentClarifier } from "./intent.clarifier.js";
-import type { ExecutionResult, VerifiedIntent } from "./intent.state.js";
+import type { ExecutionResult, IntentValidationFailure, VerifiedIntent } from "./intent.state.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "./intent.specificity.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { traceGraph } from "../shared/observability/trace.js";
@@ -104,6 +104,45 @@ function normalizeSpecificityWarning(value: string | null | undefined): string |
 
 function specificityWarningFor(intent: VerifiedIntent): string {
   return normalizeSpecificityWarning(intent.verification?.specificity_warning) ?? DEFAULT_SPECIFICITY_WARNING;
+}
+
+type IntentUpdateGraphResult = {
+  executionResults?: ExecutionResult[];
+  validationFailures?: IntentValidationFailure[];
+  trace?: Array<{ node: string; detail?: string; data?: Record<string, unknown> }>;
+};
+
+/** Convert graph failures into an accurate, machine-readable update-tool error. */
+export function describeIntentUpdateFailure(result: IntentUpdateGraphResult): {
+  failureCategory: string;
+  error: string;
+  details?: string;
+} {
+  const persistenceFailure = result.executionResults?.find((execution) => !execution.success);
+  if (persistenceFailure) {
+    return {
+      failureCategory: 'persistence_failure',
+      error: 'Intent update could not be persisted.',
+      ...(persistenceFailure.error ? { details: persistenceFailure.error } : {}),
+    };
+  }
+
+  const failure = result.validationFailures?.[0];
+  if (failure) {
+    const broadnessNote = failure.referentialBreadth === 'broad'
+      ? ' Referential breadth was recorded as a warning; it was not the blocking reason.'
+      : '';
+    return {
+      failureCategory: failure.category,
+      error: `${failure.message}${broadnessNote}`,
+      ...(failure.classification ? { details: `Speech act: ${failure.classification}.` } : {}),
+    };
+  }
+
+  return {
+    failureCategory: 'reconciliation_boundary',
+    error: 'Intent update produced no executable action after target-boundary enforcement.',
+  };
 }
 
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
@@ -573,13 +612,11 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }));
       const _intentGraphMs2 = Date.now() - _intentGraphStart2;
 
-      if (result.executionResults?.some((r: ExecutionResult) => !r.success)) {
-        return error("Failed to update intent.");
-      }
       if (!result.executionResults?.some((r: ExecutionResult) => r.success)) {
-        return error(
-          "Intent update was not applied. The new description may be too broad, too vague, or failed semantic verification. Please ask the user to clarify with a more concrete role, outcome, location, timeframe, domain, or specific need.",
-        );
+        return JSON.stringify({
+          success: false,
+          ...describeIntentUpdateFailure(result),
+        });
       }
       return success({
         message: "Intent updated.",

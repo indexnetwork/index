@@ -436,7 +436,7 @@ describe("update_intent", () => {
     expect(parsed.data.message).toBe("Intent updated.");
   });
 
-  test("returns an error when verification filters the update into a no-op", async () => {
+  test("returns truthful structured speech-act failure through the tool handler", async () => {
     const tools = captureTools({
       userDb: {},
       systemDb: {
@@ -444,7 +444,20 @@ describe("update_intent", () => {
       },
       graphs: {
         profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
-        intent: { invoke: async () => ({ verifiedIntents: [], actions: [], executionResults: [], agentTimings: [] }) },
+        intent: {
+          invoke: async () => ({
+            verifiedIntents: [],
+            actions: [],
+            executionResults: [],
+            validationFailures: [{
+              category: "non_actionable",
+              classification: "ASSERTIVE",
+              referentialBreadth: "broad",
+              message: "Description was classified as ASSERTIVE, not an actionable goal.",
+            }],
+            agentTimings: [],
+          }),
+        },
       },
     } as unknown as ToolDeps);
     const tool = tools.find((t) => t.name === "update_intent")!;
@@ -458,8 +471,11 @@ describe("update_intent", () => {
     }));
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("not applied");
-    expect(result.error).toContain("too broad");
+    expect(result.failureCategory).toBe("non_actionable");
+    expect(result.error).toContain("ASSERTIVE");
+    expect(result.error).toContain("not the blocking reason");
+    expect(result.error).not.toContain("too broad");
+    expect(result.details).toBe("Speech act: ASSERTIVE.");
   });
 });
 

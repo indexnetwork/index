@@ -249,6 +249,8 @@ The inferrer is grounded to the content: every inferred intent must be directly 
 
 The Semantic Verifier classifies each inferred intent (speech act type), scores its felicity conditions, computes semantic entropy, and identifies referential anchors. Intents classified as ASSERTIVE or EXPRESSIVE are flagged as NOISE and filtered out.
 
+Referential breadth is advisory for user-confirmed writes, not a validity boundary. A broad but otherwise actionable signal can be shown as a warned proposal and, after approval, persisted; an explicit edit of an existing owned signal follows the same rule. Breadth metadata and specificity warnings remain available for clarification and discovery quality, while non-actionable speech acts and genuinely vague or invalid candidates remain rejected.
+
 ### 3. Reconciliation
 
 The Intent Reconciler compares inferred intents against the user's existing active intents and decides on actions:
@@ -259,6 +261,8 @@ The Intent Reconciler compares inferred intents against the user's existing acti
 - **Conflict resolution**: A new goal contradicts an existing active intent. The old intent is expired and the new one is created.
 
 Matching uses Donnellan's distinction: referential intents match only if they share the same anchor, while attributive intents match if their descriptions are semantically similar.
+
+Explicit updates are the exception to general create-versus-update reconciliation: after inference and verification resolve exactly one candidate, the write is deterministically bound to the single caller-supplied active intent ID. It cannot create a new intent, update another intent, or cross the caller's ownership and request scope.
 
 ---
 

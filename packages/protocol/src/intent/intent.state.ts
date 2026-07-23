@@ -16,6 +16,20 @@ export type VerifiedIntent = InferredIntent & {
   score?: number; // Calculated min(authority, sincerity, clarity)
 };
 
+export type IntentValidationFailureCategory =
+  | 'non_actionable'
+  | 'vague_or_invalid'
+  | 'verification_failure'
+  | 'update_target_boundary'
+  | 'reconciliation_boundary';
+
+export interface IntentValidationFailure {
+  category: IntentValidationFailureCategory;
+  message: string;
+  classification?: string;
+  referentialBreadth?: 'narrow' | 'moderate' | 'broad';
+}
+
 /**
  * Result of executing a single reconciler action.
  */
@@ -133,6 +147,12 @@ export const IntentGraphState = Annotation.Root({
     default: () => "",
   }),
 
+  /** IDs of active intents owned by the graph user, used to fail closed on explicit updates. */
+  activeIntentIds: Annotation<string[]>({
+    reducer: (curr, next) => next,
+    default: () => [],
+  }),
+
   // --- Intermediate State ---
 
   /**
@@ -148,6 +168,12 @@ export const IntentGraphState = Annotation.Root({
    * Invalid intents are filtered out before reaching this state.
    */
   verifiedIntents: Annotation<VerifiedIntent[]>({
+    reducer: (curr, next) => next,
+    default: () => [],
+  }),
+
+  /** Structured reasons for candidates rejected before persistence. */
+  validationFailures: Annotation<IntentValidationFailure[]>({
     reducer: (curr, next) => next,
     default: () => [],
   }),
