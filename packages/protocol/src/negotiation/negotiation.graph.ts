@@ -260,10 +260,9 @@ export class NegotiationGraphFactory {
           return typeof v === 'string' && v.length > 0 ? v : null;
         };
         let initiatorUserId = readInitiator(priorTask?.metadata) ?? state.initiatorUserId ?? state.sourceUser.id;
-        // Conversation-scoped prior task: reused for both the initiator tie-break
-        // (only when active+fresh) and protocol-version inheritance (any prior
-        // task on the conversation pins the version).
-        const convTask = !exactContinuation && (!readInitiator(priorTask?.metadata) || !readProtocolVersion(priorTask?.metadata))
+        // Conversation-scoped prior task: used only for the initiator tie-break
+        // (and only when active+fresh).
+        const convTask = !exactContinuation && !readInitiator(priorTask?.metadata)
           ? await database.getLatestNegotiationTaskForConversation?.(conversation.id).catch(() => null)
           : null;
         if (!readInitiator(priorTask?.metadata)) {
@@ -280,22 +279,18 @@ export class NegotiationGraphFactory {
           }
         }
 
-        // --- Protocol version: inherited, never re-stamped ---
-        // Every session (including continuations) creates a new task row, so a
-        // naïve "stamp from env at init" would flip a v1 conversation to v2
-        // mid-flight. Rule: any prior negotiation task on this conversation pins
-        // the version (absent field on a genuine prior = pre-v2 task = v1);
-        // prior turns without a readable task also grandfather to v1; only
-        // genuinely fresh negotiations stamp from NEGOTIATION_PROTOCOL_VERSION.
-        let protocolVersion: NegotiationProtocolVersion;
-        const priorVersionSource = priorTask ?? convTask;
-        if (priorVersionSource) {
-          protocolVersion = readProtocolVersion(priorVersionSource.metadata) ?? 'v1';
-        } else if (isContinuation) {
-          protocolVersion = 'v1';
-        } else {
-          protocolVersion = configuredProtocolVersion();
-        }
+        // --- Protocol version: pinned per negotiation, re-stamped per match ---
+        // A prior task for this same negotiation (exact continuation resume or
+        // a re-run of the same opportunity) pins the version, so one
+        // negotiation never flips semantics mid-flight (absent field on a
+        // genuine prior = pre-v2 task = v1). Everything else — including
+        // continuations of older conversations between the same pair — stamps
+        // fresh from NEGOTIATION_PROTOCOL_VERSION, so a version cutover
+        // reaches existing pairs on their next new match instead of being
+        // pinned to v1 forever by conversation history.
+        const protocolVersion: NegotiationProtocolVersion = priorTask
+          ? (readProtocolVersion(priorTask.metadata) ?? 'v1')
+          : configuredProtocolVersion();
 
         const taskMetadata = {
           type: 'negotiation',
