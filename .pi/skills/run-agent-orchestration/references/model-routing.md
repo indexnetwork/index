@@ -37,27 +37,27 @@ without `--wait` and return immediately; main only inspects root state on a late
 natural user turn or explicit orchestration tick. No polling, sleeps, watcher
 processes, or timeout loops are allowed on that path.
 
-Dedicated root orchestrators and implementation children run outside `index`. For
-root → child coordination, use exactly one server-owned
-`herdr agent prompt NAME "..." --wait` with no timeout. Children signal via a
-structured question (`blocked`) or final `RESULT`; do not sleep-poll, run watchers,
-or use timeout loops.
+Dedicated roots and implementation children use the same fire-and-return contract:
+`herdr agent prompt NAME "..."` without `--wait`. Register each child's exact route
+before prompting it; children signal stable RESULT/validated blocked callbacks to that
+root. Do not sleep-poll, run watchers, or use timeout loops.
 
 ## Durable callback to `index`
 
 Model routing does not change the delivery path. The project-local orchestration bridge
-authorizes publication only from an observable Herdr workspace label ending in `-root`;
-`index` and implementation children fail closed. It resolves the unique workspace
+authorizes direct root → `index` publication only from an observable Herdr workspace
+label ending in `-root` whose checkout and Pi cwd equal the canonical root. `index` and
+unregistered implementation children fail closed; a registered child → root route is
+allowed. It resolves the unique workspace
 labeled `index` and its reported Pi session identity, then persists root `RESULT` and
 validated-rpiv blocked-question events before one best-effort Unix-socket wake. It never uses a fixed main agent name, screen scraping, editor
 injection, workspace focus, `herdr agent prompt`, or `herdr agent wait` from `index`.
 
-The `index` extension only updates a non-focusing inbox count when awake. On the next
-user-submitted natural turn, `before_agent_start` atomically claims the durable events
-and attaches persistent `ORCHESTRATOR_EVENT` context. Missing listeners, focused
-editors, and disabled Herdr toasts do not alter that safety guarantee: the spool waits
-for the later natural turn. `notification.show` is optional visibility only, has no
-persistent inbox in Herdr 0.7.5, and cannot resume Pi.
+The `index` extension coalesces verified wakes into one non-user custom follow-up
+continuation, attaching persistent `ORCHESTRATOR_EVENT` context before it starts. It
+never reads/edits the editor, fabricates user intent, or focuses a workspace. Missing
+listeners/restarts leave the spool for natural-turn attachment fallback.
+`notification.show` remains optional visibility only.
 
 The bridge remains project-local and requires trusted project extensions plus a reload
 of the root and `index` sessions after installation. Never clear, overwrite, or infer

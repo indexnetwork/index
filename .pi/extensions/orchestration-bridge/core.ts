@@ -10,6 +10,8 @@ export interface OrchestratorProvenance {
 	workspaceId: string;
 	workspaceLabel: string;
 	paneId: string;
+	/** Observable Herdr worktree checkout; binds a route beyond a label or pane. */
+	worktreePath: string;
 	sessionId: string;
 }
 
@@ -39,12 +41,16 @@ export interface HerdrWorkspace {
 	label: string;
 	focused: boolean;
 	active_tab_id?: string;
+	worktree?: {
+		checkout_path?: string;
+	};
 }
 
 export interface HerdrPane {
 	workspace_id: string;
 	pane_id: string;
 	tab_id?: string;
+	cwd?: string;
 	agent?: string;
 	agent_status?: string;
 	agent_session?: {
@@ -81,6 +87,7 @@ const EVENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
 const CONTROL_OR_ESCAPE = new RegExp(`[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}]`);
 const MAX_SESSION_ID = 1024;
 const MAX_SOURCE_FIELD = 160;
+const MAX_WORKTREE_PATH = 1024;
 const MAX_SUMMARY = 480;
 const MAX_LOCATION = 1024;
 const MAX_PAYLOAD = 4096;
@@ -121,8 +128,8 @@ function tombstonesDirectory(root: string, sessionId: string): string {
 	return path.join(sessionDirectory(root, sessionId), "cancelled");
 }
 
-function tombstonePath(root: string, sessionId: string, eventId: string): string {
-	return path.join(tombstonesDirectory(root, sessionId), `${eventFilename(eventId)}.cancelled`);
+function tombstonePath(root: string, sessionId: string, storageKey: string): string {
+	return path.join(tombstonesDirectory(root, sessionId), `${eventFilename(storageKey)}.cancelled`);
 }
 
 /** Shared compare-and-create namespace that linearizes cancellation versus attachment. */
@@ -130,8 +137,8 @@ function dispatchDirectory(root: string, sessionId: string): string {
 	return path.join(sessionDirectory(root, sessionId), "dispatch");
 }
 
-function dispatchPath(root: string, sessionId: string, eventId: string): string {
-	return path.join(dispatchDirectory(root, sessionId), eventFilename(eventId));
+function dispatchPath(root: string, sessionId: string, storageKey: string): string {
+	return path.join(dispatchDirectory(root, sessionId), eventFilename(storageKey));
 }
 
 function lockPath(root: string, sessionId: string): string {
@@ -177,13 +184,35 @@ function safeString(value: unknown, maximum: number, required = true): string | 
 	return normalized;
 }
 
-function eventFilename(eventId: string): string {
-	if (!EVENT_ID.test(eventId)) throw new Error("Invalid orchestration event id");
-	return `${eventId}.json`;
+function safeWorktreePath(value: unknown): string | undefined {
+	const normalized = safeString(value, MAX_WORKTREE_PATH);
+	return normalized && path.isAbsolute(normalized) ? path.resolve(normalized) : undefined;
+}
+
+export type SourcePolicy = "root" | "registered-child";
+
+function eventFilename(storageKey: string): string {
+	if (!EVENT_ID.test(storageKey)) throw new Error("Invalid orchestration event id");
+	return `${storageKey}.json`;
+}
+
+/**
+ * Keep caller-visible ids stable while giving every registered child an isolated
+ * durable namespace. Root → index filenames intentionally retain their legacy id.
+ */
+export function eventStorageKey(event: OrchestratorEvent, sourcePolicy: SourcePolicy = "root"): string {
+	return sourcePolicy === "registered-child"
+		? `${event.id}--${sessionKey(event.source.sessionId).slice(0, 24)}`
+		: event.id;
 }
 
 /** Strictly canonicalize untrusted publisher/spool data before it can enter the spool. */
-export function canonicalizeEvent(raw: unknown, expectedSessionId?: string, now = Date.now()): OrchestratorEvent | undefined {
+export function canonicalizeEvent(
+	raw: unknown,
+	expectedSessionId?: string,
+	now = Date.now(),
+	sourcePolicy: SourcePolicy = "root",
+): OrchestratorEvent | undefined {
 	if (typeof raw !== "object" || raw === null) return undefined;
 	const value = raw as Partial<OrchestratorEvent>;
 	const id = safeString(value.id, 192);
@@ -199,8 +228,11 @@ export function canonicalizeEvent(raw: unknown, expectedSessionId?: string, now 
 	const workspaceId = safeString(source.workspaceId, MAX_SOURCE_FIELD);
 	const workspaceLabel = safeString(source.workspaceLabel, MAX_SOURCE_FIELD);
 	const paneId = safeString(source.paneId, MAX_SOURCE_FIELD);
+	const worktreePath = safeWorktreePath(source.worktreePath);
 	const sessionId = safeString(source.sessionId, MAX_SESSION_ID);
-	if (!workspaceId || !workspaceLabel || !isDedicatedRootLabel(workspaceLabel) || !paneId || !sessionId) return undefined;
+	if (!workspaceId || !workspaceLabel || !paneId || !worktreePath || !sessionId) return undefined;
+	if (sourcePolicy === "root" && !isDedicatedRootLabel(workspaceLabel)) return undefined;
+	if (sourcePolicy === "registered-child" && (workspaceLabel === "index" || isDedicatedRootLabel(workspaceLabel))) return undefined;
 
 	let durableResult: OrchestratorEvent["durableResult"] | undefined;
 	if (value.durableResult !== undefined) {
@@ -215,7 +247,7 @@ export function canonicalizeEvent(raw: unknown, expectedSessionId?: string, now 
 	return {
 		id,
 		kind: value.kind,
-		source: { workspaceId, workspaceLabel, paneId, sessionId },
+		source: { workspaceId, workspaceLabel, paneId, worktreePath, sessionId },
 		targetSessionId,
 		summary,
 		timestamp: timestamp.toISOString(),
@@ -224,6 +256,12 @@ export function canonicalizeEvent(raw: unknown, expectedSessionId?: string, now 
 }
 
 /** Bounded factual summary of rpiv's validated, emitted prompt payload. */
+export function rpivPromptToolCallId(payload: unknown): string | undefined {
+	if (typeof payload !== "object" || payload === null) return undefined;
+	const value = payload as { toolCallId?: unknown; toolCall?: { id?: unknown } };
+	return safeString(value.toolCallId ?? value.toolCall?.id, MAX_SOURCE_FIELD);
+}
+
 export function summarizeAskUserPrompt(payload: unknown): string | undefined {
 	if (typeof payload !== "object" || payload === null || !Array.isArray((payload as AskUserPromptPayload).questions)) return undefined;
 	const questions = (payload as AskUserPromptPayload).questions;
@@ -242,9 +280,9 @@ async function quarantine(file: string, root: string, sessionId: string): Promis
 	await fs.rename(file, destination).catch(() => undefined);
 }
 
-async function isTombstoned(root: string, sessionId: string, eventId: string): Promise<boolean> {
+async function isTombstoned(root: string, sessionId: string, storageKey: string): Promise<boolean> {
 	try {
-		await fs.access(tombstonePath(root, sessionId, eventId));
+		await fs.access(tombstonePath(root, sessionId, storageKey));
 		return true;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
@@ -253,11 +291,11 @@ async function isTombstoned(root: string, sessionId: string, eventId: string): P
 }
 
 /** Atomically preserve cancellation even while a session operation owns its lock. */
-async function createTombstone(root: string, sessionId: string, eventId: string): Promise<void> {
+async function createTombstone(root: string, sessionId: string, storageKey: string): Promise<void> {
 	const directory = tombstonesDirectory(root, sessionId);
 	await privateDirectory(directory);
 	try {
-		await privateFile(tombstonePath(root, sessionId, eventId), `${eventId}\n`);
+		await privateFile(tombstonePath(root, sessionId, storageKey), `${storageKey}\n`);
 	} catch (error) {
 		if (!isBusy(error)) throw error;
 	}
@@ -265,9 +303,9 @@ async function createTombstone(root: string, sessionId: string, eventId: string)
 
 type DispatchDecision = "attachment" | "cancelled";
 
-async function readDispatchDecision(root: string, sessionId: string, eventId: string): Promise<DispatchDecision | undefined> {
+async function readDispatchDecision(root: string, sessionId: string, storageKey: string): Promise<DispatchDecision | undefined> {
 	try {
-		const value: unknown = JSON.parse(await fs.readFile(dispatchPath(root, sessionId, eventId), "utf8"));
+		const value: unknown = JSON.parse(await fs.readFile(dispatchPath(root, sessionId, storageKey), "utf8"));
 		if (typeof value === "object" && value !== null && (value as { decision?: unknown }).decision === "attachment") return "attachment";
 		if (typeof value === "object" && value !== null && (value as { decision?: unknown }).decision === "cancelled") return "cancelled";
 		return "cancelled";
@@ -278,33 +316,43 @@ async function readDispatchDecision(root: string, sessionId: string, eventId: st
 }
 
 /** Atomically choose one terminal decision for a logical event. */
-async function chooseDispatchDecision(root: string, sessionId: string, eventId: string, decision: DispatchDecision): Promise<DispatchDecision> {
+async function chooseDispatchDecision(root: string, sessionId: string, storageKey: string, decision: DispatchDecision): Promise<DispatchDecision> {
 	const directory = dispatchDirectory(root, sessionId);
 	await privateDirectory(directory);
 	try {
-		await privateFile(dispatchPath(root, sessionId, eventId), `${JSON.stringify({ eventId, decision })}\n`);
+		await privateFile(dispatchPath(root, sessionId, storageKey), `${JSON.stringify({ eventId: storageKey, decision })}\n`);
 		return decision;
 	} catch (error) {
 		if (!isBusy(error)) throw error;
-		return (await readDispatchDecision(root, sessionId, eventId)) ?? "cancelled";
+		return (await readDispatchDecision(root, sessionId, storageKey)) ?? "cancelled";
 	}
 }
 
-async function removeDispatchDecision(root: string, sessionId: string, eventId: string): Promise<void> {
-	await fs.unlink(dispatchPath(root, sessionId, eventId)).catch((error: NodeJS.ErrnoException) => {
+async function removeDispatchDecision(root: string, sessionId: string, storageKey: string): Promise<void> {
+	await fs.unlink(dispatchPath(root, sessionId, storageKey)).catch((error: NodeJS.ErrnoException) => {
 		if (error.code !== "ENOENT") throw error;
 	});
 }
 
-async function listEvents(root: string, sessionId: string, directory: string): Promise<Array<{ file: string; event: OrchestratorEvent }>> {
+async function listEvents(
+	root: string,
+	sessionId: string,
+	directory: string,
+	sourcePolicy: SourcePolicy = "root",
+	authorize?: (event: OrchestratorEvent) => boolean,
+): Promise<Array<{ file: string; event: OrchestratorEvent }>> {
 	try {
 		const names = (await fs.readdir(directory)).filter((name) => name.endsWith(".json"));
 		const values = await Promise.all(
 			names.map(async (name) => {
 				const file = path.join(directory, name);
 				try {
-					const event = canonicalizeEvent(JSON.parse(await fs.readFile(file, "utf8")), sessionId);
-					if (event && !(await isTombstoned(root, sessionId, event.id))) return { file, event };
+					const event = canonicalizeEvent(JSON.parse(await fs.readFile(file, "utf8")), sessionId, Date.now(), sourcePolicy);
+					if (event && authorize && !authorize(event)) {
+						await quarantine(file, root, sessionId);
+						return undefined;
+					}
+					if (event && !(await isTombstoned(root, sessionId, eventStorageKey(event, sourcePolicy)))) return { file, event };
 					if (event) await fs.unlink(file).catch(() => undefined);
 				} catch {
 					// Quarantine malformed JSON and unsafe values; never deliver them.
@@ -322,26 +370,28 @@ async function listEvents(root: string, sessionId: string, directory: string): P
 	}
 }
 
-async function queuedCount(root: string, sessionId: string): Promise<number> {
-	return (await listEvents(root, sessionId, pendingDirectory(root, sessionId))).length + (await listEvents(root, sessionId, claimsDirectory(root, sessionId))).length;
+async function queuedCount(root: string, sessionId: string, sourcePolicy: SourcePolicy = "root", authorize?: (event: OrchestratorEvent) => boolean): Promise<number> {
+	return (await listEvents(root, sessionId, pendingDirectory(root, sessionId), sourcePolicy, authorize)).length
+		+ (await listEvents(root, sessionId, claimsDirectory(root, sessionId), sourcePolicy, authorize)).length;
 }
 
 /** Persist an event atomically before any wake; duplicate ids and lock contention are explicit outcomes. */
-export async function publishEvent(root: string, raw: OrchestratorEvent): Promise<PublishStatus> {
-	const event = canonicalizeEvent(raw);
+export async function publishEvent(root: string, raw: OrchestratorEvent, sourcePolicy: SourcePolicy = "root"): Promise<PublishStatus> {
+	const event = canonicalizeEvent(raw, undefined, Date.now(), sourcePolicy);
 	if (!event) throw new Error("Unsafe orchestration event");
 	try {
 		return await withSessionLock(root, event.targetSessionId, async () => {
 			const pending = pendingDirectory(root, event.targetSessionId);
 			await privateDirectory(pending);
 			await privateDirectory(claimsDirectory(root, event.targetSessionId));
-			if (await isTombstoned(root, event.targetSessionId, event.id)) return "cancelled";
-			const dispatch = await readDispatchDecision(root, event.targetSessionId, event.id);
+			const storageKey = eventStorageKey(event, sourcePolicy);
+			if (await isTombstoned(root, event.targetSessionId, storageKey)) return "cancelled";
+			const dispatch = await readDispatchDecision(root, event.targetSessionId, storageKey);
 			if (dispatch === "attachment") return "duplicate";
 			if (dispatch === "cancelled") return "cancelled";
-			if (await queuedCount(root, event.targetSessionId) >= MAX_QUEUED_EVENTS) throw new Error("Orchestration spool capacity reached");
+			if (await queuedCount(root, event.targetSessionId, sourcePolicy) >= MAX_QUEUED_EVENTS) throw new Error("Orchestration spool capacity reached");
 
-			const filename = eventFilename(event.id);
+			const filename = eventFilename(storageKey);
 			const target = path.join(pending, filename);
 			const temporary = path.join(pending, `.${filename}.${randomUUID()}.tmp`);
 			await privateFile(temporary, `${JSON.stringify(event)}\n`);
@@ -361,36 +411,53 @@ export async function publishEvent(root: string, raw: OrchestratorEvent): Promis
 	}
 }
 
-async function acknowledgeDeliveredUnlocked(root: string, sessionId: string, deliveredIds: ReadonlySet<string>): Promise<void> {
-	if (deliveredIds.size === 0) return;
-	for (const eventId of deliveredIds) await removeDispatchDecision(root, sessionId, eventId);
+async function acknowledgeDeliveredUnlocked(
+	root: string,
+	sessionId: string,
+	deliveredKeys: ReadonlySet<string>,
+	sourcePolicy: SourcePolicy = "root",
+	authorize?: (event: OrchestratorEvent) => boolean,
+): Promise<void> {
+	if (deliveredKeys.size === 0) return;
+	for (const storageKey of deliveredKeys) await removeDispatchDecision(root, sessionId, storageKey);
 	for (const directory of [pendingDirectory(root, sessionId), claimsDirectory(root, sessionId)]) {
-		for (const { file, event } of await listEvents(root, sessionId, directory)) {
-			if (deliveredIds.has(event.id)) await fs.unlink(file).catch(() => undefined);
+		for (const { file, event } of await listEvents(root, sessionId, directory, sourcePolicy, authorize)) {
+			if (deliveredKeys.has(eventStorageKey(event, sourcePolicy))) await fs.unlink(file).catch(() => undefined);
 		}
 	}
 }
 
 /** Delete only events whose structured custom-message delivery is already persisted. */
-export async function acknowledgeDelivered(root: string, sessionId: string, deliveredIds: ReadonlySet<string>): Promise<void> {
+export async function acknowledgeDelivered(
+	root: string,
+	sessionId: string,
+	deliveredIds: ReadonlySet<string>,
+	sourcePolicy: SourcePolicy = "root",
+	authorize?: (event: OrchestratorEvent) => boolean,
+): Promise<void> {
 	try {
-		await withSessionLock(root, sessionId, () => acknowledgeDeliveredUnlocked(root, sessionId, deliveredIds));
+		await withSessionLock(root, sessionId, () => acknowledgeDeliveredUnlocked(root, sessionId, deliveredIds, sourcePolicy, authorize));
 	} catch (error) {
 		if (!isBusy(error)) throw error;
 	}
 }
 
-async function reclaimClaimsUnlocked(root: string, sessionId: string): Promise<void> {
+async function reclaimClaimsUnlocked(
+	root: string,
+	sessionId: string,
+	sourcePolicy: SourcePolicy = "root",
+	authorize?: (event: OrchestratorEvent) => boolean,
+): Promise<void> {
 	const pending = pendingDirectory(root, sessionId);
 	const claims = claimsDirectory(root, sessionId);
 	await privateDirectory(pending);
 	await privateDirectory(claims);
-	for (const { file, event } of await listEvents(root, sessionId, claims)) {
-		if (await isTombstoned(root, sessionId, event.id)) {
+	for (const { file, event } of await listEvents(root, sessionId, claims, sourcePolicy, authorize)) {
+		if (await isTombstoned(root, sessionId, eventStorageKey(event, sourcePolicy))) {
 			await fs.unlink(file).catch(() => undefined);
 			continue;
 		}
-		const target = path.join(pending, eventFilename(event.id));
+		const target = path.join(pending, eventFilename(eventStorageKey(event, sourcePolicy)));
 		try {
 			// `rename` can replace on POSIX; link first so concurrent recovery cannot overwrite.
 			await fs.link(file, target);
@@ -403,25 +470,36 @@ async function reclaimClaimsUnlocked(root: string, sessionId: string): Promise<v
 }
 
 /** Crash claims are replayed on the next natural turn unless structured delivery was acknowledged. */
-export async function reclaimClaims(root: string, sessionId: string): Promise<void> {
+export async function reclaimClaims(
+	root: string,
+	sessionId: string,
+	sourcePolicy: SourcePolicy = "root",
+	authorize?: (event: OrchestratorEvent) => boolean,
+): Promise<void> {
 	try {
-		await withSessionLock(root, sessionId, () => reclaimClaimsUnlocked(root, sessionId));
+		await withSessionLock(root, sessionId, () => reclaimClaimsUnlocked(root, sessionId, sourcePolicy, authorize));
 	} catch (error) {
 		if (!isBusy(error)) throw error;
 	}
 }
 
 /** Atomically claim a bounded timestamp/id-ordered batch for one natural turn. */
-export async function claimOutstanding(root: string, sessionId: string, deliveredIds: ReadonlySet<string>): Promise<ClaimedEvent[]> {
+export async function claimOutstanding(
+	root: string,
+	sessionId: string,
+	deliveredIds: ReadonlySet<string>,
+	sourcePolicy: SourcePolicy = "root",
+	authorize?: (event: OrchestratorEvent) => boolean,
+): Promise<ClaimedEvent[]> {
 	try {
 		return await withSessionLock(root, sessionId, async () => {
-			await acknowledgeDeliveredUnlocked(root, sessionId, deliveredIds);
-			await reclaimClaimsUnlocked(root, sessionId);
+			await acknowledgeDeliveredUnlocked(root, sessionId, deliveredIds, sourcePolicy, authorize);
+			await reclaimClaimsUnlocked(root, sessionId, sourcePolicy, authorize);
 			const pending = pendingDirectory(root, sessionId);
 			const claims = claimsDirectory(root, sessionId);
 			const claimed: ClaimedEvent[] = [];
-			for (const { file, event } of (await listEvents(root, sessionId, pending)).slice(0, MAX_EVENTS_PER_TURN)) {
-				const claimPath = path.join(claims, `${event.id}.${randomUUID()}.json`);
+			for (const { file, event } of (await listEvents(root, sessionId, pending, sourcePolicy, authorize)).slice(0, MAX_EVENTS_PER_TURN)) {
+				const claimPath = path.join(claims, `${eventStorageKey(event, sourcePolicy)}.${randomUUID()}.json`);
 				try {
 					await fs.rename(file, claimPath);
 					claimed.push({ event, claimPath });
@@ -441,14 +519,25 @@ export async function claimOutstanding(root: string, sessionId: string, delivere
  * Tombstone an ended RPIV block and atomically choose cancellation unless attachment
  * had already reserved delivery. The tombstone always prevents any later replay.
  */
-export async function discardEvent(root: string, sessionId: string, eventId: string): Promise<void> {
+export async function discardEvent(
+	root: string,
+	sessionId: string,
+	eventId: string,
+	sourcePolicy: SourcePolicy = "root",
+	authorize?: (event: OrchestratorEvent) => boolean,
+	source?: OrchestratorProvenance,
+): Promise<void> {
 	if (!EVENT_ID.test(eventId)) return;
-	// Cancellation's durable intent never depends on acquiring the session lock.
-	await createTombstone(root, sessionId, eventId);
-	await chooseDispatchDecision(root, sessionId, eventId, "cancelled");
+	if (sourcePolicy === "registered-child" && !source) return;
+	const storageKey = sourcePolicy === "registered-child"
+		? eventStorageKey({ id: eventId, source } as OrchestratorEvent, sourcePolicy)
+		: eventId;
+	// Decision creation is the cancellation linearization point. Tombstone/cleanup follow it.
+	await chooseDispatchDecision(root, sessionId, storageKey, "cancelled");
+	await createTombstone(root, sessionId, storageKey);
 	for (const directory of [pendingDirectory(root, sessionId), claimsDirectory(root, sessionId)]) {
-		for (const { file, event } of await listEvents(root, sessionId, directory)) {
-			if (event.id === eventId) await fs.unlink(file).catch(() => undefined);
+		for (const { file, event } of await listEvents(root, sessionId, directory, sourcePolicy, authorize)) {
+			if (eventStorageKey(event, sourcePolicy) === storageKey) await fs.unlink(file).catch(() => undefined);
 		}
 	}
 }
@@ -459,7 +548,12 @@ export async function discardEvent(root: string, sessionId: string, eventId: str
  * decision first returns no claim; cancellation afterwards cannot retract this one
  * returned attachment, but its tombstone still prevents every later replay.
  */
-export async function prepareAttachment(root: string, sessionId: string, claims: ClaimedEvent[]): Promise<ClaimedEvent[]> {
+export async function prepareAttachment(
+	root: string,
+	sessionId: string,
+	claims: ClaimedEvent[],
+	sourcePolicy: SourcePolicy = "root",
+): Promise<ClaimedEvent[]> {
 	try {
 		return await withSessionLock(root, sessionId, async () => {
 			const deliverable: ClaimedEvent[] = [];
@@ -470,12 +564,13 @@ export async function prepareAttachment(root: string, sessionId: string, claims:
 					if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
 					throw error;
 				}
-				if (await isTombstoned(root, sessionId, claim.event.id)) {
-					await chooseDispatchDecision(root, sessionId, claim.event.id, "cancelled");
+				const storageKey = eventStorageKey(claim.event, sourcePolicy);
+				if (await isTombstoned(root, sessionId, storageKey)) {
+					await chooseDispatchDecision(root, sessionId, storageKey, "cancelled");
 					await fs.unlink(claim.claimPath).catch(() => undefined);
 					continue;
 				}
-				const decision = await chooseDispatchDecision(root, sessionId, claim.event.id, "attachment");
+				const decision = await chooseDispatchDecision(root, sessionId, storageKey, "attachment");
 				if (decision === "attachment") deliverable.push(claim);
 				else await fs.unlink(claim.claimPath).catch(() => undefined);
 			}
@@ -487,13 +582,18 @@ export async function prepareAttachment(root: string, sessionId: string, claims:
 	}
 }
 
-export async function outstandingCount(root: string, sessionId: string): Promise<number> {
-	return queuedCount(root, sessionId);
+export async function outstandingCount(
+	root: string,
+	sessionId: string,
+	sourcePolicy: SourcePolicy = "root",
+	authorize?: (event: OrchestratorEvent) => boolean,
+): Promise<number> {
+	return queuedCount(root, sessionId, sourcePolicy, authorize);
 }
 
 /** Serialize all values as bounded, untrusted data: never bridge instructions. */
-export function formatAttachment(event: OrchestratorEvent): string {
-	const canonical = canonicalizeEvent(event);
+export function formatAttachment(event: OrchestratorEvent, sourcePolicy: SourcePolicy = "root"): string {
+	const canonical = canonicalizeEvent(event, undefined, Date.now(), sourcePolicy);
 	if (!canonical) throw new Error("Unsafe orchestration event attachment");
 	return [
 		"ORCHESTRATOR_EVENT",
@@ -561,15 +661,20 @@ export function parseHerdrResult(stdout: string): unknown {
 }
 
 /** Resolve exactly one Pi pane in the unique index workspace, even on a background tab. */
-export function resolveIndexTarget(workspaceResult: unknown, paneResult: unknown): IndexTarget | undefined {
+export function resolveIndexTarget(workspaceResult: unknown, paneResult: unknown, canonicalRoot?: string): IndexTarget | undefined {
 	const workspaces = (workspaceResult as { workspaces?: HerdrWorkspace[] }).workspaces;
 	const panes = (paneResult as { panes?: HerdrPane[] }).panes;
 	if (!Array.isArray(workspaces) || !Array.isArray(panes)) return undefined;
 	const matches = workspaces.filter((workspace) => workspace.label === "index");
 	if (matches.length !== 1) return undefined;
 	const workspace = matches[0];
+	const canonical = canonicalRoot ? safeWorktreePath(canonicalRoot) : undefined;
+	if (canonical && safeWorktreePath(workspace.worktree?.checkout_path) !== canonical) return undefined;
 	const candidates = panes.filter(
-		(pane) => pane.workspace_id === workspace.workspace_id && pane.agent === "pi" && typeof pane.agent_session?.value === "string",
+		(pane) => pane.workspace_id === workspace.workspace_id
+			&& pane.agent === "pi"
+			&& typeof pane.agent_session?.value === "string"
+			&& (!canonical || safeWorktreePath(pane.cwd) === canonical),
 	);
 	if (candidates.length !== 1) return undefined;
 	const pane = candidates[0];
@@ -583,25 +688,10 @@ export function resolveIndexTarget(workspaceResult: unknown, paneResult: unknown
 }
 
 /** Resolve source provenance and enforce observable source labels from Herdr metadata. */
-export function resolveLiveTopology(workspaceResult: unknown, paneResult: unknown, sourceSessionId: string): LiveTopology | undefined {
-	const workspaces = (workspaceResult as { workspaces?: HerdrWorkspace[] }).workspaces;
-	const panes = (paneResult as { panes?: HerdrPane[] }).panes;
-	if (!Array.isArray(workspaces) || !Array.isArray(panes)) return undefined;
-	const index = resolveIndexTarget(workspaceResult, paneResult);
-	if (!index) return undefined;
-	const sourcePane = panes.filter((pane) => pane.agent_session?.value === sourceSessionId);
-	if (sourcePane.length !== 1) return undefined;
-	const sourceWorkspace = workspaces.filter((workspace) => workspace.workspace_id === sourcePane[0].workspace_id);
-	if (sourceWorkspace.length !== 1) return undefined;
-	return {
-		index,
-		source: {
-			workspaceId: sourceWorkspace[0].workspace_id,
-			workspaceLabel: sourceWorkspace[0].label,
-			paneId: sourcePane[0].pane_id,
-			sessionId: sourceSessionId,
-		},
-	};
+export function resolveLiveTopology(workspaceResult: unknown, paneResult: unknown, sourceSessionId: string, canonicalRoot?: string): LiveTopology | undefined {
+	const index = resolveIndexTarget(workspaceResult, paneResult, canonicalRoot);
+	const source = resolveSessionTopology(workspaceResult, paneResult, sourceSessionId)?.source;
+	return index && source ? { index, source } : undefined;
 }
 
 /** Collect balanced same-process blocked lifecycle transitions for nested question tools. */
@@ -609,6 +699,10 @@ export class BlockedQuestionBridge {
 	private readonly active = new Set<string>();
 
 	public constructor(private readonly emit: (state: { active: boolean; label?: string }) => void) {}
+
+	public get isActive(): boolean {
+		return this.active.size > 0;
+	}
 
 	public start(toolCallId: string, label: string): void {
 		if (this.active.has(toolCallId)) return;
@@ -627,4 +721,360 @@ export class BlockedQuestionBridge {
 		this.active.clear();
 		this.emit({ active: false });
 	}
+}
+
+/** Exact durable authorization for one child Pi session to callback one dedicated root. */
+export interface ChildRoute {
+	id: string;
+	root: OrchestratorProvenance;
+	child: OrchestratorProvenance;
+	registeredAt: string;
+}
+
+export interface SessionTopology {
+	source: OrchestratorProvenance;
+}
+
+export function isCanonicalRootSource(source: OrchestratorProvenance, canonicalRoot: string): boolean {
+	return isDedicatedRootLabel(source.workspaceLabel) && source.worktreePath === path.resolve(canonicalRoot);
+}
+
+function provenanceEqual(left: OrchestratorProvenance, right: OrchestratorProvenance): boolean {
+	return left.workspaceId === right.workspaceId
+		&& left.workspaceLabel === right.workspaceLabel
+		&& left.paneId === right.paneId
+		&& left.worktreePath === right.worktreePath
+		&& left.sessionId === right.sessionId;
+}
+
+function routeId(root: OrchestratorProvenance, child: OrchestratorProvenance): string {
+	return createHash("sha256").update(`${root.sessionId}\u0000${child.sessionId}\u0000${child.workspaceId}\u0000${child.paneId}\u0000${child.worktreePath}`).digest("hex").slice(0, 40);
+}
+
+function childRouteDirectory(root: string, childSessionId: string): string {
+	return path.join(root, "routes", "children", sessionKey(childSessionId));
+}
+
+function rootRouteDirectory(root: string, rootSessionId: string): string {
+	return path.join(root, "routes", "roots", sessionKey(rootSessionId));
+}
+
+function routePath(directory: string, id: string): string {
+	return path.join(directory, `${id}.json`);
+}
+
+/** Reject route data unless both observable ends are stable and distinct. */
+export function canonicalizeChildRoute(raw: unknown, now = Date.now()): ChildRoute | undefined {
+	if (typeof raw !== "object" || raw === null) return undefined;
+	const value = raw as Partial<ChildRoute>;
+	const id = safeString(value.id, 80);
+	const registeredAt = typeof value.registeredAt === "string" ? new Date(value.registeredAt) : undefined;
+	const canonicalProvenance = (candidate: unknown, policy: SourcePolicy): OrchestratorProvenance | undefined => {
+		if (typeof candidate !== "object" || candidate === null) return undefined;
+		const source = candidate as Partial<OrchestratorProvenance>;
+		const workspaceId = safeString(source.workspaceId, MAX_SOURCE_FIELD);
+		const workspaceLabel = safeString(source.workspaceLabel, MAX_SOURCE_FIELD);
+		const paneId = safeString(source.paneId, MAX_SOURCE_FIELD);
+		const worktreePath = safeWorktreePath(source.worktreePath);
+		const sessionId = safeString(source.sessionId, MAX_SESSION_ID);
+		if (!workspaceId || !workspaceLabel || !paneId || !worktreePath || !sessionId) return undefined;
+		if (policy === "root" && !isDedicatedRootLabel(workspaceLabel)) return undefined;
+		if (policy === "registered-child" && (workspaceLabel === "index" || isDedicatedRootLabel(workspaceLabel))) return undefined;
+		return { workspaceId, workspaceLabel, paneId, worktreePath, sessionId };
+	};
+	const root = canonicalProvenance(value.root, "root");
+	const child = canonicalProvenance(value.child, "registered-child");
+	if (!id || !EVENT_ID.test(id) || !root || !child || root.sessionId === child.sessionId || !registeredAt || !Number.isFinite(registeredAt.getTime()) || registeredAt.getTime() > now + FUTURE_SKEW_MS) return undefined;
+	if (id !== routeId(root, child)) return undefined;
+	return { id, root, child, registeredAt: registeredAt.toISOString() };
+}
+
+/** Resolve the unique Pi source and bind its pane cwd to the workspace checkout. */
+export function resolveSessionTopology(workspaceResult: unknown, paneResult: unknown, sessionId: string): SessionTopology | undefined {
+	const workspaces = (workspaceResult as { workspaces?: HerdrWorkspace[] }).workspaces;
+	const panes = (paneResult as { panes?: HerdrPane[] }).panes;
+	if (!Array.isArray(workspaces) || !Array.isArray(panes)) return undefined;
+	const candidates = panes.filter((pane) => pane.agent === "pi" && pane.agent_session?.value === sessionId);
+	if (candidates.length !== 1) return undefined;
+	const pane = candidates[0];
+	const matchingWorkspaces = workspaces.filter((workspace) => workspace.workspace_id === pane.workspace_id);
+	if (matchingWorkspaces.length !== 1) return undefined;
+	const workspace = matchingWorkspaces[0];
+	const worktreePath = safeWorktreePath(workspace.worktree?.checkout_path);
+	if (!worktreePath || safeWorktreePath(pane.cwd) !== worktreePath) return undefined;
+	return {
+		source: {
+			workspaceId: workspace.workspace_id,
+			workspaceLabel: workspace.label,
+			paneId: pane.pane_id,
+			worktreePath,
+			sessionId,
+		},
+	};
+}
+
+/** Root-only route registration verifies Herdr's live identity before persistence. */
+export function resolveChildRouteRegistration(
+	workspaceResult: unknown,
+	paneResult: unknown,
+	rootSessionId: string,
+	child: OrchestratorProvenance,
+	canonicalRoot?: string,
+): ChildRoute | undefined {
+	const root = resolveSessionTopology(workspaceResult, paneResult, rootSessionId)?.source;
+	const liveChild = resolveSessionTopology(workspaceResult, paneResult, child.sessionId)?.source;
+	if (!root || !liveChild || !isDedicatedRootLabel(root.workspaceLabel) || (canonicalRoot && !isCanonicalRootSource(root, canonicalRoot)) || !provenanceEqual(liveChild, child)) return undefined;
+	const route: ChildRoute = { id: routeId(root, liveChild), root, child: liveChild, registeredAt: new Date().toISOString() };
+	return canonicalizeChildRoute(route);
+}
+
+async function writeRouteCopy(directory: string, route: ChildRoute): Promise<"registered" | "duplicate"> {
+	await privateDirectory(directory);
+	try {
+		await privateFile(routePath(directory, route.id), `${JSON.stringify(route)}\n`);
+		return "registered";
+	} catch (error) {
+		if (!isBusy(error)) throw error;
+		const existing = canonicalizeChildRoute(JSON.parse(await fs.readFile(routePath(directory, route.id), "utf8")));
+		if (existing && provenanceEqual(existing.root, route.root) && provenanceEqual(existing.child, route.child)) return "duplicate";
+		throw new Error("Ambiguous child route id", { cause: error });
+	}
+}
+
+/** Persist mirrored route records so either endpoint can resolve only its exact authorization. */
+export async function registerChildRoute(root: string, raw: ChildRoute): Promise<"registered" | "duplicate"> {
+	const route = canonicalizeChildRoute(raw);
+	if (!route) throw new Error("Unsafe child route");
+	return withSessionLock(root, route.root.sessionId, async () => {
+		const rootOutcome = await writeRouteCopy(rootRouteDirectory(root, route.root.sessionId), route);
+		const childOutcome = await writeRouteCopy(childRouteDirectory(root, route.child.sessionId), route);
+		return rootOutcome === "registered" || childOutcome === "registered" ? "registered" : "duplicate";
+	});
+}
+
+async function readRoutes(directory: string): Promise<ChildRoute[]> {
+	try {
+		const names = (await fs.readdir(directory)).filter((name) => name.endsWith(".json"));
+		const routes = await Promise.all(names.map(async (name) => {
+			try {
+				return canonicalizeChildRoute(JSON.parse(await fs.readFile(path.join(directory, name), "utf8")));
+			} catch {
+				return undefined;
+			}
+		}));
+		return routes.filter((route): route is ChildRoute => route !== undefined);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+}
+
+/** A child never selects a root: exactly one route matching its live identity must exist. */
+export async function resolveChildPublicationRoute(root: string, child: OrchestratorProvenance): Promise<ChildRoute | undefined> {
+	const routes = (await readRoutes(childRouteDirectory(root, child.sessionId))).filter((route) => provenanceEqual(route.child, child));
+	return routes.length === 1 ? routes[0] : undefined;
+}
+
+/** A root accepts only routes whose own live identity still matches; stale or ambiguous routes fail closed. */
+export async function resolveRootInboundRoutes(root: string, source: OrchestratorProvenance): Promise<ChildRoute[]> {
+	const routes = (await readRoutes(rootRouteDirectory(root, source.sessionId))).filter((route) => provenanceEqual(route.root, source));
+	return routes.filter((route) => routes.filter((candidate) => candidate.child.sessionId === route.child.sessionId).length === 1);
+}
+
+/** Reload every durable route and prove both endpoints against current Herdr metadata. */
+export async function resolveLiveRootInboundRoutes(
+	root: string,
+	workspaceResult: unknown,
+	paneResult: unknown,
+	rootSessionId: string,
+	canonicalRoot: string,
+): Promise<ChildRoute[]> {
+	const liveRoot = resolveSessionTopology(workspaceResult, paneResult, rootSessionId)?.source;
+	if (!liveRoot || !isCanonicalRootSource(liveRoot, canonicalRoot)) return [];
+	const routes = await resolveRootInboundRoutes(root, liveRoot);
+	const live = routes.filter((route) => {
+		const child = resolveSessionTopology(workspaceResult, paneResult, route.child.sessionId)?.source;
+		return provenanceEqual(route.root, liveRoot) && child !== undefined && provenanceEqual(child, route.child);
+	});
+	return live.filter((route) => live.filter((candidate) => candidate.child.sessionId === route.child.sessionId).length === 1);
+}
+
+export function routeAuthorizesEvent(routes: ReadonlyArray<ChildRoute>, event: OrchestratorEvent): boolean {
+	return routes.some((route) => event.targetSessionId === route.root.sessionId && provenanceEqual(event.source, route.child));
+}
+
+/** Publish a child callback only through its one pre-registered root route. */
+export async function publishChildEvent(root: string, raw: OrchestratorEvent, route: ChildRoute): Promise<PublishStatus> {
+	const event = canonicalizeEvent(raw, route.root.sessionId, Date.now(), "registered-child");
+	if (!event || !provenanceEqual(event.source, route.child) || event.targetSessionId !== route.root.sessionId) throw new Error("Unsafe child callback route");
+	return publishEvent(root, event, "registered-child");
+}
+
+/**
+ * One in-memory wake is active at a time. Every coalesced notification marks the
+ * gate dirty so settlement can schedule exactly one fresh, authorized recheck.
+ */
+export class RootWakeGate {
+	private pending = false;
+	private dirty = false;
+
+	public request(schedule: () => void): boolean {
+		if (this.pending) {
+			this.dirty = true;
+			return false;
+		}
+		this.pending = true;
+		schedule();
+		return true;
+	}
+
+	/** Clear the active wake and report whether a coalesced successor is needed. */
+	public settled(): boolean {
+		const needsRecheck = this.dirty;
+		this.pending = false;
+		this.dirty = false;
+		return needsRecheck;
+	}
+
+	public get isPending(): boolean {
+		return this.pending;
+	}
+}
+
+export interface CompactionCheckpoint {
+	id: string;
+	sessionId: string;
+	task: string;
+	worktreePath: string;
+	branch: string;
+	head: string;
+	dirty: boolean;
+	validation: string;
+	nextAction: string;
+	parentRouteId?: string;
+	createdAt: string;
+	state: "prepared" | "compacted" | "continuation-claimed" | "continued" | "failed" | "abandoned";
+	failureReason?: "compact-error" | "abandoned";
+}
+
+function compactionCheckpointPath(root: string, sessionId: string): string {
+	return path.join(sessionDirectory(root, sessionId), "compaction", "checkpoint.json");
+}
+
+export function canonicalizeCompactionCheckpoint(raw: unknown, now = Date.now()): CompactionCheckpoint | undefined {
+	if (typeof raw !== "object" || raw === null) return undefined;
+	const value = raw as Partial<CompactionCheckpoint>;
+	const id = safeString(value.id, 192);
+	const sessionId = safeString(value.sessionId, MAX_SESSION_ID);
+	const task = safeString(value.task, 1024);
+	const worktreePath = safeWorktreePath(value.worktreePath);
+	const branch = safeString(value.branch, 256);
+	const head = safeString(value.head, 128);
+	const validation = safeString(value.validation, 2048);
+	const nextAction = safeString(value.nextAction, 2048);
+	const parentRouteId = value.parentRouteId === undefined ? undefined : safeString(value.parentRouteId, 80);
+	const createdAt = typeof value.createdAt === "string" ? new Date(value.createdAt) : undefined;
+	if (!id || !EVENT_ID.test(id) || !sessionId || !task || !worktreePath || !branch || !head || typeof value.dirty !== "boolean" || !validation || !nextAction || (value.parentRouteId !== undefined && !parentRouteId) || !createdAt || !Number.isFinite(createdAt.getTime()) || createdAt.getTime() > now + FUTURE_SKEW_MS) return undefined;
+	if (value.state !== "prepared" && value.state !== "compacted" && value.state !== "continuation-claimed" && value.state !== "continued" && value.state !== "failed" && value.state !== "abandoned") return undefined;
+	const failureReason = value.failureReason === "compact-error" || value.failureReason === "abandoned" ? value.failureReason : undefined;
+	if ((value.state === "failed" || value.state === "abandoned") && !failureReason) return undefined;
+	if (failureReason && value.state !== "failed" && value.state !== "abandoned") return undefined;
+	return { id, sessionId, task, worktreePath, branch, head, dirty: value.dirty, validation, nextAction, ...(parentRouteId ? { parentRouteId } : {}), createdAt: createdAt.toISOString(), state: value.state, ...(failureReason ? { failureReason } : {}) };
+}
+
+async function readCompactionCheckpoint(root: string, sessionId: string): Promise<CompactionCheckpoint | undefined> {
+	try {
+		return canonicalizeCompactionCheckpoint(JSON.parse(await fs.readFile(compactionCheckpointPath(root, sessionId), "utf8")));
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+		return undefined;
+	}
+}
+
+async function writeCompactionCheckpointFile(root: string, checkpoint: CompactionCheckpoint): Promise<void> {
+	const file = compactionCheckpointPath(root, checkpoint.sessionId);
+	await privateDirectory(path.dirname(file));
+	const temporary = `${file}.${randomUUID()}.tmp`;
+	await privateFile(temporary, `${JSON.stringify(checkpoint)}\n`);
+	await fs.rename(temporary, file);
+}
+
+/** Write one complete continuation record before Pi starts compaction. */
+export async function writeCompactionCheckpoint(root: string, raw: CompactionCheckpoint): Promise<void> {
+	const checkpoint = canonicalizeCompactionCheckpoint(raw);
+	if (!checkpoint || checkpoint.state !== "prepared") throw new Error("Unsafe compaction checkpoint");
+	await withSessionLock(root, checkpoint.sessionId, async () => {
+		const existing = await readCompactionCheckpoint(root, checkpoint.sessionId);
+		if (existing && existing.state !== "continued" && existing.state !== "abandoned") throw new Error("A supervised compaction checkpoint is already active");
+		await writeCompactionCheckpointFile(root, checkpoint);
+	});
+}
+
+async function transitionCompactionCheckpoint(root: string, sessionId: string, from: CompactionCheckpoint["state"][], to: CompactionCheckpoint["state"]): Promise<CompactionCheckpoint | undefined> {
+	return withSessionLock(root, sessionId, async () => {
+		const checkpoint = await readCompactionCheckpoint(root, sessionId);
+		if (!checkpoint || !from.includes(checkpoint.state)) return undefined;
+		const next = { ...checkpoint, state: to } as CompactionCheckpoint;
+		await writeCompactionCheckpointFile(root, next);
+		return next;
+	});
+}
+
+export async function markCompactionCompacted(root: string, sessionId: string): Promise<CompactionCheckpoint | undefined> {
+	return transitionCompactionCheckpoint(root, sessionId, ["prepared"], "compacted");
+}
+
+/** Record compaction failure/abandonment so restart can retry or explicitly abort. */
+export async function failCompactionCheckpoint(
+	root: string,
+	sessionId: string,
+	reason: "compact-error" | "abandoned",
+): Promise<CompactionCheckpoint | undefined> {
+	return withSessionLock(root, sessionId, async () => {
+		const checkpoint = await readCompactionCheckpoint(root, sessionId);
+		if (!checkpoint || (checkpoint.state !== "prepared" && checkpoint.state !== "continuation-claimed")) return undefined;
+		const next = { ...checkpoint, state: "failed" as const, failureReason: reason };
+		await writeCompactionCheckpointFile(root, next);
+		return next;
+	});
+}
+
+/** Retry preserves the original identity/checkpoint instead of silently replacing it. */
+export async function retryCompactionCheckpoint(root: string, sessionId: string): Promise<CompactionCheckpoint | undefined> {
+	return withSessionLock(root, sessionId, async () => {
+		const checkpoint = await readCompactionCheckpoint(root, sessionId);
+		if (!checkpoint || checkpoint.state !== "failed") return undefined;
+		const next = { ...checkpoint, state: "prepared" as const };
+		delete next.failureReason;
+		await writeCompactionCheckpointFile(root, next);
+		return next;
+	});
+}
+
+/** Abort is explicit and terminal; a future command writes a new checkpoint. */
+export async function abandonCompactionCheckpoint(root: string, sessionId: string): Promise<CompactionCheckpoint | undefined> {
+	return withSessionLock(root, sessionId, async () => {
+		const checkpoint = await readCompactionCheckpoint(root, sessionId);
+		if (!checkpoint || (checkpoint.state !== "prepared" && checkpoint.state !== "failed")) return undefined;
+		const next = { ...checkpoint, state: "abandoned" as const, failureReason: "abandoned" as const };
+		await writeCompactionCheckpointFile(root, next);
+		return next;
+	});
+}
+
+/** Claim only one explicit continuation; a restarted same session can recover a stranded claim. */
+export async function claimCompactionContinuation(root: string, sessionId: string): Promise<CompactionCheckpoint | undefined> {
+	return transitionCompactionCheckpoint(root, sessionId, ["compacted"], "continuation-claimed");
+}
+
+export async function recoverCompactionContinuation(root: string, sessionId: string): Promise<CompactionCheckpoint | undefined> {
+	return transitionCompactionCheckpoint(root, sessionId, ["continuation-claimed"], "compacted");
+}
+
+export async function completeCompactionContinuation(root: string, sessionId: string): Promise<CompactionCheckpoint | undefined> {
+	return transitionCompactionCheckpoint(root, sessionId, ["continuation-claimed"], "continued");
+}
+
+export async function getCompactionCheckpoint(root: string, sessionId: string): Promise<CompactionCheckpoint | undefined> {
+	return readCompactionCheckpoint(root, sessionId);
 }
