@@ -507,11 +507,14 @@ Herdr is the default visible execution plane. Record the workspace and pane IDs 
 by `herdr worktree open`; reuse an existing workspace/agent only when its worktree path,
 branch, and cwd match. The canonical/root agent remains the coordinator and sends one
 complete fire-and-return handoff—never `--wait`, `herdr agent wait`, polling, a hidden
-implementation subagent, background watcher process, or watcher pane. A `*-root`
-whose checkout and agent cwd equal the canonical root registers each exact child
-session/workspace/pane/worktree callback route; direct `index` delegates child work
-through that root. Durable custom auto-resume wakes root/index without user-message or
-editor injection. External nonterminal Railway/CI gates still require an event adapter.
+implementation subagent, background watcher process, or watcher pane. It records its
+exact pane ID in every child handoff. Before a child stops as done, blocked, or failed,
+it must send that parent one concise `CHILD_RESULT` prompt through `herdr agent prompt`.
+A `*-root` whose checkout and agent cwd equal the canonical root registers each exact
+child session/workspace/pane/worktree callback route; direct `index` delegates child
+work through that root. The direct completion prompt is a claim, not proof: the parent
+still verifies the reported work. External nonterminal Railway/CI gates still require
+an event adapter.
 It answers routine
 implementation questions with the safe/recommended option and escalates only genuine
 product/architecture ambiguity, destructive actions, external infrastructure mutation,

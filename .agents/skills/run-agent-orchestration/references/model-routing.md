@@ -33,10 +33,10 @@ a fallback, capture the current active workspace first and immediately restore
 ## Coordination safety
 
 Model routing does not change coordination. Main, roots, and children all use
-fire-and-return prompts without `--wait`. The orchestration bridge has been removed
-pending refactor, so a later natural user turn or explicit main→root tick performs one
-status reconciliation pass. Do not poll, sleep, create watchers, or infer success from
-`idle`/`done`. Preserve workspace `index` focus for every launch and check.
+fire-and-return prompts without `--wait`; every child receives a parent pane ID and
+sends that parent one terminal-state result prompt before stopping. Do not poll, sleep,
+create watchers, or infer success from `idle`/`done`. Preserve workspace `index` focus
+for every launch and check.
 
 ## Default OpenAI-first routing
 

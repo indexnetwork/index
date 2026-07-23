@@ -428,7 +428,7 @@ herdr pane send-keys <returned-pane-id> enter
 ```
 
 Before mutation, the visible agent verifies `pwd`, `git branch --show-current`, and
-`git status --short --branch`. The canonical/root agent sends one complete fire-and-return handoff. While the orchestration bridge is removed pending refactor, it reconciles the child once on a later natural turn or explicit tick; it never polls, waits, or creates a background watcher.
+`git status --short --branch`. The canonical/root agent sends one complete fire-and-return handoff that records its exact pane ID. Before a child stops as done, blocked, or failed, it sends that parent one concise `CHILD_RESULT` prompt through `herdr agent prompt`; the parent independently verifies the claim. This single notification replaces no verification and is not a watcher: never poll, wait, or create a background watcher.
 Routine questions are
 answered with the safe/recommended option. Structured prompts are read and answered
 through targeted `herdr pane` text/keys rather than a new agent prompt.

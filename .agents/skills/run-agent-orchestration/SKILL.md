@@ -51,21 +51,21 @@ visible agent's quota/status before choosing the model; never switch models
 mid-implementation. All direct pane reads, text, and keys must target the exact pane
 ID and must not focus it. `herdr agent start` is not the launch path for this skill.
 
-## Fire-and-return manual coordination (temporary)
+## Fire-and-return parent coordination
 
-The project-local orchestration bridge has been removed pending a dedicated refactor.
-Every tier submits one complete handoff without `--wait` and returns immediately:
+Every tier submits one complete handoff without `--wait` and returns immediately. Each
+handoff records the exact parent pane ID; a child must send that pane one concise
+terminal-state result prompt before it stops:
 
 ```bash
 herdr agent prompt AGENT_NAME "$(< /absolute/path/to/handoff.md)"
 ```
 
 Do not use `herdr agent wait`, polling, sleeps, watcher processes, or watcher panes.
-There is currently no automatic cross-session callback. The user-facing `index`
-session explicitly ticks the root on a later natural turn; the root then performs one
-read-only status/recent-output pass over its owned children and continues actionable
-work. Children end with a concise `RESULT` in their pane, but the coordinator must
-independently verify worktree, git, tests, PR, and deployment state before acting.
+The completion notification is direct and single-shot; it is not a watcher or proof of
+success. Parents independently verify worktree, git, tests, PR, and deployment state
+before acting. If the notification fails, a later natural user turn or explicit tick
+performs one read-only status/recent-output pass as a fallback.
 
 Structured questions are handled only after an explicit status tick observes the
 child as blocked. Never infer approval or treat a settled state as success.
@@ -78,10 +78,11 @@ active pane UI. A settled state is **not** proof of success: read the transcript
 verify the git/PR/test facts (branch head, pushed commits, PR number, checks, targeted
 tests) before reporting to the user.
 
-Require every child to end with a concise **structured result envelope**: status,
-branch/head/PR, verification performed, unresolved blockers. If transcript rows are
-missing (alternate-screen rendering), fall back to asking the agent for a report file
-in a temp directory — never request file output in the initial prompt. Full contract:
+Require every child to end with a concise **structured result envelope** and send the
+same envelope to its recorded parent pane before stopping: status, branch/head/PR,
+verification performed, unresolved blockers. If the direct notification or transcript
+read fails, fall back to asking the agent for a report file in a temp directory — never
+request file output in the initial prompt. Full contract:
 `references/completion-and-questions.md`.
 
 ## Structured questions propagate, not stall

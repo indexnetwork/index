@@ -1,23 +1,28 @@
 # Completion and questions
 
-## Temporary manual coordination
+## Parent completion notification
 
-The project-local orchestration bridge has been removed pending a dedicated refactor.
-There is no automatic root→main or child→root callback.
-
-Every handoff is fire-and-return:
+Every handoff is fire-and-return and includes the exact `PARENT_PANE_ID`:
 
 ```bash
 herdr agent prompt NAME "$(< /absolute/path/to/handoff.md)"
 ```
 
 Never add `--wait`, `herdr agent wait`, polling, sleeps, watcher processes, or watcher
-panes. On a later natural user turn or explicit tick, the main session checks its root
-once; the root checks each owned child once. If work remains active, return idle.
+panes. Before it stops as `done`, `blocked`, or `failed`, a child sends its parent one
+direct result prompt:
+
+```bash
+herdr agent prompt "$PARENT_PANE_ID" "CHILD_RESULT\nstatus: done | blocked | failed\nbranch/head/PR: ...\nverification: ...\nblockers: ..."
+```
+
+This single notification is mandatory and is not evidence that the result is correct.
+If it fails, include the delivery failure in the child `RESULT`; the parent performs
+one status/output pass on a later natural turn or explicit tick as a fallback.
 
 ## Child result envelope
 
-Every child ends its visible pane output with:
+Every child ends its visible pane output with, and sends to its parent:
 
 ```text
 RESULT

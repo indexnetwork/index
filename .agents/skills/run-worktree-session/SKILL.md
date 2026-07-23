@@ -44,23 +44,31 @@ agent-name collision rather than sending work to the wrong checkout.
 ## 2. Deliver one complete handoff
 
 Write one complete handoff with the absolute worktree, branch, scope, constraints,
-verification commands, and requested RESULT. Inspect the exact pane before delivery,
-then submit without waiting:
+verification commands, requested RESULT, and the exact `PARENT_PANE_ID`. Inspect the
+exact pane before delivery, then submit without waiting:
 
 ```bash
 herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)"
 ```
 
-Do not use `--wait`, `herdr agent wait`, polling, sleeps, watcher processes, or watcher
-panes. Do not commit task-specific handoff files under `.pi`.
+The parent route is mandatory: before the child stops in a terminal state (`done`,
+`blocked`, or `failed`), it must notify that exact parent pane with its result envelope:
+
+```bash
+herdr agent prompt "$PARENT_PANE_ID" "CHILD_RESULT\nstatus: done | blocked | failed\nbranch/head/PR: ...\nverification: ...\nblockers: ..."
+```
+
+Use this one direct completion prompt, not a watcher, polling, or `--wait`. If it
+fails, record the failure in the child `RESULT` and leave the child pane available for
+manual reconciliation. Do not commit task-specific handoff files under `.pi`.
 
 ## 3. Reconcile results manually
 
-The orchestration bridge has been removed pending refactor, so no automatic child
-callback exists. On a later natural user turn or explicit orchestration tick, perform
-one `herdr agent get` plus recent pane read. If the child is still working, return
-without repeated checks. If it is settled, inspect its `RESULT` and independently
-verify branch/head/status, pushed commits, PR state, checks, and targeted tests.
+The child must directly notify its recorded parent when it stops. On receipt, inspect
+its claimed result and independently verify branch/head/status, pushed commits, PR
+state, checks, and targeted tests. A later natural user turn or explicit reconciliation
+tick may perform one `herdr agent get` plus recent pane read as a fallback only; never
+poll or wait for a callback.
 
 For parallel work, inspect each owned child once per explicit tick. A missing callback
 is expected in this temporary mode; do not replace it with polling.
