@@ -3,12 +3,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import orchestrationBridge from "../../.pi/extensions/orchestration-bridge/index";
+
 import {
 	BlockedQuestionBridge,
 	RootWakeGate,
 	MAX_EVENTS_PER_TURN,
 	canonicalizeEvent,
 	acknowledgeDelivered,
+	eventStorageKey,
 	claimOutstanding,
 	discardEvent,
 	formatAttachment,
@@ -22,6 +25,7 @@ import {
 	resolveChildRouteRegistration,
 	resolveIndexTarget,
 	resolveRootInboundRoutes,
+	resolveLiveRootInboundRoutes,
 	routeAuthorizesEvent,
 	resolveLiveTopology,
 	sessionDirectory,
@@ -31,7 +35,13 @@ import {
 	claimCompactionContinuation,
 	completeCompactionContinuation,
 	recoverCompactionContinuation,
+	failCompactionCheckpoint,
+	retryCompactionCheckpoint,
+	abandonCompactionCheckpoint,
 	getCompactionCheckpoint,
+	rpivPromptToolCallId,
+	spoolRoot,
+	wakeOnce,
 	type CompactionCheckpoint,
 	type OrchestratorEvent,
 } from "../../.pi/extensions/orchestration-bridge/core";
@@ -201,6 +211,12 @@ describe("RPIV lifecycle and root authorization", () => {
 		expect(summarizeAskUserPrompt({ question: "not the RPIV schema" })).toBeUndefined();
 	});
 
+	test("correlates RPIV prompts by tool-call id and refuses ambiguous overlap", () => {
+		expect(rpivPromptToolCallId({ toolCallId: "call-b", questions: [{ question: "Second?" }] })).toBe("call-b");
+		expect(rpivPromptToolCallId({ toolCall: { id: "call-a" }, questions: [{ question: "First?" }] })).toBe("call-a");
+		expect(rpivPromptToolCallId({ questions: [{ question: "Ambiguous" }] })).toBeUndefined();
+	});
+
 	test("allows only explicit *-root source workspace labels", () => {
 		expect(isDedicatedRootLabel("docs-root")).toBeTrue();
 		expect(isDedicatedRootLabel("index")).toBeFalse();
@@ -235,7 +251,66 @@ describe("live index target resolution", () => {
 			focused: false,
 			status: "idle",
 		});
-		expect(resolveLiveTopology(workspaces, panes, "/sessions/root.jsonl")?.source.workspaceLabel).toBe("docs-root");
+		expect(resolveLiveTopology(workspaces, panes, "/sessions/root.jsonl", "/repo")?.source.workspaceLabel).toBe("docs-root");
+		expect(resolveIndexTarget(workspaces, panes, "/other-checkout")).toBeUndefined();
+		const wrongPane = structuredClone(panes);
+		wrongPane.panes[0].cwd = "/other-checkout";
+		expect(resolveIndexTarget(workspaces, wrongPane, "/repo")).toBeUndefined();
+	});
+});
+
+describe("extension wake delivery", () => {
+	test("triggerTurn wake persists and renders the claimed event without before_agent_start", async () => {
+		const root = await temporaryRoot();
+		const sessionId = "/sessions/index-wake.jsonl";
+		const entries: Array<{ type: string; customType?: string; details?: unknown; data?: unknown }> = [];
+		const handlers = new Map<string, (event: unknown, ctx: unknown) => unknown>();
+		let resolveSend: (() => void) | undefined;
+		const sent: Array<{ customType?: unknown; details?: unknown; content?: unknown }> = [];
+		const ctx = {
+			cwd: root,
+			hasUI: false,
+			isIdle: () => true,
+			hasPendingMessages: () => false,
+			sessionManager: { getSessionFile: () => sessionId, getEntries: () => entries },
+			ui: { notify: () => undefined, setWidget: () => undefined, setStatus: () => undefined },
+			compact: () => undefined,
+		};
+		const api = {
+			on: (name: string, handler: (event: unknown, context: unknown) => unknown) => { handlers.set(name, handler); },
+			events: { on: () => undefined, emit: () => undefined },
+			exec: async (command: string, args: string[]) => {
+				if (command === "git") return { code: 0, stdout: `worktree ${root}\n` };
+				const payload = args[0] === "workspace"
+					? { workspaces: [{ workspace_id: "index-workspace", label: "index", focused: false, worktree: { checkout_path: root } }] }
+					: { panes: [{ workspace_id: "index-workspace", pane_id: "index-pane", cwd: root, agent: "pi", agent_status: "idle", agent_session: { value: sessionId } }] };
+				return { code: 0, stdout: JSON.stringify({ result: payload }) };
+			},
+			registerMessageRenderer: () => undefined,
+			registerCommand: () => undefined,
+			registerTool: () => undefined,
+			appendEntry: (_type: string, data: unknown) => { entries.push({ type: "custom", customType: "orchestration:record", data }); },
+			sendMessage: (message: { customType?: unknown; details?: unknown; content?: unknown }) => {
+				sent.push(message);
+				entries.push({ type: "custom_message", customType: typeof message.customType === "string" ? message.customType : undefined, details: message.details });
+				resolveSend?.();
+			},
+		};
+		orchestrationBridge(api as never);
+		await Promise.resolve(handlers.get("session_start")?.({}, ctx));
+		const published = event("wake-delivers-event", {
+			source: { workspaceId: "root-workspace", workspaceLabel: "docs-root", paneId: "root-pane", worktreePath: root, sessionId: "/sessions/root.jsonl" },
+			targetSessionId: sessionId,
+		});
+		expect(await publishEvent(spoolRoot(root), published)).toBe("published");
+		const delivered = new Promise<void>((resolve) => { resolveSend = resolve; });
+		wakeOnce(sessionId);
+		await Promise.race([delivered, new Promise<void>((_resolve, reject) => setTimeout(() => reject(new Error("wake was not delivered")), 1_000))]);
+		expect(sent).toHaveLength(1);
+		expect(sent[0].customType).toBe("orchestrator-event");
+		expect((sent[0].details as { events: OrchestratorEvent[] }).events).toEqual([published]);
+		expect(String(sent[0].content)).toContain("ORCHESTRATOR_EVENT");
+		await Promise.resolve(handlers.get("session_shutdown")?.({}, ctx));
 	});
 });
 
@@ -292,6 +367,7 @@ describe("registered child → root routing", () => {
 		const topology = metadata();
 		const route = resolveChildRouteRegistration(topology, topology, rootSession, childSource);
 		expect(route).toBeDefined();
+		expect(resolveChildRouteRegistration(topology, topology, rootSession, childSource, "/wrong-canonical-root")).toBeUndefined();
 		expect(await registerChildRoute(spool, route!)).toBe("registered");
 		expect(await resolveChildPublicationRoute(spool, childSource)).toEqual(route);
 		const childResult: OrchestratorEvent = {
@@ -304,6 +380,44 @@ describe("registered child → root routing", () => {
 		expect(routes).toEqual([route]);
 		const claims = await claimOutstanding(spool, rootSession, new Set(), "registered-child", (candidate) => routeAuthorizesEvent(routes, candidate));
 		expect(claims.map(({ event: claimed }) => claimed.id)).toEqual(["child-result"]);
+	});
+
+	test("scopes child idempotency and cancellation by source session", async () => {
+		const spool = await temporaryRoot();
+		const topology = metadata();
+		const childB = { ...childSource, workspaceId: "w-child-b", workspaceLabel: "fix-other", paneId: "w-child-b:p1", worktreePath: "/repo/.worktrees/fix-other", sessionId: "/sessions/child-b.jsonl" };
+		topology.workspaces.push({ workspace_id: childB.workspaceId, label: childB.workspaceLabel, focused: false, worktree: { checkout_path: childB.worktreePath } });
+		topology.panes.push({ workspace_id: childB.workspaceId, pane_id: childB.paneId, cwd: childB.worktreePath, agent: "pi", agent_session: { value: childB.sessionId } });
+		const routeA = resolveChildRouteRegistration(topology, topology, rootSession, childSource, "/repo")!;
+		const routeB = resolveChildRouteRegistration(topology, topology, rootSession, childB, "/repo")!;
+		await registerChildRoute(spool, routeA);
+		await registerChildRoute(spool, routeB);
+		const a = { ...event("same-visible-id"), source: childSource, targetSessionId: rootSession };
+		const b = { ...event("same-visible-id"), source: childB, targetSessionId: rootSession };
+		expect(await publishChildEvent(spool, a, routeA)).toBe("published");
+		expect(await publishChildEvent(spool, b, routeB)).toBe("published");
+		const routes = await resolveRootInboundRoutes(spool, rootSource);
+		const claims = await claimOutstanding(spool, rootSession, new Set(), "registered-child", (candidate) => routeAuthorizesEvent(routes, candidate));
+		expect(claims).toHaveLength(2);
+		await discardEvent(spool, rootSession, a.id, "registered-child", undefined, childSource);
+		expect(await publishChildEvent(spool, a, routeA)).toBe("cancelled");
+		expect(await publishChildEvent(spool, b, routeB)).toBe("published");
+		await acknowledgeDelivered(spool, rootSession, new Set([eventStorageKey(b, "registered-child")]), "registered-child");
+		expect(await outstandingCount(spool, rootSession, "registered-child", (candidate) => routeAuthorizesEvent(routes, candidate))).toBe(0);
+	});
+
+	test("reloads two live child routes after activation rather than using a stale cache", async () => {
+		const spool = await temporaryRoot();
+		const topology = metadata();
+		const routeA = resolveChildRouteRegistration(topology, topology, rootSession, childSource, "/repo")!;
+		await registerChildRoute(spool, routeA);
+		const childB = { ...childSource, workspaceId: "w-child-b", workspaceLabel: "fix-other", paneId: "w-child-b:p1", worktreePath: "/repo/.worktrees/fix-other", sessionId: "/sessions/child-b.jsonl" };
+		topology.workspaces.push({ workspace_id: childB.workspaceId, label: childB.workspaceLabel, focused: false, worktree: { checkout_path: childB.worktreePath } });
+		topology.panes.push({ workspace_id: childB.workspaceId, pane_id: childB.paneId, cwd: childB.worktreePath, agent: "pi", agent_session: { value: childB.sessionId } });
+		const routeB = resolveChildRouteRegistration(topology, topology, rootSession, childB, "/repo")!;
+		await registerChildRoute(spool, routeB);
+		const routes = await resolveLiveRootInboundRoutes(spool, topology, topology, rootSession, "/repo");
+		expect(routes.map((route) => route.child.sessionId).sort()).toEqual([childSession, childB.sessionId].sort());
 	});
 
 	test("fails closed for stale identity, absent route, and ambiguous child targets", async () => {
@@ -329,14 +443,16 @@ describe("registered child → root routing", () => {
 });
 
 describe("root wake and supervised compaction protocol", () => {
-	test("coalesces one wake until the consumer settles", () => {
+	test("coalesces one wake and retains one dirty successor after a burst", () => {
 		const gate = new RootWakeGate();
 		let scheduled = 0;
 		expect(gate.request(() => { scheduled += 1; })).toBeTrue();
 		expect(gate.request(() => { scheduled += 1; })).toBeFalse();
+		expect(gate.request(() => { scheduled += 1; })).toBeFalse();
 		expect(scheduled).toBe(1);
-		gate.settled();
+		expect(gate.settled()).toBeTrue();
 		expect(gate.request(() => { scheduled += 1; })).toBeTrue();
+		expect(gate.settled()).toBeFalse();
 		expect(scheduled).toBe(2);
 	});
 
@@ -357,6 +473,8 @@ describe("root wake and supervised compaction protocol", () => {
 			state: "prepared",
 		};
 		await writeCompactionCheckpoint(spool, checkpoint);
+		expect((await failCompactionCheckpoint(spool, checkpoint.sessionId, "abandoned"))?.state).toBe("failed");
+		expect((await retryCompactionCheckpoint(spool, checkpoint.sessionId))?.state).toBe("prepared");
 		expect((await markCompactionCompacted(spool, checkpoint.sessionId))?.state).toBe("compacted");
 		expect((await claimCompactionContinuation(spool, checkpoint.sessionId))?.state).toBe("continuation-claimed");
 		expect((await claimCompactionContinuation(spool, checkpoint.sessionId))).toBeUndefined();
@@ -364,6 +482,28 @@ describe("root wake and supervised compaction protocol", () => {
 		expect((await claimCompactionContinuation(spool, checkpoint.sessionId))?.id).toBe(checkpoint.id);
 		expect((await completeCompactionContinuation(spool, checkpoint.sessionId))?.state).toBe("continued");
 		expect((await getCompactionCheckpoint(spool, checkpoint.sessionId))?.nextAction).toBe(checkpoint.nextAction);
+	});
+
+	test("makes failed checkpoints explicitly abortable and never completes an unclaimed continuation", async () => {
+		const spool = await temporaryRoot();
+		const checkpoint: CompactionCheckpoint = {
+			id: "compact:session:abort",
+			sessionId: "/sessions/abort.jsonl",
+			task: "Recover a compact error",
+			worktreePath: "/repo",
+			branch: "fix/abort",
+			head: "abc123",
+			dirty: false,
+			validation: "tests pass",
+			nextAction: "Retry or abort",
+			createdAt: new Date(Date.now() - 1_000).toISOString(),
+			state: "prepared",
+		};
+		await writeCompactionCheckpoint(spool, checkpoint);
+		expect(await completeCompactionContinuation(spool, checkpoint.sessionId)).toBeUndefined();
+		expect((await failCompactionCheckpoint(spool, checkpoint.sessionId, "compact-error"))?.failureReason).toBe("compact-error");
+		expect((await abandonCompactionCheckpoint(spool, checkpoint.sessionId))?.state).toBe("abandoned");
+		expect(await retryCompactionCheckpoint(spool, checkpoint.sessionId)).toBeUndefined();
 	});
 });
 
@@ -375,6 +515,8 @@ test("workflow text keeps fire-and-return, bounded auto-resume, and supervised c
 		".pi/skills/run-worktree-session/SKILL.md",
 		".pi/skills/finish-pr/SKILL.md",
 		".pi/skills/address-code-review/SKILL.md",
+		"docs/guides/getting-started.md",
+		"CLAUDE.md",
 	];
 	const text = await Promise.all(files.map((file) => fs.readFile(path.join(process.cwd(), file), "utf8")));
 	for (const value of text) {
@@ -382,6 +524,9 @@ test("workflow text keeps fire-and-return, bounded auto-resume, and supervised c
 		expect(value).not.toMatch(/herdr agent wait \"?\$/);
 	}
 	const extension = await fs.readFile(path.join(process.cwd(), ".pi/extensions/orchestration-bridge/index.ts"), "utf8");
+	expect(text.join("\n")).toContain("--label orchestration-root");
+	expect(text.join("\n")).toContain("publish_child_orchestrator_event");
+	expect(text.join("\n")).toContain("External nonterminal gates");
 	expect(extension).toContain('deliverAs: "followUp", triggerTurn: true');
 	expect(extension).toContain("register_orchestration_child_route");
 	expect(extension).toContain("supervised-compact");

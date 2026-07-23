@@ -38,7 +38,7 @@ the canonical root without changing the user's focus and launch Pi through its t
 root pane:
 
 ```bash
-herdr worktree open --path /Users/yanek/Projects/index --label root --no-focus --json
+herdr worktree open --path /Users/yanek/Projects/index --label orchestration-root --no-focus --json
 herdr pane send-text "$PANE_ID" "pi --model openai-codex/gpt-5.6-terra:high"
 herdr pane send-keys "$PANE_ID" enter
 ```
@@ -67,8 +67,9 @@ fails closed when absent, stale, or ambiguous. A child has no target selector: s
 RESULT and validated RPIV blocked events can reach only its one registered root.
 
 The project-local bridge is a private durable spool plus a best-effort local socket
-wake. Root → `index` still requires an observable `*-root` source; child → root
-requires the exact registered route. Events are bounded, timestamp/id ordered,
+wake. Root → `index` requires both a `*-root` label **and** its session/workspace/pane
+checkout to equal the canonical repository root; child → root requires the exact
+registered route. Events are bounded, timestamp/id ordered,
 idempotent, quarantined when unsafe, and rendered as explicitly untrusted JSON data.
 The consumer acknowledges only after its persistent custom message is in session
 history; dispatch decisions linearize attachment against cancellation.
@@ -137,7 +138,7 @@ Removing the worktree without closing the workspace leaves idle agents visible i
 the sidebar. After the wave, the root orchestrator verifies with
 `herdr workspace list` that no finished child workspaces/agents remain — but never
 sweeps unrelated active workspaces, and keeps the root orchestrator workspace (the
-user-facing coordination plane) unless the user explicitly ends the wave.
+dedicated execution/coordination plane) unless the user explicitly ends the wave.
 
 ## Sub-workflows the root orchestrator runs
 
@@ -145,7 +146,7 @@ The root orchestrator does not re-implement session mechanics; it invokes the ex
 skills:
 
 - `create-worktree` — worktree/workspace/agent identity contracts per child.
-- `run-worktree-session` — single-session handoff, waits, question handling, fix loops.
+- `run-worktree-session` — single-session fire-and-return handoff, question handling, fix loops.
 - `address-code-review` — Copilot review threads and visible fix rounds.
 - `finish-pr` — readiness, explicit merge confirmation, post-merge verification, cleanup.
 

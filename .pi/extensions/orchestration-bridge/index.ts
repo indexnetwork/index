@@ -4,11 +4,10 @@ import { Type } from "typebox";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { BlockedQuestionBridge, RootWakeGate, canonicalizeEvent, claimCompactionContinuation, claimOutstanding, completeCompactionContinuation, discardEvent, formatAttachment, getCompactionCheckpoint, isDedicatedRootLabel, markCompactionCompacted, outstandingCount, parseHerdrResult, prepareAttachment, publishChildEvent, publishEvent, recoverCompactionContinuation, registerChildRoute, resolveChildPublicationRoute, resolveChildRouteRegistration, resolveLiveTopology, resolveRootInboundRoutes, resolveSessionTopology, routeAuthorizesEvent, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, writeCompactionCheckpoint, type ChildRoute, type CompactionCheckpoint, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance, type PublishStatus, type SourcePolicy } from "./core";
+import { BlockedQuestionBridge, RootWakeGate, abandonCompactionCheckpoint, canonicalizeEvent, claimCompactionContinuation, claimOutstanding, completeCompactionContinuation, discardEvent, eventStorageKey, failCompactionCheckpoint, formatAttachment, getCompactionCheckpoint, isCanonicalRootSource, isDedicatedRootLabel, markCompactionCompacted, outstandingCount, parseHerdrResult, prepareAttachment, publishChildEvent, publishEvent, recoverCompactionContinuation, registerChildRoute, resolveChildPublicationRoute, resolveChildRouteRegistration, resolveLiveRootInboundRoutes, resolveLiveTopology, resolveSessionTopology, routeAuthorizesEvent, rpivPromptToolCallId, retryCompactionCheckpoint, sessionKey, spoolRoot, startWakeListener, summarizeAskUserPrompt, wakeOnce, writeCompactionCheckpoint, type ChildRoute, type CompactionCheckpoint, type LiveTopology, type OrchestratorEvent, type OrchestratorEventKind, type OrchestratorProvenance, type PublishStatus, type SourcePolicy } from "./core";
 
 const INBOX_WIDGET = "orchestration-inbox";
 const CUSTOM_TYPE = "orchestrator-event";
-const CONTINUATION_TYPE = "orchestrator-root-continuation";
 const COMPACTION_CONTINUATION_TYPE = "orchestrator-compaction-continuation";
 const DELIVERY_RECORD_TYPE = "orchestration:record";
 const QUESTION_TOOL = "ask_user_question";
@@ -19,6 +18,7 @@ interface OrchestratorMessageDetails {
 
 interface DeliveryRecord {
 	eventId: string;
+	deliveryKey: string;
 	kind: OrchestratorEventKind;
 	source: OrchestratorProvenance;
 	targetSessionId: string;
@@ -36,6 +36,7 @@ interface Publication {
 	eventId: string;
 	status: PublishStatus;
 	sourcePolicy: SourcePolicy;
+	source: OrchestratorProvenance;
 }
 
 interface PendingQuestion {
@@ -53,6 +54,7 @@ interface InboxTarget {
 	sessionId: string;
 	sourcePolicy: SourcePolicy;
 	routes: ChildRoute[];
+	source?: OrchestratorProvenance;
 }
 
 function messageEvents(ctx: ExtensionContext, targetSessionId: string, sourcePolicy: SourcePolicy): Map<string, OrchestratorEvent> {
@@ -65,13 +67,13 @@ function messageEvents(ctx: ExtensionContext, targetSessionId: string, sourcePol
 		if (!Array.isArray(values)) continue;
 		for (const raw of values) {
 			const event = canonicalizeEvent(raw, targetSessionId, Date.now(), sourcePolicy);
-			if (event) events.set(event.id, event);
+			if (event) events.set(eventStorageKey(event, sourcePolicy), event);
 		}
 	}
 	return events;
 }
 
-function recordedEventIds(ctx: ExtensionContext, targetSessionId: string): Set<string> {
+function recordedEventKeys(ctx: ExtensionContext, targetSessionId: string, sourcePolicy: SourcePolicy): Set<string> {
 	const ids = new Set<string>();
 	for (const entry of ctx.sessionManager.getEntries()) {
 		if (entry.type !== "custom") continue;
@@ -79,18 +81,28 @@ function recordedEventIds(ctx: ExtensionContext, targetSessionId: string): Set<s
 		if (record.customType !== DELIVERY_RECORD_TYPE || typeof record.data !== "object" || record.data === null) continue;
 		const value = record.data as Partial<DeliveryRecord>;
 		if (value.targetSessionId !== targetSessionId || typeof value.eventId !== "string") continue;
-		ids.add(value.eventId);
+		if (typeof value.deliveryKey === "string") ids.add(value.deliveryKey);
+		else if (sourcePolicy === "root") ids.add(value.eventId);
 	}
 	return ids;
 }
 
+function persistedCompactionContinuation(ctx: ExtensionContext, checkpointId: string): boolean {
+	return ctx.sessionManager.getEntries().some((entry) => {
+		if (entry.type !== "custom_message") return false;
+		const custom = entry as unknown as { customType?: unknown; details?: { id?: unknown } };
+		return custom.customType === COMPACTION_CONTINUATION_TYPE && custom.details?.id === checkpointId;
+	});
+}
+
 function acknowledgeMessageEvents(pi: ExtensionAPI, ctx: ExtensionContext, target: InboxTarget): Set<string> {
 	const events = messageEvents(ctx, target.sessionId, target.sourcePolicy);
-	const recorded = recordedEventIds(ctx, target.sessionId);
-	for (const event of events.values()) {
-		if (recorded.has(event.id)) continue;
+	const recorded = recordedEventKeys(ctx, target.sessionId, target.sourcePolicy);
+	for (const [deliveryKey, event] of events) {
+		if (recorded.has(deliveryKey)) continue;
 		pi.appendEntry<DeliveryRecord>(DELIVERY_RECORD_TYPE, {
 			eventId: event.id,
+			deliveryKey,
 			kind: event.kind,
 			source: event.source,
 			targetSessionId: event.targetSessionId,
@@ -121,8 +133,8 @@ async function herdrMetadata(pi: ExtensionAPI): Promise<{ workspaces: unknown; p
 async function liveTopology(pi: ExtensionAPI, ctx: ExtensionContext): Promise<LiveTopology | undefined> {
 	const sessionId = ctx.sessionManager.getSessionFile();
 	if (!sessionId) return undefined;
-	const metadata = await herdrMetadata(pi);
-	return metadata ? resolveLiveTopology(metadata.workspaces, metadata.panes, sessionId) : undefined;
+	const [root, metadata] = await Promise.all([canonicalRoot(pi, ctx), herdrMetadata(pi)]);
+	return root && metadata ? resolveLiveTopology(metadata.workspaces, metadata.panes, sessionId, root) : undefined;
 }
 
 async function liveSource(pi: ExtensionAPI, ctx: ExtensionContext): Promise<OrchestratorProvenance | undefined> {
@@ -136,9 +148,27 @@ function rootAuthorizer(target: InboxTarget): ((event: OrchestratorEvent) => boo
 	return target.kind === "root" ? (event) => routeAuthorizesEvent(target.routes, event) : undefined;
 }
 
+/** Never count, claim, wake, or quarantine root callbacks against stale route data. */
+async function refreshInboxTarget(pi: ExtensionAPI, ctx: ExtensionContext, target: InboxTarget): Promise<boolean> {
+	const root = await canonicalRoot(pi, ctx);
+	if (!root) return false;
+	if (target.kind === "index") {
+		const topology = await liveTopology(pi, ctx);
+		return topology?.index.sessionId === target.sessionId;
+	}
+	const metadata = await herdrMetadata(pi);
+	if (!metadata) return false;
+	const routes = await resolveLiveRootInboundRoutes(spoolRoot(root), metadata.workspaces, metadata.panes, target.sessionId, root);
+	const source = resolveSessionTopology(metadata.workspaces, metadata.panes, target.sessionId)?.source;
+	if (!source || !isCanonicalRootSource(source, root)) return false;
+	target.source = source;
+	target.routes = routes;
+	return true;
+}
+
 async function updateInboxWidget(pi: ExtensionAPI, ctx: ExtensionContext, target: InboxTarget): Promise<void> {
 	const root = await canonicalRoot(pi, ctx);
-	if (!root || !ctx.hasUI) return;
+	if (!root || !ctx.hasUI || !(await refreshInboxTarget(pi, ctx, target))) return;
 	const count = await outstandingCount(spoolRoot(root), target.sessionId, target.sourcePolicy, rootAuthorizer(target));
 	const label = target.kind === "index" ? "pending next user turn" : "pending child callback";
 	ctx.ui.setWidget(
@@ -156,7 +186,7 @@ async function publishRoot(
 	input: { eventId: string; kind: OrchestratorEventKind; summary: string; durableResult?: OrchestratorEvent["durableResult"] },
 ): Promise<Publication | undefined> {
 	const [root, topology] = await Promise.all([canonicalRoot(pi, ctx), liveTopology(pi, ctx)]);
-	if (!root || !topology || !isDedicatedRootLabel(topology.source.workspaceLabel)) return undefined;
+	if (!root || !topology || !isCanonicalRootSource(topology.source, root)) return undefined;
 	const event = canonicalizeEvent({
 		id: input.eventId,
 		kind: input.kind,
@@ -168,8 +198,8 @@ async function publishRoot(
 	});
 	if (!event) return undefined;
 	const status = await publishEvent(spoolRoot(root), event);
-	wakeOnce(topology.index.sessionId);
-	return { root, targetSessionId: topology.index.sessionId, eventId: event.id, status, sourcePolicy: "root" };
+	if (status === "published") wakeOnce(topology.index.sessionId);
+	return { root, targetSessionId: topology.index.sessionId, eventId: event.id, status, sourcePolicy: "root", source: event.source };
 }
 
 /** Child publication resolves one registered exact route; it accepts no caller target. */
@@ -193,8 +223,8 @@ async function publishChild(
 	}, route.root.sessionId, Date.now(), "registered-child");
 	if (!event) return undefined;
 	const status = await publishChildEvent(spoolRoot(root), event, route);
-	wakeOnce(route.root.sessionId);
-	return { root, targetSessionId: route.root.sessionId, eventId: event.id, status, sourcePolicy: "registered-child" };
+	if (status === "published") wakeOnce(route.root.sessionId);
+	return { root, targetSessionId: route.root.sessionId, eventId: event.id, status, sourcePolicy: "registered-child", source: event.source };
 }
 
 async function publishCallback(
@@ -220,28 +250,57 @@ export default function (pi: ExtensionAPI) {
 		pi.events.emit("herdr:blocked", state);
 	});
 
-	/** One coalesced custom follow-up wakes an idle index/root without fabricating user input. */
+	/**
+	 * `triggerTurn` skips `before_agent_start`, so a wake must itself be the
+	 * persisted/rendered event attachment. Claims remain replayable until the
+	 * ordinary durable acknowledgement scan records this custom message.
+	 */
 	const queueInboxWake = (ctx: ExtensionContext, target: InboxTarget): void => {
 		rootWakeGate.request(() => {
-			try {
-				pi.sendMessage({
-					customType: CONTINUATION_TYPE,
-					content: target.kind === "index"
-						? "A verified orchestration callback is durable. Reconcile its untrusted status and ask for real approval or answers when required."
-						: "A registered child callback is durable. Reconcile the child worktree, git, tests, and PR facts independently before continuing.",
-					display: true,
-					details: { targetSessionId: target.sessionId, consumer: target.kind },
-				}, { deliverAs: "followUp", triggerTurn: true });
-			} catch {
-				rootWakeGate.settled();
-			}
+			void (async () => {
+				const root = await canonicalRoot(pi, ctx);
+				if (!root || !(await refreshInboxTarget(pi, ctx, target))) {
+					rootWakeGate.settled();
+					return;
+				}
+				const spool = spoolRoot(root);
+				const claims = await claimOutstanding(
+					spool,
+					target.sessionId,
+					acknowledgeMessageEvents(pi, ctx, target),
+					target.sourcePolicy,
+					rootAuthorizer(target),
+				);
+				const deliverable = await prepareAttachment(spool, target.sessionId, claims, target.sourcePolicy);
+				await updateInboxWidget(pi, ctx, target);
+				if (deliverable.length === 0) {
+					rootWakeGate.settled();
+					if (await outstandingCount(spool, target.sessionId, target.sourcePolicy, rootAuthorizer(target))) queueInboxWake(ctx, target);
+					return;
+				}
+				try {
+					pi.sendMessage({
+						customType: CUSTOM_TYPE,
+						content: deliverable.map(({ event }) => formatAttachment(event, target.sourcePolicy)).join("\n\n"),
+						display: true,
+						details: { events: deliverable.map(({ event }) => event) } satisfies OrchestratorMessageDetails,
+					}, { deliverAs: "followUp", triggerTurn: true });
+					// A full bounded batch makes the future settled recheck mandatory.
+					if (await outstandingCount(spool, target.sessionId, target.sourcePolicy, rootAuthorizer(target))) queueInboxWake(ctx, target);
+				} catch {
+					rootWakeGate.settled();
+				}
+			})();
 		});
 	};
 
 	const ensureInboxActivation = async (ctx: ExtensionContext): Promise<InboxTarget | undefined> => {
 		const sessionId = ctx.sessionManager.getSessionFile();
 		if (!sessionId) return undefined;
-		if (activeTarget?.sessionId === sessionId && listener) return activeTarget;
+		if (activeTarget?.sessionId === sessionId && listener) {
+			await refreshInboxTarget(pi, ctx, activeTarget);
+			return activeTarget;
+		}
 		if (activation) return activation;
 		activation = (async () => {
 			const root = await canonicalRoot(pi, ctx);
@@ -252,10 +311,12 @@ export default function (pi: ExtensionAPI) {
 				target = { kind: "index", sessionId, sourcePolicy: "root", routes: [] };
 			} else {
 				const source = await liveSource(pi, ctx);
-				if (!source || !isDedicatedRootLabel(source.workspaceLabel)) return undefined;
-				const routes = await resolveRootInboundRoutes(spoolRoot(root), source);
+				if (!source || !isCanonicalRootSource(source, root)) return undefined;
+				const metadata = await herdrMetadata(pi);
+				if (!metadata) return undefined;
+				const routes = await resolveLiveRootInboundRoutes(spoolRoot(root), metadata.workspaces, metadata.panes, sessionId, root);
 				if (routes.length === 0) return undefined;
-				target = { kind: "root", sessionId, sourcePolicy: "registered-child", routes };
+				target = { kind: "root", sessionId, sourcePolicy: "registered-child", routes, source };
 			}
 			activeTarget = target;
 			listener = await startWakeListener(sessionId, () => {
@@ -263,6 +324,7 @@ export default function (pi: ExtensionAPI) {
 				queueInboxWake(ctx, target!);
 			});
 			await updateInboxWidget(pi, ctx, target);
+			if (await outstandingCount(spoolRoot(root), target.sessionId, target.sourcePolicy, rootAuthorizer(target))) queueInboxWake(ctx, target);
 			return target;
 		})();
 		try {
@@ -275,13 +337,26 @@ export default function (pi: ExtensionAPI) {
 	const discardQuestionPublication = async (question: PendingQuestion): Promise<void> => {
 		const publication = await question.publication;
 		if (publication && question.ended) {
-			await discardEvent(spoolRoot(publication.root), publication.targetSessionId, publication.eventId, publication.sourcePolicy);
+			await discardEvent(spoolRoot(publication.root), publication.targetSessionId, publication.eventId, publication.sourcePolicy, undefined, publication.source);
 		}
+	};
+
+	const checkpointIdentityMatches = async (ctx: ExtensionContext, checkpoint: CompactionCheckpoint): Promise<boolean> => {
+		if (!ctx.isIdle() || ctx.hasPendingMessages() || path.resolve(ctx.cwd) !== checkpoint.worktreePath) return false;
+		const [branch, head, status] = await Promise.all([
+			pi.exec("git", ["-C", ctx.cwd, "branch", "--show-current"]),
+			pi.exec("git", ["-C", ctx.cwd, "rev-parse", "HEAD"]),
+			pi.exec("git", ["-C", ctx.cwd, "status", "--porcelain"]),
+		]);
+		return branch.code === 0 && head.code === 0 && status.code === 0
+			&& branch.stdout.trim() === checkpoint.branch
+			&& head.stdout.trim() === checkpoint.head
+			&& (status.stdout.trim().length > 0) === checkpoint.dirty;
 	};
 
 	const scheduleCompactionContinuation = async (ctx: ExtensionContext, checkpoint: CompactionCheckpoint): Promise<void> => {
 		const root = await canonicalRoot(pi, ctx);
-		if (!root || path.resolve(ctx.cwd) !== checkpoint.worktreePath) return;
+		if (!root || !(await checkpointIdentityMatches(ctx, checkpoint))) return;
 		const claimed = await claimCompactionContinuation(spoolRoot(root), checkpoint.sessionId);
 		if (!claimed) return;
 		pendingCompactionContinuations.add(checkpoint.id);
@@ -320,9 +395,14 @@ export default function (pi: ExtensionAPI) {
 		if (!sessionId || !root) return;
 		const checkpoint = await getCompactionCheckpoint(spoolRoot(root), sessionId);
 		if (!checkpoint || path.resolve(ctx.cwd) !== checkpoint.worktreePath) return;
-		if (checkpoint.state === "continuation-claimed") await recoverCompactionContinuation(spoolRoot(root), sessionId);
+		if (checkpoint.state === "prepared") await failCompactionCheckpoint(spoolRoot(root), sessionId, "abandoned");
+		if (checkpoint.state === "continuation-claimed") {
+			// A crash after sendMessage but before settlement has already persisted the exact continuation.
+			if (persistedCompactionContinuation(ctx, checkpoint.id)) await completeCompactionContinuation(spoolRoot(root), sessionId);
+			else await recoverCompactionContinuation(spoolRoot(root), sessionId);
+		}
 		const recovered = await getCompactionCheckpoint(spoolRoot(root), sessionId);
-		if (recovered?.state === "compacted") await scheduleCompactionContinuation(ctx, recovered);
+		if (recovered?.state === "compacted" && await checkpointIdentityMatches(ctx, recovered)) await scheduleCompactionContinuation(ctx, recovered);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
@@ -349,7 +429,7 @@ export default function (pi: ExtensionAPI) {
 		const target = await ensureInboxActivation(ctx);
 		if (!target) return undefined;
 		const root = await canonicalRoot(pi, ctx);
-		if (!root) return undefined;
+		if (!root || !(await refreshInboxTarget(pi, ctx, target))) return undefined;
 		const claims = await claimOutstanding(
 			spoolRoot(root),
 			target.sessionId,
@@ -358,7 +438,7 @@ export default function (pi: ExtensionAPI) {
 			rootAuthorizer(target),
 		);
 		await updateInboxWidget(pi, ctx, target);
-		const deliverable = await prepareAttachment(spoolRoot(root), target.sessionId, claims);
+		const deliverable = await prepareAttachment(spoolRoot(root), target.sessionId, claims, target.sourcePolicy);
 		if (deliverable.length === 0) return undefined;
 		return {
 			message: {
@@ -370,17 +450,25 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("agent_start", async (_event, ctx) => {
-		if (pendingCompactionContinuations.size === 0) return;
+	pi.on("agent_settled", async (_event, ctx) => {
 		const sessionId = ctx.sessionManager.getSessionFile();
 		const root = await canonicalRoot(pi, ctx);
-		if (!sessionId || !root) return;
-		const checkpoint = await completeCompactionContinuation(spoolRoot(root), sessionId);
-		if (checkpoint) pendingCompactionContinuations.delete(checkpoint.id);
-	});
-
-	pi.on("agent_settled", () => {
-		rootWakeGate.settled();
+		if (sessionId && root) {
+			if (supervisedCompactions.has(sessionId) && (await getCompactionCheckpoint(spoolRoot(root), sessionId))?.state === "prepared") {
+				supervisedCompactions.delete(sessionId);
+				await failCompactionCheckpoint(spoolRoot(root), sessionId, "abandoned");
+			}
+			for (const checkpointId of [...pendingCompactionContinuations]) {
+				if (!persistedCompactionContinuation(ctx, checkpointId)) continue;
+				const checkpoint = await completeCompactionContinuation(spoolRoot(root), sessionId);
+				if (checkpoint?.id === checkpointId) pendingCompactionContinuations.delete(checkpointId);
+			}
+		}
+		const dirty = rootWakeGate.settled();
+		const target = activeTarget;
+		if (!target || !root || !(await refreshInboxTarget(pi, ctx, target))) return;
+		const outstanding = await outstandingCount(spoolRoot(root), target.sessionId, target.sourcePolicy, rootAuthorizer(target));
+		if (dirty || outstanding > 0) queueInboxWake(ctx, target);
 	});
 
 	pi.on("tool_execution_start", async (event, ctx) => {
@@ -393,7 +481,12 @@ export default function (pi: ExtensionAPI) {
 	pi.events.on("rpiv:ask-user:prompt", (payload: unknown) => {
 		const summary = summarizeAskUserPrompt(payload);
 		if (!summary) return;
-		const question = [...pendingQuestions.values()].find((candidate) => !candidate.activated && !candidate.ended);
+		const pending = [...pendingQuestions.values()].filter((candidate) => !candidate.activated && !candidate.ended);
+		const emittedToolCallId = rpivPromptToolCallId(payload);
+		const question = emittedToolCallId
+			? pending.find((candidate) => candidate.toolCallId === emittedToolCallId)
+			: pending.length === 1 ? pending[0] : undefined;
+		// RPIV payloads without an exact tool-call id must not guess Map order.
 		if (!question) return;
 		question.activated = true;
 		question.eventId = `question:${sessionKey(question.sessionId).slice(0, 24)}:${question.toolCallId}`;
@@ -423,6 +516,11 @@ export default function (pi: ExtensionAPI) {
 		const sessionId = ctx.sessionManager.getSessionFile();
 		const root = await canonicalRoot(pi, ctx);
 		if (!sessionId || !root || !supervisedCompactions.delete(sessionId)) return;
+		const prepared = await getCompactionCheckpoint(spoolRoot(root), sessionId);
+		if (!prepared || !(await checkpointIdentityMatches(ctx, prepared))) {
+			await failCompactionCheckpoint(spoolRoot(root), sessionId, "abandoned");
+			return;
+		}
 		const checkpoint = await markCompactionCompacted(spoolRoot(root), sessionId);
 		if (checkpoint) await scheduleCompactionContinuation(ctx, checkpoint);
 	});
@@ -457,34 +555,65 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify("Checkpoint fields and current git identity are required; compaction was not started.", "error");
 				return;
 			}
-			const parentRoute = !isDedicatedRootLabel(source.workspaceLabel) ? await resolveChildPublicationRoute(spoolRoot(root), source) : undefined;
-			const checkpoint: CompactionCheckpoint = {
-				id: `compact:${sessionKey(sessionId).slice(0, 24)}:${Date.now()}`,
-				sessionId,
-				task: input.task,
-				worktreePath: path.resolve(ctx.cwd),
-				branch: branch.stdout.trim(),
-				head: head.stdout.trim(),
-				dirty: status.stdout.trim().length > 0,
-				validation: input.validation,
-				nextAction: input.nextAction,
-				...(parentRoute ? { parentRouteId: parentRoute.id } : {}),
-				createdAt: new Date().toISOString(),
-				state: "prepared",
-			};
+			const spool = spoolRoot(root);
+			const existing = await getCompactionCheckpoint(spool, sessionId);
+			let checkpoint: CompactionCheckpoint | undefined;
 			try {
-				await writeCompactionCheckpoint(spoolRoot(root), checkpoint);
+				if (existing?.state === "failed") {
+					checkpoint = await retryCompactionCheckpoint(spool, sessionId);
+				} else {
+					const parentRoute = !isDedicatedRootLabel(source.workspaceLabel) ? await resolveChildPublicationRoute(spool, source) : undefined;
+					const prepared: CompactionCheckpoint = {
+						id: `compact:${sessionKey(sessionId).slice(0, 24)}:${Date.now()}`,
+						sessionId,
+						task: input.task,
+						worktreePath: path.resolve(ctx.cwd),
+						branch: branch.stdout.trim(),
+						head: head.stdout.trim(),
+						dirty: status.stdout.trim().length > 0,
+						validation: input.validation,
+						nextAction: input.nextAction,
+						...(parentRoute ? { parentRouteId: parentRoute.id } : {}),
+						createdAt: new Date().toISOString(),
+						state: "prepared",
+					};
+					await writeCompactionCheckpoint(spool, prepared);
+					checkpoint = prepared;
+				}
+				if (!checkpoint || !(await checkpointIdentityMatches(ctx, checkpoint))) {
+					await failCompactionCheckpoint(spool, sessionId, "abandoned");
+					ctx.ui.notify("Compaction identity changed before the compact call; checkpoint is recoverable or can be aborted.", "error");
+					return;
+				}
 				supervisedCompactions.add(sessionId);
-				ctx.compact({
-					customInstructions: "Preserve the durable supervised-compaction checkpoint, exact git state, validation status, and next action.",
-					onError: () => {
-						supervisedCompactions.delete(sessionId);
-						ctx.ui.notify("Compaction failed; the durable checkpoint remains for explicit recovery.", "error");
-					},
-				});
+				try {
+					ctx.compact({
+						customInstructions: "Preserve the durable supervised-compaction checkpoint, exact git state, validation status, and next action.",
+						onError: () => {
+							supervisedCompactions.delete(sessionId);
+							void failCompactionCheckpoint(spool, sessionId, "compact-error");
+							ctx.ui.notify("Compaction failed; rerun /supervised-compact to retry or /supervised-compact-abort to abandon the durable checkpoint.", "error");
+						},
+					});
+				} catch (error) {
+					supervisedCompactions.delete(sessionId);
+					await failCompactionCheckpoint(spool, sessionId, "compact-error");
+					ctx.ui.notify(`Compaction failed synchronously: ${error instanceof Error ? error.message : "unknown error"}`, "error");
+				}
 			} catch (error) {
 				ctx.ui.notify(`Compaction was not started: ${error instanceof Error ? error.message : "checkpoint failure"}`, "error");
 			}
+		},
+	});
+
+	pi.registerCommand("supervised-compact-abort", {
+		description: "Explicitly abandon a failed or prepared supervised compaction checkpoint.",
+		handler: async (_args, ctx) => {
+			const sessionId = ctx.sessionManager.getSessionFile();
+			const root = await canonicalRoot(pi, ctx);
+			if (!sessionId || !root) return;
+			const abandoned = await abandonCompactionCheckpoint(spoolRoot(root), sessionId);
+			ctx.ui.notify(abandoned ? "Supervised compaction checkpoint abandoned." : "No failed/prepared supervised checkpoint was available to abandon.", abandoned ? "info" : "warning");
 		},
 	});
 
@@ -508,10 +637,11 @@ export default function (pi: ExtensionAPI) {
 				paneId: params.childPaneId,
 				worktreePath: params.childWorktreePath,
 				sessionId: params.childSessionId,
-			});
+			}, root);
 			if (!route) return { content: [{ type: "text", text: "Child route was absent, stale, ambiguous, or this session is not a dedicated root." }], details: { registered: false } };
 			const status = await registerChildRoute(spoolRoot(root), route);
-			await ensureInboxActivation(ctx);
+			const target = await ensureInboxActivation(ctx);
+			if (target) await refreshInboxTarget(pi, ctx, target);
 			return { content: [{ type: "text", text: `Registered child callback route ${status}.` }], details: { registered: true, status, routeId: route.id } };
 		},
 	});

@@ -25,7 +25,7 @@ Do not silently resolve Copilot conversations.
 
 - The repository uses GitHub pull requests.
 - The `gh` CLI is installed and authenticated.
-- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the PR's existing visible Herdr-managed Pi worktree session** — when this skill runs in the canonical-root coordinator, e.g. via `finish-pr`, give that session one consolidated fix prompt, poll it directly, and keep reply/resolve operations in the coordinator (see `run-worktree-session`).
+- Fetching threads, replying, and resolving are GitHub-side and work from any session. **Applying a code fix requires the PR's existing visible Herdr-managed Pi worktree session** — when this skill runs in the canonical-root coordinator, e.g. via `finish-pr`, give that session one consolidated fire-and-return fix prompt and reconcile its durable callback on a later natural coordinator turn; keep reply/resolve operations in the coordinator (see `run-worktree-session`).
 - Do not use hidden `Agent` subagents for code-review fixes, and do not create a watcher process or watcher pane. Reuse one visible Herdr workspace/Pi agent for every review round on the PR.
 - If the user does not provide a PR number, infer it from the current branch.
 
@@ -223,7 +223,7 @@ Copilot re-review is requested by the user — either via the Reviewers menu on 
 When the current round is clean and the PR still benefits from another Copilot pass:
 
 1. If Copilot's last round exposed a repeat misunderstanding, consider whether `.github/instructions/pr-reviewer.instructions.md` needs a durable context update before asking for another review.
-2. Tell the user: `Please request another Copilot review manually from the GitHub PR page. I'll wait for the next round.`
+2. Tell the user: `Please request another Copilot review manually from the GitHub PR page. Send me the next round when it is available.`
 3. Explain that Copilot usually takes a couple of minutes.
 4. After the user says the review was requested or enough time has passed, refresh the PR snapshot.
 5. Treat newly unresolved Copilot threads as the next round and repeat this workflow.

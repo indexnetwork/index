@@ -405,28 +405,30 @@ bun run worktree:setup feat-my-feature
 ```
 
 Setup symlinks root `.env*` files into the worktree and installs workspace
-dependencies. Then open or focus the exact checkout in Herdr:
+dependencies. Then open the exact checkout in Herdr without stealing user focus:
 
 ```bash
 herdr worktree open \
   --path "$PWD/.worktrees/feat-my-feature" \
   --label feat-my-feature \
-  --focus \
+  --no-focus \
   --json
 ```
 
 Record `.result.workspace.workspace_id` and `.result.root_pane.pane_id` from the JSON.
-If the returned root pane is an interactive shell with no agent, start the stable Pi
-agent named from the dashed folder:
+If the returned root pane is an interactive shell with no agent, launch Pi in that
+exact non-focusing pane:
 
 ```bash
-herdr agent start feat-my-feature --kind pi --pane <returned-pane-id>
+herdr pane send-text <returned-pane-id> "pi"
+herdr pane send-keys <returned-pane-id> enter
 ```
 
 Before mutation, the visible Pi verifies `pwd`, `git branch --show-current`, and
-`git status --short --branch`. The canonical/root Pi sends one complete handoff and
-polls the same agent directly with `herdr agent get`, `herdr agent read`, and
-`herdr agent wait`; it does not create a background watcher. Routine questions are
+`git status --short --branch`. The canonical/root Pi sends one complete fire-and-return
+handoff, then reconciles the registered child's durable RESULT callback on a later
+natural coordinator turn; it never polls, waits, or creates a background watcher.
+Routine questions are
 answered with the safe/recommended option. Structured prompts are read and answered
 through targeted `herdr pane` text/keys rather than a new agent prompt.
 

@@ -45,8 +45,10 @@ root. Do not sleep-poll, run watchers, or use timeout loops.
 ## Durable callback to `index`
 
 Model routing does not change the delivery path. The project-local orchestration bridge
-authorizes publication only from an observable Herdr workspace label ending in `-root`;
-`index` and implementation children fail closed. It resolves the unique workspace
+authorizes direct root → `index` publication only from an observable Herdr workspace
+label ending in `-root` whose checkout and Pi cwd equal the canonical root. `index` and
+unregistered implementation children fail closed; a registered child → root route is
+allowed. It resolves the unique workspace
 labeled `index` and its reported Pi session identity, then persists root `RESULT` and
 validated-rpiv blocked-question events before one best-effort Unix-socket wake. It never uses a fixed main agent name, screen scraping, editor
 injection, workspace focus, `herdr agent prompt`, or `herdr agent wait` from `index`.

@@ -190,7 +190,7 @@ bun install                                # Install dependencies for all worksp
 bun run dev                                # Interactive: select root or a worktree to run dev
 bun run worktree:list                       # List worktrees and their setup status
 bun run worktree:setup <name>               # Install node_modules & symlink .env files into a worktree
-herdr worktree open --path <path> --label <name> --focus --json # Open/focus the visible worktree workspace
+herdr worktree open --path <path> --label <name> --no-focus --json # Open a non-focusing visible worktree workspace
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 bun run skills:validate                      # Validate every project-local Pi skill
@@ -496,9 +496,10 @@ bun run worktree:setup feat-user-authentication
 herdr worktree open \
   --path "$PWD/.worktrees/feat-user-authentication" \
   --label feat-user-authentication \
-  --focus \
+  --no-focus \
   --json
-herdr agent start feat-user-authentication --kind pi --pane <returned-pane-id>
+herdr pane send-text <returned-pane-id> "pi"
+herdr pane send-keys <returned-pane-id> enter
 ```
 
 Herdr is the default visible execution plane. Record the workspace and pane IDs returned
@@ -506,8 +507,11 @@ by `herdr worktree open`; reuse an existing workspace/Pi only when its worktree 
 branch, and cwd match. The canonical/root Pi remains the coordinator and sends one
 complete fire-and-return handoff—never `--wait`, `herdr agent wait`, polling, a hidden
 implementation subagent, background watcher process, or watcher pane. A `*-root`
-registers each exact child session/workspace/pane/worktree callback route; durable
-custom auto-resume wakes root/index without user-message or editor injection. It answers routine
+whose checkout and Pi cwd equal the canonical root registers each exact child
+session/workspace/pane/worktree callback route; direct `index` delegates child work
+through that root. Durable custom auto-resume wakes root/index without user-message or
+editor injection. External nonterminal Railway/CI gates still require an event adapter.
+It answers routine
 implementation questions with the safe/recommended option and escalates only genuine
 product/architecture ambiguity, destructive actions, external infrastructure mutation,
 credentials/secrets, or merge approval. A structured question/editor draft must be
@@ -553,7 +557,7 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 ### Implementation in Visible Herdr Worktrees
 
 Execute implementation and fix plans in visible Herdr-managed Pi sessions for isolated
-Git worktrees. The canonical/root Pi coordinates, remains active, polls Herdr directly,
+Git worktrees. The canonical/root Pi coordinates, remains active through durable callbacks,
 and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
 parallel work is genuinely useful, use separate worktrees/workspaces with one writer per
 checkout. Follow the `create-worktree` and `run-worktree-session` skills.

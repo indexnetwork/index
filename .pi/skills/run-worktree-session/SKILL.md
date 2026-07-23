@@ -68,8 +68,11 @@ herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/handoff.md)"
 
 Before a dedicated `*-root` sends a child handoff, it registers the exact child Pi
 session, workspace, pane, and worktree with `register_orchestration_child_route`.
-The extension verifies that live Herdr identity and fails closed; the child has no
-target argument and can only publish to its one registered root route. Do not commit
+Discover those values from `herdr workspace list` and `herdr pane list` (including the
+child Pi `agent_session.value`), not from labels or guesses. The extension verifies
+that live Herdr identity and fails closed; the child has no target argument and can
+only publish to its one registered root route. Every child handoff mandates one stable
+`publish_child_orchestrator_event` RESULT call before its textual RESULT. Do not commit
 task-specific handoff files under `.pi`.
 
 ## 3. Reconcile results without polling
@@ -85,8 +88,9 @@ injects a user message.
 A child publishes a stable RESULT (or validated RPIV blocked event) only through its
 exact registered root route. The root then independently inspects structured RESULT
 and factual git/PR/test state; `working`, `idle`, `done`, and `blocked` alone are
-never proof. A root whose workspace label ends in `-root` may publish its verified
-final RESULT to `index`. Bounded auto-wakes coalesce to one queued/in-flight
+never proof. A root whose workspace label ends in `-root` **and whose checkout/Pi cwd equal the
+canonical root** may publish its verified final RESULT to `index`; direct `index` must
+delegate child/fix work through that dedicated root. Bounded auto-wakes coalesce to one queued/in-flight
 continuation; notifications remain optional visibility only. For parallel children,
 submit multiple fire-and-return `herdr agent prompt NAME "..."` calls — never waits.
 
