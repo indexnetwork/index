@@ -3,7 +3,6 @@ import type { AskUserExpiryPayload, NegotiationGraphDatabase } from '@indexnetwo
 
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
-import db from '../../lib/drizzle/drizzle';
 import { claimParkedContinuationExecution, completeContinuationExecution, parkContinuationExecution } from '../../adapters/negotiation-continuation.atomic';
 import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 
@@ -270,8 +269,14 @@ export class NegotiationTimeoutQueue {
     // A parked exact continuation must acquire a fresh token/fence before the
     // timeout path can transition or write anything.
     const parked = meta.continuationExecution?.status === 'parked';
-    const claimedContinuation = parked
-      ? await claimParkedContinuationExecution(db, task.id, 'system:negotiation-timeout')
+    // Keep provider-free queue tests free of Drizzle initialization. Production
+    // only loads the database singleton after durable metadata proves this is a
+    // fenced parked continuation.
+    const continuationDb = parked
+      ? (await import('../../lib/drizzle/drizzle')).default
+      : null;
+    const claimedContinuation = parked && continuationDb
+      ? await claimParkedContinuationExecution(continuationDb, task.id, 'system:negotiation-timeout')
       : null;
     if (parked && !claimedContinuation) return;
     const effectiveTask = claimedContinuation
@@ -315,8 +320,9 @@ export class NegotiationTimeoutQueue {
       ...(execution ? { continuationExecution: execution } : {}),
     });
     if (execution && result.continuationOutcome) {
-      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(db, execution);
-      else await completeContinuationExecution(db, execution, {
+      if (!continuationDb) throw new Error('Continuation database unavailable after fenced timeout claim');
+      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(continuationDb, execution);
+      else await completeContinuationExecution(continuationDb, execution, {
         priorTaskId: execution.taskId, settlementId: execution.settlementId,
         successorTaskId: execution.successorTaskId, fence: execution.fence,
         outcome: result.continuationOutcome,

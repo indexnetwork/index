@@ -4,7 +4,6 @@ import type { NegotiationGraphDatabase } from '@indexnetwork/protocol';
 import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
-import db from '../../lib/drizzle/drizzle';
 import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../../adapters/negotiation-continuation.atomic';
 
 import type { NegotiationTaskMeta, TimeoutNegotiatorInvoke } from './timeout.shared';
@@ -198,8 +197,13 @@ export class NegotiationClaimTimeoutQueue {
     const preflight = await database.getTask(negotiationId);
     const executionState = (preflight?.metadata as { continuationExecution?: { status?: unknown } } | null)
       ?.continuationExecution?.status;
-    const continuationExecution = executionState === 'claimed'
-      ? await readClaimedContinuationExecution(db, negotiationId)
+    // Provider-free unit tests never load Drizzle: this is reached only for a
+    // real task carrying a claimed continuation fence.
+    const continuationDb = executionState === 'claimed'
+      ? (await import('../../lib/drizzle/drizzle')).default
+      : null;
+    const continuationExecution = continuationDb
+      ? await readClaimedContinuationExecution(continuationDb, negotiationId)
       : null;
     const task = continuationExecution
       ? await database.transitionClaimedTaskToWorking(negotiationId, continuationExecution)
@@ -266,8 +270,9 @@ export class NegotiationClaimTimeoutQueue {
       ...(continuationExecution ? { continuationExecution } : {}),
     });
     if (continuationExecution && result.continuationOutcome) {
-      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(db, continuationExecution);
-      else await completeContinuationExecution(db, continuationExecution, {
+      if (!continuationDb) throw new Error('Continuation database unavailable after fenced claim timeout');
+      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(continuationDb, continuationExecution);
+      else await completeContinuationExecution(continuationDb, continuationExecution, {
         priorTaskId: continuationExecution.taskId, settlementId: continuationExecution.settlementId,
         successorTaskId: continuationExecution.successorTaskId, fence: continuationExecution.fence,
         outcome: result.continuationOutcome,
