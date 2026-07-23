@@ -46,7 +46,7 @@ Negotiation proceeds in alternating turns.
 
 ### Protocol versions
 
-Each negotiation task carries a `protocolVersion` (`v1` | `v2`) in its metadata. The version is **inherited, never re-stamped**: continuations copy the version from the prior task on the conversation, so an in-flight v1 conversation stays v1 even after the environment moves to v2. Only genuinely fresh negotiations stamp from the `NEGOTIATION_PROTOCOL_VERSION` env switch (default `v1`); rollback is the same single switch.
+Each negotiation task carries a `protocolVersion` (`v1` | `v2`) in its metadata. The version is **pinned per negotiation, re-stamped per match**: a prior task for the same opportunity (an exact ask_user resume or a re-run) pins its version so one negotiation never flips semantics mid-flight (a version-less genuine prior is a pre-v2 task and reads as v1). Every other session — including continuations of older conversations between the same pair — stamps from the `NEGOTIATION_PROTOCOL_VERSION` env switch (default `v1`), so a version cutover reaches existing pairs on their next new match instead of being pinned to v1 forever by conversation history. Rollback is the same single switch, with the same per-opportunity pinning.
 
 Under **v2 (client-advocate seat rules)** the action vocabulary is scoped by seat, keyed on `metadata.initiatorUserId` (the rigid stamp from discovery time — never turn parity):
 

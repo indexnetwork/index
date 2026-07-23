@@ -190,9 +190,11 @@ export function readProtocolVersion(
 }
 
 /**
- * Protocol version for genuinely fresh negotiations, from the
- * `NEGOTIATION_PROTOCOL_VERSION` env switch. Defaults to `v1` when unset —
- * v2 is opt-in per environment, and rolling back is the same single switch.
+ * Protocol version for negotiations without a prior task for the same
+ * opportunity, from the `NEGOTIATION_PROTOCOL_VERSION` env switch. Defaults
+ * to `v1` when unset — v2 is opt-in per environment, and rolling back is the
+ * same single switch (only in-flight negotiations stay pinned to their
+ * stamped version).
  */
 export function configuredProtocolVersion(): NegotiationProtocolVersion {
   return process.env.NEGOTIATION_PROTOCOL_VERSION === "v2" ? "v2" : "v1";

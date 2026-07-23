@@ -8,8 +8,9 @@ import type { NegotiationTurn } from "../negotiation.state.js";
  * IND-397 — seat-scoped turn schemas + counterparty-only accept (graph level).
  *
  * Pins:
- * - protocolVersion stamping for fresh runs (env switch) and inheritance for
- *   continuations (a v1 conversation stays v1 mid-flight even with env=v2),
+ * - protocolVersion stamping from the env switch for every new match, with
+ *   pinning only for a prior task on the same opportunity (one negotiation
+ *   never flips version mid-flight; conversation history does not pin),
  * - turn-0 opening action per version (v1 propose, v2 initiator outreach),
  * - seat + version propagation into the system agent and dispatch payload,
  * - v2 coercion of out-of-seat personal-agent turns (initiator accept →
@@ -167,7 +168,7 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
     expect(agentInputs[0].protocolVersion).toBe("v1");
   });
 
-  it("version inheritance: continuation of a v1 conversation stays v1 even with env=v2", async () => {
+  it("version pinning: re-run of a v1 opportunity stays v1 even with env=v2", async () => {
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const stubs = mkStubs({
       priorOpportunityTask: mkTask({
@@ -183,7 +184,7 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
     expect(agentInputs[0].protocolVersion).toBe("v1");
   });
 
-  it("version inheritance: prior task without a version field grandfathers to v1 under env=v2", async () => {
+  it("version pinning: same-opportunity prior task without a version field grandfathers to v1 under env=v2", async () => {
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const stubs = mkStubs({
       priorOpportunityTask: mkTask({
@@ -197,7 +198,7 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
     expect(stubs.createdTasks[0].metadata.protocolVersion).toBe("v1");
   });
 
-  it("version inheritance: prior conversation turns without any readable task grandfather to v1", async () => {
+  it("no conversation inheritance: continuation without a same-opportunity task stamps from env", async () => {
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const stubs = mkStubs({
       priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
@@ -205,10 +206,25 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
 
     await runGraph(stubs, { opportunityId: "opp-1" });
 
-    expect(stubs.createdTasks[0].metadata.protocolVersion).toBe("v1");
+    expect(stubs.createdTasks[0].metadata.protocolVersion).toBe("v2");
   });
 
-  it("version inheritance: a v2 conversation stays v2 even after env rollback to v1", async () => {
+  it("no conversation inheritance: a v1 task on the same DM does not pin a new match's version", async () => {
+    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
+    const stubs = mkStubs({
+      conversationTask: mkTask({
+        id: "task-other-opp",
+        metadata: { type: "negotiation", sourceUserId: "u-src", protocolVersion: "v1" },
+      }),
+      priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
+    });
+
+    await runGraph(stubs, { opportunityId: "opp-2" });
+
+    expect(stubs.createdTasks[0].metadata.protocolVersion).toBe("v2");
+  });
+
+  it("version pinning: a v2 opportunity stays v2 even after env rollback to v1", async () => {
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v1";
     const stubs = mkStubs({
       priorOpportunityTask: mkTask({
