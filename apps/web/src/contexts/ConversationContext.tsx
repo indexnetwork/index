@@ -51,6 +51,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const sseGenerationRef = useRef(0);
   const connectSSERef = useRef<() => void>(() => {});
   const refreshConversationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   // --- REST helpers (use apiClient directly, same pattern as AIChatContext) ---
 
@@ -72,6 +73,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       logger.error('Failed to fetch negotiations', { error: err });
     }
   }, []);
+  useEffect(() => { refreshNegotiationsRef.current = refreshNegotiations; }, [refreshNegotiations]);
 
   const loadMessages = useCallback(async (conversationId: string, opts?: { limit?: number; before?: string }) => {
     try {
@@ -349,6 +351,11 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                     : c
                 );
               });
+              // Negotiation turns use the same stream but their summaries are
+              // owner-filtered separately (`agent:<ownerId>` participants).
+              // Revalidate once per event so intent provenance and Radar can
+              // react without a polling loop.
+              void refreshNegotiationsRef.current();
               break;
             }
           }
@@ -397,6 +404,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsConnected(false);
       setConversations([]);
+      setNegotiations([]);
       setMessages(new Map());
       setSessionHistory(new Map());
       return;
@@ -417,7 +425,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         retryTimeoutRef.current = null;
       }
     };
-  }, [isAuthenticated, refreshConversations, connectSSE]);
+  }, [isAuthenticated, refreshConversations, refreshNegotiations, connectSSE]);
 
   return (
     <ConversationContext.Provider

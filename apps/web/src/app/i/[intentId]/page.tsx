@@ -16,6 +16,7 @@ import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useQuestions } from "@/contexts/QuestionsContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
@@ -24,6 +25,8 @@ import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/op
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
+import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
+import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
 const STATUS_BUCKET: Record<string, string> = {
@@ -130,11 +133,13 @@ function ActionChip({
 
 /** Selectable radar status filter tab: a label with a subtle count badge. */
 function StatPill({
+  bucketKey,
   value,
   label,
   active,
   onSelect,
 }: {
+  bucketKey: string;
   value: number;
   label: string;
   active: boolean;
@@ -156,7 +161,7 @@ function StatPill({
       <span
         className={cn(
           "min-w-[18px] rounded-full px-1 py-px text-center text-[10px] font-semibold tabular-nums",
-          active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500",
+          radarBucketBadgeTone(bucketKey, value, active),
         )}
       >
         {value}
@@ -303,6 +308,7 @@ export default function IntentDetailPage() {
   const { refresh: refreshQuestionCounts, pendingRevision } = useQuestions();
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
+  const { negotiations } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -355,7 +361,7 @@ export default function IntentDetailPage() {
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
-  const [selectedBucket, setSelectedBucket] = useState("pending");
+  const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
   // Backend-surfaced flag (features on /auth/me): when on, the static
   // questions block becomes the negotiator chat window (P4.2/IND-403).
   // `chatUnavailable` is the runtime fallback if the bootstrap fails.
@@ -536,6 +542,30 @@ export default function IntentDetailPage() {
       if (seq === loadSeqRef.current && !preserveExisting) setOpportunitiesLoading(false);
     }
   }, [intentId, opportunitiesService]);
+
+  const negotiationActivityRevision = useMemo(
+    () => intentNegotiationActivityRevision(negotiations, intentId),
+    [intentId, negotiations],
+  );
+  const seenNegotiationActivityRef = useRef<string | null>(null);
+
+  // ConversationProvider receives persisted A2A turns over SSE and refreshes
+  // owner-filtered negotiation provenance. A scoped revision means only this
+  // intent's own negotiations invalidate Radar; unrelated conversations never
+  // trigger a fetch or become visible here.
+  useEffect(() => {
+    if (!negotiationActivityRevision) {
+      seenNegotiationActivityRef.current = null;
+      return;
+    }
+    if (seenNegotiationActivityRef.current === null) {
+      seenNegotiationActivityRef.current = negotiationActivityRevision;
+      return;
+    }
+    if (seenNegotiationActivityRef.current === negotiationActivityRevision) return;
+    seenNegotiationActivityRef.current = negotiationActivityRevision;
+    void loadOpportunities(true);
+  }, [loadOpportunities, negotiationActivityRevision]);
 
   useEffect(() => {
     if (!intentId) return;
@@ -1172,6 +1202,7 @@ export default function IntentDetailPage() {
                     {RADAR_BUCKETS.map((bucket) => (
                       <StatPill
                         key={bucket.key}
+                        bucketKey={bucket.key}
                         value={bucketCounts[bucket.key] ?? 0}
                         label={bucket.label}
                         active={selectedBucket === bucket.key}

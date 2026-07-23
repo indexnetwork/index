@@ -365,6 +365,10 @@ export class OpportunityDatabaseAdapter {
       || actorNetworkIds.length === 0
       || actorNetworkIds.some((id) => !allowedNetworkIds.has(id))
       || actorUserIds.length < 2
+      || !data.actors.some((actor) =>
+        actor.userId === eligibility.ownerUserId
+        && actor.role !== 'introducer'
+        && actor.intent === eligibility.triggerIntentId)
       || !Number.isFinite(dedupWindowMs)
       || dedupWindowMs <= 0
     ) return null;

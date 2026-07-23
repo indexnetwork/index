@@ -1,6 +1,6 @@
 import { log } from '../lib/log';
 
-import { createRedisClient, getRedisClient } from '../adapters/cache.adapter';
+import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 
 const logger = log.service.from('ConversationService');
@@ -80,7 +80,9 @@ export class ConversationService {
    * Used to surface negotiation conversations to the user whose agent participated.
    */
   async getAgentConversations(userId: string) {
-    return this.db.getConversationsForUser(`agent:${userId}`);
+    // The agent participant authenticates the A2A thread, while the owning
+    // human is the only identity permitted to see intent provenance.
+    return this.db.getConversationsForUser(`agent:${userId}`, userId);
   }
 
   /**
@@ -122,25 +124,6 @@ export class ConversationService {
     });
 
     const participants = await this.db.getParticipants(conversationId);
-
-    // Publish to all participants' SSE channels (best-effort)
-    try {
-      const event = JSON.stringify({
-        type: 'message',
-        conversationId,
-        message: msg,
-      });
-      const pubClient = getRedisClient();
-      for (const p of participants) {
-        if (p.participantId === senderId) continue;
-        await pubClient.publish(`conversations:user:${p.participantId}`, event);
-      }
-    } catch (err) {
-      logger.error('Failed to publish SSE event', {
-        conversationId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
 
     // Ghost invite email: on first user message to a ghost, send an invite
     if (role === 'user') {

@@ -549,5 +549,45 @@ describe('ConversationDatabaseAdapter', () => {
       expect(summary?.via).toEqual([{ intentId: viewerIntentId, opportunityId: 'opp-private-signal', title: 'Viewer signal' }]);
       expect(summary?.metadata).not.toHaveProperty('matchProvenance');
     }, 20000);
+
+    it('projects owner intent provenance when listing an agent negotiation', async () => {
+      const run = crypto.randomUUID();
+      const viewerId = `agent-provenance-viewer-${run}`;
+      const counterpartId = `agent-provenance-counterpart-${run}`;
+      const viewerIntentId = `agent-provenance-viewer-intent-${run}`;
+      const counterpartIntentId = `agent-provenance-counterpart-intent-${run}`;
+      createdUserIds.push(viewerId, counterpartId);
+      createdIntentIds.push(viewerIntentId, counterpartIntentId);
+
+      await db.insert(schema.users).values([
+        { id: viewerId, email: `${viewerId}@test.com`, name: 'Agent Provenance Viewer' },
+        { id: counterpartId, email: `${counterpartId}@test.com`, name: 'Agent Provenance Counterpart' },
+      ]);
+      await db.insert(schema.intents).values([
+        { id: viewerIntentId, userId: viewerId, payload: 'Viewer private framing', summary: 'Viewer signal' },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Counterpart private framing', summary: 'Counterpart signal' },
+      ]);
+      const negotiation = await adapter.createConversation([
+        { participantId: `agent:${viewerId}`, participantType: 'agent' },
+        { participantId: `agent:${counterpartId}`, participantType: 'agent' },
+      ]);
+      createdIds.push(negotiation.id);
+      await adapter.appendMatchProvenance(negotiation.id, {
+        opportunityId: 'opp-agent-private-signal',
+        intents: [
+          { userId: viewerId, intentId: viewerIntentId },
+          { userId: counterpartId, intentId: counterpartIntentId },
+        ],
+        recordedAt: new Date().toISOString(),
+      });
+
+      const summary = (await adapter.getConversationsForUser(`agent:${viewerId}`, viewerId))
+        .find((conversation) => conversation.id === negotiation.id);
+
+      expect(summary?.via).toEqual([
+        { intentId: viewerIntentId, opportunityId: 'opp-agent-private-signal', title: 'Viewer signal' },
+      ]);
+      expect(summary?.metadata).not.toHaveProperty('matchProvenance');
+    }, 20000);
   });
 });
