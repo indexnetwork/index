@@ -26,6 +26,7 @@ import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/serv
 import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
 import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
+import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
 const STATUS_BUCKET: Record<string, string> = {
@@ -132,11 +133,13 @@ function ActionChip({
 
 /** Selectable radar status filter tab: a label with a subtle count badge. */
 function StatPill({
+  bucketKey,
   value,
   label,
   active,
   onSelect,
 }: {
+  bucketKey: string;
   value: number;
   label: string;
   active: boolean;
@@ -158,7 +161,7 @@ function StatPill({
       <span
         className={cn(
           "min-w-[18px] rounded-full px-1 py-px text-center text-[10px] font-semibold tabular-nums",
-          active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500",
+          radarBucketBadgeTone(bucketKey, value, active),
         )}
       >
         {value}
@@ -358,7 +361,7 @@ export default function IntentDetailPage() {
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
-  const [selectedBucket, setSelectedBucket] = useState("pending");
+  const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
   // Backend-surfaced flag (features on /auth/me): when on, the static
   // questions block becomes the negotiator chat window (P4.2/IND-403).
   // `chatUnavailable` is the runtime fallback if the bootstrap fails.
@@ -1199,6 +1202,7 @@ export default function IntentDetailPage() {
                     {RADAR_BUCKETS.map((bucket) => (
                       <StatPill
                         key={bucket.key}
+                        bucketKey={bucket.key}
                         value={bucketCounts[bucket.key] ?? 0}
                         label={bucket.label}
                         active={selectedBucket === bucket.key}

@@ -80,7 +80,9 @@ export class ConversationService {
    * Used to surface negotiation conversations to the user whose agent participated.
    */
   async getAgentConversations(userId: string) {
-    return this.db.getConversationsForUser(`agent:${userId}`);
+    // The agent participant authenticates the A2A thread, while the owning
+    // human is the only identity permitted to see intent provenance.
+    return this.db.getConversationsForUser(`agent:${userId}`, userId);
   }
 
   /**
