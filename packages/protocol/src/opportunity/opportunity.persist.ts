@@ -12,6 +12,38 @@ import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('OpportunityPersist');
 
+/** Bind owned-intent discovery actors to the already-authorized trigger intent. */
+function bindOwnedIntentActors(
+  data: CreateOpportunityData,
+  ownerUserId: string,
+  triggerIntentId: string,
+): CreateOpportunityData {
+  const actors: CreateOpportunityData['actors'] = [];
+  const boundActorIndexes = new Map<string, number>();
+
+  for (const actor of data.actors) {
+    if (actor.userId !== ownerUserId || actor.role === 'introducer') {
+      actors.push(actor);
+      continue;
+    }
+
+    const boundActor = {
+      ...actor,
+      intent: triggerIntentId as NonNullable<typeof actor.intent>,
+    };
+    const key = JSON.stringify([boundActor.networkId, boundActor.userId, triggerIntentId]);
+    const existingIndex = boundActorIndexes.get(key);
+    if (existingIndex === undefined) {
+      boundActorIndexes.set(key, actors.length);
+      actors.push(boundActor);
+    } else {
+      actors[existingIndex] = boundActor;
+    }
+  }
+
+  return { ...data, actors };
+}
+
 export type PersistOpportunityDatabase = EnricherDatabase & {
   createOpportunity(data: CreateOpportunityData): Promise<Opportunity>;
   createOpportunityIfNetworkEligible?(
@@ -88,7 +120,14 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
       ) {
         throw new Error('Intent-scoped dedup trigger must match network eligibility');
       }
-      const enrichment = await enrichOrCreate(database, embedder, normalizedData, intentDedupScope && networkEligibility
+      const scopedData = intentDedupScope && networkEligibility
+        ? bindOwnedIntentActors(
+            normalizedData,
+            networkEligibility.ownerUserId,
+            intentDedupScope.triggerIntentId,
+          )
+        : normalizedData;
+      const enrichment = await enrichOrCreate(database, embedder, scopedData, intentDedupScope && networkEligibility
         ? {
             ownedIntentScope: {
               triggerIntentId: intentDedupScope.triggerIntentId,
@@ -96,7 +135,14 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
             },
           }
         : undefined);
-      const toCreate = normalizeCreateOpportunityActorIntents(enrichment.data);
+      const normalizedToCreate = normalizeCreateOpportunityActorIntents(enrichment.data);
+      const toCreate = intentDedupScope && networkEligibility
+        ? bindOwnedIntentActors(
+            normalizedToCreate,
+            networkEligibility.ownerUserId,
+            intentDedupScope.triggerIntentId,
+          )
+        : normalizedToCreate;
       if (enrichment.enriched) {
         toCreate.status = enrichment.resolvedStatus;
       }

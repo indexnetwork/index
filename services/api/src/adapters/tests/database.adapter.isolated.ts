@@ -1283,6 +1283,37 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(inserted).toEqual([]);
     });
 
+    it('fails closed when the owner actor is not bound to the eligibility trigger', async () => {
+      const marker = `${TEST_PREFIX}stale-owner-intent-${uuidv4()}`;
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          createdBy: marker,
+          timestamp: new Date().toISOString(),
+          triggeredBy: fixture.intent1Id,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: uuidv4() },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Stale owner intent must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: fixture.intent1Id,
+      }, 30 * 24 * 60 * 60 * 1000);
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'createdBy' = ${marker}`);
+
+      expect(result).toBeNull();
+      expect(inserted).toEqual([]);
+    });
+
     it('blocks final persistence while another trigger has a fresh active negotiation', async () => {
       const triggerIntentId = uuidv4();
       fixture.extraIntentIds.push(triggerIntentId);
