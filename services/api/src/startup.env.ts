@@ -115,6 +115,7 @@ const envSchema = z.object({
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
+  NEGOTIATION_CONSULTATION_POLICY_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
   NEGOTIATION_ASK_USER_WINDOW_MS: optionalInt,
   NEGOTIATION_DEADLOCK_SHIFT_ENABLED: optionalBoolean,
   NEGOTIATION_DEADLOCK_THRESHOLD: optionalInt,

@@ -352,12 +352,16 @@ export class NegotiationTimeoutQueue {
       });
       return;
     }
+    // Content-free funnel telemetry: a winner is the sole exact task that
+    // timed out, so duplicate/stale deliveries never inflate this stage.
+    this.logger.info('negotiation_consultation_policy', { stage: 'timed_out' });
     const enqueueResume = this.deps?.enqueueResume
       ?? (async (input: NonNullable<typeof claim>) => {
         const { negotiationRunExistingQueue } = await import('./run-existing.queue');
         await negotiationRunExistingQueue.addJob(input);
       });
     await enqueueResume(claim);
+    this.logger.info('negotiation_consultation_policy', { stage: 'resumed' });
     this.logger.info('Ask-user window expired; exact task resumed with conservative default', claim);
   }
 }

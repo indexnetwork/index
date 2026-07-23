@@ -5,9 +5,10 @@ import { requestContext, type TraceEmitter } from "../shared/observability/reque
 import type { NegotiationGraphDatabase, OpportunityStatus, NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
-import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "./negotiation.state.js";
+import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { ASK_USER_LOCK_SLACK_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { NegotiationScreener, configuredScreenMode, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
@@ -379,6 +380,11 @@ export class NegotiationGraphFactory {
           ...(exactContinuation?.execution.consultation
             ? { privateConsultation: exactContinuation.execution.consultation }
             : {}),
+          ...(exactContinuation && (() => {
+            const turnContext = priorTask?.metadata?.turnContext as Record<string, unknown> | undefined;
+            const reason = turnContext?.consultationPolicyReason;
+            return typeof reason === 'string' ? { consultationPolicyReason: reason as NegotiationConsultationReason } : {};
+          })()),
           ...(seedMessages.length > 0 && { messages: seedMessages }),
         };
       } catch (err) {
@@ -535,13 +541,12 @@ export class NegotiationGraphFactory {
           ? 'initiator'
           : 'counterparty';
 
-        // ask_user availability (P3.2): flag on, full pause loop wired
+        // Legacy ask_user availability (P3.2): flag on, full pause loop wired
         // (questioner + answer-window timer + an opportunity to resume
         // against), v2 non-final non-opening turn, and this side's one client
-        // consultation not yet spent (rationing). Chat-triggered runs get no
-        // special casing — the pause exits the graph at the turn boundary, so
-        // the stream never blocks on a question; the resume is always an async
-        // continuation.
+        // consultation not yet spent (rationing). Shadow is observational and
+        // must preserve this legacy path byte-for-byte except for telemetry.
+        const policyMode = negotiationConsultationPolicyMode();
         const askUserAvailable =
           version === 'v2'
           && !isFinalTurn
@@ -682,11 +687,58 @@ export class NegotiationGraphFactory {
           }
         }
 
-        // Safety net: an ask_user that slipped past availability gating (e.g. a
-        // locally-dispatched agent ignoring allowedActions, or rationing already
-        // spent) is coerced to the conservative fallback BEFORE persisting — a
-        // pause we cannot resume must never enter the turn history.
-        if (turn.action === 'ask_user' && !askUserAvailable) {
+        // IND-508 deterministic admission is evaluated only after the opening
+        // guard but before any turn is persisted. It consumes action/role enums
+        // only; free-form reasoning, messages, profiles, and evaluator inputs
+        // are intentionally unavailable to the policy.
+        let consultationPolicyReason: NegotiationConsultationReason | undefined;
+        const policyEligibility = policyMode === 'off' ? { eligible: false } : assessConsultationEligibility({
+          protocolVersion: version,
+          seat,
+          isOpeningTurn: state.turnCount === 0 && !state.isContinuation,
+          isFinalTurn,
+          screenedOut: isScreenBlocked(state),
+          action: turn.action,
+          ownSuggestedRole: turn.assessment?.suggestedRoles?.ownUser,
+          priorActions: history.map((prior) => prior.action),
+          previouslyConsulted: hasPriorAskUser(state.messages, ownUser.id),
+          hasExactResumeCoordinate: Boolean(
+            configuredAskUserEnabled()
+            && questionerEnqueue
+            && timeoutQueue?.enqueueAskUserExpiry
+            && state.taskId
+            && state.opportunityId
+            && ownIntentId
+            && state.indexContext.networkId,
+          ),
+          lifecycleValid: Boolean(state.taskId && state.opportunityId && ownIntentId && state.indexContext.networkId),
+        });
+        const emitConsultationTelemetry = (stage: 'eligible' | 'asked', reason: NegotiationConsultationReason) => {
+          turnLog.info('negotiation_consultation_policy', { stage, mode: policyMode, reason });
+          emitWide({ type: 'negotiation_consultation_policy', stage, mode: policyMode, reason });
+        };
+        if (policyEligibility.eligible && policyEligibility.reason) {
+          emitConsultationTelemetry('eligible', policyEligibility.reason);
+          if (policyMode === 'on') {
+            consultationPolicyReason = policyEligibility.reason;
+            turn = {
+              ...turn,
+              action: 'ask_user',
+              message: null,
+              assessment: {
+                reasoning: 'Client consultation required.',
+                suggestedRoles: turn.assessment.suggestedRoles,
+              },
+              askUser: consultationPromptFor(consultationPolicyReason),
+            };
+            emitConsultationTelemetry('asked', consultationPolicyReason);
+          }
+        }
+
+        // Safety net: off/shadow retain legacy behavior. In on, a spontaneous
+        // ask_user is admissible only when the deterministic policy just
+        // authorized it, so no unbounded pause can enter shared history.
+        if (turn.action === 'ask_user' && (!askUserAvailable || (policyMode === 'on' && !consultationPolicyReason))) {
           turnLog.warn('ask_user emitted while unavailable, coercing to conservative fallback', {
             seat, isFinalTurn, taskId: state.taskId,
           });
@@ -789,6 +841,7 @@ export class NegotiationGraphFactory {
               indexContext: state.indexContext,
               seedAssessment: state.seedAssessment,
               ...(isSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
+              ...(consultationPolicyReason && { consultationPolicyReason }),
             },
             ...(state.continuationExecution ? { continuationExecution: state.continuationExecution } : {}),
           });
@@ -835,6 +888,7 @@ export class NegotiationGraphFactory {
                 disclosureSubject: safeAskUser.disclosureSubject,
                 ...(safeAskUser.draftQuestion && { draftQuestion: safeAskUser.draftQuestion }),
                 indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
+                ...(consultationPolicyReason && { consultationPolicyReason }),
                 ...(userContext && { userContext }),
               },
             }).catch((error) => {
@@ -1111,6 +1165,22 @@ export class NegotiationGraphFactory {
               otherUser: agreedRoles[1]?.role,
             },
           }),
+        });
+      }
+
+      if (state.consultationPolicyReason) {
+        // Stable, content-free terminal funnel telemetry. This executes only
+        // after a fenced continuation has reached its terminal outcome.
+        finalizeLog.info('negotiation_consultation_policy', {
+          stage: 'terminal_outcome',
+          reason: state.consultationPolicyReason,
+          outcome: hasOpportunity ? 'accepted' : (screenedOut || isRejectLikeAction(lastTurn?.action)) ? 'rejected' : 'stalled',
+        });
+        emitWide({
+          type: 'negotiation_consultation_policy',
+          stage: 'terminal_outcome',
+          reason: state.consultationPolicyReason,
+          outcome: hasOpportunity ? 'accepted' : (screenedOut || isRejectLikeAction(lastTurn?.action)) ? 'rejected' : 'stalled',
         });
       }
 

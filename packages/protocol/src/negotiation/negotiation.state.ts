@@ -5,6 +5,7 @@ import type { ScreenDecisionRecord } from "./negotiation.screen.js";
 import type { DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
+import type { NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 
 /**
  * Zod schema for a single negotiation turn (DataPart payload in A2A message).
@@ -258,6 +259,11 @@ export const NegotiationGraphState = Annotation.Root({
   }),
 
   privateConsultation: Annotation<NegotiationPrivateConsultation | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+  /** Server-only IND-508 category recovered from the exact prior task binding. */
+  consultationPolicyReason: Annotation<NegotiationConsultationReason | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

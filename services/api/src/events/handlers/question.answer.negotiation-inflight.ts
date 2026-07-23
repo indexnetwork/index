@@ -45,6 +45,12 @@ export function resumeInflightNegotiationFactory(deps: InflightResumeDeps) {
     recipientIntentId: string;
     networkId: string;
   }): Promise<void> => {
+    // Privacy-minimized consultation funnel telemetry. This handler receives
+    // both answers and dismissals after the exact cohort settlement, so it
+    // intentionally records only a stable stage and no identifiers or text.
+    const stage = input.selectedOptions.length > 0 || Boolean(input.freeText) ? 'answered' : 'dismissed';
+    logger.info('negotiation_consultation_policy', { stage });
+
     // Durable settlement is already committed. Enqueue first; canceling the
     // recovery timer before this acknowledgement would recreate the crash hole.
     await deps.enqueueResume({
@@ -55,6 +61,7 @@ export function resumeInflightNegotiationFactory(deps: InflightResumeDeps) {
       recipientIntentId: input.recipientIntentId,
       networkId: input.networkId,
     });
+    logger.info('negotiation_consultation_policy', { stage: 'resumed' });
     // Keep the original delayed timeout armed as the durable recovery sweep.
     // If the continuation finishes first it observes `completed` and no-ops;
     // if Redis/worker delivery is lost it re-enqueues this same settlement ID.

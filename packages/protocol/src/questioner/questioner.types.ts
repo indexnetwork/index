@@ -9,6 +9,7 @@ import type { DiscoveryQuestionInput } from "../shared/schemas/discovery-questio
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/question.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../negotiation/negotiation.question-safety.js";
+import type { NegotiationConsultationReason } from "../negotiation/negotiation.consultation-policy.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
 
@@ -89,6 +90,8 @@ export interface NegotiationInflightContext {
   draftQuestion?: string;
   /** Community / index context the negotiation runs in. */
   indexContext: string;
+  /** Server-only IND-508 reason; never copied into generated or persisted payloads. */
+  consultationPolicyReason?: NegotiationConsultationReason;
   /** The user's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
 }
@@ -275,6 +278,11 @@ export function isValidQuestionerInputContract(input: QuestionerInput): boolean 
       && context.negotiationId === input.negotiation.taskId
       && typeof context.disclosureSubject === 'string'
       && isSafeNegotiationQuestionText(context.disclosureSubject)
+      && (context.consultationPolicyReason === undefined
+        || context.consultationPolicyReason === 'unresolved_owner_constraint'
+        || context.consultationPolicyReason === 'consequential_disclosure_permission'
+        || context.consultationPolicyReason === 'repeated_non_convergence'
+        || context.consultationPolicyReason === 'insufficient_commitment_authority')
       && (context.draftQuestion === undefined
         || (typeof context.draftQuestion === 'string' && isSafeNegotiationQuestionText(context.draftQuestion)));
   }
