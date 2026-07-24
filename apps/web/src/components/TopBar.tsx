@@ -10,14 +10,15 @@ import { useQuestions } from '@/contexts/QuestionsContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import UserAvatar from '@/components/UserAvatar';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
+import { countNegotiationsRequiringAction } from '@/lib/negotiation-inbox';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('TopBar');
 
 /**
  * Top navigation bar. Replaces the retired left sidebar: logo on the left
- * (links to Discover), primary nav (Signals / Chat / Networks / Agent) and the
- * profile menu on the right. Signals is the Discover home, also reachable via
+ * (links to Discover), primary nav (Signals / Chat / Negotiations / Networks /
+ * Agent) and the profile menu on the right. Signals is the Discover home, also reachable via
  * the logo.
  */
 export default function TopBar() {
@@ -28,10 +29,11 @@ export default function TopBar() {
   const { clearChat } = useAIChat();
   const { setSelectedNetworkIds } = useNetworkFilter();
   const { personalAgentPending } = useQuestions();
-  const { conversations } = useConversation();
+  const { conversations, negotiations } = useConversation();
   const unreadConversationCount = conversations.filter(
     (conversation) => isVisibleH2HConversation(conversation) && conversation.unreadCount > 0,
   ).length;
+  const yourMoveCount = countNegotiationsRequiringAction(negotiations, user?.id);
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -42,6 +44,7 @@ export default function TopBar() {
   // Signals covers Discover (/) plus the signal detail and creation routes.
   const isSignalsView = pathname === '/' || pathname?.startsWith('/i/');
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
+  const isNegotiationsView = pathname === '/negotiations';
   const isNetworksView = pathname?.startsWith('/networks');
   const isAgentView = pathname?.startsWith('/agent') || pathname?.startsWith('/d/');
   const isSettingsView = pathname?.startsWith('/settings');
@@ -125,6 +128,17 @@ export default function TopBar() {
             className="ml-1.5 inline-block min-w-[20px] rounded-full bg-[#041729] px-2 py-0.5 text-center text-xs text-white"
           >
             {unreadConversationCount > 99 ? '99+' : unreadConversationCount}
+          </span>
+        )}
+      </button>
+      <button onClick={() => navigate('/negotiations')} className={navItemClass(isNegotiationsView)}>
+        Negotiations
+        {yourMoveCount > 0 && (
+          <span
+            data-testid="negotiations-your-move-badge"
+            className="ml-1.5 inline-block min-w-[20px] rounded-full bg-[#041729] px-2 py-0.5 text-center text-xs text-white"
+          >
+            {yourMoveCount > 99 ? '99+' : yourMoveCount}
           </span>
         )}
       </button>

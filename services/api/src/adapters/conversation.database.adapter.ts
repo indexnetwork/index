@@ -71,6 +71,46 @@ function isMatchProvenanceEntry(value: unknown): value is MatchProvenanceEntry {
     });
 }
 
+function readNegotiationOutcome(parts: unknown): { hasOpportunity: boolean; reason: string | null; turnCount: number | null } | null {
+  if (!Array.isArray(parts)) return null;
+  for (const part of parts) {
+    if (typeof part !== 'object' || part === null || Array.isArray(part)) continue;
+    const partRecord = part as Record<string, unknown>;
+    if (partRecord.kind !== 'data' || typeof partRecord.data !== 'object' || partRecord.data === null || Array.isArray(partRecord.data)) continue;
+    const data = partRecord.data as Record<string, unknown>;
+    const hasOpportunity = typeof data.hasOpportunity === 'boolean'
+      ? data.hasOpportunity
+      : typeof data.consensus === 'boolean'
+        ? data.consensus
+        : null;
+    if (hasOpportunity === null) continue;
+    return {
+      hasOpportunity,
+      reason: typeof data.reason === 'string' ? data.reason : null,
+      turnCount: typeof data.turnCount === 'number' && Number.isFinite(data.turnCount) ? data.turnCount : null,
+    };
+  }
+  return null;
+}
+
+function readNegotiationSignalCount(metadata: unknown): number {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return 0;
+  const record = metadata as Record<string, unknown>;
+  const intentIds = new Set<string>();
+  if (Array.isArray(record.participantBindings)) {
+    for (const binding of record.participantBindings) {
+      if (typeof binding !== 'object' || binding === null || Array.isArray(binding)) continue;
+      const intentId = (binding as Record<string, unknown>).intentId;
+      if (typeof intentId === 'string' && intentId) intentIds.add(intentId);
+    }
+  }
+  for (const key of ['sourceIntentId', 'candidateIntentId']) {
+    const intentId = record[key];
+    if (typeof intentId === 'string' && intentId) intentIds.add(intentId);
+  }
+  return intentIds.size;
+}
+
 type PersistedOpportunity = typeof opportunities.$inferSelect;
 type PersistedOpportunityStatus = PersistedOpportunity['status'];
 
@@ -308,11 +348,14 @@ export class ConversationDatabaseAdapter {
    * can be an `agent:<userId>` identity for A2A negotiations.
    * @param viewerUserId - The human owner whose intent provenance may be
    * projected into the summary. Defaults to `participantId` for ordinary DMs.
+   * @param includeNegotiationLifecycle - Whether to project the latest task and
+   * related opportunity lifecycle for the negotiations inbox.
    * @returns Summaries with participant lists
    */
   async getConversationsForUser(
     participantId: string,
     viewerUserId = participantId,
+    includeNegotiationLifecycle = false,
   ): Promise<ConversationSummary[]> {
     // Include conversations that are not hidden OR have new messages since hiding
     const rows = await db
@@ -346,7 +389,16 @@ export class ConversationDatabaseAdapter {
     // Everything below only needs `ids` — run the lookups in one parallel
     // wave instead of sequential round trips; this method is on the chat
     // sidebar's critical path (GET /conversations and /conversations/negotiations).
-    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta, unreadRows] = await Promise.all([
+    const [
+      convs,
+      allParticipants,
+      negotiatorRow,
+      claimRows,
+      lastMessages,
+      allMeta,
+      unreadRows,
+      latestNegotiationTasks,
+    ] = await Promise.all([
       db
         .select()
         .from(schema.conversations)
@@ -425,6 +477,39 @@ export class ConversationDatabaseAdapter {
           ),
         ))
         .groupBy(schema.messages.conversationId),
+      includeNegotiationLifecycle
+        ? db
+          .selectDistinctOn([schema.tasks.conversationId], {
+            conversationId: schema.tasks.conversationId,
+            taskId: schema.tasks.id,
+            state: schema.tasks.state,
+            statusTimestamp: schema.tasks.statusTimestamp,
+            metadata: schema.tasks.metadata,
+            updatedAt: schema.tasks.updatedAt,
+            artifactParts: schema.artifacts.parts,
+            opportunityStatus: opportunities.status,
+            opportunityAcceptedBy: opportunities.acceptedBy,
+            currentTurnCount: sql<number>`(
+              SELECT count(*)::int
+              FROM ${schema.messages}
+              WHERE ${schema.messages.taskId} = ${schema.tasks.id}
+            )`,
+          })
+          .from(schema.tasks)
+          .leftJoin(
+            schema.artifacts,
+            and(
+              eq(schema.artifacts.taskId, schema.tasks.id),
+              eq(schema.artifacts.name, 'negotiation-outcome'),
+            ),
+          )
+          .leftJoin(opportunities, sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunities.id}`)
+          .where(and(
+            inArray(schema.tasks.conversationId, ids),
+            sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          ))
+          .orderBy(schema.tasks.conversationId, desc(schema.tasks.createdAt), desc(schema.tasks.id))
+        : Promise.resolve([]),
     ]);
 
     const unreadCountByConv = new Map(
@@ -558,6 +643,40 @@ export class ConversationDatabaseAdapter {
       viaByConv.set(metadataRow.conversationId, via);
     }
 
+    const negotiationByConv = new Map<string, NonNullable<ConversationSummary['negotiation']>>();
+    for (const row of latestNegotiationTasks) {
+      const metadata = typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+      const outcome = readNegotiationOutcome(row.artifactParts);
+      const priorTurnCount = typeof metadata.priorTurnCount === 'number' && Number.isFinite(metadata.priorTurnCount)
+        ? metadata.priorTurnCount
+        : 0;
+      const maxTurns = typeof metadata.maxTurns === 'number' && Number.isFinite(metadata.maxTurns)
+        ? metadata.maxTurns
+        : null;
+      // A screened-out outreach gate is private to the client that initiated
+      // it. Never project its lifecycle to the counterparty through the shared
+      // A2A conversation.
+      const initiatorUserId = typeof metadata.initiatorUserId === 'string'
+        ? metadata.initiatorUserId
+        : metadata.sourceUserId;
+      if (outcome?.reason === 'screened_out' && initiatorUserId !== viewerUserId) continue;
+      negotiationByConv.set(row.conversationId, {
+        taskId: row.taskId,
+        state: row.state,
+        statusTimestamp: row.statusTimestamp,
+        opportunityId: typeof metadata.opportunityId === 'string' ? metadata.opportunityId : null,
+        opportunityStatus: row.opportunityStatus,
+        acceptedByViewer: row.opportunityAcceptedBy === viewerUserId,
+        turnCount: priorTurnCount + (outcome?.turnCount ?? Number(row.currentTurnCount)),
+        maxTurns,
+        signalCount: readNegotiationSignalCount(metadata),
+        outcome: outcome ? { hasOpportunity: outcome.hasOpportunity, reason: outcome.reason } : null,
+        updatedAt: row.updatedAt,
+      });
+    }
+
     return convs.map((c) => ({
       ...c,
       participants: participantsByConv.get(c.id) ?? [],
@@ -565,6 +684,7 @@ export class ConversationDatabaseAdapter {
       metadata: metaByConv.get(c.id) ?? null,
       via: viaByConv.get(c.id) ?? [],
       unreadCount: unreadCountByConv.get(c.id) ?? 0,
+      ...(includeNegotiationLifecycle ? { negotiation: negotiationByConv.get(c.id) ?? null } : {}),
     }));
   }
 

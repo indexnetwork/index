@@ -82,7 +82,7 @@ export class ConversationService {
   async getAgentConversations(userId: string) {
     // The agent participant authenticates the A2A thread, while the owning
     // human is the only identity permitted to see intent provenance.
-    return this.db.getConversationsForUser(`agent:${userId}`, userId);
+    return this.db.getConversationsForUser(`agent:${userId}`, userId, true);
   }
 
   /**
