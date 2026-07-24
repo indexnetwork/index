@@ -6,6 +6,25 @@ IND-514 turns the protocol-package audit's compatibility and dependency findings
 
 `packages/protocol/src/index.ts` remains the only supported entry point. `packages/protocol/architecture/exports.snapshot.json` records every root name, whether it is a type or value export, its source module, and the stability tier carried by the barrel section. `bun run architecture:exports` compares that snapshot and its generated consumer fixture with the barrel. A deliberate public-contract change must use `bun run architecture:exports:update` and receive review.
 
+## Capability facades
+
+IND-528 keeps the current physical directories in place while making ownership
+enforceable. `src/capabilities/*.facade.ts` modules provide named, explicit
+outward contracts for Signals, Participant context, Communities, Opportunities,
+Negotiation, Questions, Participant agents, Contacts, and Integrations. They
+are not generic barrels and are not published package subpaths. The root barrel
+assembles its capability exports through them, preserving established symbol
+names.
+
+`bun run architecture:capabilities` resolves source imports and fails when a
+capability reaches another implementation directory directly or uses an unnamed
+dependency direction. The allowlist is explicit in
+`scripts/architecture/capability-boundaries.ts`. Interaction-wide tool assembly
+is classified as `interaction-composition` (despite its temporary physical
+location under `shared/agent`) and is the only all-capability dependency point.
+This makes the remaining Phase 3/4 extraction and cycle work incremental rather
+than treating barrel trimming as ownership migration (IND-457 remains separate).
+
 The consumer fixture imports every root value and type name, and `bun run architecture:consumer` type-checks it against source. It protects consumers even when local repository imports do not reveal external usage.
 
 ## Dependency and execution characterization
@@ -31,4 +50,13 @@ The audit recorded these commands at the audited commit:
 
 At this branch's gate introduction, `bun run architecture:check` passed: 306 exports (161 values and 145 types; 298 stable and 8 experimental), consumer compilation, zero host-isolation violations, the 18-path/2-SCC cycle baseline, and 2 matrix characterization tests. `bun run build` passed; lint remained 0 errors and 251 warnings; and the provider-free eval gate passed all 9 suites.
 
-The exact isolated command above completed with **2,155 pass, 27 fail, 0 errors across 199 files in 279.8s**. The remaining failures predate these gates and are retained as a credential-free source-test characterization baseline, not accepted automatically. These commands intentionally unset provider credentials; no provider-backed test is part of this baseline.
+IND-528 subsequently expanded the reviewed root surface to 316 exports (308
+stable and 8 experimental) with nine capability-owned tool entry-point groups and
+added the capability-direction gate. Its SemVer classification is minor because
+the additive stable exports are supported public API; no lockfile update was
+needed because dependency resolution did not change.
+
+For IND-528, the exact isolated command completed with **2,063 pass, 0 fail,
+0 errors across 196 provider-free files in 7.4s** at concurrency two. Five
+explicit live-model specs were excluded by the harness. These commands unset
+provider credentials; no provider-backed test is part of this verification.
