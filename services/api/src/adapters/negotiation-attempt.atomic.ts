@@ -97,8 +97,20 @@ export function qualifyingPairNegotiationTaskWhere(
 }
 
 /**
+ * Reusable SQL predicate that excludes archived legacy pre-v2 negotiations.
+ * Archived tasks carry `metadata->>'archivedAt'` stamped by the backfill.
+ * Apply this to every user-visible SET-reader query; leave single-by-id
+ * readers, debug tools, and continuation-chain recovery alone.
+ */
+export function notArchivedNegotiationTaskWhere() {
+  return sql`${schema.tasks.metadata}->>'archivedAt' IS NULL`;
+}
+
+/**
  * Qualifying tasks that prove an attempt is already owned or still active.
  * Historical stale non-input-required tasks deliberately do not qualify.
+ * Archived tasks (metadata->>'archivedAt' IS NOT NULL) are excluded so a
+ * legacy input_required task cannot block a new attempt for its opportunity.
  */
 export function qualifyingNegotiationAttemptTaskWhere(
   opportunityId: string,
@@ -107,6 +119,7 @@ export function qualifyingNegotiationAttemptTaskWhere(
   return sql`
     ${schema.tasks.metadata}->>'type' = 'negotiation'
     AND ${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}
+    AND ${notArchivedNegotiationTaskWhere()}
     AND (
       ${schema.tasks.createdAt} >= ${expectedUpdatedAt.toISOString()}::timestamptz
       OR ${schema.tasks.state} = 'input_required'
