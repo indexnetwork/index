@@ -13,6 +13,10 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract the existing-opportunity negotiation continuation admission,
+  exact-intent translation, and non-introducer notification handler behind a
+  narrow opportunity persistence port while retaining graph-owned node wiring
+  and observability (IND-530 Batch 3).
 - Extract the owned-intent newborn-opportunity stamping eligibility policy and
   fail-open host callback handler from the opportunity persist node while
   preserving graph-owned persistence and observability (IND-530 Batch 2).
