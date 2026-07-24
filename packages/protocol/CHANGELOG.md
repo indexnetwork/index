@@ -13,6 +13,10 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract `update_opportunity` actor, lifecycle, network, and selected-intent
+  admission behind a narrow persistence-read port while retaining tool schema,
+  uptake advisory, graph invocation, and telemetry wiring in the tools facade
+  (IND-530 Batch 5).
 - Extract final opportunity-persistence admission (authoritative scope,
   participant-pair eligibility, and guarded reactivation anchors) behind a
   narrow port while keeping dedup routing, writes, and graph observability in
