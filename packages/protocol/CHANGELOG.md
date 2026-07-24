@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract actionable opportunity-feed admission and digest candidate selection
+  behind narrow read/ledger/warning ports while retaining tool IO, presenters,
+  delivery writes, and response assembly in the tools facade (IND-530 Batch 14).
 - Extract continuation post-graph finalization into a narrow handler while
   retaining cache lookup, scope admission, graph invocation, and the public
   response boundary in discovery orchestration (IND-530 Batch 13).

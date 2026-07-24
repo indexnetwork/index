@@ -16,6 +16,7 @@ import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../capabiliti
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from './opportunity.update-admission.js';
+import { selectOpportunityFeed } from './opportunity.feed-selection.js';
 
 export { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
 
@@ -45,7 +46,6 @@ import type { Opportunity, OpportunityStatus } from "../shared/interfaces/databa
 import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
 import type { DiscoveryRunInput } from "../shared/interfaces/discovery-run.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
-import { selectByComposition, deduplicateByPerson, selectDigestCandidates, type DigestDeliveredRow } from "./opportunity.utils.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
@@ -251,19 +251,6 @@ function uptakeAdvisory(opportunityId: string, questions: PublicUptakeQuestion[]
  * connection + 3 connector-flow per the digest/ambient prompt rules.
  */
 const CHAT_DISPLAY_LIMIT = 6;
-
-/**
- * Wider fetch budget so `selectByComposition` has both buckets to balance
- * across, even when one category dominates the natural sort order.
- */
-const CHAT_FETCH_LIMIT = 30;
-
-/**
- * How many accepted opportunities to scan when building the digest's
- * accepted-counterpart suppression set. Wide enough to cover a month-long
- * popup's accept history without unbounded reads.
- */
-const ACCEPTED_SUPPRESSION_FETCH_LIMIT = 200;
 
 /**
  * Build minimal opportunity card data for chat without calling the LLM presenter.
@@ -1527,28 +1514,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
           ? { scopeType: 'intent' as const, scopeId: rawScopeId }
           : {};
 
-      // The MCP/chat surface exposes actionable opportunities.
-      // `latent` is included so the introducer-as-viewer can see their unapproved
-      // connector-flow cards ("do you know someone for X?"). Other latent visibility
-      // rules from isActionableForViewer (latent + no introducer; latent + approved=true
-      // mid-negotiation) are correct at the ACL layer but should not flow through the
-      // chat tool — patient/peer wait for the negotiation to land them in `pending`.
-      const statuses: OpportunityStatus[] = ["draft", "pending", "latent"];
-
-      // Fetch wider than CHAT_DISPLAY_LIMIT so selectByComposition has both
-      // buckets to balance — otherwise a category that dominates the natural
-      // sort order can fill the whole window and starve the other section.
-      const fetched = await database.getOpportunitiesForUser(
-        context.userId,
-        {
-          networkId: effectiveIndexId,
-          ...effectiveIntentScope,
-          statuses,
-          limit: CHAT_FETCH_LIMIT,
-        },
-      );
-
-      const skippedIds: string[] = [];
+      const selection = await selectOpportunityFeed({
+        reader: database,
+        deliveryLedger: deps.deliveryLedger,
+        viewerId: context.userId,
+        networkId: effectiveIndexId,
+        intentScope: effectiveIntentScope,
+        isMcp: context.isMcp === true,
+        includeDigestMarkers: query.includeDigestMarkers,
+        displayLimit: CHAT_DISPLAY_LIMIT,
+        warn: (message, data) => logger.warn(message, data),
+      });
+      const { opportunities, dedupedCount, skippedIds, redeliveryIds, fetchedCount, isDigestMode } = selection;
       const buildListDebugSteps = (): Array<{ step: string; detail?: string; data?: Record<string, unknown> }> => {
         const steps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }> = [];
         if (skippedIds.length > 0) {
@@ -1557,118 +1534,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
             detail: `${skippedIds.length} opportunity card(s) couldn't be displayed`,
             data: {
               skippedCount: skippedIds.length,
-              totalOpportunities: fetched.length,
+              totalOpportunities: fetchedCount,
               skippedOpportunityIds: skippedIds,
             },
           });
         }
         return steps;
       };
-      const recordCallerMismatch = (opp: Opportunity): void => {
-        logger.warn("list_opportunities: skipping opportunity where caller is not an actor", {
-          opportunityId: opp.id,
-          viewerId: context.userId,
-          actorUserIds: opp.actors
-            .map((a) => a.userId)
-            .filter((userId): userId is string => typeof userId === "string"),
-        });
-        skippedIds.push(opp.id);
-      };
-
-      // Read invariant: only surface opportunities the caller actually
-      // participates in. Apply before latent filtering, dedup/selection, and
-      // profile/user batch fetches so a mismatched row cannot influence which
-      // valid opportunities are selected or trigger cross-user reads.
-      const callerScoped = fetched.filter((opp) => {
-        if (opp.actors.some((a) => a.userId === context.userId)) return true;
-        recordCallerMismatch(opp);
-        return false;
-      });
-
-      // Latent rows in chat are introducer-as-viewer only. The ACL layer
-      // (isActionableForViewer) returns true for several other latent cases —
-      // those belong to the home feed, not the digest/ambient surface.
-      const visible = callerScoped.filter((opp) => {
-        if (opp.status !== "latent") return true;
-        const me = opp.actors.find((a) => a.userId === context.userId);
-        return me?.role === "introducer";
-      });
-
-      // Deduplicate so each counterpart appears at most once — keeps the
-      // highest-confidence opportunity per person across discovery runs.
-      const deduped = deduplicateByPerson(visible, context.userId);
-
-      const isDigestMode = context.isMcp === true && query.includeDigestMarkers === true;
-
-      // ── Digest-mode cross-day suppression ──
-      // Scheduled briefs must not repeat themselves: drop candidates whose
-      // counterpart the user already connected with (accepted opportunity
-      // exists — a re-discovery run re-minting the same person must not
-      // resurface them), drop candidates already shown per the delivery
-      // ledger, and when nothing fresh remains re-show the least-recently
-      // shown candidate past the cooldown, flagged as a redelivery so the
-      // digest can frame it as a reminder. Chat mode is untouched — a user
-      // asking "show my opportunities" should always see them.
-      // Every fetch here is best-effort: a failed read degrades to no
-      // suppression rather than an empty brief.
-      let digestPool = deduped;
-      let redeliveryIds = new Set<string>();
-      if (isDigestMode && deduped.length > 0) {
-        const acceptedCounterpartIds = new Set<string>();
-        try {
-          // effectiveIntentScope scopes the statuses: ["accepted"] suppression fetch.
-          const acceptedOpps = await database.getOpportunitiesForUser(context.userId, {
-            ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
-            ...effectiveIntentScope,
-            statuses: ["accepted"],
-            limit: ACCEPTED_SUPPRESSION_FETCH_LIMIT,
-          });
-          for (const opp of acceptedOpps) {
-            for (const actor of opp.actors) {
-              if (actor.userId && actor.userId !== context.userId && actor.role !== "introducer") {
-                acceptedCounterpartIds.add(actor.userId);
-              }
-            }
-          }
-        } catch (err) {
-          logger.warn("digest suppression: failed to fetch accepted opportunities, skipping counterpart suppression", { err });
-        }
-
-        let deliveredRows: DigestDeliveredRow[] = [];
-        if (deps.deliveryLedger?.getDeliveredOpportunities) {
-          try {
-            const rows = await deps.deliveryLedger.getDeliveredOpportunities({
-              userId: context.userId,
-              opportunityIds: deduped.map((opp) => opp.id),
-            });
-            // Defensive Date coercion — ledger rows may cross a serialization boundary.
-            deliveredRows = rows.map((row) => ({
-              opportunityId: row.opportunityId,
-              deliveredAtStatus: row.deliveredAtStatus,
-              deliveredAt: row.deliveredAt instanceof Date ? row.deliveredAt : new Date(row.deliveredAt),
-            }));
-          } catch (err) {
-            logger.warn("digest suppression: failed to read delivery ledger, skipping shown-opportunity dedup", { err });
-          }
-        }
-
-        const digestSelection = selectDigestCandidates(deduped, {
-          viewerId: context.userId,
-          acceptedCounterpartIds,
-          deliveredRows,
-        });
-        digestPool = digestSelection.pool;
-        redeliveryIds = digestSelection.redeliveryIds;
-      }
-
-      // Compose-balance across feed categories so the digest/ambient prompt
-      // can fill both Section A (connection) and Section B (connector-flow).
-      // Falls back to the unbalanced view when the helper has nothing to do.
-      const selected = digestPool.length > 0
-        ? selectByComposition(digestPool, context.userId)
-        : digestPool;
-      const opportunities = selected.slice(0, CHAT_DISPLAY_LIMIT);
-
       if (!opportunities || opportunities.length === 0) {
         if (skippedIds.length > 0) {
           const listDebugSteps = buildListDebugSteps();
@@ -1684,7 +1556,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         // Digest mode: distinguish "everything was already shown" from "nothing
         // exists" so the brief omits the people section instead of prompting
         // the user to run discovery.
-        if (isDigestMode && deduped.length > 0) {
+        if (isDigestMode && dedupedCount > 0) {
           return success({
             found: false,
             count: 0,
