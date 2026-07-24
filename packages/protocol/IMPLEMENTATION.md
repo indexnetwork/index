@@ -19,6 +19,26 @@ deep imports are not part of the contract. Every symbol is re-exported explicitl
 See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
 and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
+## Source-map publication policy
+
+Published `@indexnetwork/protocol` tarballs contain **no source maps**: neither
+JavaScript (`*.js.map`) nor declaration (`*.d.ts.map`) maps. The zero-map budget
+is enforced by the `prepack` build (`tsconfig.package.json`) and by
+`architecture:artifacts`; it is intentionally separate from the normal `build`.
+
+This is a registry-size and downstream-support tradeoff. The ordinary build keeps
+maps so the deployment Sentry workflow can upload them for first-party debugging,
+but they are not copied into the npm registry. A downstream runtime stack therefore
+names a `dist/*.js` location rather than the original TypeScript source. Consumers
+should retain the package version with an incident and use the matching source
+revision or their own observability mapping when they need source-level diagnosis.
+
+Declaration navigation is unchanged: `dist/**/*.d.ts` remains published and is the
+supported editor/type-checking surface. Declaration maps are deliberately omitted
+because they are not required to navigate those declarations and would expose the
+same source-map size cost. This policy is reversible by changing only
+`tsconfig.package.json`; do not add maps to the package file list ad hoc.
+
 ## Install
 
 ```bash

@@ -50,4 +50,9 @@ if (testArtifacts.length > 0) {
   throw new Error(`Published package contains source-test artifacts:\n${testArtifacts.map((path) => `- ${path}`).join("\n")}`);
 }
 
-console.log(`Package artifact inventory OK (${paths.length} files; no source-test artifacts).`);
+const sourceMapArtifacts = paths.filter((path) => path.endsWith(".map"));
+if (sourceMapArtifacts.length > 0) {
+  throw new Error(`Published package contains source maps (the publication budget is zero):\n${sourceMapArtifacts.map((path) => `- ${path}`).join("\n")}`);
+}
+
+console.log(`Package artifact inventory OK (${paths.length} files; no source-test or source-map artifacts).`);

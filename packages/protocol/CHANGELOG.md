@@ -12,6 +12,12 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+### Changed
+- Publish Protocol tarballs without JavaScript or declaration source maps while
+  retaining map generation for the first-party Sentry upload build. Published
+  declarations remain available for downstream type checking and navigation
+  (IND-521).
+
 ### Fixed
 - Log failed network-create rollback attempts with an allowlisted network correlation ID and rollback step while preserving the original create or owner-membership failure response (IND-519).
 - Move `dotenv` to development dependencies: test/preload environment loading remains available to contributors while published runtime consumers no longer receive it as a direct dependency (IND-518).
