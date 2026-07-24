@@ -14,6 +14,7 @@ import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.
 import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../capabilities/questions.runtime.facade.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
+import { admitOpportunityUpdate } from './opportunity.update-admission.js';
 
 function stripLeadingNarratorName(remark: string, narratorName: string): string {
   let t = remark.trim();
@@ -209,19 +210,6 @@ export async function attachActionableLinks(
   }
 }
 
-/**
- * Statuses for which `update_opportunity` must refuse mutations.
- * - `accepted` / `rejected` / `expired`: terminal outcomes.
- * - `negotiating`: in-flight system-driven turn; user-driven mutations would
- *   race the negotiation graph. The graph itself transitions out of this state.
- */
-const UPDATE_OPPORTUNITY_BLOCKED_STATUSES = new Set<OpportunityStatus>([
-  "accepted",
-  "rejected",
-  "expired",
-  "negotiating",
-]);
-
 interface PublicUptakeQuestion {
   id: string;
   title: string;
@@ -252,16 +240,6 @@ function uptakeAdvisory(opportunityId: string, questions: PublicUptakeQuestion[]
       acknowledgedUptakeQuestionIds: questions.map((question) => question.id),
     },
   });
-}
-
-function matchesSelectedIntentScope(
-  opportunity: Opportunity,
-  viewerId: string,
-  scope?: { scopeType?: 'intent'; scopeId?: string },
-): boolean {
-  if (scope?.scopeType !== 'intent' || !scope.scopeId) return true;
-  if (opportunity.detection?.triggeredBy === scope.scopeId) return true;
-  return opportunity.actors.some((actor) => actor.userId === viewerId && actor.intent === scope.scopeId);
 }
 
 /**
@@ -2412,43 +2390,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
           ? { scopeType: 'intent' as const, scopeId: rawScopeId }
           : {};
 
-      // Always fetch the opportunity — needed for actor guard and state machine
-      const opportunity = await systemDb.getOpportunity(opportunityId);
-      if (!opportunity) {
-        return error("Opportunity not found.");
-      }
-
-      // Actor guard: caller must be a party to the opportunity
-      const isActor = opportunity.actors?.some((a) => a.userId === context.userId);
-      if (!isActor) {
-        return error("Opportunity not found.");
-      }
-
-      // Terminal-state and in-flight-negotiation guard.
-      // Not a full state-machine: the Zod enum already constrains the target status,
-      // and source statuses like `draft` / `latent` remain permitted.
-      if (UPDATE_OPPORTUNITY_BLOCKED_STATUSES.has(opportunity.status)) {
-        return error(`This opportunity is already ${opportunity.status} and cannot be updated.`);
-      }
-
-      // Strict scope enforcement: when chat is network-scoped, the caller's own
-      // actor entry on this opportunity must be anchored on the bound network.
-      // Mirrors the per-actor filter in getOpportunitiesForUser — relying on
-      // a focus-scope id or any-actor matches would let a counterpart's network
-      // presence shadow a viewer whose own actor is elsewhere.
       const scopedNetworkId = focusedNetworkId(context) ?? context.networkId?.trim();
-      if (scopedNetworkId) {
-        const callerOnBoundNetwork = opportunity.actors?.some(
-          (a) => a.userId === context.userId && a.networkId === scopedNetworkId,
-        );
-        if (!callerOnBoundNetwork) {
-          return error("Opportunity not found.");
-        }
-      }
-
-      if (!matchesSelectedIntentScope(opportunity, context.userId, effectiveIntentScope)) {
-        return error("Opportunity not found.");
-      }
+      const admission = await admitOpportunityUpdate(systemDb, {
+        opportunityId,
+        viewerId: context.userId,
+        scopedNetworkId,
+        selectedIntentScope: effectiveIntentScope,
+      });
+      if (admission.kind === 'denied') return error(admission.message);
 
       // The caller actor's own network is the exact question lookup boundary,
       // even for an otherwise unscoped request. A focused network may only be
