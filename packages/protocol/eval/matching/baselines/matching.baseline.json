@@ -22,27 +22,27 @@
     "dirty": null
   },
   "completeness": {
-    "caseCount": 39,
+    "caseCount": 40,
     "ruleCount": 10,
-    "totalRuns": 273,
-    "totalPasses": 270,
+    "totalRuns": 280,
+    "totalPasses": 277,
     "flakyCaseCount": 3
   },
   "payload": {
     "generatedAt": "2026-05-29T18:05:23.210Z",
     "model": "google/gemini-2.5-flash",
     "runs": 7,
-    "aggregatePassRate": 0.9890109890109889,
+    "aggregatePassRate": 0.9892857142857142,
     "rules": [
       {
         "rule": "is_a_identity",
         "caseCount": 7,
-        "passRate": 1
+        "passRate": 1.0
       },
       {
         "rule": "query_primary",
-        "caseCount": 7,
-        "passRate": 0.979591836734694
+        "caseCount": 8,
+        "passRate": 0.9821428571428571
       },
       {
         "rule": "complementary_role",
@@ -52,37 +52,37 @@
       {
         "rule": "same_side",
         "caseCount": 3,
-        "passRate": 1
+        "passRate": 1.0
       },
       {
         "rule": "already_known",
         "caseCount": 1,
-        "passRate": 1
+        "passRate": 1.0
       },
       {
         "rule": "location",
         "caseCount": 4,
-        "passRate": 1
+        "passRate": 1.0
       },
       {
         "rule": "valency_role",
         "caseCount": 3,
-        "passRate": 1
+        "passRate": 1.0
       },
       {
         "rule": "score_calibration",
         "caseCount": 4,
-        "passRate": 1
+        "passRate": 1.0
       },
       {
         "rule": "event_network",
         "caseCount": 1,
-        "passRate": 1
+        "passRate": 1.0
       },
       {
         "rule": "historical",
         "caseCount": 5,
-        "passRate": 0.9714285714285715
+        "passRate": 0.9714285714285714
       }
     ],
     "cases": [
@@ -7422,6 +7422,177 @@
                 "candidateId": "p-operator",
                 "passed": true,
                 "detail": "expected score in [0,29], got 0"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "caseId": "cross_domain/animation-query-vs-geo-protocols-premise",
+        "rule": "query_primary",
+        "runs": 7,
+        "passes": 7,
+        "passRate": 1.0,
+        "flaky": false,
+        "runResults": [
+          {
+            "passed": true,
+            "assertions": [
+              {
+                "kind": "match",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected match=false, got surfaced=false (score 0, threshold 30)"
+              },
+              {
+                "kind": "band",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected score in [0,29], got 0"
+              },
+              {
+                "kind": "reasoning",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "judge passed"
+              }
+            ]
+          },
+          {
+            "passed": true,
+            "assertions": [
+              {
+                "kind": "match",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected match=false, got surfaced=false (score 0, threshold 30)"
+              },
+              {
+                "kind": "band",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected score in [0,29], got 0"
+              },
+              {
+                "kind": "reasoning",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "judge passed"
+              }
+            ]
+          },
+          {
+            "passed": true,
+            "assertions": [
+              {
+                "kind": "match",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected match=false, got surfaced=false (score 0, threshold 30)"
+              },
+              {
+                "kind": "band",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected score in [0,29], got 0"
+              },
+              {
+                "kind": "reasoning",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "judge passed"
+              }
+            ]
+          },
+          {
+            "passed": true,
+            "assertions": [
+              {
+                "kind": "match",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected match=false, got surfaced=false (score 0, threshold 30)"
+              },
+              {
+                "kind": "band",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected score in [0,29], got 0"
+              },
+              {
+                "kind": "reasoning",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "judge passed"
+              }
+            ]
+          },
+          {
+            "passed": true,
+            "assertions": [
+              {
+                "kind": "match",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected match=false, got surfaced=false (score 0, threshold 30)"
+              },
+              {
+                "kind": "band",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected score in [0,29], got 0"
+              },
+              {
+                "kind": "reasoning",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "judge passed"
+              }
+            ]
+          },
+          {
+            "passed": true,
+            "assertions": [
+              {
+                "kind": "match",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected match=false, got surfaced=false (score 0, threshold 30)"
+              },
+              {
+                "kind": "band",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected score in [0,29], got 0"
+              },
+              {
+                "kind": "reasoning",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "judge passed"
+              }
+            ]
+          },
+          {
+            "passed": true,
+            "assertions": [
+              {
+                "kind": "match",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected match=false, got surfaced=false (score 0, threshold 30)"
+              },
+              {
+                "kind": "band",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "expected score in [0,29], got 0"
+              },
+              {
+                "kind": "reasoning",
+                "candidateId": "c-logistics",
+                "passed": true,
+                "detail": "judge passed"
               }
             ]
           }

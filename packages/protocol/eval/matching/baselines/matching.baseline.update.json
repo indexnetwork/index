@@ -1,0 +1,100 @@
+{
+  "artifactType": "index-eval/baseline-update-summary",
+  "schemaVersion": 1,
+  "harness": "matching",
+  "harnessVersion": "1",
+  "createdAt": "2026-07-24T15:14:53.652Z",
+  "reason": "IND-567: added cross_domain/animation-query-vs-geo-protocols-premise; fixed query_premise empty-text scoring (Fixes A+B); strengthened case to supply-chain domain",
+  "git": {
+    "revision": "0587e7187806c069f963754abdca06ae1278de84",
+    "dirty": false
+  },
+  "previous": {
+    "schemaVersion": 1,
+    "source": "legacy-migration",
+    "models": [
+      "google/gemini-2.5-flash"
+    ],
+    "runs": 7,
+    "generatedAt": "2026-05-29T18:05:23.210Z",
+    "corpusFingerprint": "unavailable-legacy-migration",
+    "configFingerprint": "unavailable-legacy-migration",
+    "git": {
+      "revision": "unknown",
+      "dirty": null
+    },
+    "caseCount": 39,
+    "ruleCount": 10,
+    "aggregatePassRate": 0.9890109890109889
+  },
+  "next": {
+    "schemaVersion": 2,
+    "source": "run",
+    "models": [
+      "google/gemini-2.5-flash"
+    ],
+    "runs": 1,
+    "generatedAt": "2026-07-24T15:14:53.652Z",
+    "corpusFingerprint": "4f3d09e2fb0b25022b4f4fa4e4622207af4309b9cf969c838fb6b21dbf03d2a7",
+    "configFingerprint": "d9b0b433eb47d15daaf8a70d35a8f47b3817cb3a5fe0001cfe7f2866bbb15573",
+    "git": {
+      "revision": "0587e7187806c069f963754abdca06ae1278de84",
+      "dirty": false
+    },
+    "caseCount": 40,
+    "ruleCount": 10,
+    "aggregatePassRate": 1
+  },
+  "comparability": {
+    "status": "unprovable",
+    "mismatches": [],
+    "unprovable": [
+      {
+        "dimension": "corpus",
+        "baseline": "unavailable-legacy-migration",
+        "current": "4f3d09e2fb0b25022b4f4fa4e4622207af4309b9cf969c838fb6b21dbf03d2a7",
+        "message": "baseline corpus fingerprint is unavailable (legacy migration); corpus identity cannot be proven"
+      },
+      {
+        "dimension": "config",
+        "baseline": "unavailable-legacy-migration",
+        "current": "d9b0b433eb47d15daaf8a70d35a8f47b3817cb3a5fe0001cfe7f2866bbb15573",
+        "message": "baseline scoring-config fingerprint is unavailable (legacy migration); scoring-config identity cannot be proven"
+      },
+      {
+        "dimension": "run-protocol",
+        "baseline": "schema v1 (legacy-migration)",
+        "current": "schema v2 (run)",
+        "message": "schema-v1 baseline carries no execution evidence; run protocol and completeness cannot be proven"
+      }
+    ]
+  },
+  "caseChanges": {
+    "added": [
+      "cross_domain/animation-query-vs-geo-protocols-premise",
+      "event_network/co-membership-is-not-attendance"
+    ],
+    "removed": [
+      "event_network/co-attendance-theme-lift"
+    ],
+    "retainedCount": 38
+  },
+  "ruleChanges": {
+    "added": [],
+    "removed": []
+  },
+  "aggregatePassRate": {
+    "previous": 0.9890109890109889,
+    "next": 1,
+    "delta": 0.010989010989011061
+  },
+  "regressions": [],
+  "execution": {
+    "requestedRuns": 40,
+    "completedRuns": 40,
+    "failedRuns": 0,
+    "recoveredRuns": 0,
+    "totalAttempts": 40,
+    "complete": true
+  }
+}
