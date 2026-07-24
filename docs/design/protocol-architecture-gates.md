@@ -10,7 +10,7 @@ The consumer fixture imports every root value and type name, and `bun run archit
 
 ## Dependency and execution characterization
 
-`bun run architecture:host-isolation` rejects protocol source imports that escape `packages/protocol/src`, direct API/web implementation imports, or concrete Drizzle, queue, and database-driver packages. Protocol continues to receive host behavior through interfaces.
+`bun run architecture:host-isolation` rejects static or literal dynamic protocol source imports that escape `packages/protocol/src`, direct API/web implementation imports, or concrete Drizzle, queue, and database-driver packages. Protocol continues to receive host behavior through interfaces.
 
 `packages/protocol/architecture/cycles.baseline.json` records the audited topology: **18 reported circular paths and 2 cyclic SCCs**. `bun run architecture:cycles` permits those audited components only to shrink; it rejects a third component or a component outside the audited members. Phase 3 replaces this gate with a zero-cycle requirement.
 

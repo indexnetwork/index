@@ -36,6 +36,17 @@ function importSpecifiers(sourceFile: ts.SourceFile): string[] {
     if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
       specifiers.push(node.argument.literal.text);
     }
+    if (
+      ts.isCallExpression(node)
+      && node.arguments.length === 1
+      && ts.isStringLiteral(node.arguments[0])
+      && (
+        node.expression.kind === ts.SyntaxKind.ImportKeyword
+        || (ts.isIdentifier(node.expression) && node.expression.text === "require")
+      )
+    ) {
+      specifiers.push(node.arguments[0].text);
+    }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
