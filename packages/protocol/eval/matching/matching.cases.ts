@@ -605,6 +605,87 @@ export const CASES: MatchingCase[] = [
       { candidateId: "p-designer", match: false, scoreBand: [0, 29] },
     ],
   },
+  // ── IND-567: Cross-domain false positive regression ──────────────────────────────
+  //
+  // Premise-based retrieval can surface candidates whose premise was matched
+  // by an unrelated HyDE document (embedding-level false positive). The
+  // evaluator must reject these even at high RAG scores.
+  //
+  // Domain chosen: supply-chain / logistics software. No vocabulary overlap
+  // with game-dev, animation, character movement, or inverse kinematics.
+  {
+    id: "cross_domain/animation-query-vs-geo-protocols-premise",
+    rule: "query_primary",
+    tier: 2,
+    domains: ["technology"],
+    description:
+      "IND-567 regression: procedural-animation query surfaces a candidate whose only premise and profile are " +
+      "about supply-chain / warehouse-logistics software. Despite a high RAG score (premise embedding matched via " +
+      "AI/ML animation HyDE lens), the candidate has ZERO game-dev, animation, or character-movement signal and must be rejected (score < 30).",
+    input: {
+      discovererId: "src-animation",
+      entities: [
+        {
+          userId: "src-animation",
+          profile: {
+            name: "(source user)",
+            bio: "Indie game developer focused on procedural animation and real-time character movement for games.",
+            location: "Remote",
+            interests: ["procedural animation", "game development", "character movement", "inverse kinematics"],
+            skills: ["Unity", "inverse kinematics", "motion capture", "C#", "Unreal Engine"],
+          },
+          intents: [
+            {
+              intentId: "i-anim-1",
+              payload: "Collaborate on procedural movement and animation techniques for game characters",
+            },
+          ],
+          networkId: NETWORK,
+        },
+        {
+          // Candidate: supply-chain / logistics software engineer.
+          // Retrieved via premises corpus by an AI/ML-animation HyDE lens because
+          // "dynamic optimization" embedded close to "dynamic character movement".
+          // Profile and premise contain ZERO game-dev or animation signal.
+          userId: "c-logistics",
+          profile: {
+            name: "Morgan Ops",
+            bio: "Backend engineer specializing in warehouse management systems and logistics route optimization.",
+            location: "Remote",
+            interests: ["supply chain", "inventory optimization", "warehouse automation", "ERP systems"],
+            skills: ["Java", "Spring Boot", "SAP", "SQL", "route optimization algorithms"],
+          },
+          networkId: NETWORK,
+          ragScore: 88,
+          matchedVia:
+            "Game developer or researcher interested in integrating AI/ML for dynamic and personalized character movement",
+          evidence: [
+            {
+              kind: "query_premise" as const,
+              networkId: NETWORK,
+              score: 0.88,
+              lens:
+                "Game developer or researcher interested in integrating AI/ML for dynamic and personalized character movement",
+              candidatePremiseId: "premise-logistics-001",
+              assertionText:
+                "I build backend services for warehouse management and real-time logistics routing, optimizing package sorting and delivery scheduling across distribution centers.",
+            },
+          ],
+        },
+      ],
+      discoveryQuery: "procedural movement and animation",
+    },
+    expect: [
+      {
+        candidateId: "c-logistics",
+        match: false,
+        scoreBand: [0, 29],
+        reasoningCriteria:
+          "Candidate works exclusively in supply-chain logistics and warehouse management — " +
+          "no game development, procedural animation, character movement, or inverse kinematics signal anywhere. Must score below 30.",
+      },
+    ],
+  },
   ...HISTORICAL_CASES,
   ...TIER4_CASES,
 ];

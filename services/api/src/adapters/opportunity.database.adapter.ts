@@ -1,4 +1,4 @@
-import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
+import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
@@ -1442,6 +1442,55 @@ export class OpportunityDatabaseAdapter {
       .where(and(...conditions))
       .orderBy(desc(opportunities.updatedAt));
     return rows.map(toOpportunityRow);
+  }
+
+  /**
+   * IND-567 Rejection cool-down: returns the subset of `candidateUserIds` that
+   * have at least one non-draft opportunity with `discovererId` whose `updatedAt`
+   * falls within the last `windowMs` milliseconds AND whose status is `rejected`
+   * or `stalled`.
+   *
+   * Used by the opportunity-graph evaluation node to apply a similarity penalty
+   * before sending candidates to the LLM, preventing cross-query re-surfacing of
+   * recently-rejected pairs (IND-567).
+   */
+  async getRecentlyRejectedOpportunityCounterparties(
+    discovererId: string,
+    candidateUserIds: string[],
+    windowMs: number,
+  ): Promise<string[]> {
+    if (candidateUserIds.length === 0) return [];
+    const cutoff = new Date(Date.now() - windowMs);
+    // Find non-draft opps that include discovererId as a non-introducer actor,
+    // have been updated within the window, and are in rejected or stalled status.
+    const rows = await db
+      .select({ actors: opportunities.actors })
+      .from(opportunities)
+      .where(
+        and(
+          inArray(opportunities.status, ['rejected', 'stalled']),
+          gte(opportunities.updatedAt, cutoff),
+          // Discoverer must be a non-introducer actor
+          sql`EXISTS (
+            SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
+            WHERE elem->>'userId' = ${discovererId}
+              AND elem->>'role' IS DISTINCT FROM 'introducer'
+          )`,
+        ),
+      );
+    if (rows.length === 0) return [];
+
+    // Extract counterpart user IDs that appear in the candidate list
+    const candidateSet = new Set(candidateUserIds);
+    const matched = new Set<string>();
+    for (const row of rows) {
+      for (const actor of (row.actors as Array<{ userId: string; role: string }>) ?? []) {
+        if (actor.role !== 'introducer' && actor.userId !== discovererId && candidateSet.has(actor.userId)) {
+          matched.add(actor.userId);
+        }
+      }
+    }
+    return [...matched];
   }
 
   async expireOpportunitiesByIntent(intentId: string): Promise<number> {
