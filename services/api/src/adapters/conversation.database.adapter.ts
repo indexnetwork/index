@@ -3,6 +3,7 @@ import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { log } from '../lib/log';
+import { projectNegotiationActivity } from '../lib/negotiation-activity';
 import { assertContinuationExecutionEffect } from './negotiation-continuation.atomic';
 import type { ContinuationExecutionFence } from './negotiation-continuation.atomic';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
@@ -1903,6 +1904,81 @@ export class ConversationDatabaseAdapter {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));
+  }
+
+  /**
+   * Builds the private Radar transcript projection for one owned intent.
+   * Messages are joined through the exact opportunity negotiation task so
+   * shared agent-pair conversations cannot leak turns across intents.
+   */
+  async getNegotiationActivityForIntent(userId: string, intentId: string): Promise<Array<{
+    correspondentUserId: string;
+    correspondentLabel: string;
+    correspondentAvatar: string | null;
+    messages: Array<{
+      id: string;
+      opportunityId: string;
+      sender: 'yours' | 'theirs';
+      parts: unknown[];
+      createdAt: Date;
+    }>;
+  }> | null> {
+    const [ownedIntent] = await db
+      .select({ id: schema.intents.id })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .limit(1);
+    if (!ownedIntent) return null;
+
+    const opportunityRows = await db
+      .select({ id: schema.opportunities.id, actors: schema.opportunities.actors })
+      .from(schema.opportunities)
+      .where(sql`${schema.opportunities.actors} @> ${JSON.stringify([{ userId, intent: intentId }])}::jsonb`);
+    if (opportunityRows.length === 0) return [];
+
+    const opportunityIds = opportunityRows.map((row) => row.id);
+    const taskRows = await db
+      .select({
+        id: schema.tasks.id,
+        opportunityId: sql<string>`${schema.tasks.metadata}->>'opportunityId'`,
+      })
+      .from(schema.tasks)
+      .where(and(
+        sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        inArray(sql`${schema.tasks.metadata}->>'opportunityId'`, opportunityIds),
+      ));
+    if (taskRows.length === 0) return [];
+
+    const opportunityByTask = new Map(taskRows.map((task) => [task.id, task.opportunityId]));
+    const messageRows = await db
+      .select({
+        id: schema.messages.id,
+        taskId: schema.messages.taskId,
+        senderId: schema.messages.senderId,
+        parts: schema.messages.parts,
+        createdAt: schema.messages.createdAt,
+      })
+      .from(schema.messages)
+      .where(inArray(schema.messages.taskId, taskRows.map((task) => task.id)))
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+
+    const counterpartIds = [...new Set(opportunityRows.flatMap((row) =>
+      row.actors.filter((actor) => actor.userId !== userId).map((actor) => actor.userId),
+    ))];
+    const counterpartRows = counterpartIds.length > 0
+      ? await db
+        .select({ id: schema.users.id, name: schema.users.name, avatar: schema.users.avatar })
+        .from(schema.users)
+        .where(inArray(schema.users.id, counterpartIds))
+      : [];
+    const counterpartById = new Map(counterpartRows.map((row) => [row.id, row]));
+    return projectNegotiationActivity(
+      userId,
+      opportunityRows,
+      opportunityByTask,
+      messageRows.map((message) => ({ ...message, parts: (message.parts as unknown[]) ?? [] })),
+      counterpartById,
+    );
   }
 
   /**

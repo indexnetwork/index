@@ -86,6 +86,14 @@ export class ConversationService {
   }
 
   /**
+   * Returns the latest persisted A2A turns grouped by correspondent for one
+   * intent owned by the authenticated user.
+   */
+  async getNegotiationActivityForIntent(userId: string, intentId: string) {
+    return this.db.getNegotiationActivityForIntent(userId, intentId);
+  }
+
+  /**
    * Finds an existing DM between two users, or creates one if none exists.
    * @param userA - First user ID
    * @param userB - Second user ID

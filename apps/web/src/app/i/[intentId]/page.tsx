@@ -14,18 +14,22 @@ import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/Answere
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
+import NegotiationActivity from "@/components/NegotiationActivity";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
+import { useConversations, useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useQuestions } from "@/contexts/QuestionsContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
+import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
+import type { NegotiationActivityGroup } from "@/services/conversation";
 import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
 import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
+import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
 import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
@@ -303,6 +307,7 @@ export default function IntentDetailPage() {
   const { intentId } = useParams<{ intentId: string }>();
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
+  const conversationsService = useConversations();
   const questionsService = useQuestionsService();
   useIntentVisitPing(intentId);
   const { refresh: refreshQuestionCounts, pendingRevision } = useQuestions();
@@ -326,6 +331,9 @@ export default function IntentDetailPage() {
   const activeIntentIdRef = useRef(intentId);
   const [opportunities, setOpportunities] = useState<HomeViewCardItem[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
+  const [negotiationActivity, setNegotiationActivity] = useState<NegotiationActivityGroup[]>([]);
+  const [negotiationActivityLoading, setNegotiationActivityLoading] = useState(true);
+  const [negotiationActivityError, setNegotiationActivityError] = useState(false);
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   // Interview-mode chaining (IND-418): after a pool_discovery answer, the
   // backend may synchronously persist a follow-up — show a typing indicator,
@@ -425,6 +433,26 @@ export default function IntentDetailPage() {
   const loadSeqRef = useRef(0);
   const questionLoadSeqRef = useRef(0);
   const answeredLoadSeqRef = useRef(0);
+  const activityLoadSeqRef = useRef(0);
+
+  const loadNegotiationActivity = useCallback(async (showLoading = false) => {
+    if (!intentId) return;
+    const seq = ++activityLoadSeqRef.current;
+    if (showLoading) setNegotiationActivityLoading(true);
+    try {
+      const groups = await conversationsService.getNegotiationActivity(intentId);
+      if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
+      setNegotiationActivity(normalizeNegotiationActivity(groups));
+      setNegotiationActivityError(false);
+    } catch {
+      if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
+      setNegotiationActivityError(true);
+    } finally {
+      if (activeIntentIdRef.current === intentId && activityLoadSeqRef.current === seq) {
+        setNegotiationActivityLoading(false);
+      }
+    }
+  }, [conversationsService, intentId]);
 
   const loadQuestions = useCallback(async (appendOnly = false, passive = false) => {
     if (!intentId) return;
@@ -547,25 +575,16 @@ export default function IntentDetailPage() {
     () => intentNegotiationActivityRevision(negotiations, intentId),
     [intentId, negotiations],
   );
-  const seenNegotiationActivityRef = useRef<string | null>(null);
-
-  // ConversationProvider receives persisted A2A turns over SSE and refreshes
-  // owner-filtered negotiation provenance. A scoped revision means only this
-  // intent's own negotiations invalidate Radar; unrelated conversations never
-  // trigger a fetch or become visible here.
-  useEffect(() => {
-    if (!negotiationActivityRevision) {
-      seenNegotiationActivityRef.current = null;
-      return;
-    }
-    if (seenNegotiationActivityRef.current === null) {
-      seenNegotiationActivityRef.current = negotiationActivityRevision;
-      return;
-    }
-    if (seenNegotiationActivityRef.current === negotiationActivityRevision) return;
-    seenNegotiationActivityRef.current = negotiationActivityRevision;
+  const refreshLiveRadar = useCallback(() => {
     void loadOpportunities(true);
-  }, [loadOpportunities, negotiationActivityRevision]);
+    void loadNegotiationActivity();
+  }, [loadNegotiationActivity, loadOpportunities]);
+
+  useRadarLiveRefresh({
+    intentId,
+    activityRevision: negotiationActivityRevision,
+    onRefresh: refreshLiveRadar,
+  });
 
   useEffect(() => {
     if (!intentId) return;
@@ -585,10 +604,11 @@ export default function IntentDetailPage() {
     void loadQuestions();
     void loadAnswered();
     void loadOpportunities();
+    void loadNegotiationActivity(true);
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadQuestions, loadAnswered, loadOpportunities]);
+  }, [intentId, intentsService, loadQuestions, loadAnswered, loadOpportunities, loadNegotiationActivity]);
 
   // Reuse the application-wide 30s poll only as an invalidation signal. A
   // changed authoritative pending set causes one passive exact-intent pending
@@ -1211,6 +1231,15 @@ export default function IntentDetailPage() {
                     ))}
                   </div>
                   <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
+                  {selectedBucket === "negotiating" && (
+                    <div className="mb-3">
+                      <NegotiationActivity
+                        groups={negotiationActivity}
+                        loading={negotiationActivityLoading}
+                        error={negotiationActivityError}
+                      />
+                    </div>
+                  )}
                   {opportunitiesLoading ? (
                     <div className="space-y-3" data-testid="radar-skeleton">
                       <OpportunitySkeleton />
