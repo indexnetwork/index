@@ -47,7 +47,7 @@ export type OpportunityEvaluatorLike = {
   }>>;
 };
 import type { Embedder, LensEmbedding } from '../shared/interfaces/embedder.interface.js';
-import type { ActiveIntent, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityStatus } from '../shared/interfaces/database.interface.js';
+import type { ActiveIntent, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import { persistOpportunities } from './opportunity.persist.js';
 import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved, ASK_USER_LOCK_SLACK_MS, askUserAnswerWindowMs, AMBIENT_PARK_WINDOW_MS } from "../capabilities/negotiation.discovery.facade.js";
@@ -64,6 +64,7 @@ import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from '
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle, type QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 import { stampEligibleNewbornOpportunities, type StampNewbornOpportunitiesFn } from './opportunity.newborn-stamping.js';
 import { buildPrioritizedNegotiationIntents, negotiateExistingOpportunity } from './opportunity.existing-negotiation.js';
+import { admitOpportunityPersistence, createEligibleOpportunityStatusUpdater } from './opportunity.persistence-admission.js';
 
 export type { QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from './opportunity.newborn-stamping.js';
@@ -2755,65 +2756,22 @@ export class OpportunityGraphFactory {
         }
 
         try {
-          // Recompute the authoritative owner-side scope at the final boundary.
-          // The adapter receives this immutable request scope and locks current
-          // memberships plus trigger-intent assignments through commit.
-          const currentOwnerMemberships = await this.database.getNetworkMemberships(state.userId);
-          let finalAllowedNetworkIds = currentOwnerMemberships.map((membership) => membership.networkId);
-          // Only an explicit trigger intent is an authoritative network boundary.
-          // Ad-hoc global discovery may heuristically resolve a matching intent
-          // for ranking, but must retain its all-membership reach.
           const finalTriggerIntentId = state.triggerIntentId;
-          if (finalTriggerIntentId) {
-            const currentAssignments = new Set(
-              await this.database.getNetworkIdsForIntent(finalTriggerIntentId),
-            );
-            finalAllowedNetworkIds = finalAllowedNetworkIds.filter((networkId) =>
-              currentAssignments.has(networkId));
-          }
-          const explicitScope = state.networkId
-            ? [state.networkId]
-            : state.indexScope;
-          if (explicitScope !== undefined) {
-            const explicitlyAllowed = new Set(explicitScope);
-            finalAllowedNetworkIds = finalAllowedNetworkIds.filter((networkId) =>
-              explicitlyAllowed.has(networkId));
-          }
-          finalAllowedNetworkIds = [...new Set(finalAllowedNetworkIds)];
-          if (finalAllowedNetworkIds.length === 0) {
+          const admission = await admitOpportunityPersistence(this.database, {
+            ownerUserId: state.userId,
+            triggerIntentId: finalTriggerIntentId,
+            networkId: state.networkId,
+            indexScope: state.indexScope,
+            evaluatedOpportunities: state.evaluatedOpportunities,
+          });
+          if (admission.kind === 'empty_scope') {
             persistLog.info('Skipped persistence because final discovery scope is empty', {
               userId: state.userId,
               triggerIntentId: finalTriggerIntentId,
             });
             return { opportunities: [] };
           }
-          const finalAllowedNetworks = new Set(finalAllowedNetworkIds);
-          const networkEligibility: OpportunityNetworkEligibility = {
-            ownerUserId: state.userId,
-            allowedNetworkIds: finalAllowedNetworkIds,
-            ...(finalTriggerIntentId ? { triggerIntentId: finalTriggerIntentId } : {}),
-          };
-
-          // Recheck evaluator participants before any dedup/reactivation/write.
-          // Persistence-only introducers are deliberately absent here: personal-
-          // network contact discovery validates the evaluated owner/candidate
-          // pairs without requiring the owner actor that is added below.
-          const requestedPairs = state.evaluatedOpportunities.flatMap((evaluated) =>
-            evaluated.actors.flatMap((actor) => actor.networkId
-              ? [{ userId: actor.userId, networkId: actor.networkId }]
-              : []),
-          );
-          const activePairs = await this.database.getActiveNetworkMembershipPairs(requestedPairs);
-          const activePairKeys = new Set(
-            activePairs.map((pair) => networkMembershipPairKey(pair.userId, pair.networkId)),
-          );
-          const evaluatedToPersist = state.evaluatedOpportunities.filter((evaluated) =>
-            evaluated.actors.length > 0
-            && evaluated.actors.every((actor) =>
-              actor.networkId != null
-              && finalAllowedNetworks.has(actor.networkId)
-              && activePairKeys.has(networkMembershipPairKey(actor.userId, actor.networkId))),
-          );
+          const { allowedNetworkIds: finalAllowedNetworkIds, networkEligibility, evaluatedOpportunities: evaluatedToPersist } = admission;
           if (evaluatedToPersist.length < state.evaluatedOpportunities.length) {
             persistLog.info('Skipped opportunities with inactive participant network pairs', {
               before: state.evaluatedOpportunities.length,
@@ -2823,33 +2781,16 @@ export class OpportunityGraphFactory {
           }
           if (evaluatedToPersist.length === 0) return { opportunities: [] };
 
-          const updateStatusIfStillEligible = async (
-            opportunityId: string,
-            status: Opportunity['status'],
-            existingActors: OpportunityActor[],
-            expectedStatus: Opportunity['status'],
-          ): Promise<Opportunity | null> => {
-            // Reactivation preserves the existing opportunity row, so lock the
-            // existing participant anchors rather than the evaluator's current
-            // (often network-less) actor output. Introducers do not participate
-            // in matching eligibility and must not suppress a valid pair.
-            const anchors = existingActors.filter((actor) => actor.role !== 'introducer');
-            if (anchors.length === 0 || anchors.some((actor) =>
-              !finalAllowedNetworks.has(actor.networkId))) {
-              return null;
-            }
-            if (!this.database.updateOpportunityStatusIfNetworkEligible) {
-              persistLog.error('Network-eligible status update adapter is unavailable; failing closed');
-              return null;
-            }
-            return this.database.updateOpportunityStatusIfNetworkEligible(
-              opportunityId,
-              status,
-              anchors,
-              networkEligibility,
-              expectedStatus,
-            );
-          };
+          const updateStatusIfStillEligible = createEligibleOpportunityStatusUpdater(
+            this.database,
+            finalAllowedNetworkIds,
+            networkEligibility,
+            {
+              onUnavailableAdapter: () => {
+                persistLog.error('Network-eligible status update adapter is unavailable; failing closed');
+              },
+            },
+          );
 
           const itemsToPersist: CreateOpportunityData[] = [];
           const reactivatedOpportunities: Opportunity[] = [];

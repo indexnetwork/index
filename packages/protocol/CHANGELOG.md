@@ -13,6 +13,10 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract final opportunity-persistence admission (authoritative scope,
+  participant-pair eligibility, and guarded reactivation anchors) behind a
+  narrow port while keeping dedup routing, writes, and graph observability in
+  the opportunity graph (IND-530 Batch 4).
 - Extract the existing-opportunity negotiation continuation admission,
   exact-intent translation, and non-introducer notification handler behind a
   narrow opportunity persistence port while retaining graph-owned node wiring
