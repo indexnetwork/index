@@ -2695,13 +2695,21 @@ export type NegotiationGraphDatabase = Pick<
     updatedAt: Date;
   } | null>;
 
-  /** Gets all messages for a conversation, ordered by creation time. */
+  /**
+   * Gets all messages for a conversation, ordered by creation time.
+   *
+   * `taskId` is the originating negotiation task (IND-569). Optional so legacy
+   * hosts remain valid; when omitted, prior negotiation turns cannot be
+   * attributed to their opportunity and degrade to the unattributed
+   * prior-dialogue block rather than being mixed into the current opportunity.
+   */
   getMessagesForConversation(conversationId: string): Promise<Array<{
     id: string;
     senderId: string;
     role: 'user' | 'agent';
     parts: unknown[];
     createdAt: Date;
+    taskId?: string | null;
   }>>;
 
   /** Gets artifacts for a task (e.g. negotiation outcome). */
