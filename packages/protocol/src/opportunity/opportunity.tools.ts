@@ -10,6 +10,7 @@ import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LA
 import { narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentation.js";
 import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.safe-presentation.js";
 import { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
+import { findCoalescedDiscoveryRun } from "./opportunity.discovery-run-coalescing.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../capabilities/questions.runtime.facade.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
@@ -372,59 +373,6 @@ export function buildMinimalOpportunityCard(
 }
 
 /**
- * Stable signature of a discovery request, used to coalesce duplicate MCP runs.
- * Two requests with the same signature describe the same discovery and should
- * share a single in-flight run rather than each spawning a fresh (expensive)
- * opportunity-graph execution. Text fields are normalized (trim + lowercase);
- * id lists are sorted so ordering does not matter.
- *
- * Encoded as JSON of a normalized object — NOT a delimiter join — so a
- * user-supplied string containing the delimiter can never make two distinct
- * requests collide. `hint` and each entity's `networkId` are included because
- * they change the discovery result (different reason / different shared network),
- * so requests that differ only in those must NOT coalesce. Natural-language
- * fields (`searchQuery`, `hint`) are lowercased; identifiers and the opaque
- * `continueFrom` pagination token are only trimmed (case-sensitive) so distinct
- * tokens never collapse together.
- */
-function discoveryRunSignature(input: DiscoveryRunInput, scopeKey: string): string {
-  const text = (s?: string) => (s ?? "").trim().toLowerCase();
-  const id = (s?: string) => (s ?? "").trim();
-  // Encode each entity as a JSON tuple string, then sort the strings — a stable
-  // total order with a correct comparator (default Array#sort on strings).
-  const entities = [...(input.entities ?? [])]
-    .map((e) => JSON.stringify([id(e.networkId), id(e.userId)]))
-    .sort();
-  return JSON.stringify({
-    searchQuery: text(input.searchQuery),
-    networkId: id(input.networkId),
-    intentId: id(input.intentId),
-    targetUserId: id(input.targetUserId),
-    introTargetUserId: id(input.introTargetUserId),
-    continueFrom: id(input.continueFrom),
-    hint: text(input.hint),
-    partyUserIds: [...(input.partyUserIds ?? [])].map((x) => x.trim()).sort(),
-    entities,
-    scope: scopeKey,
-  });
-}
-
-/**
- * Stable key for the resolved discovery scope of a request. Two requests
- * coalesce only when they resolve to the same focused discovery boundary. For
- * scoped contexts, that boundary is the scope envelope (`scopeType`/`scopeId`),
- * not the personal-inclusive allowed network reach used for self-owned writes.
- * Unscoped requests intentionally share a single empty-scope key; concrete
- * allowed reach is derived from memberships at execution time.
- */
-function discoveryScopeKey(ctx: { scopeType?: string; scopeId?: string }): string {
-  return JSON.stringify({
-    scopeType: (ctx.scopeType ?? "").trim(),
-    scopeId: (ctx.scopeId ?? "").trim(),
-  });
-}
-
-/**
  * Stable, retry-classified error codes for `confirm_opportunity_delivery`.
  *
  * The plain `error()` envelope only carries a human message, which forced
@@ -636,14 +584,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         // get_discovery_run) would otherwise kick off a fresh, expensive
         // opportunity-graph run on every call — the loop that drives the agent
         // into provider rate limits.
-        const signature = discoveryRunSignature(
-          query as DiscoveryRunInput,
-          discoveryScopeKey(context),
-        );
         try {
           const active = await deps.discoveryRuns.listActive(context.userId);
-          const existing = active.find(
-            (r) => discoveryRunSignature(r.input, discoveryScopeKey(r.context)) === signature,
+          const existing = findCoalescedDiscoveryRun(
+            query as DiscoveryRunInput,
+            context,
+            active,
           );
           if (existing) {
             return success({
