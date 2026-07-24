@@ -13,6 +13,7 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Fixed
+- Make the Questioner clarifying-questions schema survive strict structured-output conversion: the `Question.evidence` provenance field is now declared `.nullable().optional()` (was bare `.optional()`, which OpenAI/OpenRouter strict mode rejects), so every `QuestionerAgent` LLM call no longer failed client-side before any network I/O. A `.transform()` normalizes an LLM-returned `null` back to `undefined` so a null is never persisted or treated as "evidence present"; real string evidence chips (pool_discovery) flow through unchanged and the intent-recovery `!question.evidence` selection filter is unaffected (regression from the IND-418 pool_discovery work).
 - Allow the private intent-refinement provenance snapshot to identify intent creation as a producer and make the shared refinement prompt independent of no-opportunity process state, enabling creation and authoritative discovery producers to converge on one ordinary intent-page question cadence.
 
 ### Added
