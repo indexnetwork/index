@@ -154,7 +154,15 @@ export class NetworkGraphFactory {
           const added = await this.database.addMemberToNetwork(index.id, state.userId, 'owner');
           if (!added.success) {
             logger.error("addMemberToNetwork failed; cleaning up orphaned network", { networkId: index.id });
-            try { await this.database.softDeleteNetwork(index.id); } catch {}
+            try {
+              await this.database.softDeleteNetwork(index.id);
+            } catch (rollbackError) {
+              logger.error("Network create rollback failed", {
+                networkId: index.id,
+                rollbackFor: "owner_membership",
+                rollbackErrorKind: rollbackError instanceof Error ? "error" : "non_error",
+              });
+            }
             return { mutationResult: { success: false, error: "Failed to set you as owner. Network was not created." } };
           }
 
@@ -169,7 +177,15 @@ export class NetworkGraphFactory {
         } catch (err) {
           logger.error("Create network failed", { error: err });
           if (createdIndexId) {
-            try { await this.database.softDeleteNetwork(createdIndexId); } catch {}
+            try {
+              await this.database.softDeleteNetwork(createdIndexId);
+            } catch (rollbackError) {
+              logger.error("Network create rollback failed", {
+                networkId: createdIndexId,
+                rollbackFor: "create_operation",
+                rollbackErrorKind: rollbackError instanceof Error ? "error" : "non_error",
+              });
+            }
           }
           return {
             mutationResult: {
