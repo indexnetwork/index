@@ -76,6 +76,21 @@ export interface ScreenDecisionRecord extends ScreenDecision {
   durationMs: number;
 }
 
+/**
+ * Whether an enforce-mode outreach screen blocks a negotiation before any
+ * counterparty-visible turn. Shadow decisions and failed-open records always
+ * proceed, preserving the screen node's fail-open contract.
+ */
+export function blocksNegotiationBeforeFirstTurn(
+  decisionRecord: Pick<ScreenDecisionRecord, "mode" | "decision" | "failedOpen"> | null | undefined,
+  turnCount: number,
+): boolean {
+  return decisionRecord?.mode === "enforce"
+    && decisionRecord.decision === "pass"
+    && decisionRecord.failedOpen !== true
+    && turnCount === 0;
+}
+
 export interface NegotiationScreenerInput {
   /** The client — the user whose negotiator is deciding whether to reach out. */
   clientUser: UserNegotiationContext;

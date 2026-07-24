@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Move enforce-mode negotiation screen admission into the existing screen
+  capability while retaining graph-owned routing, persistence, and lifecycle
+  effects (IND-530 Batch 10).
 - Extract state-aware negotiation conversation-lock admission, including the
   full consultation answer-window hold, into a narrow lifecycle policy while
   retaining graph-owned task reads and busy routing (IND-530 Batch 9).

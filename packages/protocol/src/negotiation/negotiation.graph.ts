@@ -9,7 +9,7 @@ import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, t
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
-import { NegotiationScreener, configuredScreenMode, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
+import { blocksNegotiationBeforeFirstTurn, NegotiationScreener, configuredScreenMode, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -448,17 +448,6 @@ export class NegotiationGraphFactory {
       return { screenDecision: record, memoryBySide: { [clientSide]: clientMemory } };
     };
 
-    /**
-     * P2.2 — true when the screen gate blocked this negotiation: enforce mode,
-     * a genuine `pass` (never failed-open), before any turn was exchanged.
-     * Shadow-mode passes and fail-open records never block.
-     */
-    const isScreenBlocked = (state: typeof NegotiationGraphState.State): boolean =>
-      state.screenDecision?.mode === "enforce"
-      && state.screenDecision.decision === "pass"
-      && state.screenDecision.failedOpen !== true
-      && state.turnCount === 0;
-
     const turnNode = async (state: typeof NegotiationGraphState.State) => {
       const traceEmitter = requestContext.getStore()?.traceEmitter;
       // Local helper to emit events whose shape is wider than the declared
@@ -646,7 +635,7 @@ export class NegotiationGraphFactory {
           seat,
           isOpeningTurn: state.turnCount === 0 && !state.isContinuation,
           isFinalTurn,
-          screenedOut: isScreenBlocked(state),
+          screenedOut: blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount),
           action: turn.action,
           ownSuggestedRole: turn.assessment?.suggestedRoles?.ownUser,
           priorActions: history.map((prior) => prior.action),
@@ -1011,7 +1000,7 @@ export class NegotiationGraphFactory {
       const hasOpportunity = lastTurn?.action === "accept";
       // P2.2: the client's own outreach gate declined before any turn — the
       // negotiation never happened from the counterparty's perspective.
-      const screenedOut = isScreenBlocked(state);
+      const screenedOut = blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount);
       const atCap = !screenedOut && (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
@@ -1240,7 +1229,7 @@ export class NegotiationGraphFactory {
       }, { screen: "screen", turn: "turn", finalize: "finalize" })
       // P2.2: enforce-mode pass → finalize (screened_out); everything else → turn.
       .addConditionalEdges("screen", (state: typeof NegotiationGraphState.State) =>
-        isScreenBlocked(state) ? "finalize" : "turn",
+        blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount) ? "finalize" : "turn",
       { turn: "turn", finalize: "finalize" })
       .addEdge("__start__", "init")
       .addEdge("finalize", "__end__");
