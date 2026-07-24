@@ -1253,6 +1253,36 @@ List A2A agent-to-agent negotiation conversations for the authenticated user.
 }
 ```
 
+### GET /api/conversations/negotiations/activity
+
+Return persisted agent-to-agent negotiation activity for one intent owned by
+the authenticated user.
+
+**Auth**: AuthGuard
+
+**Query**: `intentId` (required UUID)
+
+The response groups activity by stable correspondent identity. Each group
+contains exactly the latest three messages in chronological order, with
+`sender: "yours" | "theirs"`, `parts`, `createdAt`, and `opportunityId`.
+Reads are scoped through the authenticated user, exact intent actor,
+opportunity, and negotiation task, so turns cannot bleed across intents or
+shared correspondent conversations. Invalid IDs return `400`; unknown or
+non-owned intents return `404`.
+
+```json
+{
+  "groups": [
+    {
+      "correspondentUserId": "uuid",
+      "correspondentLabel": "Ada's agent",
+      "correspondentAvatar": null,
+      "messages": []
+    }
+  ]
+}
+```
+
 ### POST /api/conversations
 
 Create a new conversation with participants.
