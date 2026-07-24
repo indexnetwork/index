@@ -147,6 +147,81 @@ export function groupTurnsBySession(turns: TranscriptTurn[]): NegotiationSession
   return groups;
 }
 
+// ─── Section label helpers (IND-570) ────────────────────────────────────────
+
+export type OpportunityOutcomeStatus = 'accepted' | 'rejected' | 'stalled' | 'expired';
+
+export interface OutcomeChipVariant {
+  label: string;
+  /** Tailwind text-color class */
+  color: string;
+  /** Tailwind bg-color class */
+  bg: string;
+}
+
+/** Map opportunity status → compact chip display props, or null if no chip. */
+export function outcomeChipVariant(status: string | null | undefined): OutcomeChipVariant | null {
+  switch (status) {
+    case 'accepted': return { label: 'Accepted', color: 'text-emerald-700', bg: 'bg-emerald-50' };
+    case 'rejected': return { label: 'Rejected', color: 'text-red-700', bg: 'bg-red-50' };
+    case 'stalled': return { label: 'Stalled', color: 'text-gray-600', bg: 'bg-gray-100' };
+    case 'expired': return { label: 'Expired', color: 'text-amber-700', bg: 'bg-amber-50' };
+    default: return null;
+  }
+}
+
+/**
+ * Format a date string as "Mon D" (e.g. "Jun 26") for section date hints.
+ * Returns empty string on invalid input.
+ */
+export function formatSectionDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export interface SectionLabelOpts {
+  /** true if this is the newest/latest session group */
+  isLatest: boolean;
+  /** ISO createdAt of the first turn in this group, for date context */
+  firstTurnCreatedAt: string | null;
+  /** Title of the opportunity this session was about (viewer-side intent title) */
+  opportunityTitle: string | null;
+  /** Current status of the opportunity, for the outcome chip */
+  opportunityStatus: string | null;
+  /** Fallback title used for the latest section */
+  latestSectionTitle: string | null;
+}
+
+/**
+ * Derives the text label for a negotiation section divider (IND-570).
+ *
+ * - Latest section: uses the intent title from the conversation's signal provenance.
+ * - Older sections with attribution: "<title> · <status> · <Mon D>"
+ * - Older sections without attribution: "Earlier negotiation · <Mon YYYY>" fallback.
+ */
+export function deriveSectionLabel(opts: SectionLabelOpts): string {
+  if (opts.isLatest) {
+    return opts.latestSectionTitle ?? 'Current negotiation';
+  }
+
+  if (opts.opportunityTitle) {
+    const chip = outcomeChipVariant(opts.opportunityStatus);
+    const date = opts.firstTurnCreatedAt ? formatSectionDate(opts.firstTurnCreatedAt) : '';
+    const parts = [opts.opportunityTitle];
+    if (chip) parts.push(chip.label);
+    if (date) parts.push(date);
+    return parts.join(' · ');
+  }
+
+  // Unattributed legacy fallback — keep existing format.
+  const date = opts.firstTurnCreatedAt ? new Date(opts.firstTurnCreatedAt) : null;
+  const monthYear = date && Number.isFinite(date.getTime())
+    ? date.toLocaleString('en-US', { month: 'short', year: 'numeric' })
+    : '';
+  return `Earlier negotiation${monthYear ? ` · ${monthYear}` : ''}`;
+}
+
 /** Relative timestamp, recomputed against a ticking `now` (IND-555). */
 export function formatRelativeTime(createdAt: string, now: number): string {
   const timestamp = new Date(createdAt).getTime();
