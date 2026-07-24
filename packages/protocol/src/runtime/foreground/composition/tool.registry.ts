@@ -10,7 +10,7 @@ import { createUtilityTools } from '../../../shared/agent/utility.tools.js';
 import { createIntegrationTools } from '../../../capabilities/integrations.facade.js';
 import { createContactTools } from '../../../capabilities/contacts.facade.js';
 import { createAgentTools } from '../../../capabilities/participant-agents.tools.facade.js';
-import { createNegotiationTools } from '../../../negotiation/negotiation.tools.js';
+import { createNegotiationTools } from '../../../negotiation/application/negotiation.tools.js';
 import { createChatTools } from '../../../chat/chat.tools.js';
 import { createPremiseTools } from '../../../premise/premise.tools.js';
 import { createQuestionerTools } from '../../../capabilities/questions.facade.js';

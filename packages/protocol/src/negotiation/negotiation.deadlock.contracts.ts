@@ -1,10 +1,5 @@
-/** Internal-only metadata persisted when a deadlock causes a stance shift. */
-export interface DeadlockShiftRecord {
-  reason: "consecutive_non_convergent";
-  consecutiveNonConvergent: number;
-  threshold: number;
-  /** Zero-based session turn index at which the shifted draft happened. */
-  shiftedAtTurn: number;
-  seat: "initiator" | "counterparty";
-  detectedAt: string;
-}
+/**
+ * Thin backward-compat shim — IND-550.
+ * Canonical location: negotiation/domain/negotiation.deadlock.contracts.ts
+ */
+export * from "./domain/negotiation.deadlock.contracts.js";

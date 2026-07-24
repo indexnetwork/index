@@ -9,7 +9,7 @@ import { HydeGenerator } from "../../../shared/hyde/hyde.generator.js";
 import { LensInferrer } from "../../../shared/hyde/lens.inferrer.js";
 import { NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory } from "../../../capabilities/communities.facade.js";
 import { IntentIndexer } from "../../../signals/application/intent.indexer.js";
-import { NegotiationGraphFactory } from "../../../negotiation/negotiation.graph.js";
+import { NegotiationGraphFactory } from "../../../negotiation/application/negotiation.graph.js";
 import { PremiseGraphFactory } from "../../../premise/premise.graph.js";
 import { protocolLogger } from "../../../shared/observability/protocol.logger.js";
 
@@ -26,7 +26,7 @@ import { createUtilityTools } from "../../../shared/agent/utility.tools.js";
 import { createIntegrationTools } from "../../../capabilities/integrations.facade.js";
 import { createContactTools } from "../../../capabilities/contacts.facade.js";
 import { createAgentTools } from "../../../capabilities/participant-agents.tools.facade.js";
-import { createNegotiationTools } from "../../../negotiation/negotiation.tools.js";
+import { createNegotiationTools } from "../../../negotiation/application/negotiation.tools.js";
 import { createPremiseTools } from "../../../premise/premise.tools.js";
 import { createQuestionerTools, createAskUserQuestionTools } from "../../../capabilities/questions.facade.js";
 

@@ -27,8 +27,8 @@ const matrix: ExecutionMatrixRow[] = [
   },
   {
     useCase: "negotiation",
-    foreground: { entry: "createNegotiationTools", source: "negotiation/negotiation.tools.ts", transport: "participant tool" },
-    ambient: { entry: "NegotiationGraphFactory", source: "negotiation/negotiation.graph.ts", transport: "injected dispatcher and timeout queue" },
+    foreground: { entry: "createNegotiationTools", source: "negotiation/application/negotiation.tools.ts", transport: "participant tool" },
+    ambient: { entry: "NegotiationGraphFactory", source: "negotiation/application/negotiation.graph.ts", transport: "injected dispatcher and timeout queue" },
     sharedFactory: "NegotiationGraphFactory",
     invariant: "turn schema, seat rules, deadlock policy, finalization, and message/task ports are shared",
   },
