@@ -64,6 +64,10 @@ const capabilityDirectories: Readonly<Record<string, Capability>> = {
   opportunity: "opportunities",
   negotiation: "negotiation",
   questioner: "questions",
+  // IND-548: participant-agents/ is the canonical domain-first directory;
+  // chat/ and agent/ are legacy directories kept as compatibility paths —
+  // all three map to the same capability.
+  "participant-agents": "participant-agents",
   chat: "participant-agents",
   agent: "participant-agents",
   contact: "contacts",

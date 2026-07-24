@@ -12,6 +12,45 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [6.13.21] — 2026-07-25
+
+### Added
+- Establish `questions/` domain-first module spine (IND-547).
+  New directories: `questions/domain/`, `questions/application/`,
+  `questions/ports/`, `questions/public/`, plus `questions/index.ts` barrel.
+  Canonical home for question generation, eligibility, validation, provenance,
+  settlement policy, and continuation behaviour.
+- Establish `participant-agents/` domain-first module spine (IND-548).
+  New directories: `participant-agents/domain/`, `participant-agents/application/`,
+  `participant-agents/ports/`, `participant-agents/public/`, plus
+  `participant-agents/index.ts` barrel.  Canonical home for agent registration,
+  permission-aware behaviour, and dispatch contracts.
+
+### Changed
+- `capabilities/questions.facade.ts` now routes through `questions/public/` (IND-547).
+- `capabilities/participant-agents.facade.ts` agent-registry portion now
+  routes through `participant-agents/application/` and
+  `participant-agents/ports/` (IND-548).
+- Capability boundary script updated: `participant-agents/` directory now
+  maps to the `participant-agents` capability (alongside legacy `chat/`
+  and `agent/`) (IND-548).
+
+### Deprecated
+- `agent/agent.tools.ts` is now a thin compatibility re-export shim pointing
+  to `participant-agents/application/` (IND-548).
+- `shared/interfaces/agent.interface.ts` is now a thin compatibility re-export
+  shim pointing to `participant-agents/domain/` and `participant-agents/ports/`
+  (IND-548).
+- `capabilities/participant-agents.tools.port.ts` is now a thin compatibility
+  re-export shim pointing to `participant-agents/ports/` (IND-548).
+- `questioner/*` paths are now thin compatibility shims pointing to
+  `questions/application/` (IND-547).
+- `shared/schemas/question.schema.ts` is now a thin compatibility shim
+  pointing to `questions/domain/` (IND-547).
+- `shared/interfaces/questioner.interface.ts` and
+  `shared/interfaces/question-generator.interface.ts` are now thin
+  compatibility shims pointing to `questions/ports/` (IND-547).
+
 ## [6.13.20] — 2026-07-25
 
 ### Added

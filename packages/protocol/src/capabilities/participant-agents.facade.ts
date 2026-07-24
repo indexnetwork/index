@@ -1,4 +1,30 @@
-/** Participant-agents capability's supported chat graph, personas, and tools. */
+/**
+ * Participant-agents capability facade.
+ *
+ * Aggregates the full participant-agents capability surface:
+ *
+ * 1. **Agent registration and permission management** — sourced from the
+ *    canonical participant-agents domain-first module (IND-548):
+ *    - `createAgentTools` — registration, list, update, delete, grant/revoke tools
+ *    - `AgentToolDeps` — narrow tool host port
+ *
+ * 2. **Runtime personas, chat graph, and tool-composition seams** — sourced
+ *    from chat/ (runtime foreground; not owned by participant-agents module):
+ *    - `ChatGraphFactory`, `ORCHESTRATOR_PERSONA_ID`, persona factories, etc.
+ *    - `ChatTitleGenerator`, `ChatInterruptClassifier`, `ChatSummarizer`, etc.
+ *
+ * Runtime personas, chat/MCP transport, authentication, and all-capability
+ * tool composition remain in runtime foreground composition/adapters and must
+ * not be pulled into the participant-agents domain module.
+ *
+ * IND-548: agent-registry portion now routes through participant-agents/public.
+ */
+
+// ── Agent registration and permission management ──────────────────────────────
+export { createAgentTools } from "../participant-agents/application/index.js";
+export type { AgentToolDeps } from "../participant-agents/ports/index.js";
+
+// ── Runtime chat graph ────────────────────────────────────────────────────────
 export { ChatGraphFactory } from "../chat/chat.graph.js";
 export { ORCHESTRATOR_PERSONA_ID } from "../chat/chat.persona.js";
 export type { ChatPersonaConfig } from "../chat/chat.persona.js";
@@ -11,5 +37,3 @@ export { ChatInterruptClassifier } from "../chat/chat.interrupt.classifier.js";
 export { ChatSummarizer } from "../chat/chat.summarizer.js";
 export { SuggestionGenerator } from "../chat/chat.suggester.js";
 export { createChatTools } from "../chat/chat.tools.js";
-export { createAgentTools } from "../agent/agent.tools.js";
-export type { AgentToolDeps } from "./participant-agents.tools.port.js";
