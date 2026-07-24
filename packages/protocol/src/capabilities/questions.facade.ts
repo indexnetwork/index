@@ -1,8 +1,30 @@
-/** Questions capability's supported agent, configuration, and tool contracts. */
-export { QuestionerAgent } from "../questioner/questioner.agent.js";
-export { isValidQuestionerInputContract } from "../questioner/questioner.types.js";
-export type { QuestionerInput, RecoveryQuestionerInput, UptakeQuestionerInput, PostStallQuestionerInput, InflightQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "../questioner/questioner.types.js";
-export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs } from "../questioner/questioner.env.js";
-export { createQuestionerTools } from "../questioner/questioner.tools.js";
-export { createAskUserQuestionTools } from "../questioner/questioner.ask.tool.js";
-export type { AskUserQuestionToolDeps, QuestionerToolDeps } from "./questions.tools.port.js";
+/**
+ * questions capability facade — re-exports from the canonical questions public surface.
+ *
+ * IND-547: updated to re-export from questions/public/index.js.
+ * Legacy consumers importing from this path continue to work unchanged.
+ */
+export {
+  QuestionerAgent,
+  isValidQuestionerInputContract,
+  isQuestionerEnabled,
+  isUptakeGuardEnabled,
+  uptakeAuthorityThreshold,
+  isDiscoveryQuestionsEnabled,
+  discoveryQuestionsInputMode,
+  discoveryQuestionsTimeoutMs,
+  createQuestionerTools,
+  createAskUserQuestionTools,
+} from "../questions/public/index.js";
+export type {
+  QuestionerInput,
+  RecoveryQuestionerInput,
+  UptakeQuestionerInput,
+  PostStallQuestionerInput,
+  InflightQuestionerInput,
+  QuestionerEnqueuePayload,
+  QuestionerEnqueueFn,
+  PoolDiscoveryContext,
+  QuestionerToolDeps,
+  AskUserQuestionToolDeps,
+} from "../questions/public/index.js";
