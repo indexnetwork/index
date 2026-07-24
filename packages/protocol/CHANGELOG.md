@@ -13,6 +13,10 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract safe opportunity-card presentation translation for web/MCP, including
+  actionable-link ID suppression, digest markers, code-fence escaping, and
+  unsupported-claim/UUID sanitization, while preserving the tools-facade export
+  and IO contract (IND-530 Batch 6).
 - Extract `update_opportunity` actor, lifecycle, network, and selected-intent
   admission behind a narrow persistence-read port while retaining tool schema,
   uptake advisory, graph invocation, and telemetry wiring in the tools facade
