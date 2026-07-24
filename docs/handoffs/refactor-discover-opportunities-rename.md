@@ -54,7 +54,7 @@ linear-issue: IND-270
 - docs/design/protocol-deep-dive.md
 - docs/specs/2026-05-06-welcome-message-design.md
 - packages/protocol/src/README.md
-- packages/protocol/src/docs/Latent Opportunity Lifecycle.md
+- docs/design/opportunity-status-lifecycle.md
 
 ## Relevant Docs
 - docs/specs/2026-05-12-discover-opportunities-rename-design.md (the design spec for this work)

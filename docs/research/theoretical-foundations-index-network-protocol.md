@@ -10,7 +10,7 @@
 > 4. **Lifecycle states.** Chapter 10 works with the five participant-facing states (draft/sent/connected/declined/expired). The implementation's internal lifecycle has eight statuses, including intermediate `negotiating` and `stalled` states — relevant to the Ch. 10(d) proposal, since `negotiating` already provides the intermediate dwell state the report proposes adding.
 > 5. **Formatting.** LaTeX control-character mangling from the NotebookLM export (`\r`, `\t`, `\f` swallowed inside `\rangle`, `\text`, `\frac`) has been repaired in place.
 >
-> A companion engineering backlog deriving concrete work items from this report lives at [Academic Grounding Enhancement Backlog.md](./Academic%20Grounding%20Enhancement%20Backlog.md).
+> A companion engineering backlog deriving concrete work items from this report lives at [Academic Grounding Enhancement Backlog](../design/academic-grounding-enhancement-backlog.md).
 
 ## Chapter 1: Speech Acts as the Data Model
 

@@ -1,6 +1,6 @@
 # Academic Grounding Enhancement Backlog
 
-Engineering backlog derived from [Theoretical Foundations of the Index Network Protocol](./Theoretical%20Foundations%20of%20the%20Index%20Network%20Protocol.md) (the NotebookLM v2 grounding report). Each item maps a theory-derived enhancement onto the concrete modules that would implement it, with sizing and an honest note on how much is genuinely new versus formalizing what already exists.
+Engineering backlog derived from [Theoretical Foundations of the Index Network Protocol](../research/theoretical-foundations-index-network-protocol.md) (the NotebookLM v2 grounding report). Each item maps a theory-derived enhancement onto the concrete modules that would implement it, with sizing and an honest note on how much is genuinely new versus formalizing what already exists.
 
 Ordering below is **our** priority order (implementation leverage ÷ risk), which differs from the report's ranking — the report's rank is noted per item. Sizes: **S** ≤ 1 day, **M** ≤ 1 week, **L** = multi-week / needs design doc.
 

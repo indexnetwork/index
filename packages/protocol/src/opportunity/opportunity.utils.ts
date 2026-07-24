@@ -117,7 +117,7 @@ export function validateOpportunityActors(actors: Array<{ userId?: string; role:
  * isolation. This is by design — the agent is not granted read access through the
  * home path until the introducer path completes (negotiation → accepted).
  *
- * Compact Visibility Rule (from lifecycle doc):
+ * Compact Visibility Rule (see `docs/design/opportunity-status-lifecycle.md`, §3.E):
  * - Introducer or peer: always see.
  * - Patient or party: see if (status is not latent, or there is no introducer).
  * - Agent: see if (status is accepted/rejected/expired, or (status is not latent and there is no introducer)).
@@ -149,7 +149,7 @@ export function canUserSeeOpportunity(
  * Whether an opportunity should appear on the viewer's home feed (actionable =
  * has a pending action for this user).
  *
- * Rules (see `docs/Latent Opportunity Lifecycle.md` — Role-Visibility Matrix):
+ * Rules (see `docs/design/opportunity-status-lifecycle.md`, §3.E):
  *
  *   (1) `latent`, no introducer                   → all actors actionable
  *   (2) `latent`, introducer `approved !== true`  → introducer only
