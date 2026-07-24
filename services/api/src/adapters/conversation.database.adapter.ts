@@ -1253,7 +1253,7 @@ export class ConversationDatabaseAdapter {
         ))
         .limit(1);
       if (!cursor) {
-        return { session: null, messages: [], hasPreviousSession: false };
+        return { session: null, messages: [], hasPreviousSession: false, sessionOpportunityId: null, sessionOpportunityStatus: null };
       }
       const beforeSessionCondition = or(
         lt(schema.conversationSessions.startedAt, cursor.startedAt),
@@ -1274,7 +1274,7 @@ export class ConversationDatabaseAdapter {
         desc(schema.conversationSessions.id),
       )
       .limit(1);
-    if (!session) return { session: null, messages: [], hasPreviousSession: false };
+    if (!session) return { session: null, messages: [], hasPreviousSession: false, sessionOpportunityId: null, sessionOpportunityStatus: null };
 
     const messageConditions = [eq(schema.messages.sessionId, session.id)];
     if (opts?.userId) {
