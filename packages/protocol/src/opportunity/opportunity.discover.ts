@@ -33,6 +33,7 @@ import { buildDiscoveryQuestionInput } from "./discovery-question.helper.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { summarizeDiscoveryNegotiations } from "./opportunity.discovery-negotiation-summary.js";
 import { finalizeDiscoveryContinuation } from './opportunity.discovery-continuation-finalization.js';
+import type { DiscoverDebugStep } from './opportunity.discovery.contracts.js';
 
 const logger = protocolLogger("OpportunityDiscover");
 const discoverFromQueryLog = protocolLogger("OpportunityDiscover:runDiscoverFromQuery");
@@ -185,12 +186,7 @@ export interface FormattedDiscoveryCandidate {
 }
 
 /** One step for debug visibility (subgraph/subtask). */
-export interface DiscoverDebugStep {
-  step: string;
-  detail?: string;
-  /** Structured data for rich display (e.g., candidate counts, scores). */
-  data?: Record<string, unknown>;
-}
+export type { DiscoverDebugStep } from './opportunity.discovery.contracts.js';
 
 /** One existing connection (no new opportunity created; user already has one with this person). */
 export interface ExistingConnection {

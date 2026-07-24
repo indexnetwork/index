@@ -13,6 +13,11 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Restore a directed Protocol production module graph: tool-composition
+  contracts no longer own opportunity runtime types, discovery continuation
+  finalization owns a neutral result contract, and deadlock metadata is owned
+  independently of negotiation state. The architecture gate now rejects every
+  production cycle (IND-531). No public root export or runtime behavior changes.
 - Extract authorized negotiation-detail read/projection behind narrow message,
   artifact, and lifecycle-evidence ports while retaining facade-owned lookup,
   scope admission, participant privacy, and tool IO (IND-530 Batch 16).

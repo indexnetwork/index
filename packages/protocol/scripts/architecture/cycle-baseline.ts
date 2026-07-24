@@ -1,24 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Records the audit's cycle baseline and prevents a new cyclic component.
- * Existing components may shrink as Phase 3 removes edges, but a component may
- * never extend outside an audited component or add a third component.
+ * Enforces the directed production module graph required after Phase 3.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 
-type CycleBaseline = {
-  schemaVersion: 1;
-  auditedReportedCircularPaths: 18;
-  auditedCyclicStronglyConnectedComponents: 2;
-  source: "docs/design/protocol-package-audit.html";
-  components: string[][];
-};
-
 const packageRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const sourceRoot = resolve(packageRoot, "src");
-const baselinePath = resolve(packageRoot, "architecture/cycles.baseline.json");
 
 async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory);
@@ -130,30 +119,7 @@ for (const filePath of files) {
   graph.set(toModuleId(filePath), new Set(imports.flat()));
 }
 const components = cyclicComponents(graph);
-const expected: CycleBaseline = {
-  schemaVersion: 1,
-  auditedReportedCircularPaths: 18,
-  auditedCyclicStronglyConnectedComponents: 2,
-  source: "docs/design/protocol-package-audit.html",
-  components,
-};
-
-if (process.argv.includes("--write")) {
-  await Bun.write(baselinePath, JSON.stringify(expected, null, 2) + "\n");
-  console.log(`Updated cycle baseline (${components.length} cyclic SCCs).`);
-  process.exit(0);
+if (components.length > 0) {
+  throw new Error(`Production module cycles are prohibited: ${components.map((component) => component.join(", ")).join("; ")}`);
 }
-
-const baseline = await Bun.file(baselinePath).json() as CycleBaseline;
-if (baseline.auditedReportedCircularPaths !== 18 || baseline.auditedCyclicStronglyConnectedComponents !== 2) {
-  throw new Error("Cycle baseline must retain the audited 18-path / 2-SCC record until Phase 3.");
-}
-if (components.length > baseline.auditedCyclicStronglyConnectedComponents) {
-  throw new Error(`Cycle regression: found ${components.length} cyclic SCCs; audit permits at most ${baseline.auditedCyclicStronglyConnectedComponents}.`);
-}
-for (const component of components) {
-  if (!baseline.components.some((audited) => component.every((member) => audited.includes(member)))) {
-    throw new Error(`Cycle regression: new cyclic component: ${component.join(", ")}`);
-  }
-}
-console.log(`Cycle baseline OK (${baseline.auditedReportedCircularPaths} audited paths; ${components.length}/${baseline.auditedCyclicStronglyConnectedComponents} cyclic SCCs).`);
+console.log("Production module cycle check OK (0 cyclic SCCs).");

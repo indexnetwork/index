@@ -1,4 +1,4 @@
-import type { ResolvedToolContext } from "../agent/tool.helpers.js";
+import type { ToolRequestContext } from "./tool-request-context.interface.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Enrichment run persistence + queue
@@ -53,7 +53,7 @@ export interface EnrichmentRunRecord {
   operation: EnrichmentRunOperation;
   status: EnrichmentRunStatus;
   input: EnrichmentRunInput;
-  context: Pick<ResolvedToolContext,
+  context: Pick<ToolRequestContext,
     "userId" |
     "userName" |
     "userEmail" |

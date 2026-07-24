@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "6.13.16",
+  "version": "6.13.17",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,7 +29,6 @@
     "architecture:host-isolation": "bun scripts/architecture/host-isolation.ts",
     "architecture:capabilities": "bun scripts/architecture/capability-boundaries.ts",
     "architecture:cycles": "bun scripts/architecture/cycle-baseline.ts",
-    "architecture:cycles:update": "bun scripts/architecture/cycle-baseline.ts --write",
     "architecture:artifacts": "bun run build && bun scripts/architecture/artifact-inventory.ts",
     "architecture:check": "bun run architecture:exports && bun run architecture:consumer && bun run architecture:host-isolation && bun run architecture:capabilities && bun run architecture:cycles && bun run architecture:artifacts && bun run test:architecture",
     "prepublishOnly": "bun run build",

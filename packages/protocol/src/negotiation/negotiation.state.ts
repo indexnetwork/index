@@ -2,7 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationContinuationExecution, NegotiationContinuationReceipt, NegotiationPrivateConsultation, NegotiationUserAnswer, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { ScreenDecisionRecord } from "./negotiation.screen.js";
-import type { DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import type { DeadlockShiftRecord } from "./negotiation.deadlock.contracts.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import type { NegotiationConsultationReason } from "./negotiation.consultation-policy.js";

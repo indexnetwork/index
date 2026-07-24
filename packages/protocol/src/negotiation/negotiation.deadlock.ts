@@ -19,7 +19,7 @@
  * - **Fail-open**: any detection error means "no deadlock" — advisory
  *   infrastructure never blocks a negotiation.
  */
-import type { NegotiationTurn } from "./negotiation.state.js";
+export type { DeadlockShiftRecord } from "./negotiation.deadlock.contracts.js";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ export interface DeadlockAssessment {
  * Pure state inspection; no LLM, no I/O, no clock.
  */
 export function assessDeadlock(
-  history: ReadonlyArray<Pick<NegotiationTurn, "action">>,
+  history: ReadonlyArray<{ action?: string }>,
   threshold: number = DEFAULT_DEADLOCK_THRESHOLD,
 ): DeadlockAssessment {
   const effectiveThreshold = Number.isInteger(threshold) && threshold >= MIN_DEADLOCK_THRESHOLD
@@ -117,23 +117,6 @@ export function assessDeadlock(
 }
 
 // ─── Internal shift record (task metadata JSONB, never public) ──────────────
-
-/**
- * Analytical record of an applied shift, persisted to
- * `tasks.metadata.deadlockShift` via the optional `setTaskDeadlockShift`
- * database hook. Internal-only: negotiation API surfaces project specific
- * fields and never return task metadata verbatim (same privacy posture as
- * `metadata.screenDecision` and the QUD/uptake detection metadata).
- */
-export interface DeadlockShiftRecord {
-  reason: "consecutive_non_convergent";
-  consecutiveNonConvergent: number;
-  threshold: number;
-  /** Zero-based session turn index at which the shifted draft happened. */
-  shiftedAtTurn: number;
-  seat: "initiator" | "counterparty";
-  detectedAt: string;
-}
 
 // ─── Prompt section (system agent drafting stance) ──────────────────────────
 

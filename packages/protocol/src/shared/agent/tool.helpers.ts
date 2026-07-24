@@ -3,11 +3,9 @@ import type { ModelConfig } from "./model.config.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import type { ToolScopeType } from "./tool.scope.js";
 import type { UserIdentity } from "../schemas/identity.schema.js";
-import type { ChatGraphCompositeDatabase, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
+import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
-import type { CompiledOpportunityGraph } from "../../opportunity/opportunity.discover.js";
-import type { StampNewbornOpportunitiesFn } from "../../opportunity/opportunity.graph.js";
 import type { IntegrationAdapter } from "../interfaces/integration.interface.js";
 import type { ContactServiceAdapter } from "../interfaces/contact.interface.js";
 import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
@@ -49,6 +47,13 @@ export interface ToolErrorReport {
 /** Minimal interface for an invokable compiled LangGraph. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type CompiledGraph = { invoke: (input: any) => Promise<any> };
+
+/** Composition-only hook kept structural so shared contracts do not own opportunity runtime. */
+export type StampNewbornOpportunitiesFn = (input: {
+  ownerUserId: string;
+  intentId: string;
+  items: CreateOpportunityData[];
+}) => Promise<CreateOpportunityData[]>;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TOOL CONTEXT TYPES
@@ -223,7 +228,7 @@ interface ToolContextBindings {
    */
   chatQuestions?: ChatQuestionsHost;
   /** Optional durable persistence for reporter cleanup-action proposals. */
-  actionProposalStore?: import('../../chat/reporter.action.tools.js').AgentActionProposalStore;
+  actionProposalStore?: import('../../chat/reporter.action.contracts.js').AgentActionProposalStore;
   /**
    * Host bridge for the negotiator persona's `remember`/`forget` memory
    * tools (P5.4). Injected by the composition root only when negotiator
@@ -677,7 +682,7 @@ interface ToolDepsBindings {
     index: CompiledGraph;
     networkMembership: CompiledGraph;
     intentIndex: CompiledGraph;
-    opportunity: CompiledOpportunityGraph;
+    opportunity: CompiledGraph;
     premise: CompiledGraph;
   };
   /**

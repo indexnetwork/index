@@ -1,7 +1,7 @@
 import type { Cache } from '../shared/interfaces/cache.interface.js';
 import type { ChatGraphCompositeDatabase, Opportunity } from '../shared/interfaces/database.interface.js';
 import type { CandidateMatch } from './opportunity.state.js';
-import type { DiscoverDebugStep, DiscoverResult } from './opportunity.discover.js';
+import type { DiscoverDebugStep, DiscoveryResultContract } from './opportunity.discovery.contracts.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('OpportunityDiscover');
@@ -17,7 +17,7 @@ export interface DiscoveryContinuationGraphResult {
   opportunities?: Opportunity[];
 }
 
-interface DiscoveryContinuationFinalizationInput {
+interface DiscoveryContinuationFinalizationInput<TOpportunity> {
   result: DiscoveryContinuationGraphResult;
   cache: Pick<Cache, 'set' | 'delete'>;
   cacheKey: string;
@@ -28,7 +28,7 @@ interface DiscoveryContinuationFinalizationInput {
   enrich: (
     opportunities: Opportunity[],
     debugSteps: DiscoverDebugStep[],
-  ) => Promise<NonNullable<DiscoverResult['opportunities']>>;
+  ) => Promise<TOpportunity[]>;
 }
 
 /**
@@ -36,9 +36,9 @@ interface DiscoveryContinuationFinalizationInput {
  * lookup, scope admission, or graph invocation. Cache failures are advisory;
  * lifecycle refresh and presentation use the graph result regardless.
  */
-export async function finalizeDiscoveryContinuation(
-  args: DiscoveryContinuationFinalizationInput,
-): Promise<DiscoverResult> {
+export async function finalizeDiscoveryContinuation<TOpportunity>(
+  args: DiscoveryContinuationFinalizationInput<TOpportunity>,
+): Promise<DiscoveryResultContract<TOpportunity>> {
   const debugSteps: DiscoverDebugStep[] = [];
   for (const trace of args.result.trace || []) {
     debugSteps.push({
@@ -59,7 +59,7 @@ export async function finalizeDiscoveryContinuation(
   }
 
   const remaining = args.result.remainingCandidates || [];
-  let pagination: DiscoverResult['pagination'] | undefined;
+  let pagination: DiscoveryResultContract<TOpportunity>['pagination'] | undefined;
   try {
     if (remaining.length > 0) {
       await args.cache.set(args.cacheKey, {

@@ -12,7 +12,7 @@ import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.sa
 import { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
 import { findCoalescedDiscoveryRun } from "./opportunity.discovery-run-coalescing.js";
 import { finalizeMcpDiscoveryLifecycle } from './opportunity.discovery-mcp-lifecycle-finalization.js';
-import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
+import { runDiscoverFromQuery, continueDiscovery, type CompiledOpportunityGraph } from "./opportunity.discover.js";
 import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../capabilities/questions.runtime.facade.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
@@ -647,7 +647,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         const _graphStart = Date.now();
         _continueTraceEmitter?.({ type: "graph_start", name: "opportunity" });
         const result = await continueOpportunityDiscovery({
-          opportunityGraph: graphs.opportunity,
+          opportunityGraph: graphs.opportunity as CompiledOpportunityGraph,
           database,
           cache,
           userId: context.userId,
@@ -1045,7 +1045,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
       // `pending` default.
       const runDiscoveryOrchestrator = !!context.sessionId || !!context.isMcp;
       const result = await runDiscoveryFromQuery({
-        opportunityGraph: graphs.opportunity,
+        opportunityGraph: graphs.opportunity as CompiledOpportunityGraph,
         database,
         userId: context.userId,
         query: searchQuery,
