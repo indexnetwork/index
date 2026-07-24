@@ -7,9 +7,7 @@ import { OpportunityGraphFactory } from "../../../opportunity/opportunity.graph.
 import { HydeGraphFactory } from "../../../shared/hyde/hyde.graph.js";
 import { HydeGenerator } from "../../../shared/hyde/hyde.generator.js";
 import { LensInferrer } from "../../../shared/hyde/lens.inferrer.js";
-import { NetworkGraphFactory } from "../../../network/network.graph.js";
-import { NetworkMembershipGraphFactory } from "../../../network/membership/membership.graph.js";
-import { IntentNetworkGraphFactory } from "../../../network/indexer/indexer.graph.js";
+import { NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory } from "../../../capabilities/communities.facade.js";
 import { IntentIndexer } from "../../../signals/application/intent.indexer.js";
 import { NegotiationGraphFactory } from "../../../negotiation/negotiation.graph.js";
 import { PremiseGraphFactory } from "../../../premise/premise.graph.js";
@@ -22,7 +20,7 @@ import { deriveAllowedNetworkIds, scopeFromNetworkId } from "../../../shared/age
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "../../../shared/agent/tool.runtime.js";
 import { createEnrichmentTools } from "../../../enrichment/enrichment.tools.js";
 import { createIntentTools } from "../signals/intent.tools.js";
-import { createNetworkTools } from "../../../network/network.tools.js";
+import { createNetworkTools } from "../../../capabilities/communities.facade.js";
 import { createOpportunityTools } from "../../../opportunity/opportunity.tools.js";
 import { createUtilityTools } from "../../../shared/agent/utility.tools.js";
 import { createIntegrationTools } from "../../../integration/integration.tools.js";
