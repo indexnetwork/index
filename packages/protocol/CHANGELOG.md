@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract authorized negotiation-detail read/projection behind narrow message,
+  artifact, and lifecycle-evidence ports while retaining facade-owned lookup,
+  scope admission, participant privacy, and tool IO (IND-530 Batch 16).
 - Extract MCP discovery-result lifecycle reconciliation and deferred-result
   narration behind a narrow read/warning/safe-card port while retaining tool
   IO, link minting, and response assembly in the tools facade (IND-530 Batch 15).

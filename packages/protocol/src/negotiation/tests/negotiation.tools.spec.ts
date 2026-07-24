@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { buildLifecycleNarration, createNegotiationTools } from "../negotiation.tools.js";
+import { readAuthorizedNegotiationDetail } from '../negotiation.detail-reader.js';
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 type Fixture<T> = T extends (...args: any[]) => unknown
@@ -339,6 +340,47 @@ describe("get_negotiation — isUsersTurn", () => {
 
     expect(result.success).toBe(true);
     expect(result.data.isUsersTurn).toBe(false);
+  });
+});
+
+describe('readAuthorizedNegotiationDetail', () => {
+  test('projects sender-derived turns and authoritative lifecycle without H2H evidence', async () => {
+    const detail = await readAuthorizedNegotiationDetail({
+      task: {
+        id: 'task-1',
+        conversationId: 'conv-1',
+        state: 'completed',
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-02'),
+      },
+      metadata: {
+        sourceUserId: 'user-src',
+        candidateUserId: 'user-cand',
+        opportunityId: 'opp-1',
+        protocolVersion: 'v2',
+        initiatorUserId: 'user-src',
+      },
+      callerUserId: 'user-cand',
+      callerRole: 'candidate',
+      readMessages: async () => [{
+        senderId: 'agent:user-src',
+        parts: [{ kind: 'data', data: { action: 'outreach', assessment: { reasoning: 'Agent assessment', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } }, message: 'Hello' } }],
+        createdAt: new Date('2026-01-01'),
+      }],
+      readArtifacts: async () => [{ name: 'negotiation-outcome', parts: [{ kind: 'data', data: { hasOpportunity: true } }] }],
+      readLifecycleEvidence: async () => ({ 'opp-1': { status: 'accepted', acceptedByOwner: false } }),
+    });
+
+    expect(detail.role).toBe('candidate');
+    expect(detail.turns[0].speaker).toBe('source');
+    expect(detail.isUsersTurn).toBe(false);
+    expect(detail.seat).toBe('counterparty');
+    expect(detail.lifecycle).toMatchObject({
+      opportunityStatus: 'accepted',
+      ownerAction: 'not_recorded',
+      directConversationEvidence: 'not_provided',
+    });
+    expect(detail.lifecycle.lifecycleLabel).not.toMatch(/owner explicitly accepted|completed connection|H2H/i);
   });
 });
 

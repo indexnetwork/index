@@ -11,6 +11,7 @@ import { NEGOTIATION_ACTIONS } from '../shared/schemas/negotiation-state.schema.
 import type { NegotiationTurnPayload } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { focusedIntentId, focusedNetworkId } from '../shared/agent/tool.scope.js';
+import { readAuthorizedNegotiationDetail } from './negotiation.detail-reader.js';
 import { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
 
 export { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
@@ -370,128 +371,17 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           return error('Access denied: you are not a party to this negotiation.');
         }
 
-        const counterpartyId = isSource ? meta.candidateUserId : meta.sourceUserId;
-
-        // Project absolute turn context (source/candidate) into own/other
-        // perspective for the caller. Mirrors what the in-process system
-        // agent receives as NegotiationAgentInput — identical context means
-        // identical deliberation on both paths.
-        let negotiationContext: {
-          ownUser: UserNegotiationContext;
-          otherUser: UserNegotiationContext;
-          indexContext: { networkId: string; prompt?: string };
-          seedAssessment: SeedAssessment;
-          isDiscoverer: boolean;
-          discoveryQuery?: string;
-        } | null = null;
-        if (meta.turnContext) {
-          const tc = meta.turnContext;
-          negotiationContext = {
-            ownUser: isSource ? tc.sourceUser : tc.candidateUser,
-            otherUser: isSource ? tc.candidateUser : tc.sourceUser,
-            indexContext: tc.indexContext,
-            seedAssessment: tc.seedAssessment,
-            isDiscoverer: isSource,
-            ...(tc.discoveryQuery && { discoveryQuery: tc.discoveryQuery }),
-          };
-        }
-
-        const lifecycleOpportunityId = meta.opportunityId?.trim() || undefined;
-
-        // Load messages, artifacts, and the independently persisted opportunity lifecycle.
-        const [messages, artifacts, opportunityLifecycles] = await Promise.all([
-          negotiationDatabase.getMessagesForConversation(task.conversationId),
-          negotiationDatabase.getArtifactsForTask(task.id),
-          readOpportunityLifecycles(
-            negotiationDatabase,
-            lifecycleOpportunityId ? [lifecycleOpportunityId] : [],
-            context.userId,
-          ),
-        ]);
-
-        // Parse turns from messages (speaker from senderId, not parity —
-        // continuations can start with either side speaking first)
-        const turns = messages.map((m, idx) => {
-          const dataPart = (m.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data');
-          const turnData = dataPart?.data as {
-            action?: string;
-            assessment?: { reasoning?: string; suggestedRoles?: unknown };
-            message?: string;
-          } | undefined;
-
-          const turnNumber = idx + 1;
-          const speaker = m.senderId
-            ? (m.senderId === `agent:${meta.sourceUserId}` ? 'source' : 'candidate')
-            : (turnNumber % 2 === 1 ? 'source' : 'candidate');
-
-          return {
-            turnNumber,
-            speaker,
-            senderId: m.senderId,
-            action: turnData?.action ?? 'unknown',
-            actionActor: 'agent' as const,
-            reasoning: turnData?.assessment?.reasoning ?? null,
-            suggestedRoles: turnData?.assessment?.suggestedRoles ?? null,
-            message: turnData?.message ?? null,
-            createdAt: m.createdAt,
-          };
+        const detail = await readAuthorizedNegotiationDetail({
+          task,
+          metadata: meta,
+          callerUserId: context.userId,
+          callerRole: isSource ? 'source' : 'candidate',
+          readMessages: (conversationId) => negotiationDatabase.getMessagesForConversation(conversationId),
+          readArtifacts: (taskId) => negotiationDatabase.getArtifactsForTask(taskId),
+          readLifecycleEvidence: (opportunityIds, ownerUserId) =>
+            readOpportunityLifecycles(negotiationDatabase, opportunityIds, ownerUserId),
         });
-
-        // Extract outcome from artifacts if completed
-        const outcomeArtifact = artifacts.find(a => a.name === 'negotiation-outcome');
-        const outcome = outcomeArtifact
-          ? (outcomeArtifact.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data')?.data
-          : null;
-
-        // Determine whose turn it is (last sender's counterpart, not parity;
-        // rows without senderId fall back to parity)
-        const turnCount = messages.length;
-        const lastSenderId = turnCount > 0 ? messages[turnCount - 1].senderId : null;
-        const currentSpeaker = lastSenderId
-          ? (lastSenderId === `agent:${meta.sourceUserId}` ? 'candidate' : 'source')
-          : (turnCount % 2 === 0 ? 'source' : 'candidate');
-
-        const status = task.state === 'working' ? 'active'
-          : task.state === 'waiting_for_agent' ? 'waiting_for_agent'
-          : task.state === 'completed' ? 'completed'
-          : task.state;
-
-        const isUsersTurn = status !== 'completed' &&
-          ((isSource && currentSpeaker === 'source') || (!isSource && currentSpeaker === 'candidate'));
-
-        const isContinuation = meta.isContinuation ?? false;
-        const priorTurnCount = meta.priorTurnCount ?? 0;
-
-        // Seat + protocol version (v2 client-advocate): announce the caller's
-        // seat and the actions it may submit so agents don't guess.
-        const protocolVersion = readProtocolVersion(meta) ?? 'v1';
-        const seat = resolveSeat(context.userId, meta);
-
-        return success({
-          id: task.id,
-          conversationId: task.conversationId,
-          conversationType: 'agent_negotiation' as const,
-          status,
-          role: isSource ? 'source' : 'candidate',
-          seat,
-          protocolVersion,
-          allowedActions: allowedActionsFor(protocolVersion, seat),
-          counterpartyId: counterpartyId ?? 'unknown',
-          turnCount,
-          isUsersTurn,
-          isContinuation,
-          priorTurnCount,
-          turnsAdded: turnCount - priorTurnCount,
-          turns,
-          outcome,
-          lifecycle: buildLifecycleNarration(
-            status,
-            lifecycleOpportunityId ? opportunityLifecycles[lifecycleOpportunityId] : undefined,
-          ),
-          context: negotiationContext,
-          createdAt: task.createdAt,
-          updatedAt: task.updatedAt,
-        });
+        return success(detail);
       } catch (err) {
         logger.error('Failed to get negotiation', { err });
         return error('Failed to get negotiation. Please try again.');
