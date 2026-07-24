@@ -186,6 +186,15 @@ export function deriveNegotiationInbox(
   };
 }
 
+/**
+ * Flat last-updated ordering across all groups — a re-sort of the derived rows
+ * for the Last updated view mode, not a new derivation.
+ */
+export function flattenNegotiationInbox(groups: NegotiationInboxGroups): NegotiationInboxItem[] {
+  return [...groups.yourMove, ...groups.inProgress, ...groups.resolved]
+    .sort((left, right) => right.sortTimestamp - left.sortTimestamp);
+}
+
 export function countNegotiationsRequiringAction(
   negotiations: ConversationSummary[],
   viewerUserId: string | undefined,

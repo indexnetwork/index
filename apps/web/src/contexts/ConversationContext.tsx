@@ -52,6 +52,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const connectSSERef = useRef<() => void>(() => {});
   const refreshConversationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- REST helpers (use apiClient directly, same pattern as AIChatContext) ---
 
@@ -353,9 +354,15 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               });
               // Negotiation turns use the same stream but their summaries are
               // owner-filtered separately (`agent:<ownerId>` participants).
-              // Revalidate once per event so intent provenance and Radar can
-              // react without a polling loop.
-              void refreshNegotiationsRef.current();
+              // Trailing-debounce revalidation so a multi-turn burst refetches
+              // once; intent provenance and Radar still react without polling.
+              if (negotiationsRefreshTimeoutRef.current) {
+                clearTimeout(negotiationsRefreshTimeoutRef.current);
+              }
+              negotiationsRefreshTimeoutRef.current = setTimeout(() => {
+                negotiationsRefreshTimeoutRef.current = null;
+                void refreshNegotiationsRef.current();
+              }, 500);
               break;
             }
           }
@@ -400,6 +407,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
       }
+      if (negotiationsRefreshTimeoutRef.current) {
+        clearTimeout(negotiationsRefreshTimeoutRef.current);
+        negotiationsRefreshTimeoutRef.current = null;
+      }
       // Intentional synchronous reset on logout — not a cascading render issue
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsConnected(false);
@@ -423,6 +434,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
+      }
+      if (negotiationsRefreshTimeoutRef.current) {
+        clearTimeout(negotiationsRefreshTimeoutRef.current);
+        negotiationsRefreshTimeoutRef.current = null;
       }
     };
   }, [isAuthenticated, refreshConversations, refreshNegotiations, connectSSE]);
