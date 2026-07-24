@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
+import { useQuestionsService } from '@/contexts/APIContext';
 import { useOpportunityActions } from '@/hooks/useOpportunityActions';
 import TurnRail from '@/components/negotiations/TurnRail';
 import OutcomeBanner from '@/components/negotiations/OutcomeBanner';
@@ -78,6 +79,35 @@ export default function NegotiationDetailPage() {
   const localStatus = opportunityId ? opportunityStatusMap[opportunityId] : undefined;
   const effectiveOpportunityStatus = localStatus ?? lifecycle?.opportunityStatus ?? null;
   const outcomeReason = lifecycle?.outcome?.reason ?? null;
+
+  // The viewer's last ask_user turn — anchor for the missed-window decay line.
+  const lastAskUserTurnId = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      if (turns[i].action === 'ask_user' && turns[i].senderId === ownAgentId) return turns[i].id;
+    }
+    return null;
+  }, [turns, ownAgentId]);
+
+  // Missed-window decay (IND-559): the negotiation left input_required after
+  // an ask_user pause with no answered consultation — the window lapsed (or
+  // the question was dismissed) and the negotiator continued without an answer.
+  const questionsService = useQuestionsService();
+  const [windowMissed, setWindowMissed] = useState(false);
+  useEffect(() => {
+    if (!opportunityId || !lastAskUserTurnId || lifecycle?.state === 'input_required') {
+      setWindowMissed(false);
+      return;
+    }
+    let cancelled = false;
+    questionsService.getAnswered({
+      mode: 'negotiation_inflight',
+      sourceType: 'opportunity',
+      sourceId: opportunityId,
+    }).then((answered) => {
+      if (!cancelled) setWindowMissed(answered.length === 0);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [questionsService, opportunityId, lastAskUserTurnId, lifecycle?.state]);
 
   // Resolved-state banner derivation, mirroring lib/negotiation-inbox classification.
   const resolvedVariant = useMemo<ResolvedBannerVariant | null>(() => {
@@ -155,6 +185,7 @@ export default function NegotiationDetailPage() {
               participantInfo={participantInfo}
               counterpartName={counterpartName}
               now={now}
+              missedWindowTurnId={windowMissed ? lastAskUserTurnId : null}
             />
 
             {showOutcomeBanner && opportunityId && (

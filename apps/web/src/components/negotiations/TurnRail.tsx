@@ -62,13 +62,18 @@ interface TurnRailProps {
   participantInfo: Map<string, TurnParticipantInfo>;
   counterpartName: string;
   now: number;
+  /**
+   * Turn id after which the missed-window decay line renders (IND-559): the
+   * ask_user consultation lapsed and the negotiation continued unanswered.
+   */
+  missedWindowTurnId?: string | null;
 }
 
 /**
  * Vertical turn rail (proposals §2.3): avatar + seat label + colored action
  * verb + role chips + reasoning per turn. No DM bubbles, no own/other alignment.
  */
-export function TurnRail({ turns, ownAgentId, participantInfo, counterpartName, now }: TurnRailProps) {
+export function TurnRail({ turns, ownAgentId, participantInfo, counterpartName, now, missedWindowTurnId }: TurnRailProps) {
   return (
     <div>
       {turns.map((turn, index) => {
@@ -96,6 +101,15 @@ export function TurnRail({ turns, ownAgentId, participantInfo, counterpartName, 
               roleChip={roleChipLabel(turn.suggestedRoles, isOwn, counterpartName)}
               now={now}
             />
+            {missedWindowTurnId === turn.id && (
+              // Quiet decay state (§2.2) — never styled as a user-caused error.
+              <p
+                data-testid="consultation-window-missed"
+                className="py-2 text-center font-ibm-plex-mono text-[11px] text-gray-400"
+              >
+                Window missed — negotiation continued without an answer.
+              </p>
+            )}
           </div>
         );
       })}
