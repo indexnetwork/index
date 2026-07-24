@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract independently timed, failure-isolated discovery-negotiation summary
+  execution into a narrow handler while retaining discovery admission and outer
+  orchestration in the facade (IND-530 Batch 12).
 - Extract safe negotiation lifecycle-to-narration presentation translation while
   retaining lifecycle reads, tool IO, response assembly, and a compatibility
   re-export in the negotiation tools facade (IND-530 Batch 11).

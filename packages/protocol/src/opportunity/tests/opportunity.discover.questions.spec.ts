@@ -4,6 +4,7 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key";
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { runDiscoverFromQuery, type DiscoverInput } from "../opportunity.discover.js";
+import { summarizeDiscoveryNegotiations } from "../opportunity.discovery-negotiation-summary.js";
 import type { Question, ChatContextDigest, QuestionGeneratorReader, ChatSummaryReader, NegotiationSummaryReader, DiscoveryNegotiation } from "@indexnetwork/protocol";
 
 const baseQuestion: Question = {
@@ -320,5 +321,52 @@ describe("runDiscoverFromQuery — decision-question integration", () => {
       if (previous === undefined) delete process.env.NEGOTIATION_SUMMARY_TIMEOUT_MS;
       else process.env.NEGOTIATION_SUMMARY_TIMEOUT_MS = previous;
     }
+  });
+});
+
+describe('summarizeDiscoveryNegotiations', () => {
+  it('falls back per negotiation while preserving independently completed input order and combined abort signals', async () => {
+    const negotiations: DiscoveryNegotiation[] = [
+      { counterpartyId: 'one', counterpartyHint: 'one', indexContext: 'network', turns: [], outcome: { hasOpportunity: true, reasoning: 'one fallback' } },
+      { counterpartyId: 'two', counterpartyHint: 'two', indexContext: 'network', turns: [], outcome: { hasOpportunity: true, reasoning: 'two fallback' } },
+      { counterpartyId: 'three', counterpartyHint: 'three', indexContext: 'network', turns: [], outcome: { hasOpportunity: true, reasoning: 'three fallback' } },
+    ];
+    const caller = new AbortController();
+    const receivedSignals: AbortSignal[] = [];
+    let releaseFirst!: () => void;
+    const firstCanFinish = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let thirdStarted = false;
+    const summarizer: NegotiationSummaryReader = {
+      summarize: async (negotiation, options) => {
+        receivedSignals.push(options!.signal!);
+        if (negotiation.counterpartyId === 'one') {
+          await firstCanFinish;
+          throw new Error('provider failed');
+        }
+        if (negotiation.counterpartyId === 'two') return null;
+        thirdStarted = true;
+        return {
+          counterpartyHint: 'three summary',
+          indexContext: 'network',
+          outcomeRole: 'opportunity',
+          outcomeReason: null,
+          keyTake: 'provider digest',
+          suggestedRoles: null,
+        };
+      },
+    };
+
+    const withoutSummarizer = await summarizeDiscoveryNegotiations({ negotiations: [negotiations[0]], summarizer: undefined });
+    const digestsPromise = summarizeDiscoveryNegotiations({ negotiations, summarizer, callerSignal: caller.signal });
+    await Promise.resolve();
+    expect(thirdStarted).toBe(true);
+    releaseFirst();
+    const digests = await digestsPromise;
+    caller.abort();
+
+    expect(withoutSummarizer[0].keyTake).toBe('one fallback');
+    expect(digests.map((digest) => digest.keyTake)).toEqual(['one fallback', 'two fallback', 'provider digest']);
+    expect(receivedSignals).toHaveLength(3);
+    expect(receivedSignals.every((signal) => signal.aborted)).toBe(true);
   });
 });
