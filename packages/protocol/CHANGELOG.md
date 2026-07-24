@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract opportunity lifecycle admission rules and persistence handlers from
+  the graph while retaining its LangGraph node routing and externally visible
+  lifecycle semantics (IND-530).
 - Slice tool-factory dependencies into named capability-owned ports for
   enrichment, signals, communities, opportunities, premises, contacts,
   integrations, participant agents, negotiations, and questions. `ToolDeps`
