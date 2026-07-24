@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract immutable negotiation task intent-snapshot provenance into a narrow
+  persistence handler while retaining LangGraph init-node task wiring and
+  lifecycle boundaries (IND-530 Batch 8).
 - Extract MCP discovery-run coalescing identity and admission into a narrow
   capability-owned policy while retaining run-store reads, queueing, and tool
   responses in the opportunity tools facade (IND-530 Batch 7).

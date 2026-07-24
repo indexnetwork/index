@@ -17,6 +17,7 @@ import type { QuestionerEnqueueFn } from "../capabilities/questions.enqueue.faca
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId, validateInflightAskUserFields } from './negotiation.question-safety.js';
+import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 
 const logger = protocolLogger("NegotiationGraph");
 const initLog = protocolLogger("NegotiationGraph:Init");
@@ -51,40 +52,6 @@ function hasPriorAskUser(
     const dataPart = (m.parts as Array<{ kind?: string; data?: { action?: string } }>).find((p) => p.kind === "data");
     return dataPart?.data?.action === "ask_user";
   });
-}
-
-interface IntentSnapshot {
-  userId: string;
-  intentId: string;
-  title: string;
-  description: string;
-}
-
-/** Capture immutable, internal-only intent provenance at task creation time. */
-function buildIntentSnapshots(
-  sourceUser: UserNegotiationContext,
-  candidateUser: UserNegotiationContext,
-): IntentSnapshot[] {
-  const snapshots: IntentSnapshot[] = [];
-  const seen = new Set<string>();
-
-  for (const user of [sourceUser, candidateUser]) {
-    if (typeof user.id !== 'string' || user.id.trim().length === 0) continue;
-    for (const intent of Array.isArray(user.intents) ? user.intents : []) {
-      if (typeof intent?.id !== 'string' || intent.id.trim().length === 0) continue;
-      const key = `${user.id}\u0000${intent.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      snapshots.push({
-        userId: user.id,
-        intentId: intent.id,
-        title: typeof intent.title === 'string' ? intent.title : '',
-        description: typeof intent.description === 'string' ? intent.description : '',
-      });
-    }
-  }
-
-  return snapshots;
 }
 
 /**
