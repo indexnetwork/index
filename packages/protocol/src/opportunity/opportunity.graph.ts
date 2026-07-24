@@ -52,7 +52,7 @@ import { persistOpportunities } from './opportunity.persist.js';
 import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved, ASK_USER_LOCK_SLACK_MS, askUserAnswerWindowMs, AMBIENT_PARK_WINDOW_MS } from "../capabilities/negotiation.discovery.facade.js";
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from "./negotiation-summary.builder.js";
-import type { NegotiationGraphLike, UserNegotiationContext } from "../capabilities/negotiation.discovery.facade.js";
+import type { NegotiationGraphLike } from "../capabilities/negotiation.discovery.facade.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { protocolLogger, withCallLogging } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
@@ -63,9 +63,11 @@ import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies 
 import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from './opportunity.actor.js';
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle, type QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 import { stampEligibleNewbornOpportunities, type StampNewbornOpportunitiesFn } from './opportunity.newborn-stamping.js';
+import { buildPrioritizedNegotiationIntents, negotiateExistingOpportunity } from './opportunity.existing-negotiation.js';
 
 export type { QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from './opportunity.newborn-stamping.js';
+export { buildPrioritizedNegotiationIntents } from './opportunity.existing-negotiation.js';
 
 const logger = protocolLogger('OpportunityGraph');
 const prepLog = protocolLogger('OpportunityGraph:Prep');
@@ -89,7 +91,6 @@ const routingLog = protocolLogger('OpportunityGraph:Routing');
 
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
 const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-const NEGOTIATION_INTENT_LIMIT = 5;
 const ACTIVE_NEGOTIATION_TASK_STATES = new Set([
   'submitted',
   'working',
@@ -119,47 +120,6 @@ function belongsToOwnedIntent(
   return opportunity.detection.triggeredBy === triggerIntentId
     || opportunity.actors.some((actor) =>
       actor.userId === ownerUserId && actor.intent === triggerIntentId);
-}
-
-interface NegotiationIntentSource {
-  id?: string | null;
-  summary?: string | null;
-  payload?: string | null;
-}
-
-/** Put an opportunity actor's exact intent first, then fill the bounded context without duplicates. */
-export function buildPrioritizedNegotiationIntents(
-  activeIntents: readonly NegotiationIntentSource[],
-  exactIntentId?: string | null,
-  fallbackIntent?: NegotiationIntentSource | null,
-): UserNegotiationContext['intents'] {
-  const exactId = typeof exactIntentId === 'string' && exactIntentId.trim().length > 0
-    ? exactIntentId
-    : null;
-  const exactActive = exactId
-    ? activeIntents.find((intent) => intent.id === exactId)
-    : undefined;
-  const ordered = [
-    ...(exactActive ? [exactActive] : []),
-    ...(!exactActive && fallbackIntent?.id === exactId ? [fallbackIntent] : []),
-    ...activeIntents,
-  ];
-  const seen = new Set<string>();
-  const intents: UserNegotiationContext['intents'] = [];
-
-  for (const intent of ordered) {
-    if (typeof intent.id !== 'string' || intent.id.trim().length === 0 || seen.has(intent.id)) continue;
-    seen.add(intent.id);
-    intents.push({
-      id: intent.id,
-      title: intent.summary ?? '',
-      description: intent.payload ?? '',
-      confidence: 1,
-    });
-    if (intents.length === NEGOTIATION_INTENT_LIMIT) break;
-  }
-
-  return intents;
 }
 
 /** Default cap for source premises used by premise-to-premise discovery. Prevents BACKEND-5-style fan-out. */
@@ -3874,164 +3834,64 @@ export class OpportunityGraphFactory {
       }
 
       try {
-        const opp = await this.database.getOpportunity(state.opportunityId as string);
-        if (!opp) {
-          negotiateExistingLog.warn('Opportunity not found', { opportunityId: state.opportunityId });
-          return {};
-        }
-
-        const actors = opp.actors as Array<OpportunityActor & { intentId?: string }>;
-        const nonIntroducerActors = actors.filter(a => a.role !== 'introducer');
         const continuation = state.options.negotiationContinuation;
-        if (continuation) {
-          const recipientActor = nonIntroducerActors.find((actor) => actor.userId === state.userId);
-          const counterpartyActor = nonIntroducerActors.find((actor) => actor.userId === continuation.counterpartyUserId);
-          if (
-            !recipientActor
-            || resolveOpportunityActorIntent(recipientActor) !== continuation.recipientIntentId
-            || recipientActor.networkId !== continuation.networkId
-            || !counterpartyActor
-            || resolveOpportunityActorIntent(counterpartyActor) !== continuation.counterpartyIntentId
-            || counterpartyActor.networkId !== continuation.networkId
-          ) {
-            negotiateExistingLog.warn('Exact continuation actor binding is stale', {
-              opportunityId: state.opportunityId,
-              taskId: continuation.taskId,
-            });
-            return {};
-          }
-        }
-
-        // Find the sourceActor: non-introducer with role patient or party, fallback to first non-introducer
-        const sourceActor = nonIntroducerActors.find(a => a.role === 'patient' || a.role === 'party')
-          ?? nonIntroducerActors[0];
-        if (!sourceActor) {
-          negotiateExistingLog.warn('No source actor found', { opportunityId: state.opportunityId });
-          return {};
-        }
-
-        // Find the candidateActor: non-introducer that is NOT the sourceActor
-        const candidateActor = nonIntroducerActors.find(a => a.userId !== sourceActor.userId);
-        if (!candidateActor) {
-          negotiateExistingLog.warn('No candidate actor found', { opportunityId: state.opportunityId });
-          return {};
-        }
-
-        const sourceIntentId = resolveOpportunityActorIntent(sourceActor);
-        const candidateIntentId = resolveOpportunityActorIntent(candidateActor);
-
-        // Load user data for both actors in parallel
-        const [sourceUserAccount, sourceProfile, sourceIntents, candidateAccount, candidateProfile, candidateIntents] =
-          await Promise.all([
-            this.database.getUser(sourceActor.userId).catch(() => null),
-            this.database.getProfile(sourceActor.userId).catch(() => null),
-            this.database.getActiveIntents(sourceActor.userId).catch(() => [] as ActiveIntent[]),
-            this.database.getUser(candidateActor.userId).catch(() => null),
-            this.database.getProfile(candidateActor.userId).catch(() => null),
-            this.database.getActiveIntents(candidateActor.userId).catch(() => [] as ActiveIntent[]),
-          ]);
-
-        const sourceHasExactIntent = sourceIntents.some((intent) => intent.id === sourceIntentId);
-        const candidateHasExactIntent = candidateIntents.some((intent) => intent.id === candidateIntentId);
-        const [sourceFallbackIntent, candidateFallbackIntent] = await Promise.all([
-          sourceIntentId && !sourceHasExactIntent
-            ? this.database.getIntent(sourceIntentId).catch(() => null)
-            : null,
-          candidateIntentId && !candidateHasExactIntent
-            ? this.database.getIntent(candidateIntentId).catch(() => null)
-            : null,
-        ]);
-
-        const sourceUser = {
-          id: sourceActor.userId,
-          intents: buildPrioritizedNegotiationIntents(
-            sourceIntents,
-            sourceIntentId,
-            sourceFallbackIntent?.userId === sourceActor.userId ? sourceFallbackIntent : null,
-          ),
-          profile: {
-            name: sourceProfile?.identity?.name ?? sourceUserAccount?.name,
-            bio: sourceProfile?.identity?.bio ?? sourceUserAccount?.intro ?? undefined,
-            location: sourceProfile?.identity?.location ?? sourceUserAccount?.location ?? undefined,
+        const result = await negotiateExistingOpportunity(
+          this.database,
+          async ({ sourceUser, candidate, indexContextOverrides, continuation: execution }) => {
+            let receipt: NegotiationContinuationReceipt | undefined;
+            // Deliberately no `initiatorUserId`: re-entries inherit the prior task's
+            // stamped seat in negotiation initialization, never re-deriving it here.
+            const acceptedResults = await negotiateCandidates(
+              this.negotiationGraph!,
+              sourceUser,
+              [candidate],
+              { networkId: '', prompt: '' },
+              {
+                maxTurns: Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6,
+                indexContextOverrides,
+                timeoutMs: AMBIENT_PARK_WINDOW_MS,
+                trigger: 'ambient',
+                ...(execution ? {
+                  resumeFromTaskId: execution.taskId,
+                  continuationSettlementId: execution.settlementId,
+                  continuationExecution: execution,
+                  onCandidateResolved: async ({ continuationReceipt }) => {
+                    if (continuationReceipt?.successorTaskId === execution.successorTaskId) receipt = continuationReceipt;
+                  },
+                } : {}),
+              },
+            );
+            return { accepted: acceptedResults.length > 0, ...(receipt ? { receipt } : {}) };
           },
-        };
-
-        const candidateIntentsForNeg = buildPrioritizedNegotiationIntents(
-          candidateIntents,
-          candidateIntentId,
-          candidateFallbackIntent?.userId === candidateActor.userId ? candidateFallbackIntent : null,
-        );
-
-        const candidate: NegotiationCandidate = {
-          userId: candidateActor.userId,
-          ...(sourceIntentId ? { sourceIntentId } : {}),
-          ...(candidateIntentId ? { candidateIntentId } : {}),
-          opportunityId: opp.id as string,
-          opportunityStatus: opp.status,
-          opportunityUpdatedAt: opp.updatedAt,
-          reasoning: (opp.interpretation as { reasoning?: string } | null)?.reasoning ?? '',
-          valencyRole: candidateActor.role ?? 'peer',
-          networkId: (candidateActor as { networkId?: string }).networkId as string,
-          candidateUser: {
-            id: candidateActor.userId,
-            intents: candidateIntentsForNeg,
-            profile: {
-              name: candidateProfile?.identity?.name ?? candidateAccount?.name,
-              bio: candidateProfile?.identity?.bio ?? candidateAccount?.intro ?? undefined,
-              location: candidateProfile?.identity?.location ?? candidateAccount?.location ?? undefined,
+          { opportunityId: state.opportunityId, actorUserId: state.userId, continuation },
+          this.queueNotification,
+          {
+            onNotificationFailure: ({ actorId, error }) => {
+              negotiateExistingLog.warn('Failed to queue notification', { actorId, error });
             },
           },
-        };
-
-        // Load index context for the candidate's network
-        const indexContextMap = new Map<string, string>();
-        if (candidate.networkId) {
-          const ctx = await this.database.getNetworkMemberContext(candidate.networkId, sourceActor.userId).catch(() => null);
-          const prompt = [ctx?.indexPrompt, ctx?.memberPrompt]
-            .filter((v): v is string => !!v?.trim())
-            .join('\n\n');
-          if (prompt) indexContextMap.set(candidate.networkId, prompt);
-        }
-
-        // Deliberately no `initiatorUserId` here: re-entries inherit the stamp
-        // from the prior task's metadata inside the negotiation init node
-        // (continuations never re-derive the seat). The role heuristic above
-        // remains only as the fallback for pre-stamp tasks.
-        let continuationReceipt: NegotiationContinuationReceipt | undefined;
-        const acceptedResults = await negotiateCandidates(
-          this.negotiationGraph, sourceUser, [candidate],
-          { networkId: '', prompt: '' },
-          {
-            maxTurns: Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6,
-            indexContextOverrides: indexContextMap,
-            timeoutMs: AMBIENT_PARK_WINDOW_MS,
-            trigger: 'ambient',
-            ...(continuation ? {
-              resumeFromTaskId: continuation.taskId,
-              continuationSettlementId: continuation.settlementId,
-              continuationExecution: continuation,
-              onCandidateResolved: async ({ continuationReceipt: receipt }) => {
-                if (receipt?.successorTaskId === continuation.successorTaskId) continuationReceipt = receipt;
-              },
-            } : {}),
-          },
         );
 
-        // Send notifications to non-introducer actors if negotiation was accepted
-        if (acceptedResults.length > 0 && this.queueNotification && !continuation) {
-          for (const actor of nonIntroducerActors) {
-            await this.queueNotification(opp.id, actor.userId, 'high').catch((err) => {
-              negotiateExistingLog.warn('Failed to queue notification', { actorId: actor.userId, error: err });
-            });
-          }
+        if (result.kind === 'skipped') {
+          const messages = {
+            not_found: 'Opportunity not found',
+            stale_continuation: 'Exact continuation actor binding is stale',
+            no_source_actor: 'No source actor found',
+            no_candidate_actor: 'No candidate actor found',
+          } as const;
+          negotiateExistingLog.warn(messages[result.reason], {
+            opportunityId: state.opportunityId,
+            ...(result.reason === 'stale_continuation' && continuation ? { taskId: continuation.taskId } : {}),
+          });
+          return {};
         }
 
         negotiateExistingLog.info('Negotiation complete', {
-          opportunityId: opp.id,
-          accepted: acceptedResults.length > 0,
-          continuationFence: continuation?.fence,
+          opportunityId: result.opportunityId,
+          accepted: result.accepted,
+          continuationFence: result.continuationFence,
         });
-        return continuationReceipt ? { negotiationContinuationReceipt: continuationReceipt } : {};
+        return result.receipt ? { negotiationContinuationReceipt: result.receipt } : {};
       } catch (err) {
         negotiateExistingLog.error('Failed', { opportunityId: state.opportunityId, error: err });
         return { error: `Failed to load opportunity: ${err instanceof Error ? err.message : String(err)}` };
