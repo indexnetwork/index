@@ -126,13 +126,19 @@ export const createQuestionsService = (
     return res.questions ?? [];
   },
 
-  /** Fetch answered questions for an intent-scoped conversation log. */
+  /** Fetch answered questions, optionally narrowed by mode/source or intent scope. */
   getAnswered: async (filters?: {
     scopeType?: 'intent';
     scopeId?: string;
+    mode?: QuestionDetection['mode'];
+    sourceType?: string;
+    sourceId?: string;
     passive?: boolean;
   }): Promise<AnsweredQuestion[]> => {
     const params = new URLSearchParams({ status: 'answered' });
+    if (filters?.mode) params.set('mode', filters.mode);
+    if (filters?.sourceType) params.set('sourceType', filters.sourceType);
+    if (filters?.sourceId) params.set('sourceId', filters.sourceId);
     if (filters?.scopeType) params.set('scopeType', filters.scopeType);
     if (filters?.scopeId) params.set('scopeId', filters.scopeId);
     if (filters?.passive) params.set('passive', 'true');

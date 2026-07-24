@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 
@@ -7,6 +7,7 @@ import UserAvatar from '@/components/UserAvatar';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { deriveNegotiationInbox, flattenNegotiationInbox, type NegotiationInboxItem, type NegotiationInboxStatus } from '@/lib/negotiation-inbox';
+import { getNegotiatorDmSessionId } from '@/lib/negotiator-dm';
 
 const CHIP_CLASS: Record<NegotiationInboxStatus, string> = {
   answer: 'border-[#041729] bg-[#041729] text-white',
@@ -66,20 +67,19 @@ interface RowFlash {
   nonce: number;
 }
 
-function NegotiationRow({ item, flash, rowRef }: {
+function NegotiationRow({ item, flash, rowRef, onOpen }: {
   item: NegotiationInboxItem;
   flash?: RowFlash;
   rowRef?: (element: HTMLButtonElement | null) => void;
+  onOpen: (item: NegotiationInboxItem) => void;
 }) {
-  const navigate = useNavigate();
-  const openTranscript = () => navigate(`/chat/${item.conversationId}`);
   const isResolved = item.group === 'resolved';
 
   return (
     <button
       type="button"
       ref={rowRef}
-      onClick={openTranscript}
+      onClick={() => onOpen(item)}
       className={`group relative flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4091BB] sm:flex-nowrap ${isResolved ? 'bg-gray-50/60 opacity-80' : 'bg-white'}`}
       aria-label={`Open negotiation with ${item.counterpart.name}`}
     >
@@ -122,10 +122,11 @@ function NegotiationRow({ item, flash, rowRef }: {
   );
 }
 
-function InboxGroup({ label, items, flashes }: {
+function InboxGroup({ label, items, flashes, onOpen }: {
   label: string;
   items: NegotiationInboxItem[];
   flashes: ReadonlyMap<string, RowFlash>;
+  onOpen: (item: NegotiationInboxItem) => void;
 }) {
   return (
     <section aria-labelledby={`negotiations-${label.toLowerCase().replace(/\s+/g, '-')}`}>
@@ -137,7 +138,7 @@ function InboxGroup({ label, items, flashes }: {
       </h2>
       {items.length > 0 && (
         <div className="divide-y divide-gray-100 overflow-hidden rounded-md border border-gray-200 bg-white">
-          {items.map((item) => <NegotiationRow key={item.conversationId} item={item} flash={flashes.get(item.conversationId)} />)}
+          {items.map((item) => <NegotiationRow key={item.conversationId} item={item} flash={flashes.get(item.conversationId)} onOpen={onOpen} />)}
         </div>
       )}
     </section>
@@ -145,7 +146,8 @@ function InboxGroup({ label, items, flashes }: {
 }
 
 export default function NegotiationsInbox() {
-  const { user } = useAuthContext();
+  const navigate = useNavigate();
+  const { user, features } = useAuthContext();
   const { negotiations, refreshNegotiations, isConnected } = useConversation();
   const [refreshing, setRefreshing] = useState(negotiations.length === 0);
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
@@ -178,6 +180,23 @@ export default function NegotiationsInbox() {
   );
   const flatItems = useMemo(() => flattenNegotiationInbox(groups), [groups]);
   const totalCount = groups.yourMove.length + groups.inProgress.length + groups.resolved.length;
+
+  // "Answer your agent" rows deep-link to the negotiator DM — the transcript
+  // is read-only and can't take an answer. /questions is the fallback when
+  // the negotiator surface is unavailable (IND-558).
+  const openNegotiation = useCallback((item: NegotiationInboxItem) => {
+    if (item.status !== 'answer') {
+      navigate(`/chat/${item.conversationId}`);
+      return;
+    }
+    if (!features?.negotiatorChat) {
+      navigate('/questions');
+      return;
+    }
+    void getNegotiatorDmSessionId().then((sessionId) => {
+      navigate(sessionId ? `/d/${sessionId}` : '/questions');
+    });
+  }, [navigate, features]);
 
   // Diff each refetch against the previous rows and flash what changed
   // (design §3 R2): posture moves (group/status) in steel, content updates
@@ -285,9 +304,9 @@ export default function NegotiationsInbox() {
           </div>
         ) : viewMode === 'grouped' ? (
           <div className="space-y-8">
-            <InboxGroup label="Your move" items={groups.yourMove} flashes={flashes} />
-            <InboxGroup label="In progress" items={groups.inProgress} flashes={flashes} />
-            <InboxGroup label="Resolved" items={groups.resolved} flashes={flashes} />
+            <InboxGroup label="Your move" items={groups.yourMove} flashes={flashes} onOpen={openNegotiation} />
+            <InboxGroup label="In progress" items={groups.inProgress} flashes={flashes} onOpen={openNegotiation} />
+            <InboxGroup label="Resolved" items={groups.resolved} flashes={flashes} onOpen={openNegotiation} />
           </div>
         ) : (
           <div ref={flatListRef} className="divide-y divide-gray-100 overflow-hidden rounded-md border border-gray-200 bg-white">
@@ -296,6 +315,7 @@ export default function NegotiationsInbox() {
                 key={item.conversationId}
                 item={item}
                 flash={flashes.get(item.conversationId)}
+                onOpen={openNegotiation}
                 rowRef={(element) => {
                   if (element) rowElementsRef.current.set(item.conversationId, element);
                   else rowElementsRef.current.delete(item.conversationId);

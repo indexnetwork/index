@@ -1,5 +1,6 @@
 import { useState, useId } from 'react';
 import { QuestionCard } from '@/components/DecisionQuestions/QuestionCard';
+import { ConsultationCard } from '@/components/PendingQuestions/ConsultationCard';
 import type { PendingQuestion } from '@/services/questions';
 import type { Answer } from '@/components/DecisionQuestions/flatten';
 import type { AnswerBody } from '@/services/questions';
@@ -54,6 +55,11 @@ export function QuestionGroup({ label, questions, onAnswer, onDismiss }: Questio
         {label}
       </h3>
       {questions.map((q) => {
+        // ask_user consultations render the priority card (§2.2) instead of
+        // the generic option-row card.
+        if (q.detection.mode === 'negotiation_inflight') {
+          return <ConsultationCard key={q.id} question={q} onAnswer={onAnswer} />;
+        }
         const answer = answers[q.id] ?? null;
         const isSubmitting = submitting[q.id] ?? false;
         const hasAnswer = answer?.kind === 'selection'
