@@ -1,25 +1,37 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { cn } from '@/lib/utils';
+import { apiClient } from '@/lib/api';
 import { ContentContainer } from '@/components/layout';
-import UserAvatar from '@/components/UserAvatar';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
+import { useOpportunityActions } from '@/hooks/useOpportunityActions';
+import TurnRail from '@/components/negotiations/TurnRail';
+import OutcomeBanner from '@/components/negotiations/OutcomeBanner';
+import ResolvedBanner, { type ResolvedBannerVariant } from '@/components/negotiations/ResolvedBanner';
+import { useTickingNow } from '@/components/negotiations/use-ticking-now';
+import { extractTurn, formatRelativeTime, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+
+const STALL_REASONS = new Set(['turn_cap', 'timeout']);
 
 export default function NegotiationDetailPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { negotiations, messages, loadSessionHistory, loadPreviousSessionMessages, sessionHistory } = useConversation();
+  const { negotiations, messages, loadSessionHistory, loadPreviousSessionMessages, refreshNegotiations, sessionHistory } = useConversation();
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const now = useTickingNow();
 
   const conversation = negotiations.find((c) => c.id === conversationId);
   const conversationMessages = useMemo(() => messages.get(conversationId!) ?? [], [messages, conversationId]);
   const history = conversationId ? sessionHistory.get(conversationId) : undefined;
+  const lifecycle = conversation?.negotiation ?? null;
+
+  const { handleOpportunityAction, opportunityStatusMap, opportunityActionLoading, inviteModalElement } =
+    useOpportunityActions({
+      onRemove: () => { void refreshNegotiations(); },
+    });
 
   useEffect(() => {
     if (!conversationId) return;
@@ -52,10 +64,47 @@ export default function NegotiationDetailPage() {
   // Determine which participant represents "our" side (the current user's agent)
   const ownAgentId = user?.id ? `agent:${user.id}` : null;
 
-  const formatTime = (createdAt: string) => {
-    if (!createdAt) return '';
-    return new Date(createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  };
+  const counterpart = participants.find((p) => p.participantId !== ownAgentId);
+  const counterpartUserId = counterpart?.participantId.replace(/^agent:/, '') ?? '';
+  const counterpartName = counterpart?.ownerName ?? conversation?.metadata?.title ?? counterpart?.name ?? 'them';
+
+  const turns = useMemo(
+    () => conversationMessages.map(extractTurn).filter((turn): turn is TranscriptTurn => turn !== null),
+    [conversationMessages],
+  );
+  const negotiatedRole = useMemo(() => viewerRoleLabel(turns, ownAgentId), [turns, ownAgentId]);
+
+  const opportunityId = lifecycle?.opportunityId ?? null;
+  const localStatus = opportunityId ? opportunityStatusMap[opportunityId] : undefined;
+  const effectiveOpportunityStatus = localStatus ?? lifecycle?.opportunityStatus ?? null;
+  const outcomeReason = lifecycle?.outcome?.reason ?? null;
+
+  // Resolved-state banner derivation, mirroring lib/negotiation-inbox classification.
+  const resolvedVariant = useMemo<ResolvedBannerVariant | null>(() => {
+    if (!lifecycle) return null;
+    if (effectiveOpportunityStatus === 'rejected') return 'rejected';
+    if (effectiveOpportunityStatus === 'stalled' || effectiveOpportunityStatus === 'expired') return 'stalled';
+    if (effectiveOpportunityStatus === 'pending' || effectiveOpportunityStatus === 'accepted') return null;
+    if (lifecycle.outcome?.hasOpportunity === false) {
+      return STALL_REASONS.has(outcomeReason ?? '') ? 'stalled' : 'rejected';
+    }
+    if (['failed', 'canceled', 'auth_required'].includes(lifecycle.state)) return 'stalled';
+    if (lifecycle.state === 'rejected') return 'rejected';
+    return null;
+  }, [lifecycle, effectiveOpportunityStatus, outcomeReason]);
+
+  const showOutcomeBanner = !resolvedVariant && effectiveOpportunityStatus === 'pending' && !!opportunityId;
+
+  // Revival CTA routes through the user's own agent (the negotiator DM), with
+  // the questions inbox as fallback when no negotiator session exists yet.
+  const handleRevive = useCallback(async () => {
+    try {
+      const { sessions } = await apiClient.get<{ sessions: { id: string }[] }>('/chat/sessions?persona=negotiator');
+      navigate(sessions[0]?.id ? `/d/${sessions[0].id}` : '/questions');
+    } catch {
+      navigate('/questions');
+    }
+  }, [navigate]);
 
   return (
     <>
@@ -73,7 +122,7 @@ export default function NegotiationDetailPage() {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Transcript */}
       <div className="px-6 lg:px-8 pb-32 flex-1">
         <ContentContainer>
           <div className="space-y-4">
@@ -100,103 +149,41 @@ export default function NegotiationDetailPage() {
               </div>
             ) : null}
 
-            {conversationMessages.map((message, index) => {
-              const isOwn = message.senderId === ownAgentId;
-              const info = participantInfo.get(message.senderId);
-              const previousMessage = conversationMessages[index - 1];
-              const startsSession = previousMessage !== undefined && previousMessage.sessionId !== message.sessionId;
+            <TurnRail
+              turns={turns}
+              ownAgentId={ownAgentId}
+              participantInfo={participantInfo}
+              counterpartName={counterpartName}
+              now={now}
+            />
 
-              // Extract text content from message parts — use `message` field from data part, or text part
-              const parts = message.parts as { kind?: string; text?: string; data?: { message?: string; assessment?: { reasoning?: string } } }[];
-              const dataPart = parts?.find((p) => p.kind === 'data');
-              const textPart = parts?.find((p) => p.text);
-              const messageText = dataPart?.data?.message;
-              const reasoningText = dataPart?.data?.assessment?.reasoning;
-              const content = messageText ?? reasoningText ?? textPart?.text ?? '';
-              const isInternal = !messageText && !!reasoningText;
-              if (!content.trim()) return null;
+            {showOutcomeBanner && opportunityId && (
+              <OutcomeBanner
+                counterpartName={counterpartName}
+                role={negotiatedRole}
+                turnCount={lifecycle?.turnCount ?? null}
+                concludedLabel={lifecycle?.updatedAt ? formatRelativeTime(lifecycle.updatedAt, now) : null}
+                loading={opportunityActionLoading[opportunityId] === true}
+                onStartChat={() => void handleOpportunityAction(opportunityId, 'accepted', counterpartUserId, undefined, counterpartName)}
+                onPass={() => void handleOpportunityAction(opportunityId, 'rejected', counterpartUserId, undefined, counterpartName)}
+              />
+            )}
 
-              const showTimestamp = index === 0 || (previousMessage && new Date(message.createdAt).getTime() - new Date(previousMessage.createdAt).getTime() > 300_000);
-
-              return (
-                <div key={message.id}>
-                  {startsSession && (
-                    <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
-                      <span className="h-px flex-1 bg-gray-200" />
-                      <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
-                      <span className="h-px flex-1 bg-gray-200" />
-                    </div>
-                  )}
-                  {showTimestamp && message.createdAt && (
-                    <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
-                      {(() => {
-                        const d = new Date(message.createdAt);
-                        const now = new Date();
-                        const yesterday = new Date(now);
-                        yesterday.setDate(yesterday.getDate() - 1);
-
-                        let label: string;
-                        if (d.toDateString() === now.toDateString()) {
-                          label = 'Today';
-                        } else if (d.toDateString() === yesterday.toDateString()) {
-                          label = 'Yesterday';
-                        } else {
-                          label = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                        }
-                        return `${label}, ${formatTime(message.createdAt)}`;
-                      })()}
-                    </div>
-                  )}
-                  <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
-                    {!isOwn && info && (
-                      <div className="flex-shrink-0">
-                        <UserAvatar avatar={info.avatar} id={message.senderId} name={info.ownerName} size={32} />
-                      </div>
-                    )}
-                    <div className="max-w-[70%]">
-                      {!isOwn && info && (
-                        <p className="text-xs text-gray-400 mb-1 ml-1">
-                          {info.agentName} <span className="text-gray-300">for</span> {info.ownerName}
-                        </p>
-                      )}
-                      <div
-                        className={cn(
-                          'rounded-2xl px-4 py-2',
-                          isInternal
-                            ? 'bg-transparent border border-dashed border-gray-300 text-gray-500 italic'
-                            : isOwn
-                              ? 'bg-gray-900 text-white'
-                              : 'bg-gray-100 text-gray-900',
-                        )}
-                      >
-                        {isInternal && (
-                          <p className="not-italic text-[10px] uppercase tracking-wider text-gray-400 mb-1">
-                            Internal assessment
-                          </p>
-                        )}
-                        <article className={cn('text-sm', !isInternal && isOwn && 'text-white')}>
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-                        </article>
-                      </div>
-                      {isOwn && info && (
-                        <p className="text-xs text-gray-400 mt-1 mr-1 text-right">
-                          {info.agentName} <span className="text-gray-300">for</span> {info.ownerName}
-                        </p>
-                      )}
-                    </div>
-                    {isOwn && info && (
-                      <div className="flex-shrink-0">
-                        <UserAvatar avatar={info.avatar} id={message.senderId} name={info.ownerName} size={32} />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {resolvedVariant && (
+              <ResolvedBanner
+                variant={resolvedVariant}
+                reason={outcomeReason}
+                turnCount={lifecycle?.turnCount ?? null}
+                maxTurns={lifecycle?.maxTurns ?? null}
+                onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
+                onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
+              />
+            )}
             <div ref={messagesEndRef} />
           </div>
         </ContentContainer>
       </div>
+      {inviteModalElement}
     </>
   );
 }
