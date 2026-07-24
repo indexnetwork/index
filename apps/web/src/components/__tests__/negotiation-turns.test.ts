@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { extractTurn, formatRelativeTime, roleChipLabel, roleLabel, verbFor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+import { deriveSectionLabel, extractTurn, formatRelativeTime, formatSectionDate, groupTurnsBySession, outcomeChipVariant, roleChipLabel, roleLabel, verbFor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 import type { ConversationMessage } from '@/services/conversation';
 
 function message(parts: unknown[], overrides: Partial<ConversationMessage> = {}): ConversationMessage {
@@ -130,5 +130,146 @@ describe('formatRelativeTime', () => {
 
   it('returns empty for unparseable timestamps', () => {
     expect(formatRelativeTime('not-a-date', now)).toBe('');
+  });
+});
+
+// ─── IND-570: section label helpers ─────────────────────────────────────────
+
+describe('outcomeChipVariant', () => {
+  it('maps terminal statuses to display props', () => {
+    expect(outcomeChipVariant('accepted')).toMatchObject({ label: 'Accepted', color: 'text-emerald-700' });
+    expect(outcomeChipVariant('rejected')).toMatchObject({ label: 'Rejected', color: 'text-red-700' });
+    expect(outcomeChipVariant('stalled')).toMatchObject({ label: 'Stalled', color: 'text-gray-600' });
+    expect(outcomeChipVariant('expired')).toMatchObject({ label: 'Expired', color: 'text-amber-700' });
+  });
+
+  it('returns null for non-terminal or unknown statuses', () => {
+    expect(outcomeChipVariant(null)).toBeNull();
+    expect(outcomeChipVariant(undefined)).toBeNull();
+    expect(outcomeChipVariant('pending')).toBeNull();
+    expect(outcomeChipVariant('negotiating')).toBeNull();
+    expect(outcomeChipVariant('latent')).toBeNull();
+  });
+});
+
+describe('formatSectionDate', () => {
+  it('formats as "Mon D" (e.g. Jun 26)', () => {
+    // Use a fixed UTC date; toLocaleString in en-US gives e.g. "Jun 26"
+    const result = formatSectionDate('2025-06-26T10:00:00.000Z');
+    expect(result).toMatch(/^[A-Z][a-z]{2} \d{1,2}$/);
+    expect(result).toContain('26');
+  });
+
+  it('returns empty for unparseable dates', () => {
+    expect(formatSectionDate('not-a-date')).toBe('');
+  });
+});
+
+describe('deriveSectionLabel', () => {
+  const createdAt = '2025-06-26T10:00:00.000Z';
+
+  it('returns latestSectionTitle for the latest section', () => {
+    expect(deriveSectionLabel({
+      isLatest: true,
+      firstTurnCreatedAt: createdAt,
+      opportunityTitle: 'Old opp',
+      opportunityStatus: 'rejected',
+      latestSectionTitle: 'GEO consultancy search',
+    })).toBe('GEO consultancy search');
+  });
+
+  it('falls back to "Current negotiation" when no latest title is provided', () => {
+    expect(deriveSectionLabel({
+      isLatest: true,
+      firstTurnCreatedAt: createdAt,
+      opportunityTitle: null,
+      opportunityStatus: null,
+      latestSectionTitle: null,
+    })).toBe('Current negotiation');
+  });
+
+  it('builds attributed label for older sections with title and outcome', () => {
+    const label = deriveSectionLabel({
+      isLatest: false,
+      firstTurnCreatedAt: createdAt,
+      opportunityTitle: 'GEO consultancy search',
+      opportunityStatus: 'rejected',
+      latestSectionTitle: null,
+    });
+    expect(label).toContain('GEO consultancy search');
+    expect(label).toContain('Rejected');
+    expect(label).toContain('26'); // day of month
+  });
+
+  it('omits outcome chip segment when status has no chip variant', () => {
+    const label = deriveSectionLabel({
+      isLatest: false,
+      firstTurnCreatedAt: createdAt,
+      opportunityTitle: 'Interesting project',
+      opportunityStatus: 'pending', // no chip
+      latestSectionTitle: null,
+    });
+    expect(label).toContain('Interesting project');
+    expect(label).not.toContain('Pending');
+    // date still present
+    expect(label).toContain('26');
+  });
+
+  it('uses legacy fallback for unattributed older sections', () => {
+    const label = deriveSectionLabel({
+      isLatest: false,
+      firstTurnCreatedAt: '2025-06-01T00:00:00.000Z',
+      opportunityTitle: null,
+      opportunityStatus: null,
+      latestSectionTitle: null,
+    });
+    expect(label).toMatch(/Earlier negotiation/);
+    expect(label).toContain('Jun');
+    expect(label).toContain('2025');
+  });
+
+  it('handles null firstTurnCreatedAt gracefully', () => {
+    const label = deriveSectionLabel({
+      isLatest: false,
+      firstTurnCreatedAt: null,
+      opportunityTitle: 'Solo opportunity',
+      opportunityStatus: 'accepted',
+      latestSectionTitle: null,
+    });
+    expect(label).toContain('Solo opportunity');
+    expect(label).toContain('Accepted');
+    // no date segment when null
+    const parts = label.split(' · ');
+    expect(parts).toHaveLength(2);
+  });
+});
+
+describe('groupTurnsBySession', () => {
+  const base = { senderId: 'agent:a', createdAt: '2025-01-01T00:00:00Z', action: null, text: 'x', suggestedRoles: null };
+
+  it('groups consecutive turns with the same sessionId together', () => {
+    const turns: TranscriptTurn[] = [
+      { id: '1', sessionId: 's1', ...base },
+      { id: '2', sessionId: 's1', ...base },
+      { id: '3', sessionId: 's2', ...base },
+    ];
+    const groups = groupTurnsBySession(turns);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].sessionId).toBe('s1');
+    expect(groups[0].turns).toHaveLength(2);
+    expect(groups[1].sessionId).toBe('s2');
+    expect(groups[1].turns).toHaveLength(1);
+  });
+
+  it('returns a single group for turns with null sessionId', () => {
+    const turns: TranscriptTurn[] = [
+      { id: '1', sessionId: null, ...base },
+      { id: '2', sessionId: null, ...base },
+    ];
+    expect(groupTurnsBySession(turns)).toHaveLength(1);
+  });
+
+  it('returns an empty array for empty input', () => {
+    expect(groupTurnsBySession([])).toHaveLength(0);
   });
 });
