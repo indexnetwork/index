@@ -25,7 +25,7 @@ import { createOpportunityTools } from "../../../opportunity/opportunity.tools.j
 import { createUtilityTools } from "../../../shared/agent/utility.tools.js";
 import { createIntegrationTools } from "../../../integration/integration.tools.js";
 import { createContactTools } from "../../../contact/contact.tools.js";
-import { createAgentTools } from "../../../agent/agent.tools.js";
+import { createAgentTools } from "../../../capabilities/participant-agents.tools.facade.js";
 import { createNegotiationTools } from "../../../negotiation/negotiation.tools.js";
 import { createPremiseTools } from "../../../premise/premise.tools.js";
 import { createQuestionerTools, createAskUserQuestionTools } from "../../../capabilities/questions.facade.js";
