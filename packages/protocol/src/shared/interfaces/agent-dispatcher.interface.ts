@@ -8,6 +8,7 @@
 
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';
 import type { NegotiatorMemoryEntry } from '../../negotiation/negotiation.memory.js';
+import type { AttributedPriorDialogue } from '../../negotiation/negotiation.attribution.js';
 import type { NegotiationPrivateConsultation } from './database.interface.js';
 
 /** Payload sent to the dispatcher for each negotiation turn. */
@@ -38,6 +39,13 @@ export interface NegotiationTurnPayload {
   negotiatorMemory?: NegotiatorMemoryEntry[];
   /** Recipient-private ask-user consultation, present only for that recipient's turn. */
   privateConsultation?: NegotiationPrivateConsultation;
+  /**
+   * Prior dialogue with this counterparty, grouped and labeled per opportunity
+   * (IND-569). Present only on continuations; lets an external agent see which
+   * prior turns belonged to already-concluded OTHER opportunities versus the
+   * one under negotiation now. Absent → no attributed prior dialogue available.
+   */
+  priorDialogue?: AttributedPriorDialogue;
 }
 
 /** Result of a dispatch attempt. */

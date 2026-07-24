@@ -2338,6 +2338,7 @@ export class ConversationDatabaseAdapter {
     role: 'user' | 'agent';
     parts: unknown[];
     createdAt: Date;
+    taskId?: string | null;
   }>> {
     const rows = await db
       .select({
@@ -2346,6 +2347,9 @@ export class ConversationDatabaseAdapter {
         role: schema.messages.role,
         parts: schema.messages.parts,
         createdAt: schema.messages.createdAt,
+        // IND-569: task attribution so the negotiation graph can label prior
+        // dialogue per opportunity in continuation prompts.
+        taskId: schema.messages.taskId,
       })
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, conversationId))

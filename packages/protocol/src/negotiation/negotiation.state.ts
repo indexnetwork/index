@@ -4,6 +4,7 @@ import type { NegotiationContinuationExecution, NegotiationContinuationReceipt, 
 import type { ScreenDecisionRecord } from "./negotiation.screen.js";
 import type { DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
+import type { SeededAttribution } from "./negotiation.attribution.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import type { NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 
@@ -130,6 +131,14 @@ export interface NegotiationMessage {
   role: "agent";
   parts: unknown[];
   createdAt: Date;
+  /**
+   * Originating negotiation task (IND-569). Seeded prior messages carry their
+   * source task's id; turns persisted this session carry the current task id.
+   * Optional/undefined for legacy hosts whose `getMessagesForConversation`
+   * does not project task attribution — such turns degrade to the unattributed
+   * prior-dialogue block, never into the current opportunity's turns.
+   */
+  taskId?: string | null;
 }
 
 /** LangGraph state annotation for the negotiation graph. */
@@ -217,6 +226,18 @@ export const NegotiationGraphState = Annotation.Root({
   memoryBySide: Annotation<Partial<Record<"source" | "candidate", NegotiatorMemoryEntry[]>>>({
     reducer: (curr, next) => ({ ...curr, ...next }),
     default: () => ({}),
+  }),
+
+  /**
+   * Immutable attributed prior dialogue derived once in the init node from the
+   * seeded prior messages (IND-569). Groups earlier-opportunity turns and
+   * legacy unattributed turns so the screen node and every turn prompt can
+   * label prior context per opportunity. Null on fresh runs / when there is no
+   * seeded prior dialogue.
+   */
+  priorAttribution: Annotation<SeededAttribution | null>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => null,
   }),
 
   /** Whether this run is continuing a prior conversation with the same pair. */
