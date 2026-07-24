@@ -9,9 +9,10 @@ import { useQuestionsService } from '@/contexts/APIContext';
 import { useOpportunityActions } from '@/hooks/useOpportunityActions';
 import TurnRail from '@/components/negotiations/TurnRail';
 import OutcomeBanner from '@/components/negotiations/OutcomeBanner';
+import OutcomeChip from '@/components/negotiations/OutcomeChip';
 import ResolvedBanner, { type ResolvedBannerVariant } from '@/components/negotiations/ResolvedBanner';
 import { useTickingNow } from '@/components/negotiations/use-ticking-now';
-import { extractTurn, formatRelativeTime, groupTurnsBySession, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+import { deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySession, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 
 const STALL_REASONS = new Set(['turn_cap', 'timeout']);
 
@@ -19,7 +20,7 @@ export default function NegotiationDetailPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { negotiations, messages, loadSessionHistory, loadPreviousSessionMessages, refreshNegotiations, sessionHistory } = useConversation();
+  const { negotiations, messages, loadSessionHistory, loadPreviousSessionMessages, refreshNegotiations, sessionHistory, sessionOpportunityMap } = useConversation();
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const now = useTickingNow();
@@ -204,28 +205,54 @@ export default function NegotiationDetailPage() {
                 const isLatest = groupIndex === sessionGroups.length - 1;
                 const firstTurn = group.turns[0];
 
-                // Older sections: show month/year of first turn as context.
-                // Latest section: use the viewer’s own opportunity intent title
-                // from the conversation’s signal provenance (via[0]).
-                let sectionLabel: string;
-                if (isLatest) {
-                  sectionLabel = conversation?.via[0]?.title ?? 'Current negotiation';
-                } else {
-                  const date = firstTurn ? new Date(firstTurn.createdAt) : null;
-                  const monthYear = date && Number.isFinite(date.getTime())
-                    ? date.toLocaleString('en-US', { month: 'short', year: 'numeric' })
-                    : '';
-                  sectionLabel = `Earlier negotiation${monthYear ? ` · ${monthYear}` : ''}`;
-                }
+                // IND-570: resolve opportunity attribution for this section.
+                // sessionOpportunityMap is keyed by sessionId (populated when
+                // session history is loaded). We then look up the viewer's
+                // intent title from conversation.via[] using the opportunityId.
+                const sessionOpp = group.sessionId ? sessionOpportunityMap.get(group.sessionId) : undefined;
+                const viaEntry = sessionOpp?.opportunityId
+                  ? conversation?.via.find((v) => v.opportunityId === sessionOpp.opportunityId)
+                  : null;
+                const opportunityTitle = viaEntry?.title ?? null;
+                const opportunityStatus = sessionOpp?.status ?? null;
+
+                // Older sections: show opportunity title + outcome chip + date.
+                // Latest section: use the viewer's own opportunity intent title
+                // from the conversation's signal provenance (via[0]).
+                const sectionLabel = deriveSectionLabel({
+                  isLatest,
+                  firstTurnCreatedAt: firstTurn?.createdAt ?? null,
+                  opportunityTitle,
+                  opportunityStatus,
+                  latestSectionTitle: conversation?.via[0]?.title ?? null,
+                });
 
                 return (
                   <section key={group.sessionId ?? `group-${groupIndex}`} aria-label={sectionLabel}>
                     {/* Section divider — separates this task from the preceding one */}
                     <div className="flex items-center gap-3 py-3" role="separator">
                       <span className="h-px flex-1 bg-gray-200" />
-                      <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">
-                        {sectionLabel}
-                      </span>
+                      {/* IND-570: older attributed sections show title + chip + date inline.
+                           Older unattributed sections and the latest section show plain text. */}
+                      {!isLatest && opportunityTitle ? (
+                        <span className="flex items-center gap-1.5 min-w-0" aria-hidden="true">
+                          <span className="text-[10px] font-ibm-plex-mono text-gray-500 truncate max-w-[180px]">
+                            {opportunityTitle}
+                          </span>
+                          <OutcomeChip status={opportunityStatus} />
+                          {firstTurn && (
+                            <span className="text-[10px] font-ibm-plex-mono text-gray-400 shrink-0">
+                              {
+                                new Date(firstTurn.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric' })
+                              }
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400" aria-hidden="true">
+                          {sectionLabel}
+                        </span>
+                      )}
                       <span className="h-px flex-1 bg-gray-200" />
                     </div>
                     <TurnRail

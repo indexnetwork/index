@@ -16,11 +16,19 @@ interface ConversationSessionHistoryState {
   loadingPrevious: boolean;
 }
 
+/** IND-570: Per-session opportunity attribution, keyed by sessionId. */
+export interface SessionOpportunityInfo {
+  opportunityId: string;
+  status: string | null;
+}
+
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: ConversationSummary[];
   messages: Map<string, ConversationMessage[]>;
   sessionHistory: Map<string, ConversationSessionHistoryState>;
+  /** IND-570: Per-session opportunity attribution, keyed by sessionId. */
+  sessionOpportunityMap: Map<string, SessionOpportunityInfo>;
   isConnected: boolean;
   loadMessages: (conversationId: string, opts?: { limit?: number; before?: string }) => Promise<void>;
   loadSessionHistory: (conversationId: string, opts?: { taskId?: string; beforeSessionId?: string }) => Promise<void>;
@@ -44,6 +52,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [negotiations, setNegotiations] = useState<ConversationSummary[]>([]);
   const [messages, setMessages] = useState<Map<string, ConversationMessage[]>>(new Map());
   const [sessionHistory, setSessionHistory] = useState<Map<string, ConversationSessionHistoryState>>(new Map());
+  const [sessionOpportunityMap, setSessionOpportunityMap] = useState<Map<string, SessionOpportunityInfo>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,6 +126,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         sessionId: string | null;
         hasPreviousSession: boolean;
         previousSessionCursor: string | null;
+        sessionOpportunityId: string | null;
+        sessionOpportunityStatus: string | null;
       }>(`/conversations/${conversationId}/messages?${params.toString()}`);
       setMessages((previous) => {
         const next = new Map(previous);
@@ -142,6 +153,14 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         });
         return next;
       });
+      // IND-570: store per-session opportunity attribution keyed by sessionId.
+      if (data.sessionId && data.sessionOpportunityId) {
+        setSessionOpportunityMap((previous) => {
+          const next = new Map(previous);
+          next.set(data.sessionId!, { opportunityId: data.sessionOpportunityId!, status: data.sessionOpportunityStatus });
+          return next;
+        });
+      }
     } catch (error) {
       logger.error('Failed to load conversation session history', { error, conversationId });
       setSessionHistory((previous) => {
@@ -449,6 +468,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         negotiations,
         messages,
         sessionHistory,
+        sessionOpportunityMap,
         isConnected,
         loadMessages,
         loadSessionHistory,

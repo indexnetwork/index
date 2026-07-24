@@ -1232,6 +1232,10 @@ export class ConversationDatabaseAdapter {
     session: ConversationSession | null;
     messages: Message[];
     hasPreviousSession: boolean;
+    /** opportunityId from the session's negotiation task, if any. */
+    sessionOpportunityId: string | null;
+    /** Current status of the session's opportunity, if any. */
+    sessionOpportunityStatus: string | null;
   }> {
     const conditions = [eq(schema.conversationSessions.conversationId, conversationId)];
     if (opts?.taskId) {
@@ -1249,7 +1253,7 @@ export class ConversationDatabaseAdapter {
         ))
         .limit(1);
       if (!cursor) {
-        return { session: null, messages: [], hasPreviousSession: false };
+        return { session: null, messages: [], hasPreviousSession: false, sessionOpportunityId: null, sessionOpportunityStatus: null };
       }
       const beforeSessionCondition = or(
         lt(schema.conversationSessions.startedAt, cursor.startedAt),
@@ -1270,7 +1274,7 @@ export class ConversationDatabaseAdapter {
         desc(schema.conversationSessions.id),
       )
       .limit(1);
-    if (!session) return { session: null, messages: [], hasPreviousSession: false };
+    if (!session) return { session: null, messages: [], hasPreviousSession: false, sessionOpportunityId: null, sessionOpportunityStatus: null };
 
     const messageConditions = [eq(schema.messages.sessionId, session.id)];
     if (opts?.userId) {
@@ -1312,7 +1316,27 @@ export class ConversationDatabaseAdapter {
       .where(and(...previousConditions))
       .limit(1);
 
-    return { session, messages, hasPreviousSession: Boolean(previous) };
+    // IND-570: resolve opportunity attribution for this session so the web
+    // client can label older sections with the opportunity title + outcome chip.
+    let sessionOpportunityId: string | null = null;
+    let sessionOpportunityStatus: string | null = null;
+    if (session.taskId) {
+      const [taskOpp] = await db
+        .select({
+          opportunityId: sql<string | null>`(${schema.tasks.metadata}->>'opportunityId')`,
+          opportunityStatus: opportunities.status,
+        })
+        .from(schema.tasks)
+        .leftJoin(opportunities, sql`(${schema.tasks.metadata}->>'opportunityId') = ${opportunities.id}`)
+        .where(eq(schema.tasks.id, session.taskId))
+        .limit(1);
+      if (taskOpp?.opportunityId) {
+        sessionOpportunityId = taskOpp.opportunityId;
+        sessionOpportunityStatus = taskOpp.opportunityStatus ?? null;
+      }
+    }
+
+    return { session, messages, hasPreviousSession: Boolean(previous), sessionOpportunityId, sessionOpportunityStatus };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
