@@ -36,4 +36,43 @@ describe("NegotiationActivity", () => {
     expect(screen.getByText(/Messages will appear here as they are persisted/)).toBeTruthy();
     expect(screen.queryByText(/message 1/)).toBeNull();
   });
+
+  it("filters non-displayable records before latest-three and removes empty correspondent groups", () => {
+    const groups = normalizeNegotiationActivity([
+      {
+        correspondentUserId: "ada",
+        correspondentLabel: "Ada's agent",
+        correspondentAvatar: null,
+        messages: [
+          ...messages,
+          {
+            id: "tool-only",
+            opportunityId: "opp-1",
+            sender: "theirs",
+            parts: [{ type: "tool-call" }],
+            createdAt: "2026-07-24T00:00:05.000Z",
+          },
+        ],
+      },
+      {
+        correspondentUserId: "empty",
+        correspondentLabel: "Empty agent",
+        correspondentAvatar: null,
+        messages: [{
+          id: "empty-tool",
+          opportunityId: "opp-empty",
+          sender: "theirs",
+          parts: [{ type: "tool-call" }],
+          createdAt: "2026-07-24T00:00:06.000Z",
+        }],
+      },
+    ]);
+
+    render(<NegotiationActivity groups={groups} loading={false} error={false} />);
+
+    expect(screen.queryByRole("region", { name: "Negotiation with Empty agent" })).toBeNull();
+    expect(screen.queryByText("message 1")).toBeNull();
+    expect(screen.getAllByText(/message [234]/).map((node) => node.textContent))
+      .toEqual(["message 2", "message 3", "message 4"]);
+  });
 });

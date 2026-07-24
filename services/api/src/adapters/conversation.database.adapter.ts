@@ -1931,9 +1931,16 @@ export class ConversationDatabaseAdapter {
     if (!ownedIntent) return null;
 
     const opportunityRows = await db
-      .select({ id: schema.opportunities.id, actors: schema.opportunities.actors })
+      .select({
+        id: schema.opportunities.id,
+        status: schema.opportunities.status,
+        actors: schema.opportunities.actors,
+      })
       .from(schema.opportunities)
-      .where(sql`${schema.opportunities.actors} @> ${JSON.stringify([{ userId, intent: intentId }])}::jsonb`);
+      .where(and(
+        eq(schema.opportunities.status, 'negotiating'),
+        sql`${schema.opportunities.actors} @> ${JSON.stringify([{ userId, intent: intentId }])}::jsonb`,
+      ));
     if (opportunityRows.length === 0) return [];
 
     const opportunityIds = opportunityRows.map((row) => row.id);
