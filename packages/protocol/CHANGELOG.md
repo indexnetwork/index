@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract MCP discovery-run coalescing identity and admission into a narrow
+  capability-owned policy while retaining run-store reads, queueing, and tool
+  responses in the opportunity tools facade (IND-530 Batch 7).
 - Extract safe opportunity-card presentation translation for web/MCP, including
   actionable-link ID suppression, digest markers, code-fence escaping, and
   unsupported-claim/UUID sanitization, while preserving the tools-facade export
