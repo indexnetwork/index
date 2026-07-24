@@ -13,7 +13,7 @@ import { NegotiationGraphFactory } from "../../../negotiation/negotiation.graph.
 import { PremiseGraphFactory } from "../../../premise/premise.graph.js";
 import { protocolLogger } from "../../../shared/observability/protocol.logger.js";
 
-import type { QuestionerEnqueueFn } from "../../../questioner/questioner.types.js";
+import type { QuestionerEnqueueFn } from "../../../capabilities/questions.facade.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "../../../shared/agent/tool.helpers.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "../../../shared/agent/tool.scope.js";
@@ -28,8 +28,7 @@ import { createContactTools } from "../../../contact/contact.tools.js";
 import { createAgentTools } from "../../../agent/agent.tools.js";
 import { createNegotiationTools } from "../../../negotiation/negotiation.tools.js";
 import { createPremiseTools } from "../../../premise/premise.tools.js";
-import { createQuestionerTools } from "../../../questioner/questioner.tools.js";
-import { createAskUserQuestionTools } from "../../../questioner/questioner.ask.tool.js";
+import { createQuestionerTools, createAskUserQuestionTools } from "../../../capabilities/questions.facade.js";
 
 // Re-export types for consumers
 export type { ToolContext, ResolvedToolContext, ProtocolDeps } from "../../../shared/agent/tool.helpers.js";

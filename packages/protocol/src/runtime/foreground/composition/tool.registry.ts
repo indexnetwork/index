@@ -13,7 +13,7 @@ import { createAgentTools } from '../../../agent/agent.tools.js';
 import { createNegotiationTools } from '../../../negotiation/negotiation.tools.js';
 import { createChatTools } from '../../../chat/chat.tools.js';
 import { createPremiseTools } from '../../../premise/premise.tools.js';
-import { createQuestionerTools } from '../../../questioner/questioner.tools.js';
+import { createQuestionerTools } from '../../../capabilities/questions.facade.js';
 import { protocolLogger } from '../../../shared/observability/protocol.logger.js';
 import { requestContext } from '../../../shared/observability/request-context.js';
 
