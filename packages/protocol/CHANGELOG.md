@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract safe negotiation lifecycle-to-narration presentation translation while
+  retaining lifecycle reads, tool IO, response assembly, and a compatibility
+  re-export in the negotiation tools facade (IND-530 Batch 11).
 - Move enforce-mode negotiation screen admission into the existing screen
   capability while retaining graph-owned routing, persistence, and lifecycle
   effects (IND-530 Batch 10).

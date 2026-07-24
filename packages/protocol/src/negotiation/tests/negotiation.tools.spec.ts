@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { createNegotiationTools } from "../negotiation.tools.js";
+import { buildLifecycleNarration, createNegotiationTools } from "../negotiation.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 type Fixture<T> = T extends (...args: any[]) => unknown
@@ -948,6 +948,32 @@ describe('list_negotiations — detail:"narrative"', () => {
     expect(byId['task-other'].lifecycle.lifecycleLabel).not.toMatch(/\b(?:I|you) accepted\b/i);
     expect(byId['task-owner'].lifecycle.directConversationEvidence).toBe('not_provided');
     expect(byId['task-other'].lifecycle.directConversationEvidence).toBe('not_provided');
+  });
+
+  test('lifecycle narration preserves active, waiting, lifecycle, and unavailable branch labels', () => {
+    expect(buildLifecycleNarration('active', { status: 'pending', acceptedByOwner: false })).toMatchObject({
+      agentNegotiation: 'in_progress',
+      connectionState: 'potential_match_awaiting_owner_review',
+      lifecycleLabel: "A potential match is awaiting the owner's review.",
+    });
+    expect(buildLifecycleNarration('waiting_for_agent', { status: 'negotiating', acceptedByOwner: false })).toMatchObject({
+      agentNegotiation: 'awaiting_agent',
+      connectionState: 'agents_negotiating',
+      lifecycleLabel: 'The agents are still negotiating; no owner decision is recorded.',
+    });
+    expect(buildLifecycleNarration('paused', { status: 'latent', acceptedByOwner: false })).toMatchObject({
+      agentNegotiation: 'unknown',
+      connectionState: 'latent',
+      lifecycleLabel: 'The potential match is latent; no owner decision is recorded.',
+    });
+    expect(buildLifecycleNarration('completed')).toEqual({
+      agentNegotiation: 'concluded',
+      opportunityStatus: null,
+      connectionState: 'unknown',
+      ownerAction: 'not_recorded',
+      directConversationEvidence: 'not_provided',
+      lifecycleLabel: 'The agent negotiation concluded; the current opportunity lifecycle is unavailable.',
+    });
   });
 });
 
