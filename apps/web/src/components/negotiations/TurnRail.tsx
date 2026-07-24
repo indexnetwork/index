@@ -79,19 +79,10 @@ export function TurnRail({ turns, ownAgentId, participantInfo, counterpartName, 
       {turns.map((turn, index) => {
         const isOwn = turn.senderId === ownAgentId;
         const info = participantInfo.get(turn.senderId);
-        const previousTurn = turns[index - 1];
-        const startsSession = previousTurn !== undefined && previousTurn.sessionId !== turn.sessionId;
         const seatLabel = isOwn ? 'Your agent' : `${info?.ownerName ?? counterpartName}'s agent`;
 
         return (
           <div key={turn.id}>
-            {startsSession && (
-              <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
-                <span className="h-px flex-1 bg-gray-200" />
-                <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">Earlier conversation</span>
-                <span className="h-px flex-1 bg-gray-200" />
-              </div>
-            )}
             <TurnItem
               turn={turn}
               isLast={index === turns.length - 1}

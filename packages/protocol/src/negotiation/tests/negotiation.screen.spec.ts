@@ -163,4 +163,45 @@ describe("NegotiationScreener.invoke", () => {
     const user = screener.capturedMessages.find((m) => m.role === "user")!.content;
     expect(user).toContain('Search query: "ML engineers"');
   });
+
+  it("renders prior dialogue + the continuation policy for continuations (IND-563)", async () => {
+    const screener = new SeamScreener({
+      decision: "pass",
+      reasoning: "stale premise",
+      evidence: { counterpartyPremiseFit: "", intentAlignment: "" },
+    });
+    await screener.invoke({
+      ...baseInput,
+      isContinuation: true,
+      priorDialogue: [
+        { action: "outreach", assessment: { reasoning: "initial reach", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: "hello Bob" },
+        { action: "decline", assessment: { reasoning: "not now", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: null },
+      ],
+    });
+
+    const user = screener.capturedMessages.find((m) => m.role === "user")!.content;
+    expect(user).toContain("Prior dialogue with Bob");
+    expect(user).toContain("Turn 1: outreach");
+    expect(user).toContain("hello Bob");
+    expect(user).toContain("NEW signal");
+    expect(user).toContain("on its own merits");
+  });
+
+  it("omits the prior-dialogue section when not a continuation (byte-identical path)", async () => {
+    const screener = new SeamScreener({
+      decision: "pass",
+      reasoning: "r",
+      evidence: { counterpartyPremiseFit: "", intentAlignment: "" },
+    });
+    // priorDialogue present but isContinuation not set → still omitted.
+    await screener.invoke({
+      ...baseInput,
+      priorDialogue: [
+        { action: "outreach", assessment: { reasoning: "x", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: null },
+      ],
+    });
+
+    const user = screener.capturedMessages.find((m) => m.role === "user")!.content;
+    expect(user).not.toContain("Prior dialogue with");
+  });
 });

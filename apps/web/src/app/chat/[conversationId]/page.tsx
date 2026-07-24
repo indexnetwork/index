@@ -9,9 +9,10 @@ import { useQuestionsService } from '@/contexts/APIContext';
 import { useOpportunityActions } from '@/hooks/useOpportunityActions';
 import TurnRail from '@/components/negotiations/TurnRail';
 import OutcomeBanner from '@/components/negotiations/OutcomeBanner';
+import OutcomeChip from '@/components/negotiations/OutcomeChip';
 import ResolvedBanner, { type ResolvedBannerVariant } from '@/components/negotiations/ResolvedBanner';
 import { useTickingNow } from '@/components/negotiations/use-ticking-now';
-import { extractTurn, formatRelativeTime, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+import { deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySession, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 
 const STALL_REASONS = new Set(['turn_cap', 'timeout']);
 
@@ -19,7 +20,7 @@ export default function NegotiationDetailPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { negotiations, messages, loadSessionHistory, loadPreviousSessionMessages, refreshNegotiations, sessionHistory } = useConversation();
+  const { negotiations, messages, loadSessionHistory, loadPreviousSessionMessages, refreshNegotiations, sessionHistory, sessionOpportunityMap } = useConversation();
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const now = useTickingNow();
@@ -75,18 +76,34 @@ export default function NegotiationDetailPage() {
   );
   const negotiatedRole = useMemo(() => viewerRoleLabel(turns, ownAgentId), [turns, ownAgentId]);
 
+  // IND-565: group turns by negotiation session (one session = one task = one opportunity).
+  const sessionGroups = useMemo(() => groupTurnsBySession(turns), [turns]);
+  const isMultiSession = sessionGroups.length > 1;
+
   const opportunityId = lifecycle?.opportunityId ?? null;
   const localStatus = opportunityId ? opportunityStatusMap[opportunityId] : undefined;
   const effectiveOpportunityStatus = localStatus ?? lifecycle?.opportunityStatus ?? null;
   const outcomeReason = lifecycle?.outcome?.reason ?? null;
 
+  // IND-566: Per-task turn count — turns in the latest session only, not cumulative
+  // across all prior tasks in this dm_pair. lifecycle.turnCount folds in priorTurnCount
+  // from earlier negotiations, so we recount from the loaded session groups instead.
+  const latestSessionTurns = useMemo(
+    () => sessionGroups[sessionGroups.length - 1]?.turns ?? turns,
+    [sessionGroups, turns],
+  );
+  const latestTaskTurnCount = latestSessionTurns.length > 0 ? latestSessionTurns.length : null;
+
   // The viewer's last ask_user turn — anchor for the missed-window decay line.
+  // Scoped to the latest session (the active task) only.
   const lastAskUserTurnId = useMemo(() => {
-    for (let i = turns.length - 1; i >= 0; i -= 1) {
-      if (turns[i].action === 'ask_user' && turns[i].senderId === ownAgentId) return turns[i].id;
+    for (let i = latestSessionTurns.length - 1; i >= 0; i -= 1) {
+      if (latestSessionTurns[i].action === 'ask_user' && latestSessionTurns[i].senderId === ownAgentId) {
+        return latestSessionTurns[i].id;
+      }
     }
     return null;
-  }, [turns, ownAgentId]);
+  }, [latestSessionTurns, ownAgentId]);
 
   // Missed-window decay (IND-559): the negotiation left input_required after
   // an ask_user pause with no answered consultation — the window lapsed (or
@@ -179,36 +196,133 @@ export default function NegotiationDetailPage() {
               </div>
             ) : null}
 
-            <TurnRail
-              turns={turns}
-              ownAgentId={ownAgentId}
-              participantInfo={participantInfo}
-              counterpartName={counterpartName}
-              now={now}
-              missedWindowTurnId={windowMissed ? lastAskUserTurnId : null}
-            />
+            {/* IND-565: per-opportunity negotiation sections.
+                Each sessionId group = one negotiation task over one opportunity.
+                Banners are scoped to the latest section so a WITHDRAWN chip in
+                an earlier task can’t be misread as applying to the current one. */}
+            {isMultiSession ? (
+              sessionGroups.map((group, groupIndex) => {
+                const isLatest = groupIndex === sessionGroups.length - 1;
+                const firstTurn = group.turns[0];
 
-            {showOutcomeBanner && opportunityId && (
-              <OutcomeBanner
-                counterpartName={counterpartName}
-                role={negotiatedRole}
-                turnCount={lifecycle?.turnCount ?? null}
-                concludedLabel={lifecycle?.updatedAt ? formatRelativeTime(lifecycle.updatedAt, now) : null}
-                loading={opportunityActionLoading[opportunityId] === true}
-                onStartChat={() => void handleOpportunityAction(opportunityId, 'accepted', counterpartUserId, undefined, counterpartName)}
-                onPass={() => void handleOpportunityAction(opportunityId, 'rejected', counterpartUserId, undefined, counterpartName)}
-              />
-            )}
+                // IND-570: resolve opportunity attribution for this section.
+                // sessionOpportunityMap is keyed by sessionId (populated when
+                // session history is loaded). We then look up the viewer's
+                // intent title from conversation.via[] using the opportunityId.
+                const sessionOpp = group.sessionId ? sessionOpportunityMap.get(group.sessionId) : undefined;
+                const viaEntry = sessionOpp?.opportunityId
+                  ? conversation?.via.find((v) => v.opportunityId === sessionOpp.opportunityId)
+                  : null;
+                const opportunityTitle = viaEntry?.title ?? null;
+                const opportunityStatus = sessionOpp?.status ?? null;
 
-            {resolvedVariant && (
-              <ResolvedBanner
-                variant={resolvedVariant}
-                reason={outcomeReason}
-                turnCount={lifecycle?.turnCount ?? null}
-                maxTurns={lifecycle?.maxTurns ?? null}
-                onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
-                onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
-              />
+                // Older sections: show opportunity title + outcome chip + date.
+                // Latest section: use the viewer's own opportunity intent title
+                // from the conversation's signal provenance (via[0]).
+                const sectionLabel = deriveSectionLabel({
+                  isLatest,
+                  firstTurnCreatedAt: firstTurn?.createdAt ?? null,
+                  opportunityTitle,
+                  opportunityStatus,
+                  latestSectionTitle: conversation?.via[0]?.title ?? null,
+                });
+
+                return (
+                  <section key={group.sessionId ?? `group-${groupIndex}`} aria-label={sectionLabel}>
+                    {/* Section divider — separates this task from the preceding one */}
+                    <div className="flex items-center gap-3 py-3" role="separator">
+                      <span className="h-px flex-1 bg-gray-200" />
+                      {/* IND-570: older attributed sections show title + chip + date inline.
+                           Older unattributed sections and the latest section show plain text. */}
+                      {!isLatest && opportunityTitle ? (
+                        <span className="flex items-center gap-1.5 min-w-0" aria-hidden="true">
+                          <span className="text-[10px] font-ibm-plex-mono text-gray-500 truncate max-w-[180px]">
+                            {opportunityTitle}
+                          </span>
+                          <OutcomeChip status={opportunityStatus} />
+                          {firstTurn && (
+                            <span className="text-[10px] font-ibm-plex-mono text-gray-400 shrink-0">
+                              {
+                                new Date(firstTurn.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric' })
+                              }
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400" aria-hidden="true">
+                          {sectionLabel}
+                        </span>
+                      )}
+                      <span className="h-px flex-1 bg-gray-200" />
+                    </div>
+                    <TurnRail
+                      turns={group.turns}
+                      ownAgentId={ownAgentId}
+                      participantInfo={participantInfo}
+                      counterpartName={counterpartName}
+                      now={now}
+                      missedWindowTurnId={isLatest && windowMissed ? lastAskUserTurnId : null}
+                    />
+                    {/* Outcome banners are scoped to the latest section (IND-566). */}
+                    {isLatest && showOutcomeBanner && opportunityId && (
+                      <OutcomeBanner
+                        counterpartName={counterpartName}
+                        role={negotiatedRole}
+                        turnCount={latestTaskTurnCount}
+                        concludedLabel={lifecycle?.updatedAt ? formatRelativeTime(lifecycle.updatedAt, now) : null}
+                        loading={opportunityActionLoading[opportunityId] === true}
+                        onStartChat={() => void handleOpportunityAction(opportunityId, 'accepted', counterpartUserId, undefined, counterpartName)}
+                        onPass={() => void handleOpportunityAction(opportunityId, 'rejected', counterpartUserId, undefined, counterpartName)}
+                      />
+                    )}
+                    {isLatest && resolvedVariant && (
+                      <ResolvedBanner
+                        variant={resolvedVariant}
+                        reason={outcomeReason}
+                        turnCount={latestTaskTurnCount}
+                        maxTurns={lifecycle?.maxTurns ?? null}
+                        onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
+                        onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
+                      />
+                    )}
+                  </section>
+                );
+              })
+            ) : (
+              // Single-session (common case): no section divider, but still use
+              // latestTaskTurnCount so the banner doesn’t inherit priorTurnCount
+              // from earlier tasks that ran before this one (IND-566).
+              <>
+                <TurnRail
+                  turns={turns}
+                  ownAgentId={ownAgentId}
+                  participantInfo={participantInfo}
+                  counterpartName={counterpartName}
+                  now={now}
+                  missedWindowTurnId={windowMissed ? lastAskUserTurnId : null}
+                />
+                {showOutcomeBanner && opportunityId && (
+                  <OutcomeBanner
+                    counterpartName={counterpartName}
+                    role={negotiatedRole}
+                    turnCount={latestTaskTurnCount}
+                    concludedLabel={lifecycle?.updatedAt ? formatRelativeTime(lifecycle.updatedAt, now) : null}
+                    loading={opportunityActionLoading[opportunityId] === true}
+                    onStartChat={() => void handleOpportunityAction(opportunityId, 'accepted', counterpartUserId, undefined, counterpartName)}
+                    onPass={() => void handleOpportunityAction(opportunityId, 'rejected', counterpartUserId, undefined, counterpartName)}
+                  />
+                )}
+                {resolvedVariant && (
+                  <ResolvedBanner
+                    variant={resolvedVariant}
+                    reason={outcomeReason}
+                    turnCount={latestTaskTurnCount}
+                    maxTurns={lifecycle?.maxTurns ?? null}
+                    onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
+                    onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
+                  />
+                )}
+              </>
             )}
             <div ref={messagesEndRef} />
           </div>

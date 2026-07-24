@@ -17,6 +17,7 @@ import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId, validateInflightAskUserFields } from './negotiation.question-safety.js';
+import { attributedDialogueIsEmpty, buildSeededAttribution, combineAttributedDialogue, type AttributedPriorDialogue, type TaskAttribution } from './negotiation.attribution.js';
 
 const logger = protocolLogger("NegotiationGraph");
 const initLog = protocolLogger("NegotiationGraph:Init");
@@ -128,6 +129,62 @@ export class NegotiationGraphFactory {
         });
         return [];
       }
+    };
+
+    /**
+     * IND-569: resolve a prior negotiation task's attribution metadata for the
+     * per-opportunity prior-dialogue labels. Never throws — any failure returns
+     * null so the turns degrade to the unattributed block instead of leaking
+     * into the current opportunity's context.
+     */
+    const resolveTaskAttribution = async (taskId: string): Promise<TaskAttribution | null> => {
+      try {
+        const task = await database.getTask(taskId);
+        if (!task) return null;
+        const md = (task.metadata ?? {}) as Record<string, unknown>;
+        const opportunityId = typeof md.opportunityId === 'string' && md.opportunityId.length > 0 ? md.opportunityId : null;
+        const snapshots = Array.isArray(md.intentSnapshots) ? (md.intentSnapshots as Array<Record<string, unknown>>) : [];
+        const sourceIntentId = typeof md.sourceIntentId === 'string' ? md.sourceIntentId : null;
+        const snap = snapshots.find((s) => s && s.intentId === sourceIntentId) ?? snapshots[0];
+        const opportunityTitle = snap && typeof snap.title === 'string' && snap.title.trim().length > 0 ? (snap.title as string) : null;
+        let outcome: string | null = null;
+        try {
+          const artifacts = await database.getArtifactsForTask(taskId);
+          const outArtifact = artifacts.find((a) => a.name === 'negotiation-outcome');
+          if (outArtifact) {
+            const firstPart = Array.isArray(outArtifact.parts) ? (outArtifact.parts[0] as Record<string, unknown> | undefined) : undefined;
+            const data = firstPart?.data as Record<string, unknown> | undefined;
+            if (data && typeof data.hasOpportunity === 'boolean') {
+              outcome = data.hasOpportunity ? 'accepted' : (data.reason === 'screened_out' ? 'not pursued' : 'declined');
+            } else if (typeof outArtifact.metadata?.continuationOutcome === 'string') {
+              outcome = outArtifact.metadata.continuationOutcome as string;
+            }
+          }
+        } catch { /* outcome stays null; header degrades to "outcome unknown" */ }
+        const concludedAt = task.updatedAt instanceof Date
+          ? task.updatedAt.toISOString()
+          : (task.updatedAt ? new Date(task.updatedAt as unknown as string).toISOString() : null);
+        return { opportunityId, opportunityTitle, outcome, concludedAt };
+      } catch {
+        return null;
+      }
+    };
+
+    /**
+     * IND-569: build the attributed prior dialogue passed to the screener and
+     * turn prompts. Combines the immutable seeded attribution (earlier + legacy
+     * unattributed blocks, resolved once in init) with this session's own turns
+     * (task-id-matched). Null when there is no seeded attribution.
+     */
+    const buildAttributedDialogue = (
+      state: typeof NegotiationGraphState.State,
+    ): AttributedPriorDialogue | null => {
+      if (!state.isContinuation || !state.priorAttribution) return null;
+      const currentSessionTurns = turnsFromMessages(
+        state.messages.filter((m) => (m as { taskId?: string | null }).taskId === state.taskId),
+      );
+      const dialogue = combineAttributedDialogue(state.priorAttribution, currentSessionTurns);
+      return attributedDialogueIsEmpty(dialogue) ? null : dialogue;
     };
 
     /** Similarity query text: seed reasoning + counterparty context. */
@@ -352,14 +409,30 @@ export class NegotiationGraphFactory {
             })
           : [];
 
-        // Seed messages with prior turns (additive reducer appends new turns on top)
+        // Seed messages with prior turns (additive reducer appends new turns on top).
+        // taskId is preserved so the turn/screen nodes can separate this
+        // session's turns from seeded prior-task turns (IND-569).
         const seedMessages = isContinuation ? priorMessages.map((m) => ({
           id: m.id,
           senderId: m.senderId,
           role: 'agent' as const,
           parts: m.parts,
           createdAt: m.createdAt,
+          taskId: (m as { taskId?: string | null }).taskId ?? null,
         })) : [];
+
+        // IND-569: attribute seeded prior turns to their originating opportunity
+        // once, up front. Earlier-opportunity and legacy unattributed blocks are
+        // immutable for the session; the current block is composed per turn.
+        const priorAttribution = isContinuation
+          ? await buildSeededAttribution(
+              priorMessages
+                .map((m) => ({ taskId: (m as { taskId?: string | null }).taskId ?? null, turn: turnsFromMessages([m])[0] }))
+                .filter((e): e is { taskId: string | null; turn: NegotiationTurn } => Boolean(e.turn)),
+              state.opportunityId,
+              resolveTaskAttribution,
+            )
+          : null;
 
         return {
           conversationId: conversation.id,
@@ -371,6 +444,7 @@ export class NegotiationGraphFactory {
           initiatorUserId,
           protocolVersion,
           priorTurnCount: priorTurns.length,
+          ...(priorAttribution && { priorAttribution }),
           ...(userAnswers.length > 0 && { userAnswers }),
           ...(exactContinuation?.execution.consultation
             ? { privateConsultation: exactContinuation.execution.consultation }
@@ -425,6 +499,14 @@ export class NegotiationGraphFactory {
       let decision: ScreenDecision;
       let failedOpen = false;
       let screenError: string | undefined;
+      // On continuations the seeded prior turns are the dialogue this pair
+      // already had. Pass them so the gate evaluates the NEW signal
+      // (discoveryQuery / seedAssessment) on its own merits with that context
+      // available — mirroring the continuation policy in negotiation.agent.ts
+      // ("if materially different, evaluate on its own merits").
+      const priorDialogue = state.isContinuation ? turnsFromMessages(state.messages) : [];
+      // IND-569: labeled per-opportunity attribution of that prior dialogue.
+      const attributedPrior = buildAttributedDialogue(state);
       try {
         const counterpartyContext = (await database.getUserContext(counterpartyUser.id, null).catch(() => null))?.text ?? "";
         decision = await screener.invoke({
@@ -437,6 +519,8 @@ export class NegotiationGraphFactory {
           ...(clientIsSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
           seedAssessment: state.seedAssessment,
           indexContext: state.indexContext,
+          ...(priorDialogue.length > 0 && { isContinuation: true, priorDialogue }),
+          ...(attributedPrior && { isContinuation: true, priorDialogueAttributed: attributedPrior }),
         });
       } catch (err) {
         // Fail open: a screen failure must never block a negotiation.
@@ -518,6 +602,9 @@ export class NegotiationGraphFactory {
 
       try {
         const history: NegotiationTurn[] = turnsFromMessages(state.messages);
+        // IND-569: labeled per-opportunity attribution of prior dialogue on a
+        // continuation. Null on fresh runs (history renders flat, unchanged).
+        const attributedPrior = buildAttributedDialogue(state);
 
         const isSource = state.currentSpeaker === "source";
         const ownUser = isSource ? state.sourceUser : state.candidateUser;
@@ -598,6 +685,7 @@ export class NegotiationGraphFactory {
           protocolVersion: version,
           allowedActions: [...allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable })],
           ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
+          ...(attributedPrior && { priorDialogue: attributedPrior }),
           ...(ownMemory.length > 0 && { negotiatorMemory: ownMemory }),
           ...(state.privateConsultation?.recipientUserId === ownUser.id
             ? { privateConsultation: state.privateConsultation }
@@ -658,6 +746,7 @@ export class NegotiationGraphFactory {
             protocolVersion: version,
             ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
             isContinuation: state.isContinuation,
+            ...(attributedPrior && { priorDialogue: attributedPrior }),
             ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
             ...(askUserAvailable && { canAskUser: true }),
             ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
@@ -780,6 +869,34 @@ export class NegotiationGraphFactory {
               threshold: deadlockShiftRecord.threshold,
             });
           }
+        }
+
+        // ─── IND-564: `withdraw` requires a prior in-task outreach ────────────
+        // `withdraw` semantically retracts an outreach the initiator made. In a
+        // continuation whose first initiator move is `withdraw` (or any withdraw
+        // before this task opened outreach), there is nothing to retract —
+        // persisting it would drop a spurious "connection withdrawn" message
+        // into the shared dm_pair thread as if an accepted connection were
+        // pulled. Seeded prior-task turns (state.messages) do NOT count as an
+        // in-task outreach. Map it to the quiet screen-out outcome instead: no
+        // message persisted, turnCount unchanged, opportunity quietly rejected
+        // in finalize. This is the backstop for whatever the screen gate (IND-
+        // 563) does not catch (screen off/shadow, or a fail-open reach_out).
+        //
+        // Exact ask_user resumes (continuationExecution) are exempt: the
+        // successor task is the SAME logical negotiation resumed after the
+        // client answered, so a post-consultation `withdraw` is a legitimate
+        // terminal decision, not an opening move.
+        if (turn.action === 'withdraw' && !state.outreachOpened && !state.continuationExecution) {
+          turnLog.info('negotiation_opening_withdraw_screened_out', {
+            taskId: state.taskId,
+            opportunityId: state.opportunityId || undefined,
+            seat,
+            turnCount: state.turnCount,
+            isContinuation: state.isContinuation,
+          });
+          traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: "screened_out: opening withdraw" });
+          return { lastTurn: turn, firstTurnScreenedOut: true };
         }
 
         const parts = [{ kind: "data" as const, data: turn }];
@@ -925,6 +1042,7 @@ export class NegotiationGraphFactory {
               role: "agent" as const,
               parts: message.parts,
               createdAt: message.createdAt,
+              taskId: state.taskId,
             }],
             turnCount: state.turnCount + 1,
             lastTurn: turn,
@@ -957,11 +1075,14 @@ export class NegotiationGraphFactory {
             role: "agent" as const,
             parts: message.parts,
             createdAt: message.createdAt,
+            taskId: state.taskId,
           }],
           turnCount: state.turnCount + 1,
           currentSpeaker: (isSource ? "candidate" : "source") as "source" | "candidate",
           lastTurn: turn,
           memoryBySide: { [ownSide]: ownMemory },
+          // Record the in-task outreach so a later `withdraw` is legal (IND-564).
+          ...(turn.action === 'outreach' && { outreachOpened: true }),
           ...(deadlockShiftRecord && { deadlockShift: deadlockShiftRecord }),
         };
       } catch (err) {
@@ -1057,7 +1178,10 @@ export class NegotiationGraphFactory {
       const hasOpportunity = lastTurn?.action === "accept";
       // P2.2: the client's own outreach gate declined before any turn — the
       // negotiation never happened from the counterparty's perspective.
-      const screenedOut = isScreenBlocked(state);
+      // IND-564: an opening-move `withdraw` blocked before any message was
+      // persisted is the same quiet screen-out outcome (no in-task outreach to
+      // retract), reached from the turn node rather than the screen node.
+      const screenedOut = isScreenBlocked(state) || state.firstTurnScreenedOut === true;
       const atCap = !screenedOut && (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
@@ -1078,7 +1202,7 @@ export class NegotiationGraphFactory {
         hasOpportunity,
         agreedRoles,
         reasoning: screenedOut
-          ? (state.screenDecision?.reasoning ?? "")
+          ? (state.screenDecision?.reasoning ?? lastTurn?.assessment?.reasoning ?? "")
           : (lastTurn?.assessment.reasoning ?? ""),
         turnCount: state.turnCount,
         ...(screenedOut
@@ -1279,9 +1403,14 @@ export class NegotiationGraphFactory {
       })
       .addConditionalEdges("init", (state: typeof NegotiationGraphState.State) => {
         if (state.error) return "finalize";
-        // Screen gate: fresh negotiations only (continuations already passed
-        // the gate when the dialogue opened); off disables the node entirely.
-        if (!state.isContinuation && configuredScreenMode() !== "off") return "screen";
+        // Screen gate (P2.1). Runs on fresh negotiations AND regular
+        // continuations (IND-563): a new opportunity/intent reusing an existing
+        // conversation must still pass the outreach gate before entering the
+        // shared thread — a bad continuation match should be quietly screened
+        // out, never dropped into the dm_pair. Exact ask_user resumes
+        // (continuationExecution) are mid-flight and must never be re-screened.
+        // `off` disables the node entirely.
+        if (configuredScreenMode() !== "off" && !state.continuationExecution) return "screen";
         return "turn";
       }, { screen: "screen", turn: "turn", finalize: "finalize" })
       // P2.2: enforce-mode pass → finalize (screened_out); everything else → turn.

@@ -5,6 +5,8 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import type { UserNegotiationContext, SeedAssessment } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
+import type { NegotiationTurn } from "./negotiation.state.js";
+import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "./negotiation.attribution.js";
 
 const screenLog = protocolLogger("NegotiationScreener");
 
@@ -93,6 +95,28 @@ export interface NegotiationScreenerInput {
    * → the prompt is byte-identical to before.
    */
   memory?: NegotiatorMemoryEntry[];
+  /**
+   * Whether this screen is for a continuation — a match against a counterparty
+   * this client already has prior dialogue with (IND-563). When set with
+   * `priorDialogue`, the gate evaluates the NEW signal on its own merits with
+   * that dialogue as context. Absent → the prompt is byte-identical to before.
+   */
+  isContinuation?: boolean;
+  /**
+   * Prior negotiation turns with this counterparty (continuations only).
+   * Rendered as read-only context so the gate can tell a materially-new signal
+   * from a rehash of an already-settled one. Never treated as this task's own
+   * outreach.
+   */
+  priorDialogue?: NegotiationTurn[];
+  /**
+   * Attributed form of the prior dialogue (IND-569). When present it supersedes
+   * the flat `priorDialogue` list: earlier concluded opportunities and legacy
+   * unattributed turns render as labeled, separated blocks so the gate can see
+   * which prior turns belonged to OTHER opportunities. Absent → the flat
+   * `priorDialogue` rendering is used (byte-identical to before).
+   */
+  priorDialogueAttributed?: AttributedPriorDialogue;
 }
 
 const SYSTEM_PROMPT = `You are the outreach gate for {clientName}'s negotiator agent on a discovery network. Before any negotiation turn is exchanged, you decide whether this match is worth reaching out to on {clientName}'s behalf — their name and attention are spent with every outreach.
@@ -157,6 +181,26 @@ export class NegotiationScreener {
     const formatIntents = (intents: UserNegotiationContext["intents"]): string =>
       intents.length > 0 ? intents.map((i) => `- ${i.title}: ${i.description}`).join("\n") : "- (none)";
 
+    const formatScreenTurn = (t: NegotiationTurn, i: number) => {
+      const msgPart = t.message ? ` — ${t.message}` : "";
+      return `Turn ${i + 1}: ${t.action} — ${t.assessment.reasoning}${msgPart}`;
+    };
+
+    // IND-569: prefer the attributed rendering (labeled per-opportunity blocks)
+    // when the graph supplies it; otherwise fall back to the flat prior-turn list.
+    const hasAttributed = input.isContinuation
+      && input.priorDialogueAttributed != null
+      && !attributedDialogueIsEmpty(input.priorDialogueAttributed);
+    const flatPriorDialogue = input.isContinuation && input.priorDialogue && input.priorDialogue.length > 0
+      ? input.priorDialogue
+      : [];
+    const priorDialogueBody = hasAttributed
+      ? renderAttributedPriorDialogue(input.priorDialogueAttributed!, formatScreenTurn)
+      : (flatPriorDialogue.length > 0 ? flatPriorDialogue.map(formatScreenTurn).join("\n") : "");
+    const priorDialogueContext = priorDialogueBody
+      ? `\n\n--- Prior dialogue with ${counterpartyName} (already spoken) ---\n${priorDialogueBody}\n\nThis is a NEW signal against a counterparty ${clientName} has prior dialogue with. Some turns above may belong to OTHER, already-concluded opportunities (each block is labeled); they are background only. Judge the new signal on its own merits: if it is materially the same as what was already discussed, pass unless something concrete changed; if materially different, judge it fresh. Do NOT reach out again on generic overlap just because they spoke before.`
+      : "";
+
     const userMessage = `YOUR CLIENT (${clientName}):
 Bio: ${input.clientUser.profile.bio ?? "N/A"}
 ${input.discoveryQuery ? `Search query: "${input.discoveryQuery}"\nBackground intents (secondary to the query):` : "Active intents:"}
@@ -167,7 +211,7 @@ Bio: ${input.counterpartyUser.profile.bio ?? "N/A"}
 ${input.counterpartyContext ? `Context: ${input.counterpartyContext}\n` : ""}Active intents:
 ${formatIntents(input.counterpartyUser.intents)}
 
-Why this match was suggested: ${input.seedAssessment.reasoning}
+Why this match was suggested: ${input.seedAssessment.reasoning}${priorDialogueContext}
 
 Decide whether reaching out serves ${clientName}.`;
 

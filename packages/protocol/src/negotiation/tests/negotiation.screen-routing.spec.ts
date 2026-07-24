@@ -14,7 +14,10 @@ import type { NegotiationTurn } from "../negotiation.state.js";
  *   metadata write,
  * - shadow: fresh runs screen exactly once, decision persisted to
  *   metadata.screenDecision, negotiation always proceeds (even on `pass`),
- * - continuations never screen (even in shadow),
+ * - regular continuations DO screen (IND-563): a new opportunity reusing an
+ *   existing conversation must pass the outreach gate; a shadow `pass` still
+ *   proceeds, an enforce `pass` screens it out with zero new messages,
+ * - exact ask_user resumes (continuationExecution) are never re-screened,
  * - screen failure fails OPEN: negotiation proceeds, failedOpen recorded,
  * - enforce (P2.2): a genuine `pass` blocks before the first turn — zero
  *   messages, outcome reason `screened_out`, opportunity quietly `rejected`,
@@ -202,7 +205,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome).not.toBeNull();
   });
 
-  it("shadow: continuations never screen", async () => {
+  it("shadow: regular continuations screen once but still proceed (IND-563)", async () => {
     process.env.NEGOTIATION_SCREEN_MODE = "shadow";
     const stubs = mkStubs({
       priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
@@ -210,8 +213,13 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
 
     const result = await runGraph(stubs);
 
-    expect(screenerInputs.length).toBe(0);
-    expect(stubs.screenWrites.length).toBe(0);
+    // IND-563: the continuation is screened (prior dialogue forwarded), but a
+    // shadow decision never blocks — the negotiation proceeds to a turn.
+    expect(screenerInputs.length).toBe(1);
+    expect(screenerInputs[0].isContinuation).toBe(true);
+    expect(screenerInputs[0].priorDialogue?.length).toBe(2);
+    expect(stubs.screenWrites.length).toBe(1);
+    expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
     expect(result.outcome).not.toBeNull();
   });
 
@@ -326,24 +334,30 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome?.reason).not.toBe("screened_out");
   });
 
-  it("enforce (P2.2): continuations never screen — enforcement cannot touch in-flight dialogues", async () => {
+  it("enforce (P2.2): a regular continuation `pass` screens out — zero new messages, rejected (IND-563)", async () => {
     process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     screenerResult = {
       decision: "pass",
-      reasoning: "would block if it ran",
+      reasoning: "stale premise; not worth reaching out again",
       evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
     };
     const stubs = mkStubs({
       priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
     });
 
-    const result = await runGraph(stubs);
+    const result = await runGraph(stubs, { opportunityId: "opp-1" });
 
-    expect(screenerInputs.length).toBe(0);
-    expect(stubs.screenWrites.length).toBe(0);
-    expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
-    expect(result.outcome).not.toBeNull();
-    expect(result.outcome?.reason).not.toBe("screened_out");
+    // IND-563: the continuation is screened and, on a genuine enforce `pass`,
+    // blocked before any turn — no NEW message lands in the shared thread.
+    expect(screenerInputs.length).toBe(1);
+    expect(screenerInputs[0].isContinuation).toBe(true);
+    expect(stubs.createdMessages.length).toBe(0);
+    expect(result.outcome?.hasOpportunity).toBe(false);
+    expect(result.outcome?.reason).toBe("screened_out");
+    expect(stubs.statusUpdates).toEqual([
+      { opportunityId: "opp-1", status: "negotiating" },
+      { opportunityId: "opp-1", status: "rejected" },
+    ]);
   });
 
   it("emits a negotiation_screen trace event when an opportunityId is present", async () => {

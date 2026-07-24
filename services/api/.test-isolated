@@ -9,6 +9,7 @@
 # `.isolated.ts` and add it here before it can affect sibling imports.
 # Audit module mocks with: grep -rlE 'mock\.module' src tests --include='*.spec.ts' --include='*.test.ts' --include='*.isolated.ts'
 # Audit env writes with: rg 'process\.env\.[A-Z0-9_]+\s*(\?\?=|\|\|=|=)|delete process\.env' src tests
+src/adapters/tests/rejection-cooldown.adapter.isolated.ts
 src/adapters/tests/scraper.adapter.isolated.ts
 src/adapters/tests/storage.adapter.isolated.ts
 src/controllers/tests/network.controller.isolated.ts
