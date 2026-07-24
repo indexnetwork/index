@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { useEffect } from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import ChatSidebar from '../ChatSidebar';
@@ -39,35 +40,112 @@ const messageConversation: ConversationSummary = {
   createdAt: '2025-06-11T12:00:00.000Z',
 };
 
+function negotiation(
+  id: string,
+  counterpartName: string,
+  input: {
+    state?: NonNullable<ConversationSummary['negotiation']>['state'];
+    opportunityStatus?: NonNullable<ConversationSummary['negotiation']>['opportunityStatus'];
+    action?: string;
+    senderId?: string;
+    turnCount?: number;
+  } = {},
+): ConversationSummary {
+  return {
+    id,
+    participants: [
+      { participantId: 'agent:me', participantType: 'agent', name: 'Index Negotiator', avatar: null, ownerName: 'Viewer' },
+      { participantId: `agent:${id}-peer`, participantType: 'agent', name: 'Index Negotiator', avatar: null, ownerName: counterpartName },
+    ],
+    lastMessage: {
+      parts: [{ kind: 'data', data: { action: input.action ?? 'counter' } }],
+      senderId: input.senderId ?? `agent:${id}-peer`,
+      createdAt: '2026-07-24T11:00:00.000Z',
+    },
+    metadata: null,
+    via: [],
+    unreadCount: 0,
+    lastMessageAt: '2026-07-24T11:00:00.000Z',
+    createdAt: '2026-07-24T10:00:00.000Z',
+    negotiation: {
+      taskId: `${id}-task`,
+      state: input.state ?? 'working',
+      statusTimestamp: '2026-07-24T11:00:00.000Z',
+      opportunityId: `${id}-opportunity`,
+      opportunityStatus: input.opportunityStatus ?? 'negotiating',
+      acceptedByViewer: false,
+      turnCount: input.turnCount ?? 1,
+      maxTurns: 6,
+      signalCount: 2,
+      outcome: null,
+      updatedAt: '2026-07-24T11:00:00.000Z',
+    },
+  };
+}
+
+const answerNegotiation = negotiation('question', 'Mira Chen', {
+  state: 'input_required',
+  action: 'ask_user',
+  senderId: 'agent:me',
+});
+
 const mocks = vi.hoisted(() => ({
   conversations: [] as ConversationSummary[],
+  negotiations: [] as ConversationSummary[],
+  features: undefined as { negotiatorChat?: boolean } | undefined,
+  apiGet: vi.fn(),
+  apiPost: vi.fn(),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuthContext: () => ({ user: viewer }),
+  useAuthContext: () => ({ user: viewer, features: mocks.features }),
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({
     conversations: mocks.conversations,
-    negotiations: [],
+    negotiations: mocks.negotiations,
+    isConnected: true,
     refreshConversations: vi.fn(async () => {}),
     refreshNegotiations: vi.fn(async () => {}),
     hideConversation: vi.fn(async () => {}),
   }),
 }));
 
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  apiClient: { get: mocks.apiGet, post: mocks.apiPost },
+}));
+
+const currentPath = { value: '/' };
+
+function LocationProbe() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    currentPath.value = pathname;
+  }, [pathname]);
+  return null;
+}
+
 function renderSidebar() {
   return render(
     <MemoryRouter initialEntries={['/chat']}>
+      <LocationProbe />
       <ChatSidebar />
     </MemoryRouter>,
   );
 }
 
+async function openNegotiationsTab() {
+  fireEvent.click(screen.getByRole('button', { name: /^Negotiations/ }));
+  // Wait for the first refresh to settle so empty-state assertions are stable.
+  await waitFor(() => expect(screen.queryByTestId('chat-sidebar-skeleton')).not.toBeInTheDocument());
+}
+
 describe('ChatSidebar conversation preview wiring (IND-504)', () => {
   it('renders the muted placeholder for a row with lastMessage: null and the excerpt for a real message', async () => {
     mocks.conversations = [emptyConversation, messageConversation];
+    mocks.negotiations = [];
     renderSidebar();
 
     // Excerpt row: real last message, standard excerpt styling, no placeholder.
@@ -98,10 +176,121 @@ describe('ChatSidebar conversation preview wiring (IND-504)', () => {
         metadata: { matchReason: 'RAW_MATCH_REASON', interpretation: { reasoning: 'RAW_REASONING' } } as unknown as ConversationSummary['metadata'],
       },
     ];
+    mocks.negotiations = [];
     renderSidebar();
 
     expect(await screen.findByTestId('conversation-preview-empty')).toHaveTextContent('No messages yet');
     expect(screen.queryByText(/RAW_MATCH_REASON/)).not.toBeInTheDocument();
     expect(screen.queryByText(/RAW_REASONING/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ChatSidebar negotiations tab (IND-523)', () => {
+  it('shows the your-move badge on the toggle only when action is needed', () => {
+    mocks.conversations = [];
+    mocks.negotiations = [answerNegotiation];
+    const { unmount } = renderSidebar();
+
+    const badge = screen.getByTestId('chat-negotiations-your-move-badge');
+    expect(badge).toHaveTextContent('1');
+    // Self-scoped pill: fixed 16px height, no segment padding/flex inheritance.
+    expect(badge.className).toContain('h-4');
+    expect(badge.className).toContain('flex-none');
+    unmount();
+
+    mocks.negotiations = [];
+    renderSidebar();
+    expect(screen.queryByTestId('chat-negotiations-your-move-badge')).not.toBeInTheDocument();
+  });
+
+  it('renders chip rows in posture order with muted resolved rows', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [
+      negotiation('resolved', 'Jonas Berg', { opportunityStatus: 'rejected', action: 'decline' }),
+      negotiation('waiting', 'Tom Wolfe', { turnCount: 0 }),
+      negotiation('live', 'Aisha Khan', { turnCount: 3 }),
+      answerNegotiation,
+    ];
+    renderSidebar();
+    await openNegotiationsTab();
+
+    const names = ['Mira Chen', 'Aisha Khan', 'Tom Wolfe', 'Jonas Berg'];
+    const rows = names.map((name) => screen.getByText(name));
+    for (let i = 1; i < rows.length; i += 1) {
+      expect(rows[i - 1].compareDocumentPosition(rows[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+
+    // Chip labels come from the shared inbox projection.
+    expect(screen.getByText('Answer your agent')).toBeInTheDocument();
+    expect(screen.getByText('● Live · turn 3 of 6')).toBeInTheDocument();
+    expect(screen.getByText('Waiting on their agent')).toBeInTheDocument();
+    expect(screen.getByText('No opportunity')).toBeInTheDocument();
+
+    // Subline: N signals · last move · timeAgo.
+    expect(screen.getByText(/2 signals · your agent asked for guidance ·/)).toBeInTheDocument();
+
+    // Resolved rows are visually retired.
+    const resolvedRow = screen.getByText('Jonas Berg').closest('div[class*="opacity-80"]');
+    expect(resolvedRow).not.toBeNull();
+  });
+
+  it('shows mode-aware empty copy and the persistent inbox footer link', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [];
+    renderSidebar();
+    await openNegotiationsTab();
+
+    expect(screen.getByText('No negotiations yet')).toBeInTheDocument();
+    expect(screen.getByText('Your agents’ connection work will appear here.')).toBeInTheDocument();
+    expect(screen.getByText(/View all in Negotiations inbox/)).toBeInTheDocument();
+    expect(screen.queryByText('No messages yet')).not.toBeInTheDocument();
+  });
+
+  it('labels the a2a row menu action Hide', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [answerNegotiation];
+    renderSidebar();
+    await openNegotiationsTab();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Negotiation options' }));
+    expect(screen.getByText('Hide')).toBeInTheDocument();
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+  });
+
+  it('routes answer rows to the transcript when the negotiator chat is unavailable', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [answerNegotiation];
+    mocks.features = undefined;
+    renderSidebar();
+    await openNegotiationsTab();
+
+    fireEvent.click(screen.getByText('Mira Chen'));
+    await waitFor(() => expect(currentPath.value).toBe('/chat/question'));
+    expect(mocks.apiGet).not.toHaveBeenCalled();
+  });
+
+  it('routes answer rows to the negotiator DM when the session exists', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [answerNegotiation];
+    mocks.features = { negotiatorChat: true };
+    mocks.apiGet.mockResolvedValue({ sessions: [{ id: 'negotiator-session' }] });
+    renderSidebar();
+    await openNegotiationsTab();
+
+    fireEvent.click(screen.getByText('Mira Chen'));
+    await waitFor(() => expect(currentPath.value).toBe('/d/negotiator-session'));
+    expect(mocks.apiGet).toHaveBeenCalledWith('/chat/sessions?persona=negotiator');
+    mocks.features = undefined;
+    mocks.apiGet.mockReset();
+  });
+
+  it('routes live rows to the transcript', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [negotiation('live', 'Aisha Khan', { turnCount: 3 })];
+    renderSidebar();
+    await openNegotiationsTab();
+
+    fireEvent.click(screen.getByText('Aisha Khan'));
+    await waitFor(() => expect(currentPath.value).toBe('/chat/live'));
   });
 });
