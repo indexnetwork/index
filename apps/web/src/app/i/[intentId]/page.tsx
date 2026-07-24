@@ -8,7 +8,7 @@ import { FocusScope } from "@radix-ui/react-focus-scope";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
+import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
 import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
@@ -30,6 +30,7 @@ import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/que
 import { cn } from "@/lib/utils";
 import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
 import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
+import { deriveLiveNegotiations, formatLatestMove, liveNegotiationsByOpportunity } from "@/lib/negotiation-presence";
 import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
@@ -569,6 +570,29 @@ export default function IntentDetailPage() {
   const negotiationActivityRevision = useMemo(
     () => intentNegotiationActivityRevision(negotiations, intentId),
     [intentId, negotiations],
+  );
+
+  // Ambient negotiation presence (Option C): in-flight negotiations, indexed
+  // by opportunity for card chips and filtered to this signal for the Radar panel.
+  const liveNegotiations = useMemo(
+    () => deriveLiveNegotiations(negotiations, user?.id),
+    [negotiations, user?.id],
+  );
+  const presenceByOpportunity = useMemo(() => {
+    const map = new Map<string, NegotiationPresence>();
+    for (const [opportunityId, item] of liveNegotiationsByOpportunity(liveNegotiations)) {
+      map.set(opportunityId, {
+        conversationId: item.conversationId,
+        latestMove: formatLatestMove(item.lastAction, item.timeAgo),
+        turnCount: item.turnCount,
+        maxTurns: item.maxTurns,
+      });
+    }
+    return map;
+  }, [liveNegotiations]);
+  const intentLiveNegotiations = useMemo(
+    () => liveNegotiations.filter((item) => intentId !== undefined && item.intentIds.includes(intentId)),
+    [liveNegotiations, intentId],
   );
   const refreshLiveRadar = useCallback(() => {
     void loadOpportunities(true);
@@ -1213,6 +1237,29 @@ export default function IntentDetailPage() {
                     />
                   }
                 >
+                  {intentLiveNegotiations.length > 0 && (
+                    <div className="mb-3 shrink-0 space-y-2" data-testid="radar-live-negotiations">
+                      {intentLiveNegotiations.map((item) => (
+                        <button
+                          key={item.conversationId}
+                          type="button"
+                          onClick={() => navigate(`/chat/${item.conversationId}`)}
+                          aria-label={`Watch the negotiation with ${item.counterpart.name}`}
+                          className="w-full rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5 text-left transition-colors hover:bg-amber-50"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="truncate text-xs font-semibold text-gray-900">
+                              {item.counterpart.name}
+                            </span>
+                            <NegotiationPresenceChip turnCount={item.turnCount} maxTurns={item.maxTurns} />
+                          </div>
+                          <p className="mt-1 text-[11px] text-[#3D3D3D]">
+                            {formatLatestMove(item.lastAction, item.timeAgo)}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
                     {RADAR_BUCKETS.map((bucket) => (
                       <StatPill
@@ -1253,6 +1300,7 @@ export default function IntentDetailPage() {
                           currentStatus={
                             opportunityStatusMap[item.opportunityId]
                           }
+                          negotiationPresence={presenceByOpportunity.get(item.opportunityId)}
                           onPrimaryAction={(
                             oppId,
                             userId,
