@@ -51,10 +51,17 @@ The audit recorded these commands at the audited commit:
 At this branch's gate introduction, `bun run architecture:check` passed: 306 exports (161 values and 145 types; 298 stable and 8 experimental), consumer compilation, zero host-isolation violations, the 18-path/2-SCC cycle baseline, and 2 matrix characterization tests. `bun run build` passed; lint remained 0 errors and 251 warnings; and the provider-free eval gate passed all 9 suites.
 
 IND-528 subsequently expanded the reviewed root surface to 316 exports (308
-stable and 8 experimental) with nine capability-owned tool entry-point groups and
-added the capability-direction gate. Its SemVer classification is minor because
-the additive stable exports are supported public API; no lockfile update was
-needed because dependency resolution did not change.
+stable and 8 experimental) across nine capability groups. Those groups add ten
+stable public tool-factory exports:
+`createAgentTools`, `createAskUserQuestionTools`, `createChatTools`,
+`createContactTools`, `createIntegrationTools`, `createIntentTools`,
+`createNegotiationTools`, `createNetworkTools`, `createPremiseTools`, and
+`createQuestionerTools`. Together with the two previously public factories
+relocated through facades (`createEnrichmentTools` and
+`createOpportunityTools`), the root contract has twelve capability tool
+factories. The capability-direction gate was added at the same time. Its SemVer
+classification is minor because the additive stable exports are supported public
+API; no lockfile update was needed because dependency resolution did not change.
 
 For IND-528, the exact isolated command completed with **2,063 pass, 0 fail,
 0 errors across 196 provider-free files in 7.4s** at concurrency two. Five
