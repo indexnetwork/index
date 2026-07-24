@@ -26,6 +26,7 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
       attributes: { skills: ["TypeScript"], interests: ["AI"] },
       embedding: null,
     }),
+    getUserContext: async () => null,
     getNetworkMemberships: async () => ([
       {
         networkId,
@@ -58,7 +59,7 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
 
   return { ...base, ...overrides } as Pick<
     ChatGraphCompositeDatabase,
-    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isNetworkMember" | "isIndexOwner"
+    "getUser" | "getProfile" | "getUserContext" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isNetworkMember" | "isIndexOwner"
   >;
 }
 

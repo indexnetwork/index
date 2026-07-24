@@ -7,7 +7,9 @@ import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../nego
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questioner/questioner.types.js";
 import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../negotiation.consultation-policy.js";
+import type { NegotiationConsultationReason } from "../negotiation.consultation-policy.js";
 import { requestContext } from "../../shared/observability/request-context.js";
+import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
 
 /**
  * IND-401 — `ask_user` client-consult pause (P3.2).
@@ -121,7 +123,7 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     ["consequential disclosure/permission", { action: "counter" as const, ownSuggestedRole: "patient" as const }, "consequential_disclosure_permission"],
     ["repeated non-convergence", { action: "counter" as const, priorActions: ["counter", "question"] as const }, "repeated_non_convergence"],
     ["insufficient commitment authority", { action: "counter" as const, ownSuggestedRole: "agent" as const }, "insufficient_commitment_authority"],
-  ])("classifies %s without reading free-form content", (_label, partial, reason) => {
+  ] as const)("classifies %s without reading free-form content", (_label, partial, reason: NegotiationConsultationReason) => {
     expect(assessConsultationEligibility({ ...base, ...partial })).toEqual({ eligible: true, reason });
   });
 
@@ -459,9 +461,9 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       recipientUserId: 'u-src', recipientIntentId: 'intent-src', kind: 'answer' as const,
       selectedOptions: ['do not share budget'], freeText: 'Keep the range private.',
     };
-    const dispatched: Array<Record<string, unknown>> = [];
+    const dispatched: NegotiationTurnPayload[] = [];
     const externalRecipient = mkStubs();
-    externalRecipient.dispatcher.dispatch = async (_userId: string, _scope: unknown, payload: Record<string, unknown>) => {
+    externalRecipient.dispatcher.dispatch = async (_userId: string, _scope, payload: NegotiationTurnPayload, _options) => {
       dispatched.push(payload);
       return { handled: true, turn: declineTurn };
     };
@@ -469,7 +471,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(dispatched[0].privateConsultation).toEqual(privateConsultation);
 
     const externalCounterparty = mkStubs({ priorMessages: [priorMsg('u-src', 'counter', 0)] });
-    externalCounterparty.dispatcher.dispatch = async (_userId: string, _scope: unknown, payload: Record<string, unknown>) => {
+    externalCounterparty.dispatcher.dispatch = async (_userId: string, _scope, payload: NegotiationTurnPayload, _options) => {
       dispatched.push(payload);
       return { handled: true, turn: declineTurn };
     };
@@ -541,7 +543,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       taskId: "task-new",
       networkId: "net-1",
     });
-    const ctx = q.context as Record<string, unknown>;
+    const ctx = q.context as unknown as Record<string, unknown>;
     expect(ctx.negotiationId).toBe("task-new");
     expect(ctx.disclosureSubject).toBe("budget range");
     expect(ctx.draftQuestion).toBe("Can I tell them your budget range?");

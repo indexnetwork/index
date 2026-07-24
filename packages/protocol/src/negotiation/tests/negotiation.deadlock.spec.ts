@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD, MIN_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
+import type { NegotiationTurn } from "../negotiation.state.js";
 
 /**
  * IND-428 — deadlock detection + persuasion→bargaining mode shift (unit).
@@ -18,7 +19,7 @@ import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agen
  *   section even if the field is passed.
  */
 
-function turn(action: string) {
+function turn(action: NegotiationTurn["action"]) {
   return {
     action,
     assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const } },
@@ -26,7 +27,7 @@ function turn(action: string) {
   };
 }
 
-const turns = (...actions: string[]) => actions.map(turn) as Array<ReturnType<typeof turn>>;
+const turns = (...actions: NegotiationTurn["action"][]) => actions.map(turn);
 
 // ─── Detector semantics ──────────────────────────────────────────────────────
 
@@ -72,14 +73,14 @@ describe("assessDeadlock — trailing-run semantics", () => {
 
   it("terminal actions reset the run (the game decided, not stalled)", () => {
     for (const terminal of ["accept", "reject", "withdraw", "decline"]) {
-      const a = assessDeadlock(turns("counter", "counter", terminal), 2);
+      const a = assessDeadlock(turns("counter", "counter", terminal as NegotiationTurn["action"]), 2);
       expect(a.deadlocked).toBe(false);
       expect(a.consecutiveNonConvergent).toBe(0);
     }
   });
 
   it("unreadable/unknown actions reset conservatively (never manufacture a deadlock)", () => {
-    expect(assessDeadlock(turns("counter", "counter", "garbage"), 2).deadlocked).toBe(false);
+    expect(assessDeadlock(turns("counter", "counter", "garbage" as never), 2).deadlocked).toBe(false);
     const malformed = [...turns("counter", "counter"), { action: undefined } as never];
     expect(assessDeadlock(malformed, 2).deadlocked).toBe(false);
   });

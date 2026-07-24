@@ -3,6 +3,9 @@ import { z } from "zod";
 import { createNegotiationTools } from "../negotiation.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
+type Fixture<T> = T extends (...args: any[]) => unknown ? (...args: any[]) => any : T extends object ? { [K in keyof T]?: Fixture<T[K]> } : T;
+type ToolDepsFixture = Fixture<ToolDeps>;
+
 /**
  * IND-397 — respond_to_negotiation seat + version validation.
  *
@@ -21,7 +24,7 @@ function makeContext(userId: string): ResolvedToolContext {
   } as unknown as ResolvedToolContext;
 }
 
-function captureTool(name: string, deps: Partial<ToolDeps>) {
+function captureTool(name: string, deps: ToolDepsFixture) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string>; querySchema?: z.ZodType } | undefined;
   const defineTool = (def: { name: string; handler: (...args: unknown[]) => unknown; querySchema?: z.ZodType }) => {
     if (def.name === name) captured = def as typeof captured;
@@ -76,7 +79,7 @@ function makeDeps(task: unknown, messages: unknown[]) {
       },
       negotiationTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
       agentDispatcher: { dispatch: async () => ({ handled: false, reason: "waiting" }) },
-    } as Partial<ToolDeps>,
+    } as ToolDepsFixture,
     createdMessages,
   };
 }

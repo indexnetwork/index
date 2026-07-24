@@ -24,7 +24,7 @@ const BASE_INPUT: HomeCardPresenterInput = {
 };
 
 function makeNegotiatingContext(turnCount: number, turnCap: number): NegotiationContext {
-  return { status: "negotiating", turnCount, turnCap };
+  return { status: "negotiating", conversationId: "conversation-test", turnCount, turnCap };
 }
 
 function makeCompletedContext(
@@ -33,6 +33,7 @@ function makeCompletedContext(
 ): NegotiationContext {
   return {
     status,
+    conversationId: "conversation-test",
     turnCount: opts.turnCount ?? 2,
     turnCap: 6,
     outcome: {

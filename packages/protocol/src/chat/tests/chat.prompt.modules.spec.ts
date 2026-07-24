@@ -400,7 +400,7 @@ describe("buildSystemContent snapshot identity", () => {
     const preloadedIdx = output.indexOf("### Current User (preloaded context)");
     const architectureIdx = output.indexOf("## Architecture Philosophy");
     const toolsIdx = output.indexOf("## Tools Reference");
-    const scopingIdx = output.indexOf("### Network Scope");
+    const scopingIdx = output.indexOf("### Scope\n");
     const urlsIdx = output.indexOf("### URLs");
     const narrationIdx = output.indexOf("### Narration Style");
     const outputFmtIdx = output.indexOf("### Output Format");
@@ -553,7 +553,7 @@ describe("buildSystemContent snapshot identity", () => {
 
     // The base prompt sections should still be present
     expect(output).toContain("You are Index.");
-    expect(output).toContain("### Network Scope");
+    expect(output).toContain("### Scope\n");
     expect(output).toContain("### Output Format");
   });
 });

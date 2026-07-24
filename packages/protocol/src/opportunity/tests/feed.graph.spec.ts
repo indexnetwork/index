@@ -4,8 +4,33 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, test, expect } from 'bun:test';
-import { HomeGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES, isHomePresentationCacheable } from '../feed/feed.graph.js';
+import { afterAll, describe, test, expect, mock } from 'bun:test';
+
+// This spec exercises uncached full-card presentation. Keep its model boundary
+// deterministic so the provider-free source suite cannot open a network request.
+mock.module('../../shared/agent/model.config', () => ({
+  createStructuredModel: (agent: string) => ({
+    invoke: async () =>
+      agent === 'homeCategorizer'
+        ? { sections: [] }
+        : {
+            presentation: {
+              headline: 'A relevant connection',
+              personalizedSummary: 'Their current goals may be relevant to yours.',
+              digestSummary: 'This connection may be relevant to your current goals.',
+              suggestedAction: 'Review this connection.',
+              narratorRemark: 'Worth a look.',
+              mutualIntentsLabel: 'Shared interests',
+              greeting: '',
+            },
+          },
+  }),
+}));
+
+const { HomeGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES, isHomePresentationCacheable } =
+  await import('../feed/feed.graph.js');
+
+afterAll(() => mock.restore());
 import { selectByComposition, classifyOpportunity, FEED_SOFT_TARGETS } from '../opportunity.utils.js';
 import type { HomeGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
@@ -28,8 +53,10 @@ function createMockDb(opportunities: Opportunity[] = []): HomeGraphDatabase {
     getProfile: () => Promise.resolve(null),
     getActiveIntents: () => Promise.resolve([]),
     getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
-    getUser: (id: string) => Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null }),
+    getUser: (id: string) => Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null, socials: [] }),
     getNegotiationTaskForOpportunity: () => Promise.resolve(null),
+    getMessagesForConversation: () => Promise.resolve([]),
+    getArtifactsForTask: () => Promise.resolve([]),
   };
 }
 
@@ -168,7 +195,7 @@ describe('HomeGraph', () => {
     db.getUser = (id: string) =>
       id === orphanId
         ? Promise.resolve(null)
-        : Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null });
+        : Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null, socials: [] });
     const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
@@ -185,7 +212,10 @@ describe('HomeGraph', () => {
     const opp = minimalOpportunityAgentViewer(viewerId, ghostId, 'opp-profile-only');
     const db = createMockDb([opp]);
     db.getUser = () => Promise.resolve(null);
-    db.getProfile = () => Promise.resolve({ identity: { name: 'Profile Name' } });
+    db.getProfile = () => Promise.resolve({
+      identity: { name: 'Profile Name', bio: '', location: '' },
+      context: '',
+    });
     const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
@@ -520,20 +550,20 @@ describe('HomeGraph', () => {
       id: 'opp-dup-actors',
       detection: { source: 'manual', timestamp: new Date().toISOString() },
       actors: [
-        { userId: viewerId, role: 'introducer', indexId: 'idx-1' },
-        { userId: memberA, role: 'patient', indexId: 'idx-1', intent: 'intent-1' },
-        { userId: memberA, role: 'patient', indexId: 'idx-1', intent: 'intent-2' },
-        { userId: memberA, role: 'patient', indexId: 'idx-1', intent: 'intent-3' },
-        { userId: memberB, role: 'agent', indexId: 'idx-1', intent: 'intent-4' },
-        { userId: memberB, role: 'agent', indexId: 'idx-1', intent: 'intent-5' },
-        { userId: memberB, role: 'agent', indexId: 'idx-1', intent: 'intent-6' },
+        { userId: viewerId, role: 'introducer', networkId: 'idx-1' },
+        { userId: memberA, role: 'patient', networkId: 'idx-1', intent: 'intent-1' },
+        { userId: memberA, role: 'patient', networkId: 'idx-1', intent: 'intent-2' },
+        { userId: memberA, role: 'patient', networkId: 'idx-1', intent: 'intent-3' },
+        { userId: memberB, role: 'agent', networkId: 'idx-1', intent: 'intent-4' },
+        { userId: memberB, role: 'agent', networkId: 'idx-1', intent: 'intent-5' },
+        { userId: memberB, role: 'agent', networkId: 'idx-1', intent: 'intent-6' },
       ],
       interpretation: {
         reasoning: 'These two should connect.',
         category: 'connection',
         confidence: 0.9,
       },
-      context: { indexId: 'idx-1' },
+      context: { networkId: 'idx-1' },
       confidence: '0.9',
       status: 'latent',
       createdAt: new Date(),
@@ -855,10 +885,10 @@ describe('home feed fetch limit bug', () => {
 
 // ─── Introducer name format tests ───────────────────────────────────────────
 
-const USER_MAP: Record<string, { id: string; name: string; email: string; avatar: string | null }> = {
-  'intro-1': { id: 'intro-1', name: 'Intro User', email: 'intro@test.com', avatar: null },
-  'party-a': { id: 'party-a', name: 'Mert Karadayi', email: 'mert@test.com', avatar: null },
-  'party-b': { id: 'party-b', name: 'Yanki Ekin Yuksel', email: 'yanki@test.com', avatar: null },
+const USER_MAP: Record<string, { id: string; name: string; email: string; avatar: string | null; socials: [] }> = {
+  'intro-1': { id: 'intro-1', name: 'Intro User', email: 'intro@test.com', avatar: null, socials: [] },
+  'party-a': { id: 'party-a', name: 'Mert Karadayi', email: 'mert@test.com', avatar: null, socials: [] },
+  'party-b': { id: 'party-b', name: 'Yanki Ekin Yuksel', email: 'yanki@test.com', avatar: null, socials: [] },
 };
 
 function createIntroMockDb(opportunities: Opportunity[]): HomeGraphDatabase {
@@ -868,7 +898,10 @@ function createIntroMockDb(opportunities: Opportunity[]): HomeGraphDatabase {
     getProfile: () => Promise.resolve(null),
     getActiveIntents: () => Promise.resolve([]),
     getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
-    getUser: (id: string) => Promise.resolve(USER_MAP[id] ?? { id, name: 'Unknown User', email: '', avatar: null }),
+    getUser: (id: string) => Promise.resolve(USER_MAP[id] ?? { id, name: 'Unknown User', email: '', avatar: null, socials: [] }),
+    getNegotiationTaskForOpportunity: () => Promise.resolve(null),
+    getMessagesForConversation: () => Promise.resolve([]),
+    getArtifactsForTask: () => Promise.resolve([]),
   };
 }
 
@@ -877,12 +910,12 @@ function makeIntroducerOpportunity(introducerId: string, partyAId: string, party
     id: 'opp-intro-1',
     detection: { source: 'opportunity_graph', timestamp: new Date().toISOString() },
     actors: [
-      { userId: introducerId, role: 'introducer', indexId: 'idx-1' },
-      { userId: partyAId, role: 'party', indexId: 'idx-1' },
-      { userId: partyBId, role: 'party', indexId: 'idx-1' },
+      { userId: introducerId, role: 'introducer', networkId: 'idx-1' },
+      { userId: partyAId, role: 'party', networkId: 'idx-1' },
+      { userId: partyBId, role: 'party', networkId: 'idx-1' },
     ],
     interpretation: { reasoning: 'Good introduction match.', category: 'connection', confidence: 80 },
-    context: { indexId: 'idx-1' },
+    context: { networkId: 'idx-1' },
     confidence: '0.8',
     status: 'latent',
     createdAt: new Date(),
@@ -993,7 +1026,7 @@ describe('HomeGraph skeleton presentation', () => {
     const db = createMockDb([opp]);
     // Counterpart has no users row and no profile identity name.
     db.getUser = (id: string) =>
-      Promise.resolve(id === viewerId ? { id, name: 'Viewer', email: '', avatar: null } : null);
+      Promise.resolve(id === viewerId ? { id, name: 'Viewer', email: '', avatar: null, socials: [] } : null);
     const factory = new HomeGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
 

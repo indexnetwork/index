@@ -38,7 +38,7 @@ describe("IntentGraph explicit update lifecycle", () => {
           intents: [{
             type: "goal" as const,
             description: BROAD_DESCRIPTION,
-            confidence: 0.94,
+            confidence: "high",
             reasoning: "Explicit collaboration directive",
           }],
         }),

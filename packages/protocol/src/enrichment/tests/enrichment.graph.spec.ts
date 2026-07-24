@@ -6,27 +6,21 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { EnrichmentGraphFactory } from '../enrichment.graph.js';
 import type { EnrichmentGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
-import type { GeneratedProfile } from '../enrichment.generator.js';
+import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 
 describe('ProfileGraph', () => {
   let factory: EnrichmentGraphFactory;
   let mockDatabase: EnrichmentGraphDatabase;
   let mockScraper: Scraper;
 
-  const mockProfile: GeneratedProfile = {
+  const mockProfile: UserIdentity = {
     userId: 'test-user-id',
     identity: {
       name: 'Test User',
       bio: 'A test user bio',
       location: 'Test City, Test Country'
     },
-    narrative: {
-      context: 'Test user is working on testing things'
-    },
-    attributes: {
-      interests: ['testing', 'coding'],
-      skills: ['TypeScript', 'Testing']
-    },
+    context: 'Test user is working on testing things',
   };
 
   beforeEach(() => {

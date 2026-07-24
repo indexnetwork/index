@@ -1,9 +1,44 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
+import { afterAll, describe, expect, it, mock } from "bun:test";
 
-import { describe, expect, it } from "bun:test";
-import { ExplicitIntentInferrer } from "../intent.inferrer.js";
+const capturedCalls: Array<Array<{ content?: unknown }>> = [];
+
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: () => ({
+    invoke: async (messages: Array<{ content?: unknown }>) => {
+      capturedCalls.push(messages);
+      const prompt = String(messages.at(-1)?.content ?? "");
+      if (prompt.includes("Solidity contract")) {
+        return { intents: [{ type: "goal", description: "Deploy a Solidity contract to Ethereum mainnet", reasoning: "Explicit deployment goal.", confidence: "high" }] };
+      }
+      if (prompt.includes("finished the React course")) {
+        return { intents: [{ type: "tombstone", description: "Completed the React course", reasoning: "Explicit completion.", confidence: "high" }] };
+      }
+      if (prompt.includes("Hey how are you?") || prompt.includes("Hello, how are you?")) {
+        return { intents: [] };
+      }
+      if (prompt.includes("No content provided")) {
+        return { intents: [{ type: "goal", description: "Build machine learning projects", reasoning: "Explicit profile fallback.", confidence: "medium" }] };
+      }
+      if (prompt.includes("Rust programming")) {
+        return { intents: [{ type: "goal", description: "Learn Rust programming and build a web framework", reasoning: "Explicit goal.", confidence: "high" }] };
+      }
+      if (prompt.includes("computer vision")) {
+        return { intents: [{ type: "goal", description: "Focus the ML goal on computer vision", reasoning: "Explicit update.", confidence: "high" }] };
+      }
+      if (prompt.includes("## New Content\n\nartist")) {
+        return { intents: [{ type: "goal", description: "Find or connect with artists", reasoning: "The short query names the target.", confidence: "medium" }] };
+      }
+      if (prompt.includes("looking for a photographer")) {
+        return { intents: [{ type: "goal", description: "Find a photographer", reasoning: "The query names the target.", confidence: "high" }] };
+      }
+      return { intents: [] };
+    },
+  }),
+}));
+
+const { ExplicitIntentInferrer } = await import("../intent.inferrer.js");
+
+afterAll(() => mock.restore());
 
 describe('ExplicitIntentInferrer - Basic Inference', () => {
   const inferrer = new ExplicitIntentInferrer();
@@ -175,6 +210,9 @@ Interests: AI agents, decentralized systems, venture capital
       i.description.toLowerCase().includes('artist')
     );
     expect(hasArtistGrounding).toBe(true);
+    const artistCall = capturedCalls.at(-1);
+    expect(String(artistCall?.[0]?.content)).toContain("EVERY inferred intent MUST be directly related to the New Content");
+    expect(String(artistCall?.[0]?.content)).toContain("must NOT change WHAT the intent is about");
 
     // Every inferred intent should be grounded in the query ("artist"),
     // not drifting to the user's profile topics (crypto, funding, etc.)
