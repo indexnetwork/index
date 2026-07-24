@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract continuation post-graph finalization into a narrow handler while
+  retaining cache lookup, scope admission, graph invocation, and the public
+  response boundary in discovery orchestration (IND-530 Batch 13).
 - Extract independently timed, failure-isolated discovery-negotiation summary
   execution into a narrow handler while retaining discovery admission and outer
   orchestration in the facade (IND-530 Batch 12).

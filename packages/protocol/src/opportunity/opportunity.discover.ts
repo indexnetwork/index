@@ -32,6 +32,7 @@ import { requestContext } from "../shared/observability/request-context.js";
 import { buildDiscoveryQuestionInput } from "./discovery-question.helper.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { summarizeDiscoveryNegotiations } from "./opportunity.discovery-negotiation-summary.js";
+import { finalizeDiscoveryContinuation } from './opportunity.discovery-continuation-finalization.js';
 
 const logger = protocolLogger("OpportunityDiscover");
 const discoverFromQueryLog = protocolLogger("OpportunityDiscover:runDiscoverFromQuery");
@@ -1184,8 +1185,6 @@ export async function continueDiscovery(input: {
     };
   }
 
-  const debugSteps: DiscoverDebugStep[] = [];
-
   const result = await invokeWithAbortSignal(opportunityGraph, {
     userId,
     searchQuery: cached.query || undefined,
@@ -1203,90 +1202,24 @@ export async function continueDiscovery(input: {
     },
   });
 
-  // Extract trace from graph and append to debugSteps
-  const graphTrace = result.trace || [];
-  for (const t of graphTrace) {
-    debugSteps.push({
-      step: t.node,
-      detail: t.detail,
-      ...(t.data ? { data: t.data } : {}),
-    });
-  }
-
-  // Bail early if the graph returned an error
-  if (result.error) {
-    logger.warn("continueDiscovery graph returned error", { error: result.error });
-    return {
-      found: false,
-      count: 0,
-      message: "Discovery continuation failed. Please start a new search.",
-      debugSteps,
-    };
-  }
-
-  // Update cache with remaining candidates or delete if exhausted
-  const remaining: CandidateMatch[] = result.remainingCandidates || [];
-  let pagination: DiscoverResult['pagination'] | undefined;
-  try {
-    if (remaining.length > 0) {
-      await cache.set(cacheKey, {
-        ...cached,
-        candidates: remaining,
-      } satisfies CachedDiscoverySession, { ttl: 1800 });
-      pagination = {
-        discoveryId,
-        evaluated: cached.candidates.length - remaining.length,
-        remaining: remaining.length,
-      };
-    } else {
-      await cache.delete(cacheKey);
-    }
-  } catch (cacheErr) {
-    logger.warn("Failed to update discovery pagination cache", {
-      userId,
-      discoveryId,
-      error: cacheErr instanceof Error ? cacheErr.message : String(cacheErr),
-    });
-  }
-
-  // Check for opportunities in result. Negotiation mutates lifecycle state after
-  // persistence, so continuation must refresh before enrichment/presentation rather
-  // than returning the graph state's persist-time `negotiating` snapshots.
-  const opportunities: Opportunity[] = Array.isArray(result.opportunities) ? result.opportunities : [];
-  const refreshed = opportunities.length > 0
-    ? await database.getOpportunitiesByIds(opportunities.map((opportunity) => opportunity.id))
-    : [];
-  const refreshedById = new Map(refreshed.map((opportunity) => [opportunity.id, opportunity] as const));
-  const currentOpportunities = opportunities.map((opportunity) =>
-    refreshedById.get(opportunity.id) ?? opportunity);
-
-  if (currentOpportunities.length === 0) {
-    return {
-      found: false,
-      count: 0,
-      message: "No more matching opportunities found in the remaining candidates.",
-      debugSteps,
-      pagination,
-    };
-  }
-
-  const enriched = await enrichOpportunities({
-    opportunities: currentOpportunities,
-    database,
+  return finalizeDiscoveryContinuation({
+    result,
+    cache,
+    cacheKey,
+    cached,
     userId,
-    chatSessionId,
-    minimalForChat: input.minimalForChat,
-    presenter: input.presenter,
-    useHomeCardFormat: input.useHomeCardFormat,
-    debugSteps,
-    preserveLifecycleStatus: true,
+    discoveryId,
+    database,
+    enrich: (opportunities, debugSteps) => enrichOpportunities({
+      opportunities,
+      database,
+      userId,
+      chatSessionId,
+      minimalForChat: input.minimalForChat,
+      presenter: input.presenter,
+      useHomeCardFormat: input.useHomeCardFormat,
+      debugSteps,
+      preserveLifecycleStatus: true,
+    }),
   });
-
-  return {
-    found: true,
-    count: enriched.length,
-    opportunities: enriched,
-    debugSteps,
-    pagination,
-  };
 }
