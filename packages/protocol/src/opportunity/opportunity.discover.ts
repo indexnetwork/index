@@ -13,8 +13,8 @@ import type { Opportunity, ChatGraphCompositeDatabase, UserRecord } from "../sha
 import type { Cache } from "../shared/interfaces/cache.interface.js";
 import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
 import type { DiscoveryNegotiation, DiscoverySummary } from "../shared/schemas/discovery-question.schema.js";
-import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
-import { discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs } from "../questioner/questioner.env.js";
+import type { QuestionerEnqueueFn } from "../capabilities/questions.enqueue.facade.js";
+import { discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs } from "../capabilities/questions.runtime.facade.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult, type HomeCardPresentationResult, type HomeCardPresenterInput } from "./opportunity.presenter.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
@@ -26,7 +26,7 @@ import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js
 import type { QuestionGeneratorReader } from "../shared/interfaces/question-generator.interface.js";
 import type { NegotiationSummaryReader } from "../shared/interfaces/negotiation-summary.interface.js";
 import type { DiscoveryNegotiationDigest } from "../shared/schemas/negotiation-digest.schema.js";
-import { buildFallbackDigest } from "../negotiation/negotiation.summarizer.js";
+import { buildFallbackDigest } from "../capabilities/negotiation.summary.facade.js";
 import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
 import { traceAgent, tracePhase } from "../shared/observability/trace.js";
 import { requestContext } from "../shared/observability/request-context.js";

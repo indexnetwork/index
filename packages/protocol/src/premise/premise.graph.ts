@@ -12,7 +12,7 @@ import type { PremiseGraphDatabase, PremiseAnalysis } from "../shared/interfaces
 import type { Embedder } from "../shared/interfaces/embedder.interface.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
-import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
+import type { DebugMetaAgent } from "../capabilities/participant-agents.debug.facade.js";
 
 const queryLog = protocolLogger("PremiseGraph:query");
 const analyzeLog = protocolLogger("PremiseGraph:analyze");

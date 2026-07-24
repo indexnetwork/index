@@ -8,8 +8,8 @@
 import type { DiscoveryQuestionInput } from "../shared/schemas/discovery-question.schema.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "../shared/schemas/question.schema.js";
-import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../negotiation/negotiation.question-safety.js";
-import type { NegotiationConsultationReason } from "../negotiation/negotiation.consultation-policy.js";
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../capabilities/negotiation.questions.facade.js";
+import type { NegotiationConsultationReason } from "../capabilities/negotiation.questions.facade.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
 

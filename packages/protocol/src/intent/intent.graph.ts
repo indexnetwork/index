@@ -12,8 +12,8 @@ import type { IntentGraphQueue } from "../shared/interfaces/queue.interface.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
-import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
+import type { DebugMetaAgent } from "../capabilities/participant-agents.debug.facade.js";
+import type { QuestionerEnqueueFn } from "../capabilities/questions.enqueue.facade.js";
 
 const logger = protocolLogger("IntentGraphFactory");
 

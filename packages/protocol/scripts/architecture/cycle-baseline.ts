@@ -27,7 +27,10 @@ async function sourceFiles(directory: string): Promise<string[]> {
     const path = resolve(directory, entry);
     const entryStat = await stat(path);
     if (entryStat.isDirectory()) {
-      if (entry !== "tests") files.push(...await sourceFiles(path));
+      // Capability facades are contract edges, not implementation vertices. The
+      // resolver below expands them back to their owned implementation modules
+      // so Phase 1 seams cannot make the audited SCCs appear to grow or vanish.
+      if (entry !== "tests" && entry !== "capabilities") files.push(...await sourceFiles(path));
     } else if (entry.endsWith(".ts") && !entry.endsWith(".spec.ts") && !entry.endsWith(".test.ts")) {
       files.push(path);
     }
@@ -39,12 +42,11 @@ function toModuleId(path: string): string {
   return relative(sourceRoot, path).replace(/\\/g, "/");
 }
 
-function resolveImport(from: string, specifier: string, modules: Set<string>): string | undefined {
+function resolveImportPath(from: string, specifier: string): string | undefined {
   if (!specifier.startsWith(".")) return undefined;
   const base = resolve(dirname(from), specifier.replace(/\.js$/, ""));
   const candidates = [`${base}.ts`, resolve(base, "index.ts")];
-  const candidate = candidates.find((path) => modules.has(toModuleId(path)));
-  return candidate ? toModuleId(candidate) : undefined;
+  return candidates.find((path) => Bun.file(path).size > 0);
 }
 
 function importSpecifiers(sourceFile: ts.SourceFile): string[] {
@@ -101,11 +103,31 @@ function cyclicComponents(graph: Map<string, Set<string>>): string[][] {
 const files = await sourceFiles(sourceRoot);
 const modules = new Set(files.map(toModuleId));
 const graph = new Map<string, Set<string>>();
+const facadeTargets = new Map<string, Promise<string[]>>();
+
+async function resolveImport(from: string, specifier: string): Promise<string[]> {
+  const candidate = resolveImportPath(from, specifier);
+  if (!candidate) return [];
+  const moduleId = toModuleId(candidate);
+  if (modules.has(moduleId)) return [moduleId];
+  if (!moduleId.startsWith("capabilities/")) return [];
+
+  let targets = facadeTargets.get(candidate);
+  if (!targets) {
+    targets = (async () => {
+      const facade = ts.createSourceFile(candidate, await readFile(candidate, "utf8"), ts.ScriptTarget.Latest, true);
+      const imports = await Promise.all(importSpecifiers(facade).map((nested) => resolveImport(candidate, nested)));
+      return imports.flat();
+    })();
+    facadeTargets.set(candidate, targets);
+  }
+  return targets;
+}
+
 for (const filePath of files) {
   const sourceFile = ts.createSourceFile(filePath, await readFile(filePath, "utf8"), ts.ScriptTarget.Latest, true);
-  graph.set(toModuleId(filePath), new Set(importSpecifiers(sourceFile)
-    .map((specifier) => resolveImport(filePath, specifier, modules))
-    .filter((moduleId): moduleId is string => Boolean(moduleId))));
+  const imports = await Promise.all(importSpecifiers(sourceFile).map((specifier) => resolveImport(filePath, specifier)));
+  graph.set(toModuleId(filePath), new Set(imports.flat()));
 }
 const components = cyclicComponents(graph);
 const expected: CycleBaseline = {

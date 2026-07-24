@@ -10,7 +10,7 @@ import { narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentat
 import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.safe-presentation.js";
 import { stripUnsupportedOpportunityClaims } from "./opportunity.claim-safety.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
-import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../questioner/questioner.env.js";
+import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../capabilities/questions.runtime.facade.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 

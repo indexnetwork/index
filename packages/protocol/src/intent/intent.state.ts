@@ -3,7 +3,7 @@ import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "./intent.inferrer.js";
 import { SemanticVerifierOutput } from "./intent.verifier.js";
 import { IntentReconcilerOutput } from "./intent.reconciler.js";
-import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
+import type { DebugMetaAgent } from '../capabilities/participant-agents.debug.facade.js';
 import type { ToolScopeType } from '../shared/agent/tool.scope.js';
 
 /**
