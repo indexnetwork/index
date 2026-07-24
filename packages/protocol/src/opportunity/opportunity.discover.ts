@@ -16,7 +16,7 @@ import type { DiscoveryNegotiation, DiscoverySummary } from "../shared/schemas/d
 import type { QuestionerEnqueueFn } from "../questioner/questioner.types.js";
 import { discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs } from "../questioner/questioner.env.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
-import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult, type HomeCardPresentationResult, type HomeCardLLMResult, type HomeCardPresenterInput } from "./opportunity.presenter.js";
+import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult, type HomeCardPresentationResult, type HomeCardPresenterInput } from "./opportunity.presenter.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { narratorRemarkFromReasoning } from "./opportunity.presentation.js";
 import { safeFallbackSummary } from "./opportunity.safe-presentation.js";
@@ -441,7 +441,6 @@ async function enrichOpportunities(
         }
       }
 
-      const isCounterpartGhost = isGhostByUserId.get(item.candidateUserId) ?? false;
       // Shared sanitization standard — see opportunity.safe-presentation.ts.
       const personalizedSummary = safeFallbackSummary(reasoning, {
         counterpartName: name,
@@ -968,7 +967,7 @@ export async function runDiscoverFromQuery(
       };
     },
     { context: { userId }, logOutput: false },
-  ).catch((err) => {
+  ).catch(() => {
     return {
       found: false,
       count: 0,

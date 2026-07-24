@@ -6,7 +6,6 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { PremiseRecord, PremiseValidity } from "../shared/interfaces/database.interface.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
-const logger = protocolLogger("ChatTools:Premise");
 const createPremiseLog = protocolLogger("ChatTools:Premise:createPremise");
 const readPremisesLog = protocolLogger("ChatTools:Premise:readPremises");
 const updatePremiseLog = protocolLogger("ChatTools:Premise:updatePremise");

@@ -12,10 +12,10 @@
  * Constructor injects Database, Embedder, and compiled HyDE graph.
  */
 
-import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
+import { StateGraph, START, END } from '@langchain/langgraph';
 import type { Id, NegotiationContinuationReceipt } from '../shared/interfaces/database.interface.js';
 import type { DebugMetaAgent } from '../chat/chat-streaming.types.js';
-import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type TargetNetwork, type CandidateMatch, type EvaluatedCandidate, type EvaluatedOpportunity, type EvaluatedOpportunityActor } from './opportunity.state.js';
+import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type TargetNetwork, type CandidateMatch, type EvaluatedOpportunity, type EvaluatedOpportunityActor } from './opportunity.state.js';
 import { resolveInitialStatus } from './opportunity.state.js';
 import { OpportunityEvaluator, type CandidateProfile, type EvaluatedOpportunityWithActors, type EvaluatorEntity, type EvaluatorInput } from './opportunity.evaluator.js';
 import type { OpportunityGraphDatabase } from '../shared/interfaces/database.interface.js';

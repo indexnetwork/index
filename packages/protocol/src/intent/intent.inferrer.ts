@@ -127,7 +127,6 @@ const responseFormat = z.object({
 // 3. TYPE DEFINITIONS
 // ──────────────────────────────────────────────────────────────
 
-type ResponseType = z.infer<typeof responseFormat>;
 export type InferredIntent = z.infer<typeof InferredIntentSchema>;
 
 // ──────────────────────────────────────────────────────────────
