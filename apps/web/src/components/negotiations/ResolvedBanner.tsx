@@ -19,16 +19,21 @@ interface ResolvedBannerProps {
  */
 export function ResolvedBanner({ variant, reason, turnCount, maxTurns, onRevive, onLetGo }: ResolvedBannerProps) {
   if (variant === 'rejected') {
+    let body: string;
+    if (reason === 'screened_out') {
+      body = 'This connection was filtered out before either side reached out, so neither of you was notified.';
+    } else if (!reason) {
+      // Agent voluntarily withdrew — the candidate didn’t match this opportunity’s query.
+      body = `Your agent withdrew after reviewing the opportunity${turnCount != null && turnCount > 0 ? ` (${turnCount} ${turnCount === 1 ? 'turn' : 'turns'})` : ''} — the candidate didn’t align with what you’re looking for. You were never notified while this played out.`;
+    } else {
+      body = `${turnCount != null && turnCount > 0 ? `After ${turnCount} ${turnCount === 1 ? 'turn' : 'turns'}, the` : 'The'} agents couldn’t justify this connection, so it was quietly set aside. You were never notified while this played out.`;
+    }
     return (
       <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-4">
         <h3 className="font-ibm-plex-mono text-[13px] font-bold text-[#041729]">
           No opportunity — filtered out for you
         </h3>
-        <p className="mt-1 text-[13px] text-[#3D3D3D]">
-          {reason === 'screened_out'
-            ? 'This connection was filtered out before either side reached out, so neither of you was notified.'
-            : `${turnCount != null && turnCount > 0 ? `After ${turnCount} ${turnCount === 1 ? 'turn' : 'turns'}, the` : 'The'} agents couldn't justify this connection, so it was quietly set aside. You were never notified while this played out.`}
-        </p>
+        <p className="mt-1 text-[13px] text-[#3D3D3D]">{body}</p>
         <p className="mt-2.5 font-ibm-plex-mono text-[11px] text-gray-400">
           The other side never learns the details — declines are quiet by design.
         </p>

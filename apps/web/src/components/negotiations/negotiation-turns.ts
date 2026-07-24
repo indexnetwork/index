@@ -121,6 +121,32 @@ export function viewerRoleLabel(turns: TranscriptTurn[], ownAgentId: string | nu
   return null;
 }
 
+// ─── Session grouping (IND-565) ───────────────────────────────────────────
+
+export interface NegotiationSessionGroup {
+  sessionId: string | null;
+  turns: TranscriptTurn[];
+}
+
+/**
+ * Group turns into per-session (per-task) slices in chronological order.
+ * Each slice corresponds to exactly one negotiation task over one opportunity;
+ * sectioning them prevents action chips (OPENED/WITHDRAWN/…) from one task
+ * bleeding visually into an unrelated adjacent task (IND-565).
+ */
+export function groupTurnsBySession(turns: TranscriptTurn[]): NegotiationSessionGroup[] {
+  const groups: NegotiationSessionGroup[] = [];
+  for (const turn of turns) {
+    const last = groups[groups.length - 1];
+    if (!last || last.sessionId !== turn.sessionId) {
+      groups.push({ sessionId: turn.sessionId, turns: [turn] });
+    } else {
+      last.turns.push(turn);
+    }
+  }
+  return groups;
+}
+
 /** Relative timestamp, recomputed against a ticking `now` (IND-555). */
 export function formatRelativeTime(createdAt: string, now: number): string {
   const timestamp = new Date(createdAt).getTime();
