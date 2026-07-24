@@ -248,8 +248,6 @@ export type EvaluatorOutputBundle = z.infer<typeof entityBundleResponseFormat>;
 // ──────────────────────────────────────────────────────────────
 
 type Opportunity = z.infer<typeof OpportunitySchema>;
-type EvaluatorOutput = z.infer<typeof responseFormat>;
-
 // Define CandidateProfile type (simplified for now, ideally imported from shared types)
 export interface CandidateProfile {
   userId: string;
@@ -561,7 +559,7 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
         if (args.candidatesJson) {
           try {
             candidates = JSON.parse(args.candidatesJson);
-          } catch (e) {
+          } catch {
             logger.error("Failed to parse candidates JSON");
           }
         }
