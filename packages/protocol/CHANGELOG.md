@@ -13,6 +13,7 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Fixed
+- Stop emitting source-test helpers, test directories, and spec/test files in published protocol build artifacts while preserving source-test execution (IND-515).
 - Allow the private intent-refinement provenance snapshot to identify intent creation as a producer and make the shared refinement prompt independent of no-opportunity process state, enabling creation and authoritative discovery producers to converge on one ordinary intent-page question cadence.
 
 ### Added
