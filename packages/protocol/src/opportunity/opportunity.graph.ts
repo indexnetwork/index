@@ -61,6 +61,9 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
 import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from './opportunity.actor.js';
+import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle, type QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
+
+export type { QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 
 const logger = protocolLogger('OpportunityGraph');
 const prepLog = protocolLogger('OpportunityGraph:Prep');
@@ -190,13 +193,6 @@ export interface HydeGeneratorInvokeInput {
   forceRegenerate?: boolean;
   profileContext?: string;
 }
-
-/** Optional notifier for opportunity send; when omitted, the real queue is used via dynamic import. */
-export type QueueOpportunityNotificationFn = (
-  opportunityId: string,
-  recipientId: string,
-  priority: 'immediate' | 'high' | 'low'
-) => Promise<unknown>;
 
 /** Input for the host-side newborn pool-preference stamper (IND-420 P4b). */
 export interface StampNewbornOpportunitiesInput {
@@ -3872,67 +3868,12 @@ export class OpportunityGraphFactory {
         });
 
         try {
-          if (!state.opportunityId) {
-            return { mutationResult: { success: false, error: 'opportunityId is required.' } };
-          }
-          if (!state.newStatus || !['accepted', 'rejected', 'expired'].includes(state.newStatus)) {
-            return { mutationResult: { success: false, error: 'newStatus must be one of: accepted, rejected, expired.' } };
-          }
-
-          const opp = await this.database.getOpportunity(state.opportunityId);
-          if (!opp) {
-            return { mutationResult: { success: false, error: 'Opportunity not found.' } };
-          }
-          const callerActor = opp.actors.find((a: OpportunityActor) => a.userId === state.userId);
-          if (!callerActor) {
-            return { mutationResult: { success: false, error: 'You are not part of this opportunity.' } };
-          }
-
-          // Self-accept guard: only applies to the 'accepted' transition. Reject/expire
-          // remain available to all actors regardless of prior actedAt.
-          if (state.newStatus === 'accepted' && callerActor.actedAt) {
-            return {
-              mutationResult: {
-                success: false,
-                error: 'You have already acted on this opportunity. The other party must accept.',
-              },
-            };
-          }
-
-          let conversationId: string | undefined;
-          if (state.newStatus === 'accepted') {
-            const counterpart = opp.actors.find(
-              (a: OpportunityActor) => a.userId !== state.userId && a.role !== 'introducer'
-            );
-            if (counterpart) {
-              const dm = await this.database.getOrCreateDM(state.userId, counterpart.userId);
-              conversationId = dm.id;
-            }
-          }
-
-          if (state.newStatus === 'accepted') {
-            await this.database.stampOpportunityActorAction(
-              state.opportunityId,
-              state.userId,
-              'accepted',
-              state.userId,
-            );
-          } else {
-            // Reject/expire do not stamp actedAt on the caller; they are
-            // terminal flips, not commit signals. Keep the legacy path.
-            await this.database.updateOpportunityStatus(
-              state.opportunityId,
-              state.newStatus as 'rejected' | 'expired',
-            );
-          }
-
           return {
-            mutationResult: {
-              success: true,
+            mutationResult: await updateOpportunityLifecycle(this.database, {
               opportunityId: state.opportunityId,
-              message: `Opportunity status updated to ${state.newStatus}.`,
-              ...(conversationId && { conversationId }),
-            },
+              actorUserId: state.userId,
+              newStatus: state.newStatus,
+            }),
           };
         } catch (err) {
           updateLog.error('Failed', { error: err });
@@ -3952,27 +3893,11 @@ export class OpportunityGraphFactory {
         });
 
         try {
-          if (!state.opportunityId) {
-            return { mutationResult: { success: false, error: 'opportunityId is required.' } };
-          }
-
-          const opp = await this.database.getOpportunity(state.opportunityId);
-          if (!opp) {
-            return { mutationResult: { success: false, error: 'Opportunity not found.' } };
-          }
-          const isActor = opp.actors.some((a: OpportunityActor) => a.userId === state.userId);
-          if (!isActor) {
-            return { mutationResult: { success: false, error: 'You are not part of this opportunity.' } };
-          }
-
-          await this.database.updateOpportunityStatus(state.opportunityId, 'expired');
-
           return {
-            mutationResult: {
-              success: true,
+            mutationResult: await deleteOpportunityLifecycle(this.database, {
               opportunityId: state.opportunityId,
-              message: 'Opportunity archived (expired).',
-            },
+              actorUserId: state.userId,
+            }),
           };
         } catch (err) {
           deleteLog.error('Failed', { error: err });
@@ -3992,69 +3917,12 @@ export class OpportunityGraphFactory {
         });
 
         try {
-          if (!state.opportunityId) {
-            return { mutationResult: { success: false, error: 'opportunityId is required.' } };
-          }
-
-          const opp = await this.database.getOpportunity(state.opportunityId);
-          if (!opp) {
-            return { mutationResult: { success: false, error: 'Opportunity not found.' } };
-          }
-          const canSendStatus = opp.status === 'latent' || opp.status === 'draft';
-          if (!canSendStatus) {
-            return {
-              mutationResult: {
-                success: false,
-                error: `Opportunity is already ${opp.status}; only latent or draft opportunities can be sent.`,
-              },
-            };
-          }
-          const senderActor = opp.actors.find((a: OpportunityActor) => a.userId === state.userId);
-          const hasIntroducer = opp.actors.some((a: OpportunityActor) => a.role === 'introducer');
-          const canSend =
-            senderActor?.role === 'introducer' ||
-            senderActor?.role === 'peer' ||
-            (senderActor?.role === 'patient' && !hasIntroducer) ||
-            (senderActor?.role === 'party' && !hasIntroducer);
-          if (!senderActor) {
-            return { mutationResult: { success: false, error: 'You are not part of this opportunity.' } };
-          }
-          if (!canSend) {
-            return { mutationResult: { success: false, error: 'You cannot send this opportunity.' } };
-          }
-
-          await this.database.stampOpportunityActorAction(
-            state.opportunityId,
-            state.userId,
-            'pending',
-          );
-
-          // Notify only the role that becomes visible at the next tier
-          let recipients: OpportunityActor[];
-          if (senderActor.role === 'introducer') {
-            recipients = opp.actors.filter((a: OpportunityActor) => a.role === 'patient' || a.role === 'party');
-          } else if (senderActor.role === 'peer') {
-            recipients = opp.actors.filter((a: OpportunityActor) => a.role === 'peer' && a.userId !== state.userId);
-          } else {
-            recipients = opp.actors.filter((a: OpportunityActor) => a.role === 'agent');
-          }
-
-          // queueNotification is injected via constructor; if not provided, notifications are skipped.
-          const notifier: QueueOpportunityNotificationFn | undefined = this.queueNotification;
-          if (notifier) {
-            for (const recipient of recipients) {
-              await notifier(opp.id, recipient.userId, 'high');
-            }
-          }
-
-          const recipientIds = recipients.map((a: OpportunityActor) => a.userId);
           return {
-            mutationResult: {
-              success: true,
-              opportunityId: opp.id,
-              notified: recipientIds,
-              message: 'Opportunity sent. The other person has been notified.',
-            },
+            mutationResult: await sendOpportunityLifecycle(
+              this.database,
+              { opportunityId: state.opportunityId, actorUserId: state.userId },
+              this.queueNotification,
+            ),
           };
         } catch (err) {
           sendLog.error('Failed', { error: err });
@@ -4250,40 +4118,13 @@ export class OpportunityGraphFactory {
      * enqueues a negotiate_existing job so the parties negotiate normally.
      */
     const approveIntroductionNode = async (state: typeof OpportunityGraphState.State) => {
-      const { opportunityId, userId } = state;
-      if (!opportunityId) {
-        return { mutationResult: { success: false, error: 'opportunityId required for approve_introduction' } };
-      }
-
-      let opp;
-      try {
-        opp = await this.database.getOpportunity(opportunityId as string);
-      } catch (err) {
-        return { mutationResult: { success: false, error: `Failed to load opportunity: ${err instanceof Error ? err.message : String(err)}` } };
-      }
-      if (!opp) {
-        return { mutationResult: { success: false, error: 'Opportunity not found' } };
-      }
-
-      const introducerActor = (opp.actors as OpportunityActor[])
-        .find(a => a.role === 'introducer' && a.userId === userId);
-      if (!introducerActor) {
-        return { mutationResult: { success: false, error: 'You are not the introducer for this opportunity' } };
-      }
-      if (introducerActor.approved === true) {
-        return { mutationResult: { success: false, error: 'Introduction already approved' } };
-      }
-
-      const updated = await this.database.updateOpportunityActorApproval(opportunityId as string, userId as string, true);
-      if (!updated) {
-        return { mutationResult: { success: false, error: 'Failed to update approval' } };
-      }
-
-      if (this.queueNegotiateExisting) {
-        await this.queueNegotiateExisting(opportunityId as string, userId as string);
-      }
-
-      return { mutationResult: { success: true, opportunityId } };
+      return {
+        mutationResult: await approveOpportunityIntroduction(
+          this.database,
+          { opportunityId: state.opportunityId, actorUserId: state.userId },
+          this.queueNegotiateExisting,
+        ),
+      };
     };
 
     // ═══════════════════════════════════════════════════════════════
