@@ -57,6 +57,9 @@ const capabilityDirectories: Readonly<Record<string, Capability>> = {
   enrichment: "participant-context",
   premise: "participant-context",
   context: "participant-context",
+  // IND-546: communities/ is the canonical domain-first directory; network/,
+  // network/membership/, and network/indexer/ are legacy compatibility shims.
+  communities: "communities",
   network: "communities",
   opportunity: "opportunities",
   negotiation: "negotiation",

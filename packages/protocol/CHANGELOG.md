@@ -12,6 +12,35 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [6.13.20] — 2026-07-25
+
+### Added
+- Establish `communities/` domain-first module spine (IND-546).
+  New directories: `communities/domain/`, `communities/application/`,
+  `communities/ports/`, `communities/public/`, plus `communities/tests/` for
+  policy characterization.
+- Characterization specs for membership authority (join-policy enforcement,
+  owner-only removal), privacy/scope intersection (scoped vs unscoped read,
+  `showAll` bypass), and signal assignment policy (direct / evaluated /
+  no-prompt fast path, membership re-check at persistence time, unassign
+  authority).
+
+### Changed
+- `capabilities/communities.facade.ts` now imports from
+  `communities/application/` instead of the old `network/` paths.
+- `capabilities/signals.indexing.facade.ts` updated to import
+  `IntentIndexer` from `capabilities/signals.facade.ts` (canonical) instead
+  of the legacy `intent/intent.indexer.ts` shim.
+- Communities capability boundary script updated: `communities/` directory now
+  maps to the `communities` capability (alongside legacy `network/`).
+
+### Deprecated
+- `network/network.graph.ts`, `network/network.state.ts`,
+  `network/network.tools.ts`, `network/network.recommender.ts`,
+  `network/membership/membership.{graph,state}.ts`, and
+  `network/indexer/indexer.{graph,state}.ts` are now thin compatibility
+  re-export shims pointing to their canonical `communities/` counterparts.
+
 ## [6.13.19] — 2026-07-25
 
 ### Added
