@@ -26,7 +26,8 @@
  */
 import { z } from "zod";
 
-import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
+import type { DefineTool } from "../shared/agent/tool.helpers.js";
+import type { AskUserQuestionToolDeps } from "../capabilities/questions.tools.port.js";
 import { error, success } from "../shared/agent/tool.helpers.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -110,7 +111,7 @@ function questionFromDraft(draft: z.infer<typeof draftQuestionSchema>, index: nu
  * @param defineTool - Tool factory provided by the composition root.
  * @param deps       - Shared tool dependencies; requires `chatQuestions`.
  */
-export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createAskUserQuestionTools(defineTool: DefineTool, deps: AskUserQuestionToolDeps) {
   const askUserQuestion = defineTool({
     name: "ask_user_question",
     description:
@@ -316,7 +317,7 @@ export function createAskUserQuestionTools(defineTool: DefineTool, deps: ToolDep
  * no chat session reader is available. Note: the in-flight user message is
  * not yet persisted; the orchestrator's `purpose` carries that context.
  */
-async function loadConversationExcerpt(deps: ToolDeps, sessionId: string): Promise<string> {
+async function loadConversationExcerpt(deps: AskUserQuestionToolDeps, sessionId: string): Promise<string> {
   if (!deps.chatSession) return "";
   try {
     const messages = await deps.chatSession.getSessionMessages(sessionId, EXCERPT_FETCH_LIMIT);

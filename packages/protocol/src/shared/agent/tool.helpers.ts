@@ -129,7 +129,8 @@ export interface ResolvedToolContext {
  * Note: userDb and systemDb are optional inputs - if not provided, createChatTools
  * will create them internally from the chatDatabaseAdapter singleton.
  */
-export interface ToolContext {
+/** Complete host binding set used only to derive request and composition ports. */
+interface ToolContextBindings {
   userId: string;
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
   database: ChatGraphCompositeDatabase;
@@ -307,12 +308,30 @@ export interface ToolContext {
   }>;
 }
 
+/** Per-request chat identity, scope, and adapter inputs. */
+export type ChatToolRequest = Pick<ToolContextBindings,
+  'userId' | 'userDb' | 'systemDb' | 'networkId' | 'scopeType' | 'scopeId'
+  | 'indexScope' | 'sessionId'
+>;
+
+/** Host-owned bindings injected into a chat request at the composition boundary. */
+export type ChatToolHostDeps = Omit<ToolContextBindings, keyof ChatToolRequest>;
+
 /**
- * All external dependencies needed to initialize the protocol tool engine.
- * The host application (composition root) must provide concrete implementations.
- * This is the subset of ToolContext that is NOT per-request (no userId, indexId, sessionId).
+ * Compatibility context for the chat factory.
+ *
+ * New tool factories receive capability-specific `*ToolDeps` ports, while
+ * this request-plus-host intersection keeps existing chat/persona consumers
+ * structurally compatible during incremental migration.
  */
-export type ProtocolDeps = Omit<ToolContext, 'userId' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'>;
+export type ToolContext = ChatToolRequest & ChatToolHostDeps;
+
+/**
+ * All host dependencies needed to initialize the protocol chat engine.
+ * User and system database views are created per request unless supplied by a
+ * compatibility caller.
+ */
+export type ProtocolDeps = ChatToolHostDeps;
 
 /**
  * Thrown when a requested chat scope is invalid for the authenticated user.
@@ -496,7 +515,14 @@ export type ToolRegistry = Map<string, RawToolDefinition>;
  * Shared dependencies available to all tool domain factories.
  * Passed by `createChatTools` after compiling all subgraphs.
  */
-export interface ToolDeps {
+/**
+ * Host bindings available while composing the protocol tool registry.
+ *
+ * This is deliberately not exported as a consumer contract. Individual tool
+ * factories receive the use-case ports below; `ToolDeps` remains the complete
+ * compatibility shape only for registry/composition callers during migration.
+ */
+interface ToolDepsBindings {
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
   database: ChatGraphCompositeDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. */
@@ -669,6 +695,30 @@ export interface ToolDeps {
    */
   getUserContextText?: (userId: string) => Promise<string>;
 }
+
+/**
+ * Shared backing shape for the registry composition boundary. Capability-local
+ * ports may Pick from this type, but it is intentionally not a root export.
+ */
+export type ToolRegistryCompositionDeps = Omit<ToolDepsBindings,
+  'embedder' | 'chatMessageWriter' | 'mintConnectToken' | 'apiBaseUrl' | 'mcpRateLimiter'
+>;
+
+/** Runtime-only hooks retained for MCP and existing host composition. */
+type ToolRuntimeCompatibilityDeps = Pick<ToolDepsBindings,
+  'embedder' | 'chatMessageWriter' | 'mintConnectToken' | 'apiBaseUrl' | 'mcpRateLimiter'
+>;
+
+/**
+ * Legacy complete tool composition contract.
+ *
+ * New capability factories must accept their named `*ToolDeps` port above,
+ * rather than this aggregate. Keeping the intersection preserves structural
+ * compatibility for the registry and host composition while consumers migrate.
+ */
+export type ToolDeps =
+  & ToolRegistryCompositionDeps
+  & ToolRuntimeCompatibilityDeps;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TOOL RESULT HELPERS

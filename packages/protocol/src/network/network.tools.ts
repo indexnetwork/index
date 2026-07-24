@@ -4,7 +4,8 @@ import { requestContext } from "../shared/observability/request-context.js";
 import { log } from "../shared/observability/log.js";
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 
-import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
+import type { DefineTool } from "../shared/agent/tool.helpers.js";
+import type { NetworkToolDeps } from "../capabilities/communities.tools.port.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { NetworkRecommender } from "./network.recommender.js";
 
@@ -14,7 +15,7 @@ let recommender: NetworkRecommender | undefined;
 
 const logger = log.protocol.from("ChatTools:Network");
 
-export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps) {
   const { graphs, userDb, systemDb } = deps;
 
   const enrichWithContext = (networks: Array<Record<string, unknown>>) =>

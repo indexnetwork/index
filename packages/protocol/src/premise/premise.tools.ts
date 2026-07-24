@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
+import type { DefineTool } from "../shared/agent/tool.helpers.js";
+import type { PremiseToolDeps } from "../capabilities/participant-context.tools.port.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { PremiseRecord, PremiseValidity } from "../shared/interfaces/database.interface.js";
@@ -11,7 +12,7 @@ const readPremisesLog = protocolLogger("ChatTools:Premise:readPremises");
 const updatePremiseLog = protocolLogger("ChatTools:Premise:updatePremise");
 const retractPremiseLog = protocolLogger("ChatTools:Premise:retractPremise");
 
-export function createPremiseTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createPremiseTools(defineTool: DefineTool, deps: PremiseToolDeps) {
   const database = deps.database;
   const premiseGraph = deps.graphs.premise;
 

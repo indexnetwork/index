@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { DefineTool, ToolDeps } from '../shared/agent/tool.helpers.js';
+import type { DefineTool } from '../shared/agent/tool.helpers.js';
+import type { IntegrationToolDeps } from '../capabilities/integrations.tools.port.js';
 import { success, error } from '../shared/agent/tool.helpers.js';
 import { requestContext } from "../shared/observability/request-context.js";
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
@@ -16,7 +17,7 @@ const logger = protocolLogger('ChatTools:Integration');
  * @param deps - Shared tool dependencies including the integration adapter.
  * @returns An array of tool definitions to register with the chat agent.
  */
-export function createIntegrationTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createIntegrationTools(defineTool: DefineTool, deps: IntegrationToolDeps) {
   const { integration, integrationImporter } = deps;
 
   // import_gmail_contacts creates ghost users, so it is gated behind the

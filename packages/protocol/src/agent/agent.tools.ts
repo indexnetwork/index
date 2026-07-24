@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import type { DefineTool, ToolDeps } from '../shared/agent/tool.helpers.js';
+import type { DefineTool } from '../shared/agent/tool.helpers.js';
+import type { AgentToolDeps } from '../capabilities/participant-agents.tools.port.js';
 import { error, success } from '../shared/agent/tool.helpers.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
@@ -23,7 +24,7 @@ function isValidAction(action: string): action is (typeof AGENT_ACTIONS)[number]
   return (AGENT_ACTIONS as readonly string[]).includes(action);
 }
 
-function requireAgentDatabase(deps: ToolDeps) {
+function requireAgentDatabase(deps: AgentToolDeps) {
   if (!deps.agentDatabase) {
     return null;
   }
@@ -55,7 +56,7 @@ function normalizePermissions(permissions: string[] | undefined): string[] {
   return [...new Set((permissions ?? []).map((action) => action.trim()).filter(Boolean))];
 }
 
-export function createAgentTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
   const agentDb = requireAgentDatabase(deps);
   if (!agentDb) {
     return [];

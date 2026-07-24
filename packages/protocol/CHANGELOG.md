@@ -13,6 +13,13 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Slice tool-factory dependencies into named capability-owned ports for
+  enrichment, signals, communities, opportunities, premises, contacts,
+  integrations, participant agents, negotiations, and questions. `ToolDeps`
+  and `ToolContext` remain structurally compatible composition intersections at
+  registry/runtime boundaries; ports are declared and exported through their
+  owning capability facades, while individual factories no longer receive the
+  all-capability aggregate (IND-529).
 - Publish Protocol tarballs without JavaScript or declaration source maps while
   retaining map generation for the first-party Sentry upload build. Published
   declarations remain available for downstream type checking and navigation

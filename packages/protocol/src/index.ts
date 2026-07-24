@@ -16,7 +16,12 @@
 // ─── Public API (recommended for external consumers) ──────────────────────────
 
 export { getModelName } from "./shared/agent/model.config.js";
-export type { ResolvedToolContext, ToolDeps, RawToolDefinition, CompiledGraph } from "./shared/agent/tool.helpers.js";
+export type {
+  ResolvedToolContext,
+  ToolDeps,
+  RawToolDefinition,
+  CompiledGraph,
+} from "./shared/agent/tool.helpers.js";
 export { ChatContextAccessError, resolveChatContext } from "./shared/agent/tool.helpers.js";
 export { deriveAllowedNetworkIds, deriveDiscoveryNetworkIds } from "./shared/agent/tool.scope.js";
 export type { ToolScopeType } from "./shared/agent/tool.scope.js";
@@ -230,14 +235,23 @@ export { createToolRegistry } from "./shared/agent/tool.registry.js";
 // Capability-owned tool entry points. These are explicit, narrow contracts;
 // capability implementation directories remain private to the package.
 export { createIntentTools } from "./capabilities/signals.facade.js";
+export type { IntentToolDeps } from "./capabilities/signals.facade.js";
 export { createEnrichmentTools, createPremiseTools } from "./capabilities/participant-context.facade.js";
+export type { EnrichmentToolDeps, PremiseToolDeps } from "./capabilities/participant-context.facade.js";
 export { createNetworkTools } from "./capabilities/communities.facade.js";
+export type { NetworkToolDeps } from "./capabilities/communities.facade.js";
 export { createOpportunityTools } from "./capabilities/opportunities.facade.js";
+export type { OpportunityToolDeps } from "./capabilities/opportunities.facade.js";
 export { createNegotiationTools } from "./capabilities/negotiation.facade.js";
+export type { NegotiationToolDeps } from "./capabilities/negotiation.facade.js";
 export { createQuestionerTools, createAskUserQuestionTools } from "./capabilities/questions.facade.js";
+export type { AskUserQuestionToolDeps, QuestionerToolDeps } from "./capabilities/questions.facade.js";
 export { createChatTools, createAgentTools } from "./capabilities/participant-agents.facade.js";
+export type { AgentToolDeps } from "./capabilities/participant-agents.facade.js";
 export { createContactTools } from "./capabilities/contacts.facade.js";
+export type { ContactToolDeps } from "./capabilities/contacts.facade.js";
 export { createIntegrationTools } from "./capabilities/integrations.facade.js";
+export type { IntegrationToolDeps } from "./capabilities/integrations.facade.js";
 export { AMBIENT_PARK_WINDOW_MS } from './capabilities/negotiation.facade.js';
 export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 

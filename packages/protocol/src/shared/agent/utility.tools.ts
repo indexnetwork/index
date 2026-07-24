@@ -2,10 +2,13 @@ import { z } from "zod";
 
 import { requestContext } from "../observability/request-context.js";
 
-import type { DefineTool, ToolDeps } from "./tool.helpers.js";
+import type { DefineTool, ToolRegistryCompositionDeps } from "./tool.helpers.js";
 import { success, error, normalizeUrl } from "./tool.helpers.js";
 
-export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
+/** Host capabilities consumed by URL and profile utility tools. */
+type UtilityToolDeps = Pick<ToolRegistryCompositionDeps, "scraper" | "userDb">;
+
+export function createUtilityTools(defineTool: DefineTool, deps: UtilityToolDeps) {
   const { scraper } = deps;
 
   const scrapeUrl = defineTool({

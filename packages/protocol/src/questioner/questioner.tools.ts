@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
+import type { DefineTool } from "../shared/agent/tool.helpers.js";
+import type { QuestionerToolDeps } from "../capabilities/questions.tools.port.js";
 import { error, success } from "../shared/agent/tool.helpers.js";
 import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
@@ -40,7 +41,7 @@ function stripInternalQuestionFields(
  *                     `answerPendingQuestion` are optional and the tools fail
  *                     gracefully when absent.
  */
-export function createQuestionerTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createQuestionerTools(defineTool: DefineTool, deps: QuestionerToolDeps) {
   const readPendingQuestions = defineTool({
     name: "read_pending_questions",
     description:

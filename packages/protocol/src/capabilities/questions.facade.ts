@@ -5,3 +5,4 @@ export type { QuestionerInput, RecoveryQuestionerInput, UptakeQuestionerInput, P
 export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, isDiscoveryQuestionsEnabled, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs } from "../questioner/questioner.env.js";
 export { createQuestionerTools } from "../questioner/questioner.tools.js";
 export { createAskUserQuestionTools } from "../questioner/questioner.ask.tool.js";
+export type { AskUserQuestionToolDeps, QuestionerToolDeps } from "./questions.tools.port.js";
