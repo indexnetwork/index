@@ -14,7 +14,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
   const { isAuthenticated } = useAuthContext();
 
-  const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/settings', '/agents', '/agent', '/questions'];
+  const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c', '/l', '/index'];
   const bareRoutes = ['/', '/i/new', '/onboarding', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages'];
 

@@ -2,6 +2,42 @@
  * Conversation service — typed API client for the conversations endpoints.
  */
 
+export type NegotiationTaskState =
+  | 'submitted'
+  | 'working'
+  | 'input_required'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+  | 'rejected'
+  | 'auth_required'
+  | 'waiting_for_agent'
+  | 'claimed';
+
+export type NegotiationOpportunityStatus =
+  | 'latent'
+  | 'draft'
+  | 'negotiating'
+  | 'pending'
+  | 'stalled'
+  | 'accepted'
+  | 'rejected'
+  | 'expired';
+
+export interface ConversationNegotiationLifecycle {
+  taskId: string;
+  state: NegotiationTaskState;
+  statusTimestamp: string | null;
+  opportunityId: string | null;
+  opportunityStatus: NegotiationOpportunityStatus | null;
+  acceptedByViewer: boolean;
+  turnCount: number;
+  maxTurns: number | null;
+  signalCount: number;
+  outcome: { hasOpportunity: boolean; reason: string | null } | null;
+  updatedAt: string;
+}
+
 export interface ConversationSummary {
   id: string;
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
@@ -13,6 +49,8 @@ export interface ConversationSummary {
   unreadCount: number;
   lastMessageAt: string | null;
   createdAt: string;
+  /** Latest task and opportunity lifecycle for A2A negotiation summaries. */
+  negotiation?: ConversationNegotiationLifecycle | null;
 }
 
 export interface ConversationMessage {

@@ -10,10 +10,12 @@ import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import TopBar from '@/components/TopBar';
+import type { ConversationSummary } from '@/services/conversation';
 
 const mocks = vi.hoisted(() => ({
   questionsState: { personalAgentPending: 0 },
-  conversations: [] as Array<Record<string, unknown>>,
+  conversations: [] as Array<ConversationSummary & { persona: string }>,
+  negotiations: [] as Array<ConversationSummary & { persona: string }>,
   navigate: vi.fn(),
 }));
 
@@ -49,7 +51,7 @@ vi.mock('@/contexts/QuestionsContext', () => ({
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
-  useConversation: () => ({ conversations: mocks.conversations }),
+  useConversation: () => ({ conversations: mocks.conversations, negotiations: mocks.negotiations }),
 }));
 
 vi.mock('@/components/UserAvatar', () => ({
@@ -61,7 +63,7 @@ function conversationSummary(
   unreadCount: number,
   participantTypes: Array<'user' | 'agent'> = ['user', 'user'],
   persona = 'orchestrator',
-) {
+): ConversationSummary & { persona: string } {
   return {
     id,
     persona,
@@ -93,6 +95,7 @@ describe('TopBar Personal Agent badge', () => {
     vi.clearAllMocks();
     mocks.questionsState.personalAgentPending = 0;
     mocks.conversations = [];
+    mocks.negotiations = [];
   });
 
   test('renders primary nav including Signals and Agent', () => {
@@ -133,6 +136,33 @@ describe('TopBar Personal Agent badge', () => {
     ];
     renderTopBar();
     expect(screen.queryByTestId('chat-unread-badge')).toBeNull();
+  });
+
+  test('Negotiations badge counts rows that require the user to act', () => {
+    const question = conversationSummary('negotiation-question', 0, ['agent', 'agent']);
+    question.lastMessage = {
+      parts: [{ kind: 'data', data: { action: 'ask_user' } }],
+      senderId: 'agent:user-1',
+      createdAt: new Date().toISOString(),
+    };
+    question.negotiation = {
+      taskId: 'task-1',
+      state: 'input_required',
+      statusTimestamp: new Date().toISOString(),
+      opportunityId: 'opportunity-1',
+      opportunityStatus: 'negotiating',
+      acceptedByViewer: false,
+      turnCount: 2,
+      maxTurns: 6,
+      signalCount: 2,
+      outcome: null,
+      updatedAt: new Date().toISOString(),
+    };
+    mocks.negotiations = [question];
+
+    renderTopBar();
+
+    expect(screen.getByTestId('negotiations-your-move-badge')).toHaveTextContent('1');
   });
 
   test('pending-question badge renders on the Agent entry when the inbox has open questions', () => {
