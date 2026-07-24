@@ -1,7 +1,7 @@
 ---
 name: run-worktree-session
 description: >-
-  Run feature and fix implementation in a visible Herdr-managed Pi or Codex worktree session,
+  Run feature and fix implementation in a visible Herdr-managed Pi, Codex, or Kimi worktree session,
   with fire-and-return handoffs, explicit manual reconciliation, and a
   verify-commit-push-PR loop. Use when Index work moves from root investigation into
   implementation or returns for review and finish-pr fixes.
@@ -9,8 +9,10 @@ description: >-
 
 # run-worktree-session
 
-The canonical/root agent coordinates and remains active. The visible agent in the exact Herdr
-worktree workspace owns code mutations. Do not use hidden `Agent` subagents for
+Tier vocabulary is fixed (see `run-agent-orchestration`): the coordinating agent in
+the canonical root is the **parent** (`root` in a wave, or `main` acting alone); the
+visible agent in the exact Herdr worktree workspace is the **`child`** and owns code
+mutations. Do not use hidden `Agent` subagents for
 implementation or fix rounds, and do not create a watcher process or watcher pane.
 
 ## 1. Create or reuse the visible session
@@ -21,16 +23,20 @@ Follow `create-worktree` from the canonical root:
 2. create or reuse the exact Git worktree after collision checks;
 3. run `bun run worktree:setup <folder>`;
 4. open it with Herdr without changing the active `index` workspace;
-5. launch Codex or Pi only if the returned root pane has no existing agent.
+5. launch Codex, Pi, or Kimi only if the returned root pane has no existing agent.
 
 The installed CLI contract is:
 
 ```bash
 herdr worktree open --path "$WORKTREE" --label "$FOLDER" --no-focus --json
-# launch Codex, or Pi with a preselected model/thinking level:
-herdr pane send-text "$PANE_ID" "codex" # or: pi --model provider/model:thinking
+# launch Codex, Kimi, or Pi with a preselected model/thinking level:
+herdr pane send-text "$PANE_ID" "codex" # or: kimi, or: pi --model provider/model:thinking
 herdr pane send-keys "$PANE_ID" enter
 ```
+
+Pi, Codex, and Kimi are equally supported; take the exact launch line, model column,
+and per-harness capability line for the handoff from the `run-agent-orchestration`
+references (`harness-matrix.md`, `model-routing.md`).
 
 All pane reads, text, and keys are explicit-ID-targeted and non-focusing. Prefer this
 pane launch path. Do not use `herdr agent start` normally; if an environment forces
@@ -44,7 +50,9 @@ agent-name collision rather than sending work to the wrong checkout.
 ## 2. Deliver one complete handoff
 
 Write one complete handoff with the absolute worktree, branch, scope, constraints,
-verification commands, requested RESULT, and the exact `PARENT_PANE_ID`. Inspect the
+verification commands, the requested `CHILD_RESULT` envelope, the exact
+`PARENT_PANE_ID`, and the recipient harness's capability line (a kimi `--auto`
+child cannot ask questions and must report blockers in its envelope). Inspect the
 exact pane before delivery, then submit without waiting:
 
 ```bash
@@ -55,12 +63,13 @@ The parent route is mandatory: before the child stops in a terminal state (`done
 `blocked`, or `failed`), it must notify that exact parent pane with its result envelope:
 
 ```bash
-herdr agent prompt "$PARENT_PANE_ID" "CHILD_RESULT\nstatus: done | blocked | failed\nbranch/head/PR: ...\nverification: ...\nblockers: ..."
+herdr agent prompt "$PARENT_PANE_ID" "CHILD_RESULT\nchild: <label>\nstatus: done | blocked | failed\nbranch/head/PR: ...\nverification: ...\nblockers: ..."
 ```
 
 Use this one direct completion prompt, not a watcher, polling, or `--wait`. If it
-fails, record the failure in the child `RESULT` and leave the child pane available for
-manual reconciliation. Do not commit task-specific handoff files under `.pi`.
+fails, record the failure in the child's `CHILD_RESULT` and leave the child pane
+available for manual reconciliation. Do not commit task-specific handoff files under
+`.pi` or anywhere in the repository.
 
 ## 3. Reconcile results manually
 
@@ -149,9 +158,11 @@ agents mutate one checkout.
 ## 7. Manual compaction checkpoint
 
 At a safe idle boundary, write a concise continuation checkpoint containing the exact
-session, worktree/branch/head, dirty state, validation completed, and next action.
-Then issue `/compact` and queue one explicit continuation prompt referencing that
-checkpoint. Verify the same session resumes; if the agent stops, relaunch that exact session
+session, worktree/branch/head, dirty state, validation completed, and next action —
+in a wave, this lives in the wave's checkpoint journal (the `coordination-loop.md`
+reference of `run-agent-orchestration`).
+On pi and codex, then issue `/compact` and queue one explicit continuation prompt referencing that
+checkpoint; kimi has no manual compaction — resume its exact session (`kimi -S <id>`) instead. Verify the same session resumes; if the agent stops, relaunch that exact session
 file/model/worktree rather than creating a duplicate writer. Never compact during a
 tool, write, test, rebase, migration, merge, deployment, or structured question.
 

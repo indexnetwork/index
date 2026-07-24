@@ -1,8 +1,8 @@
 ---
 name: create-worktree
 description: >-
-  Create or reuse an isolated Index worktree and open its visible Herdr-managed Pi or
-  Codex session. Use before implementation from the canonical root, when resuming a branch
+  Create or reuse an isolated Index worktree and open its visible Herdr-managed Pi,
+  Codex, or Kimi session. Use before implementation from the canonical root, when resuming a branch
   session, or when validating branch/worktree/workspace identity before mutation.
 ---
 
@@ -16,7 +16,7 @@ subagent.
 ## Herdr preflight
 
 Before worktree orchestration, verify the installed CLI, running server, and chosen
-agent integration (Pi or Codex):
+agent integration (Pi, Codex, or Kimi):
 
 ```bash
 command -v herdr
@@ -108,14 +108,18 @@ herdr pane get "$PANE_ID"
 herdr agent get "$PANE_ID"
 ```
 
-If the root pane is an interactive shell with no agent, launch Codex or Pi through the
+If the root pane is an interactive shell with no agent, launch Codex, Pi, or Kimi through the
 exact non-focusing pane ID. Choose the command and any supported model options before
 launch; never switch models mid-implementation:
 
 ```bash
-herdr pane send-text "$PANE_ID" "codex" # or: pi --model provider/model:thinking
+herdr pane send-text "$PANE_ID" "codex" # or: kimi, or: pi --model provider/model:thinking
 herdr pane send-keys "$PANE_ID" enter
 ```
+
+Pi, Codex, and Kimi are equally supported; exact launch lines, model routing, and
+per-harness capabilities live in the `run-agent-orchestration` references
+(`harness-matrix.md`, `model-routing.md`).
 
 All pane reads, text, and keys are explicit-ID-targeted and non-focusing. If an agent
 already exists in that pane, reuse it only when its cwd is `WORKTREE` and its identity

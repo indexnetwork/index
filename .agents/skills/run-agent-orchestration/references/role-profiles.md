@@ -73,6 +73,25 @@ is explicitly issued.
 - GitHub checks green; Railway terminal/deployment verification per `finish-pr` and
   `verify-production-release`.
 
+## integration-owner
+
+Trigger: an integration-branch wave (see `integration-branch-waves.md`). One
+dedicated child owns the integration branch's merge plane for the whole wave; its
+worktree is the integration-branch checkout and its session lives until promotion.
+Specialization of `release-review`: it does **no source implementation** unless a
+fix handoff is explicitly issued.
+
+- Executes only merges the root has explicitly authorized, after verifying its own
+  worktree path, branch, and clean status — never merges on a child's claim alone.
+- Squash-merges internal PRs in the journaled queue order, then reconciles its own
+  checkout (`git pull --ff-only` semantics; no divergence).
+- Owns deliberate SemVer/manifest/lockfile reconciliation when parallel PRs collide
+  on versions (base-version floor rule); never hand-merges manifests.
+- Keeps the integration branch shared/long-lived: never rebases or force-pushes it
+  once children have branched from it.
+- Prepares the promotion PR to `dev` at wave end and hands it to the full external
+  `finish-pr` workflow.
+
 ## Attaching secondary checklists
 
 When attaching, copy only the checklist bullets of the secondary role into the
