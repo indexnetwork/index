@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 
@@ -6,7 +6,7 @@ import { ContentContainer } from '@/components/layout';
 import UserAvatar from '@/components/UserAvatar';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
-import { deriveNegotiationInbox, type NegotiationInboxItem, type NegotiationInboxStatus } from '@/lib/negotiation-inbox';
+import { deriveNegotiationInbox, flattenNegotiationInbox, type NegotiationInboxItem, type NegotiationInboxStatus } from '@/lib/negotiation-inbox';
 
 const CHIP_CLASS: Record<NegotiationInboxStatus, string> = {
   answer: 'border-[#041729] bg-[#041729] text-white',
@@ -40,7 +40,37 @@ function StatusChip({ item }: { item: NegotiationInboxItem }) {
   );
 }
 
-function NegotiationRow({ item }: { item: NegotiationInboxItem }) {
+type ViewMode = 'grouped' | 'last-updated';
+const VIEW_MODE_STORAGE_KEY = 'negotiations-view-mode';
+
+function readViewMode(): ViewMode {
+  try {
+    return window.localStorage.getItem(VIEW_MODE_STORAGE_KEY) === 'last-updated' ? 'last-updated' : 'grouped';
+  } catch {
+    return 'grouped';
+  }
+}
+
+// 1.6s update flash on changed rows (design §3 R2): amber-tinted for content
+// updates, steel-tinted for posture moves. Keyed per-flash so the overlay
+// remounts and restarts the animation on consecutive updates.
+const FLASH_STYLES = `
+@keyframes negotiations-flash-amber { from { background: #fff3d6; } to { background: transparent; } }
+@keyframes negotiations-flash-steel { from { background: #dceefb; } to { background: transparent; } }
+.negotiations-flash-amber { animation: negotiations-flash-amber 1.6s ease-out; }
+.negotiations-flash-steel { animation: negotiations-flash-steel 1.6s ease-out; }
+`;
+
+interface RowFlash {
+  kind: 'amber' | 'steel';
+  nonce: number;
+}
+
+function NegotiationRow({ item, flash, rowRef }: {
+  item: NegotiationInboxItem;
+  flash?: RowFlash;
+  rowRef?: (element: HTMLButtonElement | null) => void;
+}) {
   const navigate = useNavigate();
   const openTranscript = () => navigate(`/chat/${item.conversationId}`);
   const isResolved = item.group === 'resolved';
@@ -48,10 +78,18 @@ function NegotiationRow({ item }: { item: NegotiationInboxItem }) {
   return (
     <button
       type="button"
+      ref={rowRef}
       onClick={openTranscript}
-      className={`group flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4091BB] sm:flex-nowrap ${isResolved ? 'bg-gray-50/60 opacity-80' : 'bg-white'}`}
+      className={`group relative flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4091BB] sm:flex-nowrap ${isResolved ? 'bg-gray-50/60 opacity-80' : 'bg-white'}`}
       aria-label={`Open negotiation with ${item.counterpart.name}`}
     >
+      {flash && (
+        <span
+          key={flash.nonce}
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-0 ${flash.kind === 'steel' ? 'negotiations-flash-steel' : 'negotiations-flash-amber'}`}
+        />
+      )}
       <UserAvatar
         id={item.counterpart.id}
         name={item.counterpart.name}
@@ -84,7 +122,11 @@ function NegotiationRow({ item }: { item: NegotiationInboxItem }) {
   );
 }
 
-function InboxGroup({ label, items }: { label: string; items: NegotiationInboxItem[] }) {
+function InboxGroup({ label, items, flashes }: {
+  label: string;
+  items: NegotiationInboxItem[];
+  flashes: ReadonlyMap<string, RowFlash>;
+}) {
   return (
     <section aria-labelledby={`negotiations-${label.toLowerCase().replace(/\s+/g, '-')}`}>
       <h2
@@ -95,7 +137,7 @@ function InboxGroup({ label, items }: { label: string; items: NegotiationInboxIt
       </h2>
       {items.length > 0 && (
         <div className="divide-y divide-gray-100 overflow-hidden rounded-md border border-gray-200 bg-white">
-          {items.map((item) => <NegotiationRow key={item.conversationId} item={item} />)}
+          {items.map((item) => <NegotiationRow key={item.conversationId} item={item} flash={flashes.get(item.conversationId)} />)}
         </div>
       )}
     </section>
@@ -104,8 +146,17 @@ function InboxGroup({ label, items }: { label: string; items: NegotiationInboxIt
 
 export default function NegotiationsInbox() {
   const { user } = useAuthContext();
-  const { negotiations, refreshNegotiations } = useConversation();
+  const { negotiations, refreshNegotiations, isConnected } = useConversation();
   const [refreshing, setRefreshing] = useState(negotiations.length === 0);
+  const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
+  const [now, setNow] = useState(() => Date.now());
+  const [flashes, setFlashes] = useState<ReadonlyMap<string, RowFlash>>(new Map());
+  const previousRowsRef = useRef<Map<string, { group: string; status: string; sortTimestamp: number }> | null>(null);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashNonceRef = useRef(0);
+  const flatListRef = useRef<HTMLDivElement | null>(null);
+  const rowElementsRef = useRef(new Map<string, HTMLButtonElement>());
+  const previousTopsRef = useRef(new Map<string, number>());
 
   useEffect(() => {
     let cancelled = false;
@@ -115,20 +166,112 @@ export default function NegotiationsInbox() {
     return () => { cancelled = true; };
   }, [refreshNegotiations]);
 
+  // Ticking relative timestamps (design §3 R5): re-derive "Xm ago" every 30s.
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const groups = useMemo(
-    () => deriveNegotiationInbox(negotiations, user?.id),
-    [negotiations, user?.id],
+    () => deriveNegotiationInbox(negotiations, user?.id, now),
+    [negotiations, user?.id, now],
   );
+  const flatItems = useMemo(() => flattenNegotiationInbox(groups), [groups]);
   const totalCount = groups.yourMove.length + groups.inProgress.length + groups.resolved.length;
+
+  // Diff each refetch against the previous rows and flash what changed
+  // (design §3 R2): posture moves (group/status) in steel, content updates
+  // (a turn landed → updatedAt moved) and new arrivals in amber.
+  useEffect(() => {
+    const previous = previousRowsRef.current;
+    previousRowsRef.current = new Map(
+      flatItems.map((item) => [item.conversationId, { group: item.group, status: item.status, sortTimestamp: item.sortTimestamp }]),
+    );
+    if (!previous) return;
+
+    const changed: Array<[string, RowFlash['kind']]> = [];
+    for (const item of flatItems) {
+      const before = previous.get(item.conversationId);
+      if (!before) changed.push([item.conversationId, 'amber']);
+      else if (before.group !== item.group || before.status !== item.status) changed.push([item.conversationId, 'steel']);
+      else if (before.sortTimestamp !== item.sortTimestamp) changed.push([item.conversationId, 'amber']);
+    }
+    if (changed.length === 0) return;
+
+    flashNonceRef.current += 1;
+    const nonce = flashNonceRef.current;
+    setFlashes(new Map(changed.map(([id, kind]) => [id, { kind, nonce }])));
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    flashTimeoutRef.current = setTimeout(() => {
+      flashTimeoutRef.current = null;
+      setFlashes(new Map());
+    }, 1600);
+    return () => {
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    };
+  }, [flatItems]);
+
+  // FLIP reorder in Last updated mode (design §3 R2): stable keys keep rows
+  // mounted; offset each moved row back to its previous spot, then transition
+  // to the new one so reorders glide instead of vanishing/reappearing.
+  useLayoutEffect(() => {
+    if (viewMode !== 'last-updated' || !flatListRef.current) return;
+    const listTop = flatListRef.current.getBoundingClientRect().top;
+    rowElementsRef.current.forEach((element, id) => {
+      const top = element.getBoundingClientRect().top - listTop;
+      const previousTop = previousTopsRef.current.get(id);
+      if (previousTop !== undefined && previousTop !== top) {
+        element.style.transition = 'none';
+        element.style.transform = `translateY(${previousTop - top}px)`;
+        requestAnimationFrame(() => {
+          element.style.transition = 'transform 0.3s ease';
+          element.style.transform = '';
+        });
+      }
+      previousTopsRef.current.set(id, top);
+    });
+  });
+
+  const selectViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    try {
+      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+    } catch {
+      // Storage unavailable — keep the in-memory choice.
+    }
+  };
 
   return (
     <div className="px-6 pb-12 lg:px-8">
+      <style>{FLASH_STYLES}</style>
       <ContentContainer className="text-left" size="wide">
         <div className="mb-6 mt-12 text-center">
           <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono">Negotiations</h1>
           <p className="mt-2 text-xs text-gray-400 font-ibm-plex-mono">
             {groups.yourMove.length} your move · {groups.inProgress.length} in progress · {groups.resolved.length} resolved
+            <span className="ml-3 inline-flex items-center gap-1.5" role="status">
+              <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-gray-400'}`} aria-hidden="true" />
+              {isConnected ? 'live' : 'reconnecting…'}
+            </span>
           </p>
+          <div className="mx-auto mt-4 flex w-full max-w-[300px] items-center gap-1 rounded-md bg-gray-100 p-0.5" aria-label="View mode">
+            <button
+              type="button"
+              onClick={() => selectViewMode('grouped')}
+              aria-pressed={viewMode === 'grouped'}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded transition-colors font-ibm-plex-mono ${viewMode === 'grouped' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Grouped
+            </button>
+            <button
+              type="button"
+              onClick={() => selectViewMode('last-updated')}
+              aria-pressed={viewMode === 'last-updated'}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded transition-colors font-ibm-plex-mono ${viewMode === 'last-updated' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Last updated
+            </button>
+          </div>
         </div>
 
         {refreshing && totalCount === 0 ? (
@@ -140,11 +283,25 @@ export default function NegotiationsInbox() {
             <p>No negotiations yet</p>
             <p className="mt-2 text-xs text-gray-400">Your agents’ connection work will appear here.</p>
           </div>
-        ) : (
+        ) : viewMode === 'grouped' ? (
           <div className="space-y-8">
-            <InboxGroup label="Your move" items={groups.yourMove} />
-            <InboxGroup label="In progress" items={groups.inProgress} />
-            <InboxGroup label="Resolved" items={groups.resolved} />
+            <InboxGroup label="Your move" items={groups.yourMove} flashes={flashes} />
+            <InboxGroup label="In progress" items={groups.inProgress} flashes={flashes} />
+            <InboxGroup label="Resolved" items={groups.resolved} flashes={flashes} />
+          </div>
+        ) : (
+          <div ref={flatListRef} className="divide-y divide-gray-100 overflow-hidden rounded-md border border-gray-200 bg-white">
+            {flatItems.map((item) => (
+              <NegotiationRow
+                key={item.conversationId}
+                item={item}
+                flash={flashes.get(item.conversationId)}
+                rowRef={(element) => {
+                  if (element) rowElementsRef.current.set(item.conversationId, element);
+                  else rowElementsRef.current.delete(item.conversationId);
+                }}
+              />
+            ))}
           </div>
         )}
       </ContentContainer>

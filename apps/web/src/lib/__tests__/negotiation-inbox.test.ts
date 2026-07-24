@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { countNegotiationsRequiringAction, deriveNegotiationInbox } from '@/lib/negotiation-inbox';
+import { countNegotiationsRequiringAction, deriveNegotiationInbox, flattenNegotiationInbox } from '@/lib/negotiation-inbox';
 import type { ConversationSummary } from '@/services/conversation';
 
 const NOW = new Date('2026-07-24T12:00:00.000Z').getTime();
@@ -16,6 +16,7 @@ function conversation(
     outcome?: NonNullable<ConversationSummary['negotiation']>['outcome'];
     acceptedByViewer?: boolean;
     withMessage?: boolean;
+    updatedAt?: string;
   } = {},
 ): ConversationSummary {
   const action = input.action ?? 'counter';
@@ -46,7 +47,7 @@ function conversation(
       maxTurns: 6,
       signalCount: 2,
       outcome: input.outcome ?? null,
-      updatedAt: '2026-07-24T11:00:00.000Z',
+      updatedAt: input.updatedAt ?? '2026-07-24T11:00:00.000Z',
     },
   };
 }
@@ -110,5 +111,19 @@ describe('negotiations inbox presentation', () => {
     ], 'viewer', NOW);
 
     expect(groups).toEqual({ yourMove: [], inProgress: [], resolved: [] });
+  });
+
+  it('flattens groups into a last-updated ordering across groups', () => {
+    const groups = deriveNegotiationInbox([
+      conversation('agreed', { state: 'completed', opportunityStatus: 'pending', action: 'accept', updatedAt: '2026-07-24T09:00:00.000Z' }),
+      conversation('live', { turnCount: 2, updatedAt: '2026-07-24T11:30:00.000Z' }),
+      conversation('resolved', { state: 'completed', opportunityStatus: 'rejected', action: 'decline', outcome: { hasOpportunity: false, reason: null }, updatedAt: '2026-07-24T10:30:00.000Z' }),
+    ], 'viewer', NOW);
+
+    expect(flattenNegotiationInbox(groups).map((item) => [item.conversationId, item.group])).toEqual([
+      ['live', 'in_progress'],
+      ['resolved', 'resolved'],
+      ['agreed', 'your_move'],
+    ]);
   });
 });
