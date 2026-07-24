@@ -526,15 +526,10 @@ export default function IntentDetailPage() {
     const seq = ++loadSeqRef.current;
     if (!preserveExisting) setOpportunitiesLoading(true);
     const applyItems = (items: HomeViewCardItem[]) => {
-      if (!preserveExisting) {
-        setOpportunities(items);
-        return;
-      }
-      setOpportunities((current) => {
-        const merged = new Map(current.map((item) => [item.opportunityId, item]));
-        for (const item of items) merged.set(item.opportunityId, item);
-        return [...merged.values()];
-      });
+      // Every response is an authoritative snapshot for this exact intent.
+      // Passive refreshes avoid loading flicker, but must still remove rows
+      // that changed lifecycle or disappeared from the server response.
+      setOpportunities(items);
     };
     const baseOptions = {
       scopeType: "intent" as const,

@@ -1,5 +1,6 @@
 export interface NegotiationActivityOpportunity {
   id: string;
+  status: string;
   actors: Array<{ userId: string }>;
 }
 
@@ -9,6 +10,15 @@ export interface NegotiationActivityMessageRow {
   senderId: string;
   parts: unknown[];
   createdAt: Date;
+}
+
+function hasDisplayableText(parts: unknown[]): boolean {
+  return parts.some((part) => {
+    if (typeof part === 'string') return part.trim().length > 0;
+    if (!part || typeof part !== 'object') return false;
+    const text = (part as Record<string, unknown>).text;
+    return typeof text === 'string' && text.trim().length > 0;
+  });
 }
 
 /**
@@ -22,7 +32,11 @@ export function projectNegotiationActivity(
   messages: NegotiationActivityMessageRow[],
   counterparts: Map<string, { name: string; avatar: string | null }>,
 ) {
-  const opportunityById = new Map(opportunities.map((row) => [row.id, row]));
+  const opportunityById = new Map(
+    opportunities
+      .filter((row) => row.status === 'negotiating')
+      .map((row) => [row.id, row]),
+  );
   const groups = new Map<string, {
     correspondentUserId: string;
     correspondentLabel: string;
@@ -37,7 +51,11 @@ export function projectNegotiationActivity(
   }>();
 
   for (const message of messages) {
-    if (!message.taskId) continue;
+    if (
+      !message.taskId
+      || !message.senderId.startsWith('agent:')
+      || !hasDisplayableText(message.parts)
+    ) continue;
     const opportunityId = opportunityByTask.get(message.taskId);
     const opportunity = opportunityId ? opportunityById.get(opportunityId) : undefined;
     const correspondentUserId = opportunity?.actors.find((actor) => actor.userId !== userId)?.userId;

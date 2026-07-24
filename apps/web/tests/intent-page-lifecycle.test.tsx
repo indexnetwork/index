@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
   const archiveIntent = vi.fn();
   const refineIntent = vi.fn();
   const getHomeView = vi.fn();
+  const getNegotiationActivity = vi.fn();
   const getPending = vi.fn();
   const getAnswered = vi.fn();
   const answerQuestion = vi.fn();
@@ -38,6 +39,7 @@ const mocks = vi.hoisted(() => {
     archiveIntent,
     refineIntent,
     getHomeView,
+    getNegotiationActivity,
     getPending,
     getAnswered,
     answerQuestion,
@@ -45,6 +47,7 @@ const mocks = vi.hoisted(() => {
     notificationError: vi.fn(),
     intentsService: { getIntent, setIntentStatus, archiveIntent, refineIntent, visitIntent: vi.fn(async () => {}) },
     opportunitiesService: { getHomeView },
+    conversationsService: { getNegotiationActivity },
     questionsService: {
       getPending,
       getAnswered,
@@ -94,9 +97,13 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('@/contexts/APIContext', () => ({
   useIntents: () => mocks.intentsService,
   useOpportunities: () => mocks.opportunitiesService,
+  useConversations: () => mocks.conversationsService,
   useQuestionsService: () => mocks.questionsService,
 }));
 
+vi.mock('@/contexts/ConversationContext', () => ({
+  useConversation: () => ({ negotiations: [] }),
+}));
 
 vi.mock('@/contexts/QuestionsContext', () => ({
   useQuestions: () => ({ refresh: vi.fn(async () => {}) }),
@@ -151,9 +158,10 @@ describe('Intent detail lifecycle', () => {
     mocks.getIntent.mockImplementation(async () => ({ ...mocks.intent }));
     mocks.getHomeView.mockResolvedValue({
       sections: [{
-        items: [{ opportunityId: 'opportunity-1', status: 'pending' }],
+        items: [{ opportunityId: 'opportunity-1', status: 'negotiating' }],
       }],
     });
+    mocks.getNegotiationActivity.mockResolvedValue([]);
     mocks.getAnswered.mockResolvedValue([]);
     mocks.getPending.mockResolvedValue([{
       id: 'question-1',
@@ -219,6 +227,25 @@ describe('Intent detail lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
     await expectWorkspacePreserved();
+  });
+
+  test('passive Radar refresh authoritatively removes cards omitted by the server', async () => {
+    vi.useFakeTimers();
+    renderIntentPage();
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('radar-card-opportunity-1')).toBeInTheDocument();
+
+    mocks.getHomeView.mockResolvedValue({ sections: [] });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    expect(screen.queryByTestId('radar-card-opportunity-1')).toBeNull();
+    expect(screen.getByText('No matches here yet.')).toBeInTheDocument();
   });
 
   test('PAUSED renders static paused discovery, Resume with Play, and keeps the workspace', async () => {
