@@ -36,7 +36,7 @@ function makeHost(overrides: Partial<NegotiatorMemoryToolsHost> = {}): {
   return { host, rememberCalls, forgetCalls };
 }
 
-const invoke = async (tool: { invoke: (input: unknown) => Promise<unknown> }, input: unknown) =>
+const invoke = async (tool: { invoke: (input: any) => Promise<unknown> }, input: unknown) =>
   JSON.parse(String(await tool.invoke(input))) as Record<string, unknown>;
 
 describe("createNegotiatorMemoryTools", () => {

@@ -16,6 +16,19 @@ import { join } from "node:path";
 const ROOT = new URL("../src", import.meta.url).pathname;
 const CONCURRENCY = Number(process.env.TEST_CONCURRENCY ?? 4);
 
+/**
+ * These suites make real model calls and use an LLM judge. They remain available
+ * to the explicit live-evaluation workflow, but must never be picked up by the
+ * credential-free source-test gate.
+ */
+const LIVE_MODEL_SPECS = new Set([
+  "chat/tests/chat.prompt.spec.ts",
+  "contact/tests/contact.inviter.spec.ts",
+  "negotiation/tests/insight.generator.spec.ts",
+  "negotiation/tests/negotiator-discovery-query.spec.ts",
+  "opportunity/tests/opportunity.graph.spec.ts",
+]);
+
 function findSpecFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -38,9 +51,12 @@ type Result = {
 
 async function runOne(file: string): Promise<Result> {
   const started = Date.now();
+  const childEnv = { ...process.env, NODE_ENV: "test" };
+  delete childEnv.OPENROUTER_API_KEY;
+  delete childEnv.OPENAI_API_KEY;
   const proc = spawn({
-    cmd: ["bun", "test", file],
-    env: { ...process.env, NODE_ENV: "test" },
+    cmd: ["bun", "--config=bunfig.source-test.toml", "--preload=./source-test-preload.ts", "--no-env-file", "test", file],
+    env: childEnv,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -79,8 +95,15 @@ async function runPool(files: string[], n: number): Promise<Result[]> {
   return results;
 }
 
-const files = findSpecFiles(ROOT).sort();
-console.log(`Running ${files.length} spec files with concurrency=${CONCURRENCY}\n`);
+const allFiles = findSpecFiles(ROOT).sort();
+const liveFiles = allFiles.filter((file) => LIVE_MODEL_SPECS.has(file.replace(ROOT + "/", "")));
+const files = allFiles.filter((file) => !LIVE_MODEL_SPECS.has(file.replace(ROOT + "/", "")));
+console.log(`Running ${files.length} provider-free spec files with concurrency=${CONCURRENCY}`);
+if (liveFiles.length > 0) {
+  console.log("Excluded explicit live-model specs (run through the live-evaluation workflow):");
+  for (const file of liveFiles) console.log(`  ${file.replace(ROOT + "/", "")}`);
+}
+console.log();
 const started = Date.now();
 const results = await runPool(files, CONCURRENCY);
 const elapsed = Date.now() - started;
@@ -93,7 +116,10 @@ const totals = results.reduce(
 const failedFiles = results.filter((r) => r.fail + r.error > 0).sort((a, b) => a.file.localeCompare(b.file));
 if (failedFiles.length > 0) {
   console.log("\nFailing files:");
-  for (const r of failedFiles) console.log(`  ${r.file}  (${r.fail}f/${r.error}e)`);
+  for (const r of failedFiles) {
+    console.log(`\n--- ${r.file} (${r.fail}f/${r.error}e) ---`);
+    console.log(r.output.trim());
+  }
 }
 
 console.log(`\nTotals: ${totals.pass} pass, ${totals.fail} fail, ${totals.error} errors across ${files.length} files in ${(elapsed / 1000).toFixed(1)}s`);

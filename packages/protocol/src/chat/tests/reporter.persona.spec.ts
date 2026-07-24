@@ -103,7 +103,7 @@ describe("REPORTER_PERSONA", () => {
   it("keeps exactly allowlisted tools from a shared registry", () => {
     const registry = [...EXPECTED_TOOLS, ...FORBIDDEN_FAMILY_TOOLS, "read_docs"]
       .map((name) => ({ name }));
-    expect(filterReporterTools(registry).map((candidate) => candidate.name)).toEqual(EXPECTED_TOOLS);
+    expect(filterReporterTools(registry).map((candidate) => candidate.name)).toEqual([...EXPECTED_TOOLS]);
   });
 
   it("admits none of the forbidden negotiation, mutation, discovery, or memory families", () => {

@@ -7,9 +7,10 @@ import type { VerifiedIntent } from "../intent.state.js";
 const broadDirective: VerifiedIntent = {
   type: "goal",
   description: "Collaborating with narrative AI infrastructure builders",
-  confidence: 0.91,
+  confidence: "high",
   reasoning: "Explicit collaboration goal",
   verification: {
+    reasoning: "The request is broad and lacks a concrete target.",
     classification: "DIRECTIVE",
     felicity_scores: { authority: 95, sincerity: 90, clarity: 88 },
     semantic_entropy: 0.2,

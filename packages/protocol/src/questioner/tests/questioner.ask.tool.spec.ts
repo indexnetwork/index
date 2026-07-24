@@ -146,9 +146,9 @@ describe("ask_user_question", () => {
     // user_question stream event carries persisted ids.
     const userQuestionEvents = events.filter((e) => e.type === "user_question");
     expect(userQuestionEvents).toHaveLength(1);
-    const streamed = (userQuestionEvents[0] as { questions: Array<{ id: string; prompt: string }> }).questions;
+    const streamed = (userQuestionEvents[0] as { questions: Array<{ id: string }> }).questions;
     expect(streamed[0].id).toBe("q-0");
-    expect(streamed[0].prompt).toBe(generatedQuestion.prompt);
+    expect(streamed[0]).toEqual({ id: "q-0" });
   });
 
   it("falls back to the orchestrator's drafts when the agent returns nothing", async () => {

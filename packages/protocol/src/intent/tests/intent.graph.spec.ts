@@ -1,14 +1,69 @@
-/**
- * Tests for IntentGraph
- */
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, expect, it, beforeAll, beforeEach } from "bun:test";
-import { IntentGraphFactory } from "../intent.graph.js";
-import { IntentGraphState } from "../intent.state.js";
+/** Tests for IntentGraph. */
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { IntentGraphDatabase, ActiveIntent, CreatedIntent, ArchiveResult } from "../../shared/interfaces/database.interface.js";
+
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: (agent: string) => ({
+    invoke: async (messages: Array<{ content?: unknown }>) => {
+      const prompt = String(messages.at(-1)?.content ?? "");
+      if (agent === "intentInferrer") {
+        if (prompt.includes("I feel like doing something maybe.")) return { intents: [] };
+        if (prompt.includes("accessible React portfolio app")) {
+          return {
+            intents: [{
+              type: "goal",
+              description: "Build an accessible React portfolio app for frontend job applications in Berlin this quarter",
+              reasoning: "The user states a bounded future commitment.",
+              confidence: "high",
+            }],
+          };
+        }
+        if (prompt.includes("Update my TypeScript goal")) {
+          return { intents: [{ type: "goal", description: "Learn TypeScript, including design patterns", reasoning: "Explicit update.", confidence: "high" }] };
+        }
+        if (prompt.includes("Rust")) {
+          return { intents: [{ type: "goal", description: "Learn Rust programming language", reasoning: "Explicit goal.", confidence: "high" }] };
+        }
+        if (prompt.includes("open source")) {
+          return { intents: [{ type: "goal", description: "Contribute to open source projects", reasoning: "Explicit goal.", confidence: "high" }] };
+        }
+        return { intents: [] };
+      }
+      if (agent === "intentVerifier") {
+        return {
+          reasoning: "A bounded future commitment with concrete outcome, domain, location, and timeframe.",
+          classification: "COMMISSIVE",
+          felicity_scores: { clarity: 90, authority: 85, sincerity: 90 },
+          semantic_entropy: 0.1,
+          referential_anchor: null,
+          referential_breadth: "narrow",
+          missing_selectional_constraints: [],
+          specificity_warning: null,
+          flags: [],
+        };
+      }
+      if (agent === "intentReconciler") {
+        const candidate = prompt.match(/- \[[A-Z]+\] "([^"]+)"/)?.[1];
+        return {
+          actions: candidate ? [{
+            type: "create",
+            payload: candidate,
+            score: 85,
+            reasoning: "Create a new bounded intent.",
+            intentMode: "ATTRIBUTIVE",
+            referentialAnchor: null,
+            semanticEntropy: 0.1,
+          }] : [],
+        };
+      }
+      throw new Error(`Unexpected structured model agent: ${agent}`);
+    },
+  }),
+}));
+
+const { IntentGraphFactory } = await import("../intent.graph.js");
+
+afterAll(() => mock.restore());
 
 /**
  * Mock database for testing the Intent Graph.
@@ -40,7 +95,7 @@ const createMockDatabase = (): IntentGraphDatabase => {
         }));
     },
     async getUser(_userId: string) {
-      return { id: _userId, name: 'Test User', email: 'test@example.com' };
+      return { id: _userId, name: 'Test User', email: 'test@example.com', socials: [] };
     },
     async isNetworkMember(_indexId: string, _userId: string): Promise<boolean> {
       return true;
@@ -54,6 +109,19 @@ const createMockDatabase = (): IntentGraphDatabase => {
         userName: 'Test User',
         createdAt: i.createdAt,
       }));
+    },
+    async getActiveIntentsAcrossIndexes(userId: string, _indexIds: string[]): Promise<ActiveIntent[]> {
+      return intents
+        .filter(i => i.userId === userId)
+        .map(i => ({
+          id: i.id,
+          payload: i.payload,
+          summary: i.summary,
+          createdAt: i.createdAt,
+        }));
+    },
+    async getUserContext(_userId: string) {
+      return null;
     },
     async createIntent(data: { userId: string; payload: string; confidence: number; inferenceType: 'explicit' | 'implicit'; sourceType?: string }): Promise<CreatedIntent> {
       const newIntent: CreatedIntent = {
@@ -113,7 +181,7 @@ describe('IntentGraph - Basic Operations', () => {
     const inputState = {
       userId: "test-user-1",
       userProfile: "User is a Senior Developer named Alice. She likes generic coding.",
-      inputContent: "I want to build a new React app for my portfolio.",
+      inputContent: "I will build an accessible React portfolio app for frontend job applications in Berlin this quarter.",
     };
 
     const result = await graphRunner.invoke(inputState);
@@ -123,6 +191,7 @@ describe('IntentGraph - Basic Operations', () => {
     // Expectations
     expect(result.inferredIntents.length).toBeGreaterThan(0);
     expect(result.verifiedIntents.length).toBeGreaterThan(0);
+    expect(result.verifiedIntents[0]?.verification?.referential_breadth).toBe("narrow");
     expect(result.actions.length).toBeGreaterThan(0);
 
     const action = result.actions[0];
@@ -247,7 +316,7 @@ describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
 });
 
 describe('IntentGraph - Prep always fetches from DB', () => {
-  let graphRunner: ReturnType<IntentGraphFactory['createGraph']>;
+  let graphRunner: ReturnType<InstanceType<typeof IntentGraphFactory>["createGraph"]>;
   let mockDatabase: IntentGraphDatabase;
   let getActiveIntentsCalls: string[];
 

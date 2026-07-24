@@ -1,10 +1,9 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
-process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
-import type { Id } from '../../types/common.types.js';
+import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
@@ -44,7 +43,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     updateOpportunityActorApproval: async () => null,
     isNetworkMember: async () => true,
     isIndexOwner: async () => false,
-    getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com' }),
+    getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com', socials: [] }),
     getOrCreateDM: async () => ({ id: 'conv-default' }),
     getIntent: async () => null,
     getNegotiationTaskForOpportunity: async () => null,
@@ -105,7 +104,7 @@ describe('opportunity graph — update node self-accept guard', () => {
       createdAt: new Date(), updatedAt: new Date(), expiresAt: null,
     } as unknown as Opportunity;
 
-    let stampCall: { actorUserId: string; status: string; acceptedBy?: string } | null = null;
+    let stampCall: { actorUserId: string; status: string; acceptedBy?: string } | undefined;
     const db = buildDb({
       getOpportunity: async () => oppPending,
       stampOpportunityActorAction: async (_id, actorUserId, status, acceptedBy) => {

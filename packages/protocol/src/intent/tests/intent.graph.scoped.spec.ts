@@ -49,6 +49,10 @@ const makeDb = (): IntentGraphDatabase & { callLog: CallEntry[] } => {
       ];
     },
 
+    async getUserContext(_userId: string) {
+      return null;
+    },
+
     async getNetworkIntentsForMember(
       _indexId: string,
       _requestingUserId: string,
@@ -77,7 +81,7 @@ const makeDb = (): IntentGraphDatabase & { callLog: CallEntry[] } => {
     },
 
     async getUser(_userId: string) {
-      return { id: _userId, name: 'Test User', email: 'test@example.com' };
+      return { id: _userId, name: 'Test User', email: 'test@example.com', socials: [] };
     },
 
     async createIntent(data: {

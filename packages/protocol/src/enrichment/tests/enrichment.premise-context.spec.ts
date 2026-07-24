@@ -14,13 +14,7 @@ import type { ProfileContext } from '../../questioner/questioner.types.js';
 describe('ProfileContext with existingPremises', () => {
   it('accepts a full ProfileContext including existingPremises', () => {
     const ctx: ProfileContext = {
-      userProfile: {
-        name: 'Alice',
-        bio: 'Engineer',
-        location: 'Berlin',
-        skills: ['TypeScript'],
-        interests: ['open source'],
-      },
+      userContext: 'Alice is an engineer in Berlin who works with TypeScript and open source.',
       gaps: ['current work'],
       existingPremises: [
         'I am a software engineer based in Berlin',
@@ -36,7 +30,7 @@ describe('ProfileContext with existingPremises', () => {
 
   it('accepts a ProfileContext without existingPremises (backward compat)', () => {
     const ctx: ProfileContext = {
-      userProfile: { name: 'Bob' },
+      userContext: 'Bob.',
       gaps: ['location', 'skills'],
     };
 
@@ -46,7 +40,7 @@ describe('ProfileContext with existingPremises', () => {
 
   it('accepts a ProfileContext with an empty existingPremises array', () => {
     const ctx: ProfileContext = {
-      userProfile: { name: 'Carol' },
+      userContext: 'Carol.',
       gaps: ['skills'],
       existingPremises: [],
     };
@@ -65,7 +59,7 @@ describe('ProfileContext with existingPremises', () => {
     const existingPremises = premiseRecords.map(p => p.assertion.text);
 
     const ctx: ProfileContext = {
-      userProfile: { name: 'Dan' },
+      userContext: 'Dan works on AI infrastructure.',
       gaps: ['location'],
       existingPremises,
     };

@@ -3,10 +3,11 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
-import type { Id } from '../../types/common.types.js';
+import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
+import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 
 const dummyEmbedding = new Array(2000).fill(0.1);
 
@@ -19,9 +20,9 @@ describe('introducer gating lifecycle', () => {
     const OPP_ID = 'opp-lifecycle';
     const state = {
       actors: [
-        { userId: 'patient-user' as Id<'users'>, role: 'patient' as const, networkId: 'idx-1' as Id<'networks'>, intentId: 'intent-patient' as Id<'intents'>, approved: undefined },
-        { userId: 'agent-user' as Id<'users'>, role: 'agent' as const, networkId: 'idx-1' as Id<'networks'>, intentId: 'intent-agent' as Id<'intents'>, approved: undefined },
-        { userId: 'introducer-user' as Id<'users'>, role: 'introducer' as const, networkId: 'idx-1' as Id<'networks'>, intentId: undefined, approved: false },
+        { userId: 'patient-user' as Id<'users'>, role: 'patient' as const, networkId: 'idx-1' as Id<'networks'>, intent: 'intent-patient' as Id<'intents'>, approved: undefined },
+        { userId: 'agent-user' as Id<'users'>, role: 'agent' as const, networkId: 'idx-1' as Id<'networks'>, intent: 'intent-agent' as Id<'intents'>, approved: undefined },
+        { userId: 'introducer-user' as Id<'users'>, role: 'introducer' as const, networkId: 'idx-1' as Id<'networks'>, intent: undefined, approved: false },
       ] as OpportunityActor[],
     };
     const currentOpp = (): Opportunity => ({
@@ -59,6 +60,7 @@ describe('introducer gating lifecycle', () => {
     };
 
     const mockDb: OpportunityGraphDatabase = {
+      ...createOpportunityGraphDatabaseFixture(),
       getProfile: () => Promise.resolve(null),
       createOpportunity: (data) => Promise.resolve({ id: 'unused', ...data, status: data.status ?? 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null }),
       opportunityExistsBetweenActors: () => Promise.resolve(false),
@@ -74,7 +76,7 @@ describe('introducer gating lifecycle', () => {
       getNetworkMemberCount: () => Promise.resolve(2),
       getIntentIndexScores: async () => [],
       getNetworkMemberContext: async () => null,
-      getUser: (id: string) => Promise.resolve({ id, name: `User ${id}`, email: `${id}@example.com` }),
+      getUser: (id: string) => Promise.resolve({ id, name: `User ${id}`, email: `${id}@example.com`, socials: [] }),
       isNetworkMember: () => Promise.resolve(false),
       isIndexOwner: () => Promise.resolve(false),
       getOpportunity: (id: string) => id === OPP_ID ? Promise.resolve(currentOpp()) : Promise.resolve(null),

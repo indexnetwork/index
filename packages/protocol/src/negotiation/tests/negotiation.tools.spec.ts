@@ -3,6 +3,13 @@ import { z } from "zod";
 import { createNegotiationTools } from "../negotiation.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
+type Fixture<T> = T extends (...args: any[]) => unknown
+  ? (...args: any[]) => any
+  : T extends object
+    ? { [K in keyof T]?: Fixture<T[K]> }
+    : T;
+type ToolDepsFixture = Fixture<ToolDeps>;
+
 function makeContext(userId = "user-src", networkId?: string, intentId?: string): ResolvedToolContext {
   return {
     userId,
@@ -18,7 +25,7 @@ function makeContext(userId = "user-src", networkId?: string, intentId?: string)
   } as unknown as ResolvedToolContext;
 }
 
-function captureTool(name: string, deps: Partial<ToolDeps>) {
+function captureTool(name: string, deps: ToolDepsFixture) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string>; querySchema?: z.ZodType } | undefined;
   const defineTool = (def: { name: string; handler: (...args: unknown[]) => unknown; querySchema?: z.ZodType }) => {
     if (def.name === name) captured = def as typeof captured;
@@ -414,7 +421,7 @@ describe("respond_to_negotiation — handler", () => {
         },
         negotiationTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
         agentDispatcher: { dispatch: async () => opts?.dispatchResult ?? { handled: false, reason: "waiting" } },
-      } as Partial<ToolDeps>,
+      } as ToolDepsFixture,
       createdMessages,
     };
   }
