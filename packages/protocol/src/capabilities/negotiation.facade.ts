@@ -2,6 +2,7 @@
 export { NegotiationSummarizer } from "../negotiation/negotiation.summarizer.js";
 export { NegotiationGraphFactory, negotiateCandidates } from "../negotiation/negotiation.graph.js";
 export { createNegotiationTools } from "../negotiation/negotiation.tools.js";
+export type { NegotiationToolDeps } from "./negotiation.tools.port.js";
 export { NegotiationInsightsGenerator } from "../negotiation/insight.generator.js";
 export type { NegotiationDigest } from "../negotiation/insight.generator.js";
 export { IndexNegotiator } from "../negotiation/negotiation.agent.js";

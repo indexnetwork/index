@@ -1635,6 +1635,12 @@
       "source": "./capabilities/signals.facade.js"
     },
     {
+      "name": "IntentToolDeps",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
       "name": "createEnrichmentTools",
       "kind": "value",
       "stability": "stable",
@@ -1647,8 +1653,26 @@
       "source": "./capabilities/participant-context.facade.js"
     },
     {
+      "name": "EnrichmentToolDeps",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/participant-context.facade.js"
+    },
+    {
+      "name": "PremiseToolDeps",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/participant-context.facade.js"
+    },
+    {
       "name": "createNetworkTools",
       "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/communities.facade.js"
+    },
+    {
+      "name": "NetworkToolDeps",
+      "kind": "type",
       "stability": "stable",
       "source": "./capabilities/communities.facade.js"
     },
@@ -1659,8 +1683,20 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "OpportunityToolDeps",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "createNegotiationTools",
       "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "NegotiationToolDeps",
+      "kind": "type",
       "stability": "stable",
       "source": "./capabilities/negotiation.facade.js"
     },
@@ -1677,6 +1713,18 @@
       "source": "./capabilities/questions.facade.js"
     },
     {
+      "name": "AskUserQuestionToolDeps",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/questions.facade.js"
+    },
+    {
+      "name": "QuestionerToolDeps",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/questions.facade.js"
+    },
+    {
       "name": "createChatTools",
       "kind": "value",
       "stability": "stable",
@@ -1689,14 +1737,32 @@
       "source": "./capabilities/participant-agents.facade.js"
     },
     {
+      "name": "AgentToolDeps",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/participant-agents.facade.js"
+    },
+    {
       "name": "createContactTools",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/contacts.facade.js"
     },
     {
+      "name": "ContactToolDeps",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/contacts.facade.js"
+    },
+    {
       "name": "createIntegrationTools",
       "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/integrations.facade.js"
+    },
+    {
+      "name": "IntegrationToolDeps",
+      "kind": "type",
       "stability": "stable",
       "source": "./capabilities/integrations.facade.js"
     },

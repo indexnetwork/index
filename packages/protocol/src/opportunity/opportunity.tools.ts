@@ -2,7 +2,8 @@ import { z } from "zod";
 
 import { requestContext } from "../shared/observability/request-context.js";
 
-import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
+import type { DefineTool } from "../shared/agent/tool.helpers.js";
+import type { OpportunityToolDeps } from "../capabilities/opportunities.tools.port.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { deriveDiscoveryNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
@@ -155,7 +156,7 @@ export async function attachActionableLinks(
     viewerApproved?: boolean;
     viewerActedAt?: string | null;
     counterpartUserId: string;
-    mintConnectLink: NonNullable<ToolDeps["mintConnectLink"]>;
+    mintConnectLink: NonNullable<OpportunityToolDeps["mintConnectLink"]>;
     frontendUrl: string | undefined;
     preferredSurface?: 'telegram' | 'web';
   },
@@ -613,7 +614,7 @@ function confirmDeliveryError(
   return JSON.stringify({ success: false, error: message, code, retryable });
 }
 
-export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createOpportunityTools(defineTool: DefineTool, deps: OpportunityToolDeps) {
   const { database, userDb, systemDb, graphs, cache } = deps;
   const runDiscoveryFromQuery =
     (deps.opportunityDiscovery?.runDiscoverFromQuery as typeof runDiscoverFromQuery | undefined) ??

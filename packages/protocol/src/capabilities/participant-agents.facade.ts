@@ -12,3 +12,4 @@ export { ChatSummarizer } from "../chat/chat.summarizer.js";
 export { SuggestionGenerator } from "../chat/chat.suggester.js";
 export { createChatTools } from "../chat/chat.tools.js";
 export { createAgentTools } from "../agent/agent.tools.js";
+export type { AgentToolDeps } from "./participant-agents.tools.port.js";

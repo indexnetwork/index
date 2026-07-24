@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { DefineTool, ToolDeps } from '../shared/agent/tool.helpers.js';
+import type { DefineTool } from '../shared/agent/tool.helpers.js';
+import type { ContactToolDeps } from '../capabilities/contacts.tools.port.js';
 import { success, error } from '../shared/agent/tool.helpers.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
@@ -9,7 +10,7 @@ const logger = protocolLogger('ChatTools:Contact');
  * Creates contact management tools for the chat agent.
  * Enables importing, listing, and managing the user's network.
  */
-export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps) {
   const { contactService } = deps;
   // Contact import / manual-add create ghost users. These are gated behind the
   // CONTACTS_ENABLED flag (injected as deps.contactsEnabled). Read/remove/search

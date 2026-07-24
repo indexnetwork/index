@@ -14,6 +14,7 @@ export type { EvaluatorInput } from "../opportunity/opportunity.evaluator.js";
 export { OpportunityPresenter, gatherPresenterContext } from "../opportunity/opportunity.presenter.js";
 export type { PresenterDatabase } from "../opportunity/opportunity.presenter.js";
 export { createOpportunityTools } from "../opportunity/opportunity.tools.js";
+export type { OpportunityToolDeps } from "./opportunities.tools.port.js";
 export {
   PoolDiscriminatorMiner,
 } from "../opportunity/discriminator/discriminator.miner.js";

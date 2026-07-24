@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import type { DefineTool, ToolDeps } from '../shared/agent/tool.helpers.js';
+import type { DefineTool } from '../shared/agent/tool.helpers.js';
+import type { NegotiationToolDeps } from '../capabilities/negotiation.tools.port.js';
 import { success, error } from '../shared/agent/tool.helpers.js';
 import type { NegotiationOpportunityLifecycle, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import { IndexNegotiator } from './negotiation.agent.js';
@@ -161,7 +162,7 @@ function buildLifecycleNarration(
 
 /** Reads lifecycle evidence without making older host adapters mandatory. */
 async function readOpportunityLifecycles(
-  database: ToolDeps['negotiationDatabase'],
+  database: NegotiationToolDeps['negotiationDatabase'],
   opportunityIds: string[],
   ownerUserId: string,
 ): Promise<Record<string, NegotiationOpportunityLifecycle>> {
@@ -188,7 +189,7 @@ function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTu
  * Creates negotiation MCP tools for external agent access.
  * Exposes negotiation state for listing, reading, and responding to bilateral negotiations.
  */
-export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createNegotiationTools(defineTool: DefineTool, deps: NegotiationToolDeps) {
   const { negotiationDatabase } = deps;
 
   const list_negotiations = defineTool({

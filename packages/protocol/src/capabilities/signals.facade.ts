@@ -10,3 +10,4 @@ export { SemanticVerifier } from "../intent/intent.verifier.js";
 export { IntentIndexer } from "../intent/intent.indexer.js";
 export type { IntentIndexerOutput } from "../intent/intent.indexer.js";
 export { createIntentTools } from "../intent/intent.tools.js";
+export type { IntentToolDeps } from "./signals.tools.port.js";
