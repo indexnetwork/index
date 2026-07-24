@@ -45,6 +45,10 @@ const sourceRoot = resolve(packageRoot, "src");
 
 /** Single-segment top-level directories with a fixed capability assignment. */
 const capabilityDirectories: Readonly<Record<string, Capability>> = {
+  // IND-544: signals/ is the canonical capability directory; intent/ is the
+  // legacy compatibility-shim directory kept for backward compat (both map to
+  // the same capability so cross-shim imports are treated as self-imports).
+  signals: "signals",
   intent: "signals",
   enrichment: "participant-context",
   premise: "participant-context",

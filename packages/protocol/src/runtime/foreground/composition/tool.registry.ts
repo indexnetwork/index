@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { DefineTool, ResolvedToolContext, ToolDeps, RawToolDefinition, ToolRegistry } from '../../../shared/agent/tool.helpers.js';
 import { error, redactSensitiveFields } from '../../../shared/agent/tool.helpers.js';
 import { createEnrichmentTools } from '../../../enrichment/enrichment.tools.js';
-import { createIntentTools } from '../../../intent/intent.tools.js';
+import { createIntentTools } from '../signals/intent.tools.js';
 import { createNetworkTools } from '../../../network/network.tools.js';
 import { createOpportunityTools } from '../../../opportunity/opportunity.tools.js';
 import { createUtilityTools } from '../../../shared/agent/utility.tools.js';
