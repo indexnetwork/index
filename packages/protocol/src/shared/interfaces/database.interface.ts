@@ -2422,6 +2422,8 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
+  // IND-567 Fix A: fetch candidate premise text for evaluator (prevents empty-text query_premise false-positives)
+  | 'getPremise'
   // Premise-to-premise discovery (path D)
   | 'getPremisesForUser'
   | 'getPremisesForUserInNetworks'

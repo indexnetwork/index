@@ -1775,6 +1775,38 @@ export class OpportunityGraphFactory {
                   intentSummary = intent.summary ?? undefined;
                 }
               }
+              // IND-567 Fix A: fetch premise text for query_premise candidates.
+              // The query-path sets candidatePayload='' for premise hits because
+              // the vector-search result only carries a premise ID, not its text.
+              // Without the text, renderOpportunityEvidenceForPrompt emits a line
+              // with no domain content, letting the evaluator score on lens label
+              // alone — which produces cross-domain false positives at confidence 1.0.
+              // Mirror the getIntent fetch pattern: populate the evidence assertionText
+              // from the DB so the evaluator can see the candidate's actual claim.
+              let candidateEvidence = c.evidence;
+              if (
+                c.candidatePremiseId != null
+                && c.candidateIntentId == null
+                && (!c.candidatePayload || c.candidatePayload === '')
+                && typeof this.database.getPremise === 'function'
+              ) {
+                try {
+                  const premise = await (this.database.getPremise as NonNullable<typeof this.database.getPremise>)(c.candidatePremiseId);
+                  const assertionText = (premise as { assertion?: { text?: string } } | null)?.assertion?.text;
+                  if (assertionText) {
+                    candidateEvidence = (c.evidence ?? []).map((ev) =>
+                      ev.kind === 'query_premise' && ev.candidatePremiseId === c.candidatePremiseId
+                        ? { ...ev, payload: assertionText, assertionText }
+                        : ev,
+                    );
+                  }
+                } catch (premiseFetchErr) {
+                  evaluationLog.warn('IND-567: failed to fetch premise text for evaluator', {
+                    candidatePremiseId: c.candidatePremiseId,
+                    error: premiseFetchErr instanceof Error ? premiseFetchErr.message : String(premiseFetchErr),
+                  });
+                }
+              }
               const evidenceKey = buildEvaluatorEvidenceKey(c);
               return {
                 userId: c.candidateUserId,
@@ -1792,7 +1824,7 @@ export class OpportunityGraphFactory {
                 evidenceKey,
                 ragScore: c.similarity * 100,
                 matchedVia: c.lens,
-                evidence: c.evidence,
+                evidence: candidateEvidence, // IND-567 Fix A: may carry populated assertionText
               };
             })
           );

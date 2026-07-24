@@ -610,14 +610,18 @@ export const CASES: MatchingCase[] = [
   // Premise-based retrieval can surface candidates whose premise was matched
   // by an unrelated HyDE document (embedding-level false positive). The
   // evaluator must reject these even at high RAG scores.
+  //
+  // Domain chosen: supply-chain / logistics software. No vocabulary overlap
+  // with game-dev, animation, character movement, or inverse kinematics.
   {
     id: "cross_domain/animation-query-vs-geo-protocols-premise",
     rule: "query_primary",
     tier: 2,
     domains: ["technology"],
     description:
-      "IND-567 regression: procedural-animation query surfaces a candidate whose only premise is about geographic-information / agent-protocols. " +
-      "Despite a high RAG score (premise embedding matched the AI/ML animation lens), the candidate has zero animation signal and must be rejected (score < 30).",
+      "IND-567 regression: procedural-animation query surfaces a candidate whose only premise and profile are " +
+      "about supply-chain / warehouse-logistics software. Despite a high RAG score (premise embedding matched via " +
+      "AI/ML animation HyDE lens), the candidate has ZERO game-dev, animation, or character-movement signal and must be rejected (score < 30).",
     input: {
       discovererId: "src-animation",
       entities: [
@@ -625,44 +629,46 @@ export const CASES: MatchingCase[] = [
           userId: "src-animation",
           profile: {
             name: "(source user)",
-            bio: "Indie game developer focused on procedural animation and real-time character movement systems.",
+            bio: "Indie game developer focused on procedural animation and real-time character movement for games.",
             location: "Remote",
-            interests: ["procedural animation", "game development", "character movement", "real-time simulation"],
-            skills: ["Unity", "inverse kinematics", "motion capture", "C#"],
+            interests: ["procedural animation", "game development", "character movement", "inverse kinematics"],
+            skills: ["Unity", "inverse kinematics", "motion capture", "C#", "Unreal Engine"],
           },
           intents: [
             {
               intentId: "i-anim-1",
-              payload: "Collaborate on procedural movement and animation techniques for games",
+              payload: "Collaborate on procedural movement and animation techniques for game characters",
             },
           ],
           networkId: NETWORK,
         },
         {
-          // Candidate whose premise is about GEO/agent-protocols — no animation signal.
-          // Matched by premise-embedding similarity to the AI/ML animation HyDE lens.
-          userId: "c-geo-protocols",
+          // Candidate: supply-chain / logistics software engineer.
+          // Retrieved via premises corpus by an AI/ML-animation HyDE lens because
+          // "dynamic optimization" embedded close to "dynamic character movement".
+          // Profile and premise contain ZERO game-dev or animation signal.
+          userId: "c-logistics",
           profile: {
-            name: "Casey Geo",
-            bio: "Software engineer working on AI agents for geospatial navigation and autonomous mapping.",
+            name: "Morgan Ops",
+            bio: "Backend engineer specializing in warehouse management systems and logistics route optimization.",
             location: "Remote",
-            interests: ["geospatial AI", "autonomous navigation", "GIS", "agent protocols"],
-            skills: ["Python", "PostGIS", "OSRM", "agent frameworks"],
+            interests: ["supply chain", "inventory optimization", "warehouse automation", "ERP systems"],
+            skills: ["Java", "Spring Boot", "SAP", "SQL", "route optimization algorithms"],
           },
           networkId: NETWORK,
-          ragScore: 92,
+          ragScore: 88,
           matchedVia:
             "Game developer or researcher interested in integrating AI/ML for dynamic and personalized character movement",
           evidence: [
             {
               kind: "query_premise" as const,
               networkId: NETWORK,
-              score: 0.92,
+              score: 0.88,
               lens:
                 "Game developer or researcher interested in integrating AI/ML for dynamic and personalized character movement",
-              candidatePremiseId: "premise-geo-001",
+              candidatePremiseId: "premise-logistics-001",
               assertionText:
-                "I build AI agents for geographic information systems and autonomous geospatial navigation protocols.",
+                "I build backend services for warehouse management and real-time logistics routing, optimizing package sorting and delivery scheduling across distribution centers.",
             },
           ],
         },
@@ -671,12 +677,12 @@ export const CASES: MatchingCase[] = [
     },
     expect: [
       {
-        candidateId: "c-geo-protocols",
+        candidateId: "c-logistics",
         match: false,
         scoreBand: [0, 29],
         reasoningCriteria:
-          "Candidate's profile and premise are exclusively about geographic/geospatial AI and autonomous navigation — " +
-          "no procedural animation, character movement, game-dev, or IK signal. Must score below 30.",
+          "Candidate works exclusively in supply-chain logistics and warehouse management — " +
+          "no game development, procedural animation, character movement, or inverse kinematics signal anywhere. Must score below 30.",
       },
     ],
   },

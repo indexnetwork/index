@@ -2747,6 +2747,13 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.findOpportunitiesByActors(actorIds, options);
   }
+  async getRecentlyRejectedOpportunityCounterparties(
+    discovererId: string,
+    candidateUserIds: string[],
+    windowMs: number,
+  ): Promise<string[]> {
+    return this.opportunityAdapter.getRecentlyRejectedOpportunityCounterparties(discovererId, candidateUserIds, windowMs);
+  }
   async expireOpportunitiesByIntent(intentId: string): Promise<number> {
     return this.opportunityAdapter.expireOpportunitiesByIntent(intentId);
   }
