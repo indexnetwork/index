@@ -12,6 +12,24 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [6.13.18] — 2026-07-24
+
+### Changed
+- Establish outer runtime and platform target shells (IND-543). Physically
+  relocate `createToolRegistry` to
+  `runtime/foreground/composition/tool.registry.ts` (interaction-composition
+  boundary); the old `shared/agent/tool.registry.ts` path becomes a
+  backward-compat re-export shim. Add declaration-only shells:
+  `runtime/foreground/index.ts`, `runtime/background/index.ts`,
+  `platform/index.ts` (curated cross-domain primitives), and `public/index.ts`
+  (future curated root assembly). Extend `capability-boundaries.ts` to classify
+  and enforce four new boundary types: `interaction-composition` (FG),
+  `ambient-background` (BG), `neutral-platform` (no capability imports allowed),
+  and `public-compatibility` (facades only); new paths are checked rather than
+  silently skipped. `mcp.server.ts` updated to import directly from the
+  canonical composition path. 14 new architecture-boundary fixture tests added.
+  No public root export or runtime behavior changes.
+
 ### Changed
 - Restore a directed Protocol production module graph: tool-composition
   contracts no longer own opportunity runtime types, discovery continuation
