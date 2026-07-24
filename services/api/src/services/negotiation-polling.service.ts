@@ -1,4 +1,5 @@
 import { eq, and, sql, asc, isNull } from 'drizzle-orm/sql';
+import { notArchivedNegotiationTaskWhere } from '../adapters/negotiation-attempt.atomic';
 
 import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';
@@ -167,6 +168,8 @@ interface NegotiationTaskMetadata {
   protocolVersion?: string;
   maxTurns?: number;
   opportunityId?: string;
+  /** ISO timestamp set by the archive backfill on pre-v2 legacy negotiations. */
+  archivedAt?: string;
   turnContext?: PersistedTurnContext & {
     privateConsultation?: { recipientUserId: string; kind: 'answer' | 'dismiss' | 'timeout'; selectedOptions: string[]; freeText?: string };
   };
@@ -226,6 +229,7 @@ export class NegotiationPollingService {
           eq(convSchema.tasks.state, 'claimed'),
           eq(convSchema.tasks.claimedByAgentId, agentId),
           sql`${convSchema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
         ),
       )
       .limit(1);
@@ -254,6 +258,7 @@ export class NegotiationPollingService {
         and(
           eq(convSchema.tasks.state, 'waiting_for_agent'),
           sql`${convSchema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
           sql`(
             ${convSchema.tasks.metadata}->>'sourceUserId' = ${userId}
             OR ${convSchema.tasks.metadata}->>'candidateUserId' = ${userId}

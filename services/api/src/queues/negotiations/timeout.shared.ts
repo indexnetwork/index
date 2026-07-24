@@ -51,6 +51,8 @@ export interface NegotiationTaskMeta {
   type?: string;
   maxTurns?: number;
   opportunityId?: string;
+  /** ISO timestamp set by the archive backfill on pre-v2 legacy negotiations. */
+  archivedAt?: string;
 }
 
 /** Per-worker log strings — the only textual difference between the two timeout workers. */

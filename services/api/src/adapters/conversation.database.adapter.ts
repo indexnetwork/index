@@ -6,7 +6,7 @@ import { log } from '../lib/log';
 import { projectNegotiationActivity } from '../lib/negotiation-activity';
 import { assertContinuationExecutionEffect } from './negotiation-continuation.atomic';
 import type { ContinuationExecutionFence } from './negotiation-continuation.atomic';
-import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
 /** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
 const ORCHESTRATOR_PERSONA = 'orchestrator';
@@ -507,6 +507,7 @@ export class ConversationDatabaseAdapter {
           .where(and(
             inArray(schema.tasks.conversationId, ids),
             sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+            notArchivedNegotiationTaskWhere(),
           ))
           .orderBy(schema.tasks.conversationId, desc(schema.tasks.createdAt), desc(schema.tasks.id))
         : Promise.resolve([]),
@@ -1632,6 +1633,7 @@ export class ConversationDatabaseAdapter {
       .from(schema.tasks)
       .where(and(
         sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        notArchivedNegotiationTaskWhere(),
         or(
           and(eq(schema.tasks.state, 'submitted'), lt(schema.tasks.createdAt, submittedCutoff)),
           and(eq(schema.tasks.state, 'working'), lt(schema.tasks.updatedAt, workingCutoff)),
@@ -2000,6 +2002,7 @@ export class ConversationDatabaseAdapter {
   }>> {
     const conditions = [
       sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+      notArchivedNegotiationTaskWhere(),
       or(
         sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
         sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
@@ -2072,6 +2075,7 @@ export class ConversationDatabaseAdapter {
       .from(schema.tasks)
       .where(and(
         sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        notArchivedNegotiationTaskWhere(),
         inArray(sql`${schema.tasks.metadata}->>'opportunityId'`, opportunityIds),
       ));
     if (taskRows.length === 0) return [];
@@ -2431,6 +2435,7 @@ export class ConversationDatabaseAdapter {
     const userFilter = opts?.mutualWithUserId
       ? and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
           or(
             and(
               sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
@@ -2444,6 +2449,7 @@ export class ConversationDatabaseAdapter {
         )
       : and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
           or(
             sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
             sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
