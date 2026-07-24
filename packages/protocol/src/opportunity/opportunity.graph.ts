@@ -86,6 +86,28 @@ const routingLog = protocolLogger('OpportunityGraph:Routing');
 
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
 const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * IND-567: Cool-down window (ms) for cross-query rejection suppression.
+ * Candidates with a recently rejected or stalled opportunity within this window
+ * receive a similarity penalty during evaluation ranking. Default 7 days.
+ * Override with DISCOVERY_REJECTION_COOLDOWN_DAYS (positive float).
+ */
+const DEFAULT_REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+function getRejectionCooldownMs(): number {
+  const raw = process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
+  if (!raw) return DEFAULT_REJECTION_COOLDOWN_MS;
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 24 * 60 * 60 * 1000) : DEFAULT_REJECTION_COOLDOWN_MS;
+}
+
+/**
+ * Similarity multiplier applied to candidates that fall within the rejection
+ * cool-down window (IND-567). 0.5 halves their ranking score, typically
+ * pushing them below the evaluation-batch cut while leaving a soft trace in
+ * the trace log rather than silently dropping them.
+ */
+const REJECTION_COOLDOWN_SIMILARITY_PENALTY = 0.5;
 const NEGOTIATION_INTENT_LIMIT = 5;
 const ACTIVE_NEGOTIATION_TASK_STATES = new Set([
   'submitted',
@@ -1644,8 +1666,53 @@ export class OpportunityGraphFactory {
           });
         }
 
-        const batchToEvaluate = eligibleCandidates.slice(0, EVAL_BATCH_SIZE);
-        const remaining = eligibleCandidates.slice(EVAL_BATCH_SIZE);
+        // ── IND-567: Rejection cool-down penalty ──────────────────────────
+        // Candidates with a recently rejected or stalled opportunity receive a
+        // similarity penalty so they are ranked lower (and often pushed out of
+        // the evaluation batch). This prevents cross-query re-surfacing of
+        // false-positive matches that were already caught downstream.
+        // The persist-node dedup is still the hard gate; this is a soft guard
+        // that reduces evaluator cost and LLM false-positive rate.
+        const rejectionCooldownIds = new Set<string>();
+        if (
+          eligibleCandidates.length > 0
+          && typeof this.database.getRecentlyRejectedOpportunityCounterparties === 'function'
+        ) {
+          try {
+            const cooldownMs = getRejectionCooldownMs();
+            const ids = await (this.database.getRecentlyRejectedOpportunityCounterparties as NonNullable<typeof this.database.getRecentlyRejectedOpportunityCounterparties>)(
+              discoveryUserId,
+              eligibleCandidates.map((c) => c.candidateUserId),
+              cooldownMs,
+            );
+            for (const id of ids) rejectionCooldownIds.add(id);
+            if (rejectionCooldownIds.size > 0) {
+              evaluationLog.info('IND-567 rejection cool-down: applying similarity penalty', {
+                affectedCount: rejectionCooldownIds.size,
+                cooldownDays: Math.round(cooldownMs / (24 * 60 * 60 * 1000)),
+                penalty: REJECTION_COOLDOWN_SIMILARITY_PENALTY,
+              });
+            }
+          } catch (err) {
+            evaluationLog.warn('IND-567 rejection cool-down: lookup failed, skipping penalty', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        // Apply penalty and re-sort so penalised candidates fall to the back.
+        const eligibleCandidatesAfterCooldown = rejectionCooldownIds.size > 0
+          ? eligibleCandidates
+              .map((c) =>
+                rejectionCooldownIds.has(c.candidateUserId)
+                  ? { ...c, similarity: c.similarity * REJECTION_COOLDOWN_SIMILARITY_PENALTY }
+                  : c,
+              )
+              .sort((a, b) => b.similarity - a.similarity)
+          : eligibleCandidates;
+
+        const batchToEvaluate = eligibleCandidatesAfterCooldown.slice(0, EVAL_BATCH_SIZE);
+        const remaining = eligibleCandidatesAfterCooldown.slice(EVAL_BATCH_SIZE);
 
         // Early termination: if search was query-driven and no query-sourced candidates remain,
         // clear remaining to prevent pointless pagination through non-query leftovers
@@ -2035,7 +2102,7 @@ export class OpportunityGraphFactory {
           const passedOpportunities = evaluatedOpportunities.filter((o) => o.score >= minScore);
 
           return {
-            candidates: eligibleCandidates,
+            candidates: eligibleCandidatesAfterCooldown,
             evaluatedOpportunities: passedOpportunities,
             remainingCandidates: effectiveRemaining,
             trace: traceEntries,

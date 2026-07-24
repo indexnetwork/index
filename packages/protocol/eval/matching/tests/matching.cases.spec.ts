@@ -62,6 +62,7 @@ describe("matching corpus", () => {
     // fail below) — remove ids from this set when the baseline is next refreshed.
     const BASELINE_PENDING_CASE_IDS = new Set<string>([
       "event_network/co-membership-is-not-attendance", // added in #1144 without a baseline run
+      "cross_domain/animation-query-vs-geo-protocols-premise", // IND-567: added without a live baseline run; remove when baseline is refreshed
     ]);
 
     const envelope = (await Bun.file(new URL("../baselines/matching.baseline.json", import.meta.url)).json()) as { payload: Scorecard };

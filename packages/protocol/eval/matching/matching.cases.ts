@@ -605,6 +605,81 @@ export const CASES: MatchingCase[] = [
       { candidateId: "p-designer", match: false, scoreBand: [0, 29] },
     ],
   },
+  // ── IND-567: Cross-domain false positive regression ──────────────────────────────
+  //
+  // Premise-based retrieval can surface candidates whose premise was matched
+  // by an unrelated HyDE document (embedding-level false positive). The
+  // evaluator must reject these even at high RAG scores.
+  {
+    id: "cross_domain/animation-query-vs-geo-protocols-premise",
+    rule: "query_primary",
+    tier: 2,
+    domains: ["technology"],
+    description:
+      "IND-567 regression: procedural-animation query surfaces a candidate whose only premise is about geographic-information / agent-protocols. " +
+      "Despite a high RAG score (premise embedding matched the AI/ML animation lens), the candidate has zero animation signal and must be rejected (score < 30).",
+    input: {
+      discovererId: "src-animation",
+      entities: [
+        {
+          userId: "src-animation",
+          profile: {
+            name: "(source user)",
+            bio: "Indie game developer focused on procedural animation and real-time character movement systems.",
+            location: "Remote",
+            interests: ["procedural animation", "game development", "character movement", "real-time simulation"],
+            skills: ["Unity", "inverse kinematics", "motion capture", "C#"],
+          },
+          intents: [
+            {
+              intentId: "i-anim-1",
+              payload: "Collaborate on procedural movement and animation techniques for games",
+            },
+          ],
+          networkId: NETWORK,
+        },
+        {
+          // Candidate whose premise is about GEO/agent-protocols — no animation signal.
+          // Matched by premise-embedding similarity to the AI/ML animation HyDE lens.
+          userId: "c-geo-protocols",
+          profile: {
+            name: "Casey Geo",
+            bio: "Software engineer working on AI agents for geospatial navigation and autonomous mapping.",
+            location: "Remote",
+            interests: ["geospatial AI", "autonomous navigation", "GIS", "agent protocols"],
+            skills: ["Python", "PostGIS", "OSRM", "agent frameworks"],
+          },
+          networkId: NETWORK,
+          ragScore: 92,
+          matchedVia:
+            "Game developer or researcher interested in integrating AI/ML for dynamic and personalized character movement",
+          evidence: [
+            {
+              kind: "query_premise" as const,
+              networkId: NETWORK,
+              score: 0.92,
+              lens:
+                "Game developer or researcher interested in integrating AI/ML for dynamic and personalized character movement",
+              candidatePremiseId: "premise-geo-001",
+              assertionText:
+                "I build AI agents for geographic information systems and autonomous geospatial navigation protocols.",
+            },
+          ],
+        },
+      ],
+      discoveryQuery: "procedural movement and animation",
+    },
+    expect: [
+      {
+        candidateId: "c-geo-protocols",
+        match: false,
+        scoreBand: [0, 29],
+        reasoningCriteria:
+          "Candidate's profile and premise are exclusively about geographic/geospatial AI and autonomous navigation — " +
+          "no procedural animation, character movement, game-dev, or IK signal. Must score below 30.",
+      },
+    ],
+  },
   ...HISTORICAL_CASES,
   ...TIER4_CASES,
 ];
