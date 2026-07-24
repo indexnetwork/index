@@ -1,15 +1,28 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
-
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { EnrichmentGraphFactory } from '../enrichment.graph.js';
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test';
+import type { EnrichmentGraphFactory as EnrichmentGraphFactoryType } from '../enrichment.graph.js';
 import type { EnrichmentGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
 import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: (agent: string) => ({
+    invoke: async () => agent === "premiseDecomposer"
+      ? {
+          reasoning: "The enrichment result contains a stable professional identity claim.",
+          premises: [{ text: "I am a software engineer", tier: "assertive", validityDays: null }],
+          retractedPremiseIds: [],
+          revisedBio: null,
+        }
+      : {},
+  }),
+}));
+
+const { EnrichmentGraphFactory } = await import('../enrichment.graph.js');
+
+afterAll(() => mock.restore());
+
 describe('ProfileGraph', () => {
-  let factory: EnrichmentGraphFactory;
+  let factory: EnrichmentGraphFactoryType;
   let mockDatabase: EnrichmentGraphDatabase;
   let mockScraper: Scraper;
 

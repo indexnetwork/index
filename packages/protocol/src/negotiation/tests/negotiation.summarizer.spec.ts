@@ -1,10 +1,28 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
+import { afterAll, describe, expect, it, mock } from "bun:test";
 
-import { describe, it, expect } from "bun:test";
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: () => ({
+    invoke: async (messages: Array<{ content?: unknown }>) => {
+      const prompt = String(messages.at(-1)?.content ?? "");
+      const opportunity = prompt.includes("outcome.hasOpportunity: true");
+      return {
+        counterpartyHint: "Senior infrastructure engineer with deep distributed-systems and retrieval-platform experience across startups and large teams.",
+        indexContext: "AI infrastructure builders and founding engineers pursuing agentic systems, evaluation pipelines, and retrieval architectures.",
+        outcomeRole: opportunity ? "opportunity" : "no-opportunity",
+        outcomeReason: opportunity ? null : "turn_cap",
+        keyTake: opportunity
+          ? "The role framing converged on an IC-heavy founding position where the candidate's retrieval experience addresses the startup's immediate need."
+          : "The consumer-mobile focus did not provide a concrete overlap with the infrastructure need before the turn cap.",
+        suggestedRoles: opportunity ? { ownUser: "patient", otherUser: "agent" } : null,
+      };
+    },
+  }),
+}));
 
-import { NegotiationSummarizer, buildFallbackDigest } from "../negotiation.summarizer.js";
+const { NegotiationSummarizer, buildFallbackDigest } = await import("../negotiation.summarizer.js");
+
+afterAll(() => mock.restore());
+
 import type { DiscoveryNegotiation } from "../../shared/schemas/discovery-question.schema.js";
 
 const summarizer = new NegotiationSummarizer();

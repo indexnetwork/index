@@ -1,9 +1,30 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
+import { afterAll, describe, expect, it, mock } from "bun:test";
 
-import { describe, it, expect } from "bun:test";
-import { IndexNegotiator } from "../negotiation.agent.js";
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: () => ({
+    invoke: (_messages: unknown, config?: { signal?: AbortSignal }) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve({
+            action: "propose",
+            assessment: {
+              reasoning: "The candidate's ML experience is relevant to the startup's hiring need.",
+              suggestedRoles: { ownUser: "patient", otherUser: "agent" },
+            },
+            message: null,
+          });
+        }, 10);
+        config?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(config.signal?.reason);
+        }, { once: true });
+      }),
+  }),
+}));
+
+const { IndexNegotiator } = await import("../negotiation.agent.js");
+
+afterAll(() => mock.restore());
 import type { UserNegotiationContext, SeedAssessment } from "../negotiation.state.js";
 
 const sourceUser: UserNegotiationContext = {

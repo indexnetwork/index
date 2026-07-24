@@ -1,2 +1,4 @@
 # The isolated source-test gate must not inherit the regular test preload,
-# which loads the developer-only root .env.test. Deliberately no preloads.
+# which loads the developer-only root .env.test.
+# scripts/test.ts supplies the hermetic preload explicitly because Bun only
+# honors test.preload from its default bunfig when an alternate config is used.

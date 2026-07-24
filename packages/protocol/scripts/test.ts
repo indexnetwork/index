@@ -55,7 +55,7 @@ async function runOne(file: string): Promise<Result> {
   delete childEnv.OPENROUTER_API_KEY;
   delete childEnv.OPENAI_API_KEY;
   const proc = spawn({
-    cmd: ["bun", "test", "--config", "bunfig.source-test.toml", "--no-env-file", file],
+    cmd: ["bun", "--config=bunfig.source-test.toml", "--preload=./source-test-preload.ts", "--no-env-file", "test", file],
     env: childEnv,
     stdout: "pipe",
     stderr: "pipe",
