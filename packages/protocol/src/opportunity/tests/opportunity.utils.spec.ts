@@ -27,7 +27,7 @@ describe('opportunity.utils', () => {
   });
 
   // ─── canUserSeeOpportunity ───────────────────────────────────────────────
-  // Tests the Compact Visibility Rule from Latent Opportunity Lifecycle doc:
+  // Tests the Compact Visibility Rule documented in opportunity-status-lifecycle.md:
   // - Introducer or peer: always see.
   // - Patient or party: see if (status ≠ latent, or there is no introducer).
   // - Agent: see if (status ∈ {accepted, rejected, expired}, or (status ≠ latent and no introducer)).
