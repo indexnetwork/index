@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract MCP discovery-result lifecycle reconciliation and deferred-result
+  narration behind a narrow read/warning/safe-card port while retaining tool
+  IO, link minting, and response assembly in the tools facade (IND-530 Batch 15).
 - Extract actionable opportunity-feed admission and digest candidate selection
   behind narrow read/ledger/warning ports while retaining tool IO, presenters,
   delivery writes, and response assembly in the tools facade (IND-530 Batch 14).

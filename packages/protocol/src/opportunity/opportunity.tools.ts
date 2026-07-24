@@ -11,6 +11,7 @@ import { narratorRemarkFromReasoning, stripUuids } from "./opportunity.presentat
 import { safeFallbackSummary, getSafePresentationOrSkip } from "./opportunity.safe-presentation.js";
 import { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
 import { findCoalescedDiscoveryRun } from "./opportunity.discovery-run-coalescing.js";
+import { finalizeMcpDiscoveryLifecycle } from './opportunity.discovery-mcp-lifecycle-finalization.js';
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../capabilities/questions.runtime.facade.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
@@ -42,7 +43,7 @@ function stripLeadingNarratorName(remark: string, narratorName: string): string 
 }
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
+import type { Opportunity } from "../shared/interfaces/database.interface.js";
 import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
 import type { DiscoveryRunInput } from "../shared/interfaces/discovery-run.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
@@ -1184,64 +1185,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         });
       }
 
-      // MCP-only: refresh persisted opp statuses from the DB. The graph captures
-      // state.opportunities at persist time, but the negotiate phase mutates each
-      // opp's DB row independently. Without this refresh we'd render persist-time
-      // 'negotiating' as if it were 'draft'. Also drops rejected/stalled — they
-      // are not actionable post-negotiation. Existing-connection cards (cards
-      // whose opportunityId is in result.existingConnections) are preserved as-is
-      // per opportunity.discover.ts's EXISTING_CONNECTION_CARD_STATUSES contract.
-      const existingConnectionIds = new Set(
-        (result.existingConnections ?? [])
-          .map((c) => c.opportunityId)
-          .filter((id): id is string => typeof id === 'string'),
-      );
-      const candidatesArr = result.opportunities ?? [];
-      let negotiatingCount = 0;
-      let cards = candidatesArr;
-      if (context.isMcp && candidatesArr.length > 0) {
-        const newlyCreatedIds = candidatesArr
-          .filter((c) => !existingConnectionIds.has(c.opportunityId))
-          .map((c) => c.opportunityId);
-        const refreshed = newlyCreatedIds.length > 0
-          ? await database.getOpportunitiesByIds(newlyCreatedIds)
-          : [];
-        const statusById = new Map<string, OpportunityStatus>(
-          refreshed.map((o) => [o.id, o.status]),
-        );
-
-        const draftCards: typeof candidatesArr = [];
-        for (const card of candidatesArr) {
-          if (existingConnectionIds.has(card.opportunityId)) {
-            // Re-surfaced opp from a prior run — keep with its discover-time status.
-            draftCards.push(card);
-            continue;
-          }
-          const refreshedStatus = statusById.get(card.opportunityId);
-          if (refreshedStatus === 'draft') {
-            draftCards.push({ ...card, status: refreshedStatus });
-            continue;
-          }
-          if (refreshedStatus === 'negotiating') {
-            negotiatingCount += 1;
-            continue;
-          }
-          if (refreshedStatus === 'rejected' || refreshedStatus === 'stalled') {
-            continue; // drop
-          }
-          // 'pending' / 'latent' / unknown — not expected post-IND-287. Treat as
-          // negotiating (count only) and log so we can spot wiring regressions.
-          discoverOpportunitiesLog.warn('unexpected refreshed status — counting as negotiating', {
-            opportunityId: card.opportunityId,
-            refreshedStatus,
-          });
-          negotiatingCount += 1;
-        }
-        cards = draftCards;
-      }
-
-      // Build card data; cap at CHAT_DISPLAY_LIMIT (remaining feeds into pagination)
-      const allCardData = cards.map((opp) => ({
+      const lifecycleFinalization = await finalizeMcpDiscoveryLifecycle({
+        isMcp: context.isMcp === true,
+        candidates: result.opportunities ?? [],
+        existingConnections: result.existingConnections,
+        existingConnectionsForMention: result.existingConnectionsForMention,
+        alreadyAcceptedPairs: result.alreadyAcceptedPairs,
+        pagination: result.pagination,
+        isIntroducerFlow,
+        displayLimit: CHAT_DISPLAY_LIMIT,
+        readOpportunitiesByIds: (ids) => database.getOpportunitiesByIds(ids),
+        warn: (message, data) => discoverOpportunitiesLog.warn(message, data),
+        projectSafeCard: (opp) => ({
         opportunityId: opp.opportunityId,
         userId: opp.userId,
         name: opp.name,
@@ -1259,15 +1214,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         score: opp.score,
         status: opp.status,
         ...(opp.secondParty && { secondParty: opp.secondParty }),
-      }));
-      const displayedCards = allCardData.slice(0, CHAT_DISPLAY_LIMIT);
-      const extraFromCap = allCardData.length - displayedCards.length;
+        }),
+      });
+      const { displayedCards, displayedCandidates } = lifecycleFinalization;
 
       if (context.isMcp && deps.mintConnectLink) {
         const mintConnectLink = deps.mintConnectLink;
         await Promise.all(
           displayedCards.map(async (card, idx) => {
-            const source = cards[idx];
+            const source = displayedCandidates[idx];
             await attachActionableLinks(card as Record<string, unknown> & {
               opportunityId: string;
               viewerRole: string;
@@ -1289,57 +1244,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         isMcp: context.isMcp ?? false,
         leadIn: `Found ${displayedCards.length} potential connection(s).`,
       });
-      const existingForMention = result.existingConnectionsForMention ?? result.existingConnections ?? [];
-      if (existingForMention.length > 0) {
-        message +=
-          "\n\nYou already have a connection with: " +
-          existingForMention.map((c) => c.name + (c.status ? " (" + c.status + ")" : "")).join(", ") +
-          ". View on your home page.";
-      }
-      // Orchestrator-only: dedupAlreadyAccepted surfaces pairs that already
-      // have an accepted opp between the users. Tell the LLM so it can guide
-      // the user to the existing chat instead of treating this like a brand-
-      // new connection.
-      if (result.alreadyAcceptedPairs && result.alreadyAcceptedPairs.length > 0) {
-        message +=
-          `\n\nYou already have ${result.alreadyAcceptedPairs.length} accepted opportunity(ies) with some of these candidates — open the existing chat with them rather than creating a new draft.`;
-      }
-
-      const totalRemaining = (result.pagination?.remaining ?? 0) + extraFromCap;
-      if (totalRemaining > 0 && result.pagination?.discoveryId) {
-        message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call discover_opportunities with continueFrom="${result.pagination.discoveryId}".`;
-      } else if (isIntroducerFlow) {
-        message += `\n\nThese are all the introduction candidates I found for this person.`;
-      } else {
-        message += `\n\nThese are all the connections I found. If the user wants to attract more connections, suggest they create a signal — e.g. "Would you like to create a signal so others looking for someone like you can find you?" If they agree, call create_intent with a description based on what they were searching for.`;
-      }
-
-      // MCP-only: tell the LLM how many opps are still negotiating in the background
-      // and how to fetch them. This is the deferred-surfacing handshake — the user's
-      // next list_opportunities call will pick up the rest as they finalize.
-      if (context.isMcp && negotiatingCount > 0) {
-        if (displayedCards.length > 0) {
-          message += `\n\n${negotiatingCount} more opportunit${negotiatingCount === 1 ? 'y is' : 'ies are'} still being evaluated — check back via \`list_opportunities\` shortly.`;
-        } else {
-          // No cards shown. Rebuild the message without the misleading
-          // "Found 0 potential connection(s)" lead-in but preserve the
-          // existing-connections mention and already-accepted-pairs note
-          // appended earlier — those are standalone facts independent of
-          // any draft cards. Pagination/intro/closing trailers are dropped
-          // intentionally (they only make sense when cards are shown).
-          let rebuilt = `Found candidates, but they're still being evaluated. Try \`list_opportunities\` in a minute — ${negotiatingCount} pending.`;
-          if (existingForMention.length > 0) {
-            rebuilt +=
-              "\n\nYou already have a connection with: " +
-              existingForMention.map((c) => c.name + (c.status ? " (" + c.status + ")" : "")).join(", ") +
-              ". View on your home page.";
-          }
-          if (result.alreadyAcceptedPairs && result.alreadyAcceptedPairs.length > 0) {
-            rebuilt += `\n\nYou already have ${result.alreadyAcceptedPairs.length} accepted opportunity(ies) with some of these candidates — open the existing chat with them rather than creating a new draft.`;
-          }
-          message = rebuilt;
-        }
-      }
+      message = lifecycleFinalization.composeMessage(message);
 
       return success({
         found: true,
