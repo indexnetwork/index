@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract the owned-intent newborn-opportunity stamping eligibility policy and
+  fail-open host callback handler from the opportunity persist node while
+  preserving graph-owned persistence and observability (IND-530 Batch 2).
 - Extract opportunity lifecycle admission rules and persistence handlers from
   the graph while retaining its LangGraph node routing and externally visible
   lifecycle semantics (IND-530).

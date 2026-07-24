@@ -62,8 +62,10 @@ import type { OpportunityEvidence } from '../shared/schemas/network-assignment.s
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
 import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from './opportunity.actor.js';
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle, type QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
+import { stampEligibleNewbornOpportunities, type StampNewbornOpportunitiesFn } from './opportunity.newborn-stamping.js';
 
 export type { QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
+export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from './opportunity.newborn-stamping.js';
 
 const logger = protocolLogger('OpportunityGraph');
 const prepLog = protocolLogger('OpportunityGraph:Prep');
@@ -192,52 +194,6 @@ export interface HydeGeneratorInvokeInput {
   sourceText: string;
   forceRegenerate?: boolean;
   profileContext?: string;
-}
-
-/** Input for the host-side newborn pool-preference stamper (IND-420 P4b). */
-export interface StampNewbornOpportunitiesInput {
-  ownerUserId: string;
-  intentId: string;
-  items: CreateOpportunityData[];
-}
-
-/**
- * Optional host callback that stamps call-local create items before INSERT.
- * It must preserve array length/order and may only enrich metadata/signals.
- */
-export type StampNewbornOpportunitiesFn = (
-  input: StampNewbornOpportunitiesInput,
-) => Promise<CreateOpportunityData[]>;
-
-function copyCreateOpportunityData(item: CreateOpportunityData): CreateOpportunityData {
-  return {
-    ...item,
-    detection: { ...item.detection },
-    actors: item.actors.map((actor) => ({ ...actor })),
-    interpretation: {
-      ...item.interpretation,
-      signals: item.interpretation.signals?.map((signal) => ({ ...signal })),
-    },
-    context: { ...item.context },
-    metadata: item.metadata ? { ...item.metadata } : item.metadata,
-  };
-}
-
-/** Fields a stamper is not allowed to change; also protects candidate order. */
-function newbornItemIdentity(item: CreateOpportunityData): string {
-  return JSON.stringify({
-    detection: item.detection,
-    actors: item.actors,
-    interpretation: {
-      category: item.interpretation.category,
-      reasoning: item.interpretation.reasoning,
-      confidence: item.interpretation.confidence,
-    },
-    context: item.context,
-    confidence: item.confidence,
-    status: item.status,
-    expiresAt: item.expiresAt?.toISOString(),
-  });
 }
 
 /**
@@ -3562,58 +3518,31 @@ export class OpportunityGraphFactory {
             itemsToPersist.push(data);
           }
 
-          // P4b seam: only genuinely new, create-mode, owned-intent discovery
-          // items reach the host stamper. Dedup reactivations/upgrades have
-          // already continued above; introductions, on-behalf-of, context-only,
-          // manual, and continuation flows are excluded explicitly.
-          let itemsForPersistence = itemsToPersist;
-          const stampIntentId = state.resolvedTriggerIntentId;
-          const mayStamp = Boolean(
-            this.stampNewbornOpportunities
-            && state.operationMode === 'create'
-            && !state.introductionContext
-            && !state.onBehalfOfUserId
-            && !state.targetUserId
-            && state.discoverySource === 'intent'
-            && stampIntentId
-            && state.indexedIntents.some((intent) => intent.intentId === stampIntentId),
-          );
-          if (mayStamp && stampIntentId && itemsToPersist.length > 0) {
-            const eligibleIndexes = itemsToPersist.flatMap((item, index) =>
-              item.detection.source === 'opportunity_graph' && item.detection.triggeredBy === stampIntentId
-                ? [index]
-                : []);
-            if (eligibleIndexes.length > 0) {
-              const originals = eligibleIndexes.map((index) => itemsToPersist[index]);
-              const callbackItems = originals.map(copyCreateOpportunityData);
-              try {
-                const stamped = await this.stampNewbornOpportunities!({
-                  ownerUserId: state.userId,
-                  intentId: stampIntentId,
-                  items: callbackItems,
-                });
-                const valid = Array.isArray(stamped)
-                  && stamped.length === originals.length
-                  && stamped.every((item, index) => newbornItemIdentity(item) === newbornItemIdentity(originals[index]));
-                if (valid) {
-                  itemsForPersistence = [...itemsToPersist];
-                  eligibleIndexes.forEach((itemIndex, stampedIndex) => {
-                    itemsForPersistence[itemIndex] = stamped[stampedIndex];
-                  });
-                } else {
-                  persistLog.warn('Newborn stamper returned unsafe length/order; persisting originals', {
-                    expected: originals.length,
-                    actual: Array.isArray(stamped) ? stamped.length : null,
-                  });
-                }
-              } catch (error) {
+          const itemsForPersistence = await stampEligibleNewbornOpportunities(
+            itemsToPersist,
+            {
+              ownerUserId: state.userId,
+              operationMode: state.operationMode,
+              hasIntroductionContext: Boolean(state.introductionContext),
+              onBehalfOfUserId: state.onBehalfOfUserId,
+              targetUserId: state.targetUserId,
+              discoverySource: state.discoverySource,
+              resolvedTriggerIntentId: state.resolvedTriggerIntentId,
+              indexedIntentIds: state.indexedIntents.map((intent) => intent.intentId),
+            },
+            this.stampNewbornOpportunities,
+            {
+              onUnsafeResult: ({ expected, actual }) => {
+                persistLog.warn('Newborn stamper returned unsafe length/order; persisting originals', { expected, actual });
+              },
+              onFailure: ({ intentId, error }) => {
                 persistLog.warn('Newborn stamper failed; persisting originals', {
-                  intentId: stampIntentId,
+                  intentId,
                   error: error instanceof Error ? error.message : String(error),
                 });
-              }
-            }
-          }
+              },
+            },
+          );
 
           const intentDedupScope = finalTriggerIntentId && state.discoverySource === 'intent'
             ? { triggerIntentId: finalTriggerIntentId, dedupWindowMs: DEDUP_WINDOW_MS }
