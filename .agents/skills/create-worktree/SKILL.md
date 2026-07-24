@@ -162,5 +162,5 @@ Never use plain `git config commit.gpgsign false`, which affects every worktree.
 ## See also
 
 - `run-worktree-session` — visible handoff, event-driven waits, question handling, and fix loops.
-- `run-agent-orchestration` — multi-task waves: one root orchestrator, role profiles, model routing.
+- `run-agent-orchestration` — multi-task waves: main/root/child tiers, role profiles, harness and model routing.
 - `finish-pr` — explicit merge approval and post-merge verification.
