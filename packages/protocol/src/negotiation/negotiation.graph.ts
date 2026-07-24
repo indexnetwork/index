@@ -425,6 +425,12 @@ export class NegotiationGraphFactory {
       let decision: ScreenDecision;
       let failedOpen = false;
       let screenError: string | undefined;
+      // On continuations the seeded prior turns are the dialogue this pair
+      // already had. Pass them so the gate evaluates the NEW signal
+      // (discoveryQuery / seedAssessment) on its own merits with that context
+      // available — mirroring the continuation policy in negotiation.agent.ts
+      // ("if materially different, evaluate on its own merits").
+      const priorDialogue = state.isContinuation ? turnsFromMessages(state.messages) : [];
       try {
         const counterpartyContext = (await database.getUserContext(counterpartyUser.id, null).catch(() => null))?.text ?? "";
         decision = await screener.invoke({
@@ -437,6 +443,7 @@ export class NegotiationGraphFactory {
           ...(clientIsSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
           seedAssessment: state.seedAssessment,
           indexContext: state.indexContext,
+          ...(priorDialogue.length > 0 && { isContinuation: true, priorDialogue }),
         });
       } catch (err) {
         // Fail open: a screen failure must never block a negotiation.
@@ -782,6 +789,34 @@ export class NegotiationGraphFactory {
           }
         }
 
+        // ─── IND-564: `withdraw` requires a prior in-task outreach ────────────
+        // `withdraw` semantically retracts an outreach the initiator made. In a
+        // continuation whose first initiator move is `withdraw` (or any withdraw
+        // before this task opened outreach), there is nothing to retract —
+        // persisting it would drop a spurious "connection withdrawn" message
+        // into the shared dm_pair thread as if an accepted connection were
+        // pulled. Seeded prior-task turns (state.messages) do NOT count as an
+        // in-task outreach. Map it to the quiet screen-out outcome instead: no
+        // message persisted, turnCount unchanged, opportunity quietly rejected
+        // in finalize. This is the backstop for whatever the screen gate (IND-
+        // 563) does not catch (screen off/shadow, or a fail-open reach_out).
+        //
+        // Exact ask_user resumes (continuationExecution) are exempt: the
+        // successor task is the SAME logical negotiation resumed after the
+        // client answered, so a post-consultation `withdraw` is a legitimate
+        // terminal decision, not an opening move.
+        if (turn.action === 'withdraw' && !state.outreachOpened && !state.continuationExecution) {
+          turnLog.info('negotiation_opening_withdraw_screened_out', {
+            taskId: state.taskId,
+            opportunityId: state.opportunityId || undefined,
+            seat,
+            turnCount: state.turnCount,
+            isContinuation: state.isContinuation,
+          });
+          traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: "screened_out: opening withdraw" });
+          return { lastTurn: turn, firstTurnScreenedOut: true };
+        }
+
         const parts = [{ kind: "data" as const, data: turn }];
         const message = await database.createMessage({
           conversationId: state.conversationId,
@@ -962,6 +997,8 @@ export class NegotiationGraphFactory {
           currentSpeaker: (isSource ? "candidate" : "source") as "source" | "candidate",
           lastTurn: turn,
           memoryBySide: { [ownSide]: ownMemory },
+          // Record the in-task outreach so a later `withdraw` is legal (IND-564).
+          ...(turn.action === 'outreach' && { outreachOpened: true }),
           ...(deadlockShiftRecord && { deadlockShift: deadlockShiftRecord }),
         };
       } catch (err) {
@@ -1057,7 +1094,10 @@ export class NegotiationGraphFactory {
       const hasOpportunity = lastTurn?.action === "accept";
       // P2.2: the client's own outreach gate declined before any turn — the
       // negotiation never happened from the counterparty's perspective.
-      const screenedOut = isScreenBlocked(state);
+      // IND-564: an opening-move `withdraw` blocked before any message was
+      // persisted is the same quiet screen-out outcome (no in-task outreach to
+      // retract), reached from the turn node rather than the screen node.
+      const screenedOut = isScreenBlocked(state) || state.firstTurnScreenedOut === true;
       const atCap = !screenedOut && (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
@@ -1078,7 +1118,7 @@ export class NegotiationGraphFactory {
         hasOpportunity,
         agreedRoles,
         reasoning: screenedOut
-          ? (state.screenDecision?.reasoning ?? "")
+          ? (state.screenDecision?.reasoning ?? lastTurn?.assessment?.reasoning ?? "")
           : (lastTurn?.assessment.reasoning ?? ""),
         turnCount: state.turnCount,
         ...(screenedOut
@@ -1279,9 +1319,14 @@ export class NegotiationGraphFactory {
       })
       .addConditionalEdges("init", (state: typeof NegotiationGraphState.State) => {
         if (state.error) return "finalize";
-        // Screen gate: fresh negotiations only (continuations already passed
-        // the gate when the dialogue opened); off disables the node entirely.
-        if (!state.isContinuation && configuredScreenMode() !== "off") return "screen";
+        // Screen gate (P2.1). Runs on fresh negotiations AND regular
+        // continuations (IND-563): a new opportunity/intent reusing an existing
+        // conversation must still pass the outreach gate before entering the
+        // shared thread — a bad continuation match should be quietly screened
+        // out, never dropped into the dm_pair. Exact ask_user resumes
+        // (continuationExecution) are mid-flight and must never be re-screened.
+        // `off` disables the node entirely.
+        if (configuredScreenMode() !== "off" && !state.continuationExecution) return "screen";
         return "turn";
       }, { screen: "screen", turn: "turn", finalize: "finalize" })
       // P2.2: enforce-mode pass → finalize (screened_out); everything else → turn.

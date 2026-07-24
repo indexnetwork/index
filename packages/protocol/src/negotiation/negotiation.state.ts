@@ -224,6 +224,30 @@ export const NegotiationGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
   }),
+
+  /**
+   * Whether the initiator has actually opened `outreach` within THIS task
+   * (IND-564). Set by the turn node the first time an `outreach` turn is
+   * persisted in the current session; seeded prior-task turns never flip it.
+   * `withdraw` is only legal after an in-task outreach — a withdraw before one
+   * would retract an outreach never made here and drop a spurious message into
+   * the shared thread, so the turn node maps it to a quiet screen-out instead.
+   */
+  outreachOpened: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /**
+   * Set by the turn node when an opening-move `withdraw` (no in-task outreach)
+   * was blocked (IND-564). Signals finalize to record the quiet screen-out
+   * outcome (`reason: "screened_out"`, opportunity `rejected`) without ever
+   * persisting the withdraw message into the shared `dm_pair` conversation.
+   */
+  firstTurnScreenedOut: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
   opportunityId: Annotation<string>({
     reducer: (curr, next) => next ?? curr,
     default: () => "",
