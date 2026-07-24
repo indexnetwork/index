@@ -11,7 +11,7 @@ import TurnRail from '@/components/negotiations/TurnRail';
 import OutcomeBanner from '@/components/negotiations/OutcomeBanner';
 import ResolvedBanner, { type ResolvedBannerVariant } from '@/components/negotiations/ResolvedBanner';
 import { useTickingNow } from '@/components/negotiations/use-ticking-now';
-import { extractTurn, formatRelativeTime, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+import { extractTurn, formatRelativeTime, groupTurnsBySession, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 
 const STALL_REASONS = new Set(['turn_cap', 'timeout']);
 
@@ -75,18 +75,34 @@ export default function NegotiationDetailPage() {
   );
   const negotiatedRole = useMemo(() => viewerRoleLabel(turns, ownAgentId), [turns, ownAgentId]);
 
+  // IND-565: group turns by negotiation session (one session = one task = one opportunity).
+  const sessionGroups = useMemo(() => groupTurnsBySession(turns), [turns]);
+  const isMultiSession = sessionGroups.length > 1;
+
   const opportunityId = lifecycle?.opportunityId ?? null;
   const localStatus = opportunityId ? opportunityStatusMap[opportunityId] : undefined;
   const effectiveOpportunityStatus = localStatus ?? lifecycle?.opportunityStatus ?? null;
   const outcomeReason = lifecycle?.outcome?.reason ?? null;
 
+  // IND-566: Per-task turn count — turns in the latest session only, not cumulative
+  // across all prior tasks in this dm_pair. lifecycle.turnCount folds in priorTurnCount
+  // from earlier negotiations, so we recount from the loaded session groups instead.
+  const latestSessionTurns = useMemo(
+    () => sessionGroups[sessionGroups.length - 1]?.turns ?? turns,
+    [sessionGroups, turns],
+  );
+  const latestTaskTurnCount = latestSessionTurns.length > 0 ? latestSessionTurns.length : null;
+
   // The viewer's last ask_user turn — anchor for the missed-window decay line.
+  // Scoped to the latest session (the active task) only.
   const lastAskUserTurnId = useMemo(() => {
-    for (let i = turns.length - 1; i >= 0; i -= 1) {
-      if (turns[i].action === 'ask_user' && turns[i].senderId === ownAgentId) return turns[i].id;
+    for (let i = latestSessionTurns.length - 1; i >= 0; i -= 1) {
+      if (latestSessionTurns[i].action === 'ask_user' && latestSessionTurns[i].senderId === ownAgentId) {
+        return latestSessionTurns[i].id;
+      }
     }
     return null;
-  }, [turns, ownAgentId]);
+  }, [latestSessionTurns, ownAgentId]);
 
   // Missed-window decay (IND-559): the negotiation left input_required after
   // an ask_user pause with no answered consultation — the window lapsed (or
@@ -179,36 +195,107 @@ export default function NegotiationDetailPage() {
               </div>
             ) : null}
 
-            <TurnRail
-              turns={turns}
-              ownAgentId={ownAgentId}
-              participantInfo={participantInfo}
-              counterpartName={counterpartName}
-              now={now}
-              missedWindowTurnId={windowMissed ? lastAskUserTurnId : null}
-            />
+            {/* IND-565: per-opportunity negotiation sections.
+                Each sessionId group = one negotiation task over one opportunity.
+                Banners are scoped to the latest section so a WITHDRAWN chip in
+                an earlier task can’t be misread as applying to the current one. */}
+            {isMultiSession ? (
+              sessionGroups.map((group, groupIndex) => {
+                const isLatest = groupIndex === sessionGroups.length - 1;
+                const firstTurn = group.turns[0];
 
-            {showOutcomeBanner && opportunityId && (
-              <OutcomeBanner
-                counterpartName={counterpartName}
-                role={negotiatedRole}
-                turnCount={lifecycle?.turnCount ?? null}
-                concludedLabel={lifecycle?.updatedAt ? formatRelativeTime(lifecycle.updatedAt, now) : null}
-                loading={opportunityActionLoading[opportunityId] === true}
-                onStartChat={() => void handleOpportunityAction(opportunityId, 'accepted', counterpartUserId, undefined, counterpartName)}
-                onPass={() => void handleOpportunityAction(opportunityId, 'rejected', counterpartUserId, undefined, counterpartName)}
-              />
-            )}
+                // Older sections: show month/year of first turn as context.
+                // Latest section: use the viewer’s own opportunity intent title
+                // from the conversation’s signal provenance (via[0]).
+                let sectionLabel: string;
+                if (isLatest) {
+                  sectionLabel = conversation?.via[0]?.title ?? 'Current negotiation';
+                } else {
+                  const date = firstTurn ? new Date(firstTurn.createdAt) : null;
+                  const monthYear = date && Number.isFinite(date.getTime())
+                    ? date.toLocaleString('en-US', { month: 'short', year: 'numeric' })
+                    : '';
+                  sectionLabel = `Earlier negotiation${monthYear ? ` · ${monthYear}` : ''}`;
+                }
 
-            {resolvedVariant && (
-              <ResolvedBanner
-                variant={resolvedVariant}
-                reason={outcomeReason}
-                turnCount={lifecycle?.turnCount ?? null}
-                maxTurns={lifecycle?.maxTurns ?? null}
-                onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
-                onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
-              />
+                return (
+                  <section key={group.sessionId ?? `group-${groupIndex}`} aria-label={sectionLabel}>
+                    {/* Section divider — separates this task from the preceding one */}
+                    <div className="flex items-center gap-3 py-3" role="separator">
+                      <span className="h-px flex-1 bg-gray-200" />
+                      <span className="text-[10px] font-ibm-plex-mono uppercase tracking-[0.12em] text-gray-400">
+                        {sectionLabel}
+                      </span>
+                      <span className="h-px flex-1 bg-gray-200" />
+                    </div>
+                    <TurnRail
+                      turns={group.turns}
+                      ownAgentId={ownAgentId}
+                      participantInfo={participantInfo}
+                      counterpartName={counterpartName}
+                      now={now}
+                      missedWindowTurnId={isLatest && windowMissed ? lastAskUserTurnId : null}
+                    />
+                    {/* Outcome banners are scoped to the latest section (IND-566). */}
+                    {isLatest && showOutcomeBanner && opportunityId && (
+                      <OutcomeBanner
+                        counterpartName={counterpartName}
+                        role={negotiatedRole}
+                        turnCount={latestTaskTurnCount}
+                        concludedLabel={lifecycle?.updatedAt ? formatRelativeTime(lifecycle.updatedAt, now) : null}
+                        loading={opportunityActionLoading[opportunityId] === true}
+                        onStartChat={() => void handleOpportunityAction(opportunityId, 'accepted', counterpartUserId, undefined, counterpartName)}
+                        onPass={() => void handleOpportunityAction(opportunityId, 'rejected', counterpartUserId, undefined, counterpartName)}
+                      />
+                    )}
+                    {isLatest && resolvedVariant && (
+                      <ResolvedBanner
+                        variant={resolvedVariant}
+                        reason={outcomeReason}
+                        turnCount={latestTaskTurnCount}
+                        maxTurns={lifecycle?.maxTurns ?? null}
+                        onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
+                        onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
+                      />
+                    )}
+                  </section>
+                );
+              })
+            ) : (
+              // Single-session (common case): no section divider, but still use
+              // latestTaskTurnCount so the banner doesn’t inherit priorTurnCount
+              // from earlier tasks that ran before this one (IND-566).
+              <>
+                <TurnRail
+                  turns={turns}
+                  ownAgentId={ownAgentId}
+                  participantInfo={participantInfo}
+                  counterpartName={counterpartName}
+                  now={now}
+                  missedWindowTurnId={windowMissed ? lastAskUserTurnId : null}
+                />
+                {showOutcomeBanner && opportunityId && (
+                  <OutcomeBanner
+                    counterpartName={counterpartName}
+                    role={negotiatedRole}
+                    turnCount={latestTaskTurnCount}
+                    concludedLabel={lifecycle?.updatedAt ? formatRelativeTime(lifecycle.updatedAt, now) : null}
+                    loading={opportunityActionLoading[opportunityId] === true}
+                    onStartChat={() => void handleOpportunityAction(opportunityId, 'accepted', counterpartUserId, undefined, counterpartName)}
+                    onPass={() => void handleOpportunityAction(opportunityId, 'rejected', counterpartUserId, undefined, counterpartName)}
+                  />
+                )}
+                {resolvedVariant && (
+                  <ResolvedBanner
+                    variant={resolvedVariant}
+                    reason={outcomeReason}
+                    turnCount={latestTaskTurnCount}
+                    maxTurns={lifecycle?.maxTurns ?? null}
+                    onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
+                    onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
+                  />
+                )}
+              </>
             )}
             <div ref={messagesEndRef} />
           </div>
