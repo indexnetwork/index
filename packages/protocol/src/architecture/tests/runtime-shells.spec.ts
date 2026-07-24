@@ -59,7 +59,7 @@ describe("platform shell", () => {
     const index = await readFile(resolve(sourceRoot, "platform/index.ts"), "utf8");
     // Must never reach into domain implementation directories
     const forbiddenPatterns = [
-      /\.\.\/(?:enrichment|intent|network|opportunity|negotiation|questioner|chat|agent|contact|integration|premise|context|maintenance)\//,
+      /\.\.\/(?:enrichment|intent|network|opportunity|negotiation|questioner|chat|agent|contact|contacts|integration|integrations|premise|context|maintenance)\//,
     ];
     for (const pattern of forbiddenPatterns) {
       expect(index).not.toMatch(pattern);

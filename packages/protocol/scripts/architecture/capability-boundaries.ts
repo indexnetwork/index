@@ -70,7 +70,15 @@ const capabilityDirectories: Readonly<Record<string, Capability>> = {
   "participant-agents": "participant-agents",
   chat: "participant-agents",
   agent: "participant-agents",
+  // IND-549: contacts/ is the canonical domain-first directory;
+  // contact/ is the legacy compatibility-shim directory (both map to the
+  // same capability so cross-shim imports are treated as self-imports).
+  contacts: "contacts",
   contact: "contacts",
+  // IND-549: integrations/ is the canonical domain-first directory;
+  // integration/ is the legacy compatibility-shim directory (both map to the
+  // same capability so cross-shim imports are treated as self-imports).
+  integrations: "integrations",
   integration: "integrations",
   maintenance: "interaction-composition",
   // IND-543 outer shells (single-segment entries that have a fixed mapping)

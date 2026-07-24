@@ -1,4 +1,9 @@
-import type { ToolRegistryCompositionDeps } from "../shared/agent/tool.helpers.js";
-
-/** Host capabilities consumed by contact tools. */
-export type ContactToolDeps = Pick<ToolRegistryCompositionDeps, "contactService" | "contactsEnabled">;
+/**
+ * @deprecated — compatibility shim.
+ *
+ * Canonical type has moved to contacts/ports.
+ * This re-export exists solely to avoid breaking imports that pre-date IND-549.
+ *
+ * IND-549: migrated to src/contacts/ports/contact.tools.port.ts.
+ */
+export type { ContactToolDeps } from '../contacts/ports/index.js';

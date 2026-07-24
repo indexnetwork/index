@@ -12,6 +12,50 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [6.13.22] — 2026-07-25
+
+### Added
+- Establish `contacts/` domain-first module spine (IND-549).
+  New directories: `contacts/domain/`, `contacts/application/`,
+  `contacts/ports/`, `contacts/public/`, plus `contacts/index.ts` barrel.
+  Canonical home for contact management (import, list, add, remove, search)
+  and the invite message generator, retaining participant reachability
+  semantics. Port types: `ContactServiceAdapter`, `ContactToolDeps`.
+- Establish `integrations/` domain-first module spine (IND-549).
+  New directories: `integrations/domain/`, `integrations/application/`,
+  `integrations/ports/`, `integrations/public/`, plus `integrations/index.ts`
+  barrel. Canonical home for host-integration configuration/actions
+  (OAuth session lifecycle, bulk contact import). Port types:
+  `IntegrationAdapter`, `IntegrationImporter`, `IntegrationToolDeps`.
+  `IntegrationImporter` is now a named interface (previously inline in
+  `shared/agent/tool.helpers.ts`).
+
+### Changed
+- `capabilities/contacts.facade.ts` now routes through `contacts/public/`
+  (IND-549).
+- `capabilities/integrations.facade.ts` now routes through
+  `integrations/public/` (IND-549).
+- Capability boundary script updated: `contacts/` and `integrations/`
+  directories now map to their respective capabilities (alongside legacy
+  `contact/` and `integration/`) (IND-549).
+
+### Deprecated
+- `contact/contact.tools.ts` is now a thin compatibility re-export shim
+  pointing to `contacts/application/` (IND-549).
+- `contact/contact.inviter.ts` is now a thin compatibility re-export shim
+  pointing to `contacts/application/` (IND-549).
+- `integration/integration.tools.ts` is now a thin compatibility re-export
+  shim pointing to `integrations/application/` (IND-549).
+- `shared/interfaces/contact.interface.ts` is now a thin compatibility shim
+  pointing to `contacts/domain/` and `contacts/ports/` (IND-549).
+- `shared/interfaces/integration.interface.ts` is now a thin compatibility
+  shim pointing to `integrations/domain/` and `integrations/ports/`
+  (IND-549).
+- `capabilities/contacts.tools.port.ts` is now a thin compatibility shim
+  pointing to `contacts/ports/` (IND-549).
+- `capabilities/integrations.tools.port.ts` is now a thin compatibility shim
+  pointing to `integrations/ports/` (IND-549).
+
 ## [6.13.21] — 2026-07-25
 
 ### Added
