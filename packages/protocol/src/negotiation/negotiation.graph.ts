@@ -7,7 +7,7 @@ import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-e
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
-import { ASK_USER_LOCK_SLACK_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { NegotiationScreener, configuredScreenMode, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
@@ -18,6 +18,7 @@ import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId, validateInflightAskUserFields } from './negotiation.question-safety.js';
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
+import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
 
 const logger = protocolLogger("NegotiationGraph");
 const initLog = protocolLogger("NegotiationGraph:Init");
@@ -123,20 +124,6 @@ export class NegotiationGraphFactory {
         // --- Lock gate: check for an active task on this conversation ---
         const priorMessages = await database.getMessagesForConversation(conversation.id);
 
-        const activeStates = ['submitted', 'working', 'input_required', 'waiting_for_agent', 'claimed'];
-        const isActiveAndFresh = (t: { state: string; updatedAt: Date }) => {
-          if (!activeStates.includes(t.state)) return false;
-          // State-aware freshness (IND-401): an `input_required` task is an
-          // ask_user pause — it holds the conversation lock for its full answer
-          // window (+ slack for the expiry worker), not the 5-min turn window.
-          // Otherwise ambient rediscovery / chat negotiate_existing would start
-          // a fresh negotiation right past the pause after 5 minutes.
-          const freshnessMs = t.state === 'input_required'
-            ? askUserAnswerWindowMs() + ASK_USER_LOCK_SLACK_MS
-            : 5 * 60 * 1000;
-          return (Date.now() - new Date(t.updatedAt).getTime()) < freshnessMs;
-        };
-
         if (
           Boolean(state.resumeFromTaskId) !== Boolean(state.continuationSettlementId)
           || Boolean(state.resumeFromTaskId) !== Boolean(execution)
@@ -169,7 +156,7 @@ export class NegotiationGraphFactory {
             || storedExecution?.status !== 'claimed'
           ) return { error: 'invalid exact continuation task' };
         }
-        const isLocked = !exactContinuation && !!priorTask && isActiveAndFresh(priorTask);
+        const isLocked = !exactContinuation && !!priorTask && holdsNegotiationConversationLock(priorTask);
 
         if (isLocked) {
           initLog.info('Conversation locked by active task, returning busy', {
@@ -233,7 +220,7 @@ export class NegotiationGraphFactory {
           ? await database.getLatestNegotiationTaskForConversation?.(conversation.id).catch(() => null)
           : null;
         if (!readInitiator(priorTask?.metadata)) {
-          if (convTask && convTask.id !== priorTask?.id && isActiveAndFresh(convTask)) {
+          if (convTask && convTask.id !== priorTask?.id && holdsNegotiationConversationLock(convTask)) {
             const convInitiator = readInitiator(convTask.metadata);
             if (convInitiator) {
               initLog.info('Conversation-scoped tie-break: inheriting initiator seat from concurrent task', {

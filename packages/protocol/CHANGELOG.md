@@ -13,6 +13,9 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Changed
+- Extract state-aware negotiation conversation-lock admission, including the
+  full consultation answer-window hold, into a narrow lifecycle policy while
+  retaining graph-owned task reads and busy routing (IND-530 Batch 9).
 - Extract immutable negotiation task intent-snapshot provenance into a narrow
   persistence handler while retaining LangGraph init-node task wiring and
   lifecycle boundaries (IND-530 Batch 8).
