@@ -108,3 +108,4 @@ src/services/tests/intent-recovery-refinement.service.isolated.ts
 src/adapters/tests/agent-action-proposal.database.adapter.isolated.ts
 src/adapters/tests/conversation.reporter.isolated.ts
 src/controllers/tests/conversation.negotiation-activity.isolated.ts
+src/adapters/tests/archive-legacy-negotiations.isolated.ts
