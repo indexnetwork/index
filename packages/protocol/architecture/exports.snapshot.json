@@ -810,7 +810,7 @@
       "name": "HydeGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./shared/hyde/hyde.graph.js"
+      "source": "./capabilities/participant-context.facade.js"
     },
     {
       "name": "NetworkGraphFactory",
@@ -936,7 +936,7 @@
       "name": "HydeGenerator",
       "kind": "value",
       "stability": "stable",
-      "source": "./shared/hyde/hyde.generator.js"
+      "source": "./capabilities/participant-context.facade.js"
     },
     {
       "name": "SuggestionGenerator",
@@ -966,7 +966,7 @@
       "name": "LensInferrer",
       "kind": "value",
       "stability": "stable",
-      "source": "./shared/hyde/lens.inferrer.js"
+      "source": "./capabilities/participant-context.facade.js"
     },
     {
       "name": "NegotiationInsightsGenerator",

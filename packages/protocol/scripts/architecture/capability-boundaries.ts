@@ -50,6 +50,10 @@ const capabilityDirectories: Readonly<Record<string, Capability>> = {
   // the same capability so cross-shim imports are treated as self-imports).
   signals: "signals",
   intent: "signals",
+  // IND-545: participant-context/ is the canonical domain-first directory;
+  // enrichment/, premise/, and context/ are legacy directories that remain as
+  // compatibility paths — all four map to the same capability.
+  "participant-context": "participant-context",
   enrichment: "participant-context",
   premise: "participant-context",
   context: "participant-context",
@@ -168,6 +172,11 @@ function sourceCapability(path: string): Capability | undefined {
   ) {
     return "interaction-composition";
   }
+
+  // IND-545: shared/hyde/ is a cross-capability technology binding (participant-
+  // context generates HyDE docs; opportunities consumes them for semantic search).
+  // It remains unclassified shared infrastructure so both capabilities may access
+  // it without a cross-capability facade constraint.
 
   return capabilityDirectories[topLevel];
 }

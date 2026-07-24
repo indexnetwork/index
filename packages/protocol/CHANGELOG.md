@@ -12,6 +12,36 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [6.13.19] — 2026-07-25
+
+### Added
+- Establish `participant-context/` domain-first module spine (IND-545).
+  New directories: `participant-context/domain/`, `participant-context/application/`,
+  `participant-context/ports/`, `participant-context/public/`, plus
+  `participant-context/index.ts` barrel.  The four existing implementation
+  directories (`premise/`, `context/`, `enrichment/`, `shared/hyde/`) remain in
+  place as the canonical code and are re-exported through the new spine — no
+  big-bang rewrite.  Characterizes premise provenance invariants
+  (`source: explicit | integration | generated`), validity/regeneration invariants
+  (`volatile` flag, auto-retraction semantics, regeneration boundary), and
+  foreground vs. ambient adapter ownership in block-comment documentation.
+
+### Changed
+- `capabilities/participant-context.facade.ts` is now a thin shim over the
+  canonical `participant-context/` module.  The facade also absorbs the three
+  HyDE exports (`HydeGraphFactory`, `HydeGenerator`, `LensInferrer`) that were
+  previously exported from root `index.ts` via direct `shared/hyde/` imports.
+  Root `index.ts` routes those three symbols through the facade (no change to
+  the public symbols or their shapes).
+- `scripts/architecture/capability-boundaries.ts` registers `participant-context/`
+  as the canonical capability directory (joining the existing `premise/`,
+  `context/`, and `enrichment/` mappings that already pointed to
+  `"participant-context"`).  Notes `shared/hyde/` as a cross-capability technology
+  binding (used by both participant-context for generation and opportunities for
+  search) — left unclassified so both can access it without a boundary fault.
+- `architecture/exports.snapshot.json` regenerated; 327 exports unchanged in
+  count and shape, three source paths updated to reflect the new facade routing.
+
 ## [6.13.18] — 2026-07-24
 
 ### Changed

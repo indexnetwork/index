@@ -135,7 +135,7 @@ export {
   narrowOnboardingTools,
 } from "./capabilities/participant-agents.facade.js";
 export { HomeGraphFactory } from "./capabilities/opportunities.facade.js";
-export { HydeGraphFactory } from "./shared/hyde/hyde.graph.js";
+export { HydeGraphFactory } from "./capabilities/participant-context.facade.js";
 export { NetworkGraphFactory } from "./capabilities/communities.facade.js";
 export { NetworkMembershipGraphFactory } from "./capabilities/communities.facade.js";
 export { IntentGraphFactory } from "./capabilities/signals.facade.js";
@@ -156,12 +156,12 @@ export { UserContextGenerator } from "./capabilities/participant-context.facade.
 export { ChatTitleGenerator } from "./capabilities/participant-agents.facade.js";
 export { ChatInterruptClassifier } from "./capabilities/participant-agents.facade.js";
 export { ChatSummarizer } from "./capabilities/participant-agents.facade.js";
-export { HydeGenerator } from "./shared/hyde/hyde.generator.js";
+export { HydeGenerator } from "./capabilities/participant-context.facade.js";
 export { SuggestionGenerator } from "./capabilities/participant-agents.facade.js";
 export { generateInviteMessage } from "./capabilities/contacts.facade.js";
 export { IntentIndexer } from "./capabilities/signals.facade.js";
 export type { IntentIndexerOutput } from "./capabilities/signals.facade.js";
-export { LensInferrer } from "./shared/hyde/lens.inferrer.js";
+export { LensInferrer } from "./capabilities/participant-context.facade.js";
 export { NegotiationInsightsGenerator } from "./capabilities/negotiation.facade.js";
 export type { NegotiationDigest } from "./capabilities/negotiation.facade.js";
 export { IndexNegotiator } from "./capabilities/negotiation.facade.js";
