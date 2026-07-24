@@ -30,8 +30,18 @@ export const QuestionSchema = z.object({
    * Optional provenance line rendered as a muted chip above the prompt
    * (e.g. "based on 18 people matching this intent"). Aggregate counts only —
    * never individual identities (pool_discovery k-anonymity invariant).
+   *
+   * Declared `.nullable().optional()` (not bare `.optional()`) so the schema
+   * survives OpenAI/OpenRouter strict structured-output conversion, which
+   * rejects optional-without-nullable fields (see createStructuredModel in the
+   * questioner agent). The `.transform()` normalizes an LLM-returned `null`
+   * back to `undefined` so a null is NEVER persisted or treated as
+   * "evidence present": real string evidence flows through unchanged, while
+   * both `null` and omitted read as absent everywhere downstream
+   * (e.g. the intent-recovery `!question.evidence` selection filter and the
+   * pool_discovery provenance chip).
    */
-  evidence: z.string().min(1).max(160).optional(),
+  evidence: z.string().min(1).max(160).nullable().optional().transform((value) => value ?? undefined),
 });
 
 /** Canonical QUD repair categories for underspecified intents/questions. */
