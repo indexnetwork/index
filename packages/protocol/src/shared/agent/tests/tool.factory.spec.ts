@@ -6,7 +6,9 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { mock, afterAll } from "bun:test";
-mock.module("../../../intent/intent.graph.js", () => ({
+// Route to canonical application path so the mock intercepts the import used
+// by tool.factory.ts after the IND-544 signals domain-first migration.
+mock.module("../../../signals/application/intent.graph.js", () => ({
   IntentGraphFactory: class {
     private database: ChatGraphCompositeDatabase;
     constructor(database: ChatGraphCompositeDatabase) {
@@ -149,7 +151,18 @@ mock.module("../../../intent/intent.graph.js", () => ({
             };
           }
 
-          // For non-read operations without network scope, return default empty results
+          // For write operations (create/update/delete), return a deterministic
+          // success result so provider-free tests pass without LLM credentials.
+          if (input.operationMode === 'update' || input.operationMode === 'create') {
+            const targetId = Array.isArray(input.targetIntentIds) && input.targetIntentIds.length > 0
+              ? input.targetIntentIds[0] : 'stub-intent-id';
+            return {
+              executionResults: [{ success: true, intentId: targetId, description: 'stub' }],
+              actions: [],
+              inferredIntents: [],
+            };
+          }
+          // For other non-read operations without network scope, return default empty results
           return {
             executionResults: [],
             actions: [],
@@ -187,7 +200,9 @@ let mockDiscoveryResult: {
   count: 0,
   message: "You need to join at least one index (community) to discover opportunities.",
 };
-mock.module("../../../opportunity/opportunity.discover.js", () => ({
+// Route to canonical application path so the mock intercepts the import used
+// by opportunity.tools.ts after the IND-551 domain-first migration.
+mock.module("../../../opportunity/application/opportunity.discover.js", () => ({
   runDiscoverFromQuery: async () => mockDiscoveryResult,
   continueDiscovery: async () => mockDiscoveryResult,
 }));
@@ -237,11 +252,15 @@ function createMockDatabase(
   const noopArray = async () => [];
   const noopBool = async () => false;
   const base = {
-    getProfile: noopNull,
+    // Non-null profile is required by IntentGraph write-mode gate
+    // (gate: state.operationMode !== 'read' → checks getProfile).
+    getProfile: async () => ({ id: "profile-stub", identity: { name: "Test User", bio: "Test bio" } } as any),
     getProfileByUserId: noopNull,
     getActiveIntents: noopArray,
     getIntentsInIndexForMember: getIntentsInIndexForMemberImpl,
     getUser: async (uid: string) => ({ id: uid, name: "Test User", email: "test@example.com" }),
+    // Required by EnrichmentGraph hasBeenEnriched check (post-IND-551 merge).
+    getPremisesForUser: noopArray,
     getNetwork: async (networkId: string) => ({ id: networkId, title: "Test Index" }),
     saveProfile: noop,
     createIntent: async () => ({ id: "", payload: "", summary: null, isIncognito: false, createdAt: new Date(), updatedAt: new Date(), userId: "" }),
@@ -305,6 +324,8 @@ const mockEmbedder = {
   generateForDocuments: async () => [],
   addVectors: async () => [],
   similaritySearch: async () => [],
+  // Required by OpportunityGraph discovery node (post-IND-551 merge widened contract).
+  searchWithHydeEmbeddings: async () => [],
 } as unknown as Embedder;
 
 /** Stub scraper for tool creation (not invoked by read_intents). */
