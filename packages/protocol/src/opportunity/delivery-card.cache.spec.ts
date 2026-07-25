@@ -4,8 +4,10 @@ import type { OpportunityPresenter } from './opportunity.presenter.js';
 import type { PresenterDatabase } from './opportunity.presenter.js';
 import type { Cache } from '../shared/interfaces/cache.interface.js';
 
-// Mock the gatherPresenterContext function
-mock.module('./opportunity.presenter.js', () => ({
+// Mock the gatherPresenterContext function.
+// Must target the path application/delivery-card.cache.ts actually imports from
+// (./application/opportunity.presenter.js, not the root-level shim).
+mock.module('./application/opportunity.presenter.js', () => ({
   gatherPresenterContext: mock(async (presenterDb: PresenterDatabase, opp: any, viewerId: string) => ({
     opportunityStatus: opp.status,
   })),
