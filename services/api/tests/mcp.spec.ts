@@ -893,6 +893,10 @@ describe('MCP Server Factory', () => {
     headers?: Record<string, string>;
     /** When true, the scoped-deps factory throws if the handler seam is reached. */
     scopedThrows?: boolean;
+    /** Functional scoped databases for handlers that must run past the seam
+     *  (e.g. a resource-level clamp fired inside the tool handler). */
+    scopedUserDb?: ToolDeps['userDb'];
+    scopedSystemDb?: ToolDeps['systemDb'];
   }): Promise<CallToolOutcome> {
     clearMcpToolMetadataCacheForTests();
     const scopedCreateArgs: Array<{ userId: string; allowedNetworkIds: string[] }> = [];
@@ -900,7 +904,10 @@ describe('MCP Server Factory', () => {
       create: (userId: string, allowedNetworkIds: string[]) => {
         scopedCreateArgs.push({ userId, allowedNetworkIds });
         if (params.scopedThrows) throw new Error('scoped database must not be created');
-        return { userDb: {} as ToolDeps['userDb'], systemDb: {} as ToolDeps['systemDb'] };
+        return {
+          userDb: params.scopedUserDb ?? ({} as ToolDeps['userDb']),
+          systemDb: params.scopedSystemDb ?? ({} as ToolDeps['systemDb']),
+        };
       },
     };
     const server = createMcpServer(
@@ -1166,5 +1173,236 @@ describe('MCP Server Factory', () => {
     expect(payload.success).toBe(true);
     const ids = (payload.data?.questions ?? []).map((q) => q.id);
     expect(ids).toEqual(['intent-q']);
+  });
+
+  // ── IND-583: human-only onboarding privacy consent at the transport seam ────
+  //
+  // record_onboarding_privacy_consent and complete_onboarding are human_only. A
+  // registered agent — even one holding BOTH manage:identity and manage:premises
+  // (the exact pair the retired manage:profile grant projected to) — must neither
+  // see them in tools/list nor reach them via tools/call, and the denial must
+  // land before any chat DB, scoped DB, registry, or graph work. The session
+  // human is admitted and reaches the scoped handler seam. tools/list and
+  // tools/call therefore agree for both principals.
+  const IDENTITY_PREMISES_ACTIONS = ['manage:identity', 'manage:premises'];
+  const HUMAN_ONLY_ONBOARDING_TOOLS = ['record_onboarding_privacy_consent', 'complete_onboarding'] as const;
+
+  it('hides onboarding privacy consent tools from an agent holding identity+premises grants (tools/list)', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const deps = {
+      ...mockDeps,
+      database: resolvedContextDatabase,
+      agentDatabase: agentDbWith({ agentId: 'agent-ip', scope: 'global', scopeId: null, actions: IDENTITY_PREMISES_ACTIONS }),
+    };
+    const server = createMcpServer(
+      deps,
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id', agentId: 'agent-ip' }),
+        resolveUserId: async () => 'test-user-id',
+      },
+      mockScopedDepsFactory,
+    );
+    const response = await invokeMcpRequest({ server, method: 'tools/list', headers: { 'x-api-key': 'agent-key' } });
+    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
+    for (const tool of HUMAN_ONLY_ONBOARDING_TOOLS) {
+      expect(names, `${tool} must be hidden from an identity+premises agent`).not.toContain(tool);
+    }
+  });
+
+  it('denies an identity+premises agent calling onboarding consent tools before any DB or graph work', async () => {
+    for (const tool of HUMAN_ONLY_ONBOARDING_TOOLS) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', agentId: 'agent-ip' },
+        agentDatabase: agentDbWith({ agentId: 'agent-ip', scope: 'global', scopeId: null, actions: IDENTITY_PREMISES_ACTIONS }),
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: {},
+      });
+      expect(result.isError, `${tool} must be denied`).toBe(true);
+      expect(result.code, `${tool} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before chat DB`).toBe(0);
+      expect(result.scopedCreateArgs, `${tool} must deny before scoped DB`).toEqual([]);
+    }
+  });
+
+  it('admits the session human to onboarding privacy consent tools and reaches the scoped handler seam', async () => {
+    // Schema-valid arguments; the session human passes policy and reaches the
+    // scoped-deps/handler seam (scopedCreateArgs), which is the admission
+    // boundary — the exact parity partner of the agent denial above.
+    const consent = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+      toolName: 'record_onboarding_privacy_consent',
+      arguments: { publicProfileLookupGranted: true },
+    });
+    expect(consent.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(consent.scopedCreateArgs.length).toBe(1);
+
+    const complete = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+      toolName: 'complete_onboarding',
+      arguments: {},
+    });
+    expect(complete.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(complete.scopedCreateArgs.length).toBe(1);
+  });
+
+  // ── IND-588: signals read/write split at the transport seam ─────────────────
+  //
+  // Signal READ tools (read_intents, search_intents, read_intent_indexes) are
+  // `authenticated`; every MUTATION and community-assignment tool requires
+  // manage:intents. An authenticated registered agent WITHOUT manage:intents may
+  // reach the read seam but is capability-denied on every mutation before DB or
+  // graph work, and those mutations are absent from its tools/list. (The
+  // create_intent cross-network case is covered above; these prove the
+  // read-allow-vs-write-deny split, the network read clamp, and one out-of-scope
+  // non-create mutation denial.)
+  const NON_INTENT_AGENT_ACTIONS = ['manage:opportunities'];
+
+  it('lets an authenticated agent without manage:intents reach the read_intents seam', async () => {
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-sr' },
+      agentDatabase: agentDbWith({ agentId: 'agent-sr', scope: 'global', scopeId: null, actions: NON_INTENT_AGENT_ACTIONS }),
+      toolName: 'read_intents',
+      arguments: {},
+    });
+    expect(result.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(result.scopedCreateArgs.length).toBe(1);
+  });
+
+  it('hides signal mutation and community-assignment tools from an agent without manage:intents (tools/list)', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const deps = {
+      ...mockDeps,
+      database: resolvedContextDatabase,
+      agentDatabase: agentDbWith({ agentId: 'agent-sr', scope: 'global', scopeId: null, actions: NON_INTENT_AGENT_ACTIONS }),
+    };
+    const server = createMcpServer(
+      deps,
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id', agentId: 'agent-sr' }),
+        resolveUserId: async () => 'test-user-id',
+      },
+      mockScopedDepsFactory,
+    );
+    const response = await invokeMcpRequest({ server, method: 'tools/list', headers: { 'x-api-key': 'agent-key' } });
+    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
+    // Reads remain usable.
+    expect(names).toContain('read_intents');
+    expect(names).toContain('search_intents');
+    expect(names).toContain('read_intent_indexes');
+    // Mutations and community assignment are absent.
+    for (const tool of ['create_intent', 'update_intent', 'delete_intent', 'create_intent_index', 'delete_intent_index']) {
+      expect(names, `${tool} must be hidden without manage:intents`).not.toContain(tool);
+    }
+  });
+
+  it('denies signal mutations and community assignment for an agent without manage:intents before DB work', async () => {
+    const writes: Array<{ tool: string; args: Record<string, unknown> }> = [
+      { tool: 'update_intent', args: { intentId: '00000000-0000-4000-8000-000000000010', description: 'a refined specific signal' } },
+      { tool: 'delete_intent', args: { intentId: '00000000-0000-4000-8000-000000000010' } },
+      { tool: 'create_intent_index', args: { intentId: '00000000-0000-4000-8000-000000000010', networkId: '00000000-0000-4000-8000-000000000020' } },
+      { tool: 'delete_intent_index', args: { intentId: '00000000-0000-4000-8000-000000000010', networkId: '00000000-0000-4000-8000-000000000020' } },
+    ];
+    for (const { tool, args } of writes) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', agentId: 'agent-sr' },
+        agentDatabase: agentDbWith({ agentId: 'agent-sr', scope: 'global', scopeId: null, actions: NON_INTENT_AGENT_ACTIONS }),
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: args,
+      });
+      expect(result.isError, `${tool} must be denied`).toBe(true);
+      expect(result.code, `${tool} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before chat DB`).toBe(0);
+      expect(result.scopedCreateArgs, `${tool} must deny before scoped DB`).toEqual([]);
+    }
+  });
+
+  it('clamps a network-scoped read-only agent to its bound network on read_intents', async () => {
+    // Distinct from the manage:intents clamp case above: even an authenticated
+    // read-only network agent is clamped at scoped-deps construction to its bound
+    // network, never the other network the user also belongs to.
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([
+        { networkId: 'network-1', networkTitle: 'N1', isPersonal: false, permissions: [] },
+        { networkId: 'network-2', networkTitle: 'N2', isPersonal: false, permissions: [] },
+      ]),
+    } as unknown as ToolDeps['database'];
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-srn', networkScopeId: 'network-1' },
+      agentDatabase: agentDbWith({ agentId: 'agent-srn', scope: 'network', scopeId: 'network-1', actions: NON_INTENT_AGENT_ACTIONS }),
+      database: memberDb,
+      toolName: 'read_intents',
+      arguments: {},
+    });
+    expect(result.scopedCreateArgs.length).toBe(1);
+    const allowed = result.scopedCreateArgs[0]!.allowedNetworkIds;
+    expect(allowed).toContain('network-1');
+    expect(allowed).not.toContain('network-2');
+  });
+
+  it('admits a bound network agent to create_intent_index then resource-clamps a schema-valid out-of-network assignment before the write', async () => {
+    // Production-reachable resource-level denial (not a permission-row-loss case):
+    // the agent is bound to network-1 AND holds an applicable network-1
+    // manage:intents grant, so capability policy ADMITS and dispatch reaches the
+    // scoped handler seam. It then asks to assign an intent to network-2 (an
+    // explicit out-of-network community). The tool's own network/resource clamp
+    // rejects with a stable domain message BEFORE any intent-index graph/write.
+    let intentIndexGraphCalls = 0;
+    const scopedSystemDb = {
+      // Member of the bound network, so ensureScopedMembership passes.
+      isNetworkMember: async () => true,
+    } as unknown as ToolDeps['systemDb'];
+    const graphs = {
+      ...mockDeps.graphs,
+      intentIndex: {
+        invoke: async () => {
+          intentIndexGraphCalls += 1;
+          return {};
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+    // The user is a member of the bound network-1 (so allowedNetworkIds resolves
+    // to network-1); the requested network-2 is out of the binding.
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([
+        { networkId: 'network-1', networkTitle: 'N1', isPersonal: false, permissions: [] },
+      ]),
+    } as unknown as ToolDeps['database'];
+
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-ci', networkScopeId: 'network-1' },
+      agentDatabase: agentDbWith({ agentId: 'agent-ci', scope: 'network', scopeId: 'network-1', actions: ['manage:intents'] }),
+      database: memberDb,
+      extraDeps: { graphs },
+      scopedSystemDb,
+      toolName: 'create_intent_index',
+      arguments: {
+        intentId: '00000000-0000-4000-8000-000000000010',
+        networkId: '00000000-0000-4000-8000-000000000020',
+      },
+    });
+
+    // Admission happened (not a capability denial) and the handler seam was reached.
+    expect(result.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(result.scopedCreateArgs.length).toBe(1);
+    // The bound-network clamp allowed only network-1 into the scoped deps.
+    const allowed = result.scopedCreateArgs[0]!.allowedNetworkIds;
+    expect(allowed).toContain('network-1');
+    expect(allowed).not.toContain('00000000-0000-4000-8000-000000000020');
+    // Stable resource/domain denial, not merely MCP_CAPABILITY_DENIED.
+    const payload = JSON.parse(result.text) as { success: boolean; error?: string };
+    expect(payload.success).toBe(false);
+    expect(payload.error).toMatch(/you can only link intents to this community/i);
+    // Rejected before the intent-index graph/write.
+    expect(intentIndexGraphCalls).toBe(0);
   });
 });

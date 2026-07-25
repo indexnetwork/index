@@ -568,3 +568,135 @@ describe('rolling-data legacy permission projection (IND-607)', () => {
     expect(subject.permissions).toEqual(['manage:identity', 'manage:premises', 'manage:intents']);
   });
 });
+
+// Helper: a global agent holding exactly the given canonical actions.
+function globalAgentSubject(actions: string[]) {
+  return resolveMcpCapabilitySubject({
+    identity: identity({ agentId: AGENT_ID }),
+    isOnboarding: false,
+    agent: agentSnapshot({
+      permissions: [{
+        agentId: AGENT_ID,
+        userId: USER_ID,
+        scope: 'global',
+        scopeId: null,
+        actions,
+      }],
+    }),
+  });
+}
+
+describe('human-only onboarding privacy consent (IND-583)', () => {
+  const CONSENT_TOOLS = ['record_onboarding_privacy_consent', 'complete_onboarding'] as const;
+
+  test('the canonical matrix classifies both consent tools human_only', () => {
+    for (const tool of CONSENT_TOOLS) {
+      expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(tool)).toEqual({ access: 'human_only', reach: 'principal' });
+    }
+  });
+
+  test('the session human is admitted to both consent tools', () => {
+    const human = resolveMcpCapabilitySubject({
+      identity: identity({ isSessionAuth: true }),
+      isOnboarding: false,
+    });
+    for (const tool of CONSENT_TOOLS) {
+      expect(policy.authorize(human, tool).allowed).toBe(true);
+    }
+    expect(policy.visibleToolNames(human, [...CONSENT_TOOLS])).toEqual([...CONSENT_TOOLS]);
+  });
+
+  test('the onboarding human is admitted (both consent tools are onboarding-allowed)', () => {
+    const onboardingHuman = resolveMcpCapabilitySubject({
+      identity: identity({ isSessionAuth: true }),
+      isOnboarding: true,
+    });
+    for (const tool of CONSENT_TOOLS) {
+      expect(policy.authorize(onboardingHuman, tool).allowed).toBe(true);
+    }
+  });
+
+  test('an agent holding identity+premises grants is denied both consent tools and never lists them', () => {
+    // manage:identity + manage:premises is exactly what the retired manage:profile
+    // grant projects to; holding both must not unlock the human-only consent flow.
+    const agent = globalAgentSubject(['manage:identity', 'manage:premises']);
+    expect(agent.profile).toBe('registered_global_agent');
+    for (const tool of CONSENT_TOOLS) {
+      expect(policy.authorize(agent, tool)).toMatchObject({ allowed: false, reason: 'human_only' });
+    }
+    expect(policy.visibleToolNames(agent, [...CONSENT_TOOLS])).toEqual([]);
+  });
+
+  test('a network agent, an enrollment key, and an invalid agent are all denied the consent tools', () => {
+    const networkAgent = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'network',
+          scopeId: NETWORK_ID,
+          actions: ['manage:identity', 'manage:premises'],
+        }],
+      }),
+    });
+    const enrollmentKey = resolveMcpCapabilitySubject({
+      identity: identity({ enrollmentCapable: true }),
+      isOnboarding: false,
+    });
+    const invalidAgent = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID }),
+      isOnboarding: false,
+      agent: null,
+    });
+    for (const subject of [networkAgent, enrollmentKey, invalidAgent]) {
+      for (const tool of CONSENT_TOOLS) {
+        expect(policy.authorize(subject, tool).allowed).toBe(false);
+      }
+      expect(policy.visibleToolNames(subject, [...CONSENT_TOOLS])).toEqual([]);
+    }
+  });
+});
+
+describe('signals read/write split (IND-588)', () => {
+  const SIGNAL_READ_TOOLS = ['read_intents', 'search_intents', 'read_intent_indexes'] as const;
+  const SIGNAL_WRITE_TOOLS = [
+    'create_intent',
+    'update_intent',
+    'delete_intent',
+    'create_intent_index',
+    'delete_intent_index',
+  ] as const;
+
+  test('read tools are authenticated and write/community-assignment tools require manage:intents', () => {
+    for (const tool of SIGNAL_READ_TOOLS) {
+      expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(tool)).toEqual({ access: 'authenticated', reach: 'network' });
+    }
+    for (const tool of SIGNAL_WRITE_TOOLS) {
+      expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(tool)).toEqual({
+        access: 'permission',
+        actions: ['manage:intents'],
+        reach: 'network',
+      });
+    }
+  });
+
+  test('an authenticated agent without manage:intents may read every signal tool but mutate none', () => {
+    const agent = globalAgentSubject(['manage:opportunities']);
+    for (const tool of SIGNAL_READ_TOOLS) {
+      expect(policy.authorize(agent, tool), tool).toMatchObject({ allowed: true, reason: 'authenticated' });
+    }
+    for (const tool of SIGNAL_WRITE_TOOLS) {
+      expect(policy.authorize(agent, tool), tool).toMatchObject({ allowed: false, reason: 'permission_missing' });
+    }
+    expect(policy.visibleToolNames(agent, [...SIGNAL_READ_TOOLS, ...SIGNAL_WRITE_TOOLS])).toEqual([...SIGNAL_READ_TOOLS]);
+  });
+
+  test('a manage:intents agent may read and mutate every signal tool, all at network reach', () => {
+    const agent = globalAgentSubject(['manage:intents']);
+    for (const tool of [...SIGNAL_READ_TOOLS, ...SIGNAL_WRITE_TOOLS]) {
+      expect(policy.authorize(agent, tool), tool).toMatchObject({ allowed: true, reach: 'network' });
+    }
+  });
+});

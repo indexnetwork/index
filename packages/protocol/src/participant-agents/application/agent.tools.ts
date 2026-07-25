@@ -30,6 +30,13 @@ const AGENT_ACTIONS = [
   'manage:negotiations',
 ] as const;
 
+/**
+ * Canonical permission-action enum for the public tool INPUT schemas. Retired
+ * `manage:profile` / `manage:contacts` strings are rejected at the schema seam
+ * (defense-in-depth: the handler still re-validates via {@link isValidAction}).
+ */
+const AgentPermissionActionSchema = z.enum(AGENT_ACTIONS);
+
 function invalidActionMessage(action: string) {
   return `Invalid action: ${action}. Valid actions: ${AGENT_ACTIONS.join(', ')}`;
 }
@@ -84,7 +91,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
     querySchema: z.object({
       name: z.string().min(1).describe('Display name for the agent.'),
       description: z.string().optional().describe('What the agent does.'),
-      permissions: z.array(z.string()).optional().describe('Optional initial permission actions to grant.'),
+      permissions: z.array(AgentPermissionActionSchema).optional().describe('Optional initial permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
     }),
     handler: async ({ context, query }) => {
       if (context.agentId) {
@@ -263,7 +270,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
       'Valid actions: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.',
     querySchema: z.object({
       agent_id: z.string().min(1).describe('The agent ID to grant permissions to.'),
-      actions: z.array(z.string()).min(1).describe('Permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
+      actions: z.array(AgentPermissionActionSchema).min(1).describe('Permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
       scope: z.enum(['global', 'node', 'network']).optional().describe('Optional permission scope.'),
       scope_id: z.string().optional().describe('Scope target ID for node/network scopes.'),
     }),
