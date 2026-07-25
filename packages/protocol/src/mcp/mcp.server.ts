@@ -23,7 +23,7 @@ import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '.
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import type { McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject, McpPolicyAgentSnapshot } from './mcp.authorization-policy.js';
-import { McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
+import { McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpActivityCaller, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
 
 const logger = protocolLogger('McpServer');
 
@@ -574,14 +574,20 @@ export function createMcpServer(
       }
       applyNetworkScopeToContext(context, authenticated.identity.networkScopeId);
 
+      const subject = resolveMcpCapabilitySubject({
+        identity: authenticated.identity,
+        isOnboarding: context.isOnboarding,
+        agent: authenticated.agent,
+      });
+      // Bind the typed resolved caller context so tools with
+      // permission-projected output (read_activity_summary) can apply the
+      // centralized projection without re-deriving principal state.
+      context.mcpCaller = resolveMcpActivityCaller(subject);
+
       return {
         ...authenticated,
         context,
-        subject: resolveMcpCapabilitySubject({
-          identity: authenticated.identity,
-          isOnboarding: context.isOnboarding,
-          agent: authenticated.agent,
-        }),
+        subject,
       };
     })();
     return resolvedRequest;

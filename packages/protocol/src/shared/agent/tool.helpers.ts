@@ -28,6 +28,7 @@ import type { PendingQuestionSummary } from "../schemas/pending-question.schema.
 import type { QuestionMode, QuestionPurpose } from "../schemas/question.schema.js";
 import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
+import type { McpActivityCaller } from "./activity-projection.js";
 
 export type IdentityContext = UserIdentity | null;
 
@@ -107,6 +108,14 @@ export interface ResolvedToolContext {
   isMcp?: boolean;
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
+  /**
+   * Typed resolved MCP caller context, set only by the MCP server after the
+   * capability subject is resolved. Tools with permission-projected output
+   * (currently `read_activity_summary`) pass it into the centralized
+   * projection in `activity-projection.ts`. Absent on REST/chat surfaces,
+   * which are owner-trusted and receive the full owner view.
+   */
+  mcpCaller?: McpActivityCaller;
   /**
    * Receiver's rendering surface declared by the MCP client via the
    * `x-index-surface` request header. `'telegram'` means the MCP response is

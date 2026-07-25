@@ -333,8 +333,71 @@ describe('MCP capability permission extension point', () => {
     });
   });
 
-  test('report_agent_activity remains classified as removed', () => {
-    expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get('report_agent_activity')?.access).toBe('removed');
+  test('read_activity_summary is the classified canonical activity tool; report_agent_activity is unknown', () => {
+    // read_activity_summary is gated by any-of domain permissions; the handler
+    // projects each domain by the caller's exact grants. report_agent_activity
+    // retains no classification and no registration — a forged tools/call fails
+    // as an unknown tool before database or graph work.
+    expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get('read_activity_summary')).toEqual({
+      access: 'permission',
+      actions: [
+        'manage:identity',
+        'manage:premises',
+        'manage:intents',
+        'manage:opportunities',
+        'manage:negotiations',
+      ],
+      reach: 'principal',
+    });
+    expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get('report_agent_activity')).toBeUndefined();
+
+    const sessionHuman = resolveMcpCapabilitySubject({
+      identity: identity({ isSessionAuth: true }),
+      isOnboarding: false,
+    });
+    expect(policy.authorize(sessionHuman, 'read_activity_summary').allowed).toBe(true);
+    expect(policy.authorize(sessionHuman, 'report_agent_activity')).toEqual({
+      allowed: false,
+      reason: 'tool_unclassified',
+    });
+  });
+
+  test('read_activity_summary admits agents with any activity-domain permission and denies the rest', () => {
+    const intentsAgent = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'global',
+          scopeId: null,
+          actions: ['manage:intents'],
+        }],
+      }),
+    });
+    expect(policy.authorize(intentsAgent, 'read_activity_summary')).toMatchObject({
+      allowed: true,
+      reason: 'permission_granted',
+    });
+
+    const networksOnlyAgent = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'global',
+          scopeId: null,
+          actions: ['manage:networks'],
+        }],
+      }),
+    });
+    expect(policy.authorize(networksOnlyAgent, 'read_activity_summary')).toMatchObject({
+      allowed: false,
+      reason: 'permission_missing',
+    });
   });
 
   test('contact/Gmail, scrape_url, and deprecated profile aliases are unclassified and denied', () => {

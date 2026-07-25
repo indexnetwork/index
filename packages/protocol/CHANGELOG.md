@@ -17,6 +17,59 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
   emitted only after the normalized description, optional network scope, and
   complete verifier output have been durably bound to their owner.
 
+## [7.2.0] — 2026-07-25
+
+### Added
+- Add `read_activity_summary` as the single public name for grounded,
+  aggregate-only agent activity reporting (IND-605). The MCP capability matrix
+  admits any caller holding at least one activity-domain permission
+  (`manage:identity`/`manage:premises`/`manage:intents`/`manage:opportunities`/
+  `manage:negotiations`); the handler then passes the typed resolved MCP caller
+  context into one centralized permission projection, so global agents receive
+  only the domains their permissions authorize while session humans receive the
+  full owner view. Signal IDs/titles (`opportunitiesBySignal`) are exposed only
+  with `manage:intents`, and question counts are meta-network — never network
+  filtered — while each count inherits the permission of the domain the
+  question affects: the adapter groups pending/answered counts by question
+  mode and the projection releases only the affected-domain counts
+  (identity/premises/intents/opportunities/negotiations) the caller is
+  authorized for, with conversational `chat`-mode and unrecognized modes
+  human-owner-only. There is deliberately no any-of all-question count
+  shortcut. A network agent's network-bound aggregates (opportunity and
+  negotiation counts) are narrowed to its bound community inside the
+  query/adapter layer via the new optional `getAgentActivitySummary`
+  `networkId` input — never by transport-local JSON filtering. The response
+  never contains counterparty identities, chats, turns, transcripts, or
+  private content, and validates against the new strict
+  `ActivitySummaryResponseSchema`.
+- Export the centralized activity-projection contract
+  (`READ_ACTIVITY_SUMMARY_TOOL_NAME`, `McpActivityCallerSchema`,
+  `ActivitySummaryDomainSchema`, `ActivitySummaryResponseSchema`,
+  `ActivityQuestionDomainSchema`, `ActivityQuestionCountsSchema`,
+  `QUESTION_MODE_TO_DOMAIN`, `resolveMcpActivityCaller`,
+  `resolveActivitySummaryDomains`, `activitySummaryNetworkId`,
+  `projectActivitySummary`, and their types) for host and capability
+  composition.
+
+### Changed
+- The internal reporter persona now consumes the canonical
+  `read_activity_summary` as the same tool (no persona-specific fork);
+  unrelated REST/chat behavior is unchanged.
+- SemVer rationale: on MCP this release is purely additive —
+  `report_agent_activity` was already denied as `removed` since 7.0.0, so no
+  working MCP integration can break. The REST/chat tool rename retires a
+  same-cycle (7.0.0-era) surface with no alias by deliberate product decision,
+  so a minor bump records the change without a major. Recorded here for
+  integration-owner reconciliation.
+
+### Removed
+- `report_agent_activity` is retired on every surface with no hidden legacy
+  alias. It is no longer registered in either tool-registry profile and
+  carries no canonical access rule, so a forged MCP `tools/call` under the old
+  name is rejected as an unknown tool before any authorization, database, or
+  graph work. The `'removed'` access classification remains available in the
+  extension contract but no canonical tool uses it.
+
 ## [7.1.0] — 2026-07-25
 
 ### Changed

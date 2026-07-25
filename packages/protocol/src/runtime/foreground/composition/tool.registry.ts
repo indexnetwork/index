@@ -91,8 +91,10 @@ export function createToolRegistry(deps: ToolDeps, options: CreateToolRegistryOp
   createIntentTools(dt, deps);
   createNetworkTools(dt, deps);
   createOpportunityTools(dt, deps);
-  // Utility tools always register read_docs + report_agent_activity; on the MCP
-  // surface scrape_url is omitted and read_docs guidance is sanitized (IND-597).
+  // Utility tools always register read_docs + read_activity_summary; on the
+  // MCP surface scrape_url is omitted and read_docs guidance is sanitized
+  // (IND-597). The retired report_agent_activity name retains no alias on
+  // either surface (IND-605).
   createUtilityTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
   // Contact/Gmail import tools are omitted from the MCP surface (IND-596). Their
   // implementations remain available to the REST Tool API and chat agent.

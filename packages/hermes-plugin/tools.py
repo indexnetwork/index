@@ -67,6 +67,7 @@ _FORWARDED_MCP_TOOLS = frozenset(
         "update_premise",
         "retract_premise",
         "read_pending_questions",
+        "read_activity_summary",
         "read_docs",
     }
 )

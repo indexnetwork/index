@@ -93,6 +93,7 @@ FORWARDED_MCP_TOOLS = (
     "update_premise",
     "retract_premise",
     "read_pending_questions",
+    "read_activity_summary",
     "read_docs",
 )
 

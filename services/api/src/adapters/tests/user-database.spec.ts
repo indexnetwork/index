@@ -156,8 +156,8 @@ function createMockDb(): ChatDatabaseAdapter {
       liveSignalsWatched: 0,
       opportunitiesSurfaced: 0,
       opportunitiesBySignal: [],
-      pendingQuestionCount: 0,
-      questionsAnswered: 0,
+      pendingQuestionsByMode: {},
+      answeredQuestionsByMode: {},
       negotiationsStarted: 0,
       negotiationsCompleted: 0,
     })),
@@ -325,6 +325,11 @@ describe('createUserDatabase', () => {
     it('getAgentActivitySummary delegates with authUserId', async () => {
       await userDb.getAgentActivitySummary({ sinceHours: 24 });
       expect(mockDb.getAgentActivitySummary).toHaveBeenCalledWith(AUTH_USER, { sinceHours: 24 });
+    });
+
+    it('getAgentActivitySummary forwards a network-agent bound community to the query layer', async () => {
+      await userDb.getAgentActivitySummary({ sinceHours: 24, networkId: 'network-1' });
+      expect(mockDb.getAgentActivitySummary).toHaveBeenCalledWith(AUTH_USER, { sinceHours: 24, networkId: 'network-1' });
     });
   });
 
