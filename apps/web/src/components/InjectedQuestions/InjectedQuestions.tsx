@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { OptionRow } from '@/components/DecisionQuestions/OptionRow';
+import { ConsultationCard } from '@/components/PendingQuestions/ConsultationCard';
 import { toSignalProductLanguage } from '@/lib/product-language';
 import type { PendingQuestion, AnswerBody } from '@/services/questions';
 
@@ -188,15 +189,21 @@ export function InjectedQuestions({
 
   return (
     <div className="flex flex-col gap-2">
-      {questions.map((q) => (
-        <InjectedQuestionCard
-          key={q.id}
-          question={q}
-          onAnswer={onAnswer}
-          onDismiss={onDismiss}
-          showAskedKicker={showAskedKicker}
-        />
-      ))}
+      {questions.map((q) =>
+        // ask_user consultations get the priority card (§2.2); everything
+        // else keeps the generic option-row card.
+        q.detection.mode === 'negotiation_inflight' ? (
+          <ConsultationCard key={q.id} question={q} onAnswer={onAnswer} />
+        ) : (
+          <InjectedQuestionCard
+            key={q.id}
+            question={q}
+            onAnswer={onAnswer}
+            onDismiss={onDismiss}
+            showAskedKicker={showAskedKicker}
+          />
+        ),
+      )}
       {showTypingIndicator && <TypingDots />}
     </div>
   );

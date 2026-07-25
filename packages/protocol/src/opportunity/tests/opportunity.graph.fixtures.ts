@@ -48,6 +48,7 @@ export function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabas
     getUser: async () => null,
     getOrCreateDM: async () => ({ id: 'fixture-conversation' }),
     getIntent: async () => null,
+    getPremise: async () => null,
     getPremisesForUser: async () => [],
     getPremisesForUserInNetworks: async () => [],
     searchPremisesBySimilarity: async () => [],

@@ -130,6 +130,14 @@ export interface NegotiationMessage {
   role: "agent";
   parts: unknown[];
   createdAt: Date;
+  /**
+   * Originating negotiation task (IND-569). Seeded prior messages carry their
+   * source task's id; turns persisted this session carry the current task id.
+   * Optional/undefined for legacy hosts whose `getMessagesForConversation`
+   * does not project task attribution — such turns degrade to the unattributed
+   * prior-dialogue block, never into the current opportunity's turns.
+   */
+  taskId?: string | null;
 }
 
 /** LangGraph state annotation for the negotiation graph. */
@@ -221,6 +229,45 @@ export const NegotiationGraphState = Annotation.Root({
 
   /** Whether this run is continuing a prior conversation with the same pair. */
   isContinuation: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /**
+   * Immutable attributed prior dialogue derived once in the init node from the
+   * seeded prior messages (IND-569). Groups earlier-opportunity turns and
+   * legacy unattributed turns so the screen node and every turn prompt can
+   * label prior context per opportunity. Null on fresh runs / when there is no
+   * seeded prior dialogue. Typed as `unknown` to avoid a module cycle
+   * (attribution module imports NegotiationTurn from this module's shim);
+   * callers cast to `SeededAttribution` via the negotiation.attribution module.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  priorAttribution: Annotation<unknown>({
+    reducer: (curr: any, next: any) => next ?? curr,
+    default: () => null,
+  }),
+
+  /**
+   * Whether the initiator has actually opened `outreach` within THIS task
+   * (IND-564). Set by the turn node the first time an `outreach` turn is
+   * persisted in the current session; seeded prior-task turns never flip it.
+   * `withdraw` is only legal after an in-task outreach — a withdraw before one
+   * would retract an outreach never made here and drop a spurious message into
+   * the shared thread, so the turn node maps it to a quiet screen-out instead.
+   */
+  outreachOpened: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /**
+   * Set by the turn node when an opening-move `withdraw` (no in-task outreach)
+   * was blocked (IND-564). Signals finalize to record the quiet screen-out
+   * outcome (`reason: "screened_out"`, opportunity `rejected`) without ever
+   * persisting the withdraw message into the shared `dm_pair` conversation.
+   */
+  firstTurnScreenedOut: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
   }),

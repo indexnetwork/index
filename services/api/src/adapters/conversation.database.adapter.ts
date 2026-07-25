@@ -6,7 +6,7 @@ import { log } from '../lib/log';
 import { projectNegotiationActivity } from '../lib/negotiation-activity';
 import { assertContinuationExecutionEffect } from './negotiation-continuation.atomic';
 import type { ContinuationExecutionFence } from './negotiation-continuation.atomic';
-import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
 /** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
 const ORCHESTRATOR_PERSONA = 'orchestrator';
@@ -507,6 +507,7 @@ export class ConversationDatabaseAdapter {
           .where(and(
             inArray(schema.tasks.conversationId, ids),
             sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+            notArchivedNegotiationTaskWhere(),
           ))
           .orderBy(schema.tasks.conversationId, desc(schema.tasks.createdAt), desc(schema.tasks.id))
         : Promise.resolve([]),
@@ -1231,6 +1232,10 @@ export class ConversationDatabaseAdapter {
     session: ConversationSession | null;
     messages: Message[];
     hasPreviousSession: boolean;
+    /** opportunityId from the session's negotiation task, if any. */
+    sessionOpportunityId: string | null;
+    /** Current status of the session's opportunity, if any. */
+    sessionOpportunityStatus: string | null;
   }> {
     const conditions = [eq(schema.conversationSessions.conversationId, conversationId)];
     if (opts?.taskId) {
@@ -1248,7 +1253,7 @@ export class ConversationDatabaseAdapter {
         ))
         .limit(1);
       if (!cursor) {
-        return { session: null, messages: [], hasPreviousSession: false };
+        return { session: null, messages: [], hasPreviousSession: false, sessionOpportunityId: null, sessionOpportunityStatus: null };
       }
       const beforeSessionCondition = or(
         lt(schema.conversationSessions.startedAt, cursor.startedAt),
@@ -1269,7 +1274,7 @@ export class ConversationDatabaseAdapter {
         desc(schema.conversationSessions.id),
       )
       .limit(1);
-    if (!session) return { session: null, messages: [], hasPreviousSession: false };
+    if (!session) return { session: null, messages: [], hasPreviousSession: false, sessionOpportunityId: null, sessionOpportunityStatus: null };
 
     const messageConditions = [eq(schema.messages.sessionId, session.id)];
     if (opts?.userId) {
@@ -1311,7 +1316,27 @@ export class ConversationDatabaseAdapter {
       .where(and(...previousConditions))
       .limit(1);
 
-    return { session, messages, hasPreviousSession: Boolean(previous) };
+    // IND-570: resolve opportunity attribution for this session so the web
+    // client can label older sections with the opportunity title + outcome chip.
+    let sessionOpportunityId: string | null = null;
+    let sessionOpportunityStatus: string | null = null;
+    if (session.taskId) {
+      const [taskOpp] = await db
+        .select({
+          opportunityId: sql<string | null>`(${schema.tasks.metadata}->>'opportunityId')`,
+          opportunityStatus: opportunities.status,
+        })
+        .from(schema.tasks)
+        .leftJoin(opportunities, sql`(${schema.tasks.metadata}->>'opportunityId') = ${opportunities.id}`)
+        .where(eq(schema.tasks.id, session.taskId))
+        .limit(1);
+      if (taskOpp?.opportunityId) {
+        sessionOpportunityId = taskOpp.opportunityId;
+        sessionOpportunityStatus = taskOpp.opportunityStatus ?? null;
+      }
+    }
+
+    return { session, messages, hasPreviousSession: Boolean(previous), sessionOpportunityId, sessionOpportunityStatus };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1632,6 +1657,7 @@ export class ConversationDatabaseAdapter {
       .from(schema.tasks)
       .where(and(
         sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        notArchivedNegotiationTaskWhere(),
         or(
           and(eq(schema.tasks.state, 'submitted'), lt(schema.tasks.createdAt, submittedCutoff)),
           and(eq(schema.tasks.state, 'working'), lt(schema.tasks.updatedAt, workingCutoff)),
@@ -2000,6 +2026,7 @@ export class ConversationDatabaseAdapter {
   }>> {
     const conditions = [
       sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+      notArchivedNegotiationTaskWhere(),
       or(
         sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
         sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
@@ -2072,6 +2099,7 @@ export class ConversationDatabaseAdapter {
       .from(schema.tasks)
       .where(and(
         sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        notArchivedNegotiationTaskWhere(),
         inArray(sql`${schema.tasks.metadata}->>'opportunityId'`, opportunityIds),
       ));
     if (taskRows.length === 0) return [];
@@ -2334,6 +2362,7 @@ export class ConversationDatabaseAdapter {
     role: 'user' | 'agent';
     parts: unknown[];
     createdAt: Date;
+    taskId?: string | null;
   }>> {
     const rows = await db
       .select({
@@ -2342,6 +2371,9 @@ export class ConversationDatabaseAdapter {
         role: schema.messages.role,
         parts: schema.messages.parts,
         createdAt: schema.messages.createdAt,
+        // IND-569: task attribution so the negotiation graph can label prior
+        // dialogue per opportunity in continuation prompts.
+        taskId: schema.messages.taskId,
       })
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, conversationId))
@@ -2431,6 +2463,7 @@ export class ConversationDatabaseAdapter {
     const userFilter = opts?.mutualWithUserId
       ? and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
           or(
             and(
               sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
@@ -2444,6 +2477,7 @@ export class ConversationDatabaseAdapter {
         )
       : and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
           or(
             sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
             sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,

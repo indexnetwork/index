@@ -155,6 +155,9 @@ export class ConversationController {
           sessionId: history.session?.id ?? null,
           hasPreviousSession: history.hasPreviousSession,
           previousSessionCursor: history.hasPreviousSession ? history.session?.id ?? null : null,
+          // IND-570: per-session opportunity attribution for section labelling.
+          sessionOpportunityId: history.sessionOpportunityId ?? null,
+          sessionOpportunityStatus: history.sessionOpportunityStatus ?? null,
         });
       }
       const messages = await this.conversationService.getMessages(conversationId, { limit, before, taskId, userId: user.id });

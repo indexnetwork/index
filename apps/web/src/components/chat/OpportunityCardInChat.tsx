@@ -9,6 +9,35 @@ import { toSignalProductLanguage } from "@/lib/product-language";
 import { cn } from "@/lib/utils";
 
 /**
+ * Templated (no-LLM) live-negotiation presence for an opportunity card —
+ * see docs/issues/2-presenter-negotiation-context.md. Derived from
+ * ConversationContext negotiations via `deriveLiveNegotiations`.
+ */
+export interface NegotiationPresence {
+  conversationId: string;
+  /** One-line latest move, e.g. "Their agent countered · 12m ago". */
+  latestMove: string;
+  turnCount: number | null;
+  maxTurns: number;
+}
+
+/** Templated "Currently negotiating · turn N of M" chip (always truthful, never LLM-generated). */
+export function NegotiationPresenceChip({
+  turnCount,
+  maxTurns,
+}: {
+  turnCount: number | null;
+  maxTurns: number;
+}) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold font-ibm-plex-mono text-amber-700">
+      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
+      Currently negotiating{turnCount !== null && turnCount > 0 ? ` · turn ${turnCount} of ${maxTurns}` : ""}
+    </span>
+  );
+}
+
+/**
  * Shared opportunity card data structure.
  * Compatible with both HomeViewCardItem and OpportunityCard from chat context.
  * Keep in sync with OpportunityCardPayload in services/api/src/types/chat-streaming.types.ts.
@@ -154,6 +183,8 @@ interface OpportunityCardProps {
   showScore?: boolean;
   /** Current status fetched from server (overrides card.status if provided). */
   currentStatus?: string;
+  /** Live negotiation presence for `negotiating` cards; renders the ambient chip. */
+  negotiationPresence?: NegotiationPresence;
 }
 
 /**
@@ -206,6 +237,7 @@ export default function OpportunityCard({
   isLoading = false,
   showScore = false,
   currentStatus,
+  negotiationPresence,
 }: OpportunityCardProps) {
   const navigate = useNavigate();
   const [actionTaken, setActionTaken] = useState<
@@ -458,6 +490,32 @@ export default function OpportunityCard({
           <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
             {formatDeprioritizedReason(card.deprioritizedReason)}
           </span>
+        </div>
+      )}
+
+      {/* Ambient negotiation presence (Option C): templated chip + latest move
+          for in-flight negotiations. The human gate stays explicit. */}
+      {negotiationPresence && effectiveStatus === "negotiating" && (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <NegotiationPresenceChip
+              turnCount={negotiationPresence.turnCount}
+              maxTurns={negotiationPresence.maxTurns}
+            />
+            <span className="text-[10px] text-gray-400 font-ibm-plex-mono">
+              You&apos;ll be asked before anything is agreed
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs text-[#3D3D3D]">
+            {negotiationPresence.latestMove}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate(`/chat/${negotiationPresence.conversationId}`)}
+            className="mt-1.5 text-xs font-medium text-[#041729] hover:underline"
+          >
+            Watch the negotiation
+          </button>
         </div>
       )}
 

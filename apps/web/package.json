@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/web",
-  "version": "0.32.0",
+  "version": "0.39.0",
   "license": "MIT",
   "scripts": {
     "dev": "vite --host 127.0.0.1",

@@ -11,6 +11,7 @@ import { useConversation } from '@/contexts/ConversationContext';
 import UserAvatar from '@/components/UserAvatar';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { countNegotiationsRequiringAction } from '@/lib/negotiation-inbox';
+import { getNegotiatorDmSessionId } from '@/lib/negotiator-dm';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('TopBar');
@@ -24,11 +25,11 @@ const logger = log.ui.from('TopBar');
 export default function TopBar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, signOut } = useAuthContext();
+  const { user, signOut, features } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const { clearChat } = useAIChat();
   const { setSelectedNetworkIds } = useNetworkFilter();
-  const { personalAgentPending } = useQuestions();
+  const { personalAgentPending, questions } = useQuestions();
   const { conversations, negotiations } = useConversation();
   const unreadConversationCount = conversations.filter(
     (conversation) => isVisibleH2HConversation(conversation) && conversation.unreadCount > 0,
@@ -103,6 +104,18 @@ export default function TopBar() {
   const handleAgentClick = () => {
     clearChat({ abortStream: false });
     setSelectedNetworkIds([]);
+    // A pending ask_user consultation outranks the Agent home: deep-link to
+    // the negotiator DM thread, with /questions as the fallback (IND-558).
+    if (questions.some((q) => q.detection.mode === 'negotiation_inflight')) {
+      if (!features?.negotiatorChat) {
+        navigate('/questions');
+        return;
+      }
+      void getNegotiatorDmSessionId().then((sessionId) => {
+        navigate(sessionId ? `/d/${sessionId}` : '/questions');
+      });
+      return;
+    }
     navigate('/agent');
   };
 

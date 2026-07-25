@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Negotiations tab in /chat — Design Recommendations · Index</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #041729; --navy-hover: #0A2D4A; --steel: #4091BB; --steel-hover: #35799C; --steel-light: #8EC3D8;
+    --ink: #1a1a1a; --gray-700: #3D3D3D; --gray-500: #737373; --gray-400: #9ca3af;
+    --gray-200: #E9E9E9; --gray-100: #F0F0F0; --bg: #FDFDFD; --surface: #FCFCFC;
+    --emerald: #10b981; --emerald-dark: #059669; --amber: #fbbf24; --amber-dark: #d97706;
+    --red: #ef4444; --red-dark: #dc2626; --blue: #2563eb;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--sans); background: #f6f6f6; color: var(--ink); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 1080px; margin: 0 auto; padding: 48px 28px 120px; }
+
+  .doc-kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--steel); margin-bottom: 10px; }
+  h1 { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--navy); letter-spacing: -0.01em; }
+  .doc-sub { color: var(--gray-500); font-size: 15px; margin-top: 10px; max-width: 740px; }
+  .doc-sub code, p code, li code, td code { font-family: var(--mono); font-size: 0.86em; background: var(--gray-100); border-radius: 4px; padding: 1px 5px; color: var(--gray-700); }
+  .doc-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .meta-chip { font-family: var(--mono); font-size: 11px; color: var(--gray-700); background: #fff; border: 1px solid var(--gray-200); border-radius: 999px; padding: 4px 12px; }
+  .meta-chip b { color: var(--navy); font-weight: 600; }
+  .meta-chip.shipped { background: #e7f8f0; border-color: #bfe9d5; color: var(--emerald-dark); }
+
+  section { margin-top: 64px; }
+  .sec-num { font-family: var(--mono); font-size: 12px; color: var(--steel); letter-spacing: 0.2em; margin-bottom: 6px; }
+  h2 { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 12px; }
+  .sec-lede { color: var(--gray-700); font-size: 15px; max-width: 780px; margin-bottom: 24px; }
+
+  .option { background: #fff; border: 1px solid #e6e6e6; border-radius: 12px; padding: 26px 28px; margin-bottom: 30px; }
+  .option-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .option-tag { font-family: var(--mono); font-size: 11px; font-weight: 700; color: #fff; background: var(--navy); border-radius: 4px; padding: 3px 8px; letter-spacing: 0.08em; }
+  .option-tag.alt { background: var(--steel); }
+  .option-tag.warn { background: var(--red-dark); }
+  .option-title { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--navy); }
+  .option-where { font-family: var(--mono); font-size: 11px; color: var(--gray-400); }
+  .option p.desc { font-size: 14.5px; color: var(--gray-700); margin: 8px 0 4px; max-width: 800px; }
+
+  .frame-wrap { margin: 20px 0 10px; }
+  .frame { background: var(--bg); border: 1px solid #e2e2e2; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(4,23,41,0.04), 0 12px 32px -16px rgba(4,23,41,0.12); }
+  .frame-bar { display: flex; align-items: center; gap: 6px; padding: 9px 14px; background: var(--surface); border-bottom: 1px solid var(--gray-200); }
+  .frame-dot { width: 9px; height: 9px; border-radius: 50%; background: #ddd; }
+  .frame-dot:nth-child(1) { background: #f1c1c6; }
+  .frame-dot:nth-child(2) { background: #f5dfa8; }
+  .frame-dot:nth-child(3) { background: #bfe3c6; }
+  .frame-url { margin-left: 10px; font-family: var(--mono); font-size: 11px; color: var(--gray-400); background: #fff; border: 1px solid var(--gray-200); border-radius: 6px; padding: 3px 12px; }
+  .caption { font-size: 13.5px; color: var(--gray-500); margin-top: 10px; max-width: 800px; }
+  .caption b { color: var(--gray-700); }
+
+  /* sidebar mock */
+  .sidebar { width: 340px; max-width: 100%; background: #fff; }
+  .seg { display: flex; gap: 2px; background: var(--gray-100); border-radius: 6px; padding: 2px; margin: 12px 14px 8px; }
+  .seg > span { flex: 1; text-align: center; font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 6px 0; border-radius: 5px; color: var(--gray-500); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .seg > span.on { background: #fff; color: var(--navy); box-shadow: 0 1px 2px rgba(0,0,0,0.07); }
+  .pill { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; font-size: 9.5px; font-weight: 700; background: var(--navy); color: #fff; border-radius: 999px; padding: 0 5px; line-height: 1; }
+  /* Inside a segmented control the navy slab reads as a third tab — use a quiet tint chip instead. */
+  .seg .pill { flex: none; padding: 0 6px; background: rgba(4,23,41,0.08); color: var(--navy); font-weight: 600; }
+  .srow { display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+  .srow:hover { background: var(--surface); }
+  .srow .who { min-width: 0; flex: 1; }
+  .srow .name { font-size: 13px; font-weight: 600; color: var(--navy); display: flex; align-items: center; gap: 7px; }
+  .srow .sub { font-family: var(--mono); font-size: 10.5px; color: var(--gray-400); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .srow .time { font-size: 10.5px; color: var(--gray-400); align-self: flex-start; margin-top: 2px; }
+  .srow.muted { opacity: 0.62; background: rgba(240,240,240,0.35); }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; font-weight: 700; color: #fff; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.emerald { background: var(--emerald); } .dot.amber { background: var(--amber); } .dot.red { background: var(--red); }
+  .pulse { animation: pulse 1.8s ease-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .run-divider { height: 1px; background: var(--gray-100); margin: 4px 14px; }
+  .sidebar-foot { border-top: 1px solid var(--gray-100); padding: 10px 14px; font-family: var(--mono); font-size: 11px; color: var(--steel-hover); }
+
+  /* chips — mirror NegotiationsInbox CHIP_CLASS */
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 10px; font-weight: 600; border-radius: 999px; padding: 3px 10px; border: 1px solid transparent; white-space: nowrap; }
+  .chip.answer { border-color: var(--navy); background: var(--navy); color: #fff; }
+  .chip.agreed, .chip.accepted { border-color: #a7dcc3; background: #e7f8f0; color: var(--emerald-dark); }
+  .chip.live, .chip.stalled { border-color: #f3dfae; background: #fef6e0; color: var(--amber-dark); }
+  .chip.waiting { border-color: var(--gray-200); background: var(--gray-100); color: var(--gray-500); }
+  .chip.rejected { border-color: #f5c8c8; background: #fdecec; color: var(--red-dark); }
+  .chip.gray { border-color: var(--gray-200); background: var(--gray-100); color: var(--gray-700); }
+
+  .problem { display: flex; gap: 14px; align-items: flex-start; background: #fff; border: 1px solid #e6e6e6; border-left: 3px solid var(--red); border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+  .problem .pn { font-family: var(--mono); font-weight: 700; font-size: 12px; color: var(--red-dark); flex: none; margin-top: 1px; }
+  .problem h4 { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+  .problem p { font-size: 13.5px; color: var(--gray-700); }
+
+  .principles { columns: 2; column-gap: 40px; margin-top: 16px; }
+  @media (max-width: 720px) { .principles { columns: 1; } }
+  .principles li { font-size: 14px; color: var(--gray-700); margin-bottom: 12px; list-style: none; break-inside: avoid; }
+  .principles li b { color: var(--navy); font-family: var(--mono); font-size: 12.5px; display: block; margin-bottom: 2px; }
+
+  table.rec { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 14px; }
+  table.rec th { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gray-400); text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--gray-200); }
+  table.rec td { padding: 10px 12px; border-bottom: 1px solid var(--gray-100); color: var(--gray-700); vertical-align: top; }
+  table.rec td:first-child { font-weight: 600; color: var(--navy); }
+
+  .flow { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; margin: 16px 0 4px; }
+  .flow .node { background: #fff; border: 1px solid var(--gray-200); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; color: var(--gray-700); }
+  .flow .node b { display: block; font-family: var(--mono); font-size: 11px; color: var(--navy); margin-bottom: 2px; }
+  .flow .arr { align-self: center; font-family: var(--mono); color: var(--gray-400); }
+
+  .arch { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 16px 0 4px; font-family: var(--mono); font-size: 12px; }
+  .arch .box { background: #fff; border: 1px solid var(--gray-200); border-radius: 8px; padding: 10px 14px; color: var(--gray-700); }
+  .arch .box.src { border-color: var(--steel-light); background: #e8f3f9; color: var(--steel-hover); font-weight: 600; }
+  .arch .consumers { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+  .arch .arr { text-align: center; color: var(--gray-400); }
+  .arch .note { font-size: 11px; color: var(--gray-400); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="doc-kicker">Design recommendations · follow-up to negotiation-ui-proposals</div>
+  <h1>The Negotiations tab in /chat</h1>
+  <p class="doc-sub">
+    With the first-class inbox shipped (<b>PR #1232</b>, merged), the remaining surface is the
+    <b>Negotiations tab inside the chat sidebar</b> — the <code>Messages / Negotiations</code> toggle in
+    <code>ChatSidebar.tsx</code>. It still runs its pre-inbox logic. This document assesses what it does today,
+    then recommends what it should become: an <b>ambient view</b> over the same lifecycle projection, not a
+    second triage surface.
+  </p>
+  <div class="doc-meta">
+    <span class="meta-chip">Date · <b>2026-07-24</b></span>
+    <span class="meta-chip">Scope · <b>apps/web · ChatSidebar a2a mode</b></span>
+    <span class="meta-chip shipped">Shipped · <b>PR #1232</b> inbox + <code>lib/negotiation-inbox.ts</code></span>
+    <span class="meta-chip">Sources · <b>ChatSidebar.tsx</b>, <b>NegotiationsInbox.tsx</b>, <b>lib/negotiation-inbox.ts</b></span>
+  </div>
+
+  <!-- ================= §0 TODAY ================= -->
+  <section id="today">
+    <div class="sec-num">§0</div>
+    <h2>What the tab does today — and where it breaks</h2>
+    <p class="sec-lede">
+      This is the tab as it currently ships, faithfully rendered from <code>ChatSidebar.tsx:55-260</code>:
+      a segmented toggle, rows with a status dot derived from the <i>last turn's action</i>, a preview line,
+      a timestamp, and a hover Delete menu.
+    </p>
+
+    <div class="frame-wrap" style="max-width:400px">
+      <div class="frame">
+        <div class="frame-bar">
+          <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
+          <span class="frame-url">/chat · sidebar · today</span>
+        </div>
+        <div class="sidebar">
+          <div class="seg"><span>Messages</span><span class="on">Negotiations</span></div>
+          <div class="srow">
+            <span class="avatar" style="background:#8b5cf6">MC</span>
+            <div class="who">
+              <div class="name"><span class="dot amber"></span> Mira Chen</div>
+              <div class="sub">Their agent asked how much time you could realistic…</div>
+            </div>
+            <span class="time">12:41</span>
+          </div>
+          <div class="srow">
+            <span class="avatar" style="background:#0ea5e9">AK</span>
+            <div class="who">
+              <div class="name"><span class="dot amber"></span> Aisha Khan</div>
+              <div class="sub">proposing async-first collaboration with a monthly…</div>
+            </div>
+            <span class="time">12:03</span>
+          </div>
+          <div class="srow">
+            <span class="avatar" style="background:#16a34a">DP</span>
+            <div class="who">
+              <div class="name"><span class="dot emerald"></span> Dan Popescu</div>
+              <div class="sub">Recommending the connection to my client on these…</div>
+            </div>
+            <span class="time">Mon</span>
+          </div>
+          <div class="srow">
+            <span class="avatar" style="background:#dc2626">JB</span>
+            <div class="who">
+              <div class="name"><span class="dot red"></span> Jonas Berg</div>
+              <div class="sub">doesn't match your stated availability</div>
+            </div>
+            <span class="time">Tue</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">
+      Four negotiations, four dots. Can you tell which one needs <i>you</i>? Neither can the user.
+      (In this rendering: Mira's row is paused on <code>ask_user</code> and Dan's is agents-agreed awaiting a human —
+      the two most important states on the list, both indistinguishable from background noise.)
+    </p>
+
+    <div style="margin-top:26px">
+      <div class="problem">
+        <span class="pn">P1</span>
+        <div>
+          <h4>The emerald dot lies</h4>
+          <p>Last action <code>accept</code> → green "Accepted" dot (<code>ChatSidebar.tsx:96-99</code>). But agent accept only moves the opportunity to <code>pending</code> — <b>no human has accepted anything</b>. The one color that reads as "done" actually means "waiting on you". This is exactly the three-status-layer conflation the domain docs warn against.</p>
+        </div>
+      </div>
+      <div class="problem">
+        <span class="pn">P2</span>
+        <div>
+          <h4>"Your move" is invisible</h4>
+          <p><code>ask_user</code> consultations (with a 24h window) and agents-agreed outcomes get no badge, no pill, no ordering priority. The tab cannot answer the only question that matters in passing: <i>do I owe my agent something?</i></p>
+        </div>
+      </div>
+      <div class="problem">
+        <span class="pn">P3</span>
+        <div>
+          <h4>Two derivations, one truth</h4>
+          <p>The sidebar re-derives status inline from the last DataPart action, while the shipped <code>deriveNegotiationInbox()</code> (<code>lib/negotiation-inbox.ts</code>) already classifies the full lifecycle — task state, opportunity status, outcome reason, viewer attribution. Two interpretations of the same data will drift; the naive one is already wrong on <code>stalled</code>, <code>screened_out</code>, and zero-turn shells.</p>
+        </div>
+      </div>
+      <div class="problem" style="border-left-color:var(--amber)">
+        <span class="pn" style="color:var(--amber-dark)">P4</span>
+        <div>
+          <h4>Small frictions</h4>
+          <p>Empty state says "No messages yet" in Negotiations mode (<code>:178</code> — same copy as Messages). Resolved rows aren't visually retired. The hover menu offers "Delete" on an agent transcript — destructive-sounding for what is really "hide".</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= §1 ROLE ================= -->
+  <section id="role">
+    <div class="sec-num">§1</div>
+    <h2>The tab's job — ambient, not triage</h2>
+    <p class="sec-lede">
+      The inbox owns <b>triage and action</b>. The /chat tab owns a different moment: the user is already in
+      their messages and wonders <i>"anything moving?"</i>. That makes it a <b>watch + jump-off surface</b> —
+      glanceable in two seconds, one tap from wherever the action actually lives. Everything below follows
+      from that split.
+    </p>
+    <ul class="principles">
+      <li><b>A1 · One classification source</b>Consume the shipped <code>deriveNegotiationInbox()</code> and delete the sidebar's inline derivation. Whatever the inbox believes, the tab believes — no drift, no second opinion.</li>
+      <li><b>A2 · Labels, not dots</b>A chip can say "Live · turn 3 of 6" or "Answer your agent". A dot can only say amber. Status text wins in a rail this narrow.</li>
+      <li><b>A3 · Flat list, priority order</b>No group headers in a 320px rail. One list ordered your-move → live → waiting → resolved, with hairline dividers between posture runs. Resolved rows visually retired (the inbox's <code>opacity-80</code> idiom).</li>
+      <li><b>A4 · Every row one tap from its action surface</b>Answer rows go to the negotiator DM (a transcript can't take an answer). Agreed rows go to the transcript's review affordance. Everything else goes to the transcript at <code>/chat/:id</code>, as today.</li>
+      <li><b>A5 · Free liveness</b><code>ConversationContext.negotiations</code> already refreshes over SSE. The tab inherits live updates; only live rows get the amber pulse, same idiom as the inbox.</li>
+      <li><b>A6 · Don't rebuild the inbox here</b>No group sections, no CTAs, no turn-progress bars in the rail. A persistent "View all in inbox" footer routes real work to the right place.</li>
+    </ul>
+  </section>
+
+  <!-- ================= §2 RECOMMENDATIONS ================= -->
+  <section id="recommendations">
+    <div class="sec-num">§2</div>
+    <h2>Recommendations</h2>
+
+    <!-- R1 -->
+    <div class="option">
+      <div class="option-head">
+        <span class="option-tag">R1</span>
+        <span class="option-title">Single source of truth</span>
+        <span class="option-where">ChatSidebar.tsx consumes lib/negotiation-inbox.ts</span>
+      </div>
+      <p class="desc">
+        Replace the inline last-action derivation (<code>ChatSidebar.tsx:84-114</code>) with
+        <code>deriveNegotiationInbox(negotiations, user?.id)</code> — the same function the inbox page and the
+        TopBar pill already use. Every surface reads one projection.
+      </p>
+      <div class="arch">
+        <div class="box src">ConversationContext.negotiations &nbsp;·&nbsp; GET /conversations/negotiations, SSE-refreshed</div>
+        <div class="arr">▼</div>
+        <div class="box src">deriveNegotiationInbox() &nbsp;·&nbsp; group, status, label data, turn counts, timeAgo</div>
+        <div class="arr">▼</div>
+        <div class="consumers">
+          <div class="box">/negotiations inbox<br><span class="note">triage + act — shipped</span></div>
+          <div class="box">TopBar pill<br><span class="note">your-move count — shipped</span></div>
+          <div class="box"><b>/chat tab</b><br><span class="note">ambient view — this document</span></div>
+          <div class="box">toggle badge<br><span class="note">countNegotiationsRequiringAction() — shipped, unused so far</span></div>
+        </div>
+      </div>
+      <p class="caption">
+        Note the fourth consumer: <code>countNegotiationsRequiringAction()</code> shipped in the same lib and is
+        exactly what the toggle badge (R3) needs. Zero new data work.
+      </p>
+    </div>
+
+    <!-- R2 -->
+    <div class="option">
+      <div class="option-head">
+        <span class="option-tag">R2</span>
+        <span class="option-title">Row anatomy — chips, posture order, retired resolved</span>
+        <span class="option-where">the tab list itself</span>
+      </div>
+      <p class="desc">
+        Keep the row skeleton (avatar 28, name, subline, time — users know it), but swap the dot for the
+        inbox's compact status chip, order by posture with hairline dividers, mute resolved rows, and fix the
+        preview line to use the lib's <code>describeAction</code>/<code>describeResolved</code> phrasing instead
+        of a raw reasoning fragment.
+      </p>
+      <div class="frame-wrap" style="max-width:400px">
+        <div class="frame">
+          <div class="frame-bar">
+            <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
+            <span class="frame-url">/chat · sidebar · proposed</span>
+          </div>
+          <div class="sidebar">
+            <div class="seg"><span>Messages</span><span class="on">Negotiations <span class="pill">2</span></span></div>
+
+            <div class="srow">
+              <span class="avatar" style="background:#8b5cf6">MC</span>
+              <div class="who">
+                <div class="name">Mira Chen <span class="chip answer">Answer your agent</span></div>
+                <div class="sub">your agent asked for guidance · 12m ago</div>
+              </div>
+              <span class="time">12:41</span>
+            </div>
+            <div class="srow">
+              <span class="avatar" style="background:#16a34a">DP</span>
+              <div class="who">
+                <div class="name">Dan Popescu <span class="chip agreed">Agents agreed</span></div>
+                <div class="sub">5 mutual signals · recommended moving forward · Mon</div>
+              </div>
+              <span class="time">Mon</span>
+            </div>
+
+            <div class="run-divider"></div>
+
+            <div class="srow">
+              <span class="avatar" style="background:#0ea5e9">AK</span>
+              <div class="who">
+                <div class="name">Aisha Khan <span class="chip live"><span class="dot amber pulse" style="width:6px;height:6px"></span> Live · turn 3 of 6</span></div>
+                <div class="sub">their agent countered · 38m ago</div>
+              </div>
+              <span class="time">12:03</span>
+            </div>
+            <div class="srow">
+              <span class="avatar" style="background:#f59e0b">TW</span>
+              <div class="who">
+                <div class="name">Tom Wolfe <span class="chip waiting">Waiting on their agent</span></div>
+                <div class="sub">your agent asked a question · 1h ago</div>
+              </div>
+              <span class="time">11:20</span>
+            </div>
+
+            <div class="run-divider"></div>
+
+            <div class="srow muted">
+              <span class="avatar" style="background:#dc2626">JB</span>
+              <div class="who">
+                <div class="name">Jonas Berg <span class="chip rejected">No opportunity</span></div>
+                <div class="sub">agents did not recommend moving forward · Tue</div>
+              </div>
+              <span class="time">Tue</span>
+            </div>
+            <div class="srow muted">
+              <span class="avatar" style="background:#059669">LP</span>
+              <div class="who">
+                <div class="name">Lena Park <span class="chip accepted">Accepted by you</span></div>
+                <div class="sub">you started the chat · 3d ago</div>
+              </div>
+              <span class="time">Mon</span>
+            </div>
+
+            <div class="sidebar-foot">View all in Negotiations inbox →</div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">
+        Same chips as the inbox (<code>CHIP_CLASS</code> in <code>NegotiationsInbox.tsx</code>) — lift both chip and
+        label maps into <code>lib/negotiation-inbox.ts</code> or a shared presentational module so the two surfaces
+        can't diverge. The subline keeps the inbox's <i>"N mutual signals · last action · timeAgo"</i> shape,
+        truncated for the rail. Hover "Delete" becomes <b>Hide</b> for a2a rows.
+      </p>
+    </div>
+
+    <!-- R3 -->
+    <div class="option">
+      <div class="option-head">
+        <span class="option-tag">R3</span>
+        <span class="option-title">Toggle badge — the two-second answer</span>
+        <span class="option-where">the Messages / Negotiations segmented control</span>
+      </div>
+      <p class="desc">
+        Put a navy count pill on the Negotiations toggle itself, fed by the shipped
+        <code>countNegotiationsRequiringAction()</code>: the number of your-move items (answer + agreed), hidden at zero.
+        Even from the Messages side of the toggle — the default view every user actually lives in —
+        "do I owe my agent something?" is answered without switching tabs.
+      </p>
+      <div class="frame-wrap" style="max-width:400px">
+        <div class="frame">
+          <div class="sidebar">
+            <div class="seg"><span class="on">Messages</span><span>Negotiations <span class="pill">2</span></span></div>
+            <div class="srow">
+              <span class="avatar" style="background:#4091BB">JK</span>
+              <div class="who">
+                <div class="name">Jo Kim <span class="pill" style="font-size:9px">3</span></div>
+                <div class="sub">sounds good, let's pick it up Thursday…</div>
+              </div>
+              <span class="time">12:55</span>
+            </div>
+            <div class="srow">
+              <span class="avatar" style="background:#0ea5e9">AK</span>
+              <div class="who">
+                <div class="name">Aisha Khan</div>
+                <div class="sub">haha exactly — anyway, the draft is ready</div>
+              </div>
+              <span class="time">12:40</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">
+        This is the smallest change with the highest daily value in the whole document: one pill, one shipped
+        function, no layout change. It also mirrors the TopBar Negotiations pill, so the two badges always agree.
+      </p>
+    </div>
+
+    <!-- R4 -->
+    <div class="option">
+      <div class="option-head">
+        <span class="option-tag">R4</span>
+        <span class="option-title">Row targets — one tap to the right surface</span>
+        <span class="option-where">navigation behavior per status</span>
+      </div>
+      <p class="desc">
+        Today every row opens the transcript. Right for most states — wrong for the two that need a human.
+        Route by status:
+      </p>
+      <div class="flow">
+        <div class="node"><b>Answer your agent</b>ask_user · input_required</div>
+        <span class="arr">→</span>
+        <div class="node"><b>Negotiator DM</b>the only surface that can take an answer (IntentNegotiatorChat / questions pipeline)</div>
+      </div>
+      <div class="flow">
+        <div class="node"><b>Agents agreed</b>opportunity pending</div>
+        <span class="arr">→</span>
+        <div class="node"><b>Transcript + review affordance</b>/chat/:id with the outcome banner &amp; Start chat / Pass — or straight to the opportunity card</div>
+      </div>
+      <div class="flow">
+        <div class="node"><b>Live · Waiting · Resolved</b>everything else</div>
+        <span class="arr">→</span>
+        <div class="node"><b>Transcript</b>/chat/:conversationId — today's behavior, unchanged</div>
+      </div>
+      <p class="caption">
+        The transcript is read-only by design; sending an "Answer your agent" row there is a dead end.
+        If the negotiator DM deep-link is more than a route change, ship R4 in a second pass and keep
+        transcript links as the interim target.
+      </p>
+    </div>
+
+    <!-- R5 -->
+    <div class="option">
+      <div class="option-head">
+        <span class="option-tag">R5</span>
+        <span class="option-title">Mode-aware empty state</span>
+        <span class="option-where">sidebar empty copy</span>
+      </div>
+      <p class="desc">
+        Fix the "No messages yet" copy that currently shows in Negotiations mode, and use the moment to teach
+        the feature rather than just report emptiness.
+      </p>
+      <div class="frame-wrap" style="max-width:400px">
+        <div class="frame">
+          <div class="sidebar">
+            <div class="seg"><span>Messages</span><span class="on">Negotiations</span></div>
+            <div style="padding: 28px 22px; text-align:center">
+              <p style="font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--gray-700)">No negotiations yet</p>
+              <p style="font-family:var(--mono); font-size:11px; color:var(--gray-400); margin-top:6px; line-height:1.7">
+                When your agent tests a possible connection with someone's agent, the play-by-play shows up here.
+              </p>
+            </div>
+            <div class="sidebar-foot">View all in Negotiations inbox →</div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">
+        Matches the inbox's empty copy ("Your agents' connection work will appear here") so the two surfaces
+        tell one story. The footer link is persistent, not just on empty — it routes overflow triage to the inbox.
+      </p>
+    </div>
+
+    <!-- R6 alternative -->
+    <div class="option" style="border-style:dashed">
+      <div class="option-head">
+        <span class="option-tag alt">R6</span>
+        <span class="option-title">Alternative considered: grouped mini-inbox in the rail</span>
+        <span class="option-where">not recommended (for now)</span>
+      </div>
+      <p class="desc">
+        A heavier variant: pin a "Your move · N" section header inside the tab, mirroring the inbox's grouping in
+        miniature. Rejected for three reasons: it duplicates triage in a space too narrow to act (no room for
+        CTAs), it splits attention between two surfaces that would then both "own" your-move, and R3's toggle
+        badge already surfaces the same signal without the furniture. Revisit only if negotiation volume grows
+        to the point that the flat list regularly scrolls your-move items out of view — at which point the right
+        answer is still "go to the inbox", one tap away in the footer.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= §3 SPEC ================= -->
+  <section id="spec">
+    <div class="sec-num">§3</div>
+    <h2>Implementation shape</h2>
+    <p class="sec-lede">
+      Everything here is presentation-layer over data and logic that already shipped in PR #1232.
+      No API changes, no new endpoints, no new dependencies.
+    </p>
+    <table class="rec">
+      <tr><th>Change</th><th>Where</th><th>Reuses</th></tr>
+      <tr>
+        <td>R1 · Consume the shared projection</td>
+        <td><code>ChatSidebar.tsx</code> a2a branch — delete inline derivation at <code>:84-114</code></td>
+        <td><code>deriveNegotiationInbox()</code> from <code>lib/negotiation-inbox.ts</code> (shipped, tested)</td>
+      </tr>
+      <tr>
+        <td>R2 · Chip + subline + muted resolved</td>
+        <td><code>ChatSidebar.tsx</code> row render; move <code>CHIP_CLASS</code>/labels out of <code>NegotiationsInbox.tsx</code> into a shared module</td>
+        <td>Inbox chip classes, <code>describeAction</code>/<code>describeResolved</code>, <code>opacity-80</code> idiom, amber pulse dot</td>
+      </tr>
+      <tr>
+        <td>R3 · Toggle your-move badge</td>
+        <td>Segmented control in <code>ChatSidebar.tsx:150-163</code></td>
+        <td><code>countNegotiationsRequiringAction()</code> (shipped, unused); TopBar pill style</td>
+      </tr>
+      <tr>
+        <td>R4 · Status-routed row targets</td>
+        <td>Row <code>onClick</code> in <code>ChatSidebar.tsx:187</code></td>
+        <td>Existing routes: <code>/chat/:id</code> transcript, negotiator DM / questions surface</td>
+      </tr>
+      <tr>
+        <td>R5 · Mode-aware empty + footer link</td>
+        <td>Empty-state branch <code>ChatSidebar.tsx:177-179</code>; footer element</td>
+        <td>Inbox empty-state copy idiom</td>
+      </tr>
+    </table>
+
+    <p class="caption" style="margin-top:22px; font-size:14px; color:var(--gray-700); background:#fff; border:1px solid #e6e6e6; border-radius:10px; padding:14px 18px">
+      <b>Smallest honest first step:</b> R3 + R1 — the toggle badge and the projection swap. Two functions that
+      already exist, one file touched, and the tab immediately stops lying (P1–P3 fixed). R2's chip row and R5's
+      empty state are the natural follow-up; R4 can land last since it only changes navigation targets.
+    </p>
+  </section>
+
+</div>
+</body>
+</html>

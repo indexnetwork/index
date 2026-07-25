@@ -1554,6 +1554,28 @@ export interface Database {
   ): Promise<Opportunity[]>;
 
   /**
+   * IND-567 Rejection cool-down: returns the subset of `candidateUserIds` that
+   * have at least one non-draft opportunity with `discovererId` whose `updatedAt`
+   * falls within the last `windowMs` milliseconds AND whose status is `rejected`
+   * or `stalled`. Used by the evaluation node to apply a score penalty before
+   * sending candidates to the LLM, suppressing cross-query re-surfacing of
+   * recently-rejected pairs.
+   *
+   * Optional — adapters that do not implement it return `undefined`; the graph
+   * degrades gracefully (no penalty applied, dedup persist-node guard still fires).
+   *
+   * @param discovererId - User running discovery
+   * @param candidateUserIds - Candidate user IDs to check (may be empty — return [])
+   * @param windowMs - Look-back window in milliseconds
+   * @returns Candidate user IDs (subset of input) with a recent rejected/stalled opp
+   */
+  getRecentlyRejectedOpportunityCounterparties?(
+    discovererId: string,
+    candidateUserIds: string[],
+    windowMs: number,
+  ): Promise<string[]>;
+
+  /**
    * Expire opportunities referencing an intent (e.g. when intent is archived).
    *
    * @param intentId - Intent ID to match in opportunity actors
@@ -2400,6 +2422,8 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
+  // IND-567 Fix A: fetch candidate premise text for evaluator (prevents empty-text query_premise false-positives)
+  | 'getPremise'
   // Premise-to-premise discovery (path D)
   | 'getPremisesForUser'
   | 'getPremisesForUserInNetworks'
@@ -2411,6 +2435,8 @@ export type OpportunityGraphDatabase = Pick<
   | 'searchIntentsByContextEmbedding'
   // HyDE documents for context-to-intent HyDE search
   | 'getHydeDocumentsForSource'
+  // IND-567: Rejection cool-down (optional — adapters may omit)
+  | 'getRecentlyRejectedOpportunityCounterparties'
 > & Pick<
   NegotiationQueries,
   // Orphan heal: check if a prior negotiating opportunity has a stale task
@@ -2669,13 +2695,21 @@ export type NegotiationGraphDatabase = Pick<
     updatedAt: Date;
   } | null>;
 
-  /** Gets all messages for a conversation, ordered by creation time. */
+  /**
+   * Gets all messages for a conversation, ordered by creation time.
+   *
+   * `taskId` is the originating negotiation task (IND-569). Optional so legacy
+   * hosts remain valid; when omitted, prior negotiation turns cannot be
+   * attributed to their opportunity and degrade to the unattributed
+   * prior-dialogue block rather than being mixed into the current opportunity.
+   */
   getMessagesForConversation(conversationId: string): Promise<Array<{
     id: string;
     senderId: string;
     role: 'user' | 'agent';
     parts: unknown[];
     createdAt: Date;
+    taskId?: string | null;
   }>>;
 
   /** Gets artifacts for a task (e.g. negotiation outcome). */

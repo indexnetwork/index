@@ -1,4 +1,5 @@
 import { describe, it, expect } from "bun:test";
+import { createRequire } from "node:module";
 
 import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolSnapshotSchema, QuestionPoolPushSchema, QuestionVoidedReasonSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
@@ -71,6 +72,27 @@ describe("QuestionSchema", () => {
   it("rejects missing multiSelect", () => {
     const { multiSelect: _, ...rest } = okQuestion;
     expect(() => QuestionSchema.parse(rest)).toThrow();
+  });
+
+  it("accepts a real string evidence chip unchanged", () => {
+    const parsed = QuestionSchema.parse({ ...okQuestion, evidence: "based on 18 people matching this intent" });
+    expect(parsed.evidence).toBe("based on 18 people matching this intent");
+  });
+
+  it("normalizes evidence: null to undefined (never 'evidence present')", () => {
+    const parsed = QuestionSchema.parse({ ...okQuestion, evidence: null });
+    expect(parsed.evidence).toBeUndefined();
+    // Behaves exactly like no evidence for the `!question.evidence` selection filter.
+    expect(!parsed.evidence).toBe(true);
+  });
+
+  it("treats omitted evidence as undefined", () => {
+    const parsed = QuestionSchema.parse(okQuestion);
+    expect(parsed.evidence).toBeUndefined();
+  });
+
+  it("rejects empty-string evidence", () => {
+    expect(() => QuestionSchema.parse({ ...okQuestion, evidence: "" })).toThrow();
   });
 });
 
@@ -151,6 +173,39 @@ describe("QuestionGeneratorResponseSchema", () => {
       underspecificationType: null,
     }));
     expect(() => QuestionGeneratorResponseSchema.parse({ questions: four })).toThrow();
+  });
+
+  it("normalizes evidence: null to undefined inside a nested question", () => {
+    const parsed = QuestionGeneratorResponseSchema.parse({
+      questions: [{
+        ...okQuestion,
+        evidence: null,
+        strategy: "refine_intent" as const,
+        underspecificationType: null,
+      }],
+    });
+    expect(parsed.questions[0].evidence).toBeUndefined();
+  });
+});
+
+/**
+ * Regression guard for the questioner LLM binding. `createStructuredModel`
+ * (see questioner.agent.ts) hands QuestionGeneratorResponseSchema to
+ * `@langchain/openai`, which converts it via OpenAI's zodResponseFormat in
+ * strict structured-output mode. Strict mode throws on any
+ * optional-without-nullable field, which previously made every QuestionerAgent
+ * call fail client-side before any network I/O. Run the exact conversion here
+ * (resolving the openai package @langchain/openai actually uses) so the binding
+ * cannot silently regress. A bare `.optional()` evidence field fails this test.
+ */
+describe("QuestionGeneratorResponseSchema strict structured-output conversion", () => {
+  const langchainRequire = createRequire(require.resolve("@langchain/openai/package.json"));
+  const { zodResponseFormat } = langchainRequire("openai/helpers/zod") as {
+    zodResponseFormat: (schema: unknown, name: string) => unknown;
+  };
+
+  it("serializes under OpenAI strict mode without throwing", () => {
+    expect(() => zodResponseFormat(QuestionGeneratorResponseSchema, "clarifying_questions")).not.toThrow();
   });
 });
 
