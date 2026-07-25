@@ -7,7 +7,27 @@ import { renderNetworkContext } from "../../shared/network/metadata.renderer.js"
 import type { DefineTool } from "../../shared/agent/tool.helpers.js";
 import type { NetworkToolDeps } from "../../capabilities/communities.tools.port.js";
 import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
+import { focusedNetworkId } from "../../shared/agent/tool.scope.js";
 import { NetworkRecommender } from "./network.recommender.js";
+
+/**
+ * Resolves the community this caller is hard-bound to, if any.
+ *
+ * A user-driven network-scoped chat carries `context.networkId`; a network-scoped
+ * agent (personal/external API key bound to one community over MCP) instead
+ * carries the focused scope envelope (`scopeType='network'`, `scopeId`) applied
+ * at the MCP boundary, with `networkId` left unset. Both must clamp community
+ * and roster reads/writes to the exact bound community BEFORE any graph/adapter
+ * work — not only via the scoped-deps data clamp — so a foreign community is
+ * denied with a stable message and never read or mutated (IND-591).
+ */
+function boundCommunityId(context: {
+  networkId?: string;
+  scopeType?: 'network' | 'intent';
+  scopeId?: string;
+}): string | undefined {
+  return focusedNetworkId(context) ?? context.networkId;
+}
 
 // Lazy singleton — only instantiated on first onboarding ranking call so that
 // importing this module does not require OPENROUTER_API_KEY at load time.
@@ -80,12 +100,13 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
         return error("You can only list your own networks. Omit userId to see the current user's networks.");
       }
 
+      const boundNetworkId = boundCommunityId(context);
       const _readGraphStart = Date.now();
       const _readTraceEmitter = requestContext.getStore()?.traceEmitter;
       _readTraceEmitter?.({ type: "graph_start", name: "index" });
       const result = await graphs.index.invoke({
         userId: context.userId,
-        networkId: context.networkId || undefined,
+        networkId: boundNetworkId || undefined,
         operationMode: 'read' as const,
         showAll: false, // Never allow bypass — strict scope enforcement
       });
@@ -105,12 +126,12 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
         };
 
         // When scoped, add clear metadata so model knows results are limited
-        if (context.networkId) {
+        if (boundNetworkId) {
           return success({
             ...enriched,
             scopeRestriction: {
               isScoped: true,
-              scopedToNetwork: context.indexName ?? context.networkId,
+              scopedToNetwork: context.indexName ?? boundNetworkId,
               message: `Results are limited to "${context.indexName ?? 'this network'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
             },
             _graphTimings: [{ name: 'index', durationMs: _readGraphMs, agents: result.agentTimings ?? [] }],
@@ -210,6 +231,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
     handler: async ({ context, query }) => {
       const networkId = query.networkId?.trim() || undefined;
       const userId = query.userId?.trim() || undefined;
+      const boundNetworkId = boundCommunityId(context);
 
       if (networkId && !UUID_REGEX.test(networkId)) {
         return error("Invalid network ID format. Use the exact UUID from read_networks.");
@@ -218,7 +240,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       // Mode 1: list members of a network
       if (networkId && !userId) {
         // Enforce strict scope: when chat is network-scoped, only allow querying that network
-        if (context.networkId && networkId !== context.networkId) {
+        if (boundNetworkId && networkId !== boundNetworkId) {
           return error(
             `This chat is scoped to ${context.indexName ?? 'this network'}. You can only query members of this network.`
           );
@@ -252,7 +274,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
         // Cross-user access: validate shared membership scope
         const callerMemberships = await userDb.getNetworkMemberships();
         if (networkId) {
-          if (context.networkId && networkId !== context.networkId) {
+          if (boundNetworkId && networkId !== boundNetworkId) {
             return error(
               `This chat is scoped to ${context.indexName ?? 'this network'}. You can only query membership in this community.`
             );
@@ -271,16 +293,16 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
           return success({ isMember: false, userId: targetUserId, networkId, message: "User is not a member of this network." });
         } else {
           // Strict scope enforcement: when chat is network-scoped, only check the scoped network
-          if (context.networkId) {
-            const isMember = await systemDb.isNetworkMember(context.networkId, targetUserId);
+          if (boundNetworkId) {
+            const isMember = await systemDb.isNetworkMember(boundNetworkId, targetUserId);
             if (isMember) {
               return success({
                 isMember: true,
                 userId: targetUserId,
-                networkId: context.networkId,
+                networkId: boundNetworkId,
                 scopeRestriction: {
                   isScoped: true,
-                  scopedToNetwork: context.indexName ?? context.networkId,
+                  scopedToNetwork: context.indexName ?? boundNetworkId,
                   message: `This chat is scoped to "${context.indexName ?? 'this network'}". Only membership in this community is shown.`,
                 },
               });
@@ -288,11 +310,11 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
             return success({
               isMember: false,
               userId: targetUserId,
-              networkId: context.networkId,
+              networkId: boundNetworkId,
               message: "User is not a member of this community.",
               scopeRestriction: {
                 isScoped: true,
-                scopedToNetwork: context.indexName ?? context.networkId,
+                scopedToNetwork: context.indexName ?? boundNetworkId,
                 message: `This chat is scoped to "${context.indexName ?? 'this network'}". Only membership in this community was checked.`,
               },
             });
@@ -325,14 +347,14 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
         memberships = await userDb.getNetworkMemberships();
 
         // Strict scope: when chat is network-scoped, only return the scoped network membership
-        if (context.networkId && !networkId) {
-          memberships = memberships.filter((m) => m.networkId === context.networkId);
+        if (boundNetworkId && !networkId) {
+          memberships = memberships.filter((m) => m.networkId === boundNetworkId);
         }
       }
 
       // If both networkId and userId: filter to that specific membership
       if (networkId) {
-        if (context.networkId && networkId !== context.networkId) {
+        if (boundNetworkId && networkId !== boundNetworkId) {
           return error(
             `This chat is scoped to ${context.indexName ?? 'this network'}. You can only query membership in this community.`
           );
@@ -362,7 +384,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       }
 
       // Own memberships in scoped chat
-      if (context.networkId && targetUserId === context.userId) {
+      if (boundNetworkId && targetUserId === context.userId) {
         return success({
           userId: targetUserId,
           count: memberships.length,
@@ -374,7 +396,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
           })),
           scopeRestriction: {
             isScoped: true,
-            scopedToNetwork: context.indexName ?? context.networkId,
+            scopedToNetwork: context.indexName ?? boundNetworkId,
             message: `Results are limited to "${context.indexName ?? 'this network'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
           },
         });
@@ -417,12 +439,13 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       settings: updateNetworkSettingsSchema.describe("Object with fields to update. All fields are optional — only include the ones to change. title: display name. prompt: purpose description (used for intent auto-assignment). imageUrl: community image URL (null to remove). joinPolicy: 'anyone' or 'invite_only'. allowGuestVibeCheck: boolean."),
     }),
     handler: async ({ context, query }) => {
-      const effectiveNetworkId = (query.networkId?.trim() || context.networkId) ?? null;
+      const boundNetworkId = boundCommunityId(context);
+      const effectiveNetworkId = (query.networkId?.trim() || boundNetworkId) ?? null;
       if (!effectiveNetworkId || !UUID_REGEX.test(effectiveNetworkId)) {
         return error("Valid networkId required.");
       }
 
-      if (context.networkId && effectiveNetworkId !== context.networkId) {
+      if (boundNetworkId && effectiveNetworkId !== boundNetworkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this network'}. You can only update this community's settings.`
         );
@@ -511,12 +534,13 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       networkId: z.string().optional().describe("Network UUID to delete. Get from read_networks. Defaults to the scoped network in network-scoped chats. Cannot be a personal network."),
     }),
     handler: async ({ context, query }) => {
-      const networkId = query.networkId?.trim() || context.networkId;
+      const boundNetworkId = boundCommunityId(context);
+      const networkId = query.networkId?.trim() || boundNetworkId;
       if (!networkId || !UUID_REGEX.test(networkId)) {
         return error("Valid networkId required.");
       }
 
-      if (context.networkId && networkId !== context.networkId) {
+      if (boundNetworkId && networkId !== boundNetworkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this network'}. You can only delete this community.`
         );
@@ -556,13 +580,14 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       networkId: z.string().optional().describe("Network UUID to add the member to. Get from read_networks. Defaults to the scoped network in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
-      const networkId = query.networkId?.trim() || context.networkId;
+      const boundNetworkId = boundCommunityId(context);
+      const networkId = query.networkId?.trim() || boundNetworkId;
       const targetUserId = query.userId?.trim() || context.userId;
       if (!networkId || !UUID_REGEX.test(networkId)) {
         return error("Invalid network ID format. Use the exact UUID from read_networks.");
       }
 
-      if (context.networkId && networkId !== context.networkId) {
+      if (boundNetworkId && networkId !== boundNetworkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this network'}. You can only add members to this community.`
         );
@@ -609,7 +634,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       networkId: z.string().optional().describe("Network UUID to remove the member from. Get from read_networks. Defaults to the scoped network in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
-      const networkId = query.networkId?.trim() || context.networkId;
+      const boundNetworkId = boundCommunityId(context);
+      const networkId = query.networkId?.trim() || boundNetworkId;
       const targetUserId = query.userId?.trim();
 
       if (!networkId || !UUID_REGEX.test(networkId)) {
@@ -619,7 +645,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
         return error("userId is required.");
       }
 
-      if (context.networkId && networkId !== context.networkId) {
+      if (boundNetworkId && networkId !== boundNetworkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this network'}. You can only manage members of this community.`
         );

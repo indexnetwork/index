@@ -12,6 +12,20 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [7.5.0] — 2026-07-25
+
+### Changed
+- Partition async discovery-run ownership by the exact calling MCP principal, not
+  only by user (IND-592). `get_discovery_run` and `cancel_discovery_run` now
+  reject a run whose recorded principal (session-human vs a specific agent id)
+  differs from the caller's, even within the same user, returning the opaque
+  "Discovery run not found." and never attempting cancellation. `discover_opportunities`
+  MCP coalescing is likewise partitioned by principal, so an agent-initiated
+  request never coalesces onto — and is never handed — the owner's (or another
+  agent's) in-flight run id or its status/results. The store lookup remains
+  user-scoped; this is an additional in-handler/domain narrowing with no host
+  interface change. Behavior tightening on published MCP tools, hence the minor bump.
+
 ## [7.4.0] — 2026-07-25
 
 ### Changed

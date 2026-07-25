@@ -45,13 +45,31 @@ import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
 import type { PendingQuestionSummary } from "../../shared/schemas/pending-question.schema.js";
-import type { DiscoveryRunInput } from "../../shared/interfaces/discovery-run.interface.js";
+import type { DiscoveryRunInput, DiscoveryRunRecord } from "../../shared/interfaces/discovery-run.interface.js";
 import type { ConnectLinkKind } from "../../shared/interfaces/connect-link.interface.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 const discoverOpportunitiesLog = protocolLogger("ChatTools:Opportunity:discover_opportunities");
+
+/**
+ * Exact-principal ownership guard for async discovery runs (IND-592).
+ *
+ * The store lookup is already user-scoped, but a single user can drive both a
+ * session-human principal and one or more agent principals over MCP. A run is
+ * owned by exactly one principal: the session human (agentId null/absent) or a
+ * specific agent. `get_discovery_run` / `cancel_discovery_run` must therefore
+ * reject a run whose recorded principal differs from the caller's, even within
+ * the same user, so a principal can never read status/results or cancel another
+ * principal's run. Both sides normalize absent/null to null.
+ */
+function isSameDiscoveryRunPrincipal(
+  run: Pick<DiscoveryRunRecord, "agentId">,
+  context: { agentId?: string | null },
+): boolean {
+  return (run.agentId ?? null) === (context.agentId ?? null);
+}
 
 /**
  * Pure status × role → ConnectLinkKind matrix.
@@ -1288,7 +1306,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         return error("Async discovery runs are not available in this context.");
       }
       const run = await deps.discoveryRuns.get(query.discoveryRunId, context.userId);
-      if (!run) return error("Discovery run not found.");
+      if (!run || !isSameDiscoveryRunPrincipal(run, context)) return error("Discovery run not found.");
       return success({
         discoveryRunId: run.id,
         status: run.status,
@@ -1316,7 +1334,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         return error("Async discovery runs are not available in this context.");
       }
       const existing = await deps.discoveryRuns.get(query.discoveryRunId, context.userId);
-      if (!existing) return error("Discovery run not found.");
+      if (!existing || !isSameDiscoveryRunPrincipal(existing, context)) return error("Discovery run not found.");
       if (!["queued", "running"].includes(existing.status)) {
         return success({
           discoveryRunId: existing.id,
