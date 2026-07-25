@@ -1498,8 +1498,13 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
     "text": "...",
     "summary": "...",
     "status": "active | archived",
-    "confidence": 0.85,
-    "inferenceType": "...",
+    "semanticEntropy": 0.15,
+    "referentialAnchor": "...",
+    "intentMode": "...",
+    "speechActType": "...",
+    "felicityAuthority": 8,
+    "felicitySincerity": 9,
+    "felicityClarity": 7,
     "sourceType": "...",
     "hasEmbedding": true,
     "createdAt": "...",
@@ -1511,7 +1516,16 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
     "newestGeneratedAt": "..."
   },
   "indexAssignments": [
-    { "indexId": "...", "indexTitle": "...", "indexPrompt": "..." }
+    {
+      "networkId": "...",
+      "networkTitle": "...",
+      "indexPrompt": "...",
+      "relevancyScore": 0.84,
+      "finalScore": 0.84,
+      "promptPresence": "both",
+      "rawScores": { "indexScore": 0.9, "memberScore": 0.75 },
+      "isDeterministicNoPromptAssignment": false
+    }
   ],
   "opportunities": {
     "total": 5,
@@ -1531,12 +1545,27 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
     "hasEmbedding": true,
     "hasHydeDocuments": true,
     "isInAtLeastOneIndex": true,
+    "verificationAnalysis": { "status": "complete", "missingFields": [] },
+    "missingVerificationAnalysis": false,
+    "missingAssignment": false,
+    "missingHyde": false,
     "hasOpportunities": true,
     "allOpportunitiesFilteredFromHome": false,
     "filterReasons": []
   }
 }
 ```
+
+`semanticEntropy` is the stored entropy value, not a confidence score; no
+combined verifier score is exposed. `verificationAnalysis.status` is
+`complete`, `default_only`, `partial`, or `missing`, so default schema values
+cannot be mistaken for completed verification. Assignment `finalScore` and
+`promptPresence` are null for legacy rows without persisted assignment metadata;
+`rawScores` is omitted when the assignment policy did not call a model. A
+promptless automatic assignment therefore reports `promptPresence: "none"`,
+`finalScore: 1`, and `isDeterministicNoPromptAssignment: true` without raw scores.
+The three `missing*` diagnosis fields independently identify absent verification,
+assignment, and HyDE artifacts.
 
 ### GET /api/debug/home
 
