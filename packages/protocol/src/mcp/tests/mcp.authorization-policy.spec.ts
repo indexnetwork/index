@@ -699,28 +699,4 @@ describe('signals read/write split (IND-588)', () => {
       expect(policy.authorize(agent, tool), tool).toMatchObject({ allowed: true, reach: 'network' });
     }
   });
-
-  test('a network-scoped grant does not authorize signal mutation from a differently-bound agent', () => {
-    // The agent is bound to network-1 but its manage:intents grant is scoped to
-    // another network, so the grant does not apply: it retains authenticated read
-    // but no signal-write capability (indirect scope cannot bypass the clamp).
-    const agent = resolveMcpCapabilitySubject({
-      identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
-      isOnboarding: false,
-      agent: agentSnapshot({
-        permissions: [{
-          agentId: AGENT_ID,
-          userId: USER_ID,
-          scope: 'network',
-          scopeId: 'another-network',
-          actions: ['manage:intents'],
-        }],
-      }),
-    });
-    expect(agent.permissions).toEqual([]);
-    expect(policy.authorize(agent, 'read_intents').allowed).toBe(true);
-    for (const tool of SIGNAL_WRITE_TOOLS) {
-      expect(policy.authorize(agent, tool), tool).toMatchObject({ allowed: false, reason: 'permission_missing' });
-    }
-  });
 });

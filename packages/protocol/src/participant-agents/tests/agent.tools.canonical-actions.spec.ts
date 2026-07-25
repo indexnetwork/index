@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { z } from 'zod';
 
 import { createAgentTools } from '../application/agent.tools.js';
 import type { AgentToolDeps } from '../ports/index.js';
@@ -20,6 +21,7 @@ import type { AgentToolDeps } from '../ports/index.js';
 interface CapturedTool {
   name: string;
   handler: (input: { context: Record<string, unknown>; query: unknown }) => Promise<string>;
+  querySchema?: z.ZodType;
 }
 
 function captureAgentTools(deps: AgentToolDeps): Record<string, CapturedTool> {
@@ -106,8 +108,34 @@ function parse(result: string) {
 }
 
 const RETIRED_ACTIONS = ['manage:profile', 'manage:contacts'] as const;
+const CANONICAL_ACTIONS = ['manage:identity', 'manage:premises'] as const;
 const EXPECTED_MESSAGE =
   'Valid actions: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations';
+
+describe('public permission INPUT schemas are canonical-only (IND-582)', () => {
+  // The public tool input schemas reject retired strings at the schema seam
+  // (defense-in-depth ahead of the retained handler validation).
+  const tools = captureAgentTools(makeDeps({ createAgentCalls: [], grantCalls: [] }));
+
+  test('register_agent.permissions rejects retired strings and accepts canonical actions', () => {
+    const schema = tools.register_agent!.querySchema!;
+    for (const retired of RETIRED_ACTIONS) {
+      expect(schema.safeParse({ name: 'Agent', permissions: [retired] }).success, retired).toBe(false);
+    }
+    expect(schema.safeParse({ name: 'Agent', permissions: [...CANONICAL_ACTIONS] }).success).toBe(true);
+    // A retired string mixed with a canonical one still fails the whole array.
+    expect(schema.safeParse({ name: 'Agent', permissions: ['manage:identity', 'manage:contacts'] }).success).toBe(false);
+  });
+
+  test('grant_agent_permission.actions rejects retired strings and accepts canonical actions', () => {
+    const schema = tools.grant_agent_permission!.querySchema!;
+    for (const retired of RETIRED_ACTIONS) {
+      expect(schema.safeParse({ agent_id: AGENT_ID, actions: [retired] }).success, retired).toBe(false);
+    }
+    expect(schema.safeParse({ agent_id: AGENT_ID, actions: [...CANONICAL_ACTIONS] }).success).toBe(true);
+    expect(schema.safeParse({ agent_id: AGENT_ID, actions: ['manage:profile', 'manage:identity'] }).success).toBe(false);
+  });
+});
 
 describe('register_agent — canonical-only permission input (IND-582)', () => {
   for (const retired of RETIRED_ACTIONS) {

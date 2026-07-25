@@ -12,6 +12,18 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [7.4.0] — 2026-07-25
+
+### Changed
+- Make the public participant-agent permission INPUT schemas canonical-only:
+  `register_agent.permissions` and `grant_agent_permission.actions` are now a
+  `z.enum` of the six canonical `manage:*` actions instead of `z.array(z.string())`.
+  Retired `manage:profile` / `manage:contacts` strings are rejected at the schema
+  seam (the handler's `isValidAction` check is retained as defense in depth). This
+  narrows the published tool input schemas exposed via `tools/list`, hence the
+  minor bump. No change to the temporary stored-row compatibility projection,
+  which still interprets residual legacy STORED rows.
+
 ## [7.3.0] — 2026-07-25
 
 ### Added

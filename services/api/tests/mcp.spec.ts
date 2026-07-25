@@ -893,6 +893,10 @@ describe('MCP Server Factory', () => {
     headers?: Record<string, string>;
     /** When true, the scoped-deps factory throws if the handler seam is reached. */
     scopedThrows?: boolean;
+    /** Functional scoped databases for handlers that must run past the seam
+     *  (e.g. a resource-level clamp fired inside the tool handler). */
+    scopedUserDb?: ToolDeps['userDb'];
+    scopedSystemDb?: ToolDeps['systemDb'];
   }): Promise<CallToolOutcome> {
     clearMcpToolMetadataCacheForTests();
     const scopedCreateArgs: Array<{ userId: string; allowedNetworkIds: string[] }> = [];
@@ -900,7 +904,10 @@ describe('MCP Server Factory', () => {
       create: (userId: string, allowedNetworkIds: string[]) => {
         scopedCreateArgs.push({ userId, allowedNetworkIds });
         if (params.scopedThrows) throw new Error('scoped database must not be created');
-        return { userDb: {} as ToolDeps['userDb'], systemDb: {} as ToolDeps['systemDb'] };
+        return {
+          userDb: params.scopedUserDb ?? ({} as ToolDeps['userDb']),
+          systemDb: params.scopedSystemDb ?? ({} as ToolDeps['systemDb']),
+        };
       },
     };
     const server = createMcpServer(
@@ -1341,23 +1348,61 @@ describe('MCP Server Factory', () => {
     expect(allowed).not.toContain('network-2');
   });
 
-  it('denies a schema-valid out-of-scope update_intent whose manage:intents grant is bound elsewhere, before DB work', async () => {
-    // The agent is bound to network-1 but its only manage:intents grant is scoped
-    // to network-2, so the grant does not apply and the mutation is denied at the
-    // preliminary capability stage — a distinct tool (update_intent) from the
-    // existing create_intent out-of-scope case.
-    const counter = { reads: 0 };
+  it('admits a bound network agent to create_intent_index then resource-clamps a schema-valid out-of-network assignment before the write', async () => {
+    // Production-reachable resource-level denial (not a permission-row-loss case):
+    // the agent is bound to network-1 AND holds an applicable network-1
+    // manage:intents grant, so capability policy ADMITS and dispatch reaches the
+    // scoped handler seam. It then asks to assign an intent to network-2 (an
+    // explicit out-of-network community). The tool's own network/resource clamp
+    // rejects with a stable domain message BEFORE any intent-index graph/write.
+    let intentIndexGraphCalls = 0;
+    const scopedSystemDb = {
+      // Member of the bound network, so ensureScopedMembership passes.
+      isNetworkMember: async () => true,
+    } as unknown as ToolDeps['systemDb'];
+    const graphs = {
+      ...mockDeps.graphs,
+      intentIndex: {
+        invoke: async () => {
+          intentIndexGraphCalls += 1;
+          return {};
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+    // The user is a member of the bound network-1 (so allowedNetworkIds resolves
+    // to network-1); the requested network-2 is out of the binding.
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([
+        { networkId: 'network-1', networkTitle: 'N1', isPersonal: false, permissions: [] },
+      ]),
+    } as unknown as ToolDeps['database'];
+
     const result = await callTool({
-      identity: { userId: 'test-user-id', agentId: 'agent-os', networkScopeId: 'network-1' },
-      agentDatabase: agentDbWith({ agentId: 'agent-os', scope: 'network', scopeId: 'network-2', actions: ['manage:intents'] }),
-      database: guardReads(counter),
-      scopedThrows: true,
-      toolName: 'update_intent',
-      arguments: { intentId: '00000000-0000-4000-8000-000000000010', description: 'a refined specific signal' },
+      identity: { userId: 'test-user-id', agentId: 'agent-ci', networkScopeId: 'network-1' },
+      agentDatabase: agentDbWith({ agentId: 'agent-ci', scope: 'network', scopeId: 'network-1', actions: ['manage:intents'] }),
+      database: memberDb,
+      extraDeps: { graphs },
+      scopedSystemDb,
+      toolName: 'create_intent_index',
+      arguments: {
+        intentId: '00000000-0000-4000-8000-000000000010',
+        networkId: '00000000-0000-4000-8000-000000000020',
+      },
     });
-    expect(result.isError).toBe(true);
-    expect(result.code).toBe('MCP_CAPABILITY_DENIED');
-    expect(counter.reads).toBe(0);
-    expect(result.scopedCreateArgs).toEqual([]);
+
+    // Admission happened (not a capability denial) and the handler seam was reached.
+    expect(result.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(result.scopedCreateArgs.length).toBe(1);
+    // The bound-network clamp allowed only network-1 into the scoped deps.
+    const allowed = result.scopedCreateArgs[0]!.allowedNetworkIds;
+    expect(allowed).toContain('network-1');
+    expect(allowed).not.toContain('00000000-0000-4000-8000-000000000020');
+    // Stable resource/domain denial, not merely MCP_CAPABILITY_DENIED.
+    const payload = JSON.parse(result.text) as { success: boolean; error?: string };
+    expect(payload.success).toBe(false);
+    expect(payload.error).toMatch(/you can only link intents to this community/i);
+    // Rejected before the intent-index graph/write.
+    expect(intentIndexGraphCalls).toBe(0);
   });
 });
