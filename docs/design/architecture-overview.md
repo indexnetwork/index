@@ -260,7 +260,7 @@ System agents are seeded with fixed UUIDs and granted their default permissions 
 
 #### MCP auth resolver
 
-MCP requests authenticate via an `x-api-key` header. The resolver reads the Better Auth `metadata.agentId` stored on the token and hands back `{ userId, agentId }` to the MCP server factory. Tool handlers receive both on the `ResolvedToolContext`, so every tool call is attributable to a concrete agent identity — not just a user. MCP callers without a resolved `agentId` are blocked from all tools except `register_agent`, `read_docs`, and `scrape_url` by the agent-registration gate inside `createMcpServer`.
+MCP requests authenticate via an `x-api-key` header. The resolver reads the Better Auth `metadata.agentId` stored on the token and hands back `{ userId, agentId }` to the MCP server factory. Tool handlers receive both on the `ResolvedToolContext`, so every tool call is attributable to a concrete agent identity — not just a user. MCP callers without a resolved `agentId` are blocked from all tools except `register_agent` and `read_docs` by the principal-aware capability policy inside `createMcpServer`. (Contact/Gmail tools, `scrape_url`, and the deprecated profile/profile-run aliases are not exposed on the MCP surface at all — they remain available via the direct HTTP Tool API and chat.)
 
 #### Permission-gated tool access
 

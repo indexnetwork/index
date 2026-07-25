@@ -8,10 +8,29 @@ import { success, error, normalizeUrl } from "./tool.helpers.js";
 /** Host capabilities consumed by URL and profile utility tools. */
 type UtilityToolDeps = Pick<ToolRegistryCompositionDeps, "scraper" | "userDb">;
 
-export function createUtilityTools(defineTool: DefineTool, deps: UtilityToolDeps) {
-  const { scraper } = deps;
+/**
+ * Tool-surface profile. The restricted `'mcp'` surface omits `scrape_url`
+ * (IND-597) and sanitizes `read_docs` guidance so it never advertises the
+ * contact/Gmail workflows removed from MCP (IND-596). The default `'rest'`
+ * surface (direct HTTP Tool API + chat) retains full behavior.
+ */
+export type ToolSurface = "mcp" | "rest";
 
-  const scrapeUrl = defineTool({
+export interface CreateUtilityToolsOptions {
+  surface?: ToolSurface;
+}
+
+export function createUtilityTools(
+  defineTool: DefineTool,
+  deps: UtilityToolDeps,
+  options: CreateUtilityToolsOptions = {},
+) {
+  const { scraper } = deps;
+  const isMcpSurface = options.surface === "mcp";
+
+  // scrape_url is omitted from the MCP tool surface (IND-597). It remains
+  // available via the direct HTTP Tool API and the chat agent.
+  const scrapeUrl = isMcpSurface ? null : defineTool({
     name: "scrape_url",
     description:
       "Extracts text content from a web URL — articles, LinkedIn/GitHub profiles, documentation, project pages, etc. " +
@@ -72,6 +91,45 @@ export function createUtilityTools(defineTool: DefineTool, deps: UtilityToolDeps
     }),
     handler: async ({ context: _context, query }) => {
       const topic = query.topic?.trim().toLowerCase();
+
+      // Contact management tools are not exposed on the MCP surface (IND-596), so
+      // MCP guidance is composed WITHOUT the contact workflows while retaining the
+      // conceptual personal-network / ghost-user model. REST/chat compose the full
+      // contact guidance. This is structural composition, not post-hoc stripping.
+      const contactsSection = isMcpSurface
+        ? `## Contact Management
+
+Contacts are people in a user's personal network, stored as members of their personal network with 'contact' permission.
+
+- **Ghost users**: When a contact email doesn't match an existing account, a ghost user is created. Ghost users are enriched with public profile data and participate in opportunity matching — they can be discovered even before joining the platform.
+- **Personal network scope**: Pass the personal network networkId to discover_opportunities to scope discovery to just the user's contacts.
+- **Contact data**: Each contact has userId, name, email, avatar, and isGhost flag.
+
+_Managing contacts (adding, importing, listing, and removing) is not available through MCP. Contacts are managed via the Index web app and REST APIs._`
+        : `## Contact Management
+
+Contacts are people in a user's personal network, stored as members of their personal network with 'contact' permission.
+
+- **Adding contacts**: Via import_contacts (bulk), add_contact (single email), or import_gmail_contacts (Google integration).
+- **Ghost users**: When a contact email doesn't match an existing account, a ghost user is created. Ghost users are enriched with public profile data and participate in opportunity matching — they can be discovered even before joining the platform.
+- **Personal network scope**: Pass the personal network networkId to discover_opportunities to scope discovery to just the user's contacts.
+- **Contact data**: Each contact has userId, name, email, avatar, and isGhost flag.
+
+### Contact Workflow
+1. import_contacts or import_gmail_contacts → bulk add to network
+2. list_contacts → view all contacts with userId
+3. discover_opportunities(networkId=personalIndexId) → find matches among contacts
+4. add_contact(email) → add individual contact
+5. remove_contact(contactUserId) → remove from network`;
+
+      const managingContactsWorkflow = isMcpSurface
+        ? ""
+        : `### Managing Contacts
+1. import_gmail_contacts() or import_contacts([...]) → add contacts
+2. list_contacts() → view network
+3. discover_opportunities(networkId=personalIndexId) → find matches among contacts
+
+`;
 
       const sections: Record<string, string> = {
         entities: `## Entity Model & Relationships
@@ -173,21 +231,7 @@ Profiles are the user's identity on the platform, used for semantic matching in 
 - Social links enable enrichment — encourage users to add LinkedIn/GitHub
 - Profiles are recalculated when updated, which may surface new matches`,
 
-        contacts: `## Contact Management
-
-Contacts are people in a user's personal network, stored as members of their personal network with 'contact' permission.
-
-- **Adding contacts**: Via import_contacts (bulk), add_contact (single email), or import_gmail_contacts (Google integration).
-- **Ghost users**: When a contact email doesn't match an existing account, a ghost user is created. Ghost users are enriched with public profile data and participate in opportunity matching — they can be discovered even before joining the platform.
-- **Personal network scope**: Pass the personal network networkId to discover_opportunities to scope discovery to just the user's contacts.
-- **Contact data**: Each contact has userId, name, email, avatar, and isGhost flag.
-
-### Contact Workflow
-1. import_contacts or import_gmail_contacts → bulk add to network
-2. list_contacts → view all contacts with userId
-3. discover_opportunities(networkId=personalIndexId) → find matches among contacts
-4. add_contact(email) → add individual contact
-5. remove_contact(contactUserId) → remove from network`,
+        contacts: contactsSection,
 
         discovery: `## Discovery Mechanics
 
@@ -229,12 +273,7 @@ Discovery is the process of finding meaningful connections between users based o
 3. read_intents(networkId, userId) → get intents of both parties
 4. discover_opportunities(partyUserIds=[id1,id2], entities=[...], hint="reason") → create introduction
 
-### Managing Contacts
-1. import_gmail_contacts() or import_contacts([...]) → add contacts
-2. list_contacts() → view network
-3. discover_opportunities(networkId=personalIndexId) → find matches among contacts
-
-### Creating a Community
+${managingContactsWorkflow}### Creating a Community
 1. create_network(title, prompt) → create network
 2. create_network_membership(networkId, userId) → invite members
 3. Members create intents → auto-indexed
@@ -317,5 +356,7 @@ Discovery is the process of finding meaningful connections between users based o
     },
   });
 
-  return [scrapeUrl, readDocs, reportAgentActivity] as const;
+  return [scrapeUrl, readDocs, reportAgentActivity].filter(
+    (tool): tool is Exclude<typeof tool, null> => tool !== null,
+  );
 }

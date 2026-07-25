@@ -49,10 +49,12 @@ const mcpToolMetadataCache = new Map<string, McpToolRegistrationMetadata[]>();
  * the cached metadata set is automatically invalidated.
  */
 export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
-  'contactsEnabled' | 'chatSession' | 'agentDatabase' | 'agentDispatcher' | 'questionerEnqueue'
+  'chatSession' | 'agentDatabase' | 'agentDispatcher' | 'questionerEnqueue'
 >): string {
+  // CONTACTS_ENABLED deliberately does NOT shape the MCP registry: contact and
+  // Gmail-import tools are omitted from the MCP surface entirely (IND-596), so
+  // the flag can never change the MCP tool set.
   return [
-    `contacts:${deps.contactsEnabled === true ? '1' : '0'}`,
     `chat:${deps.chatSession ? '1' : '0'}`,
     `agent:${deps.agentDatabase ? '1' : '0'}`,
     `negotiation:${deps.agentDispatcher ? '1' : '0'}`,
@@ -81,7 +83,7 @@ export function getCachedMcpToolMetadata(deps: ToolDeps): readonly McpToolRegist
   const cached = mcpToolMetadataCache.get(cacheKey);
   if (cached) return cached;
 
-  const registry = createToolRegistry(deps);
+  const registry = createToolRegistry(deps, { surface: 'mcp' });
   const metadata = Array.from(registry.values()).map((toolDef): McpToolRegistrationMetadata => {
     const jsonSchema = zodToJsonSchema(toolDef.schema) as JsonSchemaType;
     return {
@@ -342,7 +344,7 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `5. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_context(...).\n` +
     `${communityStep}\n` +
     `6. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted.\n` +
-    `7. Call complete_onboarding() to finish setup. Gmail/contact import and discovery are optional after onboarding, never mandatory.`
+    `7. Call complete_onboarding() to finish setup. Discovery is optional after onboarding, never mandatory.`
   );
 }
 
@@ -714,8 +716,9 @@ export function createMcpServer(
 
           // Re-create registry with per-request deps for scoped database access.
           // Do not use cached registration metadata handlers here: tool handlers
-          // close over userDb/systemDb when the registry is created.
-          const requestRegistry = createToolRegistry(requestDeps);
+          // close over userDb/systemDb when the registry is created. The MCP
+          // surface profile keeps the tools/call lookup identical to tools/list.
+          const requestRegistry = createToolRegistry(requestDeps, { surface: 'mcp' });
           const requestTool = requestRegistry.get(toolName);
 
           if (!requestTool) {

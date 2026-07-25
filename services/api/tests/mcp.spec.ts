@@ -282,7 +282,9 @@ describe('MCP Server Factory', () => {
 
     const first = getCachedMcpToolMetadata(mockDeps);
     const second = getCachedMcpToolMetadata(mockDeps);
-    const registry = createToolRegistry(mockDeps);
+    // The MCP server builds its metadata from the restricted MCP registry
+    // profile, so compare against that same profile (not the full REST set).
+    const registry = createToolRegistry(mockDeps, { surface: 'mcp' });
 
     expect(second).toBe(first);
     expect(first.length).toBe(registry.size);
@@ -300,18 +302,22 @@ describe('MCP Server Factory', () => {
     expect(withoutAgentTools.some((tool) => tool.name === 'list_agents')).toBe(false);
   });
 
-  it('classifies every possible current registry tool in the canonical production matrix', () => {
-    const fullRegistry = createToolRegistry({
+  it('classifies every MCP-surface registry tool in the canonical production matrix', () => {
+    // The canonical matrix must classify exactly the tools exposed on the MCP
+    // surface. Contact/Gmail tools, scrape_url, and the deprecated aliases are
+    // omitted from the MCP registry (IND-596/597/598), so contactsEnabled must
+    // not add them back even when true.
+    const mcpRegistry = createToolRegistry({
       ...mockDeps,
       contactsEnabled: true,
       chatSession: {
         listSessions: async () => [],
         getSession: async () => null,
       },
-    });
+    }, { surface: 'mcp' });
 
     expect([...CANONICAL_MCP_TOOL_ACCESS_RULES.keys()].sort()).toEqual(
-      [...fullRegistry.keys()].sort(),
+      [...mcpRegistry.keys()].sort(),
     );
   });
 
@@ -464,6 +470,37 @@ describe('MCP Server Factory', () => {
     expect(humanNames).not.toContain('list_contacts');
     expect(humanNames).not.toContain('read_user_profiles');
     expect(unregisteredNames).toEqual([]);
+  });
+
+  it('rejects a forged tools/call to a removed MCP surface as an unregistered tool', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const deps = { ...mockDeps, database: resolvedContextDatabase };
+    const server = createMcpServer(
+      deps,
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id', isSessionAuth: true }),
+        resolveUserId: async () => 'test-user-id',
+      },
+      mockScopedDepsFactory,
+    );
+
+    // Even the broadest caller (session human) cannot reach the removed tools:
+    // they are omitted from the MCP registry, so the SDK rejects tools/call with
+    // a JSON-RPC InvalidParams (-32602) "Tool <name> not found" error BEFORE any
+    // handler runs. This is distinct from a policy denial (which returns a
+    // result with isError + MCP_CAPABILITY_DENIED) or a handler error — both of
+    // which must fail this assertion.
+    for (const removed of ['scrape_url', 'list_contacts', 'read_user_profiles', 'import_gmail_contacts', 'get_profile_run']) {
+      const response = await invokeMcpRequest({
+        server,
+        method: 'tools/call',
+        requestParams: { name: removed, arguments: {} },
+        headers: { authorization: 'Bearer session-token' },
+      });
+      expect(response.result, `${removed} must not execute or return a policy denial`).toBeUndefined();
+      expect(response.error?.code, `${removed} must be rejected as an unregistered tool`).toBe(-32602);
+      expect(response.error?.message).toBe(`Tool ${removed} not found`);
+    }
   });
 
   it('denies forged hidden tools/call before chat DB, scoped DB, registry, or graph work', async () => {

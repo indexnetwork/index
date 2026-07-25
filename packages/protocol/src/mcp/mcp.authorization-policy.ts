@@ -184,23 +184,14 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   // Protocol guidance.
   read_docs: { access: 'informational', reach: 'principal' },
 
-  // Removed/restricted MCP surfaces. Implementations stay available to other
-  // consumers until their owning sibling removes registry exposure.
-  add_contact: { access: 'removed', reach: 'principal' },
-  import_contacts: { access: 'removed', reach: 'principal' },
-  import_gmail_contacts: { access: 'removed', reach: 'principal' },
-  list_contacts: { access: 'removed', reach: 'principal' },
-  remove_contact: { access: 'removed', reach: 'principal' },
-  search_contacts: { access: 'removed', reach: 'principal' },
-  scrape_url: { access: 'removed', reach: 'principal' },
+  // Restricted MCP surface still registered by the shared registry. The contact
+  // and Gmail-import tools, scrape_url, and the deprecated profile/profile-run
+  // aliases are no longer classified here because they are omitted from the MCP
+  // registry composition entirely (IND-596/597/598) — an unregistered tool is
+  // rejected as unknown before any authorization work. report_agent_activity
+  // remains registered on the MCP surface and stays denied via 'removed' until
+  // its owning sibling removes its registry exposure.
   report_agent_activity: { access: 'removed', reach: 'principal' },
-  read_user_profiles: { access: 'removed', reach: 'principal' },
-  create_user_profile: { access: 'removed', reach: 'principal' },
-  update_user_profile: { access: 'removed', reach: 'principal' },
-  confirm_user_profile: { access: 'removed', reach: 'principal' },
-  preview_user_profile: { access: 'removed', reach: 'principal' },
-  get_profile_run: { access: 'removed', reach: 'principal' },
-  cancel_profile_run: { access: 'removed', reach: 'principal' },
 });
 
 /** Tools visible while a session-authenticated human completes onboarding. */

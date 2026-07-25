@@ -248,7 +248,6 @@ describe("extractBearerToken", () => {
 
 describe('getMcpToolMetadataCacheKey', () => {
   const baseDeps = {
-    contactsEnabled: false,
     chatSession: undefined,
     agentDatabase: undefined,
     agentDispatcher: undefined,
@@ -258,11 +257,18 @@ describe('getMcpToolMetadataCacheKey', () => {
   test('changes when registry-shaping dependencies change', () => {
     const base = getMcpToolMetadataCacheKey(baseDeps);
 
-    expect(getMcpToolMetadataCacheKey({ ...baseDeps, contactsEnabled: true })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, chatSession: {} as never })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, agentDatabase: {} as never })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, agentDispatcher: {} as never })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, questionerEnqueue: (async () => undefined) as never })).not.toBe(base);
+  });
+
+  test('CONTACTS_ENABLED never shapes the MCP registry cache key', () => {
+    // Contact/Gmail tools are omitted from the MCP surface entirely, so the flag
+    // can never change the MCP tool set or its metadata cache key (IND-596).
+    const base = getMcpToolMetadataCacheKey(baseDeps);
+    const withContacts = { ...baseDeps, contactsEnabled: true } as Parameters<typeof getMcpToolMetadataCacheKey>[0];
+    expect(getMcpToolMetadataCacheKey(withContacts)).toBe(base);
   });
 });
 
