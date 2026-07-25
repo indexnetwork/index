@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { McpResolvedIdentity } from '../../shared/schemas/mcp-auth.schema.js';
 import type { McpPolicyAgentSnapshot } from '../mcp.authorization-policy.js';
-import { CANONICAL_MCP_TOOL_ACCESS_RULES, MCP_PERMISSION_ACTIONS, McpCapabilityPolicy, defineMcpToolAccessRules, defineMcpToolPermissionMap, resolveMcpCapabilitySubject } from '../mcp.authorization-policy.js';
+import { CANONICAL_MCP_TOOL_ACCESS_RULES, MCP_PERMISSION_ACTIONS, McpCapabilityPolicy, defineMcpToolAccessRules, defineMcpToolPermissionMap, projectStoredPermissionActions, resolveMcpCapabilitySubject } from '../mcp.authorization-policy.js';
 
 const USER_ID = 'user-1';
 const AGENT_ID = 'agent-1';
@@ -456,5 +456,115 @@ describe('MCP capability permission extension point', () => {
       agent: snapshot,
     });
     expect(policy.authorize(resolvedAfterRefresh, 'create_intent').allowed).toBe(true);
+  });
+});
+
+describe('rolling-data legacy permission projection (IND-607)', () => {
+  test('projects a stored manage:profile row to manage:identity + manage:premises', () => {
+    expect(projectStoredPermissionActions(['manage:profile'])).toEqual([
+      'manage:identity',
+      'manage:premises',
+    ]);
+  });
+
+  test('projects a stored manage:contacts row to no capability', () => {
+    expect(projectStoredPermissionActions(['manage:contacts'])).toEqual([]);
+    expect(projectStoredPermissionActions(['manage:intents', 'manage:contacts'])).toEqual([
+      'manage:intents',
+    ]);
+  });
+
+  test('passes canonical actions through unchanged and de-duplicates the profile overlap', () => {
+    expect(projectStoredPermissionActions(['manage:intents', 'manage:negotiations'])).toEqual([
+      'manage:intents',
+      'manage:negotiations',
+    ]);
+    expect(projectStoredPermissionActions(['manage:identity', 'manage:profile'])).toEqual([
+      'manage:identity',
+      'manage:premises',
+    ]);
+  });
+
+  test('ignores unknown actions (fail closed)', () => {
+    expect(projectStoredPermissionActions(['manage:profile', 'manage:bogus', 'manage:contacts'])).toEqual([
+      'manage:identity',
+      'manage:premises',
+    ]);
+    expect(projectStoredPermissionActions(['totally:unknown'])).toEqual([]);
+  });
+
+  test('a residual legacy manage:profile row still grants identity + premises capabilities at the loading boundary', () => {
+    // No access loss during the rolling window: an un-migrated (or old-replica
+    // re-written) manage:profile grant is interpreted at capability-load time.
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'global',
+          scopeId: null,
+          actions: ['manage:profile', 'manage:contacts'],
+        }],
+      }),
+    });
+
+    expect(subject.permissions).toEqual(['manage:identity', 'manage:premises']);
+    expect(policy.authorize(subject, 'read_premises').allowed).toBe(true);
+    expect(policy.authorize(subject, 'read_user_contexts').allowed).toBe(true);
+    // manage:contacts projected to nothing — no contact-era capability leaks.
+  });
+
+  test('preserves owner/network scope matching for legacy rows (no scope widening)', () => {
+    // A legacy manage:profile grant scoped to another network must NOT apply to
+    // an agent bound to network-1 — scope matching runs before projection.
+    const wrongNetwork = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'network',
+          scopeId: 'another-network',
+          actions: ['manage:profile'],
+        }],
+      }),
+    });
+    expect(wrongNetwork.permissions).toEqual([]);
+
+    // The same legacy grant scoped to the bound network DOES project.
+    const boundNetwork = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'network',
+          scopeId: NETWORK_ID,
+          actions: ['manage:profile'],
+        }],
+      }),
+    });
+    expect(boundNetwork.permissions).toEqual(['manage:identity', 'manage:premises']);
+  });
+
+  test('a canonical-only row is unchanged by the projection', () => {
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'global',
+          scopeId: null,
+          actions: ['manage:identity', 'manage:premises', 'manage:intents'],
+        }],
+      }),
+    });
+    expect(subject.permissions).toEqual(['manage:identity', 'manage:premises', 'manage:intents']);
   });
 });

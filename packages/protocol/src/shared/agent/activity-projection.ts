@@ -62,7 +62,9 @@ export type ActivityQuestionDomain = z.infer<typeof ActivityQuestionDomainSchema
  * bucket so a future protocol mode can never leak to an agent caller.
  */
 export const QUESTION_MODE_TO_DOMAIN: Readonly<Record<string, ActivityQuestionDomain>> = {
-  enrichment: "identity",
+  // Enrichment answers run the PremiseGraph lifecycle (createPremiseFromAnswer →
+  // PremiseEvents.onCreated), so enrichment questions affect the premises domain.
+  enrichment: "premises",
   intent: "intents",
   discovery: "opportunities",
   pool_discovery: "opportunities",
@@ -121,6 +123,38 @@ const QUESTION_DOMAIN_PERMISSIONS: Readonly<Partial<Record<ActivityQuestionDomai
   opportunities: "manage:opportunities",
   negotiations: "manage:negotiations",
 };
+
+/**
+ * Canonical affected-domain permission an agent must hold to read or answer a
+ * question of the given mode. Returns `null` for human-owner-only questions
+ * (`chat`, and any unrecognized mode, which fail closed to the human-only
+ * bucket) — no agent permission can release those.
+ *
+ * This is the single shared mode → affected-domain → permission mapping, reusing
+ * `QUESTION_MODE_TO_DOMAIN` and `QUESTION_DOMAIN_PERMISSIONS` so question
+ * read/answer inheritance is identical to the `read_activity_summary`
+ * projection. It keys on `mode` only: the canonical question model does not vary
+ * a question's owning domain by `purpose` (purpose refines generation and
+ * provenance, not the affected domain), so purpose is intentionally not a
+ * discriminant here rather than being guessed at.
+ */
+export function questionModeRequiredPermission(mode: string): string | null {
+  const domain = QUESTION_MODE_TO_DOMAIN[mode] ?? "chat";
+  return QUESTION_DOMAIN_PERMISSIONS[domain] ?? null;
+}
+
+/**
+ * Whether an MCP caller may read or answer a question of the given mode. Human
+ * (owner) callers see every mode; agents are confined to modes backed by one of
+ * their exact affected-domain permissions. A network agent's binding is applied
+ * separately by the caller (network/intent clamp); this is purely the
+ * affected-domain permission gate.
+ */
+export function callerMayAccessQuestionMode(caller: McpActivityCaller, mode: string): boolean {
+  if (caller.kind === "human") return true;
+  const required = questionModeRequiredPermission(mode);
+  return required !== null && caller.permissions.includes(required);
+}
 
 /**
  * Explicit response contract for `read_activity_summary`. Every domain field

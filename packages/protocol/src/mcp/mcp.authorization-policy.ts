@@ -293,6 +293,53 @@ export type ResolveMcpCapabilitySubjectInput = {
   agent?: McpPolicyAgentSnapshot | null;
 };
 
+/**
+ * Retired durable grant actions and the canonical capabilities each projects to
+ * at the permission-loading boundary. TEMPORARY rolling-data compatibility
+ * (IND-607): while a mixed-version fleet is live, old replicas (current `dev`)
+ * still WRITE `manage:profile` / `manage:contacts` rows AFTER the pre-deploy
+ * `0109` migration runs, and un-migrated rows may also remain. The new runtime
+ * must therefore interpret these residual STORED rows so no agent loses access
+ * during the rolling window and none is over-authorized:
+ *
+ *   - `manage:profile`  -> `manage:identity` + `manage:premises`
+ *   - `manage:contacts` -> (no capability)
+ *
+ * This is NOT a public alias: the legacy names are never accepted as INPUT
+ * (grant validation and tool schemas are canonical-only) and never surfaced in
+ * documentation or `tools/list`. They are tolerated ONLY as pre-existing stored
+ * data, and only until the post-drain final sweep sets `retired_remaining = 0`
+ * and the compatibility-removal gate is met (see the IND-609 rollout doc).
+ */
+const LEGACY_STORED_ACTION_PROJECTION: Readonly<Record<string, readonly McpPermissionAction[]>> = {
+  'manage:profile': ['manage:identity', 'manage:premises'],
+  'manage:contacts': [],
+};
+
+/**
+ * Central capability-loading interpretation of a stored permission row's raw
+ * actions. Canonical actions pass through; retired actions project per
+ * {@link LEGACY_STORED_ACTION_PROJECTION}; every unknown action fails closed
+ * (ignored). Owner/scope matching is applied by the caller BEFORE this runs, so
+ * this function never widens the scope a grant applies to.
+ */
+export function projectStoredPermissionActions(
+  actions: readonly string[],
+): McpPermissionAction[] {
+  const granted = new Set<McpPermissionAction>();
+  for (const action of actions) {
+    const projected = LEGACY_STORED_ACTION_PROJECTION[action];
+    if (projected !== undefined) {
+      for (const capability of projected) granted.add(capability);
+      continue;
+    }
+    const parsed = McpPermissionActionSchema.safeParse(action);
+    if (parsed.success) granted.add(parsed.data);
+    // Unknown actions are ignored — fail closed.
+  }
+  return [...granted];
+}
+
 function resolveAgentPermissions(
   identity: McpResolvedIdentity,
   agent: McpPolicyAgentSnapshot,
@@ -311,9 +358,10 @@ function resolveAgentPermissions(
       );
     if (!scopeApplies) continue;
 
-    for (const action of permission.actions) {
-      const parsed = McpPermissionActionSchema.safeParse(action);
-      if (parsed.success) granted.add(parsed.data);
+    // Canonical-only going forward, plus temporary interpretation of residual
+    // legacy stored rows during the mixed-version rolling window.
+    for (const action of projectStoredPermissionActions(permission.actions)) {
+      granted.add(action);
     }
   }
   return [...granted];

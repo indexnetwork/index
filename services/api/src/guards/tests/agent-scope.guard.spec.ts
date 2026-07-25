@@ -45,7 +45,7 @@ describe('agent-scope.guard', () => {
     scopedAgentId = scopedAgent.id;
     await agentDatabaseAdapter.grantPermission({
       agentId: scopedAgent.id, userId, scope: 'network', scopeId: networkId,
-      actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
+      actions: ['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities'],
     });
     scopedKey = (await agentTokenAdapter.create(userId, { name: 'scoped', agentId: scopedAgent.id })).key;
 
@@ -55,7 +55,7 @@ describe('agent-scope.guard', () => {
     globalAgentId = globalAgent.id;
     await agentDatabaseAdapter.grantPermission({
       agentId: globalAgent.id, userId, scope: 'global',
-      actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
+      actions: ['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities'],
     });
     globalKey = (await agentTokenAdapter.create(userId, { name: 'global', agentId: globalAgent.id })).key;
   });
@@ -104,7 +104,7 @@ describe('agent-scope.guard', () => {
       agentId: scopedAgentId,
       userId,
       scope: 'global',
-      actions: ['manage:profile'],
+      actions: ['manage:identity'],
     });
 
     expect(await resolveAgentNetworkScopeById(scopedAgentId)).toBe(networkId);

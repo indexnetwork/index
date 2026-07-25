@@ -724,7 +724,7 @@ describe('MCP Server Factory', () => {
       opportunitiesSurfaced: 4,
       opportunitiesBySignal: fullSummary.opportunitiesBySignal,
       pendingQuestionsByDomain: { intents: 1, negotiations: 2, chat: 5 },
-      answeredQuestionsByDomain: { identity: 3 },
+      answeredQuestionsByDomain: { premises: 3 },
       negotiationsStarted: 5,
       negotiationsCompleted: 6,
     });
@@ -816,5 +816,355 @@ describe('MCP Server Factory', () => {
     };
     expect(callResponse.result?.isError).toBe(true);
     expect(payload.code).toBe('MCP_CAPABILITY_DENIED');
+  });
+
+  // ── IND-608: independent tools/call authorization & scope matrix ────────────
+  //
+  // These exercise capability authorization at the transport boundary via real
+  // tools/call requests with SCHEMA-VALID arguments (the MCP SDK validates the
+  // registered input schema BEFORE the handler runs, so empty args on a tool
+  // with required fields would surface as a schema error, not a policy result).
+  // Positive admission is proven by reaching the scoped-deps/handler seam (the
+  // scopedDepsFactory.create spy), never merely by the absence of a denial code.
+
+  /** Builds an agent registry snapshot with a single permission row. */
+  function agentDbWith(permission: {
+    agentId: string;
+    scope: 'global' | 'network';
+    scopeId: string | null;
+    actions: string[];
+  }): AgentDatabase {
+    return {
+      ...mockAgentDb,
+      getAgentWithRelations: async () => ({
+        id: permission.agentId,
+        ownerId: 'test-user-id',
+        name: 'Agent',
+        description: null,
+        type: 'external',
+        status: 'active',
+        metadata: {},
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        transports: [],
+        permissions: [{
+          id: 'permission-1',
+          agentId: permission.agentId,
+          userId: 'test-user-id',
+          scope: permission.scope,
+          scopeId: permission.scopeId,
+          actions: permission.actions,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }],
+      }),
+    };
+  }
+
+  /** A context database whose reads throw, proving denial happens before DB work. */
+  function guardReads(counter: { reads: number }): ToolDeps['database'] {
+    return new Proxy(resolvedContextDatabase, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && property.startsWith('get')) {
+          return async () => {
+            counter.reads += 1;
+            throw new Error('chat database must not be reached');
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+  }
+
+  interface CallToolOutcome {
+    isError?: boolean;
+    code?: string;
+    text: string;
+    /** Records each scopedDepsFactory.create(userId, allowedNetworkIds) call. */
+    scopedCreateArgs: Array<{ userId: string; allowedNetworkIds: string[] }>;
+  }
+
+  async function callTool(params: {
+    identity: Record<string, unknown>;
+    toolName: string;
+    arguments: Record<string, unknown>;
+    agentDatabase?: AgentDatabase;
+    database?: ToolDeps['database'];
+    extraDeps?: Partial<ToolDeps>;
+    headers?: Record<string, string>;
+    /** When true, the scoped-deps factory throws if the handler seam is reached. */
+    scopedThrows?: boolean;
+  }): Promise<CallToolOutcome> {
+    clearMcpToolMetadataCacheForTests();
+    const scopedCreateArgs: Array<{ userId: string; allowedNetworkIds: string[] }> = [];
+    const scopedFactory: ScopedDepsFactory = {
+      create: (userId: string, allowedNetworkIds: string[]) => {
+        scopedCreateArgs.push({ userId, allowedNetworkIds });
+        if (params.scopedThrows) throw new Error('scoped database must not be created');
+        return { userDb: {} as ToolDeps['userDb'], systemDb: {} as ToolDeps['systemDb'] };
+      },
+    };
+    const server = createMcpServer(
+      {
+        ...mockDeps,
+        database: params.database ?? resolvedContextDatabase,
+        agentDatabase: params.agentDatabase ?? mockAgentDb,
+        ...params.extraDeps,
+      },
+      {
+        resolveIdentity: async () => params.identity,
+        resolveUserId: async () => 'test-user-id',
+      } as McpAuthResolver,
+      scopedFactory,
+    );
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/call',
+      requestParams: { name: params.toolName, arguments: params.arguments },
+      headers: params.headers ?? { 'x-api-key': 'agent-key' },
+    });
+    const text = response.result?.content?.[0]?.text ?? '';
+    let code: string | undefined;
+    try {
+      code = (JSON.parse(text || '{}') as { code?: string }).code;
+    } catch {
+      code = undefined;
+    }
+    return { isError: response.result?.isError, code, text, scopedCreateArgs };
+  }
+
+  it('denies a forged cross-network create_intent before context, scoped DB, or graph work', async () => {
+    // The agent is bound to network-1 but its only manage:intents grant is scoped
+    // to network-2, so the grant does not apply. With schema-valid arguments the
+    // SDK schema passes and the capability layer denies at the preliminary stage,
+    // before any chat context read, scoped DB creation, or graph work.
+    const counter = { reads: 0 };
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-x', networkScopeId: 'network-1' },
+      agentDatabase: agentDbWith({ agentId: 'agent-x', scope: 'network', scopeId: 'network-2', actions: ['manage:intents'] }),
+      database: guardReads(counter),
+      scopedThrows: true,
+      toolName: 'create_intent',
+      arguments: { description: 'A specific valid discovery intent' },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(counter.reads).toBe(0);
+    expect(result.scopedCreateArgs).toEqual([]);
+  });
+
+  it('admits a network agent whose grant matches its binding and reaches the scoped handler seam', async () => {
+    // With a matching network-1 grant and schema-valid arguments, create_intent
+    // is authorized and dispatch reaches the scoped-deps/handler seam.
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-x', networkScopeId: 'network-1' },
+      agentDatabase: agentDbWith({ agentId: 'agent-x', scope: 'network', scopeId: 'network-1', actions: ['manage:intents'] }),
+      toolName: 'create_intent',
+      arguments: { description: 'A specific valid discovery intent' },
+    });
+    expect(result.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(result.scopedCreateArgs.length).toBe(1);
+  });
+
+  it('clamps a bound network-1 principal away from a network it is a member of (resource clamp)', async () => {
+    // The user is a member of BOTH network-1 and network-2, but the agent is
+    // bound to network-1. The scoped-deps factory must be constructed with only
+    // the bound network in allowedNetworkIds, so no network-2 resource, graph, or
+    // adapter work is reachable — the clamp is at scoped-deps construction, not a
+    // per-row permission check.
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([
+        { networkId: 'network-1', networkTitle: 'N1', isPersonal: false, permissions: [] },
+        { networkId: 'network-2', networkTitle: 'N2', isPersonal: false, permissions: [] },
+      ]),
+    } as unknown as ToolDeps['database'];
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-c', networkScopeId: 'network-1' },
+      agentDatabase: agentDbWith({ agentId: 'agent-c', scope: 'network', scopeId: 'network-1', actions: ['manage:intents'] }),
+      database: memberDb,
+      toolName: 'read_intents',
+      arguments: {},
+    });
+    expect(result.scopedCreateArgs.length).toBe(1);
+    const allowed = result.scopedCreateArgs[0]!.allowedNetworkIds;
+    expect(allowed).toContain('network-1');
+    expect(allowed).not.toContain('network-2');
+  });
+
+  it('restricts confirm_opportunity_delivery to designated delivery agents, before DB work', async () => {
+    // Ordinary agent with manage:opportunities and schema-valid arguments is
+    // denied by the delivery_only rule before context/scoped DB work.
+    const counter = { reads: 0 };
+    const denied = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-d' },
+      agentDatabase: agentDbWith({ agentId: 'agent-d', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+      database: guardReads(counter),
+      scopedThrows: true,
+      toolName: 'confirm_opportunity_delivery',
+      arguments: { opportunityId: '00000000-0000-4000-8000-000000000001', trigger: 'ambient' },
+    });
+    expect(denied.isError).toBe(true);
+    expect(denied.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(counter.reads).toBe(0);
+    expect(denied.scopedCreateArgs).toEqual([]);
+
+    // A designated delivery agent is admitted and reaches the scoped handler seam.
+    const allowed = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-d', isDeliveryAgent: true },
+      agentDatabase: agentDbWith({ agentId: 'agent-d', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+      toolName: 'confirm_opportunity_delivery',
+      arguments: { opportunityId: '00000000-0000-4000-8000-000000000001', trigger: 'ambient' },
+    });
+    expect(allowed.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(allowed.scopedCreateArgs.length).toBe(1);
+  });
+
+  it('lets a network agent reach meta-network premises with manage:premises (principal reach)', async () => {
+    // Premises are meta-network: a network-bound agent holding manage:premises
+    // retains principal reach for read_premises and reaches the scoped seam.
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-p', networkScopeId: 'network-1' },
+      agentDatabase: agentDbWith({ agentId: 'agent-p', scope: 'network', scopeId: 'network-1', actions: ['manage:premises'] }),
+      toolName: 'read_premises',
+      arguments: {},
+    });
+    expect(result.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(result.scopedCreateArgs.length).toBe(1);
+  });
+
+  it('denies a network agent premises access when it lacks manage:premises, before DB work', async () => {
+    const counter = { reads: 0 };
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-p', networkScopeId: 'network-1' },
+      agentDatabase: agentDbWith({ agentId: 'agent-p', scope: 'network', scopeId: 'network-1', actions: ['manage:intents'] }),
+      database: guardReads(counter),
+      scopedThrows: true,
+      toolName: 'read_premises',
+      arguments: {},
+    });
+    expect(result.isError).toBe(true);
+    expect(result.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(counter.reads).toBe(0);
+    expect(result.scopedCreateArgs).toEqual([]);
+  });
+
+  it('keeps H2A chat history human-only: a permissioned agent is denied, the owning human is admitted', async () => {
+    // list_conversations is human_only. It is only registered when chatSession is
+    // present, so include it and prove the agent is capability-denied while the
+    // owning session human reaches the handler seam.
+    const chatSession = {
+      listSessions: async () => [],
+      getSession: async () => null,
+    } as unknown as ToolDeps['chatSession'];
+
+    const counter = { reads: 0 };
+    const agentDenied = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-h' },
+      agentDatabase: agentDbWith({ agentId: 'agent-h', scope: 'global', scopeId: null, actions: ['manage:intents'] }),
+      extraDeps: { chatSession },
+      database: guardReads(counter),
+      scopedThrows: true,
+      toolName: 'list_conversations',
+      arguments: {},
+    });
+    expect(agentDenied.isError).toBe(true);
+    expect(agentDenied.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(counter.reads).toBe(0);
+    expect(agentDenied.scopedCreateArgs).toEqual([]);
+
+    const humanAllowed = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      extraDeps: { chatSession },
+      headers: { authorization: 'Bearer session-token' },
+      toolName: 'list_conversations',
+      arguments: {},
+    });
+    expect(humanAllowed.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(humanAllowed.scopedCreateArgs.length).toBe(1);
+  });
+
+  it('enforces exact question affected-domain inheritance on answer_pending_question at tools/call', async () => {
+    // The canonical matrix admits answer_pending_question with a UNION of domain
+    // actions, so a global manage:intents agent passes capability policy and
+    // reaches the handler. The handler must then deny answering a NEGOTIATION
+    // question (wrong affected domain) and write nothing.
+    const negotiationQuestion = {
+      id: 'neg-1',
+      title: 'Negotiation question',
+      prompt: 'Prompt',
+      options: [],
+      multiSelect: false,
+      mode: 'negotiation',
+      sourceType: 'negotiation',
+      sourceId: 'task-1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    let answerWrites = 0;
+    const answerCalls: Array<{ userId: string; questionId: string }> = [];
+    const questionDeps: Partial<ToolDeps> = {
+      findPendingQuestions: (async (userId: string) => {
+        void userId;
+        return [negotiationQuestion];
+      }) as unknown as ToolDeps['findPendingQuestions'],
+      answerPendingQuestion: (async (userId: string, questionId: string) => {
+        answerWrites += 1;
+        answerCalls.push({ userId, questionId });
+        return true;
+      }) as unknown as ToolDeps['answerPendingQuestion'],
+    };
+
+    // Wrong-domain global agent: admitted by policy, denied by the handler gate,
+    // nothing written.
+    const denied = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-q' },
+      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:intents'] }),
+      extraDeps: questionDeps,
+      toolName: 'answer_pending_question',
+      arguments: { questionId: 'neg-1', freeText: 'the client\u2019s explicit answer' },
+    });
+    // Reached the handler (not a capability denial), but refused with no write.
+    expect(denied.code).not.toBe('MCP_CAPABILITY_DENIED');
+    const deniedPayload = JSON.parse(denied.text) as { success: boolean; error?: string };
+    expect(deniedPayload.success).toBe(false);
+    expect(deniedPayload.error).toMatch(/not authorized to answer this question/i);
+    expect(answerWrites).toBe(0);
+
+    // Matching-domain agent: admitted and the write is threaded with the
+    // authenticated caller userId (provenance).
+    const allowed = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-q' },
+      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:negotiations'] }),
+      extraDeps: questionDeps,
+      toolName: 'answer_pending_question',
+      arguments: { questionId: 'neg-1', freeText: 'the client\u2019s explicit answer' },
+    });
+    const allowedPayload = JSON.parse(allowed.text) as { success: boolean; data?: Record<string, unknown> };
+    expect(allowedPayload.success).toBe(true);
+    expect(answerWrites).toBe(1);
+    expect(answerCalls).toEqual([{ userId: 'test-user-id', questionId: 'neg-1' }]);
+  });
+
+  it('projects read_pending_questions by exact affected domain at tools/call', async () => {
+    // A global manage:intents agent sees intent questions but never negotiation
+    // questions, even though the tool is union-admitted.
+    const questions = [
+      { id: 'intent-q', title: 'I', prompt: 'p', options: [], multiSelect: false, mode: 'intent', sourceType: 'intent', sourceId: 'i1', createdAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'neg-q', title: 'N', prompt: 'p', options: [], multiSelect: false, mode: 'negotiation', sourceType: 'negotiation', sourceId: 't1', createdAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const questionDeps: Partial<ToolDeps> = {
+      findPendingQuestions: (async () => questions) as unknown as ToolDeps['findPendingQuestions'],
+    };
+
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-q' },
+      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:intents'] }),
+      extraDeps: questionDeps,
+      toolName: 'read_pending_questions',
+      arguments: {},
+    });
+    const payload = JSON.parse(result.text) as { success: boolean; data?: { questions?: Array<{ id: string }> } };
+    expect(payload.success).toBe(true);
+    const ids = (payload.data?.questions ?? []).map((q) => q.id);
+    expect(ids).toEqual(['intent-q']);
   });
 });

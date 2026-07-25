@@ -12,10 +12,41 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [7.3.0] — 2026-07-25
+
 ### Added
 - Add the injected `IntentProposalStore` host boundary so web proposal cards are
   emitted only after the normalized description, optional network scope, and
   complete verifier output have been durably bound to their owner.
+- Add `projectStoredPermissionActions` at the MCP capability-loading boundary:
+  temporary rolling-data compatibility that interprets residual **stored** legacy
+  grant rows during a mixed-version deploy (`manage:profile` →
+  `manage:identity` + `manage:premises`; `manage:contacts` → no capability;
+  owner/scope preserved; unknown actions fail closed). Not a public alias — legacy
+  names remain rejected as input and absent from `tools/list`/docs. Removed only
+  after the post-drain final sweep and compatibility gate (see the IND-609
+  rollout doc).
+
+### Changed
+- **MCP permission migration (IND-606/607).** Retire issuance of the legacy
+  `manage:profile` and `manage:contacts` grant actions in favor of
+  `manage:identity` and `manage:premises`. Issuers, defaults, validation, and the
+  capability policy emit/accept only the canonical action set; the durable data
+  migration (`services/api/drizzle/0109_migrate_agent_permission_actions.sql`)
+  converges existing grants (`manage:profile` → `manage:identity` + `manage:premises`;
+  `manage:contacts` removed). No public protocol type changes.
+- **Exact question affected-domain inheritance (IND-608).** `read_pending_questions`
+  and `answer_pending_question` now enforce each question's exact affected-domain
+  permission at the handler, not merely the union that admits the tool. A global
+  `manage:intents` agent can no longer read or answer negotiation/enrichment/
+  discovery questions it does not manage; the owning human is unaffected.
+- **Corrected `QUESTION_MODE_TO_DOMAIN` mapping.** `enrichment` now maps to the
+  `premises` domain (`manage:premises`), matching the enrichment answer pipeline
+  that runs the PremiseGraph lifecycle. Previously mapped to `identity`. This
+  changes the exported constant's `enrichment` value and the
+  `read_activity_summary` projection of enrichment question counts from the
+  identity domain to the premises domain — the deliberate public-constant change
+  motivating this minor bump from the 7.2.0 floor.
 
 ## [7.2.0] — 2026-07-25
 

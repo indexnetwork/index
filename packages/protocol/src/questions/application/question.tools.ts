@@ -15,10 +15,11 @@
  */
 import { z } from "zod";
 
-import type { DefineTool } from "../../shared/agent/tool.helpers.js";
+import type { DefineTool, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { QuestionerToolDeps } from "../ports/question.tools.port.js";
 import { error, success } from "../../shared/agent/tool.helpers.js";
 import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../../shared/agent/tool.scope.js";
+import { callerMayAccessQuestionMode } from "../../shared/agent/activity-projection.js";
 import type { PendingQuestionSummary } from "../../shared/schemas/pending-question.schema.js";
 import type { QuestionMode } from "../domain/question.schema.js";
 
@@ -33,6 +34,23 @@ const SELF_OWNED_MODES: QuestionMode[] = ["enrichment", "intent", "discovery"];
 
 function isVisibleInScopedNetwork(question: PendingQuestionSummary, userId: string, networkId: string): boolean {
   return question.actors?.some((actor) => actor.userId === userId && actor.networkId === networkId) === true;
+}
+
+/**
+ * Exact affected-domain permission gate for a single question mode.
+ *
+ * The canonical MCP matrix admits both question tools with a UNION of domain
+ * actions (so any question-holding agent can reach the handler), but exact
+ * inheritance must be enforced here: a global `manage:intents` agent must not
+ * read or answer a `negotiation` question. Reuses the shared
+ * `callerMayAccessQuestionMode` mapping so this matches the read_activity_summary
+ * projection. A caller context without an `mcpCaller` (REST/chat surfaces) is
+ * owner-trusted and passes; MCP humans own their data and also pass.
+ */
+function callerMayAccessQuestion(context: ResolvedToolContext, mode: QuestionMode): boolean {
+  const caller = context.mcpCaller;
+  if (!caller) return true;
+  return callerMayAccessQuestionMode(caller, mode);
 }
 
 function stripInternalQuestionFields(
@@ -94,13 +112,17 @@ export function createQuestionerTools(defineTool: DefineTool, deps: QuestionerTo
           ...(isIntentScoped ? { scopeType: 'intent' as const, scopeId: scopedIntentId } : {}),
           limit,
         });
+        // Exact affected-domain permission projection: an agent sees only the
+        // question modes backed by one of its permissions (a global intents-only
+        // agent never sees negotiation questions). The owning human passes.
+        const permitted = fetched.filter((q) => callerMayAccessQuestion(context, q.mode));
         const visible = isNetworkScoped
-          ? fetched.filter(
+          ? permitted.filter(
               (q) =>
                 (SELF_OWNED_MODES as string[]).includes(q.mode) &&
                 isVisibleInScopedNetwork(q, context.userId, scopedNetworkId!),
             )
-          : fetched;
+          : permitted;
         const limited = visible.slice(0, limit).map(stripInternalQuestionFields);
 
         if (isIntentScoped) {
@@ -190,6 +212,16 @@ export function createQuestionerTools(defineTool: DefineTool, deps: QuestionerTo
         if (!target) {
           return error(
             "Question not found among the client's pending questions — it may already be answered or dismissed. Re-check with read_pending_questions.",
+          );
+        }
+
+        // Enforce exact affected-domain inheritance on the resolved target BEFORE
+        // any write: the union admission that let this tool run does not grant
+        // cross-domain answering (e.g. a manage:intents agent cannot answer a
+        // negotiation question). Fail closed with nothing persisted.
+        if (!callerMayAccessQuestion(context, target.mode)) {
+          return error(
+            "You are not authorized to answer this question — it belongs to a domain your agent key does not manage.",
           );
         }
 
