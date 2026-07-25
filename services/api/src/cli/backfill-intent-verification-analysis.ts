@@ -303,20 +303,29 @@ export async function runBackfill(options: BackfillOptions, deps: BackfillDeps):
 }
 
 /** Runtime wiring. It is kept here rather than in the pure orchestration core. */
-export async function createRuntimeDeps(options: Pick<BackfillOptions, 'dryRun'>): Promise<BackfillDeps> {
-  // Keep imports that initialize a database connection out of the module graph
-  // used by dry-run orchestration tests. The entrypoint is the only live caller.
-  const [{ sql }, { default: db }, { ChatDatabaseAdapter }] = await Promise.all([
+export async function createRuntimeDeps(
+  options: Pick<BackfillOptions, 'dryRun'>,
+  registerCloseDb?: (closeDb: () => Promise<void>) => void,
+): Promise<BackfillDeps> {
+  // Runtime modules remain lazy: assembling a dry-run command must not validate
+  // DATABASE_URL, open a database client, or construct a provider-backed model.
+  let runtime: Promise<{ sql: Awaited<typeof import('drizzle-orm')>['sql']; db: (Awaited<typeof import('../lib/drizzle/drizzle')>)['default']; chat: InstanceType<(Awaited<typeof import('../adapters/chat.database.adapter')>)['ChatDatabaseAdapter']> }> | undefined;
+  const getRuntime = () => runtime ??= Promise.all([
     import('drizzle-orm'),
     import('../lib/drizzle/drizzle'),
     import('../adapters/chat.database.adapter'),
-  ]);
-  // Constructing SemanticVerifier creates an OpenRouter model and requires a
-  // provider key. Default dry-runs deliberately do neither.
-  const verifier = options.dryRun ? null : new SemanticVerifier();
-  const chat = new ChatDatabaseAdapter();
+  ]).then(([{ sql }, { default: db, closeDb }, { ChatDatabaseAdapter }]) => {
+    registerCloseDb?.(closeDb);
+    return { sql, db, chat: new ChatDatabaseAdapter() };
+  });
+  let verifier: SemanticVerifier | undefined;
+  const getVerifier = () => {
+    if (options.dryRun) throw new Error('verifier is unavailable in dry-run mode');
+    return verifier ??= new SemanticVerifier();
+  };
   return {
     async listCandidates(limit) {
+      const { db, sql } = await getRuntime();
       const rows = await db.execute(sql`
         SELECT i.id, i.user_id, i.payload, i.source_id, i.source_type, (p.id IS NOT NULL) AS proposal_confirmed, i.semantic_entropy,
           referential_anchor, intent_mode, speech_act_type, felicity_authority,
@@ -340,6 +349,7 @@ export async function createRuntimeDeps(options: Pick<BackfillOptions, 'dryRun'>
       }));
     },
     async countCandidates() {
+      const { db, sql } = await getRuntime();
       const rows = await db.execute(sql`
         SELECT
           CASE
@@ -361,6 +371,7 @@ export async function createRuntimeDeps(options: Pick<BackfillOptions, 'dryRun'>
       return result;
     },
     async countControls() {
+      const { db, sql } = await getRuntime();
       const rows = await db.execute(sql`SELECT
         count(*) FILTER (WHERE felicity_authority IS NOT NULL AND felicity_sincerity IS NOT NULL AND felicity_clarity IS NOT NULL)::int AS complete_analysis,
         count(*) FILTER (WHERE (felicity_authority IS NULL OR felicity_sincerity IS NULL OR felicity_clarity IS NULL)
@@ -369,16 +380,18 @@ export async function createRuntimeDeps(options: Pick<BackfillOptions, 'dryRun'>
       const row = rows[0] as { complete_analysis?: number; partial_analysis?: number } | undefined;
       return { completeAnalysis: Number(row?.complete_analysis ?? 0), partialAnalysis: Number(row?.partial_analysis ?? 0) };
     },
-    getProfileContext: (userId) => chat.getProfile(userId),
-    verify: (payload, context) => {
-      if (!verifier) throw new Error('verifier is unavailable in dry-run mode');
-      return verifier.invoke(payload, context);
+    async getProfileContext(userId) {
+      const { chat } = await getRuntime();
+      return chat.getProfile(userId);
     },
+    verify: (payload, context) => getVerifier().invoke(payload, context),
     async getAttemptStatus(runId, intentId) {
+      const { db, sql } = await getRuntime();
       const rows = await db.execute(sql`SELECT status FROM intent_verification_backfill_attempts WHERE run_id = ${runId} AND intent_id = ${intentId}`);
       return (rows[0] as { status?: AttemptStatus } | undefined)?.status ?? null;
     },
     async beginRun(runId, model) {
+      const { db, sql } = await getRuntime();
       const rows = await db.execute(sql`INSERT INTO intent_verification_backfill_runs (id, predicate_version, verifier_name, verifier_model, status)
         VALUES (${runId}, ${BACKFILL_PREDICATE_VERSION}, 'SemanticVerifier', ${model}, 'running')
         ON CONFLICT (id) DO UPDATE SET status = 'running', finished_at = NULL
@@ -389,6 +402,7 @@ export async function createRuntimeDeps(options: Pick<BackfillOptions, 'dryRun'>
       if (rows.length !== 1) throw new Error('run ID belongs to incompatible provenance; choose a new run ID');
     },
     async recordAttempt(input) {
+      const { db, sql } = await getRuntime();
       await db.execute(sql`INSERT INTO intent_verification_backfill_attempts
         (run_id, intent_id, partition, status, payload_hash, context_hash, verifier_output, error_code, applied_at)
         VALUES (${input.runId}, ${input.intentId}, ${input.partition}, ${input.status}, ${input.payloadHash}, ${input.contextHash}, ${input.verifierOutput ? JSON.stringify(input.verifierOutput) : null}::jsonb, ${input.errorCode}, ${input.status === 'updated' ? new Date() : null})
@@ -398,6 +412,7 @@ export async function createRuntimeDeps(options: Pick<BackfillOptions, 'dryRun'>
           applied_at = EXCLUDED.applied_at, updated_at = now()`);
     },
     async applyAnalysis(candidate, analysis, provenance) {
+      const { db, sql } = await getRuntime();
       // Fail closed: all source/lifecycle/payload/embedding/timestamp/old-analysis controls
       // must still match the dry-run snapshot. The SET list is intentionally seven fields only.
       const c = candidate.control;
@@ -438,6 +453,7 @@ export async function createRuntimeDeps(options: Pick<BackfillOptions, 'dryRun'>
       });
     },
     async finishRun(runId, status) {
+      const { db, sql } = await getRuntime();
       await db.execute(sql`UPDATE intent_verification_backfill_runs SET status = ${status}, finished_at = now() WHERE id = ${runId}`);
     },
   };
@@ -542,11 +558,7 @@ export async function runEntrypoint(args: string[], overrides: EntrypointOverrid
   let close: (() => Promise<void>) | undefined;
   try {
     return await runCli(args, {
-      createDeps: overrides.createDeps ?? (async (options) => {
-        const { closeDb } = await import('../lib/drizzle/drizzle');
-        close = closeDb;
-        return createRuntimeDeps(options);
-      }),
+      createDeps: overrides.createDeps ?? ((options) => createRuntimeDeps(options, (closeDb) => { close = closeDb; })),
       stdout: overrides.stdout ?? ((line) => process.stdout.write(line)),
       stderr: overrides.stderr ?? ((line) => process.stderr.write(line)),
     });
