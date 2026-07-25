@@ -16,7 +16,7 @@ import { getModelName, SemanticVerifier } from '@indexnetwork/protocol';
 import { intentProposalVerifierOutputSchema } from '../lib/intent/intent-proposal';
 
 const isEntrypoint = import.meta.main;
-if (isEntrypoint) {
+export function loadEntrypointEnvironment(): void {
   // The maintenance path is safe by default: an explicit production environment
   // is required before any caller can even select production configuration.
   const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
@@ -473,6 +473,12 @@ export interface CliEntrypointDeps {
   serializeReport?: (report: BackfillReport) => string;
 }
 
+export interface EntrypointOverrides {
+  createDeps?: (options: BackfillOptions) => Promise<BackfillDeps>;
+  stdout?: (line: string) => void;
+  stderr?: (line: string) => void;
+}
+
 const forbiddenReportKeys = new Set([
   'id', 'userId', 'payload', 'sourceId', 'content', 'description', 'context',
   'verifierOutput', 'reasoning', 'embedding', 'summary',
@@ -531,19 +537,25 @@ export async function runCli(args: string[], deps: CliEntrypointDeps): Promise<n
   }
 }
 
-if (isEntrypoint) {
+/** Actual executable entrypoint, with local-only seams for boundary tests. */
+export async function runEntrypoint(args: string[], overrides: EntrypointOverrides = {}): Promise<number> {
   let close: (() => Promise<void>) | undefined;
   try {
-    process.exitCode = await runCli(process.argv.slice(2), {
-      createDeps: async (options) => {
+    return await runCli(args, {
+      createDeps: overrides.createDeps ?? (async (options) => {
         const { closeDb } = await import('../lib/drizzle/drizzle');
         close = closeDb;
         return createRuntimeDeps(options);
-      },
-      stdout: (line) => process.stdout.write(line),
-      stderr: (line) => process.stderr.write(line),
+      }),
+      stdout: overrides.stdout ?? ((line) => process.stdout.write(line)),
+      stderr: overrides.stderr ?? ((line) => process.stderr.write(line)),
     });
   } finally {
     await close?.();
   }
+}
+
+if (isEntrypoint) {
+  loadEntrypointEnvironment();
+  process.exitCode = await runEntrypoint(process.argv.slice(2));
 }

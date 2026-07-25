@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test';
+import path from 'path';
 
 import { classifyCandidate, parseArgs, runBackfill, runCli, validateVerifierOutput, type BackfillDeps, type Candidate } from '../backfill-intent-verification-analysis';
 
@@ -56,6 +57,23 @@ const dryRunOptions = {
   dryRun: true, limit: 25, confirmProduction: false, verifierModel: 'google/gemini-2.5-flash',
   inputCostPerMillion: 0.3, outputCostPerMillion: 2.5,
 };
+
+async function runFixture(name: string) {
+  const fixture = path.resolve(import.meta.dir, 'fixtures', name);
+  const child = Bun.spawn({
+    cmd: ['/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, process.execPath, '--no-env-file', fixture],
+    cwd: path.resolve(import.meta.dir, '../../../../..'),
+    // Deliberately clear, rather than merely override, inherited credentials.
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { stdout, stderr, exitCode };
+}
 
 describe('intent verification analysis maintenance workflow', () => {
   it('partitions proposal-confirm defaults separately from partial and legacy paths', () => {
@@ -145,6 +163,27 @@ describe('intent verification analysis maintenance workflow', () => {
     expect(deps.beginRun).not.toHaveBeenCalled();
     expect(deps.recordAttempt).not.toHaveBeenCalled();
     expect(deps.applyAnalysis).not.toHaveBeenCalled();
+  });
+
+  it('reproduces the retired eager-provider startup failure without database or credentials', async () => {
+    const result = await runFixture('backfill-intent-verification-analysis.legacy-eager-startup.fixture.ts');
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('createModel(intentVerifier): OPENROUTER_API_KEY is required');
+  });
+
+  it('runs the actual entrypoint harness with no provider/database configuration and emits one report', async () => {
+    const result = await runFixture('backfill-intent-verification-analysis.fixed-entrypoint.fixture.ts');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    const lines = result.stdout.trimEnd().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({
+      reportVersion: 1, mode: 'dry-run', candidateCount: 0, verifierCalls: 0,
+      attempted: 0, updated: 0, skipped: 0, failed: 0, unchangedControl: 0,
+    });
   });
 
   it('fails closed when report serialization is malformed', async () => {
