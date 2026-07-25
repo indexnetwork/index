@@ -3,9 +3,11 @@ import { IntentGraphFactory } from '@indexnetwork/protocol';
 import type { IntentGraphDatabase, QuestionerEnqueueFn } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { IntentProposalDatabaseAdapter, intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { IntentEvents } from '../events/intent.event';
+import { intentProposalAnalysisSchema } from '../lib/intent/intent-proposal';
 
 const logger = log.service.from("IntentService");
 
@@ -16,6 +18,27 @@ export class IntentNetworkMembershipError extends Error {
   constructor(readonly networkId: string) {
     super('You are not a current member of this network');
     this.name = 'IntentNetworkMembershipError';
+  }
+}
+
+export type IntentProposalConfirmationErrorCode =
+  | 'proposal_not_found'
+  | 'proposal_expired'
+  | 'proposal_consumed'
+  | 'proposal_payload_mismatch'
+  | 'proposal_analysis_missing';
+
+/** Stable typed failure for an invalid authoritative proposal confirmation. */
+export class IntentProposalConfirmationError extends Error {
+  constructor(readonly code: IntentProposalConfirmationErrorCode) {
+    super({
+      proposal_not_found: 'Intent proposal was not found',
+      proposal_expired: 'Intent proposal has expired',
+      proposal_consumed: 'Intent proposal has already been consumed',
+      proposal_payload_mismatch: 'Intent proposal payload does not match the authoritative record',
+      proposal_analysis_missing: 'Intent proposal has no valid verifier analysis',
+    }[code]);
+    this.name = 'IntentProposalConfirmationError';
   }
 }
 
@@ -51,6 +74,7 @@ export class IntentService {
   private db: IntentGraphDatabase;
   private factory: IntentGraphFactory;
   private adapter: IntentDatabaseAdapter;
+  private proposalAdapter: IntentProposalDatabaseAdapter;
   private embedder: EmbedderAdapter;
   private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
   private questionerEnqueue?: QuestionerEnqueueFn;
@@ -61,12 +85,14 @@ export class IntentService {
    */
   constructor(deps?: {
     adapter?: IntentDatabaseAdapter;
+    proposalAdapter?: IntentProposalDatabaseAdapter;
     embedder?: EmbedderAdapter;
     proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
     questionerEnqueue?: QuestionerEnqueueFn;
     emitProposalCreated?: (intentId: string, userId: string) => void;
   }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
+    this.proposalAdapter = deps?.proposalAdapter ?? intentProposalDatabaseAdapter;
     this.db = this.adapter;
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
     this.proposalQueue = deps?.proposalQueue ?? intentQueue;
@@ -299,8 +325,9 @@ export class IntentService {
    * Bypasses the full intent graph (no LLM re-inference/verification).
    * Idempotent under concurrent confirmation: the adapter serializes one exact
    * user + proposal pair and returns the transaction winner to every caller.
-   * Generates embedding, inserts into DB, optionally associates with index, and enqueues HyDE and intent-refinement jobs.
-   * Embedder and queue failures are logged but do not abort creation.
+   * Generates embedding, inserts into DB, optionally associates with index, and
+   * obtains observable queue admission before emitting downstream side effects.
+   * A queue failure after commit is retryable through the consumed proposal.
    *
    * @param userId - The user ID
    * @param description - The pre-verified intent description
@@ -311,73 +338,82 @@ export class IntentService {
   async createFromProposal(userId: string, description: string, proposalId: string, networkId?: string) {
     logger.verbose('Creating intent from proposal', { userId, proposalId });
 
-    const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
-    if (existing) {
-      // A previous response can have failed after persistence but before Redis
-      // acknowledged admission. Replay is intentionally the repair mechanism:
-      // it does not create another row, and the queue path is idempotent.
-      try {
-        await this.proposalQueue.addGenerateHydeJob({ intentId: existing.id, userId });
-      } catch (error) {
-        logger.error('Intent admission enqueue failed during confirmation replay', {
-          event: 'intent_admission_enqueue_failed',
-          intentId: existing.id,
-          userId,
-          proposalId,
-          replay: true,
-          error,
-        });
-        throw new IntentAdmissionEnqueueError(existing.id, error);
+    const proposal = await this.proposalAdapter.getProposalForOwner(proposalId, userId);
+    if (!proposal) throw new IntentProposalConfirmationError('proposal_not_found');
+    if (proposal.description !== description || proposal.networkId !== (networkId ?? null)) {
+      throw new IntentProposalConfirmationError('proposal_payload_mismatch');
+    }
+    if (proposal.status === 'consumed' && proposal.consumedIntentId) {
+      const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
+      if (!existing || existing.id !== proposal.consumedIntentId) {
+        throw new IntentProposalConfirmationError('proposal_consumed');
       }
+      await this.enqueueProposalAdmission({
+        intentId: existing.id,
+        userId,
+        proposalId,
+        networkId: proposal.networkId,
+        replay: true,
+      });
       return existing;
+    }
+    if (proposal.status !== 'pending') {
+      throw new IntentProposalConfirmationError('proposal_consumed');
+    }
+    if (proposal.expiresAt.getTime() <= Date.now()) {
+      throw new IntentProposalConfirmationError('proposal_expired');
+    }
+    if (!intentProposalAnalysisSchema.safeParse(proposal.analysis).success) {
+      throw new IntentProposalConfirmationError('proposal_analysis_missing');
     }
 
     // Cheap advisory preflight avoids embedding/transaction/queue/event work
     // for clear denials. confirmProposalIntent still re-checks membership under
-    // its advisory lock and remains the final race-safe authority.
-    if (networkId && !await this.adapter.isNetworkMember(networkId, userId)) {
-      throw new IntentNetworkMembershipError(networkId);
+    // its row locks and remains the final race-safe authority.
+    if (proposal.networkId && !await this.adapter.isNetworkMember(proposal.networkId, userId)) {
+      throw new IntentNetworkMembershipError(proposal.networkId);
     }
 
     const embedding = await this.generateEmbeddingOrZero(
-      description,
+      proposal.description,
       'Embedding generation failed (intent will be created with zero vector)',
       { userId, proposalId },
     );
 
-    const intentData = {
+    const confirmation = await this.adapter.confirmProposalIntent({
+      proposalId,
       userId,
-      payload: description,
+      description,
+      ...(networkId ? { networkId } : {}),
       embedding,
-      sourceType: 'discovery_form' as const,
-      sourceId: proposalId,
-    };
-    const confirmation = await this.adapter.confirmProposalIntent(intentData, networkId);
+    });
     if (confirmation.kind === 'membership_required') {
-      if (!networkId) throw new Error('Unexpected membership requirement without a network');
-      throw new IntentNetworkMembershipError(networkId);
+      if (!proposal.networkId) throw new Error('Unexpected membership requirement without a network');
+      throw new IntentNetworkMembershipError(proposal.networkId);
     }
-    if (confirmation.kind === 'existing') return confirmation.intent;
+    if (confirmation.kind === 'replay') return confirmation.intent;
+    if (confirmation.kind !== 'created') {
+      const code = {
+        missing: 'proposal_not_found',
+        expired: 'proposal_expired',
+        consumed: 'proposal_consumed',
+        payload_mismatch: 'proposal_payload_mismatch',
+        analysis_missing: 'proposal_analysis_missing',
+      }[confirmation.kind] as IntentProposalConfirmationErrorCode;
+      throw new IntentProposalConfirmationError(code);
+    }
 
     const created = confirmation.intent;
-    const scope = networkId ? { scopeType: 'network' as const, scopeId: networkId } : {};
-    try {
-      await this.proposalQueue.addGenerateHydeJob({
-        intentId: created.id,
-        userId,
-        ...scope,
-      });
-    } catch (error) {
-      logger.error('Intent admission enqueue failed after confirmation persistence', {
-        event: 'intent_admission_enqueue_failed',
-        intentId: created.id,
-        userId,
-        proposalId,
-        replay: false,
-        error,
-      });
-      throw new IntentAdmissionEnqueueError(created.id, error);
-    }
+    const scope = proposal.networkId
+      ? { scopeType: 'network' as const, scopeId: proposal.networkId }
+      : {};
+    await this.enqueueProposalAdmission({
+      intentId: created.id,
+      userId,
+      proposalId,
+      networkId: proposal.networkId,
+      replay: false,
+    });
 
     if (this.questionerEnqueue) {
       try {
@@ -390,7 +426,7 @@ export class IntentService {
           ...scope,
           context: {
             intentId: created.id,
-            payload: description,
+            payload: proposal.description,
             userContext,
           },
         });
@@ -406,6 +442,50 @@ export class IntentService {
     this.emitProposalCreated(created.id, userId);
 
     return created;
+  }
+
+  /**
+   * Obtain durable queue admission for a newly committed confirmation or an
+   * exact consumed-proposal retry. The queue contract is idempotent; surfacing
+   * failure lets the same authoritative confirmation repair admission.
+   */
+  private async enqueueProposalAdmission(input: {
+    intentId: string;
+    userId: string;
+    proposalId: string;
+    networkId: string | null;
+    replay: boolean;
+  }): Promise<void> {
+    const scope = input.networkId
+      ? { scopeType: 'network' as const, scopeId: input.networkId }
+      : {};
+    try {
+      await this.proposalQueue.addGenerateHydeJob({
+        intentId: input.intentId,
+        userId: input.userId,
+        ...scope,
+      });
+    } catch (error) {
+      logger.error(
+        input.replay
+          ? 'Intent admission enqueue failed during confirmation replay'
+          : 'Intent admission enqueue failed after confirmation persistence',
+        {
+          event: 'intent_admission_enqueue_failed',
+          intentId: input.intentId,
+          userId: input.userId,
+          proposalId: input.proposalId,
+          replay: input.replay,
+          error,
+        },
+      );
+      throw new IntentAdmissionEnqueueError(input.intentId, error);
+    }
+  }
+
+  /** Reject a pending durable proposal owned by the authenticated user. */
+  async rejectProposal(userId: string, proposalId: string): Promise<boolean> {
+    return this.proposalAdapter.rejectProposal(proposalId, userId);
   }
 
   /**

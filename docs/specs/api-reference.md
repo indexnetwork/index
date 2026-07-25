@@ -2535,14 +2535,32 @@ listed signal.
 
 ### POST /api/intents/confirm
 
-Confirm a proposed intent from chat. Persists the pre-verified intent directly. When `networkId` is supplied, the authenticated owner must be a current member: membership is preflighted before embedding and locked/rechecked in the same transaction that inserts the intent and assignment. Missing or soft-deleted membership returns typed HTTP 403 `network_membership_required` with no intent persisted.
+Confirm a proposed intent from chat. The proposal ID resolves a durable, owner-scoped
+record created by the verifier tool. That record binds the exact normalized
+description, optional network, complete verifier output, and a 24-hour expiry.
+Caller fields are matching assertions only; verifier analysis is never accepted from
+the client.
+
+The server locks and rechecks the proposal plus any required current membership in the
+same transaction that inserts the intent, writes the exact entropy/anchor/mode/speech
+act/felicity columns, creates the optional network assignment, and consumes the
+proposal. Concurrent/retried confirmation replays the winning intent without duplicate
+question or event side effects. The transaction winner obtains indexing-queue
+acknowledgement before those effects; if admission fails after commit, the API returns
+retryable `503 intent_admission_enqueue_failed`, and an exact consumed-proposal retry
+re-attempts the idempotent scoped admission without creating another intent.
+Missing/foreign proposals return `404
+proposal_not_found`, expired proposals return `410 proposal_expired`, and
+consumed/rejected, mismatched, or invalid-analysis proposals return a typed `409`.
+Missing or soft-deleted membership returns HTTP 403
+`network_membership_required` with no intent persisted.
 
 **Auth**: AuthGuard
 
 **Request body** (Zod-validated):
 ```json
 {
-  "proposalId": "string (required)",
+  "proposalId": "UUID (required)",
   "description": "string (required)",
   "networkId": "UUID (optional)"
 }
@@ -2559,7 +2577,8 @@ Confirm a proposed intent from chat. Persists the pre-verified intent directly. 
 
 ### POST /api/intents/reject
 
-Reject a proposed intent from chat. Logs the rejection for analytics.
+Reject a pending, unexpired proposal owned by the authenticated user. Rejection
+durably consumes the approval opportunity so it cannot later be confirmed.
 
 **Auth**: AuthGuard
 

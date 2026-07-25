@@ -63,6 +63,7 @@ import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 import { isAgentActionsEnabled } from '../lib/agent-surface-feature';
 import { agentActionProposalDatabaseAdapter } from '../adapters/agent-action-proposal.database.adapter';
+import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
 
@@ -160,6 +161,7 @@ const protocolDeps = {
   contactsEnabled: process.env.CONTACTS_ENABLED === 'true',
   actionToolsEnabled: isAgentActionsEnabled(),
   actionProposalStore: agentActionProposalDatabaseAdapter,
+  intentProposalStore: intentProposalDatabaseAdapter,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
   negotiationSummary: negotiationSummaryService,
@@ -716,6 +718,7 @@ function createMcpServerInstance(): McpServer {
     mintConnectLink: protocolDeps.mintConnectLink,
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
+    intentProposalStore: protocolDeps.intentProposalStore,
     ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
     findPendingQuestions: protocolDeps.findPendingQuestions,
     answerPendingQuestion: protocolDeps.answerPendingQuestion,

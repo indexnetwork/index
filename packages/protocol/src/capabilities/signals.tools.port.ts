@@ -2,4 +2,5 @@ import type { ToolRegistryCompositionDeps } from "../shared/agent/tool.helpers.j
 
 /** Host capabilities consumed by signal and intent tools. */
 export type IntentToolDeps = Pick<ToolRegistryCompositionDeps, "userDb" | "systemDb">
+  & Pick<ToolRegistryCompositionDeps, "intentProposalStore">
   & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentIndex" | "profile"> };
