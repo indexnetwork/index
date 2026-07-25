@@ -118,21 +118,46 @@ export type BackfillOptions = {
 };
 
 export type BackfillReport = {
+  reportVersion: 1;
   mode: 'dry-run' | 'write';
   predicateVersion: string;
   targetCounts: Record<CandidatePartition, number>;
   controls: { completeAnalysis: number; partialAnalysis: number };
-  candidates: Array<{ id: string; partition: CandidatePartition; validation: string }>;
+  /** Aggregate only: reporting candidate identifiers or content is prohibited. */
+  candidateCount: number;
+  candidateCounts: Record<CandidatePartition, number>;
+  validationOutcomes: Record<CandidatePartition, Record<string, number>>;
   estimatedVerifierCalls: number;
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
   estimatedCostUsd: number;
+  /** Actual invocation attempts, always zero for a default dry run. */
+  verifierCalls: number;
   attempted: number;
   updated: number;
   skipped: number;
   failed: number;
   unchangedControl: number;
 };
+
+function emptyPartitionCounts(): Record<CandidatePartition, number> {
+  return {
+    proposal_confirm_default_only: 0, proposal_confirm_partial_missing: 0,
+    legacy_discovery_missing_analysis: 0, other_missing_analysis: 0,
+  };
+}
+
+function emptyValidationOutcomes(): Record<CandidatePartition, Record<string, number>> {
+  return {
+    proposal_confirm_default_only: {}, proposal_confirm_partial_missing: {},
+    legacy_discovery_missing_analysis: {}, other_missing_analysis: {},
+  };
+}
+
+function addValidationOutcome(report: BackfillReport, partition: CandidatePartition, outcome: string) {
+  report.validationOutcomes[partition] ??= {};
+  report.validationOutcomes[partition][outcome] = (report.validationOutcomes[partition][outcome] ?? 0) + 1;
+}
 
 type CandidateDbRow = {
   id: string; user_id: string; payload: string; source_id: string | null; source_type: string | null;
@@ -216,29 +241,30 @@ export async function runBackfill(options: BackfillOptions, deps: BackfillDeps):
   const [targetCounts, controls, candidates] = await Promise.all([deps.countCandidates(), deps.countControls(), deps.listCandidates(options.limit)]);
   const cost = estimateVerificationCost(candidates, options.inputCostPerMillion, options.outputCostPerMillion);
   const report: BackfillReport = {
-    mode: options.dryRun ? 'dry-run' : 'write', predicateVersion: BACKFILL_PREDICATE_VERSION,
-    targetCounts, controls, candidates: [],
+    reportVersion: 1, mode: options.dryRun ? 'dry-run' : 'write', predicateVersion: BACKFILL_PREDICATE_VERSION,
+    targetCounts, controls, candidateCount: candidates.length, candidateCounts: emptyPartitionCounts(), validationOutcomes: emptyValidationOutcomes(),
     estimatedVerifierCalls: cost.calls, estimatedInputTokens: cost.inputTokens,
     estimatedOutputTokens: cost.outputTokens, estimatedCostUsd: cost.costUsd,
-    attempted: 0, updated: 0, skipped: 0, failed: 0, unchangedControl: 0,
+    verifierCalls: 0, attempted: 0, updated: 0, skipped: 0, failed: 0, unchangedControl: 0,
   };
   if (!options.dryRun) await deps.beginRun(options.runId!, options.verifierModel);
 
   let completed = true;
   for (const candidate of candidates) {
     const partition = classifyCandidate(candidate);
+    report.candidateCounts[partition]++;
     const payloadHash = await sha256(candidate.payload);
     try {
       const prior = options.dryRun ? null : await deps.getAttemptStatus(options.runId!, candidate.id);
       if (prior === 'updated' || prior === 'skipped') {
         report.skipped++;
-        report.candidates.push({ id: candidate.id, partition, validation: `resume_${prior}` });
+        addValidationOutcome(report, partition, `resume_${prior}`);
         continue;
       }
       const profile = await deps.getProfileContext(candidate.userId);
       if (!profile) {
         report.skipped++;
-        report.candidates.push({ id: candidate.id, partition, validation: 'missing_context' });
+        addValidationOutcome(report, partition, 'missing_context');
         if (!options.dryRun) await deps.recordAttempt({ runId: options.runId!, intentId: candidate.id, partition, status: 'skipped', payloadHash, contextHash: await sha256('missing_context'), verifierOutput: null, errorCode: 'missing_context' });
         continue;
       }
@@ -246,15 +272,16 @@ export async function runBackfill(options: BackfillOptions, deps: BackfillDeps):
       // A dry run is fully side-effect free: it does not spend a verifier call.
       // It reports whether each bounded row has the authoritative prerequisites.
       if (options.dryRun) {
-        report.candidates.push({ id: candidate.id, partition, validation: 'ready_for_verification' });
+        addValidationOutcome(report, partition, 'ready_for_verification');
         continue;
       }
+      report.verifierCalls++;
       const output = await deps.verify(candidate.payload, context);
       report.attempted++;
       const validation = validateVerifierOutput(output);
       if (validation.kind === 'skip') {
         report.skipped++;
-        report.candidates.push({ id: candidate.id, partition, validation: validation.code });
+        addValidationOutcome(report, partition, validation.code);
         if (!options.dryRun) await deps.recordAttempt({ runId: options.runId!, intentId: candidate.id, partition, status: 'skipped', payloadHash, contextHash: await sha256(context), verifierOutput: output, errorCode: validation.code });
         continue;
       }
@@ -263,11 +290,11 @@ export async function runBackfill(options: BackfillOptions, deps: BackfillDeps):
       });
       const status: AttemptStatus = updated ? 'updated' : 'unchanged_control';
       if (updated) report.updated++; else report.unchangedControl++;
-      report.candidates.push({ id: candidate.id, partition, validation: status });
+      addValidationOutcome(report, partition, status);
     } catch (error) {
       completed = false;
       report.failed++;
-      report.candidates.push({ id: candidate.id, partition, validation: 'failed' });
+      addValidationOutcome(report, partition, 'failed');
       if (!options.dryRun) await deps.recordAttempt({ runId: options.runId!, intentId: candidate.id, partition, status: 'failed', payloadHash, contextHash: await sha256('verification_failed_before_context'), verifierOutput: null, errorCode: error instanceof Error ? error.name : 'unknown_error' });
     }
   }
@@ -276,7 +303,7 @@ export async function runBackfill(options: BackfillOptions, deps: BackfillDeps):
 }
 
 /** Runtime wiring. It is kept here rather than in the pure orchestration core. */
-export async function createRuntimeDeps(): Promise<BackfillDeps> {
+export async function createRuntimeDeps(options: Pick<BackfillOptions, 'dryRun'>): Promise<BackfillDeps> {
   // Keep imports that initialize a database connection out of the module graph
   // used by dry-run orchestration tests. The entrypoint is the only live caller.
   const [{ sql }, { default: db }, { ChatDatabaseAdapter }] = await Promise.all([
@@ -284,7 +311,9 @@ export async function createRuntimeDeps(): Promise<BackfillDeps> {
     import('../lib/drizzle/drizzle'),
     import('../adapters/chat.database.adapter'),
   ]);
-  const verifier = new SemanticVerifier();
+  // Constructing SemanticVerifier creates an OpenRouter model and requires a
+  // provider key. Default dry-runs deliberately do neither.
+  const verifier = options.dryRun ? null : new SemanticVerifier();
   const chat = new ChatDatabaseAdapter();
   return {
     async listCandidates(limit) {
@@ -341,7 +370,10 @@ export async function createRuntimeDeps(): Promise<BackfillDeps> {
       return { completeAnalysis: Number(row?.complete_analysis ?? 0), partialAnalysis: Number(row?.partial_analysis ?? 0) };
     },
     getProfileContext: (userId) => chat.getProfile(userId),
-    verify: (payload, context) => verifier.invoke(payload, context),
+    verify: (payload, context) => {
+      if (!verifier) throw new Error('verifier is unavailable in dry-run mode');
+      return verifier.invoke(payload, context);
+    },
     async getAttemptStatus(runId, intentId) {
       const rows = await db.execute(sql`SELECT status FROM intent_verification_backfill_attempts WHERE run_id = ${runId} AND intent_id = ${intentId}`);
       return (rows[0] as { status?: AttemptStatus } | undefined)?.status ?? null;
@@ -434,19 +466,83 @@ export function parseArgs(args: string[]): BackfillOptions {
   return { dryRun, limit, runId, confirmProduction, verifierModel: getModelName('intentVerifier'), inputCostPerMillion, outputCostPerMillion };
 }
 
+export interface CliEntrypointDeps {
+  createDeps: (options: BackfillOptions) => Promise<BackfillDeps>;
+  stdout: (line: string) => void;
+  stderr: (line: string) => void;
+  serializeReport?: (report: BackfillReport) => string;
+}
+
+const forbiddenReportKeys = new Set([
+  'id', 'userId', 'payload', 'sourceId', 'content', 'description', 'context',
+  'verifierOutput', 'reasoning', 'embedding', 'summary',
+]);
+
+function assertSanitizedJson(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) assertSanitizedJson(item);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  for (const [key, child] of Object.entries(value)) {
+    if (forbiddenReportKeys.has(key)) throw new Error(`report contains forbidden field: ${key}`);
+    assertSanitizedJson(child);
+  }
+}
+
+/** Serialize exactly the public report contract, rejecting malformed or unsafe output. */
+export function serializeBackfillReport(report: BackfillReport): string {
+  const serialized = JSON.stringify(report);
+  const parsed: unknown = JSON.parse(serialized);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('report serialization did not produce a JSON object');
+  }
+  assertSanitizedJson(parsed);
+  return serialized;
+}
+
+/**
+ * The real command boundary: parses arguments, owns stdout/stderr discipline,
+ * and turns any setup/reporting failure into a nonzero exit code. Injectable
+ * seams keep its tests credential- and database-free.
+ */
+export async function runCli(args: string[], deps: CliEntrypointDeps): Promise<number> {
+  try {
+    const options = parseArgs(args);
+    const report = await runBackfill(options, await deps.createDeps(options));
+    const serialized = (deps.serializeReport ?? serializeBackfillReport)(report);
+    const parsed: unknown = JSON.parse(serialized);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('report serialization did not produce a JSON object');
+    }
+    assertSanitizedJson(parsed);
+    // The only stdout write: one machine-parseable report object plus newline.
+    deps.stdout(`${serialized}\n`);
+    if (report.failed > 0) {
+      deps.stderr(`backfill-intent-verification-analysis completed with ${report.failed} failed candidate(s)\n`);
+      return 1;
+    }
+    return 0;
+  } catch (error) {
+    // Keep diagnostics out of stdout so consumers never need to strip logs.
+    const message = error instanceof Error ? error.message : 'unknown error';
+    deps.stderr(`backfill-intent-verification-analysis failed: ${message}\n`);
+    return 1;
+  }
+}
+
 if (isEntrypoint) {
-  const options = parseArgs(process.argv.slice(2));
   let close: (() => Promise<void>) | undefined;
   try {
-    const [{ closeDb }, deps] = await Promise.all([
-      import('../lib/drizzle/drizzle'),
-      createRuntimeDeps(),
-    ]);
-    close = closeDb;
-    const report = await runBackfill(options, deps);
-    // Reports include identifiers and counter/status evidence, never payload/profile/verifier reasoning.
-    console.log(JSON.stringify(report, null, 2));
-    process.exitCode = report.failed > 0 ? 1 : 0;
+    process.exitCode = await runCli(process.argv.slice(2), {
+      createDeps: async (options) => {
+        const { closeDb } = await import('../lib/drizzle/drizzle');
+        close = closeDb;
+        return createRuntimeDeps(options);
+      },
+      stdout: (line) => process.stdout.write(line),
+      stderr: (line) => process.stderr.write(line),
+    });
   } finally {
     await close?.();
   }
