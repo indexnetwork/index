@@ -8,6 +8,8 @@ import { intents, hydeDocuments, intentNetworks, networks, networkMembers, oppor
 import { conversations, conversationParticipants, conversationMetadata, messages, tasks } from '../schemas/conversation.schema';
 import { DebugIntentDiscoveryBlockedError, debugService } from '../services/debug.service';
 
+import { buildIntentAssignmentDiagnostic, buildIntentDebugRecord, buildIntentPipelineHealthDiagnostic, buildVerificationAnalysisDiagnostic } from '../services/debug-intent-diagnostics.service';
+
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { DebugGuard } from '../guards/debug.guard';
 import { RateLimit } from '../guards/limiter.guard';
@@ -77,8 +79,13 @@ export class DebugController {
         id: intents.id,
         payload: intents.payload,
         summary: intents.summary,
-        confidence: intents.semanticEntropy,
-        inferenceType: intents.intentMode,
+        semanticEntropy: intents.semanticEntropy,
+        referentialAnchor: intents.referentialAnchor,
+        intentMode: intents.intentMode,
+        speechActType: intents.speechActType,
+        felicityAuthority: intents.felicityAuthority,
+        felicitySincerity: intents.felicitySincerity,
+        felicityClarity: intents.felicityClarity,
         sourceType: intents.sourceType,
         hasEmbedding: sql<boolean>`${intents.embedding} IS NOT NULL`.as('has_embedding'),
         createdAt: intents.createdAt,
@@ -114,6 +121,8 @@ export class DebugController {
         networkId: intentNetworks.networkId,
         networkTitle: networks.title,
         indexPrompt: networks.prompt,
+        relevancyScore: intentNetworks.relevancyScore,
+        assignmentMetadata: intentNetworks.assignmentMetadata,
       })
       .from(intentNetworks)
       .innerJoin(networks, eq(intentNetworks.networkId, networks.id))
@@ -137,18 +146,7 @@ export class DebugController {
 
     // ── 5. Build response shapes ──────────────────────────────────────
 
-    const intentResponse = {
-      id: intent.id,
-      text: intent.payload,
-      summary: intent.summary,
-      status: intent.archivedAt ? 'archived' : 'active',
-      confidence: intent.confidence,
-      inferenceType: intent.inferenceType,
-      sourceType: intent.sourceType,
-      hasEmbedding: intent.hasEmbedding,
-      createdAt: intent.createdAt.toISOString(),
-      updatedAt: intent.updatedAt.toISOString(),
-    };
+    const intentResponse = buildIntentDebugRecord(intent);
 
     const hydeDocumentsResponse = {
       count: hydeStats?.count ?? 0,
@@ -156,11 +154,7 @@ export class DebugController {
       newestGeneratedAt: hydeStats?.newestGeneratedAt?.toISOString() ?? null,
     };
 
-    const indexAssignments = indexRows.map((r) => ({
-      networkId: r.networkId,
-      networkTitle: r.networkTitle,
-      indexPrompt: r.indexPrompt,
-    }));
+    const indexAssignments = indexRows.map(buildIntentAssignmentDiagnostic);
 
     // Aggregate opportunities by status
     const byStatus: Record<string, number> = {};
@@ -189,6 +183,7 @@ export class DebugController {
     const hasHydeDocuments = (hydeStats?.count ?? 0) > 0;
     const isInAtLeastOneIndex = indexRows.length > 0;
     const hasOpportunities = opportunityRows.length > 0;
+    const verificationAnalysis = buildVerificationAnalysisDiagnostic(intent);
 
     // Check if all opportunities are filtered from home (using role-aware helpers)
     const actionableCount = opportunityRows.filter((o) => {
@@ -209,9 +204,12 @@ export class DebugController {
     }
 
     const diagnosis = {
-      hasEmbedding: intent.hasEmbedding,
-      hasHydeDocuments,
-      isInAtLeastOneIndex,
+      ...buildIntentPipelineHealthDiagnostic({
+        hasEmbedding: intent.hasEmbedding,
+        verificationAnalysis,
+        hasHydeDocuments,
+        isInAtLeastOneIndex,
+      }),
       hasOpportunities,
       allOpportunitiesFilteredFromHome,
       filterReasons,
