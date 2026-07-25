@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { createNetworkTools } from "../network.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
+type Fixture<T> = T extends (...args: any[]) => unknown ? (...args: any[]) => any : T extends object ? { [K in keyof T]?: Fixture<T[K]> } : T;
+type ToolDepsFixture = Fixture<ToolDeps>;
+
 function makeContext(userId = "user-1"): ResolvedToolContext {
   return {
     userId,
@@ -12,7 +15,7 @@ function makeContext(userId = "user-1"): ResolvedToolContext {
   } as unknown as ResolvedToolContext;
 }
 
-function captureTool(name: string, deps: Partial<ToolDeps>) {
+function captureTool(name: string, deps: ToolDepsFixture) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string> } | undefined;
   const defineTool = (def: { name: string; handler: (...args: unknown[]) => unknown }) => {
     if (def.name === name) captured = def as typeof captured;

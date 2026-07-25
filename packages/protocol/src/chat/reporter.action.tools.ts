@@ -4,46 +4,16 @@ import { z } from "zod";
 import type { ChatGraphCompositeDatabase, UserDatabase } from "../shared/interfaces/database.interface.js";
 import type { ChatTools, ResolvedToolContext, ToolContext } from "../shared/agent/tool.factory.js";
 import { success } from "../shared/agent/tool.helpers.js";
+import type { AgentActionProposalAction, AgentActionProposalStore } from "./reporter.action.contracts.js";
+export type {
+  AgentActionProposal,
+  AgentActionProposalAction,
+  AgentActionProposalSnapshot,
+  AgentActionProposalStore,
+  AgentCleanupActionType,
+} from "./reporter.action.contracts.js";
 
 export const AGENT_ACTION_PROPOSAL_FENCE = "agent_action_proposal";
-
-export type AgentCleanupActionType = "retract_premise" | "narrow_signal" | "pause_signal";
-
-export interface AgentActionProposalSnapshot {
-  status: string;
-  updatedAt?: string;
-  payload?: string;
-  summary?: string | null;
-  assertionText?: string;
-}
-
-interface AgentActionProposalActionBase {
-  entityId: string;
-  currentState: string;
-  proposedOperation: string;
-  evidence?: string;
-  skipped?: boolean;
-  reason?: string;
-  snapshot?: AgentActionProposalSnapshot;
-  description?: string;
-}
-
-export type AgentActionProposalAction =
-  | (AgentActionProposalActionBase & { type: "retract_premise" })
-  | (AgentActionProposalActionBase & { type: "narrow_signal" })
-  | (AgentActionProposalActionBase & { type: "pause_signal" });
-
-export interface AgentActionProposal {
-  proposalId: string;
-  userId: string;
-  conversationId?: string;
-  actions: AgentActionProposalAction[];
-}
-
-/** Host persistence bridge for proposals; the reporter tool never mutates domain rows. */
-export interface AgentActionProposalStore {
-  createProposal(proposal: AgentActionProposal): Promise<void>;
-}
 
 const actionInputSchema = z.discriminatedUnion("type", [
   z.object({

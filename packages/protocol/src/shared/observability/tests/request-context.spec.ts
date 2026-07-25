@@ -25,7 +25,9 @@ describe('requestContext', () => {
     const events: string[] = [];
     await new Promise<void>((resolve) => {
       requestContext.run({
-        traceEmitter: (event) => events.push(event.name),
+        traceEmitter: (event) => {
+          if ("name" in event) events.push(event.name);
+        },
       }, () => {
         const store = requestContext.getStore();
         store?.traceEmitter?.({ type: 'graph_start', name: 'test-graph' });

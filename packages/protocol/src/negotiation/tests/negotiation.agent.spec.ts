@@ -1,9 +1,24 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
+import { afterAll, describe, expect, it, mock } from "bun:test";
 
-import { describe, it, expect } from "bun:test";
-import { IndexNegotiator } from "../negotiation.agent.js";
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: () => ({
+    invoke: async (messages: Array<{ content?: unknown }>) => {
+      const systemPrompt = String(messages[0]?.content ?? "");
+      return {
+        action: systemPrompt.includes("FINAL turn") ? "accept" : "propose",
+        assessment: {
+          reasoning: "The ML-engineering experience directly satisfies the startup's stated hiring need.",
+          suggestedRoles: { ownUser: "patient", otherUser: "agent" },
+        },
+        message: null,
+      };
+    },
+  }),
+}));
+
+const { IndexNegotiator } = await import("../negotiation.agent.js");
+
+afterAll(() => mock.restore());
 import type { UserNegotiationContext, SeedAssessment } from "../negotiation.state.js";
 
 const mlUser: UserNegotiationContext = {

@@ -24,7 +24,7 @@ import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../../shared/
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../opportunity.labels.js';
 import { safeFallbackSummary } from '../opportunity.safe-presentation.js';
 import { buildHomeCardPresentationCacheKey, buildHomeCategoryPresentationCacheKey } from '../opportunity.presentation-cache.js';
-import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
+import type { DebugMetaAgent } from '../../capabilities/participant-agents.debug.facade.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";

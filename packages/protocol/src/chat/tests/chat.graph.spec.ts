@@ -6,11 +6,14 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, expect, it, beforeAll } from "bun:test";
+import { describe, expect, it, beforeAll, spyOn, afterEach } from "bun:test";
+import { HumanMessage } from "@langchain/core/messages";
 import { ChatGraphFactory } from "../chat.graph.js";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../shared/interfaces/database.interface.js";
 import type { Embedder } from "../../shared/interfaces/embedder.interface.js";
 import type { Scraper } from "../../shared/interfaces/scraper.interface.js";
+import type { ChatSessionReader } from "../../shared/interfaces/chat-session.interface.js";
+import type { ChatStreamEvent } from "../chat-streaming.types.js";
 import { mockChatSessionReader, createMockProtocolDeps } from "./chat.graph.mocks.js";
 
 const testUserId = "test-chat-graph-user";
@@ -125,15 +128,7 @@ describe("ChatGraphFactory", () => {
 
 // ─── Factory and loadSessionContext tests ────────────────────────────────────
 
-import { describe, expect, it, beforeAll, spyOn, afterEach } from "bun:test";
-import { HumanMessage } from "@langchain/core/messages";
 import { MemorySaver } from "@langchain/langgraph";
-import { ChatGraphFactory } from "../chat.graph.js";
-import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../shared/interfaces/database.interface.js";
-import type { Embedder } from "../../shared/interfaces/embedder.interface.js";
-import type { Scraper } from "../../shared/interfaces/scraper.interface.js";
-import type { ChatSessionReader } from "../../shared/interfaces/chat-session.interface.js";
-import { createMockProtocolDeps } from "./chat.graph.mocks.js";
 
 const testFactoryUserId = "test-chat-factory-user";
 
@@ -212,6 +207,8 @@ describe("ChatGraphFactory", () => {
   let mockDatabase: ChatGraphCompositeDatabase;
   const localChatSessionReader: ChatSessionReader = {
     getSessionMessages: async () => [],
+    listSessions: async () => [],
+    getSession: async () => null,
   };
 
   beforeAll(() => {
@@ -307,15 +304,6 @@ describe("ChatGraphFactory", () => {
 // ─── Streaming tests ─────────────────────────────────────────────────────────
 
 
-import { describe, expect, it, beforeAll, spyOn, afterEach } from "bun:test";
-import { HumanMessage } from "@langchain/core/messages";
-import { ChatGraphFactory } from "../chat.graph.js";
-import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../shared/interfaces/database.interface.js";
-import type { Embedder } from "../../shared/interfaces/embedder.interface.js";
-import type { Scraper } from "../../shared/interfaces/scraper.interface.js";
-import type { ChatSessionReader } from "../../shared/interfaces/chat-session.interface.js";
-import { createMockProtocolDeps } from "./chat.graph.mocks.js";
-import type { ChatStreamEvent } from "../chat-streaming.types.js";
 
 const testStreamUserId = "test-chat-stream-user";
 const testSessionId = "test-session-stream";
@@ -402,6 +390,8 @@ describe("Chat Graph streaming", () => {
   let factory: ChatGraphFactory;
   const localChatSessionReader: ChatSessionReader = {
     getSessionMessages: async () => [],
+    listSessions: async () => [],
+    getSession: async () => null,
   };
 
   beforeAll(() => {

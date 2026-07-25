@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 
 import { deriveAllowedNetworkIds, HydeGenerator, HydeGraphFactory, LensInferrer, NetworkGraphFactory, NetworkMembershipGraphFactory, OpportunityGraphFactory, createOpportunityTools, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
-import type { AgentDispatcher, CompiledGraph, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, RawToolDefinition, ResolvedToolContext, StampNewbornOpportunitiesFn, ToolDeps } from '@indexnetwork/protocol';
+import type { AgentDispatcher, DiscoveryRunInput, DiscoveryRunRecord, HydeGraphDatabase, NegotiationGraphLike, OpportunityGraphDatabase, OpportunityToolDeps, RawToolDefinition, ResolvedToolContext, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import { captureAppException } from '../../lib/sentry';
@@ -9,7 +9,6 @@ import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { chatDatabaseAdapter, createSystemDatabase, createUserDatabase } from '../../adapters/database.adapter';
 import { embedderAdapter } from '../../adapters/embedder.adapter';
 import { cacheAdapter, hydeCacheAdapter, RedisCacheAdapter } from '../../adapters/cache.adapter';
-import { scraperAdapter } from '../../adapters/scraper.adapter';
 import { discoveryRunAdapter } from '../../adapters/discovery-run.adapter';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../../services/connect-link.service';
 import { resolveProtocolBaseUrl } from '../../lib/protocol-url';
@@ -70,7 +69,9 @@ function assertDiscoveryRunOutputFits(raw: string): void {
 }
 
 /** Build the real network graphs required when replaying discovery outside the MCP request. */
-export function createDiscoveryRunScopeGraphs(database: ToolDeps['database']): Pick<ToolDeps['graphs'], 'index' | 'networkMembership'> {
+export function createDiscoveryRunScopeGraphs(
+  database: OpportunityToolDeps['database'],
+): Pick<OpportunityToolDeps['graphs'], 'index' | 'networkMembership'> {
   return {
     index: new NetworkGraphFactory(database).createGraph(),
     networkMembership: new NetworkMembershipGraphFactory(database).createGraph(),
@@ -287,28 +288,17 @@ export class DiscoveryRunQueue {
       database: chatDatabaseAdapter,
       userDb,
       systemDb,
-      scraper: scraperAdapter,
-      embedder: embedderAdapter,
       cache: cacheAdapter,
-      integration: {} as ToolDeps['integration'],
-      contactService: {} as ToolDeps['contactService'],
-      integrationImporter: {} as ToolDeps['integrationImporter'],
-      enricher: {} as ToolDeps['enricher'],
-      negotiationDatabase: {} as ToolDeps['negotiationDatabase'],
+      negotiationDatabase: {} as OpportunityToolDeps['negotiationDatabase'],
       mintConnectLink,
       frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
-      apiBaseUrl,
       ...(questionerEnqueue && { questionerEnqueue }),
       graphs: {
-        profile: { invoke: async () => ({}) } as CompiledGraph,
-        intent: { invoke: async () => ({}) } as CompiledGraph,
         index: scopeGraphs.index,
         networkMembership: scopeGraphs.networkMembership,
-        intentIndex: { invoke: async () => ({}) } as CompiledGraph,
         opportunity: opportunityGraph,
-        premise: { invoke: async () => ({}) } as CompiledGraph,
       },
-    });
+    } satisfies OpportunityToolDeps);
 
     const discover = rawTools.get('discover_opportunities');
     if (!discover) throw new Error('discover_opportunities handler not available');
@@ -339,4 +329,3 @@ export class DiscoveryRunQueue {
 }
 
 export const discoveryRunQueue = new DiscoveryRunQueue();
-

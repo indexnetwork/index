@@ -1,6 +1,5 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
-process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
@@ -56,7 +55,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     updateOpportunityActorApproval: async () => null,
     isNetworkMember: async () => true,
     isIndexOwner: async () => false,
-    getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com' }),
+    getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com', socials: [] }),
     getOrCreateDM: async () => ({ id: 'conv-default' }),
     getIntent: async () => null,
     getNegotiationTaskForOpportunity: async () => null,
@@ -66,7 +65,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
 
 describe('opportunity graph — send node stamps actedAt', () => {
   test('patient sending a draft calls stampOpportunityActorAction with their userId', async () => {
-    let stampCall: { id: string; actorUserId: string; status: string } | null = null;
+    let stampCall: { id: string; actorUserId: string; status: string } | undefined;
     let plainStatusUpdateCalled = false;
 
     const db = buildDb({

@@ -17,7 +17,7 @@ import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/too
 import type { Question } from '../shared/schemas/question.schema.js';
 import { QuestionSchema } from '../shared/schemas/question.schema.js';
 import { dispatchElicitations } from './elicitation.dispatcher.js';
-import { createToolRegistry } from '../shared/agent/tool.registry.js';
+import { createToolRegistry } from '../runtime/foreground/composition/tool.registry.js';
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';

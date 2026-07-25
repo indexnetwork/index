@@ -1,14 +1,13 @@
 import { Job } from 'bullmq';
 
 import { PremiseGraphFactory, EnrichmentGraphFactory, createEnrichmentTools, deriveAllowedNetworkIds, getToolTimeoutPolicy, requestContext, resolveChatContext } from '@indexnetwork/protocol';
-import type { CompiledGraph, PremiseGraphDatabase, EnrichmentRunInput, EnrichmentRunRecord, RawToolDefinition, ResolvedToolContext, ToolDeps } from '@indexnetwork/protocol';
+import type { EnrichmentToolDeps, PremiseGraphDatabase, EnrichmentRunInput, EnrichmentRunRecord, RawToolDefinition, ResolvedToolContext } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { chatDatabaseAdapter, createSystemDatabase, createUserDatabase } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
-import { cacheAdapter } from '../adapters/cache.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
@@ -220,26 +219,12 @@ export class EnrichmentRunQueue {
       });
       return null;
     }) as never, {
-      database: chatDatabaseAdapter,
       userDb,
       systemDb,
-      scraper: scraperAdapter,
-      embedder: embedderAdapter,
-      cache: cacheAdapter,
-      integration: {} as ToolDeps['integration'],
-      contactService: {} as ToolDeps['contactService'],
-      integrationImporter: {} as ToolDeps['integrationImporter'],
       enricher: enricherAdapter,
-      negotiationDatabase: {} as ToolDeps['negotiationDatabase'],
       graphs: {
         profile: profileGraph,
-        intent: { invoke: async () => ({}) } as CompiledGraph,
-        index: { invoke: async () => ({}) } as CompiledGraph,
-        networkMembership: { invoke: async () => ({}) } as CompiledGraph,
-        intentIndex: { invoke: async () => ({}) } as CompiledGraph,
-        opportunity: { invoke: async () => ({}) } as CompiledGraph,
-        premise: premiseGraph,
-      } as unknown as ToolDeps['graphs'],
+      },
       reportToolError: (error: unknown, report: { subsystem?: string; operation: string; tags?: Record<string, string | number | boolean | null | undefined>; context?: Record<string, unknown>; userId?: string }) => captureAppException(error, {
         subsystem: report.subsystem ?? 'protocol',
         operation: report.operation,
@@ -247,7 +232,7 @@ export class EnrichmentRunQueue {
         context: report.context,
         userId: report.userId,
       }),
-    });
+    } satisfies EnrichmentToolDeps);
 
     const tool = rawTools.get(run.operation);
     if (!tool) throw new Error(`${run.operation} handler not available`);

@@ -12,11 +12,251 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [6.13.22] — 2026-07-25
+
+### Added
+- Establish `contacts/` domain-first module spine (IND-549).
+  New directories: `contacts/domain/`, `contacts/application/`,
+  `contacts/ports/`, `contacts/public/`, plus `contacts/index.ts` barrel.
+  Canonical home for contact management (import, list, add, remove, search)
+  and the invite message generator, retaining participant reachability
+  semantics. Port types: `ContactServiceAdapter`, `ContactToolDeps`.
+- Establish `integrations/` domain-first module spine (IND-549).
+  New directories: `integrations/domain/`, `integrations/application/`,
+  `integrations/ports/`, `integrations/public/`, plus `integrations/index.ts`
+  barrel. Canonical home for host-integration configuration/actions
+  (OAuth session lifecycle, bulk contact import). Port types:
+  `IntegrationAdapter`, `IntegrationImporter`, `IntegrationToolDeps`.
+  `IntegrationImporter` is now a named interface (previously inline in
+  `shared/agent/tool.helpers.ts`).
+
+### Changed
+- `capabilities/contacts.facade.ts` now routes through `contacts/public/`
+  (IND-549).
+- `capabilities/integrations.facade.ts` now routes through
+  `integrations/public/` (IND-549).
+- Capability boundary script updated: `contacts/` and `integrations/`
+  directories now map to their respective capabilities (alongside legacy
+  `contact/` and `integration/`) (IND-549).
+
+### Deprecated
+- `contact/contact.tools.ts` is now a thin compatibility re-export shim
+  pointing to `contacts/application/` (IND-549).
+- `contact/contact.inviter.ts` is now a thin compatibility re-export shim
+  pointing to `contacts/application/` (IND-549).
+- `integration/integration.tools.ts` is now a thin compatibility re-export
+  shim pointing to `integrations/application/` (IND-549).
+- `shared/interfaces/contact.interface.ts` is now a thin compatibility shim
+  pointing to `contacts/domain/` and `contacts/ports/` (IND-549).
+- `shared/interfaces/integration.interface.ts` is now a thin compatibility
+  shim pointing to `integrations/domain/` and `integrations/ports/`
+  (IND-549).
+- `capabilities/contacts.tools.port.ts` is now a thin compatibility shim
+  pointing to `contacts/ports/` (IND-549).
+- `capabilities/integrations.tools.port.ts` is now a thin compatibility shim
+  pointing to `integrations/ports/` (IND-549).
+
+## [6.13.21] — 2026-07-25
+
+### Added
+- Establish `questions/` domain-first module spine (IND-547).
+  New directories: `questions/domain/`, `questions/application/`,
+  `questions/ports/`, `questions/public/`, plus `questions/index.ts` barrel.
+  Canonical home for question generation, eligibility, validation, provenance,
+  settlement policy, and continuation behaviour.
+- Establish `participant-agents/` domain-first module spine (IND-548).
+  New directories: `participant-agents/domain/`, `participant-agents/application/`,
+  `participant-agents/ports/`, `participant-agents/public/`, plus
+  `participant-agents/index.ts` barrel.  Canonical home for agent registration,
+  permission-aware behaviour, and dispatch contracts.
+
+### Changed
+- `capabilities/questions.facade.ts` now routes through `questions/public/` (IND-547).
+- `capabilities/participant-agents.facade.ts` agent-registry portion now
+  routes through `participant-agents/application/` and
+  `participant-agents/ports/` (IND-548).
+- Capability boundary script updated: `participant-agents/` directory now
+  maps to the `participant-agents` capability (alongside legacy `chat/`
+  and `agent/`) (IND-548).
+
+### Deprecated
+- `agent/agent.tools.ts` is now a thin compatibility re-export shim pointing
+  to `participant-agents/application/` (IND-548).
+- `shared/interfaces/agent.interface.ts` is now a thin compatibility re-export
+  shim pointing to `participant-agents/domain/` and `participant-agents/ports/`
+  (IND-548).
+- `capabilities/participant-agents.tools.port.ts` is now a thin compatibility
+  re-export shim pointing to `participant-agents/ports/` (IND-548).
+- `questioner/*` paths are now thin compatibility shims pointing to
+  `questions/application/` (IND-547).
+- `shared/schemas/question.schema.ts` is now a thin compatibility shim
+  pointing to `questions/domain/` (IND-547).
+- `shared/interfaces/questioner.interface.ts` and
+  `shared/interfaces/question-generator.interface.ts` are now thin
+  compatibility shims pointing to `questions/ports/` (IND-547).
+
+## [6.13.20] — 2026-07-25
+
+### Added
+- Establish `communities/` domain-first module spine (IND-546).
+  New directories: `communities/domain/`, `communities/application/`,
+  `communities/ports/`, `communities/public/`, plus `communities/tests/` for
+  policy characterization.
+- Characterization specs for membership authority (join-policy enforcement,
+  owner-only removal), privacy/scope intersection (scoped vs unscoped read,
+  `showAll` bypass), and signal assignment policy (direct / evaluated /
+  no-prompt fast path, membership re-check at persistence time, unassign
+  authority).
+
+### Changed
+- `capabilities/communities.facade.ts` now imports from
+  `communities/application/` instead of the old `network/` paths.
+- `capabilities/signals.indexing.facade.ts` updated to import
+  `IntentIndexer` from `capabilities/signals.facade.ts` (canonical) instead
+  of the legacy `intent/intent.indexer.ts` shim.
+- Communities capability boundary script updated: `communities/` directory now
+  maps to the `communities` capability (alongside legacy `network/`).
+
+### Deprecated
+- `network/network.graph.ts`, `network/network.state.ts`,
+  `network/network.tools.ts`, `network/network.recommender.ts`,
+  `network/membership/membership.{graph,state}.ts`, and
+  `network/indexer/indexer.{graph,state}.ts` are now thin compatibility
+  re-export shims pointing to their canonical `communities/` counterparts.
+
+## [6.13.19] — 2026-07-25
+
+### Added
+- Establish `participant-context/` domain-first module spine (IND-545).
+  New directories: `participant-context/domain/`, `participant-context/application/`,
+  `participant-context/ports/`, `participant-context/public/`, plus
+  `participant-context/index.ts` barrel.  The four existing implementation
+  directories (`premise/`, `context/`, `enrichment/`, `shared/hyde/`) remain in
+  place as the canonical code and are re-exported through the new spine — no
+  big-bang rewrite.  Characterizes premise provenance invariants
+  (`source: explicit | integration | generated`), validity/regeneration invariants
+  (`volatile` flag, auto-retraction semantics, regeneration boundary), and
+  foreground vs. ambient adapter ownership in block-comment documentation.
+
+### Changed
+- `capabilities/participant-context.facade.ts` is now a thin shim over the
+  canonical `participant-context/` module.  The facade also absorbs the three
+  HyDE exports (`HydeGraphFactory`, `HydeGenerator`, `LensInferrer`) that were
+  previously exported from root `index.ts` via direct `shared/hyde/` imports.
+  Root `index.ts` routes those three symbols through the facade (no change to
+  the public symbols or their shapes).
+- `scripts/architecture/capability-boundaries.ts` registers `participant-context/`
+  as the canonical capability directory (joining the existing `premise/`,
+  `context/`, and `enrichment/` mappings that already pointed to
+  `"participant-context"`).  Notes `shared/hyde/` as a cross-capability technology
+  binding (used by both participant-context for generation and opportunities for
+  search) — left unclassified so both can access it without a boundary fault.
+- `architecture/exports.snapshot.json` regenerated; 327 exports unchanged in
+  count and shape, three source paths updated to reflect the new facade routing.
+
+## [6.13.18] — 2026-07-24
+
+### Changed
+- Establish outer runtime and platform target shells (IND-543). Physically
+  relocate `createToolRegistry` to
+  `runtime/foreground/composition/tool.registry.ts` (interaction-composition
+  boundary); the old `shared/agent/tool.registry.ts` path becomes a
+  backward-compat re-export shim. Add declaration-only shells:
+  `runtime/foreground/index.ts`, `runtime/background/index.ts`,
+  `platform/index.ts` (curated cross-domain primitives), and `public/index.ts`
+  (future curated root assembly). Extend `capability-boundaries.ts` to classify
+  and enforce four new boundary types: `interaction-composition` (FG),
+  `ambient-background` (BG), `neutral-platform` (no capability imports allowed),
+  and `public-compatibility` (facades only); new paths are checked rather than
+  silently skipped. `mcp.server.ts` updated to import directly from the
+  canonical composition path. 14 new architecture-boundary fixture tests added.
+  No public root export or runtime behavior changes.
+
+### Changed
+- Restore a directed Protocol production module graph: tool-composition
+  contracts no longer own opportunity runtime types, discovery continuation
+  finalization owns a neutral result contract, and deadlock metadata is owned
+  independently of negotiation state. The architecture gate now rejects every
+  production cycle (IND-531). No public root export or runtime behavior changes.
+- Extract authorized negotiation-detail read/projection behind narrow message,
+  artifact, and lifecycle-evidence ports while retaining facade-owned lookup,
+  scope admission, participant privacy, and tool IO (IND-530 Batch 16).
+- Extract MCP discovery-result lifecycle reconciliation and deferred-result
+  narration behind a narrow read/warning/safe-card port while retaining tool
+  IO, link minting, and response assembly in the tools facade (IND-530 Batch 15).
+- Extract actionable opportunity-feed admission and digest candidate selection
+  behind narrow read/ledger/warning ports while retaining tool IO, presenters,
+  delivery writes, and response assembly in the tools facade (IND-530 Batch 14).
+- Extract continuation post-graph finalization into a narrow handler while
+  retaining cache lookup, scope admission, graph invocation, and the public
+  response boundary in discovery orchestration (IND-530 Batch 13).
+- Extract independently timed, failure-isolated discovery-negotiation summary
+  execution into a narrow handler while retaining discovery admission and outer
+  orchestration in the facade (IND-530 Batch 12).
+- Extract safe negotiation lifecycle-to-narration presentation translation while
+  retaining lifecycle reads, tool IO, response assembly, and a compatibility
+  re-export in the negotiation tools facade (IND-530 Batch 11).
+- Move enforce-mode negotiation screen admission into the existing screen
+  capability while retaining graph-owned routing, persistence, and lifecycle
+  effects (IND-530 Batch 10).
+- Extract state-aware negotiation conversation-lock admission, including the
+  full consultation answer-window hold, into a narrow lifecycle policy while
+  retaining graph-owned task reads and busy routing (IND-530 Batch 9).
+- Extract immutable negotiation task intent-snapshot provenance into a narrow
+  persistence handler while retaining LangGraph init-node task wiring and
+  lifecycle boundaries (IND-530 Batch 8).
+- Extract MCP discovery-run coalescing identity and admission into a narrow
+  capability-owned policy while retaining run-store reads, queueing, and tool
+  responses in the opportunity tools facade (IND-530 Batch 7).
+- Extract safe opportunity-card presentation translation for web/MCP, including
+  actionable-link ID suppression, digest markers, code-fence escaping, and
+  unsupported-claim/UUID sanitization, while preserving the tools-facade export
+  and IO contract (IND-530 Batch 6).
+- Extract `update_opportunity` actor, lifecycle, network, and selected-intent
+  admission behind a narrow persistence-read port while retaining tool schema,
+  uptake advisory, graph invocation, and telemetry wiring in the tools facade
+  (IND-530 Batch 5).
+- Extract final opportunity-persistence admission (authoritative scope,
+  participant-pair eligibility, and guarded reactivation anchors) behind a
+  narrow port while keeping dedup routing, writes, and graph observability in
+  the opportunity graph (IND-530 Batch 4).
+- Extract the existing-opportunity negotiation continuation admission,
+  exact-intent translation, and non-introducer notification handler behind a
+  narrow opportunity persistence port while retaining graph-owned node wiring
+  and observability (IND-530 Batch 3).
+- Extract the owned-intent newborn-opportunity stamping eligibility policy and
+  fail-open host callback handler from the opportunity persist node while
+  preserving graph-owned persistence and observability (IND-530 Batch 2).
+- Extract opportunity lifecycle admission rules and persistence handlers from
+  the graph while retaining its LangGraph node routing and externally visible
+  lifecycle semantics (IND-530).
+- Slice tool-factory dependencies into named capability-owned ports for
+  enrichment, signals, communities, opportunities, premises, contacts,
+  integrations, participant agents, negotiations, and questions. `ToolDeps`
+  and `ToolContext` remain structurally compatible composition intersections at
+  registry/runtime boundaries; ports are declared and exported through their
+  owning capability facades, while individual factories no longer receive the
+  all-capability aggregate (IND-529).
+- Publish Protocol tarballs without JavaScript or declaration source maps while
+  retaining map generation for the first-party Sentry upload build. Published
+  declarations remain available for downstream type checking and navigation
+  (IND-521).
+
 ### Fixed
 - Make the Questioner clarifying-questions schema survive strict structured-output conversion: the `Question.evidence` provenance field is now declared `.nullable().optional()` (was bare `.optional()`, which OpenAI/OpenRouter strict mode rejects), so every `QuestionerAgent` LLM call no longer failed client-side before any network I/O. A `.transform()` normalizes an LLM-returned `null` back to `undefined` so a null is never persisted or treated as "evidence present"; real string evidence chips (pool_discovery) flow through unchanged and the intent-recovery `!question.evidence` selection filter is unaffected (regression from the IND-418 pool_discovery work).
+- Log failed network-create rollback attempts with an allowlisted network correlation ID and rollback step while preserving the original create or owner-membership failure response (IND-519).
+- Move `dotenv` to development dependencies: test/preload environment loading remains available to contributors while published runtime consumers no longer receive it as a direct dependency (IND-518).
+- Stop emitting source-test helpers, test directories, and spec/test files in published protocol build artifacts while preserving source-test execution (IND-515).
 - Allow the private intent-refinement provenance snapshot to identify intent creation as a producer and make the shared refinement prompt independent of no-opportunity process state, enabling creation and authoritative discovery producers to converge on one ordinary intent-page question cadence.
 
 ### Added
+- Capability facades for Signals, Participant context, Communities,
+  Opportunities, Negotiation, Questions, Participant agents, Contacts, and
+  Integrations. Cross-capability callers now use named, narrow facade contracts;
+  the root barrel remains backward compatible and also adds the corresponding
+  explicit tool-factory entry points. Architecture tooling records every allowed
+  dependency direction and preserves the in-place directory layout for later
+  extraction work (IND-528).
 - Add the private `recovery` Questioner purpose and one-question intent recovery preset for post-discovery signal refinement (IND-506). The preset receives only the owned intent, global owner context, and an optional bounded aggregate count of fail-closed validated no-opportunity outcomes; it forbids candidate/counterparty/process narration, preserves the existing creation-time intent preset, persists publicly as ordinary `mode='intent'` questions with versioned internal recovery metadata, and carries optional material-fingerprint plus expected-owner guards through answer-only updates so the final database write can recheck lifecycle as well as content.
 - Add versioned internal negotiation-question provenance and explicit source/candidate opportunity-actor intent threading for ordinary follow-up, inflight consultation, and uptake questions (IND-507). Runtime mode/purpose discriminants, structured `askUser` safety validation, neutral uptake context, and visible-field output gates exclude raw counterparty profile/identity/intent, private transcript, evaluator reasoning, match reasons, event/community inference, evidence, and internal IDs. Exact settlement/task correlation now threads through run-existing continuation admission without changing producer triggers or the ≤2 ordinary/inflight and ≤1 uptake cardinality.
 - Add the restricted persisted `onboarding` chat persona (IND-450) with an exact consent/profile/guided-signal/completion allowlist, an onboarding-specific privacy and explicit-approval prompt, Signal's proposal-only live-membership narrowing, shared guided intake stages, and durable `profileConfirmedAt` / exact `firstSignalIntentId` completion markers; selected first signals must be active, owned, and created no earlier than a valid profile-confirmation timestamp. Gmail/contact import, opportunity/discovery/negotiation, community and membership mutation, administration, arbitrary scraping, and unreviewed shared tools remain excluded; the legacy orchestrator onboarding flow remains available to flag-off and non-web consumers.

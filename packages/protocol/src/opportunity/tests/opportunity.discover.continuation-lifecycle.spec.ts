@@ -5,6 +5,7 @@ process.env.OPENROUTER_API_KEY ??= 'test';
 import { describe, expect, test } from 'bun:test';
 
 import { continueDiscovery } from '../opportunity.discover.js';
+import { finalizeDiscoveryContinuation } from '../opportunity.discovery-continuation-finalization.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 
 const viewerId = 'continuation-viewer';
@@ -86,5 +87,78 @@ describe('continueDiscovery lifecycle refresh', () => {
     expect(result.opportunities).toHaveLength(1);
     expect(result.opportunities?.[0].status).toBe('rejected');
     expect(result.opportunities?.[0].homeCardPresentation?.personalizedSummary).toBeTruthy();
+  });
+
+  test('returns a graph error without mutating pagination cache', async () => {
+    let cacheMutated = false;
+    const result = await finalizeDiscoveryContinuation({
+      result: { error: 'graph unavailable', trace: [{ node: 'evaluate', detail: 'failed' }] },
+      cache: { set: async () => { cacheMutated = true; }, delete: async () => { cacheMutated = true; } },
+      cacheKey: 'discovery:key',
+      cached: { candidates: [] },
+      userId: viewerId,
+      discoveryId: 'continuation-id',
+      database: { getOpportunitiesByIds: async () => [] } as never,
+      enrich: async () => [],
+    });
+
+    expect(result).toMatchObject({ found: false, count: 0, message: 'Discovery continuation failed. Please start a new search.' });
+    expect(result.debugSteps).toEqual([{ step: 'evaluate', detail: 'failed' }]);
+    expect(cacheMutated).toBe(false);
+  });
+
+  test('updates pagination cache with remaining candidates', async () => {
+    const remaining = [{ candidateUserId: 'candidate' }];
+    let cacheValue: unknown;
+    const result = await finalizeDiscoveryContinuation({
+      result: { remainingCandidates: remaining as never, opportunities: [] },
+      cache: { set: async (_key, value) => { cacheValue = value; }, delete: async () => true },
+      cacheKey: 'discovery:key',
+      cached: { candidates: [{ candidateUserId: 'first' }, { candidateUserId: 'second' }] as never, query: 'q' } as never,
+      userId: viewerId,
+      discoveryId: 'continuation-id',
+      database: { getOpportunitiesByIds: async () => [] } as never,
+      enrich: async () => [],
+    });
+
+    expect(cacheValue).toMatchObject({ candidates: remaining, query: 'q' });
+    expect(result.pagination).toEqual({ discoveryId: 'continuation-id', evaluated: 1, remaining: 1 });
+    expect(result.message).toBe('No more matching opportunities found in the remaining candidates.');
+  });
+
+  test('deletes exhausted pagination cache before returning an empty result', async () => {
+    let deletedKey: string | undefined;
+    const result = await finalizeDiscoveryContinuation({
+      result: { remainingCandidates: [], opportunities: [] },
+      cache: { set: async () => undefined, delete: async (key) => { deletedKey = key; return true; } },
+      cacheKey: 'discovery:key',
+      cached: { candidates: [] },
+      userId: viewerId,
+      discoveryId: 'continuation-id',
+      database: { getOpportunitiesByIds: async () => [] } as never,
+      enrich: async () => [],
+    });
+
+    expect(deletedKey).toBe('discovery:key');
+    expect(result.pagination).toBeUndefined();
+    expect(result).toMatchObject({ found: false, count: 0 });
+  });
+
+  test('cache write failure does not mask refreshed and enriched graph opportunities', async () => {
+    const graphOpportunity = opportunity('negotiating');
+    const refreshedOpportunity = { ...graphOpportunity, status: 'pending' as const };
+    const result = await finalizeDiscoveryContinuation({
+      result: { remainingCandidates: [{ candidateUserId: 'later' }] as never, opportunities: [graphOpportunity] },
+      cache: { set: async () => { throw new Error('cache unavailable'); }, delete: async () => true },
+      cacheKey: 'discovery:key',
+      cached: { candidates: [{ candidateUserId: 'first' }, { candidateUserId: 'later' }] as never },
+      userId: viewerId,
+      discoveryId: 'continuation-id',
+      database: { getOpportunitiesByIds: async () => [refreshedOpportunity] } as never,
+      enrich: async (opportunities) => opportunities.map((item) => ({ id: item.id, status: item.status })) as never,
+    });
+
+    expect(result.pagination).toBeUndefined();
+    expect(result).toMatchObject({ found: true, count: 1, opportunities: [{ id: graphOpportunity.id, status: 'pending' }] });
   });
 });

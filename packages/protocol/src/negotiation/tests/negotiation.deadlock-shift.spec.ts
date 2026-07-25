@@ -5,6 +5,9 @@ import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { createNegotiationTools } from "../negotiation.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
+
+type Fixture<T> = T extends (...args: any[]) => unknown ? (...args: any[]) => any : T extends object ? { [K in keyof T]?: Fixture<T[K]> } : T;
+type ToolDepsFixture = Fixture<ToolDeps>;
 import { requestContext } from "../../shared/observability/request-context.js";
 
 /**
@@ -320,7 +323,7 @@ function makeContext(userId = "u-src"): ResolvedToolContext {
   } as unknown as ResolvedToolContext;
 }
 
-function captureTool(name: string, deps: Partial<ToolDeps>) {
+function captureTool(name: string, deps: ToolDepsFixture) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string>; querySchema?: z.ZodType } | undefined;
   const defineTool = (def: { name: string; handler: (...args: unknown[]) => unknown; querySchema?: z.ZodType }) => {
     if (def.name === name) captured = def as typeof captured;

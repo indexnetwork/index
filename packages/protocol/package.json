@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "6.12.1",
+  "version": "6.13.22",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,11 +17,22 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
+    "build:package": "rm -rf dist && tsc --project tsconfig.package.json",
     "dev": "tsc --watch",
     "test": "bun test",
     "test:isolated": "bun scripts/test.ts",
+    "test:architecture": "bun test src/architecture/tests",
+    "architecture:exports": "bun scripts/architecture/export-inventory.ts",
+    "architecture:exports:update": "bun scripts/architecture/export-inventory.ts --write",
+    "architecture:consumer": "bunx tsc --project architecture/consumer/tsconfig.json",
+    "architecture:host-isolation": "bun scripts/architecture/host-isolation.ts",
+    "architecture:capabilities": "bun scripts/architecture/capability-boundaries.ts",
+    "architecture:cycles": "bun scripts/architecture/cycle-baseline.ts",
+    "architecture:artifacts": "bun run build && bun scripts/architecture/artifact-inventory.ts",
+    "architecture:check": "bun run architecture:exports && bun run architecture:consumer && bun run architecture:host-isolation && bun run architecture:capabilities && bun run architecture:cycles && bun run architecture:artifacts && bun run test:architecture",
     "prepublishOnly": "bun run build",
+    "prepack": "bun run build:package",
     "eval:matching": "bun --env-file=../../.env.test ./eval/matching/matching.eval.ts",
     "eval:hyde": "bun --env-file=../../.env.test ./eval/hyde/hyde.eval.ts",
     "eval:premise": "bun --env-file=../../.env.test ./eval/premise/premise.eval.ts",
@@ -37,11 +48,11 @@
     "@langchain/langgraph": "^1.1.2",
     "@langchain/openai": "^1.2.3",
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
-    "dotenv": "^16.3.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
+    "dotenv": "^16.3.1",
     "typescript": "^5.0.0"
   }
 }

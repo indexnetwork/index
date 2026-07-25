@@ -654,7 +654,7 @@ export type ChatStreamEvent =
 export function formatSSEEvent(event: ChatStreamEvent): string {
   try {
     return `data: ${JSON.stringify(event)}\n\n`;
-  } catch (serializeError) {
+  } catch {
     const fallback: ErrorEvent = {
       type: "error",
       sessionId:

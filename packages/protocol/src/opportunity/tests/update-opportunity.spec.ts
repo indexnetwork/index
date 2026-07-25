@@ -263,7 +263,7 @@ describe("update_opportunity — uptake soft interlock", () => {
     reports?: Array<Record<string, unknown>>;
   }) {
     const invoke = mock(async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }));
-    const findPendingQuestions = mock(async () => {
+    const findPendingQuestions = mock(async (_userId: string, _filters?: Record<string, unknown>) => {
       if (options?.lookupError) throw options.lookupError;
       return options?.questions ?? [uptakeQuestion()];
     });
@@ -382,7 +382,7 @@ describe("update_opportunity — uptake soft interlock", () => {
   test("runs actor authorization before the uptake lookup", async () => {
     enableUptakeGuard();
     const { deps, invoke, findPendingQuestions } = makeGuardDeps();
-    (deps.systemDb as { getOpportunity: () => Promise<Opportunity> }).getOpportunity = async () =>
+    (deps.systemDb as { getOpportunity: (id: string) => Promise<Opportunity | null> }).getOpportunity = async () =>
       makeOpportunity("pending", [OTHER_ID, "third-user"]);
     const result = JSON.parse(await captureTool(deps).handler({
       context: networkContext(),
@@ -404,7 +404,7 @@ describe("update_opportunity — uptake soft interlock", () => {
     }));
 
     expect(result.success).toBe(false);
-    const filters = findPendingQuestions.mock.calls[0]?.[1] as Record<string, unknown>;
+    const filters = findPendingQuestions.mock.calls[0]?.[1] ?? {};
     expect(filters.networkId).toBeUndefined();
   });
 

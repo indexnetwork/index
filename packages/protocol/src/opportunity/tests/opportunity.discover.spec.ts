@@ -146,7 +146,7 @@ describe("opportunity.discover", () => {
       } as unknown as ChatGraphCompositeDatabase;
 
       const result = await runDiscoverFromQuery({
-        opportunityGraph: mockGraph as Parameters<typeof runDiscoverFromQuery>[0]["opportunityGraph"],
+        opportunityGraph: mockGraph as unknown as Parameters<typeof runDiscoverFromQuery>[0]["opportunityGraph"],
         database: dbWithProfile,
         userId: "u1",
         query: "find me a mentor",

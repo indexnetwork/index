@@ -3,11 +3,10 @@ config({ path: '.env.test', override: true });
 // Guard against the existing flake where `.env.test` resolves to
 // `packages/protocol/.env.test` (which doesn't exist) when bun is invoked
 // from this workspace. Matches the pattern in opportunity.tools.mcp-orchestrator.spec.ts.
-process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
-import type { Id } from '../../types/common.types.js';
+import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, OpportunityActor } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
@@ -22,8 +21,8 @@ function makeFactory(opts: {
     id: 'opp-hang-1',
     detection: { source: 'auto' },
     actors: [
-      { userId: 'u-source', role: 'patient', networkId: 'idx-1', intentId: null },
-      { userId: 'u-candidate', role: 'agent', networkId: 'idx-1', intentId: null },
+      { userId: 'u-source', role: 'patient', networkId: 'idx-1' },
+      { userId: 'u-candidate', role: 'agent', networkId: 'idx-1' },
     ] satisfies OpportunityActor[],
     interpretation: { reasoning: 'mock', confidence: 0.8 },
     context: { conversationId: undefined },

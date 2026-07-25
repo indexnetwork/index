@@ -1,4 +1,4 @@
-import type { ResolvedToolContext } from "../agent/tool.helpers.js";
+import type { ToolRequestContext } from "./tool-request-context.interface.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Discovery run persistence + queue
@@ -54,7 +54,7 @@ export interface DiscoveryRunRecord {
   agentId?: string | null;
   status: DiscoveryRunStatus;
   input: DiscoveryRunInput;
-  context: Pick<ResolvedToolContext,
+  context: Pick<ToolRequestContext,
     "userId" |
     "userName" |
     "userEmail" |

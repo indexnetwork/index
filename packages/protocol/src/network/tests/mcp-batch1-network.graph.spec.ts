@@ -66,14 +66,16 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
       operationMode: "read",
     });
 
-    const memberOfIds = result.readResult.memberOf.map((m: { networkId: string }) => m.networkId);
+    const readResult = result.readResult;
+    if (!readResult) throw new Error("Expected a scoped network read result");
+    const memberOfIds = readResult.memberOf.map((m: { networkId: string }) => m.networkId);
     expect(memberOfIds).toEqual([boundNetworkId, personalNetworkId]);
-    expect(result.readResult.memberOf.find((m: { isPersonal: boolean }) => m.isPersonal)).toBeDefined();
-    expect(result.readResult.publicNetworks).toBeUndefined();
-    expect(result.readResult.owns).toHaveLength(1);
-    expect(result.readResult.owns[0].networkId).toBe(personalNetworkId);
-    expect(result.readResult.stats.memberOfCount).toBe(2);
-    expect(result.readResult.stats.scopeNote).toContain("personal");
+    expect(readResult.memberOf.find((m: { isPersonal: boolean }) => m.isPersonal)).toBeDefined();
+    expect(readResult.publicNetworks).toBeUndefined();
+    expect(readResult.owns).toHaveLength(1);
+    expect(readResult.owns[0].networkId).toBe(personalNetworkId);
+    expect(readResult.stats.memberOfCount).toBe(2);
+    expect(readResult.stats.scopeNote).toContain("personal");
   });
 
   test("scoped read does not duplicate the personal network when the bound network IS personal", async () => {
@@ -103,8 +105,10 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
       operationMode: "read",
     });
 
-    expect(result.readResult.memberOf).toHaveLength(1);
-    expect(result.readResult.memberOf[0].networkId).toBe(personalNetworkId);
+    const readResult = result.readResult;
+    if (!readResult) throw new Error("Expected a scoped network read result");
+    expect(readResult.memberOf).toHaveLength(1);
+    expect(readResult.memberOf[0].networkId).toBe(personalNetworkId);
   });
 
   test("returns memberOf.isPersonal and publicNetworks for unscoped reads", async () => {
@@ -137,10 +141,12 @@ describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
       operationMode: "read",
     });
 
-    expect(result.readResult.memberOf[0].isPersonal).toBe(true);
-    expect(result.readResult.publicNetworks).toHaveLength(1);
-    expect(result.readResult.publicNetworks[0].networkId).toBe("22222222-2222-4222-8222-222222222222");
-    expect(result.readResult.publicIndexes).toBeUndefined();
-    expect(result.readResult.stats.publicNetworksCount).toBe(1);
+    const readResult = result.readResult;
+    if (!readResult) throw new Error("Expected an unscoped network read result");
+    expect(readResult.memberOf[0].isPersonal).toBe(true);
+    expect(readResult.publicNetworks).toHaveLength(1);
+    expect(readResult.publicNetworks![0].networkId).toBe("22222222-2222-4222-8222-222222222222");
+    expect("publicIndexes" in readResult).toBe(false);
+    expect(readResult.stats.publicNetworksCount).toBe(1);
   });
 });

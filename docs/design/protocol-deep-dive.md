@@ -37,6 +37,8 @@ packages/protocol/src/
   agent/            Agent registry tools
   chat/             Chat graph, state, tools, streamers
   contact/          Contact tools
+  context/          User-context generation
+  enrichment/       Enrichment graph, identity generation, tools
   integration/      Integration tools
   intent/           Intent graph, state, inferrer, reconciler, verifier, tools
   maintenance/      Maintenance graph and helpers
@@ -47,12 +49,14 @@ packages/protocol/src/
     membership/       Network membership graph
   opportunity/      Opportunity graph, evaluator, introducer, presenter
     feed/             Home feed graph and health scoring
-  enrichment/       Enrichment graph, generator, tools
+  premise/          Premise graph, analysis, indexing, tools
+  questioner/       Mode-driven decision-question generation
   shared/
-    agent/            model.config.ts, utility tools
-    hyde/             HyDE graph, generator, strategies
+    agent/            model config, tool runtime, response streaming
+    hyde/             HyDE graph, generator, lens inference, validation
     interfaces/       Adapter contracts (Database, Embedder, Cache, Queue, Scraper, Storage)
-  docs/             Design papers
+    schemas/          Shared Zod contracts
+    observability/    Logging, timing, tracing, debug-meta sanitization
 ```
 
 ## 2. LangGraph Fundamentals
@@ -327,7 +331,7 @@ The analyze node classifies the premise using speech act theory and scores felic
 
 ## 4. Agent Catalog
 
-All agents live in `packages/protocol/src/agents/`. They are pure (no direct DB access) and use `createModel()` from `model.config.ts` for LLM configuration.
+Agents live alongside their feature graphs (for example `chat/`, `intent/`, `opportunity/`, and `negotiation/`) or in `shared/`. They are pure (no direct DB access) and use `createModel()` from `shared/agent/model.config.ts` for LLM configuration.
 
 ### 4.1 ChatAgent
 
@@ -909,7 +913,7 @@ Consumers: the live TRACE panel uses these to render per-candidate negotiation n
 
 ## 11. Model Configuration
 
-All LLM model settings are centralized in `packages/protocol/src/agents/model.config.ts`.
+All LLM model settings are centralized in `packages/protocol/src/shared/agent/model.config.ts`.
 
 ### MODEL_CONFIG registry
 

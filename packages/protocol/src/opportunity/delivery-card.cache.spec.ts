@@ -1,14 +1,13 @@
-// Stub API key to prevent module-level createModel() from throwing
-process.env.OPENROUTER_API_KEY = 'test-key-unused';
-
 import { mock, describe, expect, it, afterAll } from 'bun:test';
 import { getOrCreateDeliveryCardBatch } from './delivery-card.cache.js';
 import type { OpportunityPresenter } from './opportunity.presenter.js';
 import type { PresenterDatabase } from './opportunity.presenter.js';
 import type { Cache } from '../shared/interfaces/cache.interface.js';
 
-// Mock the gatherPresenterContext function
-mock.module('./opportunity.presenter.js', () => ({
+// Mock the gatherPresenterContext function.
+// Must target the path application/delivery-card.cache.ts actually imports from
+// (./application/opportunity.presenter.js, not the root-level shim).
+mock.module('./application/opportunity.presenter.js', () => ({
   gatherPresenterContext: mock(async (presenterDb: PresenterDatabase, opp: any, viewerId: string) => ({
     opportunityStatus: opp.status,
   })),
@@ -24,16 +23,17 @@ describe('getOrCreateDeliveryCardBatch', () => {
       personalizedSummary: 'Cached summary',
       suggestedAction: 'Cached action',
       narratorRemark: 'Cached remark',
+      greeting: '',
     };
 
     let presentCalledCount = 0;
     const mockCache: Cache = {
       get: mock(() => Promise.resolve(null)),
       set: mock(() => Promise.resolve(undefined)),
-      mget: mock(() => Promise.resolve([cachedCard])),
-      delete: mock(() => Promise.resolve(undefined)),
+      mget: async <T>(_keys: string[]): Promise<Array<T | null>> => [cachedCard as unknown as T],
+      delete: mock(() => Promise.resolve(true)),
       exists: mock(() => Promise.resolve(false)),
-      deleteByPattern: mock(() => Promise.resolve(undefined)),
+      deleteByPattern: mock(() => Promise.resolve(0)),
     };
     const mockPresenter = {
       presentHomeCard: mock(() => {
@@ -83,9 +83,9 @@ describe('getOrCreateDeliveryCardBatch', () => {
         return Promise.resolve(undefined);
       }),
       mget: mock(() => Promise.resolve([null])),
-      delete: mock(() => Promise.resolve(undefined)),
+      delete: mock(() => Promise.resolve(true)),
       exists: mock(() => Promise.resolve(false)),
-      deleteByPattern: mock(() => Promise.resolve(undefined)),
+      deleteByPattern: mock(() => Promise.resolve(0)),
     };
     const mockPresenter = {
       presentHomeCard: mock(() => {
@@ -132,9 +132,9 @@ describe('getOrCreateDeliveryCardBatch', () => {
         return Promise.resolve(undefined);
       }),
       mget: mock(() => Promise.resolve([null])),
-      delete: mock(() => Promise.resolve(undefined)),
+      delete: mock(() => Promise.resolve(true)),
       exists: mock(() => Promise.resolve(false)),
-      deleteByPattern: mock(() => Promise.resolve(undefined)),
+      deleteByPattern: mock(() => Promise.resolve(0)),
     };
     const mockPresenter = {
       presentHomeCard: mock(() => Promise.resolve({
@@ -169,9 +169,9 @@ describe('getOrCreateDeliveryCardBatch', () => {
       get: mock(() => Promise.resolve(null)),
       set: mock(() => Promise.resolve(undefined)),
       mget: mock(() => Promise.resolve([null])),
-      delete: mock(() => Promise.resolve(undefined)),
+      delete: mock(() => Promise.resolve(true)),
       exists: mock(() => Promise.resolve(false)),
-      deleteByPattern: mock(() => Promise.resolve(undefined)),
+      deleteByPattern: mock(() => Promise.resolve(0)),
     };
     const mockPresenter = {
       presentHomeCard: mock(() => Promise.reject(new Error('LLM unavailable'))),
@@ -206,6 +206,7 @@ describe('getOrCreateDeliveryCardBatch', () => {
       personalizedSummary: 'Cached summary',
       suggestedAction: 'Cached action',
       narratorRemark: 'Cached remark',
+      greeting: '',
     };
     let presentCalledCount = 0;
     const setCalls: any[] = [];
@@ -216,10 +217,10 @@ describe('getOrCreateDeliveryCardBatch', () => {
         setCalls.push({ key, value, opts });
         return Promise.resolve(undefined);
       }),
-      mget: mock(() => Promise.resolve([cachedCard, null])),
-      delete: mock(() => Promise.resolve(undefined)),
+      mget: async <T>(_keys: string[]): Promise<Array<T | null>> => [cachedCard as unknown as T, null],
+      delete: mock(() => Promise.resolve(true)),
       exists: mock(() => Promise.resolve(false)),
-      deleteByPattern: mock(() => Promise.resolve(undefined)),
+      deleteByPattern: mock(() => Promise.resolve(0)),
     };
 
     const presentedCard = {

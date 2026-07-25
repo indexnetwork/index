@@ -233,6 +233,7 @@ index/
 - `docs/domain/` — Domain concept docs. Explains the business model: what intents, indexes, opportunities, identity and context, contacts are and how they relate. Update when domain model changes.
 - `docs/specs/` — API and CLI specs. Describes external interfaces: endpoints, CLI commands, input/output contracts. Update when public interfaces change.
 - `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes.
+- `docs/research/` — Research reports and historical analysis that inform design but are not normative runtime documentation. Link to current design/spec docs when applying their conclusions.
 
 ### Protocol Key Directories
 

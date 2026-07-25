@@ -1,0 +1,130 @@
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { z } from "zod";
+
+import { log } from "../../shared/observability/log.js";
+import { Timed } from "../../shared/observability/performance.js";
+import { createStructuredModel } from "../../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
+
+// ─── Response schema ───────────────────────────────────────────────────────────
+
+export const NetworkRecommenderOutputSchema = z.object({
+  rankedNetworkIds: z
+    .array(z.string())
+    .describe("Network IDs ordered from most to least relevant for this user. Include all provided network IDs."),
+  reasoning: z
+    .string()
+    .describe("One-sentence explanation of the top recommendation."),
+});
+
+export type NetworkRecommenderOutput = z.infer<typeof NetworkRecommenderOutputSchema>;
+
+// ─── Input types ──────────────────────────────────────────────────────────────
+
+export interface NetworkRecommenderNetwork {
+  networkId: string;
+  renderedContext: string;
+}
+
+export interface NetworkRecommenderInput {
+  /** The user's global user_context paragraph (synthesized identity text). */
+  userContext: string;
+  networks: NetworkRecommenderNetwork[];
+}
+
+// ─── Logger ───────────────────────────────────────────────────────────────────
+
+const logger = log.lib.from("NetworkRecommender");
+const invokeLog = log.lib.from("NetworkRecommender:invoke");
+
+// ─── System prompt ────────────────────────────────────────────────────────────
+
+const systemPrompt = `
+You are a community matching agent for a social discovery network.
+
+TASK:
+Given a user's profile and a list of communities, rank the communities from most to least relevant for this user.
+Return ALL provided community IDs in ranked order.
+
+INPUTS:
+1. User Context: a synthesized paragraph describing the user (background, interests, skills, location, goals).
+2. Communities: a list of communities, each with an ID and a description.
+
+SCORING FACTORS (in priority order):
+1. Thematic alignment — do the community's topics match the user's interests and skills?
+2. Geographic relevance — does the user's location match the community's focus (if any)?
+3. Professional fit — does the community's purpose match the user's professional background?
+
+OUTPUT RULES:
+- Return ALL community IDs in your ranked list (no omissions).
+- If context is insufficient to differentiate, preserve original order.
+- Keep reasoning brief (one sentence about the top recommendation).
+`;
+
+// ─── Agent class ──────────────────────────────────────────────────────────────
+
+/**
+ * LLM-based agent that ranks public communities against a user's profile.
+ * Used during onboarding step 6 to surface the most relevant communities first.
+ *
+ * Follows the IntentIndexer pattern: `withStructuredOutput`, `invokeWithAbortSignal`,
+ * null-on-error fallback.  `createStructuredModel` is called inside the constructor
+ * (not at module level) so that importing this module does not require
+ * OPENROUTER_API_KEY to be set — tests that import communities tools without a
+ * live LLM env are unaffected.
+ *
+ * IND-546: canonical home — previously network/network.recommender.ts.
+ */
+export class NetworkRecommender {
+  private model: ReturnType<typeof createStructuredModel>;
+
+  constructor() {
+    this.model = createStructuredModel("networkRecommender", NetworkRecommenderOutputSchema, {
+      name: "network_recommender",
+    });
+  }
+
+  /**
+   * Ranks the provided networks by relevance to the user's profile.
+   *
+   * @param input - User profile and list of networks with rendered context.
+   * @returns Ranked network IDs and one-sentence reasoning, or null on error.
+   */
+  @Timed()
+  public async invoke(input: NetworkRecommenderInput): Promise<NetworkRecommenderOutput | null> {
+    if (input.networks.length === 0) return null;
+
+    invokeLog.verbose("Ranking communities", {
+      networkCount: input.networks.length,
+    });
+
+    const networkList = input.networks
+      .map((n, i) => `### Community ${i + 1} (ID: ${n.networkId})\n${n.renderedContext}`)
+      .join("\n\n");
+
+    const userSection = input.userContext.trim() || "(not provided)";
+
+    const prompt = `## User Context\n${userSection}\n\n## Communities to Rank\n${networkList}`;
+
+    const messages = [
+      new SystemMessage(systemPrompt),
+      new HumanMessage(prompt),
+    ];
+
+    try {
+      const result = await invokeWithAbortSignal(this.model, messages);
+      const parsed = NetworkRecommenderOutputSchema.safeParse(result);
+      if (!parsed.success) {
+        logger.error("Schema validation failed", { error: parsed.error });
+        return null;
+      }
+      invokeLog.verbose("Ranking complete", {
+        top: parsed.data.rankedNetworkIds[0],
+      });
+      return parsed.data;
+    } catch (error) {
+      logger.error("Error during execution", { error });
+      return null;
+    }
+  }
+}

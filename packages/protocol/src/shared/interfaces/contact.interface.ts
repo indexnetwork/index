@@ -1,48 +1,19 @@
-/** Input for importing a single contact. */
-export interface ContactInput {
-  name: string;
-  email: string;
-}
-
-/** Result of adding a single contact. */
-export interface ContactResult {
-  userId: string;
-  isNew: boolean;
-  isGhost: boolean;
-}
-
-/** Result of importing contacts in bulk. */
-export interface ContactImportResult {
-  imported: number;
-  skipped: number;
-  newContacts: number;
-  existingContacts: number;
-  details: Array<{ email: string; userId: string; isNew: boolean }>;
-}
-
-/** Contact with user details, as returned by listContacts. */
-export interface ContactEntry {
-  userId: string;
-  user: { id: string; name: string; email: string; avatar: string | null; isGhost: boolean };
-}
-
 /**
- * Contact management operations used by chat tools.
- * Consumers must provide a concrete implementation (e.g. backed by ContactService).
+ * @deprecated Canonical location: contacts/ports
+ * Retained for backward compatibility during IND-549 migration.
+ *
+ * IND-549: types and interfaces migrated to src/contacts/domain and
+ * src/contacts/ports. This file is a thin compatibility shim.
  */
-/** Flat contact row returned by searchContacts. */
-export interface ContactSearchResult {
-  contactId: string;
-  name: string;
-  email: string;
-  avatar: string | null;
-  isGhost: boolean;
-}
 
-export interface ContactServiceAdapter {
-  importContacts(ownerId: string, contacts: ContactInput[]): Promise<ContactImportResult>;
-  listContacts(ownerId: string): Promise<ContactEntry[]>;
-  addContact(ownerId: string, email: string, options?: { name?: string; restore?: boolean }): Promise<ContactResult>;
-  removeContact(ownerId: string, contactUserId: string): Promise<void>;
-  searchContacts(ownerId: string, q: string, limit?: number): Promise<ContactSearchResult[]>;
-}
+// Domain value types
+export type {
+  ContactInput,
+  ContactResult,
+  ContactImportResult,
+  ContactEntry,
+  ContactSearchResult,
+} from "../../contacts/domain/index.js";
+
+// Persistence port
+export type { ContactServiceAdapter } from "../../contacts/ports/index.js";

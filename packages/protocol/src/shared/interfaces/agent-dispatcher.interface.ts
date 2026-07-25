@@ -4,6 +4,10 @@
  * The graph calls dispatch() per turn and receives a result.
  * It never knows about webhooks, MCP, transports, or agent resolution.
  * The concrete implementation lives in the host application.
+ *
+ * IND-548: these types are also accessible via participant-agents/ports, which
+ * re-exports from here. This file remains the authoritative source to avoid a
+ * module cycle through the negotiation capability facade.
  */
 
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';

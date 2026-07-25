@@ -2,7 +2,9 @@
   "extends": "../../../../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "composite": false
+    "composite": false,
+    "target": "ES2022",
+    "types": ["bun", "node"]
   },
   "include": ["**/*.spec.ts", "**/*.test.ts", "**/*.ts", "../**/*.ts"],
   "exclude": ["node_modules"]

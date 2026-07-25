@@ -3,9 +3,10 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
-import type { Id } from '../../types/common.types.js';
+import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
+import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
 
 const mockEvaluator: OpportunityEvaluatorLike = {
@@ -24,6 +25,7 @@ const dummyHyde = {
 
 function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraphDatabase {
   const base: OpportunityGraphDatabase = {
+    ...createOpportunityGraphDatabaseFixture(),
     getProfile: async () => null,
     createOpportunity: async (data) => ({
       ...data,
@@ -51,7 +53,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     updateOpportunityActorApproval: async () => null,
     isNetworkMember: async () => true,
     isIndexOwner: async () => false,
-    getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com' }),
+    getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com', socials: [] }),
     getOrCreateDM: async () => ({ id: 'conv-default' }),
     getIntent: async () => null,
     getNegotiationTaskForOpportunity: async () => null,
@@ -104,7 +106,7 @@ describe('opportunity graph — update node (accepted)', () => {
 
     expect(result.mutationResult?.success).toBe(true);
     expect(result.mutationResult?.conversationId).toBe(CONV_ID);
-    expect(dmCalledWith).toEqual([USER_ID, COUNTERPART_ID]);
+    expect(dmCalledWith!).toEqual([USER_ID, COUNTERPART_ID]);
   });
 
   test('does NOT call getOrCreateDM when newStatus is rejected', async () => {

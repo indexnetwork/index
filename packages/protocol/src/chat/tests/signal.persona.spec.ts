@@ -317,7 +317,7 @@ describe("Signal Agent tool boundary", () => {
     const registry = [...EXPECTED_SIGNAL_TOOLS, ...FORBIDDEN_TOOLS, "read_docs"]
       .map((name) => ({ name }));
     expect(filterSignalTools(registry).map((candidate) => candidate.name)).toEqual(
-      EXPECTED_SIGNAL_TOOLS,
+      [...EXPECTED_SIGNAL_TOOLS],
     );
   });
 
