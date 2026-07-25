@@ -1405,4 +1405,569 @@ describe('MCP Server Factory', () => {
     // Rejected before the intent-index graph/write.
     expect(intentIndexGraphCalls).toBe(0);
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // IND-591..595: network / discovery / opportunity-state / delivery / A2A
+  // capability boundaries at the transport seam.
+  //
+  // These prove the paired schema-valid tools/list and forged tools/call
+  // authorization for the community, discovery, opportunity-state, delivery,
+  // and A2A-negotiation surfaces. Positive admission is proven by reaching the
+  // scoped-deps/handler seam (scopedCreateArgs); forged denial is proven by an
+  // MCP_CAPABILITY_DENIED code with zero chat-DB reads and zero scoped-deps
+  // construction. Resource-level behavior (bound-community roster/mutation
+  // clamps, opportunity actor/lifecycle/scope + uptake interlock, discovery-run
+  // exact-principal ownership + coalescing partition, negotiation participation
+  // + A2A transcript boundary + agent-vs-owner narration) is proven directly
+  // against the handlers in the protocol package specs; these transport tests
+  // add the missing capability-gate parity without duplicating them.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const NETWORK_1 = 'network-1';
+  const NETWORK_2 = 'network-2';
+  const UUID_A = '00000000-0000-4000-8000-000000000001';
+
+  /** Resolves a caller's principal-aware tools/list inventory. */
+  async function listToolNamesFor(params: {
+    identity: Record<string, unknown>;
+    agentDatabase?: AgentDatabase;
+    headers?: Record<string, string>;
+    extraDeps?: Partial<ToolDeps>;
+  }): Promise<string[]> {
+    clearMcpToolMetadataCacheForTests();
+    const server = createMcpServer(
+      {
+        ...mockDeps,
+        database: resolvedContextDatabase,
+        agentDatabase: params.agentDatabase ?? mockAgentDb,
+        ...params.extraDeps,
+      },
+      {
+        resolveIdentity: async () => params.identity,
+        resolveUserId: async () => 'test-user-id',
+      } as McpAuthResolver,
+      mockScopedDepsFactory,
+    );
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/list',
+      headers: params.headers ?? { 'x-api-key': 'agent-key' },
+    });
+    return response.result?.tools?.map((tool) => tool.name) ?? [];
+  }
+
+  // ── IND-591: community (network) authorization & bound-community clamp ───────
+
+  it('hides community mutations from an agent without manage:networks but keeps reads (tools/list)', async () => {
+    const names = await listToolNamesFor({
+      identity: { userId: 'test-user-id', agentId: 'agent-n' },
+      agentDatabase: agentDbWith({ agentId: 'agent-n', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+    });
+    // Reads are `authenticated` — available to any registered agent.
+    expect(names).toContain('read_networks');
+    expect(names).toContain('read_network_memberships');
+    // Mutations require manage:networks.
+    for (const tool of ['create_network', 'update_network', 'create_network_membership', 'delete_network_membership']) {
+      expect(names, `${tool} must require manage:networks`).not.toContain(tool);
+    }
+    // delete_network is human-only: never visible to any agent.
+    expect(names).not.toContain('delete_network');
+  });
+
+  it('denies community mutations for an agent without manage:networks before DB work', async () => {
+    const writes = [
+      { tool: 'create_network', args: { title: 'New community' } },
+      { tool: 'update_network', args: { networkId: UUID_A, settings: {} } },
+      { tool: 'create_network_membership', args: { networkId: UUID_A } },
+      { tool: 'delete_network_membership', args: { userId: 'other-user', networkId: UUID_A } },
+    ];
+    for (const { tool, args } of writes) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', agentId: 'agent-n' },
+        agentDatabase: agentDbWith({ agentId: 'agent-n', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: args,
+      });
+      expect(result.isError, `${tool} must be denied`).toBe(true);
+      expect(result.code, `${tool} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before chat DB`).toBe(0);
+      expect(result.scopedCreateArgs, `${tool} must deny before scoped DB`).toEqual([]);
+    }
+  });
+
+  it('keeps community deletion human-only: a manage:networks agent is denied, the human is admitted', async () => {
+    // Autonomous agents never receive community deletion — even one holding
+    // manage:networks scoped to the community it targets.
+    const counter = { reads: 0 };
+    const agentDenied = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-n', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-n', scope: 'network', scopeId: NETWORK_1, actions: ['manage:networks'] }),
+      database: guardReads(counter),
+      scopedThrows: true,
+      toolName: 'delete_network',
+      arguments: { networkId: UUID_A },
+    });
+    expect(agentDenied.isError).toBe(true);
+    expect(agentDenied.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(counter.reads).toBe(0);
+    expect(agentDenied.scopedCreateArgs).toEqual([]);
+
+    // The session human is admitted and reaches the scoped handler seam.
+    const humanAllowed = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+      toolName: 'delete_network',
+      arguments: { networkId: UUID_A },
+    });
+    expect(humanAllowed.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(humanAllowed.scopedCreateArgs.length).toBe(1);
+  });
+
+  it('requires manage:networks scoped to the exact bound community, then admits a matching grant', async () => {
+    // A network-1-bound agent whose only manage:networks grant is scoped to
+    // network-2 does not receive the capability for its bound community.
+    const counter = { reads: 0 };
+    const misScoped = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-n', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-n', scope: 'network', scopeId: NETWORK_2, actions: ['manage:networks'] }),
+      database: guardReads(counter),
+      scopedThrows: true,
+      toolName: 'create_network_membership',
+      arguments: { networkId: UUID_A },
+    });
+    expect(misScoped.isError).toBe(true);
+    expect(misScoped.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(counter.reads).toBe(0);
+    expect(misScoped.scopedCreateArgs).toEqual([]);
+
+    // A matching network-1 grant is admitted and reaches the scoped handler seam.
+    const admitted = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-n', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-n', scope: 'network', scopeId: NETWORK_1, actions: ['manage:networks'] }),
+      toolName: 'create_network_membership',
+      arguments: { networkId: NETWORK_1 },
+    });
+    expect(admitted.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(admitted.scopedCreateArgs.length).toBe(1);
+  });
+
+  it('admits an exact-bound manage:networks agent, then resource-clamps a foreign-community roster mutation before graph work', async () => {
+    // Production-reachable resource clamp (distinct from the mis-scoped-grant
+    // capability denial above): the agent is bound to network-1 AND holds an
+    // applicable network-1 manage:networks grant, so capability policy ADMITS
+    // and dispatch reaches the scoped handler seam. It then asks to add a member
+    // to a DIFFERENT community (UUID_A). The tool's own bound-community clamp
+    // rejects with a stable domain message BEFORE any network-membership graph
+    // write, and the foreign community is never mutated.
+    let membershipGraphCalls = 0;
+    const graphs = {
+      ...mockDeps.graphs,
+      networkMembership: {
+        invoke: async () => {
+          membershipGraphCalls += 1;
+          return { mutationResult: { success: true, message: 'added' } };
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([
+        { networkId: NETWORK_1, networkTitle: 'N1', isPersonal: false, permissions: ['owner'] },
+      ]),
+    } as unknown as ToolDeps['database'];
+
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-cm', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-cm', scope: 'network', scopeId: NETWORK_1, actions: ['manage:networks'] }),
+      database: memberDb,
+      extraDeps: { graphs },
+      toolName: 'create_network_membership',
+      arguments: { networkId: UUID_A, userId: 'target-user' },
+    });
+
+    // Admission happened (not a capability denial) and the seam was reached.
+    expect(result.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(result.scopedCreateArgs.length).toBe(1);
+    // The bound-community clamp only admitted network-1 into the scoped deps.
+    const allowed = result.scopedCreateArgs[0]!.allowedNetworkIds;
+    expect(allowed).toContain(NETWORK_1);
+    expect(allowed).not.toContain(UUID_A);
+    // Stable resource/domain denial — not merely MCP_CAPABILITY_DENIED.
+    const payload = JSON.parse(result.text) as { success: boolean; error?: string };
+    expect(payload.success).toBe(false);
+    expect(payload.error).toMatch(/you can only add members to this community/i);
+    // The foreign community was never touched: the membership graph never ran.
+    expect(membershipGraphCalls).toBe(0);
+  });
+
+  it('clamps a network-bound agent reading community rosters to its bound community', async () => {
+    // read_network_memberships is `authenticated`; even so, a network-bound
+    // agent's scoped deps are constructed with only the bound community, so no
+    // other community the user belongs to is reachable.
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([
+        { networkId: NETWORK_1, networkTitle: 'N1', isPersonal: false, permissions: [] },
+        { networkId: NETWORK_2, networkTitle: 'N2', isPersonal: false, permissions: [] },
+      ]),
+    } as unknown as ToolDeps['database'];
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-r', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-r', scope: 'network', scopeId: NETWORK_1, actions: ['manage:networks'] }),
+      database: memberDb,
+      toolName: 'read_network_memberships',
+      arguments: {},
+    });
+    expect(result.scopedCreateArgs.length).toBe(1);
+    const allowed = result.scopedCreateArgs[0]!.allowedNetworkIds;
+    expect(allowed).toContain(NETWORK_1);
+    expect(allowed).not.toContain(NETWORK_2);
+  });
+
+  // ── IND-592: discovery capability gate (exact-principal ownership + ──────────
+  // coalescing partition are proven at the handler level in the protocol specs
+  // opportunity.tools.coalesce.spec.ts and discovery-run-ownership.spec.ts). ──
+
+  it('denies discovery run tools for an agent without manage:opportunities before DB work', async () => {
+    const cases = [
+      { tool: 'discover_opportunities', args: {} },
+      { tool: 'get_discovery_run', args: { discoveryRunId: 'run-1' } },
+      { tool: 'cancel_discovery_run', args: { discoveryRunId: 'run-1' } },
+    ];
+    for (const { tool, args } of cases) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', agentId: 'agent-o' },
+        agentDatabase: agentDbWith({ agentId: 'agent-o', scope: 'global', scopeId: null, actions: ['manage:networks'] }),
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: args,
+      });
+      expect(result.isError, `${tool} must be denied`).toBe(true);
+      expect(result.code, `${tool} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before chat DB`).toBe(0);
+      expect(result.scopedCreateArgs, `${tool} must deny before scoped DB`).toEqual([]);
+    }
+  });
+
+  it('shows discovery tools to a bound manage:opportunities agent and admits discover_opportunities to the seam', async () => {
+    const names = await listToolNamesFor({
+      identity: { userId: 'test-user-id', agentId: 'agent-o', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-o', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] }),
+    });
+    expect(names).toContain('discover_opportunities');
+    expect(names).toContain('get_discovery_run');
+    expect(names).toContain('cancel_discovery_run');
+
+    const admitted = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-o', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-o', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] }),
+      toolName: 'discover_opportunities',
+      arguments: { searchQuery: 'climate founders in berlin' },
+    });
+    expect(admitted.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(admitted.scopedCreateArgs.length).toBe(1);
+  });
+
+  // ── IND-593: opportunity-state capability gate (actor/lifecycle/scope + ──────
+  // uptake interlock proven in update-opportunity.spec.ts). ───────────────────
+
+  it('denies every update_opportunity transition (send/accept/reject) for an agent without manage:opportunities before DB work', async () => {
+    for (const status of ['pending', 'accepted', 'rejected'] as const) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', agentId: 'agent-u' },
+        agentDatabase: agentDbWith({ agentId: 'agent-u', scope: 'global', scopeId: null, actions: ['manage:networks'] }),
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: 'update_opportunity',
+        arguments: { opportunityId: UUID_A, status },
+      });
+      expect(result.isError, `${status} must be denied`).toBe(true);
+      expect(result.code, `${status} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${status} must deny before chat DB`).toBe(0);
+      expect(result.scopedCreateArgs, `${status} must deny before scoped DB`).toEqual([]);
+    }
+  });
+
+  it('binds acceptance to a fresh, in-interaction owner approval at the transport seam (rejects unapproved/forged/replayed, persists only on exact ack)', async () => {
+    // Production-reachable proof of the fresh-approval interlock over MCP. An
+    // admitted manage:opportunities agent tries to ACCEPT on the owner's behalf.
+    // The tool's uptake interlock demands the exact, still-pending preparatory
+    // approval be acknowledged IN THIS call, bound to the exact opportunity +
+    // accepted action + owner principal (actor) + current interaction. An
+    // unacknowledged, forged, or replayed (wrong-id) acknowledgment yields a
+    // structured advisory and NEVER runs the opportunity mutation graph; only
+    // the exact acknowledgment persists the owner acceptance.
+    const OPP = '00000000-0000-4000-8000-0000000000aa';
+    const QUESTION_ID = 'uptake-question-1';
+    const opportunity = {
+      id: OPP,
+      status: 'pending',
+      actors: [{ userId: 'test-user-id', role: 'party', networkId: NETWORK_1 }],
+    };
+    const uptakeQuestion = {
+      id: QUESTION_ID,
+      title: 'Prep',
+      prompt: 'Confirm timing?',
+      options: [],
+      multiSelect: false,
+      mode: 'negotiation',
+      sourceType: 'opportunity',
+      sourceId: OPP,
+      purpose: 'uptake',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      actors: [{ userId: 'test-user-id', networkId: NETWORK_1 }],
+    };
+    let opportunityGraphCalls = 0;
+    const scopedSystemDb = {
+      getOpportunity: async () => opportunity,
+    } as unknown as ToolDeps['systemDb'];
+    const graphs = {
+      ...mockDeps.graphs,
+      opportunity: {
+        invoke: async () => {
+          opportunityGraphCalls += 1;
+          return { mutationResult: { success: true, opportunityId: OPP, message: 'accepted' } };
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+    const extraDeps: Partial<ToolDeps> = {
+      graphs,
+      findPendingQuestions: (async () => [uptakeQuestion]) as unknown as ToolDeps['findPendingQuestions'],
+    };
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([{ networkId: NETWORK_1, networkTitle: 'N1', isPersonal: false, permissions: [] }]),
+    } as unknown as ToolDeps['database'];
+    const identity = { userId: 'test-user-id', agentId: 'agent-a', networkScopeId: NETWORK_1 };
+    const agentDatabase = agentDbWith({ agentId: 'agent-a', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] });
+
+    const prevEnabled = process.env.QUESTIONER_ENABLED;
+    const prevUptake = process.env.QUESTIONER_UPTAKE_ENABLED;
+    process.env.QUESTIONER_ENABLED = 'true';
+    process.env.QUESTIONER_UPTAKE_ENABLED = 'true';
+    try {
+      // (1) No acknowledgment: advisory, no owner acceptance persisted.
+      const unapproved = await callTool({
+        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
+        toolName: 'update_opportunity',
+        arguments: { opportunityId: OPP, status: 'accepted' },
+      });
+      expect(unapproved.code).not.toBe('MCP_CAPABILITY_DENIED');
+      const unapprovedPayload = JSON.parse(unapproved.text) as { success: boolean; advisory?: { code?: string; advisoryOnly?: boolean; opportunityId?: string } };
+      expect(unapprovedPayload.success).toBe(false);
+      expect(unapprovedPayload.advisory?.code).toBe('unresolved_uptake_questions');
+      expect(unapprovedPayload.advisory?.advisoryOnly).toBe(true);
+      expect(unapprovedPayload.advisory?.opportunityId).toBe(OPP);
+      expect(opportunityGraphCalls).toBe(0);
+
+      // (2) Forged/replayed acknowledgment (a different id): still advisory, still no mutation.
+      const forged = await callTool({
+        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
+        toolName: 'update_opportunity',
+        arguments: { opportunityId: OPP, status: 'accepted', acknowledgedUptakeQuestionIds: ['some-other-id'] },
+      });
+      const forgedPayload = JSON.parse(forged.text) as { success: boolean; advisory?: { code?: string } };
+      expect(forgedPayload.success).toBe(false);
+      expect(forgedPayload.advisory?.code).toBe('unresolved_uptake_questions');
+      expect(opportunityGraphCalls).toBe(0);
+
+      // (3) Exact acknowledgment in this interaction: owner acceptance is persisted.
+      const approved = await callTool({
+        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
+        toolName: 'update_opportunity',
+        arguments: { opportunityId: OPP, status: 'accepted', acknowledgedUptakeQuestionIds: [QUESTION_ID] },
+      });
+      const approvedPayload = JSON.parse(approved.text) as { success: boolean; data?: Record<string, unknown> };
+      expect(approvedPayload.success).toBe(true);
+      expect(opportunityGraphCalls).toBe(1);
+    } finally {
+      if (prevEnabled === undefined) delete process.env.QUESTIONER_ENABLED; else process.env.QUESTIONER_ENABLED = prevEnabled;
+      if (prevUptake === undefined) delete process.env.QUESTIONER_UPTAKE_ENABLED; else process.env.QUESTIONER_UPTAKE_ENABLED = prevUptake;
+    }
+  });
+
+  // ── IND-594: designated-delivery-only classification. The tools/call forgery
+  // denial + delivery admit-to-seam is also covered by the IND-608 test
+  // 'restricts confirm_opportunity_delivery to designated delivery agents,
+  // before DB work' above; ledger idempotency/ownership by the protocol spec
+  // opportunity.tools.confirm-delivery.spec.ts. These add the tools/list parity
+  // and a direct ledger-seam ownership proof. ───────────────────────────────
+
+  it('lists confirm_opportunity_delivery only for the designated delivery agent', async () => {
+    const deliveryNames = await listToolNamesFor({
+      identity: { userId: 'test-user-id', agentId: 'agent-d', isDeliveryAgent: true },
+      agentDatabase: agentDbWith({ agentId: 'agent-d', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+    });
+    expect(deliveryNames).toContain('confirm_opportunity_delivery');
+
+    // An ordinary agent holding manage:opportunities does not see it.
+    const ordinaryNames = await listToolNamesFor({
+      identity: { userId: 'test-user-id', agentId: 'agent-d' },
+      agentDatabase: agentDbWith({ agentId: 'agent-d', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+    });
+    expect(ordinaryNames).not.toContain('confirm_opportunity_delivery');
+
+    // Nor does the session human.
+    const humanNames = await listToolNamesFor({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+    });
+    expect(humanNames).not.toContain('confirm_opportunity_delivery');
+  });
+
+  it('forged ordinary-agent confirm_opportunity_delivery never reaches the ledger; the delivery agent reaches it with its own principal', async () => {
+    const ledgerCalls: Array<{ opportunityId: string; userId: string; agentId: string; trigger: string }> = [];
+    const deliveryLedger = {
+      confirmOpportunityDelivery: async (input: { opportunityId: string; userId: string; agentId: string; trigger: string }) => {
+        ledgerCalls.push(input);
+        return 'committed' as const;
+      },
+    } as unknown as ToolDeps['deliveryLedger'];
+
+    // Ordinary agent (manage:opportunities, not the delivery principal): denied
+    // before any work, so the ledger is never touched — no forged delivery row.
+    const counter = { reads: 0 };
+    const forged = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-d' },
+      agentDatabase: agentDbWith({ agentId: 'agent-d', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+      database: guardReads(counter),
+      scopedThrows: true,
+      extraDeps: { deliveryLedger },
+      toolName: 'confirm_opportunity_delivery',
+      arguments: { opportunityId: UUID_A, trigger: 'ambient' },
+    });
+    expect(forged.isError).toBe(true);
+    expect(forged.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(counter.reads).toBe(0);
+    expect(forged.scopedCreateArgs).toEqual([]);
+    expect(ledgerCalls).toEqual([]);
+
+    // Designated delivery agent: admitted and reaches the ledger, which records
+    // the caller's exact user + agent principal (ownership provenance).
+    const delivered = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-d', isDeliveryAgent: true },
+      agentDatabase: agentDbWith({ agentId: 'agent-d', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+      extraDeps: { deliveryLedger },
+      toolName: 'confirm_opportunity_delivery',
+      arguments: { opportunityId: UUID_A, trigger: 'ambient' },
+    });
+    expect(delivered.code).not.toBe('MCP_CAPABILITY_DENIED');
+    const deliveredPayload = JSON.parse(delivered.text) as { success: boolean; data?: { status?: string } };
+    expect(deliveredPayload.success).toBe(true);
+    expect(deliveredPayload.data?.status).toBe('committed');
+    expect(ledgerCalls).toEqual([{ opportunityId: UUID_A, userId: 'test-user-id', agentId: 'agent-d', trigger: 'ambient' }]);
+  });
+
+  // ── IND-595: A2A negotiation capability gate. The resource-level boundaries ──
+  // are proven directly in negotiation.tools.spec.ts:
+  //   • 'get_negotiation — participant-only A2A visibility (IND-608)' — a
+  //     non-participant is denied without reading the transcript/artifacts, and
+  //     a participating party is admitted (participation + A2A-transcript-only
+  //     boundary; the reader only ever reads the negotiation task's own
+  //     conversation, never H2A/H2H).
+  //   • 'get_negotiation — network scope' / 'respond_to_negotiation — network
+  //     scope' — bound-network enforcement.
+  //   • 'readAuthorizedNegotiationDetail' + list_negotiations narrative specs —
+  //     agent-vs-owner narration (ownerAction not_recorded / directConversation
+  //     Evidence not_provided; actionActor 'agent').
+  // These transport tests add the manage:negotiations capability gate parity at
+  // both list AND call boundaries. ────────────────────────────────────────────
+
+  it('denies A2A negotiation tools for an agent without manage:negotiations before DB work', async () => {
+    const cases = [
+      { tool: 'list_negotiations', args: {} },
+      { tool: 'get_negotiation', args: { negotiationId: 'task-1' } },
+      {
+        tool: 'respond_to_negotiation',
+        args: {
+          negotiationId: 'task-1',
+          action: 'counter',
+          reasoning: 'a specific assessment',
+          suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+          message: 'a specific counter message',
+        },
+      },
+    ];
+    for (const { tool, args } of cases) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', agentId: 'agent-g' },
+        agentDatabase: agentDbWith({ agentId: 'agent-g', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: args,
+      });
+      expect(result.isError, `${tool} must be denied`).toBe(true);
+      expect(result.code, `${tool} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before chat DB`).toBe(0);
+      expect(result.scopedCreateArgs, `${tool} must deny before scoped DB`).toEqual([]);
+    }
+  });
+
+  it('shows A2A negotiation tools to a bound manage:negotiations agent and admits list/get/respond to the handler seam', async () => {
+    const identity = { userId: 'test-user-id', agentId: 'agent-g', networkScopeId: NETWORK_1 };
+    const agentDatabase = agentDbWith({ agentId: 'agent-g', scope: 'network', scopeId: NETWORK_1, actions: ['manage:negotiations'] });
+
+    const names = await listToolNamesFor({ identity, agentDatabase });
+    expect(names).toContain('list_negotiations');
+    expect(names).toContain('get_negotiation');
+    expect(names).toContain('respond_to_negotiation');
+
+    // Functional negotiation database: admission is proven by a STABLE DOMAIN
+    // response from the real handler, not merely the absence of a denial code.
+    const negotiationDatabase = {
+      getTasksForUser: async () => [],
+      getTask: async () => null,
+      getIntentIdsForOpportunities: async () => ({}),
+      getOpportunityLifecyclesForNegotiations: async () => ({}),
+      getMessagesForConversation: async () => [],
+      getArtifactsForTask: async () => [],
+    } as unknown as ToolDeps['negotiationDatabase'];
+
+    // list_negotiations: admitted, handler returns an empty listing.
+    const list = await callTool({
+      identity, agentDatabase, extraDeps: { negotiationDatabase },
+      toolName: 'list_negotiations', arguments: {},
+    });
+    expect(list.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(list.scopedCreateArgs.length).toBe(1);
+    const listPayload = JSON.parse(list.text) as { success: boolean; data?: { count?: number } };
+    expect(listPayload.success).toBe(true);
+    expect(listPayload.data?.count).toBe(0);
+
+    // get_negotiation: admitted; unknown id yields the stable domain response.
+    const get = await callTool({
+      identity, agentDatabase, extraDeps: { negotiationDatabase },
+      toolName: 'get_negotiation', arguments: { negotiationId: 'task-unknown' },
+    });
+    expect(get.code).not.toBe('MCP_CAPABILITY_DENIED');
+    const getPayload = JSON.parse(get.text) as { success: boolean; error?: string };
+    expect(getPayload.success).toBe(false);
+    expect(getPayload.error).toMatch(/negotiation not found/i);
+
+    // respond_to_negotiation: admitted; schema-valid turn on an unknown id
+    // reaches the handler and returns the stable domain response.
+    const respond = await callTool({
+      identity, agentDatabase, extraDeps: { negotiationDatabase },
+      toolName: 'respond_to_negotiation',
+      arguments: {
+        negotiationId: 'task-unknown',
+        action: 'counter',
+        reasoning: 'a specific assessment',
+        suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+        message: 'a specific counter message',
+      },
+    });
+    expect(respond.code).not.toBe('MCP_CAPABILITY_DENIED');
+    const respondPayload = JSON.parse(respond.text) as { success: boolean; error?: string };
+    expect(respondPayload.success).toBe(false);
+    expect(respondPayload.error).toMatch(/negotiation not found/i);
+  });
 });
