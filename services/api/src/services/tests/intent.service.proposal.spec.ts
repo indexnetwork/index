@@ -5,7 +5,7 @@ import { describe, expect, it, mock } from 'bun:test';
 
 import { IntentDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
-import { IntentNetworkMembershipError, IntentService } from '../intent.service';
+import { IntentAdmissionEnqueueError, IntentNetworkMembershipError, IntentService } from '../intent.service';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const NETWORK_ID = '22222222-2222-4222-8222-222222222222';
@@ -198,8 +198,20 @@ describe('IntentService.createFromProposal atomic confirmation', () => {
     expect(harness.calls.isNetworkMember).not.toHaveBeenCalled();
     expect(harness.calls.generate).not.toHaveBeenCalled();
     expect(harness.calls.confirmProposalIntent).not.toHaveBeenCalled();
-    expect(harness.calls.addGenerateHydeJob).not.toHaveBeenCalled();
+    expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledWith({ intentId: INTENT_ID, userId: USER_ID });
     expect(harness.calls.questionerEnqueue).not.toHaveBeenCalled();
+    expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
+  });
+
+  it('makes a persisted confirmation whose admission enqueue fails observable and retryable', async () => {
+    const harness = makeHarness('created');
+    harness.calls.addGenerateHydeJob.mockImplementation(async () => {
+      throw new Error('redis unavailable');
+    });
+
+    await expect(harness.service.createFromProposal(USER_ID, 'Find climate founders', 'proposal-enqueue-failed'))
+      .rejects.toBeInstanceOf(IntentAdmissionEnqueueError);
+    expect(harness.calls.confirmProposalIntent).toHaveBeenCalledTimes(1);
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
   });
 

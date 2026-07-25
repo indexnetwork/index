@@ -57,6 +57,8 @@ const asIntentDb = (db: IntentQueueTestDatabase): IntentQueueDatabase => ({
     return { kind: 'assigned' };
   },
   deleteHydeDocumentsForSource: async () => 0,
+  getHydeDocumentsForSource: async () => [],
+  getNetworkIdsForIntent: async () => [],
   getProfile: async () => null,
   getActiveIntents: async () => [],
   ...db,
@@ -133,6 +135,16 @@ describe('IntentQueue', () => {
         'reconcile_intent_networks',
         { intentId: 'i1', userId: 'u1', scopeType: 'network', scopeId: 'net-x' },
         expect.objectContaining({ jobId: 'reconcile-i1-net-x' }),
+      );
+    });
+
+    it('adds a stable orphan-reconciliation job', async () => {
+      const queue = new IntentQueue();
+      await queue.addOrphanReconciliationJob({ intentId: 'i1', userId: 'u1', scopeType: 'network', scopeId: 'net-x' });
+      expect(mockAdd).toHaveBeenCalledWith(
+        'reconcile_orphaned_intent',
+        { intentId: 'i1', userId: 'u1', scopeType: 'network', scopeId: 'net-x' },
+        expect.objectContaining({ jobId: 'reconcile-orphaned-i1-net-x' }),
       );
     });
 
@@ -294,7 +306,7 @@ describe('IntentQueue', () => {
       expect(addOpportunityJob).toHaveBeenCalled();
     });
 
-    it('generate_hyde: addOpportunityJob reject is caught and logged', async () => {
+    it('generate_hyde: discovery enqueue failure rejects so BullMQ retries admission', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => {
         throw new Error('opportunity queue full');
@@ -306,8 +318,23 @@ describe('IntentQueue', () => {
         deleteHydeDocumentsForSource: async () => 0,
       };
       const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
-      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
+      await expect(queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' }))
+        .rejects.toThrow('opportunity queue full');
       expect(invokeHyde).toHaveBeenCalled();
+    });
+
+    it('generate_hyde: HyDE failure rejects before discovery so BullMQ retries admission', async () => {
+      const addOpportunityJob = mock(async () => ({}));
+      const queue = new IntentQueue({
+        database: asIntentDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+        invokeHyde: async () => { throw new Error('hyde unavailable'); },
+        addOpportunityJob,
+      });
+      await expect(queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' }))
+        .rejects.toThrow('hyde unavailable');
+      expect(addOpportunityJob).not.toHaveBeenCalled();
     });
 
     it('generate_hyde: network scope assigns focused plus personal but discovers focused only', async () => {
@@ -375,6 +402,23 @@ describe('IntentQueue', () => {
 
       expect(evaluateIntentAssignment).toHaveBeenCalled();
       expect(assignIntentToNetwork).toHaveBeenCalledWith('i1', 'n1', 0.72, expect.objectContaining({ finalScore: 0.72, promptPresence: 'both' }));
+    });
+
+    it('generate_hyde: a prompted below-threshold evaluation remains an intentional zero assignment', async () => {
+      const assignIntentToNetwork = mock(async () => {});
+      const queue = new IntentQueue({
+        database: asIntentDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getAssignmentNetworkIdsForUser: async () => ['n1'],
+          getNetworkAssignmentContext: async () => ({ networkId: 'n1', indexPrompt: 'Climate', memberPrompt: 'Operators' }),
+          assignIntentToNetwork,
+        }),
+        invokeHyde: async () => {},
+        addOpportunityJob: async () => {},
+        evaluateIntentAssignment: async () => ({ indexScore: 0.1, memberScore: 0.1, reasoning: 'Not relevant' }),
+      });
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
+      expect(assignIntentToNetwork).not.toHaveBeenCalled();
     });
 
     describe('network assignment domain invariants', () => {
@@ -533,6 +577,68 @@ describe('IntentQueue', () => {
       expect(invokeHyde).not.toHaveBeenCalled();
       expect(addOpportunityJob).not.toHaveBeenCalled();
       expect(assignIntentToNetwork.mock.calls[0][3]).toMatchObject({ source: 'intent-reconcile-queue', assigned: true });
+    });
+
+    it('reconcile_orphaned_intent: re-admits missing artifacts in normal assignment → HyDE → discovery order', async () => {
+      const sequence: string[] = [];
+      const queue = new IntentQueue({
+        database: asIntentDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getAssignmentNetworkIdsForUser: async () => ['n1'],
+          getNetworkIdsForIntent: async () => [],
+          getHydeDocumentsForSource: async () => [],
+          assignIntentToNetwork: async () => { sequence.push('assignment'); },
+        }),
+        invokeHyde: async () => { sequence.push('hyde'); },
+        addOpportunityJob: async () => { sequence.push('discovery'); },
+      });
+      await queue.processJob('reconcile_orphaned_intent', { intentId: 'i1', userId: 'u1' });
+      expect(sequence).toEqual(['assignment', 'hyde', 'discovery']);
+    });
+
+    it('reconcile_orphaned_intent: skips paused intents before assignment or regeneration', async () => {
+      const invokeHyde = mock(async () => {});
+      const queue = new IntentQueue({
+        database: asIntentDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null, status: 'PAUSED', archivedAt: null }),
+        }),
+        invokeHyde,
+      });
+      await queue.processJob('reconcile_orphaned_intent', { intentId: 'i1', userId: 'u1' });
+      expect(invokeHyde).not.toHaveBeenCalled();
+    });
+
+    it('reconcile_orphaned_intent: re-admits when an old assignment is no longer an active membership', async () => {
+      const invokeHyde = mock(async () => {});
+      const queue = new IntentQueue({
+        database: asIntentDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => ['former-network'],
+          getHydeDocumentsForSource: async () => [{ id: 'hyde-1' }] as never,
+          getAssignmentNetworkMembershipsForUser: async () => [],
+        }),
+        invokeHyde,
+        addOpportunityJob: async () => {},
+      });
+      await queue.processJob('reconcile_orphaned_intent', { intentId: 'i1', userId: 'u1' });
+      expect(invokeHyde).toHaveBeenCalledTimes(1);
+    });
+
+    it('generate_hyde: material re-admission forces HyDE regeneration after a payload update', async () => {
+      let payload = 'First material payload';
+      const invokeHyde = mock(async () => {});
+      const queue = new IntentQueue({
+        database: asIntentDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload, userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+        invokeHyde,
+        addOpportunityJob: async () => {},
+      });
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
+      payload = 'Updated material payload';
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
+      expect(invokeHyde).toHaveBeenNthCalledWith(1, expect.objectContaining({ sourceText: 'First material payload', forceRegenerate: true }));
+      expect(invokeHyde).toHaveBeenNthCalledWith(2, expect.objectContaining({ sourceText: 'Updated material payload', forceRegenerate: true }));
     });
 
     it('reconcile_intent_networks: networkScopeId restricts evaluation to that network', async () => {
