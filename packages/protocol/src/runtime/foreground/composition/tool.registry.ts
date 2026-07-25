@@ -5,7 +5,7 @@ import { error, redactSensitiveFields } from '../../../shared/agent/tool.helpers
 import { createEnrichmentTools } from '../../../enrichment/enrichment.tools.js';
 import { createIntentTools } from '../signals/intent.tools.js';
 import { createNetworkTools } from '../../../capabilities/communities.facade.js';
-import { createOpportunityTools } from '../../../opportunity/opportunity.tools.js';
+import { createOpportunityTools } from '../../../capabilities/opportunities.facade.js';
 import { createUtilityTools } from '../../../shared/agent/utility.tools.js';
 import { createIntegrationTools } from '../../../capabilities/integrations.facade.js';
 import { createContactTools } from '../../../capabilities/contacts.facade.js';

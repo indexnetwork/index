@@ -42,7 +42,7 @@ const systemPrompt = `
       - <70: No opportunity (Return empty list).
 
     **CRITICAL: VALENCY & REASONING**
-    
+
     1. **Valency Analysis**:
        - Determine the semantic role of the Candidate relative to the Source's goal.
        - "Agent": The Candidate CAN DO something for the Source (e.g., Source needs a dev, Candidate IS a dev).
@@ -295,7 +295,7 @@ export class OpportunityEvaluator {
 
   /**
    * Main Entry Point: Batch analysis of candidates.
-   * 
+   *
    * @param sourceProfileContext - The profile context string of the user we are finding opportunities FOR.
    * @param candidates - List of potential matches to evaluate.
    * @param options - Config (minScore, valid types, etc).

@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { HydeGraphDatabase } from "../../../shared/interfaces/database.interface.js";
 import { IntentGraphFactory } from "../../../signals/application/intent.graph.js";
 import { EnrichmentGraphFactory } from "../../../enrichment/enrichment.graph.js";
-import { OpportunityGraphFactory } from "../../../opportunity/opportunity.graph.js";
+import { OpportunityGraphFactory } from "../../../capabilities/opportunities.facade.js";
 import { HydeGraphFactory } from "../../../shared/hyde/hyde.graph.js";
 import { HydeGenerator } from "../../../shared/hyde/hyde.generator.js";
 import { LensInferrer } from "../../../shared/hyde/lens.inferrer.js";
@@ -21,7 +21,7 @@ import { invokeToolRuntime, toolRuntimeErrorToResult } from "../../../shared/age
 import { createEnrichmentTools } from "../../../enrichment/enrichment.tools.js";
 import { createIntentTools } from "../signals/intent.tools.js";
 import { createNetworkTools } from "../../../capabilities/communities.facade.js";
-import { createOpportunityTools } from "../../../opportunity/opportunity.tools.js";
+import { createOpportunityTools } from "../../../capabilities/opportunities.facade.js";
 import { createUtilityTools } from "../../../shared/agent/utility.tools.js";
 import { createIntegrationTools } from "../../../capabilities/integrations.facade.js";
 import { createContactTools } from "../../../capabilities/contacts.facade.js";
