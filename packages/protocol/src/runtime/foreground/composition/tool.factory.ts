@@ -223,6 +223,7 @@ export async function createChatTools(
     ...(deps.chatQuestions && { chatQuestions: deps.chatQuestions }),
     ...(deps.chatSession && { chatSession: deps.chatSession }),
     ...(deps.getUserContextText && { getUserContextText: deps.getUserContextText }),
+    ...(deps.intentProposalStore && { intentProposalStore: deps.intentProposalStore }),
     graphs: {
       profile: profileGraph,
       intent: intentGraph,

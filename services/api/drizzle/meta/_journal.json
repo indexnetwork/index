@@ -757,6 +757,13 @@
       "when": 1784817284724,
       "tag": "0107_add_negotiation_continuation_successor_uniqueness",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1784975313173,
+      "tag": "0108_add_intent_proposals",
+      "breakpoints": true
     }
   ]
 }

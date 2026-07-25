@@ -20,6 +20,7 @@ import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
+import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import db from '../lib/drizzle/drizzle';
 
 import { log } from '../lib/log';
@@ -65,6 +66,7 @@ export class ToolService {
       database,
       userDb,
       systemDb,
+      intentProposalStore: intentProposalDatabaseAdapter,
       scraper: this.scraper,
       embedder: this.embedder,
       cache: this.cache,
@@ -349,4 +351,3 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
   }
   return { type: 'unknown' };
 }
-

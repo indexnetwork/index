@@ -16,18 +16,35 @@ mock.module('../../lib/bullmq/bullmq', () => ({
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
+mock.module('../../adapters/database.adapter', () => ({
+  ChatDatabaseAdapter: class ChatDatabaseAdapter {},
+  chatDatabaseAdapter: {},
+}));
+mock.module('../../adapters/embedder.adapter', () => ({
+  EmbedderAdapter: class EmbedderAdapter {},
+  embedderAdapter: {},
+}));
 
 // Stub the run-existing queue that from-intent imports
 mock.module('../negotiations/run-existing.queue', () => ({
   negotiationRunExistingQueue: { addJob: async () => ({ id: 'neg-1' }) },
+}));
+mock.module('../pool/mining.shared', () => ({
+  maybeMinePoolDiscriminators: async () => {},
+  minePoolDiscriminatorsOnCompletion: async () => {},
+}));
+mock.module('../questioner/recovery.shared', () => ({
+  maybeEnqueueIntentRecovery: async () => {},
 }));
 
 afterAll(() => {
   mock.restore();
 });
 
-import { FromIntentQueue, QUEUE_NAME, type FromIntentJobData, type FromIntentDatabase, type FromIntentDeps, type FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
-import { summarizeOpportunityDiscoveryResult } from '../opportunity/discovery.shared';
+import type { FromIntentJobData, FromIntentDatabase, FromIntentDeps, FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
+
+const { FromIntentQueue, QUEUE_NAME } = await import('../opportunity/from-intent.queue');
+const { summarizeOpportunityDiscoveryResult } = await import('../opportunity/discovery.shared');
 
 type FromIntentDatabaseOverrides = Partial<FromIntentDatabase> & Pick<FromIntentDatabase, 'getIntentForIndexing'>;
 

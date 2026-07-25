@@ -5,17 +5,17 @@ import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/a
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
-import { IntentAdmissionEnqueueError, IntentNetworkMembershipError, intentService } from '../services/intent.service';
+import { IntentAdmissionEnqueueError, IntentNetworkMembershipError, IntentProposalConfirmationError, intentService } from '../services/intent.service';
 
 const logger = log.controller.from('intent');
 
 const ConfirmSchema = z.object({
-  proposalId: z.string().min(1, 'proposalId is required'),
+  proposalId: z.string().uuid('proposalId must be a UUID'),
   description: z.string().trim().min(1, 'description is required'),
   networkId: z.string().uuid('networkId must be a UUID').optional(),
 }).strict();
 const RejectSchema = z.object({
-  proposalId: z.string().min(1, 'proposalId is required'),
+  proposalId: z.string().uuid('proposalId must be a UUID'),
 });
 const ProposalStatusesSchema = z.object({
   proposalIds: z.array(z.string().min(1)).default([]),
@@ -27,16 +27,19 @@ const StatusSchema = z.object({
 @Controller('/intents')
 export class IntentController {
   private readonly confirmService: Pick<typeof intentService, 'createFromProposal'>;
+  private readonly rejectProposal: typeof intentService.rejectProposal;
   private readonly assertConfirmNetworkScope: typeof assertAgentNetworkScope;
 
   /**
    * @param confirmDeps - Optional confirm-path overrides for focused controller tests.
    */
   constructor(confirmDeps?: {
-    service?: Pick<typeof intentService, 'createFromProposal'>;
+    service?: Pick<typeof intentService, 'createFromProposal'> & Partial<Pick<typeof intentService, 'rejectProposal'>>;
     assertNetworkScope?: typeof assertAgentNetworkScope;
   }) {
     this.confirmService = confirmDeps?.service ?? intentService;
+    this.rejectProposal = confirmDeps?.service?.rejectProposal?.bind(confirmDeps.service)
+      ?? intentService.rejectProposal.bind(intentService);
     this.assertConfirmNetworkScope = confirmDeps?.assertNetworkScope ?? assertAgentNetworkScope;
   }
 
@@ -73,8 +76,9 @@ export class IntentController {
   }
 
   /**
-   * Confirm a proposed intent from chat. Directly persists the pre-verified
-   * intent (embedding + DB insert) without re-running the full intent graph.
+   * Confirm a proposed intent from chat. Resolves the owner-scoped durable
+   * proposal and atomically persists its server-authoritative verifier analysis
+   * without re-running the full intent graph.
    * @param req - Request with body `{ proposalId: string; description: string; networkId?: string }`
    * @param user - Authenticated user from AuthGuard
    * @returns The created intent
@@ -130,6 +134,19 @@ export class IntentController {
           retryable: true,
         }, { status: 503 });
       }
+      if (err instanceof IntentProposalConfirmationError) {
+        const status = err.code === 'proposal_not_found'
+          ? 404
+          : err.code === 'proposal_expired'
+            ? 410
+            : 409;
+        return Response.json({
+          error: err.code,
+          code: err.code,
+          detail: err.message,
+          proposalId,
+        }, { status });
+      }
       logger.error('Intent confirm failed', { userId: user.id, proposalId, error: err });
       return Response.json({ error: 'Failed to process intent confirmation' }, { status: 500 });
     }
@@ -154,7 +171,10 @@ export class IntentController {
     }
     const { proposalId } = parsed.data;
 
-    logger.verbose('Intent proposal rejected', { userId: user.id, proposalId });
+    const rejected = await this.rejectProposal(user.id, proposalId);
+    if (!rejected) {
+      return Response.json({ error: 'proposal_not_found', code: 'proposal_not_found' }, { status: 404 });
+    }
 
     return Response.json({
       success: true,

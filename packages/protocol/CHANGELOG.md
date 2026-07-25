@@ -12,6 +12,11 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+### Added
+- Add the injected `IntentProposalStore` host boundary so web proposal cards are
+  emitted only after the normalized description, optional network scope, and
+  complete verifier output have been durably bound to their owner.
+
 ## [6.14.0] — 2026-07-25
 
 ### Added

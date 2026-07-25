@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm/sql';
 
 import { IntentController } from "../intent.controller";
 import { IntentDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
+import { IntentProposalDatabaseAdapter } from "../../adapters/intent-proposal.database.adapter";
 import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { ScopeViolationError } from '../../guards/agent-scope.guard';
@@ -82,42 +83,87 @@ describe("IntentDatabaseAdapter Integration", () => {
 
   test("proposal creation atomically requires a current membership", async () => {
     const chatAdapter = new ChatDatabaseAdapter();
+    const proposalAdapter = new IntentProposalDatabaseAdapter();
     const network = await chatAdapter.createNetwork({
       title: `Intent proposal membership ${Date.now()}`,
     });
-    const allowedSourceId = `proposal-member-${crypto.randomUUID()}`;
-    const deniedSourceId = `proposal-stale-${crypto.randomUUID()}`;
+    const allowedSourceId = crypto.randomUUID();
+    const deniedSourceId = crypto.randomUUID();
     let allowedIntentId: string | null = null;
+    const deterministicEmbedding = [1, ...new Array(1999).fill(0)];
+    const authoritativeAnalysis = {
+      verifierOutput: {
+        reasoning: 'Direct, sincere request within the owner authority.',
+        classification: 'DIRECTIVE' as const,
+        felicity_scores: { authority: 84, sincerity: 91, clarity: 88 },
+        semantic_entropy: 0.21,
+        referential_anchor: 'Climate Founders Circle',
+        referential_breadth: 'narrow' as const,
+        missing_selectional_constraints: [],
+        specificity_warning: null,
+        flags: [],
+      },
+      combinedScore: 84,
+    };
 
     try {
       await chatAdapter.addMemberToNetwork(network.id, testUserId, 'member');
-      const confirmationData = {
+      await proposalAdapter.createProposals([{
+        proposalId: allowedSourceId,
         userId: testUserId,
-        payload: 'Find climate founders',
-        sourceType: 'discovery_form' as const,
-        sourceId: allowedSourceId,
+        description: 'Find climate founders',
+        networkId: network.id,
+        analysis: authoritativeAnalysis,
+      }]);
+      const confirmationData = {
+        proposalId: allowedSourceId,
+        userId: testUserId,
+        description: 'Find climate founders',
+        networkId: network.id,
+        embedding: deterministicEmbedding,
       };
+      expect(confirmationData.embedding).toHaveLength(2000);
       const confirmations = await Promise.all([
-        adapter.confirmProposalIntent(confirmationData, network.id),
-        adapter.confirmProposalIntent(confirmationData, network.id),
+        adapter.confirmProposalIntent(confirmationData),
+        adapter.confirmProposalIntent(confirmationData),
       ]);
-      expect(confirmations.map((result) => result.kind).sort()).toEqual(['created', 'existing']);
+      expect(confirmations.map((result) => result.kind).sort()).toEqual(['created', 'replay']);
       const confirmedIds = confirmations.flatMap((result) => (
-        result.kind === 'membership_required' ? [] : [result.intent.id]
+        result.kind === 'created' || result.kind === 'replay' ? [result.intent.id] : []
       ));
       expect(new Set(confirmedIds).size).toBe(1);
       allowedIntentId = confirmedIds[0] ?? null;
       expect(allowedIntentId).not.toBeNull();
       expect(await chatAdapter.isNetworkMember(network.id, testUserId)).toBe(true);
 
-      const persisted = await db.select({ id: intentsTable.id })
+      const persisted = await db.select({
+        id: intentsTable.id,
+        payload: intentsTable.payload,
+        semanticEntropy: intentsTable.semanticEntropy,
+        referentialAnchor: intentsTable.referentialAnchor,
+        intentMode: intentsTable.intentMode,
+        speechActType: intentsTable.speechActType,
+        felicityAuthority: intentsTable.felicityAuthority,
+        felicitySincerity: intentsTable.felicitySincerity,
+        felicityClarity: intentsTable.felicityClarity,
+      })
         .from(intentsTable)
         .where(and(
           eq(intentsTable.userId, testUserId),
           eq(intentsTable.sourceId, allowedSourceId),
         ));
       expect(persisted).toHaveLength(1);
-      expect(persisted[0]?.id).toBe(allowedIntentId);
+      expect(persisted[0]).toEqual({
+        id: allowedIntentId,
+        payload: 'Find climate founders',
+        semanticEntropy: 0.21,
+        referentialAnchor: 'Climate Founders Circle',
+        intentMode: 'REFERENTIAL',
+        speechActType: 'DIRECTIVE',
+        felicityAuthority: 84,
+        felicitySincerity: 91,
+        felicityClarity: 88,
+      });
       const assignments = await db.select({ intentId: intentNetworksTable.intentId })
         .from(intentNetworksTable)
         .where(and(
@@ -131,16 +177,24 @@ describe("IntentDatabaseAdapter Integration", () => {
         .where(eq(networkMembersTable.networkId, network.id));
       expect(await chatAdapter.isNetworkMember(network.id, testUserId)).toBe(false);
 
-      const retry = await adapter.confirmProposalIntent(confirmationData, network.id);
-      expect(retry.kind).toBe('existing');
-      expect(retry.kind === 'existing' ? retry.intent.id : null).toBe(allowedIntentId);
+      const retry = await adapter.confirmProposalIntent(confirmationData);
+      expect(retry.kind).toBe('replay');
+      expect(retry.kind === 'replay' ? retry.intent.id : null).toBe(allowedIntentId);
 
-      const denied = await adapter.confirmProposalIntent({
+      await proposalAdapter.createProposals([{
+        proposalId: deniedSourceId,
         userId: testUserId,
-        payload: 'This must not persist',
-        sourceType: 'discovery_form',
-        sourceId: deniedSourceId,
-      }, network.id);
+        description: 'This must not persist',
+        networkId: network.id,
+        analysis: authoritativeAnalysis,
+      }]);
+      const denied = await adapter.confirmProposalIntent({
+        proposalId: deniedSourceId,
+        userId: testUserId,
+        description: 'This must not persist',
+        networkId: network.id,
+        embedding: deterministicEmbedding,
+      });
       expect(denied).toEqual({ kind: 'membership_required' });
       expect(await adapter.getIntentBySourceId(deniedSourceId, testUserId)).toBeNull();
     } finally {
@@ -745,6 +799,7 @@ describe('IntentController confirm authorization', () => {
     name: 'Alice',
   };
   const networkId = '22222222-2222-4222-8222-222222222222';
+  const proposalId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
   const request = (body: Record<string, unknown>) => new Request('http://localhost/intents/confirm', {
     method: 'POST',
@@ -761,7 +816,7 @@ describe('IntentController confirm authorization', () => {
     });
 
     const response = await controller.confirm(request({
-      proposalId: 'proposal-member',
+      proposalId,
       description: 'Find climate founders',
       networkId,
     }), user);
@@ -769,14 +824,14 @@ describe('IntentController confirm authorization', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       success: true,
-      proposalId: 'proposal-member',
+      proposalId,
       intentId: 'intent-member',
     });
     expect(assertNetworkScope).toHaveBeenCalledWith(expect.any(Request), networkId);
     expect(createFromProposal).toHaveBeenCalledWith(
       user.id,
       'Find climate founders',
-      'proposal-member',
+      proposalId,
       networkId,
     );
   });
@@ -791,7 +846,7 @@ describe('IntentController confirm authorization', () => {
     });
 
     const response = await controller.confirm(request({
-      proposalId: 'proposal-stale',
+      proposalId,
       description: 'Find climate founders',
       networkId,
     }), user);
@@ -814,7 +869,7 @@ describe('IntentController confirm authorization', () => {
     });
 
     const response = await controller.confirm(request({
-      proposalId: 'proposal-invalid',
+      proposalId,
       description: 'Find climate founders',
       networkId: 'not-a-uuid',
     }), user);
@@ -833,7 +888,7 @@ describe('IntentController confirm authorization', () => {
     });
 
     const response = await controller.confirm(request({
-      proposalId: 'proposal-global',
+      proposalId,
       description: 'Find climate founders',
     }), user);
 
@@ -842,7 +897,7 @@ describe('IntentController confirm authorization', () => {
     expect(createFromProposal).toHaveBeenCalledWith(
       user.id,
       'Find climate founders',
-      'proposal-global',
+      proposalId,
       undefined,
     );
   });
@@ -856,7 +911,7 @@ describe('IntentController confirm authorization', () => {
       }),
     });
     const matching = await matchingController.confirm(request({
-      proposalId: 'proposal-scoped',
+      proposalId,
       description: 'Find climate founders',
       networkId,
     }), user);
@@ -870,7 +925,7 @@ describe('IntentController confirm authorization', () => {
       }),
     });
     await expect(mismatchController.confirm(request({
-      proposalId: 'proposal-mismatch',
+      proposalId,
       description: 'Find climate founders',
       networkId,
     }), user)).rejects.toBeInstanceOf(ScopeViolationError);

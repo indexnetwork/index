@@ -16,6 +16,14 @@ mock.module('../../lib/bullmq/bullmq', () => ({
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
+mock.module('../../adapters/database.adapter', () => ({
+  ChatDatabaseAdapter: class ChatDatabaseAdapter {},
+  chatDatabaseAdapter: {},
+}));
+mock.module('../../adapters/embedder.adapter', () => ({
+  EmbedderAdapter: class EmbedderAdapter {},
+  embedderAdapter: {},
+}));
 mock.module('../opportunity/from-intent.queue', () => ({
   fromIntentQueue: { addJob: async () => ({ id: '1' }) },
 }));
