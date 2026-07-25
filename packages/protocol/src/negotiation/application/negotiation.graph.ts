@@ -1350,6 +1350,8 @@ export interface NegotiationCandidate {
   /** Exact opportunity-bound source and candidate intent IDs. */
   sourceIntentId?: string;
   candidateIntentId?: string;
+  /** Per-opportunity source context when its exact actor intent differs across a fan-out. */
+  sourceUser?: UserNegotiationContext;
   reasoning: string;
   valencyRole: string;
   networkId?: string;
@@ -1447,15 +1449,16 @@ export async function negotiateCandidates(
   const results = await Promise.all(
     candidates.map(async (candidate) => {
       const start = Date.now();
+      const candidateSourceUser = candidate.sourceUser ?? sourceUser;
       if (candidate.opportunityId) {
         const candidateName = candidate.candidateUser?.profile?.name;
         emitWide({
           type: "negotiation_session_start",
           opportunityId: candidate.opportunityId,
           negotiationConversationId: "", // filled in on session_end
-          sourceUserId: sourceUser.id,
+          sourceUserId: candidateSourceUser.id,
           candidateUserId: candidate.userId,
-          initiatorUserId: initiatorUserId ?? sourceUser.id,
+          initiatorUserId: initiatorUserId ?? candidateSourceUser.id,
           ...(candidateName && { candidateName }),
           trigger: trigger ?? "ambient",
           startedAt: start,
@@ -1469,7 +1472,7 @@ export async function negotiateCandidates(
           : indexContext;
 
         const result = await invokeWithAbortSignal(negotiationGraph, {
-          sourceUser,
+          sourceUser: candidateSourceUser,
           candidateUser: candidate.candidateUser,
           ...(candidate.sourceIntentId && { sourceIntentId: candidate.sourceIntentId }),
           ...(candidate.candidateIntentId && { candidateIntentId: candidate.candidateIntentId }),

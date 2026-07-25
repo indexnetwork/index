@@ -105,6 +105,7 @@ const envSchema = z.object({
   NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
   NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
   NEGOTIATION_MAX_TURNS_AMBIENT: optionalInt,
+  NEGOTIATION_INCLUDE_OTHER_INTENTS: z.enum(['true', 'false']).optional(),
   NEGOTIATION_PROTOCOL_VERSION: z.union([z.literal(''), z.enum(['v1', 'v2'])]).optional(),
   NEGOTIATOR_CHAT_ENABLED: optionalBoolean,
   WEB_SIGNAL_AGENT_ENABLED: optionalBoolean,

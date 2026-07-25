@@ -7,7 +7,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
@@ -25,9 +25,18 @@ type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
+const originalNegotiationIncludeOtherIntents = process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS;
+
+afterEach(() => {
+  if (originalNegotiationIncludeOtherIntents === undefined) {
+    delete process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS;
+  } else {
+    process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = originalNegotiationIncludeOtherIntents;
+  }
+});
 
 describe('buildPrioritizedNegotiationIntents', () => {
-  test('prioritizes an exact fallback intent, removes duplicates, and keeps the five-intent cap', () => {
+  test('defaults to exact-first bounded fallback behavior', () => {
     const intents = buildPrioritizedNegotiationIntents(
       [
         { id: 'other-1', summary: 'Other 1', payload: 'one' },
@@ -48,6 +57,34 @@ describe('buildPrioritizedNegotiationIntents', () => {
       'other-3',
       'other-4',
     ]);
+  });
+
+  test('restricts context to the exact active or owned fallback intent', () => {
+    expect(buildPrioritizedNegotiationIntents(
+      [
+        { id: 'other-1', summary: 'Other 1', payload: 'one' },
+        { id: 'exact-intent', summary: 'Exact active', payload: 'exact active payload' },
+      ],
+      'exact-intent',
+      null,
+      false,
+    ).map((intent) => intent.id)).toEqual(['exact-intent']);
+
+    expect(buildPrioritizedNegotiationIntents(
+      [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
+      'exact-intent',
+      { id: 'exact-intent', summary: 'Exact fallback', payload: 'exact fallback payload' },
+      false,
+    ).map((intent) => intent.id)).toEqual(['exact-intent']);
+  });
+
+  test('provides no unrelated fallback when a restrictive context has no exact binding', () => {
+    expect(buildPrioritizedNegotiationIntents(
+      [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
+      undefined,
+      null,
+      false,
+    )).toEqual([]);
   });
 });
 
@@ -2612,7 +2649,8 @@ describe('Opportunity Graph', () => {
       expect(negotiationInvocations).toHaveLength(0);
     });
 
-    test('invokes negotiation and ignores a null-like exact actor intent from persisted data', async () => {
+    test('fresh negotiation preserves exact-first fallback when true and isolates both sides when false', async () => {
+      process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = 'false';
       const negotiationInvocations: unknown[] = [];
       const exactIntentLookups: string[] = [];
 
@@ -2743,7 +2781,7 @@ describe('Opportunity Graph', () => {
           {
             userId: 'a0000000-0000-4000-8000-000000000001',
             role: 'patient',
-            intentId: null,
+            intentId: 'intent-1',
           },
           {
             userId: 'b0000000-0000-4000-8000-000000000002',
@@ -2772,6 +2810,32 @@ describe('Opportunity Graph', () => {
       expect(negotiationInvocations.length).toBeGreaterThan(0);
       expect(exactIntentLookups.length).toBeGreaterThan(0);
       expect(new Set(exactIntentLookups)).toEqual(new Set(['intent-bob']));
+      const invocation = negotiationInvocations[0] as {
+        sourceUser: { intents: Array<{ id: string }> };
+        candidateUser: { intents: Array<{ id: string }> };
+      };
+      expect(invocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-1']);
+      expect(invocation.candidateUser.intents.map((intent) => intent.id)).toEqual(['intent-bob']);
+
+      process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = 'true';
+      negotiationInvocations.length = 0;
+      exactIntentLookups.length = 0;
+      await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        operationMode: 'create' as const,
+        options: { initialStatus: 'latent' as const },
+      });
+
+      const compatibleInvocation = negotiationInvocations[0] as {
+        sourceUser: { intents: Array<{ id: string }> };
+        candidateUser: { intents: Array<{ id: string }> };
+      };
+      expect(compatibleInvocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-1']);
+      expect(compatibleInvocation.candidateUser.intents.map((intent) => intent.id)).toEqual([
+        'intent-bob',
+        'intent-1',
+      ]);
     });
   });
 

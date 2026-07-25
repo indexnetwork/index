@@ -313,6 +313,16 @@ The health scorer considers connection count, connector flow count, expired coun
 
 The graph creates an A2A conversation, alternates between proposer and responder agents, and records each turn as a message with structured data parts. The finalize node determines whether an opportunity was produced, computes agreed roles and average fit score, then persists the outcome as an artifact.
 
+Autonomous opportunity negotiation builds each participant context from the
+opportunity's exact actor-intent binding. `NEGOTIATION_INCLUDE_OTHER_INTENTS`
+defaults to `true`, preserving the exact-first bounded fallback of up to five
+active intents per participant. With the strict value `false`, only an owned
+exact bound intent is admitted; an actor without an exact binding receives no
+unrelated fallback. This pruning happens before the outreach screen,
+negotiator, dispatcher/polling context, persisted `turnContext`, and intent
+snapshot derivation. Personal negotiator chat keeps its explicit authenticated
+`read_intents` capability unchanged.
+
 **Dependencies:** `NegotiationGraphDatabase`, proposer agent, responder agent
 
 ### 3.12 Premise Graph

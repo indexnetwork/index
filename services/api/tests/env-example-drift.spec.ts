@@ -63,6 +63,7 @@ function schemaVars(): Set<string> {
 describe('root .env.example ↔ startup.env.ts schema', () => {
   const example = exampleVars();
   const schema = schemaVars();
+  const schemaSource = readFileSync(schemaPath, 'utf8');
 
   it('sanity: parsers found a plausible number of vars', () => {
     expect(example.size).toBeGreaterThan(50);
@@ -89,5 +90,11 @@ describe('root .env.example ↔ startup.env.ts schema', () => {
       unvalidated,
       `Vars documented in the root .env.example but missing from the envSchema in src/startup.env.ts — add them to the schema (or to NON_API_PATTERNS if not read by the API): ${unvalidated.join(', ')}`,
     ).toEqual([]);
+  });
+
+  it('strictly validates NEGOTIATION_INCLUDE_OTHER_INTENTS as true or false', () => {
+    expect(schemaSource).toContain(
+      "NEGOTIATION_INCLUDE_OTHER_INTENTS: z.enum(['true', 'false']).optional()",
+    );
   });
 });

@@ -12,6 +12,15 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [6.14.0] — 2026-07-25
+
+### Added
+- Add `NEGOTIATION_INCLUDE_OTHER_INTENTS` (IND-571), a strict boolean
+  deployment policy for autonomous opportunity negotiation. The default
+  preserves exact-first bounded active-intent context; `false` isolates each
+  participant to its exact opportunity-bound intent across fresh and
+  continuation negotiation contexts.
+
 ## [6.13.22] — 2026-07-25
 
 ### Added
