@@ -53,8 +53,8 @@ import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
-import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, ChatQuestionsHost, PersistableQuestion, PersistedQuestion } from '@indexnetwork/protocol';
+import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -291,14 +291,23 @@ const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', API_URL),
 );
 
-function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
+function parseApiKeyMetadata(raw: string | null | undefined): {
+  agentId?: string;
+  enrollmentCapable?: boolean;
+  isDeliveryAgent?: boolean;
+} {
   if (!raw) {
     return {};
   }
 
   try {
-    const parsed = JSON.parse(raw) as { agentId?: unknown };
-    return typeof parsed.agentId === 'string' ? { agentId: parsed.agentId } : {};
+    const parsed = McpApiKeyMetadataSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return {};
+    return {
+      ...(parsed.data.agentId ? { agentId: parsed.data.agentId } : {}),
+      ...(parsed.data.enrollmentCapable === true ? { enrollmentCapable: true } : {}),
+      ...(parsed.data.isDeliveryAgent === true ? { isDeliveryAgent: true } : {}),
+    };
   } catch {
     return {};
   }
@@ -321,13 +330,7 @@ type TelegramHandleMismatch = {
   ownerUserId?: string;
 };
 
-type ResolvedMcpIdentity = {
-  userId: string;
-  agentId?: string;
-  isSessionAuth?: boolean;
-  networkScopeId?: string | null;
-  clientSurface?: 'telegram' | 'web';
-};
+type ResolvedMcpIdentity = McpResolvedIdentity;
 
 function normalizeTelegramHeader(raw: string | null | undefined): string | null {
   const trimmed = raw
@@ -398,7 +401,12 @@ export function findTelegramHandleMismatch(params: {
 export function resolveMcpApiKeyPrincipal(
   row: ApiKeyPrincipalRow,
   sessionUserId?: string,
-): { userId: string; agentId?: string } | null {
+): {
+  userId: string;
+  agentId?: string;
+  enrollmentCapable?: boolean;
+  isDeliveryAgent?: boolean;
+} | null {
   const metadata = parseApiKeyMetadata(row.metadata);
 
   // Agent keys must additionally carry BOTH principal columns (the adapter
@@ -408,6 +416,9 @@ export function resolveMcpApiKeyPrincipal(
   if (metadata.agentId && (!row.userId || !row.referenceId)) {
     throw new Error('Agent API key principal mismatch');
   }
+  if (metadata.isDeliveryAgent && !metadata.agentId) {
+    throw new Error('Delivery API key principal mismatch');
+  }
 
   const userId = resolveApiKeyUserId(row, sessionUserId);
   if (!userId) return null;
@@ -415,6 +426,8 @@ export function resolveMcpApiKeyPrincipal(
   return {
     userId,
     ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
+    ...(!metadata.agentId && metadata.enrollmentCapable ? { enrollmentCapable: true } : {}),
+    ...(metadata.agentId && metadata.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
   };
 }
 
@@ -600,7 +613,7 @@ const authResolver: McpAuthResolver = {
             throw new Error('Invalid API key');
           }
 
-          let principal: { userId: string; agentId?: string } | null;
+          let principal: ReturnType<typeof resolveMcpApiKeyPrincipal>;
           try {
             principal = resolveMcpApiKeyPrincipal(row, sessionUserId);
           } catch (err) {
@@ -620,6 +633,8 @@ const authResolver: McpAuthResolver = {
             return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
               userId: principal.userId,
               ...(principal.agentId ? { agentId: principal.agentId } : {}),
+              ...(principal.enrollmentCapable ? { enrollmentCapable: true } : {}),
+              ...(principal.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
               networkScopeId,
               clientSurface,
             });
@@ -734,7 +749,12 @@ function createMcpServerInstance(): McpServer {
     },
   };
 
-  return createMcpServer(toolDeps, authResolver, scopedDepsFactory);
+  return createMcpServer(
+    toolDeps,
+    authResolver,
+    scopedDepsFactory,
+    CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

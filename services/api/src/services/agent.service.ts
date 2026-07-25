@@ -7,10 +7,10 @@ const logger = log.service.from('AgentService');
 
 /** All valid agent actions. Used for input validation. */
 export const AGENT_ACTIONS = [
-  'manage:profile',
+  'manage:identity',
+  'manage:premises',
   'manage:intents',
   'manage:networks',
-  'manage:contacts',
   'manage:opportunities',
   'manage:negotiations',
 ] as const;
@@ -19,19 +19,19 @@ export type AgentAction = (typeof AGENT_ACTIONS)[number];
 
 /** Actions granted to the chat orchestrator by default (excludes negotiations). */
 const ORCHESTRATOR_ACTIONS: readonly AgentAction[] = [
-  'manage:profile',
+  'manage:identity',
+  'manage:premises',
   'manage:intents',
   'manage:networks',
-  'manage:contacts',
   'manage:opportunities',
 ];
 
 /** Default actions granted to the owner of a newly created personal agent. */
 export const PERSONAL_AGENT_DEFAULT_ACTIONS: readonly AgentAction[] = [
-  'manage:profile',
+  'manage:identity',
+  'manage:premises',
   'manage:intents',
   'manage:networks',
-  'manage:contacts',
   'manage:opportunities',
 ];
 
