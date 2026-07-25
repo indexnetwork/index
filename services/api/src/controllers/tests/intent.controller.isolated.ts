@@ -90,6 +90,7 @@ describe("IntentDatabaseAdapter Integration", () => {
     const allowedSourceId = crypto.randomUUID();
     const deniedSourceId = crypto.randomUUID();
     let allowedIntentId: string | null = null;
+    const deterministicEmbedding = [1, ...new Array(1999).fill(0)];
     const authoritativeAnalysis = {
       verifierOutput: {
         reasoning: 'Direct, sincere request within the owner authority.',
@@ -119,8 +120,9 @@ describe("IntentDatabaseAdapter Integration", () => {
         userId: testUserId,
         description: 'Find climate founders',
         networkId: network.id,
-        embedding: [0.5, 0.5],
+        embedding: deterministicEmbedding,
       };
+      expect(confirmationData.embedding).toHaveLength(2000);
       const confirmations = await Promise.all([
         adapter.confirmProposalIntent(confirmationData),
         adapter.confirmProposalIntent(confirmationData),
@@ -191,7 +193,7 @@ describe("IntentDatabaseAdapter Integration", () => {
         userId: testUserId,
         description: 'This must not persist',
         networkId: network.id,
-        embedding: [0.5, 0.5],
+        embedding: deterministicEmbedding,
       });
       expect(denied).toEqual({ kind: 'membership_required' });
       expect(await adapter.getIntentBySourceId(deniedSourceId, testUserId)).toBeNull();
