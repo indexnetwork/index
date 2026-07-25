@@ -288,26 +288,41 @@ describe("ONBOARDING_ALLOWED", () => {
   test("contains all onboarding-flow tools", () => {
     const expected = [
       "record_onboarding_privacy_consent",
-      "preview_user_profile",
-      "get_profile_run",
-      "cancel_profile_run",
-      "confirm_user_profile",
-      "create_user_profile",
+      "preview_user_context",
+      "get_enrichment_run",
+      "cancel_enrichment_run",
+      "confirm_user_context",
+      "create_user_context",
       "complete_onboarding",
-      "import_gmail_contacts",
       "read_networks",
       "create_network_membership",
       "create_intent",
-      "read_user_profiles",
+      "read_user_contexts",
     ];
     for (const tool of expected) {
       expect(ONBOARDING_ALLOWED.has(tool)).toBe(true);
     }
   });
 
-  test("contains agent-gate exempt tools", () => {
-    for (const tool of ["register_agent", "read_docs", "scrape_url"]) {
+  test("contains enrollment and protocol guidance tools", () => {
+    for (const tool of ["register_agent", "read_docs"]) {
       expect(ONBOARDING_ALLOWED.has(tool)).toBe(true);
+    }
+  });
+
+  test("does not re-advertise removed MCP surfaces during onboarding", () => {
+    for (const tool of [
+      "scrape_url",
+      "import_gmail_contacts",
+      "read_user_profiles",
+      "create_user_profile",
+      "update_user_profile",
+      "confirm_user_profile",
+      "preview_user_profile",
+      "get_profile_run",
+      "cancel_profile_run",
+    ]) {
+      expect(ONBOARDING_ALLOWED.has(tool)).toBe(false);
     }
   });
 
@@ -329,15 +344,15 @@ describe("buildMcpOnboardingMessage", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: true, userName: "Alice" }));
     expect(msg).toContain("You're Alice, right?");
     expect(msg).toContain("record_onboarding_privacy_consent");
-    expect(msg).toContain("preview_user_profile");
-    expect(msg).toContain("get_profile_run");
+    expect(msg).toContain("preview_user_context");
+    expect(msg).toContain("get_enrichment_run");
   });
 
   test("uses name-ask step when user has no name", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: false, userName: "Unknown" }));
     expect(msg).toContain("Ask the user for their name");
     expect(msg).toContain("short self-description");
-    expect(msg).toContain("confirm_user_profile");
+    expect(msg).toContain("confirm_user_context");
   });
 
   test("skips community step for network-scoped contexts", () => {

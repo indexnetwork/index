@@ -10,7 +10,8 @@ import { McpServer, fromJsonSchema } from '@modelcontextprotocol/server';
 import type { ServerContext, JsonSchemaType } from '@modelcontextprotocol/server';
 
 import type { McpAuthResolver } from '../shared/interfaces/auth.interface.js';
-import type { McpAuthInput } from '../shared/schemas/mcp-auth.schema.js';
+import type { McpAuthInput, McpResolvedIdentity } from '../shared/schemas/mcp-auth.schema.js';
+import { McpResolvedIdentitySchema } from '../shared/schemas/mcp-auth.schema.js';
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
@@ -21,6 +22,8 @@ import { createToolRegistry } from '../runtime/foreground/composition/tool.regis
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
+import type { McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject, McpPolicyAgentSnapshot } from './mcp.authorization-policy.js';
+import { McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
 
 const logger = protocolLogger('McpServer');
 
@@ -309,37 +312,7 @@ export const applyNetworkScopeToContext = (
   context.isOwner = isOwner;
 };
 
-/**
- * Tools allowed during onboarding — everything else is gated until
- * complete_onboarding is called.  Includes the agent-gate-exempt tools
- * (register_agent, read_docs, scrape_url) because they are informational /
- * registration primitives needed at every lifecycle stage.
- */
-export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
-  'register_agent',
-  'read_docs',
-  'scrape_url',
-  'record_onboarding_privacy_consent',
-  // Canonical *_user_context / *_enrichment_run names (IND-371)
-  'preview_user_context',
-  'get_enrichment_run',
-  'cancel_enrichment_run',
-  'confirm_user_context',
-  'create_user_context',
-  'read_user_contexts',
-  // Deprecated aliases retained so mid-migration clients can still onboard (IND-373 removes them)
-  'preview_user_profile',
-  'get_profile_run',
-  'cancel_profile_run',
-  'confirm_user_profile',
-  'create_user_profile',
-  'read_user_profiles',
-  'complete_onboarding',
-  'import_gmail_contacts',
-  'read_networks',
-  'create_network_membership',
-  'create_intent',
-]);
+export { ONBOARDING_ALLOWED } from './mcp.authorization-policy.js';
 
 /**
  * Builds the onboarding gate message for MCP callers.  Condensed from the
@@ -502,16 +475,135 @@ export function createMcpServer(
   deps: ToolDeps,
   authResolver: McpAuthResolver,
   scopedDepsFactory: ScopedDepsFactory,
+  policyOptions: McpCapabilityPolicyOptions = {},
 ): McpServer {
-  // Tools exempt from the agent-registration gate — available before registration is complete.
-  const AGENT_GATE_EXEMPT = new Set(['register_agent', 'read_docs', 'scrape_url']);
-
   const server = new McpServer(
     { name: 'index-network', version: '1.0.0' },
     { instructions: MCP_INSTRUCTIONS },
   );
 
   const toolMetadata = getCachedMcpToolMetadata(deps);
+  const capabilityPolicy = new McpCapabilityPolicy(policyOptions);
+
+  type AuthenticatedMcpRequest = {
+    identity: McpResolvedIdentity;
+    agent: McpPolicyAgentSnapshot | null;
+    preliminarySubject: McpCapabilitySubject;
+  };
+
+  type ResolvedMcpRequest = AuthenticatedMcpRequest & {
+    context: ResolvedToolContext;
+    subject: McpCapabilitySubject;
+  };
+
+  // Both snapshots are scoped to this MCP server/connection. Permission and
+  // onboarding changes therefore apply only after the caller reconnects or
+  // refreshes its session. They are never shared with the static tool metadata
+  // cache, so a different server/principal cannot inherit decisions.
+  let authenticatedRequest: Promise<AuthenticatedMcpRequest> | undefined;
+  let resolvedRequest: Promise<ResolvedMcpRequest> | undefined;
+
+  const extractAuthInput = (httpReq: Request): McpAuthInput => ({
+    bearerToken: extractBearerToken(httpReq),
+    apiKey: httpReq.headers.get('x-api-key') ?? undefined,
+    clientSurface: parseClientSurface(httpReq.headers.get('x-index-surface')),
+    telegramHandle: httpReq.headers.get('x-index-telegram-handle') ?? undefined,
+    telegramUsername: httpReq.headers.get('x-index-telegram-username') ?? undefined,
+  });
+
+  const getAuthenticatedRequest = (httpReq: Request): Promise<AuthenticatedMcpRequest> => {
+    if (authenticatedRequest) return authenticatedRequest;
+
+    authenticatedRequest = (async (): Promise<AuthenticatedMcpRequest> => {
+      const identity = McpResolvedIdentitySchema.parse(
+        await authResolver.resolveIdentity(extractAuthInput(httpReq)),
+      );
+
+      const agentRecord = identity.agentId
+        ? await deps.agentDatabase?.getAgentWithRelations(identity.agentId) ?? null
+        : null;
+      const agent: McpPolicyAgentSnapshot | null = agentRecord
+        ? {
+            id: agentRecord.id,
+            ownerId: agentRecord.ownerId,
+            type: agentRecord.type,
+            status: agentRecord.status,
+            permissions: agentRecord.permissions.map((permission) => ({
+              agentId: permission.agentId,
+              userId: permission.userId,
+              scope: permission.scope,
+              scopeId: permission.scopeId,
+              actions: [...permission.actions],
+            })),
+          }
+        : null;
+
+      return {
+        identity,
+        agent,
+        // Onboarding can only reduce access, so this snapshot is sufficient to
+        // reject forged/hidden calls before resolving chat context.
+        preliminarySubject: resolveMcpCapabilitySubject({
+          identity,
+          isOnboarding: false,
+          agent,
+        }),
+      };
+    })();
+    return authenticatedRequest;
+  };
+
+  const getResolvedRequest = (httpReq: Request): Promise<ResolvedMcpRequest> => {
+    if (resolvedRequest) return resolvedRequest;
+
+    resolvedRequest = (async (): Promise<ResolvedMcpRequest> => {
+      const authenticated = await getAuthenticatedRequest(httpReq);
+      const context = await resolveChatContext({
+        database: deps.database,
+        userId: authenticated.identity.userId,
+        contactsEnabled: deps.contactsEnabled,
+      });
+      context.isMcp = true;
+      if (authenticated.identity.agentId) {
+        context.agentId = authenticated.identity.agentId;
+      }
+      if (authenticated.identity.clientSurface) {
+        context.clientSurface = authenticated.identity.clientSurface;
+      }
+      applyNetworkScopeToContext(context, authenticated.identity.networkScopeId);
+
+      return {
+        ...authenticated,
+        context,
+        subject: resolveMcpCapabilitySubject({
+          identity: authenticated.identity,
+          isOnboarding: context.isOnboarding,
+          agent: authenticated.agent,
+        }),
+      };
+    })();
+    return resolvedRequest;
+  };
+
+  const capabilityDeniedResult = (
+    decision: McpCapabilityDecision,
+    context?: ResolvedToolContext,
+  ) => {
+    const message = decision.reason === 'onboarding_required' && context
+      ? buildMcpOnboardingMessage(context)
+      : 'This capability is not available to the authenticated principal. Reconnect or refresh the session after an administrator changes permissions.';
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'Capability not authorized',
+          code: 'MCP_CAPABILITY_DENIED',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  };
 
   for (const toolDef of toolMetadata) {
     const toolName = toolDef.name;
@@ -537,17 +629,26 @@ export function createMcpServer(
             };
           }
 
-          // Extract transport-neutral auth input DTO from the HTTP request
-          const mcpAuthInput: McpAuthInput = {
-            bearerToken: extractBearerToken(httpReq),
-            apiKey: httpReq.headers.get('x-api-key') ?? undefined,
-            clientSurface: parseClientSurface(httpReq.headers.get('x-index-surface')),
-            telegramHandle: httpReq.headers.get('x-index-telegram-handle') ?? undefined,
-            telegramUsername: httpReq.headers.get('x-index-telegram-username') ?? undefined,
-          };
+          // Resolve the request-local auth/agent snapshot, then repeat the exact
+          // tools/list policy decision before chat context, scoped DB, registry,
+          // or handler work. This is the forged-call fail-closed boundary.
+          const authenticated = await getAuthenticatedRequest(httpReq);
+          const preliminaryDecision = capabilityPolicy.authorize(
+            authenticated.preliminarySubject,
+            toolName,
+          );
+          if (!preliminaryDecision.allowed) {
+            return capabilityDeniedResult(preliminaryDecision);
+          }
 
-          // Resolve authenticated identity from the auth input DTO
-          const { userId, agentId, isSessionAuth, networkScopeId, clientSurface } = await authResolver.resolveIdentity(mcpAuthInput);
+          const resolved = await getResolvedRequest(httpReq);
+          const decision = capabilityPolicy.authorize(resolved.subject, toolName);
+          if (!decision.allowed) {
+            return capabilityDeniedResult(decision, resolved.context);
+          }
+
+          const { identity, context } = resolved;
+          const { userId, agentId } = identity;
           reportUserId = userId;
 
           // Per-principal MCP throttle. Runs BEFORE any DB work so a throttled
@@ -592,58 +693,7 @@ export function createMcpServer(
             }
           }
 
-          // Resolve chat context for the user (mark as MCP — no interactive UI available)
-          const context = await resolveChatContext({ database: deps.database, userId, contactsEnabled: deps.contactsEnabled });
           reportContext = context;
-          context.isMcp = true;
-          if (agentId) {
-            context.agentId = agentId;
-          }
-          if (clientSurface) {
-            context.clientSurface = clientSurface;
-          }
-
-          // Network-scoped agents inherit their bound network as the implicit chat
-          // scope. Tools consume the scope envelope and derive any concrete
-          // allowed network IDs from it plus the user's memberships.
-          applyNetworkScopeToContext(context, networkScopeId);
-
-          // Gate: API-key callers (background agents) must register before using most tools.
-          // OAuth/JWT session callers (human MCP clients such as Claude Code) are exempt —
-          // their identity is already established via the auth flow and they have no agent entity.
-          if (!isSessionAuth && !context.agentId && !AGENT_GATE_EXEMPT.has(toolName)) {
-            return {
-              content: [{
-                type: 'text' as const,
-                text: JSON.stringify({
-                  error: 'Agent not registered',
-                  message:
-                    'You must register as an agent before using Index tools. ' +
-                    'Call register_agent with your agent name to establish an identity. ' +
-                    'The tools register_agent, read_docs, and scrape_url are available without registration.',
-                }),
-              }],
-              isError: true,
-            };
-          }
-
-          // Gate: non-onboarded users can only use onboarding-related tools.
-          // Mirrors the chat orchestrator's ONBOARDING MODE — the MCP client must
-          // walk the user through profile creation, Gmail connect, intent capture,
-          // and complete_onboarding() before full tool access is granted.
-          if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
-            const onboardingSteps = buildMcpOnboardingMessage(context);
-            return {
-              content: [{
-                type: 'text' as const,
-                text: JSON.stringify({
-                  error: 'Onboarding required',
-                  message: onboardingSteps,
-                }),
-              }],
-              isError: true,
-            };
-          }
 
           // Build per-request scoped databases via injected factory.
           // Network-scoped agents are clamped to their bound network plus the user's
@@ -771,6 +821,34 @@ export function createMcpServer(
       },
     );
   }
+
+  // McpServer's default tools/list handler exposes every registered tool.
+  // Replace it with a principal-aware inventory built from the same static
+  // metadata and the same policy used above for tools/call.
+  server.server.setRequestHandler('tools/list', async (_request, ctx) => {
+    const httpReq = ctx.http?.req;
+    if (!httpReq) {
+      throw new Error('No HTTP request available in MCP context');
+    }
+
+    const resolved = await getResolvedRequest(httpReq);
+    const visibleNames = new Set(
+      capabilityPolicy.visibleToolNames(
+        resolved.subject,
+        toolMetadata.map((tool) => tool.name),
+      ),
+    );
+
+    return {
+      tools: toolMetadata
+        .filter((tool) => visibleNames.has(tool.name))
+        .map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.jsonSchema,
+        })),
+    };
+  });
 
   logger.verbose('MCP server created', { toolCount: toolMetadata.length });
   return server;

@@ -50,10 +50,10 @@ export interface EnsureMembershipResult {
 }
 
 export const SCOPED_INVITED_AGENT_ACTIONS = [
-  'manage:profile',
+  'manage:identity',
+  'manage:premises',
   'manage:intents',
   'manage:networks',
-  'manage:contacts',
   'manage:opportunities',
 ] as const;
 

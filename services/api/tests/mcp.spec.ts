@@ -1,6 +1,9 @@
 import '../src/startup.env';
 import { describe, it, expect } from 'bun:test';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
+
 import { createMcpServer, clearMcpToolMetadataCacheForTests, getCachedMcpToolMetadata } from '../../../packages/protocol/src/mcp/mcp.server';
+import { CANONICAL_MCP_TOOL_ACCESS_RULES } from '../../../packages/protocol/src/mcp/mcp.authorization-policy';
 import { createAgentTools } from '../../../packages/protocol/src/agent/agent.tools';
 import { createToolRegistry } from '../../../packages/protocol/src/shared/agent/tool.registry';
 import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.helpers';
@@ -97,6 +100,69 @@ const baseToolContext = {
   hasName: true,
 };
 
+type JsonRpcResponse = {
+  jsonrpc: '2.0';
+  id: number;
+  result?: {
+    tools?: Array<{ name: string }>;
+    content?: Array<{ type: 'text'; text: string }>;
+    isError?: boolean;
+  };
+  error?: { code: number; message: string };
+};
+
+async function invokeMcpRequest(params: {
+  server: ReturnType<typeof createMcpServer>;
+  method: 'tools/list' | 'tools/call';
+  requestParams?: Record<string, unknown>;
+  headers?: Record<string, string>;
+}): Promise<JsonRpcResponse> {
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  await params.server.connect(transport);
+
+  try {
+    const response = await transport.handleRequest(new Request('https://example.test/mcp', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        ...params.headers,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: params.method,
+        params: params.requestParams ?? {},
+      }),
+    }));
+    return await response.json() as JsonRpcResponse;
+  } finally {
+    await Promise.allSettled([
+      transport.close(),
+      params.server.close(),
+    ]);
+  }
+}
+
+const resolvedContextDatabase = {
+  getUser: async () => ({
+    id: 'test-user-id',
+    name: 'Test User',
+    email: 'test@example.com',
+    onboarding: { completedAt: new Date('2026-01-01T00:00:00.000Z') },
+  }),
+  getProfile: async () => null,
+  getNetworkMemberships: async () => [],
+  getNetworkMembership: async () => null,
+  getNetwork: async () => null,
+  isIndexOwner: async () => false,
+  isNetworkMember: async () => false,
+  getUserContext: async () => null,
+} as unknown as ToolDeps['database'];
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TESTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -180,7 +246,7 @@ describe('MCP Server Factory', () => {
 
     expect(parseToolResult(result ?? '')).toEqual({
       success: false,
-      error: 'Invalid action: invalid:action. Valid actions: manage:profile, manage:intents, manage:networks, manage:contacts, manage:opportunities, manage:negotiations',
+      error: 'Invalid action: invalid:action. Valid actions: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations',
     });
     expect(createAgentCalls).toEqual([]);
   });
@@ -222,10 +288,31 @@ describe('MCP Server Factory', () => {
     expect(first.length).toBe(registry.size);
     expect(first.some((tool) => tool.name === 'list_agents')).toBe(true);
     expect(first.every((tool) => tool.schema && tool.jsonSchema && tool.inputSchema)).toBe(true);
+    expect(first.every((tool) => (
+      !('allowed' in tool) &&
+      !('principal' in tool) &&
+      !('permissions' in tool) &&
+      !('visibleTools' in tool)
+    ))).toBe(true);
 
     const withoutAgentTools = getCachedMcpToolMetadata(mockDepsWithoutAgentDb);
     expect(withoutAgentTools).not.toBe(first);
     expect(withoutAgentTools.some((tool) => tool.name === 'list_agents')).toBe(false);
+  });
+
+  it('classifies every possible current registry tool in the canonical production matrix', () => {
+    const fullRegistry = createToolRegistry({
+      ...mockDeps,
+      contactsEnabled: true,
+      chatSession: {
+        listSessions: async () => [],
+        getSession: async () => null,
+      },
+    });
+
+    expect([...CANONICAL_MCP_TOOL_ACCESS_RULES.keys()].sort()).toEqual(
+      [...fullRegistry.keys()].sort(),
+    );
   });
 
   it('register_agent rolls back the created agent when later setup fails', async () => {
@@ -267,5 +354,243 @@ describe('MCP Server Factory', () => {
       error: 'Failed to register agent. Please try again.',
     });
     expect(deletedAgentIds).toEqual(['agent-123']);
+  });
+
+  it('filters tools/list for registered agents without mutating static metadata', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const agentDb: AgentDatabase = {
+      ...mockAgentDb,
+      getAgentWithRelations: async () => ({
+        id: 'agent-1',
+        ownerId: 'test-user-id',
+        name: 'Agent',
+        description: null,
+        type: 'external',
+        status: 'active',
+        metadata: {},
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        transports: [],
+        permissions: [{
+          id: 'permission-1',
+          agentId: 'agent-1',
+          userId: 'test-user-id',
+          scope: 'global',
+          scopeId: null,
+          actions: ['manage:intents'],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }],
+      }),
+    };
+    const deps = {
+      ...mockDeps,
+      database: resolvedContextDatabase,
+      agentDatabase: agentDb,
+    };
+    const staticMetadata = getCachedMcpToolMetadata(deps);
+    const server = createMcpServer(
+      deps,
+      {
+        resolveIdentity: async () => ({
+          userId: 'test-user-id',
+          agentId: 'agent-1',
+        }),
+        resolveUserId: async () => 'test-user-id',
+      },
+      mockScopedDepsFactory,
+    );
+
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/list',
+      headers: { 'x-api-key': 'agent-key' },
+    });
+    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
+
+    expect(response.error).toBeUndefined();
+    expect(names).toContain('create_intent');
+    expect(names).toContain('list_agents');
+    expect(names).toContain('read_docs');
+    expect(names).not.toContain('update_agent');
+    expect(names).not.toContain('discover_opportunities');
+    expect(names).not.toContain('scrape_url');
+    expect(names).not.toContain('list_contacts');
+    expect(names).not.toContain('read_user_profiles');
+    expect(getCachedMcpToolMetadata(deps)).toBe(staticMetadata);
+    expect(staticMetadata.some((tool) => tool.name === 'discover_opportunities')).toBe(true);
+  });
+
+  it('keeps caller-specific tools/list decisions isolated across servers', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const deps = {
+      ...mockDeps,
+      database: resolvedContextDatabase,
+    };
+
+    const humanResponse = await invokeMcpRequest({
+      server: createMcpServer(
+        deps,
+        {
+          resolveIdentity: async () => ({
+            userId: 'test-user-id',
+            isSessionAuth: true,
+          }),
+          resolveUserId: async () => 'test-user-id',
+        },
+        mockScopedDepsFactory,
+      ),
+      method: 'tools/list',
+      headers: { authorization: 'Bearer session-token' },
+    });
+    const unregisteredResponse = await invokeMcpRequest({
+      server: createMcpServer(
+        deps,
+        {
+          resolveIdentity: async () => ({ userId: 'test-user-id' }),
+          resolveUserId: async () => 'test-user-id',
+        },
+        mockScopedDepsFactory,
+      ),
+      method: 'tools/list',
+      headers: { 'x-api-key': 'ordinary-key' },
+    });
+
+    const humanNames = humanResponse.result?.tools?.map((tool) => tool.name) ?? [];
+    const unregisteredNames = unregisteredResponse.result?.tools?.map((tool) => tool.name) ?? [];
+    expect(humanNames).toContain('discover_opportunities');
+    expect(humanNames).toContain('update_agent');
+    expect(humanNames).not.toContain('confirm_opportunity_delivery');
+    expect(humanNames).not.toContain('scrape_url');
+    expect(humanNames).not.toContain('list_contacts');
+    expect(humanNames).not.toContain('read_user_profiles');
+    expect(unregisteredNames).toEqual([]);
+  });
+
+  it('denies forged hidden tools/call before chat DB, scoped DB, registry, or graph work', async () => {
+    let chatDatabaseReads = 0;
+    let scopedDatabaseCreations = 0;
+    const deps = {
+      ...mockDeps,
+      database: new Proxy(resolvedContextDatabase, {
+        get(target, property, receiver) {
+          if (typeof property === 'string' && property.startsWith('get')) {
+            return async () => {
+              chatDatabaseReads += 1;
+              throw new Error('chat database must not be reached');
+            };
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    };
+    const server = createMcpServer(
+      deps,
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id' }),
+        resolveUserId: async () => 'test-user-id',
+      },
+      {
+        create: () => {
+          scopedDatabaseCreations += 1;
+          throw new Error('scoped database must not be created');
+        },
+      },
+    );
+
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/call',
+      requestParams: {
+        name: 'discover_opportunities',
+        arguments: {},
+      },
+      headers: { 'x-api-key': 'ordinary-key' },
+    });
+    const payload = JSON.parse(response.result?.content?.[0]?.text ?? '{}') as {
+      code?: string;
+    };
+
+    expect(response.result?.isError).toBe(true);
+    expect(payload.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(chatDatabaseReads).toBe(0);
+    expect(scopedDatabaseCreations).toBe(0);
+  });
+
+  it('keeps registered-agent tools/list and forged tools/call in policy parity before context work', async () => {
+    let chatDatabaseReads = 0;
+    let scopedDatabaseCreations = 0;
+    const agentDb: AgentDatabase = {
+      ...mockAgentDb,
+      getAgentWithRelations: async () => ({
+        id: 'agent-1',
+        ownerId: 'test-user-id',
+        name: 'Agent',
+        description: null,
+        type: 'external',
+        status: 'active',
+        metadata: {},
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        transports: [],
+        permissions: [{
+          id: 'permission-1',
+          agentId: 'agent-1',
+          userId: 'test-user-id',
+          scope: 'global',
+          scopeId: null,
+          actions: ['manage:intents'],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }],
+      }),
+    };
+    const guardedDatabase = new Proxy(resolvedContextDatabase, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && property.startsWith('get')) {
+          return async () => {
+            chatDatabaseReads += 1;
+            throw new Error('chat database must not be reached');
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const server = createMcpServer(
+      {
+        ...mockDeps,
+        database: guardedDatabase,
+        agentDatabase: agentDb,
+      },
+      {
+        resolveIdentity: async () => ({
+          userId: 'test-user-id',
+          agentId: 'agent-1',
+        }),
+        resolveUserId: async () => 'test-user-id',
+      },
+      {
+        create: () => {
+          scopedDatabaseCreations += 1;
+          throw new Error('scoped database must not be created');
+        },
+      },
+    );
+
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/call',
+      requestParams: {
+        name: 'discover_opportunities',
+        arguments: {},
+      },
+      headers: { 'x-api-key': 'agent-key' },
+    });
+    const payload = JSON.parse(response.result?.content?.[0]?.text ?? '{}') as {
+      code?: string;
+    };
+
+    expect(response.result?.isError).toBe(true);
+    expect(payload.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(chatDatabaseReads).toBe(0);
+    expect(scopedDatabaseCreations).toBe(0);
   });
 });

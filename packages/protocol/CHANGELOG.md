@@ -12,6 +12,31 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [7.0.0] — 2026-07-25
+
+### Breaking
+- MCP capability discovery is now principal-aware. `tools/list` advertises only
+  the tools available to the resolved human, onboarding, enrollment-key,
+  registered-agent, network-agent, or delivery-agent profile; `tools/call`
+  repeats the same authorization before scoped database and handler work.
+- Replace the agent permission actions `manage:profile` and `manage:contacts`
+  with the canonical `manage:identity` and `manage:premises` actions. The full
+  MCP permission vocabulary is now `manage:identity`, `manage:premises`,
+  `manage:intents`, `manage:networks`, `manage:opportunities`, and
+  `manage:negotiations`.
+- Contact tools, Gmail contact import, `scrape_url`, `report_agent_activity`,
+  and deprecated profile/profile-run aliases are explicitly unavailable
+  through MCP. Their non-MCP implementations remain intact.
+- Agent-administration mutations are session-human-only. Enrollment keys may
+  call `register_agent` only when explicitly enrollment-capable; registered
+  agents may list only their own sanitized registration. Opportunity delivery
+  confirmation is exposed only to designated delivery agents.
+
+### Added
+- Export a runtime-validated canonical MCP tool access matrix, permission/reach
+  extension contracts, principal schemas, and reusable capability-policy
+  implementation for host and capability composition.
+
 ## [6.14.0] — 2026-07-25
 
 ### Added

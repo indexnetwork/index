@@ -40,7 +40,7 @@ const SYSTEM_AGENT_DEFS = [
     id: SYSTEM_AGENT_IDS.chatOrchestrator,
     name: 'Index Chat Orchestrator',
     description: 'Built-in chat agent that manages profiles, intents, networks, and contacts on behalf of users.',
-    actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
+    actions: ['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities'],
   },
   {
     id: SYSTEM_AGENT_IDS.negotiator,
@@ -51,10 +51,10 @@ const SYSTEM_AGENT_DEFS = [
 ] as const;
 
 const PERSONAL_AGENT_ACTIONS = [
-  'manage:profile',
+  'manage:identity',
+  'manage:premises',
   'manage:intents',
   'manage:networks',
-  'manage:contacts',
   'manage:opportunities',
 ] as const;
 
