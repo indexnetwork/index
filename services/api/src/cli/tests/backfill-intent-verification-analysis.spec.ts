@@ -58,10 +58,10 @@ const dryRunOptions = {
   inputCostPerMillion: 0.3, outputCostPerMillion: 2.5,
 };
 
-async function runFixture(name: string) {
+async function runFixture(name: string, databaseUrl = 'postgres://127.0.0.1:1/ind590_dry_run') {
   const fixture = path.resolve(import.meta.dir, 'fixtures', name);
   const child = Bun.spawn({
-    cmd: ['/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, process.execPath, '--no-env-file', fixture],
+    cmd: ['/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, ...(databaseUrl ? [`DATABASE_URL=${databaseUrl}`] : []), process.execPath, '--no-env-file', fixture],
     cwd: path.resolve(import.meta.dir, '../../../../..'),
     // Deliberately clear, rather than merely override, inherited credentials.
     stdout: 'pipe',
@@ -173,17 +173,37 @@ describe('intent verification analysis maintenance workflow', () => {
     expect(result.stderr).toContain('createModel(intentVerifier): OPENROUTER_API_KEY is required');
   });
 
-  it('runs the actual entrypoint harness with no provider/database configuration and emits one report', async () => {
-    const result = await runFixture('backfill-intent-verification-analysis.fixed-entrypoint.fixture.ts');
+  it('assembles production dry-run dependencies with dummy local DB configuration and no provider', async () => {
+    const result = await runFixture('backfill-intent-verification-analysis.runtime-assembly.fixture.ts');
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    const lines = result.stdout.trimEnd().split('\n');
-    expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0])).toMatchObject({
-      reportVersion: 1, mode: 'dry-run', candidateCount: 0, verifierCalls: 0,
-      attempted: 0, updated: 0, skipped: 0, failed: 0, unchangedControl: 0,
-    });
+    expect(result.stdout).toBe('{"assembled":true}\n');
+  });
+
+  it('does not validate or import a database client while only assembling dry-run dependencies', async () => {
+    const result = await runFixture('backfill-intent-verification-analysis.runtime-assembly.fixture.ts', '');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('{"assembled":true}\n');
+  });
+
+  it('keeps a valid sanitized report on stdout when candidate diagnostics make the exit nonzero', async () => {
+    const deps = makeDeps({ getProfileContext: mock(async () => { throw new Error('local candidate diagnostic'); }) });
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const exitCode = await runCli([], { createDeps: async () => deps, stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toHaveLength(1);
+    expect(JSON.parse(stdout[0])).toMatchObject({ mode: 'dry-run', failed: 1, verifierCalls: 0 });
+    expect(stdout[0]).not.toContain('intent-1');
+    expect(stderr.join('')).toContain('completed with 1 failed candidate(s)');
+    expect(deps.verify).not.toHaveBeenCalled();
+    expect(deps.recordAttempt).not.toHaveBeenCalled();
+    expect(deps.applyAnalysis).not.toHaveBeenCalled();
   });
 
   it('fails closed when report serialization is malformed', async () => {

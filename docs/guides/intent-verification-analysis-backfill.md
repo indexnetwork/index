@@ -25,12 +25,16 @@ to stdout. The object contains only aggregate evidence: source/partition and
 bounded-candidate counts, control counts, cost estimates, outcome counters, and
 actual `verifierCalls`. A default dry run always reports `verifierCalls: 0`.
 All diagnostics and failures go only to stderr; a setup, serialization, or output
-boundary failure exits nonzero rather than emitting a partial or unsafe report.
+boundary failure exits nonzero rather than emitting a partial or unsafe report. A
+candidate-level failure is different: the command first emits its complete,
+sanitized aggregate report, then exits nonzero and writes its diagnostic to stderr.
 
 The entrypoint must not construct `SemanticVerifier` in dry-run mode. Model
-construction requires provider configuration even when no verification is due,
-which previously prevented a default dry run from reaching its report boundary.
-The command now creates that verifier only for explicit write mode.
+construction requires provider configuration even when no verification is due.
+The discarded disposable-proof stdout/stderr cannot establish whether that was the
+observed runtime failure, but a local empty-environment harness deterministically
+reproduces this pre-report failure in the retired eager startup path. The command
+now creates that verifier only for explicit write mode.
 
 ## Candidate partitions
 
