@@ -769,6 +769,49 @@ export const intentProposals = pgTable('intent_proposals', {
 export type IntentProposalRow = typeof intentProposals.$inferSelect;
 export type NewIntentProposalRow = typeof intentProposals.$inferInsert;
 
+/**
+ * Immutable header for a bounded verification-analysis repair run.  Keeping
+ * this separate from `intents` is deliberate: a backfill must not repurpose
+ * product timestamps or add opaque metadata to the canonical intent record.
+ */
+export const intentVerificationBackfillRuns = pgTable('intent_verification_backfill_runs', {
+  id: text('id').primaryKey(),
+  predicateVersion: text('predicate_version').notNull(),
+  verifierName: text('verifier_name').notNull(),
+  verifierModel: text('verifier_model').notNull(),
+  status: text('status').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (table) => ({
+  statusIdx: index('intent_verification_backfill_runs_status_idx').on(table.status),
+  statusCheck: check('intent_verification_backfill_runs_status_check', sql`${table.status} IN ('running', 'completed', 'failed')`),
+}));
+
+/**
+ * One durable outcome per run/intent.  A successful row is the resume marker;
+ * invalid and failed outcomes are preserved for review rather than fabricated
+ * into an intent analysis.
+ */
+export const intentVerificationBackfillAttempts = pgTable('intent_verification_backfill_attempts', {
+  runId: text('run_id').notNull().references(() => intentVerificationBackfillRuns.id, { onDelete: 'cascade' }),
+  intentId: text('intent_id').notNull().references(() => intents.id),
+  partition: text('partition').notNull(),
+  status: text('status').notNull(),
+  payloadHash: text('payload_hash').notNull(),
+  contextHash: text('context_hash').notNull(),
+  verifierOutput: jsonb('verifier_output'),
+  errorCode: text('error_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+}, (table) => ({
+  runIntentPk: primaryKey({ columns: [table.runId, table.intentId] }),
+  statusIdx: index('intent_verification_backfill_attempts_status_idx').on(table.runId, table.status),
+  intentIdx: index('intent_verification_backfill_attempts_intent_idx').on(table.intentId),
+  partitionCheck: check('intent_verification_backfill_attempts_partition_check', sql`${table.partition} IN ('proposal_confirm_default_only', 'proposal_confirm_partial_missing', 'legacy_discovery_missing_analysis', 'other_missing_analysis')`),
+  statusCheck: check('intent_verification_backfill_attempts_status_check', sql`${table.status} IN ('updated', 'skipped', 'failed', 'unchanged_control')`),
+}));
+
 export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
 export type FrameDriftExecutionTerminalStatus = 'inserted' | 'duplicate' | 'skipped' | 'failed';
 export type FrameDriftExecutionFailureCategory = 'measurement';
