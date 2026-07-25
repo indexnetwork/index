@@ -20,8 +20,9 @@ const matrix: ExecutionMatrixRow[] = [
   },
   {
     useCase: "opportunities",
-    foreground: { entry: "createOpportunityTools", source: "opportunity/opportunity.tools.ts", transport: "participant tool" },
-    ambient: { entry: "OpportunityGraphFactory", source: "opportunity/opportunity.graph.ts", transport: "injected queue callback" },
+    // IND-551: canonical paths moved to application/ layer; shims remain at flat paths.
+    foreground: { entry: "createOpportunityTools", source: "opportunity/application/opportunity.tools.ts", transport: "participant tool" },
+    ambient: { entry: "OpportunityGraphFactory", source: "opportunity/application/opportunity.graph.ts", transport: "injected queue callback" },
     sharedFactory: "OpportunityGraphFactory",
     invariant: "candidate evaluation, deduplication, lifecycle, visibility, and safe presentation are shared",
   },
