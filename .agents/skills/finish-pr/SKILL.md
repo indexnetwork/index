@@ -20,7 +20,7 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 - If Railway MCP tools are unavailable, report deployment as unverified; do not claim success or close related issues until it can be verified. GitHub merge safety does not depend on MCP availability.
 - If checks fail, keep issues open and report the blocker.
 - Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. When a worktree change is needed, `index` first delegates through a dedicated canonical-root coordinator; that root sends one consolidated prompt to the existing visible Herdr-managed Pi, Codex, or Kimi session for the PR worktree. The root/child handoff is fire-and-return without `--wait`; while the bridge is removed, `index` explicitly ticks the dedicated root on a later natural turn. That child session verifies the worktree's absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine.
-- Do not use hidden `Agent` subagents for implementation/fix rounds, and do not create a watcher process or watcher pane. Reuse the same Herdr workspace, pane, and agent.
+- Do not use hidden `Agent` subagents for implementation/fix rounds, and do not create a watcher process or watcher pane. Reuse the same Herdr workspace/tab, pane, and agent.
 - A PR-branch rebase is executed only from the verified PR worktree, and only ever on the PR's own feature branch — never a shared/long-lived head branch (`dev`, `main` — e.g. a release PR's head): that rewrites shared history and breaks other worktrees. Use `--force-with-lease`, never plain `--force`.
 - Do not remove a git worktree until the PR is merged and every dirty/unpushed change has been inspected. A dirty tree may be force-removed only when each leftover is proven disposable or preserved elsewhere; keep it or ask when that cannot be established. Honor any user request to keep it.
 
@@ -55,8 +55,8 @@ workflow:
 - **Version collisions** between parallel internal PRs use the base-version floor
   rule from step 3b; the integration owner performs the deliberate SemVer/lockfile
   reconciliation.
-- **Held PRs** (blocked on a sibling issue) stay open with their workspace/worktree
-  preserved and the dependency recorded in Linear and the wave's checkpoint journal;
+- **Held PRs** (blocked on a sibling issue) stay open with their Herdr surface
+  (tab or workspace) and worktree preserved and the dependency recorded in Linear and the wave's checkpoint journal;
   cleanup applies only after they merge or are deliberately abandoned.
 
 Everything else — snapshot-first investigation, fix rounds in the verified worktree,
@@ -335,7 +335,7 @@ Follow `references/post-merge-operations.md` for the detailed Railway MCP verifi
 - Wait for terminal deployment success before closing issues or claiming the deploy is healthy.
 - For squash-merged PRs, the local branch may not appear in `git branch --merged`; use the PR merged state and merge commit as the source of truth.
 - Before removing a finished worktree, restore any external local pointers that target it (for example `~/.hermes/plugins/index-network` symlinked to a PR worktree).
-- Remove the finished PR worktree, prune, and report it. Report other apparently finished worktrees for separate cleanup; do not turn this PR closeout into an unrelated sweep.
+- Close the child's exact Herdr execution plane first — its named tab (`herdr tab close <TAB_ID>`) in an orchestration wave, or its workspace (`herdr workspace close <WS_ID>`) standalone — verified by ID, then remove the finished PR worktree, prune, and report it. Report other apparently finished worktrees for separate cleanup; do not turn this PR closeout into an unrelated sweep.
 
 ### 12. Final summary
 

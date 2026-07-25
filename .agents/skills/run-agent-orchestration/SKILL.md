@@ -2,8 +2,9 @@
 name: run-agent-orchestration
 description: >-
   Orchestrate a multi-task or multi-PR wave by delegating repository work from the
-  user-facing main agent to exactly one visible Herdr root agent in the
-  canonical root, which fans out to path-roled child worktree sessions. Use when the
+  user-facing main agent to exactly one visible Herdr root agent in a wave-root
+  workspace nested under the index workspace, which fans out to path-roled child
+  worktree sessions in named tabs of that workspace. Use when the
   user asks for several coordinated Index changes/PRs at once, for delegated
   orchestration, for an integration-branch (internal finish-pr) wave, or when harness
   recommendation, role profiles, model routing, or blocked structured-question
@@ -27,14 +28,19 @@ child…", "You are the root for wave X"):
   the user types. It owns the conversation, collects decisions, recommends the
   root's harness and model, sends one complete wave handoff to the root, ticks the
   root, and reports results. It never orchestrates worktrees or children directly.
-- **`root` (exactly one)** — a visible Pi, Codex, or Kimi agent outside the
-  user-facing `index` workspace, in the canonical root
-  (`/Users/yanek/Projects/index`, branch `dev`). Sole owner for the wave of:
-  worktree creation, child handoffs, PR finishing, GitHub/Linear/Railway
-  coordination, and cleanup. It never edits source in the canonical root;
-  implementation always happens in child worktrees.
-- **`child`** — one writer per Git worktree, each launched on any of the three
-  harnesses with a role profile chosen by the paths it will change or the
+- **`root` (exactly one)** — a visible Pi, Codex, or Kimi agent in its own
+  workspace nested under the user-facing `index` workspace, running in a
+  dedicated detached coordination worktree
+  (`/Users/yanek/Projects/index/.worktrees/<wave>-root`, detached at
+  `origin/dev`). Sole owner for the wave of: worktree creation, child
+  handoffs, PR finishing, GitHub/Linear/Railway coordination, and cleanup. It
+  never edits source in its coordination worktree or the canonical root;
+  implementation always happens in child worktrees. Canonical-root-dependent
+  operations (e.g. post-merge `git pull` of `dev`) run via
+  `git -C /Users/yanek/Projects/index …`.
+- **`child`** — one writer per Git worktree, running in a named tab of the
+  root's workspace (tab label = the dashed worktree folder), each launched on
+  any of the three harnesses with a role profile chosen by the paths it will change or the
   release/review task type (see `references/role-profiles.md`) and a model chosen at
   launch time (see `references/model-routing.md`).
 
@@ -61,23 +67,76 @@ A user override always wins and holds for the whole wave.
 
 ## Launching the root
 
-Open the canonical root without changing the user's focus and launch the chosen
-harness through its targeted root pane, using the launch line from
-`references/harness-matrix.md`:
+Every wave-created Herdr surface must be reachable from `index`: the root
+workspace nests under `index` in the sidebar, and every child is a named tab of
+the root workspace — nothing wave-related may appear as a top-level sidebar
+workspace. Herdr nests a workspace under `index` only when it carries
+linked-worktree metadata, so the root runs in a dedicated **detached
+coordination worktree**, opened without changing the user's focus:
 
 ```bash
-herdr worktree open --path /Users/yanek/Projects/index --label orchestration-root --no-focus --json
-herdr pane send-text "$PANE_ID" "<launch line from harness-matrix.md>"
-herdr pane send-keys "$PANE_ID" enter
+ROOT=$(git rev-parse --show-toplevel)      # canonical root, on dev
+WAVE=<wave-slug>                           # e.g. mcp-refactoring
+ROOT_WT="$ROOT/.worktrees/${WAVE}-root"
+git fetch origin dev
+git worktree add --detach "$ROOT_WT" origin/dev
+herdr worktree open --path "$ROOT_WT" --label "${WAVE}-root" --no-focus --json
 ```
 
-The agent name must match Herdr's live-name limit `[a-z][a-z0-9_-]{0,31}` (32 chars
-max) — keep the alias short (e.g. `root-orch`); the longer dashed workspace label
-stays independent. Reuse an existing root only when its cwd is the canonical root,
-its branch is `dev`, and its identity belongs to this wave. Read the visible agent's
-quota/status before choosing the model; never switch models mid-implementation. All
-direct pane reads, text, and keys must target the exact pane ID and must not focus
-it. `herdr agent start` is not the launch path for this skill.
+Record `ROOT_WS_ID` (`.result.workspace.workspace_id`), `ROOT_TAB_ID`
+(`.result.tab.tab_id`), and `ROOT_PANE_ID` (`.result.root_pane.pane_id`) in the
+checkpoint journal — child tabs are created against `ROOT_WS_ID`. Then rename
+the default tab and launch the chosen harness through the targeted root pane,
+using the launch line from `references/harness-matrix.md`:
+
+```bash
+herdr tab rename "$ROOT_TAB_ID" "${WAVE}-root"
+herdr pane send-text "$ROOT_PANE_ID" "<launch line from harness-matrix.md>"
+herdr pane send-keys "$ROOT_PANE_ID" enter
+```
+
+**Nesting invariant (mandatory):** the `worktree open` JSON must report
+`.result.workspace.worktree.is_linked_worktree == true` with `repo_root` equal
+to the canonical root. If that metadata is absent the workspace will sit as a
+top-level sidebar orphan — close it and re-open correctly instead of
+proceeding.
+
+**Hard prohibitions:** never run `herdr worktree open --path` against the
+canonical root itself — Herdr dedupes it into the user's `index` workspace and
+renames it (recover with `herdr workspace rename <INDEX_WS_ID> index`). Never
+create wave surfaces with `herdr workspace create --cwd`; it records no
+worktree metadata and produces a permanent top-level orphan.
+
+The root's coordination worktree is detached at `origin/dev` and is never a
+place to edit source; repo-wide `git`/`gh`/Linear/Herdr commands work normally
+from it. The agent name must match Herdr's live-name limit
+`[a-z][a-z0-9_-]{0,31}` (32 chars max) — keep the alias short (e.g.
+`root-orch`); the longer dashed workspace label stays independent. Reuse an
+existing root only when its cwd is this wave's coordination worktree and its
+identity belongs to this wave. Read the visible agent's quota/status before
+choosing the model; never switch models mid-implementation. All direct pane
+reads, text, and keys must target the exact pane ID and must not focus it.
+`herdr agent start` is not the launch path for this skill.
+
+## Launching children
+
+A wave child's execution plane is a **named tab of the root workspace**, not a
+new workspace. After `create-worktree`'s Git-worktree and setup steps for
+`$WORKTREE`/`$FOLDER`:
+
+```bash
+herdr tab create --workspace "$ROOT_WS_ID" --cwd "$WORKTREE" \
+  --label "$FOLDER" --no-focus
+```
+
+The tab label is exactly the dashed worktree folder. Record the returned
+`.result.tab.tab_id` and `.result.root_pane.pane_id` in the checkpoint
+journal's child map; all handoffs, pane reads, and answers target that pane ID.
+Launch the harness through the pane as usual. One writer per worktree is
+unchanged: before creating a tab, verify no existing tab or agent already owns
+`$WORKTREE` (`herdr tab list` plus pane cwds via `herdr pane get`), and reuse
+an existing tab only when its label is `$FOLDER` and its pane cwd is
+`$WORKTREE`.
 
 ## Coordination loop
 
@@ -160,16 +219,29 @@ temporary limitation plainly and never fabricate an answer.
 
 ## Wave cleanup invariant
 
-A finished PR is not done until its execution plane is gone: `finish-pr` must close
-the child's exact Herdr workspace (verified by ID — this stops the agent/terminal and
-removes the stale sidebar entry) **and** remove its Git worktree, in that order.
-Removing the worktree without closing the workspace leaves idle agents visible in
-the sidebar. In an integration-branch wave, held PRs keep their workspace and
-worktree until they merge or are deliberately abandoned (see
-`references/integration-branch-waves.md`). After the wave, the root verifies with
-`herdr workspace list` that no finished child workspaces/agents remain — but never
-sweeps unrelated active workspaces, and keeps the root workspace (the
-dedicated execution/coordination plane) unless the user explicitly ends the wave.
+A finished PR is not done until its execution plane is gone: `finish-pr` must
+close the child's exact Herdr tab (`herdr tab close <TAB_ID>`, verified by ID —
+this stops the agent/terminal) **and** remove its Git worktree, in that order.
+Removing the worktree without closing the tab leaves idle agents behind. In an
+integration-branch wave, held PRs keep their tab and worktree until they merge
+or are deliberately abandoned (see `references/integration-branch-waves.md`).
+After the wave, the root verifies with `herdr tab list` and
+`herdr workspace list` that no finished child tabs or wave workspaces remain —
+but never sweeps unrelated active workspaces, and keeps the root workspace (the
+dedicated execution/coordination plane) until the user explicitly ends the
+wave. When the wave ends, close the root workspace, then remove its detached
+coordination worktree, in that order:
+
+```bash
+herdr workspace close "$ROOT_WS_ID"
+git worktree remove "$ROOT/.worktrees/${WAVE}-root"
+```
+
+**Migration/repair:** a top-level orphan workspace from an older wave whose
+worktree still exists is repaired opportunistically — verify its agent is
+settled and its state captured, close the orphan workspace, then re-create the
+surface correctly (a named tab in the wave root, or a `herdr worktree open`
+workspace when standalone).
 
 ## Sub-workflows the root runs
 
