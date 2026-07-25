@@ -149,6 +149,38 @@ Presentation:
   your verification work.
 ```
 
+## Documentation
+
+Detailed documentation lives in the `docs/` directory:
+
+### Guides
+
+- **[Getting Started](docs/guides/getting-started.md)** -- Full setup walkthrough with prerequisites, environment config, database setup, and troubleshooting
+
+### Design
+
+- **[Architecture Overview](docs/design/architecture-overview.md)** -- Monorepo structure, protocol layering, agent system, data flow diagrams
+- **[Protocol Deep Dive](docs/design/protocol-deep-dive.md)** -- Detailed graph, agent, and tool documentation with sequence diagrams
+
+### Domain
+
+- **[Intents](docs/domain/intents.md)** -- Intent lifecycle, semantic governance, speech act validation
+- **[Opportunities](docs/domain/opportunities.md)** -- Opportunity detection, evaluation, and persistence
+- **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
+- **[Identity and Context](docs/domain/identity-and-context.md)** -- User identity, synthesized context, enrichment, and HyDE document embeddings
+- **[Networks](docs/domain/networks.md)** -- Community structure, membership, and access control
+
+
+
+### Specs
+
+- **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
+- **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
+- **[CLI Reference Spec](docs/specs/cli-reference.md)** -- Complete CLI command behavior specification
+- **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
+
+
+
 ## Development
 
 ### Prerequisites
@@ -235,38 +267,6 @@ bun run db:studio      # Open Drizzle Studio (DB GUI)
 # Code quality
 bun run lint           # Run ESLint
 ```
-
-
-
-## Documentation
-
-Detailed documentation lives in the `docs/` directory:
-
-### Guides
-
-- **[Getting Started](docs/guides/getting-started.md)** -- Full setup walkthrough with prerequisites, environment config, database setup, and troubleshooting
-
-### Design
-
-- **[Architecture Overview](docs/design/architecture-overview.md)** -- Monorepo structure, protocol layering, agent system, data flow diagrams
-- **[Protocol Deep Dive](docs/design/protocol-deep-dive.md)** -- Detailed graph, agent, and tool documentation with sequence diagrams
-
-### Domain
-
-- **[Intents](docs/domain/intents.md)** -- Intent lifecycle, semantic governance, speech act validation
-- **[Opportunities](docs/domain/opportunities.md)** -- Opportunity detection, evaluation, and persistence
-- **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
-- **[Identity and Context](docs/domain/identity-and-context.md)** -- User identity, synthesized context, enrichment, and HyDE document embeddings
-- **[Networks](docs/domain/networks.md)** -- Community structure, membership, and access control
-
-
-
-### Specs
-
-- **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
-- **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
-- **[CLI Reference Spec](docs/specs/cli-reference.md)** -- Complete CLI command behavior specification
-- **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
 
 
 
