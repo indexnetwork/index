@@ -12,10 +12,25 @@ bun run maintenance:backfill-intent-verification-analysis --limit 25
 ```
 
 It reports target counts by root-cause partition, complete- and partial-analysis
-control counts, redacted candidate identifiers
-and prerequisite-validation outcomes, bounded call/token/cost estimates, and the exact
+control counts, bounded candidate counts and aggregate prerequisite-validation
+outcomes, call/token/cost estimates, and the exact
 `attempted`, `updated`, `skipped`, `failed`, and `unchanged-control` counters.
-It never prints payload, profile context, verifier reasoning, or a credential.
+It never prints candidate identifiers, payload, profile context, verifier
+reasoning, or a credential.
+
+## Output contract
+
+A successful invocation writes exactly one compact, machine-parseable JSON object
+to stdout. The object contains only aggregate evidence: source/partition and
+bounded-candidate counts, control counts, cost estimates, outcome counters, and
+actual `verifierCalls`. A default dry run always reports `verifierCalls: 0`.
+All diagnostics and failures go only to stderr; a setup, serialization, or output
+boundary failure exits nonzero rather than emitting a partial or unsafe report.
+
+The entrypoint must not construct `SemanticVerifier` in dry-run mode. Model
+construction requires provider configuration even when no verification is due,
+which previously prevented a default dry run from reaching its report boundary.
+The command now creates that verifier only for explicit write mode.
 
 ## Candidate partitions
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { classifyCandidate, parseArgs, runBackfill, validateVerifierOutput, type BackfillDeps, type Candidate } from '../backfill-intent-verification-analysis';
+import { classifyCandidate, parseArgs, runBackfill, runCli, validateVerifierOutput, type BackfillDeps, type Candidate } from '../backfill-intent-verification-analysis';
 
 const validOutput = {
   reasoning: 'A bounded request.',
@@ -71,11 +71,14 @@ describe('intent verification analysis maintenance workflow', () => {
 
     expect(report.mode).toBe('dry-run');
     expect(report.targetCounts.proposal_confirm_default_only).toBe(1);
+    expect(report.candidateCount).toBe(1);
+    expect(report.candidateCounts.proposal_confirm_default_only).toBe(1);
     expect(report.estimatedVerifierCalls).toBe(1);
     expect(report.controls.completeAnalysis).toBe(17);
     expect(report.controls.partialAnalysis).toBe(3);
-    expect(report.attempted).toBe(0);
-    expect(report.candidates).toEqual([{ id: 'intent-1', partition: 'proposal_confirm_default_only', validation: 'ready_for_verification' }]);
+    expect(report).toMatchObject({ verifierCalls: 0, attempted: 0, updated: 0, skipped: 0, failed: 0, unchangedControl: 0 });
+    expect(report.validationOutcomes.proposal_confirm_default_only).toEqual({ ready_for_verification: 1 });
+    expect(JSON.stringify(report)).not.toContain('intent-1');
     expect(deps.verify).not.toHaveBeenCalled();
     expect(deps.beginRun).not.toHaveBeenCalled();
     expect(deps.recordAttempt).not.toHaveBeenCalled();
@@ -86,7 +89,7 @@ describe('intent verification analysis maintenance workflow', () => {
     const deps = makeDeps({ applyAnalysis: mock(async () => false) });
     const report = await runBackfill({ ...dryRunOptions, dryRun: false, runId: 'run-1' }, deps);
 
-    expect(report).toMatchObject({ attempted: 1, updated: 0, unchangedControl: 1, failed: 0 });
+    expect(report).toMatchObject({ verifierCalls: 1, attempted: 1, updated: 0, unchangedControl: 1, failed: 0 });
     expect(deps.beginRun).toHaveBeenCalledWith('run-1', 'google/gemini-2.5-flash');
     expect(deps.applyAnalysis).toHaveBeenCalledWith(expect.anything(), {
       semanticEntropy: 0.31, referentialAnchor: 'Index Network', intentMode: 'REFERENTIAL',
@@ -121,5 +124,70 @@ describe('intent verification analysis maintenance workflow', () => {
     expect(() => parseArgs(['--write'])).not.toThrow();
     expect(parseArgs([]).dryRun).toBe(true);
     await expect(runBackfill({ ...dryRunOptions, dryRun: false }, makeDeps())).rejects.toThrow('--write requires a stable --run-id');
+  });
+
+  it('emits exactly one sanitized JSON object at the real CLI boundary for default dry run', async () => {
+    const deps = makeDeps();
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const createDeps = mock(async () => deps);
+
+    const exitCode = await runCli([], { createDeps, stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) });
+
+    expect(exitCode).toBe(0);
+    expect(createDeps).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }));
+    expect(stdout).toHaveLength(1);
+    expect(stderr).toEqual([]);
+    const report = JSON.parse(stdout[0]);
+    expect(report).toMatchObject({ reportVersion: 1, mode: 'dry-run', verifierCalls: 0, candidateCount: 1 });
+    expect(stdout[0]).not.toContain('intent-1');
+    expect(deps.verify).not.toHaveBeenCalled();
+    expect(deps.beginRun).not.toHaveBeenCalled();
+    expect(deps.recordAttempt).not.toHaveBeenCalled();
+    expect(deps.applyAnalysis).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when report serialization is malformed', async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const exitCode = await runCli([], {
+      createDeps: async () => makeDeps(),
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+      serializeReport: () => 'not-json',
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toEqual([]);
+    expect(stderr.join('')).toContain('JSON Parse error');
+  });
+
+  it('fails closed when report serialization contains an unsafe field', async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const exitCode = await runCli([], {
+      createDeps: async () => makeDeps(),
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+      serializeReport: () => '{"id":"must-not-leak"}',
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toEqual([]);
+    expect(stderr.join('')).toContain('report contains forbidden field: id');
+  });
+
+  it('fails nonzero instead of silently succeeding when no report can be produced', async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const exitCode = await runCli([], {
+      createDeps: async () => { throw new Error('local fixture setup failed'); },
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toEqual([]);
+    expect(stderr.join('')).toContain('local fixture setup failed');
   });
 });
