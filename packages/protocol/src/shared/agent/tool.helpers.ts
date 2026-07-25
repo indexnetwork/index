@@ -229,6 +229,8 @@ interface ToolContextBindings {
   chatQuestions?: ChatQuestionsHost;
   /** Optional durable persistence for reporter cleanup-action proposals. */
   actionProposalStore?: import('../../chat/reporter.action.contracts.js').AgentActionProposalStore;
+  /** Durable host persistence for verified intent proposals shown in chat. */
+  intentProposalStore?: import('../../signals/domain/intent.proposal.js').IntentProposalStore;
   /**
    * Host bridge for the negotiator persona's `remember`/`forget` memory
    * tools (P5.4). Injected by the composition root only when negotiator
@@ -534,6 +536,8 @@ interface ToolDepsBindings {
   userDb: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */
   systemDb: SystemDatabase;
+  /** Durable host persistence for verified intent proposals shown in chat. */
+  intentProposalStore?: import('../../signals/domain/intent.proposal.js').IntentProposalStore;
   scraper: Scraper;
   embedder: import('../interfaces/embedder.interface.js').Embedder;
   cache: Cache;

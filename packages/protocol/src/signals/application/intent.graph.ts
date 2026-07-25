@@ -3,6 +3,7 @@ import { IntentGraphState, VerifiedIntent, ExecutionResult, type IntentValidatio
 import { ExplicitIntentInferrer } from "./intent.inferrer.js";
 import { SemanticVerifier } from "./intent.verifier.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "../domain/signal.specificity.js";
+import { normalizeIntentDescription } from "../domain/intent.proposal.js";
 import { IntentReconciler } from "./intent.reconciler.js";
 import type { NormalizedIntentAction } from "./intent.reconciler.js";
 import { IntentGraphDatabase } from "../../shared/interfaces/database.interface.js";
@@ -583,18 +584,6 @@ export class IntentGraphFactory {
       });
     };
 
-    /** Strip URLs and "More details at [url]" from intent payloads before persisting. */
-    const sanitizePayload = (payload: string): string => {
-      if (!payload || typeof payload !== "string") return payload;
-      const out = payload
-        .replace(/\s*More details at\s*:?\s*https?:\/\/[^\s"'<>)\]]+/gi, "")
-        .replace(/\s*See\s+https?:\/\/[^\s"'<>)\]]+\s+for\s+more[^.]*\.?/gi, "")
-        .replace(/https?:\/\/[^\s"'<>)\]]+/g, "")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-      return out.replace(/[.,;]\s*$/, "").trim() || payload;
-    };
-
     /**
      * Generate a flat embedding for an intent payload, swallowing failures so
      * persistence can continue without an embedding. `intentId` is logging-only
@@ -647,7 +636,7 @@ export class IntentGraphFactory {
         const verifiedIntentByPayload = new Map<string, VerifiedIntent>();
         for (const verifiedIntent of state.verifiedIntents) {
           verifiedIntentByPayload.set(verifiedIntent.description, verifiedIntent);
-          verifiedIntentByPayload.set(sanitizePayload(verifiedIntent.description), verifiedIntent);
+          verifiedIntentByPayload.set(normalizeIntentDescription(verifiedIntent.description), verifiedIntent);
         }
 
         for (const action of actions) {
@@ -661,7 +650,7 @@ export class IntentGraphFactory {
                 referentialAnchor?: string | null;
                 intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
               };
-              const sanitizedPayload = sanitizePayload(createAction.payload);
+              const sanitizedPayload = normalizeIntentDescription(createAction.payload);
               const matchedVerifiedIntent =
                 verifiedIntentByPayload.get(createAction.payload) ||
                 verifiedIntentByPayload.get(sanitizedPayload);
@@ -726,7 +715,7 @@ export class IntentGraphFactory {
                 payload: string;
                 intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
               };
-              const sanitizedPayload = sanitizePayload(updateAction.payload);
+              const sanitizedPayload = normalizeIntentDescription(updateAction.payload);
               const matchedVerifiedIntent =
                 verifiedIntentByPayload.get(updateAction.payload) ||
                 verifiedIntentByPayload.get(sanitizedPayload);

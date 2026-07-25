@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.59.4",
+  "version": "0.60.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -30,6 +30,7 @@
     "maintenance:backfill-intent-questions": "bun ./src/cli/backfill-intent-questions.ts",
     "maintenance:backfill-personal-index-prompts": "bun ./src/cli/backfill-personal-index-prompts.ts",
     "maintenance:backfill-intent-networks": "bun ./src/cli/backfill-intent-networks.ts",
+    "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"

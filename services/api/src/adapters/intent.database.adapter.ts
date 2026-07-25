@@ -2,6 +2,7 @@ import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateInt
 
 import { IntentEvents } from '../events/intent.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
 
 
 export class IntentDatabaseAdapter {
@@ -87,48 +88,71 @@ export class IntentDatabaseAdapter {
 
   /**
    * Atomically confirm one proposal with optional network assignment.
-   * A transaction-scoped advisory lock serializes the exact owner + proposal
-   * source pair even though legacy schema rows have no matching unique index.
-   * Existing confirmations win before any current-membership requirement is
-   * evaluated, preserving retry idempotency after membership changes.
+   * The durable proposal row is locked before its owner, expiry, exact payload,
+   * verifier output, and current membership are checked. Intent insertion,
+   * optional assignment, and proposal consumption commit together.
    *
-   * @param data - Intent row values including the proposal source ID.
-   * @param networkId - Optional network requiring current owner membership.
-   * @returns A discriminated created, existing, or membership-required result.
+   * @param input - Client binding plus the server-generated embedding.
+   * @returns A discriminated confirmation result.
    */
   async confirmProposalIntent(
-    data: CreateIntentInput,
-    networkId?: string,
+    input: {
+      proposalId: string;
+      userId: string;
+      description: string;
+      networkId?: string;
+      embedding: number[];
+    },
   ): Promise<
     | { kind: 'created'; intent: CreatedIntentRow }
-    | { kind: 'existing'; intent: { id: string; archivedAt: Date | null } }
+    | { kind: 'replay'; intent: { id: string; archivedAt: Date | null } }
+    | { kind: 'missing' }
+    | { kind: 'expired' }
+    | { kind: 'consumed' }
+    | { kind: 'payload_mismatch' }
+    | { kind: 'analysis_missing' }
     | { kind: 'membership_required' }
   > {
-    const sourceId = data.sourceId;
-    if (!sourceId) throw new Error('Proposal confirmation requires a source ID');
-
     return db.transaction(async (tx) => {
-      const lockName = `intent-proposal:${JSON.stringify([data.userId, sourceId])}`;
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}, 0))`);
+      const [proposal] = await tx
+        .select()
+        .from(schema.intentProposals)
+        .where(eq(schema.intentProposals.id, input.proposalId))
+        .limit(1)
+        .for('update');
+      if (!proposal || proposal.userId !== input.userId) return { kind: 'missing' } as const;
 
-      const [existing] = await tx
-        .select({ id: schema.intents.id, archivedAt: schema.intents.archivedAt })
-        .from(schema.intents)
-        .where(and(
-          eq(schema.intents.userId, data.userId),
-          eq(schema.intents.sourceId, sourceId),
-        ))
-        .limit(1);
-      if (existing) return { kind: 'existing', intent: existing } as const;
+      const payloadMatches = proposal.description === input.description
+        && proposal.networkId === (input.networkId ?? null);
+      if (!payloadMatches) return { kind: 'payload_mismatch' } as const;
 
-      if (networkId) {
+      if (proposal.status === 'consumed') {
+        if (!proposal.consumedIntentId) return { kind: 'consumed' } as const;
+        const [intent] = await tx
+          .select({ id: schema.intents.id, archivedAt: schema.intents.archivedAt })
+          .from(schema.intents)
+          .where(and(
+            eq(schema.intents.id, proposal.consumedIntentId),
+            eq(schema.intents.userId, input.userId),
+          ))
+          .limit(1);
+        return intent ? { kind: 'replay', intent } as const : { kind: 'consumed' } as const;
+      }
+      if (proposal.status !== 'pending') return { kind: 'consumed' } as const;
+      if (proposal.expiresAt.getTime() <= Date.now()) return { kind: 'expired' } as const;
+
+      const parsedAnalysis = intentProposalAnalysisSchema.safeParse(proposal.analysis);
+      if (!parsedAnalysis.success) return { kind: 'analysis_missing' } as const;
+      const mappedAnalysis = mapProposalAnalysisToIntent(parsedAnalysis.data);
+
+      if (proposal.networkId) {
         const [membership] = await tx
           .select({ networkId: schema.networkMembers.networkId })
           .from(schema.networkMembers)
           .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
           .where(and(
-            eq(schema.networkMembers.networkId, networkId),
-            eq(schema.networkMembers.userId, data.userId),
+            eq(schema.networkMembers.networkId, proposal.networkId),
+            eq(schema.networkMembers.userId, input.userId),
             isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt),
             sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
@@ -140,20 +164,12 @@ export class IntentDatabaseAdapter {
 
       const [created] = await tx.insert(schema.intents)
         .values({
-          userId: data.userId,
-          payload: data.payload,
-          summary: data.summary ?? null,
-          embedding: data.embedding,
-          isIncognito: data.isIncognito ?? false,
-          sourceType: data.sourceType,
-          sourceId,
-          semanticEntropy: data.semanticEntropy ?? undefined,
-          referentialAnchor: data.referentialAnchor ?? undefined,
-          felicityAuthority: data.felicityAuthority ?? undefined,
-          felicitySincerity: data.felicitySincerity ?? undefined,
-          felicityClarity: data.felicityClarity ?? undefined,
-          intentMode: data.intentMode ?? undefined,
-          speechActType: data.speechActType ?? undefined,
+          userId: input.userId,
+          payload: proposal.description,
+          embedding: input.embedding,
+          sourceType: 'discovery_form',
+          sourceId: proposal.id,
+          ...mappedAnalysis,
         })
         .returning({
           id: schema.intents.id,
@@ -166,13 +182,22 @@ export class IntentDatabaseAdapter {
         });
       if (!created) throw new Error('Insert did not return a row');
 
-      if (networkId) {
+      if (proposal.networkId) {
         await tx.insert(schema.intentNetworks).values({
           intentId: created.id,
-          networkId,
+          networkId: proposal.networkId,
           relevancyScore: null,
         });
       }
+
+      await tx
+        .update(schema.intentProposals)
+        .set({
+          status: 'consumed',
+          consumedAt: new Date(),
+          consumedIntentId: created.id,
+        })
+        .where(eq(schema.intentProposals.id, proposal.id));
 
       return { kind: 'created', intent: created } as const;
     });

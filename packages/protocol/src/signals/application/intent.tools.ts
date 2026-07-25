@@ -3,6 +3,7 @@ import { z } from "zod";
 import { IntentClarifier } from "./intent.clarifier.js";
 import type { ExecutionResult, IntentValidationFailure, VerifiedIntent } from "../domain/intent.state.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "../domain/signal.specificity.js";
+import { normalizeIntentDescription, type PersistableIntentProposal } from "../domain/intent.proposal.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { traceGraph } from "../../shared/observability/trace.js";
 
@@ -325,7 +326,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       "**What to pass:** A clear, concept-based description of what the user is looking for (e.g. 'Looking for an AI/ML co-founder in Berlin', " +
       "'Need a designer for a mobile app project'). If the user provided a URL, scrape it with scrape_url first and synthesize the content into a description.\n\n" +
       "**What happens:** The system runs inference (extracting structured intents), verification (checking specificity and speech-act type), " +
-      "and returns a proposal widget. The proposal is NOT yet persisted — the user must approve it first.\n\n" +
+      "and durably stores an owner-scoped proposal containing the exact normalized description, optional network scope, and complete verifier output before returning a proposal widget. The intent itself is NOT yet persisted — the user must approve the proposal first.\n\n" +
       "**Returns:** An intent_proposal code block that MUST be included verbatim in the response. The frontend renders it as an interactive " +
       "card the user can approve or skip. On approval, the intent is persisted, indexed, and discovery begins.\n\n" +
       "**Next steps after approval:** The intent is automatically linked to relevant indexes. Call discover_opportunities(searchQuery) to explicitly trigger discovery, " +
@@ -510,13 +511,32 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       }
 
       // ── Proposal path (for web chat with interactive cards) ──
-      // Build intent_proposal code fences for each verified intent
-      const proposalBlocks = verified.map((v: VerifiedIntent) => {
+      // Persist complete verifier output before emitting any usable card.
+      if (!deps.intentProposalStore) {
+        return error("Verified intent proposals are unavailable because durable proposal storage is not configured.");
+      }
+      const proposals: PersistableIntentProposal[] = [];
+      const proposalBlocks: string[] = [];
+      for (const v of verified as VerifiedIntent[]) {
+        if (!v.verification) {
+          return error("Intent verification produced no authoritative analysis; no proposal was created.", debugSteps);
+        }
         const proposalId = crypto.randomUUID();
+        const normalizedDescription = normalizeIntentDescription(v.description);
         const isBroad = isBroadAttributiveIntent(v);
+        proposals.push({
+          proposalId,
+          userId: context.userId,
+          description: normalizedDescription,
+          ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
+          analysis: {
+            verifierOutput: v.verification,
+            combinedScore: v.score ?? null,
+          },
+        });
         const data = {
           proposalId,
-          description: v.description,
+          description: normalizedDescription,
           ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
           confidence: v.score != null ? Math.round(v.score * 100) / 100 : null,
           speechActType: v.verification?.classification ?? null,
@@ -525,12 +545,13 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
           missingSelectionalConstraints: v.verification?.missing_selectional_constraints ?? [],
           specificityWarning: isBroad ? specificityWarningFor(v) : normalizeSpecificityWarning(v.verification?.specificity_warning),
         };
-        return (
+        proposalBlocks.push(
           "```intent_proposal\n" +
           sanitizeJsonForCodeFence(JSON.stringify(data)) +
           "\n```"
         );
-      });
+      }
+      await deps.intentProposalStore.createProposals(proposals);
 
       const blocksText = proposalBlocks.join("\n\n");
 

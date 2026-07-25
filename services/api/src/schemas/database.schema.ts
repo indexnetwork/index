@@ -19,6 +19,7 @@ export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED'
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
 export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
+export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
 export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
 
@@ -673,6 +674,27 @@ export const agentActionProposals = pgTable('agent_action_proposals', {
 export type AgentActionProposalRow = typeof agentActionProposals.$inferSelect;
 export type NewAgentActionProposalRow = typeof agentActionProposals.$inferInsert;
 
+export interface IntentProposalVerifierOutputRecord {
+  reasoning: string;
+  classification: 'COMMISSIVE' | 'DIRECTIVE' | 'ASSERTIVE' | 'EXPRESSIVE' | 'DECLARATION' | 'UNKNOWN';
+  felicity_scores: {
+    clarity: number;
+    authority: number;
+    sincerity: number;
+  };
+  semantic_entropy: number;
+  referential_anchor: string | null;
+  referential_breadth: 'narrow' | 'moderate' | 'broad';
+  missing_selectional_constraints: Array<'role' | 'outcome' | 'location' | 'timeframe' | 'domain' | 'concrete_need'>;
+  specificity_warning: string | null;
+  flags: string[];
+}
+
+export interface IntentProposalAnalysisRecord {
+  verifierOutput: IntentProposalVerifierOutputRecord;
+  combinedScore: number | null;
+}
+
 export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   payload: text('payload').notNull(),
@@ -727,6 +749,25 @@ export const networks = pgTable('networks', {
 }, (table) => ({
   indexesKeyUnique: uniqueIndex('indexes_key_unique').on(table.key),
 }));
+
+export const intentProposals = pgTable('intent_proposals', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  description: text('description').notNull(),
+  networkId: text('network_id'),
+  analysis: jsonb('analysis').$type<IntentProposalAnalysisRecord>().notNull(),
+  status: intentProposalStatusEnum('status').notNull().default('pending'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  consumedIntentId: text('consumed_intent_id').references(() => intents.id, { onDelete: 'set null' }),
+}, (table) => ({
+  userIdIdx: index('intent_proposals_user_id_idx').on(table.userId),
+  expiresAtIdx: index('intent_proposals_expires_at_idx').on(table.expiresAt),
+}));
+
+export type IntentProposalRow = typeof intentProposals.$inferSelect;
+export type NewIntentProposalRow = typeof intentProposals.$inferInsert;
 
 export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
 export type FrameDriftExecutionTerminalStatus = 'inserted' | 'duplicate' | 'skipped' | 'failed';

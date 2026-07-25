@@ -105,6 +105,7 @@ src/controllers/tests/question.visitmining.isolated.ts
 src/controllers/tests/agent-action.controller.isolated.ts
 src/services/tests/agent-action.service.isolated.ts
 src/services/tests/intent-recovery-refinement.service.isolated.ts
+src/services/tests/intent.service.proposal.isolated.ts
 src/adapters/tests/agent-action-proposal.database.adapter.isolated.ts
 src/adapters/tests/conversation.reporter.isolated.ts
 src/controllers/tests/conversation.negotiation-activity.isolated.ts

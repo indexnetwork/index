@@ -16,18 +16,35 @@ mock.module('../../lib/bullmq/bullmq', () => ({
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
+mock.module('../../adapters/database.adapter', () => ({
+  ChatDatabaseAdapter: class ChatDatabaseAdapter {},
+  chatDatabaseAdapter: {},
+}));
+mock.module('../../adapters/embedder.adapter', () => ({
+  EmbedderAdapter: class EmbedderAdapter {},
+  embedderAdapter: {},
+}));
 
 // Stub the run-existing queue that from-intent imports
 mock.module('../negotiations/run-existing.queue', () => ({
   negotiationRunExistingQueue: { addJob: async () => ({ id: 'neg-1' }) },
+}));
+mock.module('../pool/mining.shared', () => ({
+  maybeMinePoolDiscriminators: async () => {},
+  minePoolDiscriminatorsOnCompletion: async () => {},
+}));
+mock.module('../questioner/recovery.shared', () => ({
+  maybeEnqueueIntentRecovery: async () => {},
 }));
 
 afterAll(() => {
   mock.restore();
 });
 
-import { FromIntentQueue, QUEUE_NAME, type FromIntentJobData, type FromIntentDatabase, type FromIntentDeps, type FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
-import { summarizeOpportunityDiscoveryResult } from '../opportunity/discovery.shared';
+import type { FromIntentJobData, FromIntentDatabase, FromIntentDeps, FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
+
+const { FromIntentQueue, QUEUE_NAME } = await import('../opportunity/from-intent.queue');
+const { summarizeOpportunityDiscoveryResult } = await import('../opportunity/discovery.shared');
 
 type FromIntentDatabaseOverrides = Partial<FromIntentDatabase> & Pick<FromIntentDatabase, 'getIntentForIndexing'>;
 
@@ -259,6 +276,24 @@ describe('FromIntentQueue', () => {
         .rejects.toThrow('graph failed');
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
       expect(recoverAfterCompletion).not.toHaveBeenCalled();
+    });
+
+    it('discover: does not stamp when assignment disappears after the graph completes', async () => {
+      const markIntentFirstDiscoverySucceeded = mock(async () => {});
+      const getNetworkIdsForIntent = mock()
+        .mockResolvedValueOnce(['idx1'])
+        .mockResolvedValueOnce([]);
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent,
+          markIntentFirstDiscoverySucceeded,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+      await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
+        .rejects.toThrow('stamp precondition failed');
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
     });
 
     it('pool-answer discovery appends all durable answer context and narrates after mining', async () => {
